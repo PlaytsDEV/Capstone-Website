@@ -60,14 +60,6 @@ export default function ActiveFilterTags({
 }) {
   const tags = [];
 
-  if (searchTerm.trim()) {
-    tags.push({
-      id: "search",
-      label: `Search: "${searchTerm.trim()}"`,
-      onRemove: onClearSearch,
-    });
-  }
-
   if (branchFilter && branchFilter !== "all") {
     const opt = OWNER_BRANCH_FILTER_OPTIONS.find((o) => o.value === branchFilter);
     tags.push({

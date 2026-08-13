@@ -95,6 +95,48 @@ const warmTenantRouteData = (queryClient, userData) => {
 };
 
 /**
+ * Pre-warm admin dashboard data immediately after auth resolves.
+ * Fires analyticsApi.getDashboard in the background while the lazy
+ * Dashboard.jsx chunk is still downloading, so by the time the page
+ * mounts the data is already in the React Query cache.
+ * This overlaps Phase B (chunk download) with Phase C (data fetch),
+ * effectively eliminating the dashboard data spinner on fresh open.
+ */
+const warmAdminRouteData = (queryClient, userData) => {
+  const isAdminUser =
+    userData?.role === USER_ROLES.BRANCH_ADMIN ||
+    userData?.role === USER_ROLES.OWNER ||
+    userData?.role === "super_admin";
+  const pathname = window.location.pathname;
+
+  if (!isAdminUser || !pathname.startsWith("/admin")) return Promise.resolve();
+
+  const isOwner =
+    userData?.role === "super_admin" || userData?.role === USER_ROLES.OWNER;
+  const params = { range: "30d", ...(isOwner ? { branch: "all" } : {}) };
+
+  // Pre-warm the Dashboard JS chunk simultaneously.
+  const chunkPromise = import("../../features/admin/pages/Dashboard").catch(
+    () => {},
+  );
+
+  // Pre-fetch dashboard analytics into the React Query cache.
+  // Uses the exact same queryKey and staleTime as useDashboardData so the
+  // cache hit is guaranteed when Dashboard.jsx calls useQuery.
+  const queryPromise = import("../api/analyticsApi")
+    .then(({ analyticsApi }) => {
+      return queryClient.prefetchQuery({
+        queryKey: queryKeys.dashboard.admin(params),
+        queryFn: () => analyticsApi.getDashboard(params),
+        staleTime: 30 * 1000,
+      });
+    })
+    .catch(() => {});
+
+  return Promise.all([chunkPromise, queryPromise]);
+};
+
+/**
  * Auth Provider Component
  * Wraps the application to provide authentication context.
  *
@@ -203,6 +245,7 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       queryClient.setQueryData(["users", "currentUser"], resolvedUser);
       warmTenantRouteData(queryClient, resolvedUser);
+      await warmAdminRouteData(queryClient, resolvedUser);
 
     } catch (error) {
       // User not authenticated in backend - clear state
@@ -270,8 +313,9 @@ export const AuthProvider = ({ children }) => {
       // or it can be a transient backend hiccup (e.g. a cold start) returning
       // 401 instead of a 5xx. Retry once before treating it as a real logout,
       // so a passing blip doesn't silently sign the user out mid-session.
+      // 500ms is sufficient to cover transient hiccups without freezing the UI.
       if (statusCode === 401) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         try {
           const userData = await fetchProfileOnce();
           const resolvedUser = attachManagedFirebaseIdentity(userData);

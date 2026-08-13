@@ -100,7 +100,7 @@ export default function DataTable({
   return (
     <div className="flex flex-col justify-between flex-1 gap-3">
       <div className="overflow-x-auto rounded-lg border border-border/60">
-        <table className="w-full border-collapse">
+        <table className="w-full border-collapse table-fixed">
           <thead>
             <tr className="border-b border-border bg-muted/40">
               {columns.map((col) => {

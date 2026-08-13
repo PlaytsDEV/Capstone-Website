@@ -1,0 +1,367 @@
+/* ═══════════════════════════════════════════════════════════════
+   LoadingSkeletons.css — Shimmer skeleton system
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Shimmer keyframe ───────────────────────────────────────── */
+@keyframes sk-shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+
+/* ─── Base shimmer block ─────────────────────────────────────── */
+.sk-shimmer {
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--border-light) 80%, transparent) 25%,
+    color-mix(in srgb, var(--border-light) 40%, var(--bg-card)) 50%,
+    color-mix(in srgb, var(--border-light) 80%, transparent) 75%
+  );
+  background-size: 1200px 100%;
+  animation: sk-shimmer 1.5s infinite linear;
+}
+
+/* ─── Inline spinner (kept for explicit spinner use) ─────────── */
+.sk-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--primary) 20%, transparent);
+  border-top-color: var(--primary);
+  animation: sk-spin 0.75s linear infinite;
+}
+
+@keyframes sk-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STAT GRID skeleton
+   ═══════════════════════════════════════════════════════════════ */
+.sk-stat-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(150px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.sk-stat-card {
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 16px;
+  min-height: 108px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-card);
+}
+
+.sk-stat-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sk-stat-card__icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.sk-stat-card__label {
+  height: 10px;
+  width: 70%;
+  border-radius: 4px;
+}
+
+.sk-stat-card__value {
+  height: 28px;
+  width: 48px;
+  border-radius: 6px;
+  margin-top: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TABLE skeleton
+   ═══════════════════════════════════════════════════════════════ */
+.sk-table {
+  width: 100%;
+}
+
+.sk-table__header {
+  display: flex;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
+  background: color-mix(in srgb, var(--bg-inset) 30%, transparent);
+}
+
+.sk-table__th {
+  height: 10px;
+  flex: 1;
+  max-width: 120px;
+  border-radius: 4px;
+}
+
+.sk-table__row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.sk-table__cell {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.sk-table__cell--avatar {
+  flex: 1.6;
+  gap: 12px;
+}
+
+.sk-table__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sk-table__cell-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.sk-table__line {
+  height: 10px;
+  border-radius: 4px;
+  width: 75%;
+}
+
+.sk-table__line--name {
+  width: 80%;
+  height: 12px;
+}
+
+.sk-table__line--sub {
+  width: 55%;
+  height: 9px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CARD skeleton
+   ═══════════════════════════════════════════════════════════════ */
+.sk-card {
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-card);
+}
+
+.sk-card__title {
+  height: 14px;
+  width: 55%;
+  border-radius: 4px;
+}
+
+.sk-card__body {
+  height: 10px;
+  width: 90%;
+  border-radius: 4px;
+}
+
+.sk-card__body--short {
+  width: 65%;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LIST skeleton
+   ═══════════════════════════════════════════════════════════════ */
+.sk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sk-list__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.sk-list__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sk-list__lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sk-list__line {
+  height: 10px;
+  border-radius: 4px;
+}
+
+.sk-list__line--name {
+  width: 45%;
+  height: 12px;
+}
+
+.sk-list__line--sub {
+  width: 65%;
+  height: 9px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DRAWER skeleton
+   ═══════════════════════════════════════════════════════════════ */
+.sk-drawer {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sk-drawer__title {
+  height: 16px;
+  width: 50%;
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.sk-drawer__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sk-drawer__label {
+  height: 9px;
+  width: 35%;
+  border-radius: 4px;
+}
+
+.sk-drawer__input {
+  height: 36px;
+  width: 100%;
+  border-radius: 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PAGE skeleton
+   ═══════════════════════════════════════════════════════════════ */
+.sk-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 8px 0;
+}
+
+.sk-page__heading {
+  height: 24px;
+  width: 30%;
+  border-radius: 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PIPELINE skeleton
+   ═══════════════════════════════════════════════════════════════ */
+.sk-pipeline {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+
+.sk-pipeline__col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+
+.sk-pipeline__col-header {
+  height: 14px;
+  width: 55%;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+
+.sk-pipeline__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+}
+
+.sk-pipeline__card-title {
+  height: 11px;
+  width: 80%;
+  border-radius: 4px;
+}
+
+.sk-pipeline__card-sub {
+  height: 9px;
+  width: 55%;
+  border-radius: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MOVE-OUT skeleton
+   ═══════════════════════════════════════════════════════════════ */
+.sk-moveout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MODAL skeleton
+   ═══════════════════════════════════════════════════════════════ */
+.sk-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  min-height: 220px;
+}
+
+.sk-modal__title {
+  height: 16px;
+  width: 45%;
+  border-radius: 4px;
+}
+
+.sk-modal__body {
+  height: 10px;
+  width: 90%;
+  border-radius: 4px;
+}
+
+.sk-modal__body--short {
+  width: 60%;
+}

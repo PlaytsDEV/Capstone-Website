@@ -55,6 +55,13 @@ export const OWNER_BRANCH_FILTER_OPTIONS = [
   ...BRANCH_OPTIONS,
 ];
 
+/**
+ * Branches that use submetered electricity billing and require a starting
+ * KWh meter reading to be recorded at move-in.
+ * Mirrors server/config/branches.js BRANCH_RULES[branch].hasSubmeter.
+ */
+export const SUBMETER_BRANCHES = new Set([BRANCHES.GIL_PUYAT]);
+
 // -----------------------------------------------------------------------------
 // Reservation Status (matches server/models/Reservation.js)
 // -----------------------------------------------------------------------------

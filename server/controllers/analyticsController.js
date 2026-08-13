@@ -19,6 +19,28 @@ import { getBranchOccupancyStats } from "../utils/occupancyManager.js";
 import { ACTIVE_OCCUPANCY_STATUS_QUERY } from "../utils/lifecycleNaming.js";
 import { generateAnalyticsInsight } from "../services/analyticsInsightsService.js";
 
+// ─── In-process dashboard analytics cache ────────────────────────────────────
+// Keyed by "branch:rangeKey" → { data, expiresAt }. Entries last 30 seconds.
+// This eliminates re-running 13+ aggregations on every navigate-away-and-back
+// without requiring Redis or any external caching infrastructure.
+const _dashboardCache = new Map();
+const DASHBOARD_CACHE_TTL_MS = 30_000;
+
+const _getDashboardCacheKey = (branch, rangeKey) => `${branch}:${rangeKey}`;
+
+const _getDashboardCacheHit = (branch, rangeKey) => {
+  const key = _getDashboardCacheKey(branch, rangeKey);
+  const entry = _dashboardCache.get(key);
+  if (entry && entry.expiresAt > Date.now()) return entry.data;
+  return null;
+};
+
+const _setDashboardCache = (branch, rangeKey, data) => {
+  const key = _getDashboardCacheKey(branch, rangeKey);
+  _dashboardCache.set(key, { data, expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS });
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 const DASHBOARD_RANGE_DAYS = Object.freeze({
   "7d": 7,
   "30d": 30,
@@ -1097,12 +1119,14 @@ const buildBranchComparison = async (scope, sinceDate) => {
   const branches = scope.isOwner && scope.branch === "all"
     ? ROOM_BRANCHES
     : scope.branchesIncluded;
-  const periodBills = await fetchScopedBills(branches, {
-    billingMonth: { $gte: sinceDate },
-  });
-  const openBills = await fetchScopedBills(branches, {
-    status: { $in: ["pending", "overdue", "partially-paid"] },
-  });
+  const [periodBills, openBills] = await Promise.all([
+    fetchScopedBills(branches, {
+      billingMonth: { $gte: sinceDate },
+    }),
+    fetchScopedBills(branches, {
+      status: { $in: ["pending", "overdue", "partially-paid"] },
+    }),
+  ]);
   const financialMap = new Map(
     buildFinancialBranchSummaries({
       periodBills,
@@ -2000,6 +2024,14 @@ export const getDashboardAnalytics = async (req, res, next) => {
   try {
     const scope = await resolveAnalyticsScope(req);
     const rangeKey = String(req.query.range || "30d").trim().toLowerCase();
+
+    // ── Cache hit: return instantly without touching MongoDB ──────────────────
+    const cacheHit = _getDashboardCacheHit(
+      scope.branch === "all" ? "all" : scope.branch,
+      rangeKey,
+    );
+    if (cacheHit) return sendSuccess(res, cacheHit);
+    // ─────────────────────────────────────────────────────────────────────────
     const rangeDays = parseRangeDays(rangeKey);
     const sinceDate = dayjs().subtract(rangeDays, "day").startOf("day").toDate();
     const billingTrendMonths =
@@ -2079,7 +2111,7 @@ export const getDashboardAnalytics = async (req, res, next) => {
     const occupancyRate =
       totalCapacity > 0 ? Math.round((totalOccupancy / totalCapacity) * 100) : 0;
 
-    sendSuccess(res, {
+    const responsePayload = {
       scope: {
         role: scope.role,
         branch: scope.branch,
@@ -2147,7 +2179,17 @@ export const getDashboardAnalytics = async (req, res, next) => {
         createdAt: inquiry.createdAt,
       })),
       branchComparison,
-    });
+    };
+
+    // ── Cache the computed result for 30 seconds ──────────────────────────────
+    _setDashboardCache(
+      scope.branch === "all" ? "all" : scope.branch,
+      rangeKey,
+      responsePayload,
+    );
+    // ─────────────────────────────────────────────────────────────────────────
+
+    sendSuccess(res, responsePayload);
   } catch (error) {
     next(error);
   }

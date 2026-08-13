@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import SkeletonPulse from "../../../shared/components/SkeletonPulse";
 import { Link } from "react-router-dom";
 import {
   MessageSquare,
@@ -25,7 +26,7 @@ import {
   StatGridSkeleton,
   TableSkeleton,
 } from "../../../shared/components/LoadingSkeletons";
-import SkeletonPulse from "../../../shared/components/SkeletonPulse";
+import GlobalLoading from "../../../shared/components/GlobalLoading";
 import { PageShell } from "../components/shared";
 import OccupancyTrendCard from "../components/dashboard/OccupancyTrendCard";
 import RevenueTrendCard from "../components/dashboard/RevenueTrendCard";
@@ -112,22 +113,53 @@ function AlertBanner({ activeTickets, pendingReservations, unresolvedInquiries }
   );
 }
 
-function DashboardLoadingSkeleton() {
+/** Skeleton placeholder for a single KPI stat card — matches the real card layout. */
+function StatCardSkeleton() {
   return (
     <div
-      aria-live="polite"
-      aria-busy="true"
+      className="rounded-xl border p-5"
       style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        minHeight: "360px",
-        width: "100%",
-        padding: "48px 24px",
+        borderColor: "var(--border-light)",
+        backgroundColor: "var(--bg-card)",
       }}
     >
-      <div className="global-spinner" />
+      <div className="mb-3 flex items-start justify-between">
+        <SkeletonPulse variant="text" width="65%" height="11px" />
+        <SkeletonPulse variant="circle" width="16px" />
+      </div>
+      <div className="flex flex-col gap-2">
+        <SkeletonPulse width="40%" height="28px" borderRadius="6px" />
+        <SkeletonPulse variant="text" width="80%" height="11px" />
+      </div>
     </div>
+  );
+}
+
+/** Skeleton for a single inquiry / reservation row */
+function RowSkeleton() {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 0", borderBottom: "1px solid var(--border-light)" }}>
+      <SkeletonPulse variant="circle" width="44px" />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+        <SkeletonPulse variant="text" width="45%" height="14px" />
+        <SkeletonPulse variant="text" width="30%" height="11px" />
+        <SkeletonPulse variant="text" width="55%" height="11px" />
+      </div>
+      <SkeletonPulse width="72px" height="24px" borderRadius="6px" />
+    </div>
+  );
+}
+
+/** Skeleton table row for reservations */
+function TableRowSkeleton() {
+  return (
+    <tr>
+      {["28%", "20%", "16%", "14%", "12%"].map((w, i) => (
+        <td key={i} className="px-6 py-4">
+          <SkeletonPulse variant="text" width={w} height="13px" />
+        </td>
+      ))}
+    </tr>
   );
 }
 
@@ -146,6 +178,10 @@ export default function Dashboard() {
   );
 
   const { data, isLoading, isError } = useDashboardData(queryParams);
+
+  if (isLoading && !data) {
+    return <GlobalLoading />;
+  }
 
   const reservations = data?.recentReservations || [];
   const inquiryItems = data?.recentInquiries || [];
@@ -350,59 +386,56 @@ export default function Dashboard() {
             />
           )}
 
-          {isLoading ? (
-            <DashboardLoadingSkeleton />
-          ) : (
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            {summaryItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <article
-                  key={item.label}
-                  className="dash-card-hover rounded-xl border p-5"
-                  style={{
-                    borderColor: "var(--border-light)",
-                    backgroundColor: "var(--bg-card)",
-                  }}
-                >
-                  <div className="mb-3 flex items-start justify-between">
-                    <span
-                      className="text-[11px] font-bold uppercase tracking-wider"
-                      style={{ color: "var(--text-muted)" }}
+            {isLoading
+              ? Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
+              : summaryItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <article
+                      key={item.label}
+                      className="dash-card-hover rounded-xl border p-5"
+                      style={{
+                        borderColor: "var(--border-light)",
+                        backgroundColor: "var(--bg-card)",
+                      }}
                     >
-                      {item.label}
-                    </span>
-                    <Icon
-                      className="h-4 w-4"
-                      style={{ color: "var(--text-muted)", opacity: 0.7 }}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <p
-                      className="text-3xl font-bold leading-none tracking-tight"
-                      style={
-                        metricValueStyle[item.tone] || {
-                          color: "var(--text-primary)",
-                        }
-                      }
-                    >
-                      {item.value}
-                    </p>
-                    <p
-                      className="text-[11px] font-medium"
-                      style={{ color: "var(--text-muted)", opacity: 0.8 }}
-                    >
-                      {item.trend}
-                    </p>
-                  </div>
-                </article>
-              );
-            })}
+                      <div className="mb-3 flex items-start justify-between">
+                        <span
+                          className="text-[11px] font-bold uppercase tracking-wider"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          {item.label}
+                        </span>
+                        <Icon
+                          className="h-4 w-4"
+                          style={{ color: "var(--text-muted)", opacity: 0.7 }}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <p
+                          className="text-3xl font-bold leading-none tracking-tight"
+                          style={
+                            metricValueStyle[item.tone] || {
+                              color: "var(--text-primary)",
+                            }
+                          }
+                        >
+                          {item.value}
+                        </p>
+                        <p
+                          className="text-[11px] font-medium"
+                          style={{ color: "var(--text-muted)", opacity: 0.8 }}
+                        >
+                          {item.trend}
+                        </p>
+                      </div>
+                    </article>
+                  );
+                })}
           </div>
-          )}
         </PageShell.Summary>
 
-        {!isLoading && (
         <PageShell.Content>
           <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             <section
@@ -420,13 +453,16 @@ export default function Dashboard() {
                   >
                     Recent Inquiries
                   </h2>
-                  <p
-                    className="mt-0.5 text-xs font-medium"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    {kpis.inquiries || 0} on the active range • newest items
-                    first
-                  </p>
+                  {isLoading ? (
+                    <SkeletonPulse variant="text" width="200px" height="11px" style={{ marginTop: "4px" }} />
+                  ) : (
+                    <p
+                      className="mt-0.5 text-xs font-medium"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      {kpis.inquiries || 0} on the active range • newest items first
+                    </p>
+                  )}
                 </div>
                 <Link
                   to="/admin/inquiries"
@@ -440,7 +476,9 @@ export default function Dashboard() {
               </div>
 
               <div className="space-y-3">
-                {recentInquiries.length > 0 ? (
+                {isLoading ? (
+                  Array.from({ length: 4 }).map((_, i) => <RowSkeleton key={i} />)
+                ) : recentInquiries.length > 0 ? (
                   recentInquiries.map((inq) => (
                     <article
                       key={inq.id}
@@ -536,128 +574,170 @@ export default function Dashboard() {
                 >
                   Reservation Status
                 </h2>
-                <p
-                  className="mt-0.5 text-xs font-medium"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {reservationStatus.pending || 0} pending •{" "}
-                  {reservationStatus.approved || 0} approved •{" "}
-                  {reservationStatus.rejected || 0} rejected
-                </p>
+                {isLoading ? (
+                  <SkeletonPulse variant="text" width="180px" height="11px" style={{ marginTop: "4px" }} />
+                ) : (
+                  <p
+                    className="mt-0.5 text-xs font-medium"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    {reservationStatus.pending || 0} pending •{" "}
+                    {reservationStatus.approved || 0} approved •{" "}
+                    {reservationStatus.rejected || 0} rejected
+                  </p>
+                )}
               </div>
 
               <div className="mb-6 flex justify-center py-4">
-                <svg
-                  className="h-[180px] w-[180px]"
-                  viewBox="0 0 200 200"
-                  aria-label="Reservation status chart"
-                >
-                  <circle
-                    cx="100"
-                    cy="100"
-                    r="80"
-                    fill="none"
-                    stroke="var(--border-light)"
-                    strokeWidth="20"
-                    opacity={0.5}
-                  />
-                  <circle
-                    cx="100"
-                    cy="100"
-                    r="80"
-                    fill="none"
-                    stroke="var(--color-success)"
-                    strokeWidth="20"
-                    strokeDasharray={`${reservationSegment(reservationStatus.approved || 0)} 502.6`}
-                    transform="rotate(-90 100 100)"
-                  />
-                  <circle
-                    cx="100"
-                    cy="100"
-                    r="80"
-                    fill="none"
-                    stroke="var(--color-warning)"
-                    strokeWidth="20"
-                    strokeDasharray={`${reservationSegment(reservationStatus.pending || 0)} 502.6`}
-                    strokeDashoffset={`-${reservationSegment(reservationStatus.approved || 0)}`}
-                    transform="rotate(-90 100 100)"
-                  />
-                  <circle
-                    cx="100"
-                    cy="100"
-                    r="80"
-                    fill="none"
-                    stroke="var(--color-danger)"
-                    strokeWidth="20"
-                    strokeDasharray={`${reservationSegment(reservationStatus.rejected || 0)} 502.6`}
-                    strokeDashoffset={`-${reservationSegment((reservationStatus.approved || 0) + (reservationStatus.pending || 0))}`}
-                    transform="rotate(-90 100 100)"
-                  />
-                </svg>
+                {isLoading ? (
+                  <SkeletonPulse variant="circle" width="180px" />
+                ) : (
+                  <svg
+                    className="h-[180px] w-[180px]"
+                    viewBox="0 0 200 200"
+                    aria-label="Reservation status chart"
+                  >
+                    <circle
+                      cx="100"
+                      cy="100"
+                      r="80"
+                      fill="none"
+                      stroke="var(--border-light)"
+                      strokeWidth="20"
+                      opacity={0.5}
+                    />
+                    <circle
+                      cx="100"
+                      cy="100"
+                      r="80"
+                      fill="none"
+                      stroke="var(--color-success)"
+                      strokeWidth="20"
+                      strokeDasharray={`${reservationSegment(reservationStatus.approved || 0)} 502.6`}
+                      transform="rotate(-90 100 100)"
+                    />
+                    <circle
+                      cx="100"
+                      cy="100"
+                      r="80"
+                      fill="none"
+                      stroke="var(--color-warning)"
+                      strokeWidth="20"
+                      strokeDasharray={`${reservationSegment(reservationStatus.pending || 0)} 502.6`}
+                      strokeDashoffset={`-${reservationSegment(reservationStatus.approved || 0)}`}
+                      transform="rotate(-90 100 100)"
+                    />
+                    <circle
+                      cx="100"
+                      cy="100"
+                      r="80"
+                      fill="none"
+                      stroke="var(--color-danger)"
+                      strokeWidth="20"
+                      strokeDasharray={`${reservationSegment(reservationStatus.rejected || 0)} 502.6`}
+                      strokeDashoffset={`-${reservationSegment((reservationStatus.approved || 0) + (reservationStatus.pending || 0))}`}
+                      transform="rotate(-90 100 100)"
+                    />
+                  </svg>
+                )}
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-center justify-between text-[13px]">
-                  <span
-                    className="flex items-center gap-2 font-medium"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: "var(--color-success)" }}
-                    />
-                    Approved
-                  </span>
-                  <span
-                    className="font-bold"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    {reservationStatus.approved || 0}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-[13px]">
-                  <span
-                    className="flex items-center gap-2 font-medium"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: "var(--color-warning)" }}
-                    />
-                    Pending
-                  </span>
-                  <span
-                    className="font-bold"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    {reservationStatus.pending || 0}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-[13px]">
-                  <span
-                    className="flex items-center gap-2 font-medium"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: "var(--color-danger)" }}
-                    />
-                    Rejected
-                  </span>
-                  <span
-                    className="font-bold"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    {reservationStatus.rejected || 0}
-                  </span>
-                </div>
+                {isLoading ? (
+                  ["65%", "50%", "40%"].map((w, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <SkeletonPulse variant="text" width={w} height="13px" />
+                      <SkeletonPulse variant="text" width="24px" height="13px" />
+                    </div>
+                  ))
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between text-[13px]">
+                      <span
+                        className="flex items-center gap-2 font-medium"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: "var(--color-success)" }}
+                        />
+                        Approved
+                      </span>
+                      <span
+                        className="font-bold"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {reservationStatus.approved || 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[13px]">
+                      <span
+                        className="flex items-center gap-2 font-medium"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: "var(--color-warning)" }}
+                        />
+                        Pending
+                      </span>
+                      <span
+                        className="font-bold"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {reservationStatus.pending || 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[13px]">
+                      <span
+                        className="flex items-center gap-2 font-medium"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: "var(--color-danger)" }}
+                        />
+                        Rejected
+                      </span>
+                      <span
+                        className="font-bold"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {reservationStatus.rejected || 0}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </section>
           </div>
 
           <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <OccupancyTrendCard data={occupancy} />
-            <RevenueTrendCard data={kpis} />
+            {isLoading ? (
+              <>
+                <div
+                  className="rounded-xl border p-6 shadow-sm"
+                  style={{ borderColor: "var(--border-light)", backgroundColor: "var(--bg-card)" }}
+                >
+                  <SkeletonPulse variant="text" width="150px" height="16px" style={{ marginBottom: "8px" }} />
+                  <SkeletonPulse variant="text" width="210px" height="11px" style={{ marginBottom: "20px" }} />
+                  <SkeletonPulse width="100%" height="140px" borderRadius="8px" />
+                </div>
+                <div
+                  className="rounded-xl border p-6 shadow-sm"
+                  style={{ borderColor: "var(--border-light)", backgroundColor: "var(--bg-card)" }}
+                >
+                  <SkeletonPulse variant="text" width="150px" height="16px" style={{ marginBottom: "8px" }} />
+                  <SkeletonPulse variant="text" width="210px" height="11px" style={{ marginBottom: "20px" }} />
+                  <SkeletonPulse width="100%" height="140px" borderRadius="8px" />
+                </div>
+              </>
+            ) : (
+              <>
+                <OccupancyTrendCard data={occupancy} />
+                <RevenueTrendCard data={kpis} />
+              </>
+            )}
           </div>
 
           <section
@@ -675,14 +755,18 @@ export default function Dashboard() {
                 >
                   Recent Reservations
                 </h2>
-                <p
-                  className="mt-0.5 text-xs font-medium"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {reservationStatus.pending || 0} pending review •{" "}
-                  {kpis.activeBookings || 0} active bookings •{" "}
-                  {recentReservations.length} current scope
-                </p>
+                {isLoading ? (
+                  <SkeletonPulse variant="text" width="240px" height="11px" style={{ marginTop: "4px" }} />
+                ) : (
+                  <p
+                    className="mt-0.5 text-xs font-medium"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    {reservationStatus.pending || 0} pending review •{" "}
+                    {kpis.activeBookings || 0} active bookings •{" "}
+                    {recentReservations.length} current scope
+                  </p>
+                )}
               </div>
               <Link
                 to="/admin/reservations"
@@ -694,7 +778,15 @@ export default function Dashboard() {
               </Link>
             </div>
 
-            {recentReservations.length > 0 ? (
+            {isLoading ? (
+              <div className="overflow-x-auto -mx-6">
+                <table className="w-full min-w-[800px]">
+                  <tbody className="divide-y" style={{ borderColor: "var(--border-light)" }}>
+                    {Array.from({ length: 4 }).map((_, i) => <TableRowSkeleton key={i} />)}
+                  </tbody>
+                </table>
+              </div>
+            ) : recentReservations.length > 0 ? (
               <div className="overflow-x-auto -mx-6">
                 <table className="w-full min-w-[800px]">
                   <thead>
@@ -818,7 +910,6 @@ export default function Dashboard() {
             )}
           </section>
         </PageShell.Content>
-        )}
       </PageShell>
     </div>
   );

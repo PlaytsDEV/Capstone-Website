@@ -28,7 +28,7 @@ import { USER_ROLES } from "../utils/constants";
  *
  * @returns {React.ReactNode} Protected content or redirect
  */
-const ProtectedRoute = ({ children, requiredRole, requireAuth = true }) => {
+const ProtectedRoute = ({ children, requiredRole, requireAuth = true, loadingFallback }) => {
  const {
  user,
  isAuthenticated,
@@ -40,9 +40,9 @@ const ProtectedRoute = ({ children, requiredRole, requireAuth = true }) => {
  getLogoutIntent,
  } = useAuth();
 
- // Show loading spinner while checking authentication
+ // Show skeleton or spinner while checking authentication
  if (loading) {
- return <GlobalLoading />;
+ return loadingFallback ?? <GlobalLoading />;
  }
 
  // Check authentication requirement

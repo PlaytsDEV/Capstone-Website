@@ -139,7 +139,7 @@ export function ExportButtons({ onCsv, onPdf, disabled = false, loading = false,
         type="button"
         disabled={disabled || loading}
         onClick={() => setIsOpen((prev) => !prev)}
-        className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50 transition-all cursor-pointer"
+        className="h-9 inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50 transition-all cursor-pointer"
         aria-haspopup="true"
         aria-expanded={isOpen}
       >

@@ -854,7 +854,9 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
               max={new Date().toISOString().slice(0, 10)}
               onChange={(e) => setEffectiveTransferDate(e.target.value)}
             />
-            <span className="twm-meter-hint">Used to compute pro-rata rent. Defaults to today.</span>
+            <span className="twm-meter-hint">
+              Calculates partial rent for the current month based on the move date (defaults to today).
+            </span>
           </label>
         </>
       )}

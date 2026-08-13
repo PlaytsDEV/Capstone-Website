@@ -17,6 +17,7 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { useFirebaseAuth } from "../hooks/FirebaseAuthContext";
 import GlobalLoading from "../components/GlobalLoading";
 
 /**
@@ -28,8 +29,9 @@ import GlobalLoading from "../components/GlobalLoading";
 const RequireOwner = ({ children }) => {
   const { isAuthenticated, loading, isAdmin, isOwner, getDefaultRoute } =
     useAuth();
+  const { loading: firebaseLoading } = useFirebaseAuth();
 
-  if (loading) {
+  if (loading || firebaseLoading) {
     return <GlobalLoading />;
   }
 

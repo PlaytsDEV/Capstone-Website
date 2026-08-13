@@ -31,6 +31,7 @@ import {
 } from "../../features/admin/pages/analyticsNavigation.mjs";
 import AdminLayoutSkeleton from "../../features/admin/components/AdminLayoutSkeleton";
 import RequirePermission from "../../shared/guards/RequirePermission";
+import GlobalLoading from "../../shared/components/GlobalLoading";
 import {
   AdminDashboardSkeleton,
   AdminTablePageSkeleton,
@@ -44,8 +45,8 @@ export function AdminRoutes() {
     <Route
       path="/admin"
       element={
-        <ProtectedRoute requiredRole="branch_admin">
-          <RouteShell name="AdminLayout" fallback={<AdminLayoutSkeleton />}>
+        <ProtectedRoute requiredRole="branch_admin" loadingFallback={<GlobalLoading />}>
+          <RouteShell name="AdminLayout" fallback={<GlobalLoading />}>
             <AdminLayout />
           </RouteShell>
         </ProtectedRoute>
@@ -55,7 +56,7 @@ export function AdminRoutes() {
       <Route
         path="dashboard"
         element={
-          <RouteShell name="AdminDashboard" fallback={<AdminDashboardSkeleton />}>
+          <RouteShell name="AdminDashboard" fallback={<GlobalLoading />}>
             <AdminDashboardPage />
           </RouteShell>
         }
@@ -107,7 +108,7 @@ export function AdminRoutes() {
       <Route
         path="audit-logs"
         element={
-          <ProtectedRoute requiredRole="owner">
+          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminTablePageSkeleton />}>
             <RouteShell name="AuditLogs" fallback={<AdminTablePageSkeleton />}>
               <AuditLogsPage />
             </RouteShell>
@@ -235,7 +236,7 @@ export function AdminRoutes() {
       <Route
         path="branches"
         element={
-          <ProtectedRoute requiredRole="owner">
+          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminCardGridSkeleton />}>
             <RouteShell name="Branches" fallback={<AdminCardGridSkeleton />}>
               <BranchManagementPage />
             </RouteShell>
@@ -245,7 +246,7 @@ export function AdminRoutes() {
       <Route
         path="settings"
         element={
-          <ProtectedRoute requiredRole="owner">
+          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminFormPageSkeleton />}>
             <RouteShell name="Settings" fallback={<AdminFormPageSkeleton />}>
               <SystemSettingsPage />
             </RouteShell>
@@ -255,7 +256,7 @@ export function AdminRoutes() {
       <Route
         path="roles"
         element={
-          <ProtectedRoute requiredRole="owner">
+          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminFormPageSkeleton />}>
             <RouteShell name="Roles" fallback={<AdminFormPageSkeleton />}>
               <RolePermissionsPage />
             </RouteShell>
@@ -265,7 +266,7 @@ export function AdminRoutes() {
       <Route
         path="backups"
         element={
-          <ProtectedRoute requiredRole="owner">
+          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminTablePageSkeleton />}>
             <RouteShell name="SystemBackup" fallback={<AdminTablePageSkeleton />}>
               <SystemBackupPage />
             </RouteShell>
