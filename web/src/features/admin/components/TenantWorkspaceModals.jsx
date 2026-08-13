@@ -596,7 +596,12 @@ function SearchableRoomSelect({ rooms, value, onChange, disabled, placeholder = 
                 <div
                   key={rId}
                   className={`twm-search-select__option ${isSelected ? "twm-search-select__option--selected" : ""} ${!hasAvail ? "twm-search-select__option--disabled" : ""}`}
-                  onClick={() => {
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (!hasAvail) {
                       showNotification(
                         `Room ${room.name || room.roomNumber} has no available beds.`,
@@ -606,6 +611,10 @@ function SearchableRoomSelect({ rooms, value, onChange, disabled, placeholder = 
                     }
                     onChange(rId);
                     setIsOpen(false);
+                    if (containerRef.current) {
+                      const inputEl = containerRef.current.querySelector("input");
+                      if (inputEl) inputEl.blur();
+                    }
                   }}
                 >
                   <span style={{ fontWeight: isSelected ? 700 : 500 }}>{roomLabel}</span>
@@ -977,7 +986,7 @@ export function TransferTenantModal({
           </div>
 
           <div className="tenant-modal-grid">
-            <label className={`tenant-modal-field ${attemptedStep1 && !roomId ? "tenant-modal-field--invalid" : ""}`}>
+            <div className={`tenant-modal-field ${attemptedStep1 && !roomId ? "tenant-modal-field--invalid" : ""}`}>
               <span>New Room</span>
               <SearchableRoomSelect
                 rooms={targetRooms}
@@ -992,7 +1001,7 @@ export function TransferTenantModal({
                 fmtMoney={fmtMoney}
                 isInvalid={attemptedStep1 && !roomId}
               />
-            </label>
+            </div>
 
             <label className={`tenant-modal-field ${attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}`}>
               <span>New Bed</span>
@@ -1028,7 +1037,7 @@ export function TransferTenantModal({
             </div>
           )}
 
-          <label className="tenant-modal-field">
+          <div className="tenant-modal-field">
             <span>Effective Transfer Date</span>
             <input
               type="date"
@@ -1037,9 +1046,12 @@ export function TransferTenantModal({
               onChange={(e) => setEffectiveTransferDate(e.target.value)}
             />
             <span className="twm-meter-hint">
-              Calculates partial rent for the current month based on the move date (defaults to today).
+              <Clock size={14} style={{ flexShrink: 0, marginTop: 2, color: "#2563eb" }} />
+              <span>
+                Future dates cannot be selected because room transfers take effect immediately upon administrative confirmation. Partial rent and utility usage are calculated up to today.
+              </span>
             </span>
-          </label>
+          </div>
         </>
       )}
 
