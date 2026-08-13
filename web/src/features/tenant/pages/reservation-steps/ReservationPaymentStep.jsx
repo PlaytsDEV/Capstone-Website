@@ -182,7 +182,7 @@ const ReservationPaymentStep = ({
                 <div className="rf-uc-row-left">
                   <Home size={15} className="rf-uc-icon" />
                   <span className="rf-uc-label">Room</span>
-                </div>
+                </div>  
                 <div className="rf-uc-row-right">
                   <span className="rf-uc-val-primary">{roomName}</span>
                   {formatBranch(room.branch) && (

@@ -524,11 +524,11 @@ const ReservationVisitStep = ({
         </div>
 
         {withActions && selectedVisit === "physical_visit" && !canProceedFromVisitSummary && (
-          <div className="rf-rejection-banner" style={{ marginTop: 16, background: "rgba(37, 99, 235, 0.06)", border: "1px solid rgba(37, 99, 235, 0.18)" }}>
-            <Clock size={18} color="#1D4ED8" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div className="rf-rejection-banner" style={{ marginTop: 16, background: "color-mix(in srgb, var(--foreground) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)" }}>
+            <Clock size={18} color="var(--info-dark)" style={{ flexShrink: 0, marginTop: 2 }} />
             <div>
-              <div className="rf-rejection-banner__title" style={{ color: "#1D4ED8" }}>{physicalVisitState?.title || "Physical Visit Pending"}</div>
-              <div className="rf-rejection-banner__hint" style={{ color: "#3B82F6" }}>{visitSummaryUi.lockedMessage}</div>
+              <div className="rf-rejection-banner__title" style={{ color: "var(--info-dark)" }}>{physicalVisitState?.title || "Physical Visit Pending"}</div>
+              <div className="rf-rejection-banner__hint" style={{ color: "var(--info)" }}>{visitSummaryUi.lockedMessage}</div>
             </div>
           </div>
         )}
@@ -566,11 +566,11 @@ const ReservationVisitStep = ({
             <h2 className="main-header-title">Viewing Preference Summary</h2>
             <p className="main-header-subtitle">Your viewing preference has already been submitted and is being reviewed.</p>
           </div>
-          <div className="rf-rejection-banner" style={{ background: "rgba(37, 99, 235, 0.06)", border: "1px solid rgba(37, 99, 235, 0.18)" }}>
-            <AlertTriangle size={18} color="#2563EB" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div className="rf-rejection-banner" style={{ background: "color-mix(in srgb, var(--foreground) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)" }}>
+            <AlertTriangle size={18} color="var(--info)" style={{ flexShrink: 0, marginTop: 2 }} />
             <div>
-              <div className="rf-rejection-banner__title" style={{ color: "#1D4ED8" }}>Viewing preference submitted</div>
-              <div className="rf-rejection-banner__hint" style={{ color: "#3B82F6" }}>Your viewing preference is already submitted and is being reviewed.</div>
+              <div className="rf-rejection-banner__title" style={{ color: "var(--info-dark)" }}>Viewing preference submitted</div>
+              <div className="rf-rejection-banner__hint" style={{ color: "var(--info)" }}>Your viewing preference is already submitted and is being reviewed.</div>
             </div>
           </div>
           {renderVisitSummary({ title: "Viewing Preference Summary" })}
@@ -618,7 +618,7 @@ const ReservationVisitStep = ({
                       <button key={option.value} type="button" className={`rf-option-card${isSelected ? " selected" : ""}`} data-option={option.value} disabled={disabledByPreferenceLock} title={disabledByPreferenceLock ? VIEWING_PREFERENCE_LOCKED_MESSAGE : undefined} onClick={() => { if (disabledByPreferenceLock) { showNotification(VIEWING_PREFERENCE_LOCKED_MESSAGE, "info", 5000); return; } setDraftViewingPreference(option.value); setIsEditingPhysicalVisit(false); if (option.value !== "physical_visit") { setVisitDate(""); setVisitTime(""); } }} aria-pressed={isSelected}>
                         <div className="rf-option-card__icon"><OptionIcon size={20} /></div>
                         <div className="rf-option-card__body"><span className="rf-option-card__title">{option.title}</span><span className="rf-option-card__desc">{option.description}</span></div>
-                        <div className="rf-option-card__check">{isSelected && <CheckCircle size={12} color="white" />}</div>
+                        <div className="rf-option-card__check">{isSelected && <CheckCircle size={12} color="var(--text-inverse)" />}</div>
                       </button>
                     );
                   })}
@@ -805,7 +805,7 @@ const ReservationVisitStep = ({
       <Modal show={showChangeConfirm} onBackdropClick={() => setShowChangeConfirm(false)}>
         <div className="rf-modal-confirm" style={{ padding: 20 }}>
           <button type="button" className="rf-modal-close-btn" onClick={() => setShowChangeConfirm(false)} aria-label="Close"><X size={18} /></button>
-          <div className="rf-modal-icon-wrap"><AlertTriangle size={24} color="#B45309" /></div>
+          <div className="rf-modal-icon-wrap"><AlertTriangle size={24} color="var(--warning-dark)" /></div>
           <h3 className="rf-modal-title">Change Viewing Preference?</h3>
           <p className="rf-modal-subtitle">Changing your viewing preference may reset your current viewing request. Do you want to continue?</p>
           <div className="rf-modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setShowChangeConfirm(false)}>Cancel</button><button type="button" className="btn btn-success" onClick={handleConfirmPreferenceChange}>Continue</button></div>
@@ -878,7 +878,7 @@ const ReservationVisitStep = ({
       <Modal show={showConfirmSubmitModal} onBackdropClick={() => setShowConfirmSubmitModal(false)}>
         <div className="rf-modal-confirm" style={{ padding: 24, maxWidth: 420 }}>
           <button type="button" className="rf-modal-close-btn" onClick={() => setShowConfirmSubmitModal(false)} aria-label="Close"><X size={18} /></button>
-          <div className="rf-modal-icon-wrap rf-modal-icon-wrap--emerald"><Calendar size={24} color="#059669" /></div>
+          <div className="rf-modal-icon-wrap rf-modal-icon-wrap--emerald"><Calendar size={24} color="var(--success)" /></div>
           <h3 className="rf-modal-title">Confirm Submission</h3>
           <p className="rf-modal-subtitle">
             {selectedVisit === "physical_visit"
