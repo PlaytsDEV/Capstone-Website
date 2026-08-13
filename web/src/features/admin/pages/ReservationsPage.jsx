@@ -255,6 +255,12 @@ function ReservationsPage() {
           ? true
           : statusFilter === "archived"
             ? true
+          : statusFilter === "pending_review"
+            ? reservation.status === "pending_application_review" ||
+              reservation.status === "needs_revision"
+          : statusFilter === "reserved"
+            ? reservation.status === "reserved" ||
+              reservation.status === "approved_for_payment"
           : statusFilter === "new"
             ? reservation.isNew
           : statusFilter === "overdue"
@@ -396,49 +402,37 @@ function ReservationsPage() {
 
   const summaryItems = useMemo(
     () => [
-      { label: "All", value: counts.total, icon: Calendar, color: "blue" },
       {
-        label: "Pending Review",
-        value: counts.pendingApplicationReview,
-        icon: Clock,
-        color: "orange",
-      },
-      {
-        label: "Needs Revision",
-        value: counts.needsRevision,
-        icon: Clock,
-        color: "orange",
-      },
-      {
-        label: "Approved for Payment",
-        value: counts.approvedForPayment,
-        icon: CheckCircle,
-        color: "neutral",
-      },
-      {
-        label: "Reserved",
-        value: counts.reserved,
-        icon: CheckCircle,
+        key: "all",
+        label: "All Active",
+        value: counts.total,
+        icon: Calendar,
         color: "blue",
+        subtext: "Total active bookings",
       },
       {
-        label: "Cancellation Requests",
-        value: counts.cancellationRequested,
-        icon: AlertTriangle,
+        key: "pending_review",
+        label: "Pending Review",
+        value: counts.pendingApplicationReview + counts.needsRevision,
+        icon: Clock,
         color: "orange",
+        subtext: "Needs review / action",
       },
       {
-        label: "Cancelled",
-        value: counts.cancelled,
-        icon: Trash2,
-        color: "red",
+        key: "reserved",
+        label: "Reserved",
+        value: counts.approvedForPayment + counts.reserved,
+        icon: CheckCircle,
+        color: "teal",
+        subtext: "Confirmed / Approved",
       },
-      { label: "Move In", value: counts.movedIn, icon: User, color: "green" },
       {
-        label: "Archived",
-        value: counts.archived,
-        icon: Archive,
-        color: "neutral",
+        key: "moveIn",
+        label: "Moved In",
+        value: counts.movedIn,
+        icon: User,
+        color: "green",
+        subtext: "Checked-in residents",
       },
     ],
     [counts],
@@ -902,65 +896,135 @@ function ReservationsPage() {
 
       {activeTab === "reservations" && (
         <>
-          <div className="grid grid-flow-col auto-cols-[minmax(160px,1fr)] gap-3 overflow-x-auto pb-2">
-            {summaryItems.map((item, idx) => {
-              const isActive = activeSummaryIndex === idx;
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            {summaryItems.map((item) => {
+              const isActive =
+                statusFilter === item.key ||
+                (item.key === "pending_review" &&
+                  (statusFilter === "pending_application_review" ||
+                    statusFilter === "needs_revision" ||
+                    statusFilter === "in_progress")) ||
+                (item.key === "reserved" &&
+                  (statusFilter === "approved_for_payment" ||
+                    statusFilter === "reserved"));
               return (
                 <div
-                  key={item.label}
+                  key={item.key}
                   onClick={() => {
-                    const nextFilter = idx < 0 ? "all" : SUMMARY_FILTERS[idx];
-
-                    setStatusFilter(nextFilter);
+                    setStatusFilter(item.key);
                     setCurrentPage(1);
                   }}
                   style={{
+                    backgroundColor: "var(--bg-card)",
                     borderColor: isActive ? "var(--primary)" : "var(--border-light)",
                     boxShadow: isActive
-                      ? "0 6px 16px rgba(2,6,23,0.06)"
-                      : "0 2px 8px rgba(2,6,23,0.03)",
+                      ? "0 4px 12px rgba(2,6,23,0.06)"
+                      : "0 1px 3px rgba(2,6,23,0.02)",
                   }}
-                  className={`border rounded-xl p-4 cursor-pointer transition-all`}
+                  className={`border rounded-xl p-4 cursor-pointer transition-all hover:border-[color:var(--primary)] ${
+                    isActive ? "ring-1 ring-[color:var(--primary)]" : ""
+                  }`}
                 >
-                  <div className="flex items-center gap-3 mb-3">
-                    <item.icon
-                      strokeWidth={1.5}
-                      className={`w-5 h-5 flex-shrink-0 mr-2 ${
-                        item.color === "blue"
-                          ? "text-[color:var(--info)]"
-                          : item.color === "orange"
-                          ? "text-[color:var(--warning)]"
-                          : item.color === "neutral"
-                          ? "text-[color:var(--status-neutral)]"
-                          : item.color === "green"
-                          ? "text-[color:var(--success)]"
-                          : "text-[color:var(--danger)]"
-                      }`}
-                    />
-
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       {item.label}
                     </span>
+                    <div
+                      className={`p-2 rounded-lg ${
+                        item.color === "blue"
+                          ? "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"
+                          : item.color === "orange"
+                          ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400"
+                          : item.color === "teal"
+                          ? "bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400"
+                          : "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
+                      }`}
+                    >
+                      <item.icon className="w-4 h-4" strokeWidth={2} />
+                    </div>
                   </div>
 
-                  <div
-                    className={`text-2xl font-semibold ${
-                      item.color === "blue"
-                        ? "text-[color:var(--info)]"
-                        : item.color === "orange"
-                        ? "text-[color:var(--warning)]"
-                        : item.color === "neutral"
-                        ? "text-[color:var(--status-neutral)]"
-                        : item.color === "green"
-                        ? "text-[color:var(--success)]"
-                        : "text-[color:var(--danger)]"
-                    }`}
-                  >
-                    {item.value}
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-2xl font-bold tracking-tight text-foreground">
+                      {item.value}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground font-medium">
+                      {item.subtext}
+                    </span>
                   </div>
                 </div>
               );
             })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mr-1">
+              Views:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("all");
+                setCurrentPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                statusFilter === "all"
+                  ? "bg-[color:var(--primary)] text-primary-foreground font-semibold shadow-sm"
+                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              All Active ({counts.total})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("cancellation_requested");
+                setCurrentPage(1);
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                statusFilter === "cancellation_requested"
+                  ? "bg-amber-600 text-white font-semibold shadow-sm"
+                  : counts.cancellationRequested > 0
+                  ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-medium"
+                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              Cancellation Requests ({counts.cancellationRequested})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("cancelled");
+                setCurrentPage(1);
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                statusFilter === "cancelled"
+                  ? "bg-rose-600 text-white font-semibold shadow-sm"
+                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Cancelled ({counts.cancelled})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("archived");
+                setCurrentPage(1);
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                statusFilter === "archived"
+                  ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 font-semibold shadow-sm"
+                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <Archive className="w-3.5 h-3.5" />
+              Archived ({counts.archived})
+            </button>
           </div>
 
           <ReservationQuickChips
