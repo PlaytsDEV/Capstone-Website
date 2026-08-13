@@ -179,10 +179,6 @@ export default function Dashboard() {
 
   const { data, isLoading, isError } = useDashboardData(queryParams);
 
-  if (isLoading && !data) {
-    return <GlobalLoading />;
-  }
-
   const reservations = data?.recentReservations || [];
   const inquiryItems = data?.recentInquiries || [];
   const reservationStatus = data?.reservationStatus || {
@@ -276,6 +272,10 @@ export default function Dashboard() {
       })),
     [reservations],
   );
+
+  if (isLoading && !data) {
+    return <GlobalLoading />;
+  }
 
   const reservationTotal =
     (reservationStatus.approved || 0) +

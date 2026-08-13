@@ -113,13 +113,12 @@ export function useUpdateVisitAvailabilitySettings() {
   return useMutation({
     mutationFn: ({ branch, data }) =>
       reservationApi.updateVisitAvailabilitySettings(branch, data),
-    onSuccess: (_data, { branch }) =>
-      Promise.all([
-        qc.invalidateQueries({ queryKey: queryKeys.reservations.visitAvailabilitySettings(branch) }),
-        qc.invalidateQueries({ queryKey: ["reservations", "visitAvailability"] }),
-        // Refresh history drawer
-        qc.invalidateQueries({ queryKey: ["reservations", "visitAvailabilityHistory", branch] }),
-      ]),
+    onSuccess: (_data, { branch }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.reservations.visitAvailabilitySettings(branch) });
+      qc.invalidateQueries({ queryKey: ["reservations", "visitAvailability"] });
+      // Refresh history drawer
+      qc.invalidateQueries({ queryKey: ["reservations", "visitAvailabilityHistory", branch] });
+    },
   });
 }
 

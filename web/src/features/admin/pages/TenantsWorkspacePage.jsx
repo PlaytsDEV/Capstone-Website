@@ -22,9 +22,10 @@ import {
 } from "../../../shared/hooks/queries/useReservations";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
-import { StatusBadge } from "../components/shared";
+import StatusBadge from "../components/shared/StatusBadge";
 import TenantDetailModal from "../components/TenantDetailModal";
 import TenantFilterBar from "../components/TenantFilterBar";
+import Pagination from "../../../shared/components/Pagination";
 import {
   MoveOutModal,
   RenewLeaseModal,
@@ -153,6 +154,7 @@ export default function TenantsWorkspacePage() {
   );
   const [actionState, setActionState] = useState({ type: null, tenant: null });
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [actionLoading, setActionLoading] = useState(null);
 
   useEffect(() => {
@@ -328,20 +330,13 @@ export default function TenantsWorkspacePage() {
     }, [filteredTenants]);
 
     const paginatedTenants = useMemo(() => {
-        const start = (currentPage - 1) * ITEMS_PER_PAGE;
-        return sortedTenants.slice(start, start + ITEMS_PER_PAGE);
-    }, [sortedTenants, currentPage]);
+        const start = (currentPage - 1) * itemsPerPage;
+        return sortedTenants.slice(start, start + itemsPerPage);
+    }, [sortedTenants, currentPage, itemsPerPage]);
 
     const totalPages = Math.max(
         1,
-        Math.ceil(sortedTenants.length / ITEMS_PER_PAGE),
-    );
-
-    const startRecord =
-        sortedTenants.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
-    const endRecord = Math.min(
-        currentPage * ITEMS_PER_PAGE,
-        sortedTenants.length,
+        Math.ceil(sortedTenants.length / itemsPerPage),
     );
 
     const selectedTenantRow = useMemo(
@@ -900,36 +895,21 @@ export default function TenantsWorkspacePage() {
             </div>
           ) : null}
 
-          {totalPages > 1 ? (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--border-light)]">
-              <span className="text-xs text-muted-foreground">
-                Showing {startRecord} to {endRecord} of {sortedTenants.length}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={currentPage === 1}
-                  onClick={() =>
-                    setCurrentPage((page) => Math.max(1, page - 1))
-                  }
-                  className="px-3 py-1.5 text-xs border border-[var(--border-light)] rounded-md hover:bg-muted disabled:opacity-50"
-                >
-                  Previous
-                </button>
-                <span className="text-xs text-muted-foreground">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <button
-                  type="button"
-                  disabled={currentPage === totalPages}
-                  onClick={() =>
-                    setCurrentPage((page) => Math.min(totalPages, page + 1))
-                  }
-                  className="px-3 py-1.5 text-xs border border-[var(--border-light)] rounded-md hover:bg-muted disabled:opacity-50"
-                >
-                  Next
-                </button>
-              </div>
+          {sortedTenants.length > 0 ? (
+            <div className="p-4 border-t border-[var(--border-light)]">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={sortedTenants.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={(page) => setCurrentPage(page)}
+                onLimitChange={(newLimit) => {
+                  setItemsPerPage(newLimit);
+                  setCurrentPage(1);
+                }}
+                pageSizeOptions={[5, 10, 20, 50]}
+                itemLabel="tenants"
+              />
             </div>
           ) : null}
         </div>

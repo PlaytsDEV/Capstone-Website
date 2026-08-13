@@ -33,6 +33,7 @@ import {
 import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
 import { showNotification } from "../../../shared/utils/notification";
 import { getBranchLabel } from "../utils/reservationRows";
+import ConfirmModal from "../../../shared/components/ConfirmModal";
 import VisitAvailabilityHistoryDrawer from "./VisitAvailabilityHistoryDrawer";
 import VisitConflictWarningModal from "./VisitConflictWarningModal";
 import VisitSlotVisitorsModal from "./VisitSlotVisitorsModal";
@@ -136,6 +137,14 @@ function VisitAvailabilityTab() {
   const [editingBlackoutIndex, setEditingBlackoutIndex] = useState(null);
   const [editBlackoutForm, setEditBlackoutForm] = useState({ date: "", reason: "" });
   const [isSavingBlackout, setIsSavingBlackout] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({
+    open: false,
+    title: "",
+    message: "",
+    variant: "danger",
+    confirmText: "Delete",
+    onConfirm: null,
+  });
   // Day-selector panel state: null = auto-select first enabled weekday
   const [selectedDay, setSelectedDay] = useState(null);
 
@@ -351,6 +360,22 @@ function VisitAvailabilityTab() {
     });
   };
 
+  const promptRemoveBlackout = (index, item) => {
+    const dateDisplay = formatBlackoutDateDisplay(item.date);
+    const reasonText = item.reason ? ` (${item.reason})` : "";
+    setConfirmModal({
+      open: true,
+      title: "Delete Blackout Date",
+      message: `Are you sure you want to delete the blackout date for ${dateDisplay}${reasonText}? This will unblock visit bookings for this date.`,
+      variant: "danger",
+      confirmText: "Delete",
+      onConfirm: async () => {
+        setConfirmModal((previous) => ({ ...previous, open: false }));
+        await removeBlackout(index);
+      },
+    });
+  };
+
   const handleRemoveExpiredBlackouts = async () => {
     const todayISO = getTodayISO();
     const { active, expired } = partitionExpiredBlackouts(draft.blackoutDates, todayISO);
@@ -359,6 +384,24 @@ function VisitAvailabilityTab() {
     await persistBlackouts(active, {
       skipConflictCheck: true,
       successMessage: `Removed ${expired.length} expired blackout date(s) and saved`,
+    });
+  };
+
+  const promptRemoveExpiredBlackouts = () => {
+    const todayISO = getTodayISO();
+    const { expired } = partitionExpiredBlackouts(draft.blackoutDates, todayISO);
+    if (expired.length === 0) return;
+
+    setConfirmModal({
+      open: true,
+      title: "Clear Expired Blackout Dates",
+      message: `Are you sure you want to remove ${expired.length} expired blackout date(s) older than today?`,
+      variant: "danger",
+      confirmText: "Clear Expired",
+      onConfirm: async () => {
+        setConfirmModal((previous) => ({ ...previous, open: false }));
+        await handleRemoveExpiredBlackouts();
+      },
     });
   };
 
@@ -1098,7 +1141,7 @@ function VisitAvailabilityTab() {
                       ? "No expired blackout dates to remove"
                       : `Remove ${blackoutStats.past} expired blackout date(s) older than today`
                   }
-                  onClick={handleRemoveExpiredBlackouts}
+                  onClick={promptRemoveExpiredBlackouts}
                 >
                   <Trash2 size={14} />
                   <span>Clear Expired ({blackoutStats.past})</span>
@@ -1247,7 +1290,7 @@ function VisitAvailabilityTab() {
                               <button
                                 type="button"
                                 className="res-icon-btn res-icon-btn--danger"
-                                onClick={() => removeBlackout(originalIndex)}
+                                onClick={() => promptRemoveBlackout(originalIndex, item)}
                                 title="Remove blackout date"
                               >
                                 <Trash2 size={15} />
@@ -1328,6 +1371,18 @@ function VisitAvailabilityTab() {
         onAddBlackout={handleConfirmAddBlackout}
         existingBlackouts={draft.blackoutDates}
         isLoading={isSavingBlackout}
+      />
+
+      <ConfirmModal
+        isOpen={confirmModal.open}
+        onClose={() =>
+          setConfirmModal((previous) => ({ ...previous, open: false }))
+        }
+        onConfirm={confirmModal.onConfirm}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        variant={confirmModal.variant}
+        confirmText={confirmModal.confirmText || "Delete"}
       />
     </div>
   );
