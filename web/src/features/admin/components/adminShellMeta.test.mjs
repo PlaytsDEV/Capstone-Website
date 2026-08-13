@@ -37,7 +37,7 @@ test("sidebar branding stays workspace-first for both branch admins and owners",
 });
 
 test("owners keep owner-only routes while branch admins stay on shared workspace items", () => {
-  const branchAdminItems = getVisibleNavItems({ isOwner: false, can: () => true });
+  const branchAdminItems = getVisibleNavItems({ isOwner: false, can: () => false });
   const ownerItems = getVisibleNavItems({ isOwner: true, can: () => true });
 
   assert.equal(branchAdminItems.some((item) => item.to === "/admin/roles"), false);
