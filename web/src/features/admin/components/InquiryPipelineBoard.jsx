@@ -85,7 +85,7 @@ export default function InquiryPipelineBoard() {
                     className="p-3 bg-white border border-slate-200 rounded shadow-2xs space-y-2 hover:border-indigo-300 transition-colors"
                   >
                     <div className="flex justify-between items-start">
-                      <span className="text-xs font-bold text-gray-900">{item.name || item.email}</span>
+                      <span className="text-xs font-bold text-gray-900">{item.name || item.fullName || item.email}</span>
                       <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-50 border border-indigo-200 rounded text-indigo-700">
                         {item.channel || "Direct"}
                       </span>

@@ -73,7 +73,7 @@ function FormInput({ label, name, type = 'text', value, onChange, onBlur, error,
   const hasError = !!error;
   return (
     <div>
-      <label htmlFor={name} className="block text-sm font-medium mb-2" style={{ color: hasError ? '#ef4444' : 'var(--lp-text)' }}>
+      <label htmlFor={name} className="block text-sm font-medium mb-2" style={{ color: 'var(--lp-text)' }}>
         {label}
       </label>
       <div className="relative">
@@ -115,7 +115,7 @@ function FormSelect({ label, name, value, onChange, options, error }) {
   const hasError = !!error;
   return (
     <div>
-      <label htmlFor={name} className="block text-sm font-medium mb-2" style={{ color: hasError ? '#ef4444' : 'var(--lp-text)' }}>
+      <label htmlFor={name} className="block text-sm font-medium mb-2" style={{ color: 'var(--lp-text)' }}>
         {label}
       </label>
       <div className="relative">
@@ -147,7 +147,7 @@ function FormTextarea({ label, name, value, onChange, onBlur, rows = 4, maxLengt
   const hasError = !!error;
   return (
     <div>
-      <label htmlFor={name} className="block text-sm font-medium mb-2" style={{ color: hasError ? '#ef4444' : 'var(--lp-text)' }}>
+      <label htmlFor={name} className="block text-sm font-medium mb-2" style={{ color: 'var(--lp-text)' }}>
         {label}
       </label>
       <textarea
@@ -295,14 +295,19 @@ export function InquiryForm() {
         subject: `${typeLabel} — ${roomLabel}`,
         message: formData.message.trim(),
         branch: formData.branch,
+        source: 'website',
       });
       setSubmitted(true);
     } catch (err) {
-      // Handle rate limit
+      // Handle rate limit & server errors cleanly
       if (err?.response?.status === 429 || err?.status === 429) {
         setApiError("You've submitted too many inquiries. Please try again in 15 minutes.");
       } else {
-        setApiError(err?.message || 'Something went wrong. Please try again.');
+        const rawMsg = err?.response?.data?.error || err?.message || '';
+        const friendlyMsg = rawMsg.startsWith('Path `') || rawMsg.includes('required.')
+          ? 'Please make sure all required fields are filled out correctly.'
+          : (rawMsg || 'Something went wrong while submitting your inquiry. Please try again.');
+        setApiError(friendlyMsg);
       }
     } finally {
       setSubmitting(false);

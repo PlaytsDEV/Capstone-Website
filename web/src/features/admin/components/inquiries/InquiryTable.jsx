@@ -252,7 +252,7 @@ export default function InquiryTable({
  {inquiries.map((inquiry) => (
  <div key={inquiry._id} className="admin-inquiries-row">
  <div className="admin-inquiries-cell">
- <span className="admin-inquiries-name">{inquiry.name}</span>
+ <span className="admin-inquiries-name">{inquiry.name || inquiry.fullName || "Unknown"}</span>
  </div>
  <div className="admin-inquiries-cell">
  <div className="admin-inquiries-contact">
@@ -262,7 +262,7 @@ export default function InquiryTable({
  </div>
  <div className="admin-inquiries-contact-line">
  <PhoneIcon />
- <span>{inquiry.phone || "N/A"}</span>
+ <span>{inquiry.phone || inquiry.contactNumber || "N/A"}</span>
  </div>
  </div>
  </div>

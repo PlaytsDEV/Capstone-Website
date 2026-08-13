@@ -77,6 +77,7 @@ function InquiryModal({ isOpen, onClose, defaultBranch = "general" }) {
         subject: subject,
         message: formData.message.trim(),
         branch: defaultBranch, // Use the branch passed as prop or default to "general"
+        source: "website",
       };
 
       // Submit to API
@@ -93,7 +94,11 @@ function InquiryModal({ isOpen, onClose, defaultBranch = "general" }) {
       }, 3000);
     } catch (err) {
       console.error("❌ Failed to submit inquiry:", err);
-      setError(err.message || "Failed to submit inquiry. Please try again.");
+      const rawMsg = err?.response?.data?.error || err?.message || "";
+      const friendlyMsg = rawMsg.startsWith("Path `") || rawMsg.includes("required.")
+        ? "Please make sure all required fields are filled out properly."
+        : (rawMsg || "Failed to submit inquiry. Please try again.");
+      setError(friendlyMsg);
     } finally {
       setLoading(false);
     }

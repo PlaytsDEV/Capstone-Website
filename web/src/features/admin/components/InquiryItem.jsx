@@ -13,7 +13,7 @@ export default function InquiryItem({ inquiry }) {
  </svg>
  </div>
  <div className="admin-inquiry-content">
- <p className="admin-inquiry-name">{inquiry.name}</p>
+ <p className="admin-inquiry-name">{inquiry.name || inquiry.fullName || "Unknown"}</p>
  <p className="admin-inquiry-email">{inquiry.email}</p>
  <div className="admin-inquiry-meta">
  <span className="admin-inquiry-branch">{inquiry.branch}</span>

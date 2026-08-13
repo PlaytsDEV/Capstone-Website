@@ -47,6 +47,8 @@ export const createInquirySchema = {
     required: true,
     enum: ["gil-puyat", "guadalupe", "general"],
   },
+  source: { type: "string", required: false },
+  sourceNote: { type: "string", required: false },
 };
 
 /**

@@ -33,6 +33,7 @@ import { INQUIRY_BRANCHES } from "../config/branches.js";
 // ============================================================================
 
 export const INQUIRY_SOURCES = Object.freeze([
+  "website",
   "facebook",
   "tiktok",
   "instagram",
@@ -127,9 +128,19 @@ const inquirySchema = new mongoose.Schema(
       trim: true,
       maxlength: 150,
     },
+    name: {
+      type: String,
+      trim: true,
+      maxlength: 150,
+    },
     contactNumber: {
       type: String,
       required: true,
+      trim: true,
+      maxlength: 20,
+    },
+    phone: {
+      type: String,
       trim: true,
       maxlength: 20,
     },
@@ -350,8 +361,21 @@ const inquirySchema = new mongoose.Schema(
       default: null,
     },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  },
 );
+
+// Virtual aliases for backward compatibility across all admin views
+inquirySchema.virtual("inquiryName").get(function () {
+  return this.name || this.fullName || "";
+});
+
+inquirySchema.virtual("inquiryPhone").get(function () {
+  return this.phone || this.contactNumber || "";
+});
 
 // ============================================================================
 // INDEXES

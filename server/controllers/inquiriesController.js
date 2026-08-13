@@ -80,7 +80,16 @@ export const getInquiriesByBranch = async (req, res, next) => {
       .populate("respondedBy", "firstName lastName email")
       .select("-__v");
 
-    res.json(inquiries);
+    const formatted = inquiries.map((inq) => {
+      const item = inq.toObject ? inq.toObject({ virtuals: true }) : { ...inq };
+      item.name = item.name || item.fullName || `${item.firstName || ""} ${item.lastName || ""}`.trim() || "Unknown";
+      item.fullName = item.fullName || item.name;
+      item.phone = item.phone || item.contactNumber || "N/A";
+      item.contactNumber = item.contactNumber || item.phone;
+      return item;
+    });
+
+    res.json(formatted);
   } catch (error) {
     next(error);
   }
@@ -116,6 +125,7 @@ export const getInquiries = async (req, res, next) => {
       const regex = new RegExp(search.trim(), "i");
       query.$or = [
         { name: regex },
+        { fullName: regex },
         { email: regex },
         { subject: regex },
       ];
@@ -140,9 +150,17 @@ export const getInquiries = async (req, res, next) => {
       Inquiry.countDocuments(query),
     ]);
 
+    const formattedInquiries = inquiries.map((inq) => {
+      const item = inq.toObject ? inq.toObject({ virtuals: true }) : { ...inq };
+      item.name = item.name || item.fullName || `${item.firstName || ""} ${item.lastName || ""}`.trim() || "Unknown";
+      item.fullName = item.fullName || item.name;
+      item.phone = item.phone || item.contactNumber || "N/A";
+      item.contactNumber = item.contactNumber || item.phone;
+      return item;
+    });
 
     res.json({
-      inquiries,
+      inquiries: formattedInquiries,
       pagination: {
         currentPage: pageNum,
         totalPages: Math.ceil(total / limitNum),
@@ -184,7 +202,13 @@ export const getInquiryById = async (req, res, next) => {
       });
     }
 
-    res.json(inquiry);
+    const item = inquiry.toObject ? inquiry.toObject({ virtuals: true }) : { ...inquiry };
+    item.name = item.name || item.fullName || `${item.firstName || ""} ${item.lastName || ""}`.trim() || "Unknown";
+    item.fullName = item.fullName || item.name;
+    item.phone = item.phone || item.contactNumber || "N/A";
+    item.contactNumber = item.contactNumber || item.phone;
+
+    res.json(item);
   } catch (error) {
     next(error);
   }
@@ -192,12 +216,12 @@ export const getInquiryById = async (req, res, next) => {
 
 export const createInquiry = async (req, res, next) => {
   try {
-    const { name, email, phone, subject, message, branch } = req.body;
+    const { name, email, phone, subject, message, branch, source, sourceNote } = req.body;
 
     if (!name || !email || !subject || !message || !branch) {
       return res.status(400).json({
         error:
-          "Missing required fields: name, email, subject, message, and branch are required",
+          "Missing required fields. Please fill out your name, email, subject, message, and preferred branch.",
         code: "MISSING_REQUIRED_FIELDS",
       });
     }
@@ -205,7 +229,7 @@ export const createInquiry = async (req, res, next) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({
-        error: "Invalid email format",
+        error: "Please enter a valid email address.",
         code: "INVALID_EMAIL",
       });
     }
@@ -213,18 +237,29 @@ export const createInquiry = async (req, res, next) => {
     const validBranches = ["gil-puyat", "guadalupe", "general"];
     if (!validBranches.includes(branch)) {
       return res.status(400).json({
-        error: "Invalid branch. Must be 'gil-puyat', 'guadalupe', or 'general'",
+        error: "Please select a valid branch (Gil Puyat or Guadalupe).",
         code: "INVALID_BRANCH",
       });
     }
 
+    const inquirySource = source || "website";
+    const resolvedSourceNote =
+      inquirySource === "other"
+        ? (sourceNote?.trim() || "Website Contact Form")
+        : (sourceNote?.trim() || null);
+
     const inquiry = new Inquiry({
+      fullName: name.trim(),
       name: name.trim(),
+      contactNumber: phone?.trim() || "N/A",
+      phone: phone?.trim() || "N/A",
       email: email.toLowerCase().trim(),
-      phone: phone?.trim() || "",
       subject: subject.trim(),
       message: message.trim(),
       branch,
+      preferredBranch: branch,
+      source: inquirySource,
+      sourceNote: resolvedSourceNote,
       status: "pending",
     });
 
@@ -267,6 +302,12 @@ export const createInquiry = async (req, res, next) => {
       inquiry,
     });
   } catch (error) {
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        error: "Unable to submit inquiry. Please check all fields and try again.",
+        code: "VALIDATION_ERROR",
+      });
+    }
     next(error);
   }
 };
