@@ -23,6 +23,7 @@ const {
   buildVisitAvailability,
   getDateClosureReason,
   getVisitAvailabilitySettings,
+  resolveSlotsForDay,
   serializeVisitAvailabilitySettings,
   validateVisitSelection,
 } = await import("./visitAvailability.js");
@@ -246,5 +247,93 @@ describe("visitAvailability", () => {
 
     expect(result.ok).toBe(false);
     expect(result.code).toBe("VISIT_SLOT_CONFLICT");
+  });
+
+  test("does not deduct rejected or cancelled visit schedules from returned slot remaining counts", async () => {
+    visitAvailabilityFindOne.mockResolvedValue(
+      buildSettings({ slots: [{ label: "09:00 AM", enabled: true, capacity: 5 }] }),
+    );
+
+    reservationFind.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([]),
+      }),
+    });
+
+    const result = await buildVisitAvailability({
+      branch: "gil-puyat",
+      from: "2026-05-05",
+      days: 1,
+      now: new Date("2026-05-04T08:00:00"),
+    });
+
+    expect(result.dates[0].slots[0]).toEqual(
+      expect.objectContaining({
+        count: 0,
+        capacity: 5,
+        remaining: 5,
+        available: true,
+      }),
+    );
+    expect(reservationFind).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scheduleRejected: { $ne: true },
+        visitStatus: { $nin: ["rejected", "cancelled", "visit_cancelled", "no_show"] },
+      }),
+    );
+  });
+});
+
+describe("resolveSlotsForDay", () => {
+  const baseSlots = [
+    { label: "08:00 AM", enabled: true, capacity: 5 },
+    { label: "09:00 AM", enabled: true, capacity: 5 },
+    { label: "01:00 PM", enabled: false, capacity: 5 }, // globally off
+  ];
+
+  test("returns global defaults unchanged when dayOverrides is empty", () => {
+    const result = resolveSlotsForDay(baseSlots, {}, 3); // Wednesday
+    expect(result).toEqual(baseSlots);
+  });
+
+  test("applies per-day disable override for the matching weekday", () => {
+    // Wednesday (3): 09:00 AM is off
+    const overrides = { 3: { "09:00 AM": { enabled: false } } };
+    const result = resolveSlotsForDay(baseSlots, overrides, 3);
+    const slot = result.find((s) => s.label === "09:00 AM");
+    expect(slot.enabled).toBe(false);
+    // Other slots are unaffected
+    expect(result.find((s) => s.label === "08:00 AM").enabled).toBe(true);
+  });
+
+  test("per-day override does NOT apply to other weekdays", () => {
+    // Override is Wednesday-only; checking Tuesday (2)
+    const overrides = { 3: { "09:00 AM": { enabled: false } } };
+    const result = resolveSlotsForDay(baseSlots, overrides, 2); // Tuesday
+    expect(result.find((s) => s.label === "09:00 AM").enabled).toBe(true);
+  });
+
+  test("per-day override can enable a slot specifically for a given weekday", () => {
+    // 01:00 PM is globally disabled; override enables it for Wednesday (3)
+    const overrides = { 3: { "01:00 PM": { enabled: true } } };
+    const result = resolveSlotsForDay(baseSlots, overrides, 3);
+    expect(result.find((s) => s.label === "01:00 PM").enabled).toBe(true);
+  });
+
+  test("accepts string weekday keys from MongoDB Mixed type", () => {
+    // MongoDB may serialize map keys as strings
+    const overrides = { "3": { "09:00 AM": { enabled: false } } };
+    const result = resolveSlotsForDay(baseSlots, overrides, 3);
+    expect(result.find((s) => s.label === "09:00 AM").enabled).toBe(false);
+  });
+
+  test("isolates per-day capacity overrides to the specified weekday", () => {
+    // 08:00 AM capacity set to 10 for Tuesday (2) only
+    const overrides = { 2: { "08:00 AM": { capacity: 10 } } };
+    const tuesday = resolveSlotsForDay(baseSlots, overrides, 2);
+    const monday = resolveSlotsForDay(baseSlots, overrides, 1);
+
+    expect(tuesday.find((s) => s.label === "08:00 AM").capacity).toBe(10);
+    expect(monday.find((s) => s.label === "08:00 AM").capacity).toBe(5);
   });
 });

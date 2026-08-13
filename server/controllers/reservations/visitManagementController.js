@@ -184,6 +184,7 @@ export const updateVisitAvailabilityRules = async (req, res, next) => {
           enabledWeekdays: afterPayload.enabledWeekdays ?? [],
           slots: afterPayload.slots ?? [],
           blackoutDates: afterPayload.blackoutDates ?? [],
+          dayOverrides: afterPayload.dayOverrides ?? {},
         },
         changedBy: actor,
         changedAt: new Date(),
@@ -403,6 +404,8 @@ export const getVisitSlotVisitors = async (req, res, next) => {
       visitDate: { $gte: range.start, $lt: range.end },
       $or: [{ visitTime: slotLabel }, { visitSlot: slotLabel }],
       status: { $in: ACTIVE_VISIT_STATUSES },
+      scheduleRejected: { $ne: true },
+      visitStatus: { $nin: ["rejected", "cancelled", "visit_cancelled", "no_show"] },
       isArchived: { $ne: true },
     };
 

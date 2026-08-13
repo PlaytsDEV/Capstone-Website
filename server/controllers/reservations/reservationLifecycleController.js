@@ -1553,6 +1553,8 @@ export const updateReservationByUser = async (req, res, next) => {
         status: {
           $in: reservationStatusesForQuery("visit_pending", "visit_approved"),
         },
+        scheduleRejected: { $ne: true },
+        visitStatus: { $nin: ["rejected", "cancelled", "visit_cancelled", "no_show"] },
         isArchived: { $ne: true },
       })
         .select("_id visitDate visitTime")

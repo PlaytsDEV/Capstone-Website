@@ -320,6 +320,7 @@ export const VISIT_MANAGEMENT_ACTIONS_BY_STATUS = Object.freeze({
   schedule_approved: Object.freeze([
     "mark_visited",
     "mark_no_show",
+    "reject_schedule",
     "reschedule",
     "cancel_visit",
     "allow_without_visit",

@@ -87,6 +87,57 @@ const normalizeSlots = (value) => {
     .filter((slot) => slot.label);
 };
 
+const normalizeDayOverrides = (value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result = {};
+  for (const [key, dayConfig] of Object.entries(value)) {
+    const weekday = parseInt(key, 10);
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) continue;
+    if (!dayConfig || typeof dayConfig !== "object" || Array.isArray(dayConfig)) continue;
+    const slotOverrides = {};
+    for (const [slotLabel, slotConfig] of Object.entries(dayConfig)) {
+      if (!slotLabel || typeof slotLabel !== "string") continue;
+      if (!slotConfig || typeof slotConfig !== "object") continue;
+      const overrideObj = {};
+      if (typeof slotConfig.enabled === "boolean") {
+        overrideObj.enabled = slotConfig.enabled;
+      }
+      if (typeof slotConfig.capacity === "number" && Number.isFinite(slotConfig.capacity)) {
+        overrideObj.capacity = Math.max(0, Math.floor(slotConfig.capacity));
+      }
+      if (Object.keys(overrideObj).length > 0) {
+        slotOverrides[slotLabel] = overrideObj;
+      }
+    }
+    if (Object.keys(slotOverrides).length > 0) {
+      result[weekday] = slotOverrides;
+    }
+  }
+  return result;
+};
+
+/**
+ * Resolves the effective slot config for a specific weekday by merging global
+ * slots with any per-day overrides. Each day maintains its own independent slot state and capacity.
+ */
+export const resolveSlotsForDay = (slots, dayOverrides, weekday) => {
+  const dayKey = String(weekday);
+  const overrides = dayOverrides?.[weekday] || dayOverrides?.[dayKey] || {};
+  return slots.map((slot) => {
+    const override = overrides[slot.label];
+    const effectiveEnabled = typeof override?.enabled === "boolean" ? override.enabled : slot.enabled;
+    const effectiveCapacity = typeof override?.capacity === "number" && Number.isFinite(override.capacity)
+      ? Math.max(0, override.capacity)
+      : slot.capacity;
+
+    return {
+      ...slot,
+      enabled: effectiveEnabled,
+      capacity: effectiveCapacity,
+    };
+  });
+};
+
 const normalizeBlackouts = (value) => {
   const source = Array.isArray(value) ? value : [];
   const byDate = new Map();
@@ -107,6 +158,7 @@ export const serializeVisitAvailabilitySettings = (settings) => ({
   weekdaySystem: settings.weekdaySystem || VISIT_WEEKDAY_SYSTEM,
   slots: normalizeSlots(settings.slots),
   blackoutDates: normalizeBlackouts(settings.blackoutDates),
+  dayOverrides: normalizeDayOverrides(settings.dayOverrides),
   changedBy: settings.changedBy || null,
   changedAt: settings.changedAt || null,
   updatedAt: settings.updatedAt || null,
@@ -142,6 +194,10 @@ export async function updateVisitAvailabilitySettings(branch, payload, actor = n
   if (payload.blackoutDates !== undefined) {
     settings.blackoutDates = normalizeBlackouts(payload.blackoutDates);
   }
+  if (payload.dayOverrides !== undefined) {
+    settings.dayOverrides = normalizeDayOverrides(payload.dayOverrides);
+    settings.markModified("dayOverrides");
+  }
 
   settings.changedBy = actor;
   settings.changedAt = new Date();
@@ -158,6 +214,8 @@ const countVisitsForDate = async ({ branch, dateKey, excludeReservationId = null
     roomId: { $in: roomIds },
     visitDate: { $gte: range.start, $lt: range.end },
     status: { $in: ACTIVE_VISIT_STATUSES },
+    scheduleRejected: { $ne: true },
+    visitStatus: { $nin: ["rejected", "cancelled", "visit_cancelled", "no_show"] },
     isArchived: { $ne: true },
   };
   if (excludeReservationId) {
@@ -186,6 +244,8 @@ const getRoomConflictsForDate = async ({
     roomId,
     visitDate: { $gte: range.start, $lt: range.end },
     status: { $in: ACTIVE_VISIT_STATUSES },
+    scheduleRejected: { $ne: true },
+    visitStatus: { $nin: ["rejected", "cancelled", "visit_cancelled", "no_show"] },
     isArchived: { $ne: true },
   };
   if (excludeReservationId) {
@@ -206,6 +266,8 @@ const buildVisitReservationQuery = ({
     roomId: { $in: roomIds },
     visitDate: { $gte: start, $lt: end },
     status: { $in: ACTIVE_VISIT_STATUSES },
+    scheduleRejected: { $ne: true },
+    visitStatus: { $nin: ["rejected", "cancelled", "visit_cancelled", "no_show"] },
     isArchived: { $ne: true },
   };
   if (excludeReservationId) {
@@ -332,11 +394,18 @@ export async function buildVisitAvailability({
 
   for (let index = 0; index < count; index += 1) {
     const dateKey = toDateKey(cursor);
+    const weekday = cursor.getDay();
     const closure = getDateClosureReason({ dateKey, settings, now });
     const counts = countsByDate.get(dateKey) || new Map();
     const roomConflicts = roomConflictsByDate.get(dateKey) || new Set();
+    // Resolve effective slots for this specific weekday (applies day overrides)
+    const effectiveSlots = resolveSlotsForDay(
+      normalizeSlots(settings.slots),
+      settings.dayOverrides,
+      weekday,
+    );
 
-    const slotRows = slots.map((slot) => {
+    const slotRows = effectiveSlots.map((slot) => {
       const countForSlot = counts.get(slot.label) || 0;
       let disabledReason = "";
       let disabledCode = "";
@@ -417,9 +486,14 @@ export async function validateVisitSelection({
     };
   }
 
-  const slot = normalizeSlots(settings.slots).find(
-    (candidate) => candidate.label === visitTime,
+  // Resolve effective slots for this date's weekday (applies per-day overrides)
+  const visitDateObj = dateKeyToLocalDate(dateKey);
+  const effectiveSlots = resolveSlotsForDay(
+    normalizeSlots(settings.slots),
+    settings.dayOverrides,
+    visitDateObj ? visitDateObj.getDay() : 0,
   );
+  const slot = effectiveSlots.find((candidate) => candidate.label === visitTime);
   if (!slot || !slot.enabled) {
     return {
       ok: false,

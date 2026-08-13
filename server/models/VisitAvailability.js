@@ -66,6 +66,17 @@ const visitAvailabilitySchema = new mongoose.Schema(
       type: [blackoutDateSchema],
       default: [],
     },
+    /**
+     * Per-day slot enabled overrides.
+     * Map of weekday (0=Sun, 1=Mon … 6=Sat) → { "HH:MM AM/PM": { enabled: boolean } }
+     * Only stores deviations from the global slots config.
+     * Example: { "3": { "09:00 AM": { enabled: false } } }
+     *   = Wednesday 9AM is off; all other slots/days use global defaults.
+     */
+    dayOverrides: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
     changedBy: {
       type: changedBySchema,
       default: null,

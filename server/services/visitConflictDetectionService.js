@@ -49,6 +49,8 @@ export async function detectVisitConflicts(
   const baseQuery = {
     ...branchFilter,
     status: { $in: ACTIVE_VISIT_STATUSES },
+    scheduleRejected: { $ne: true },
+    visitStatus: { $nin: ["rejected", "cancelled", "visit_cancelled", "no_show"] },
     isArchived: { $ne: true },
   };
 
