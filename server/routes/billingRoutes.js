@@ -82,11 +82,8 @@ router.get("/:billId/pdf", billingController.downloadBillPdf);
 
 router.get("/:billId/utility-breakdown/:utilityType", billingController.getMyUtilityBreakdownByBillId);
 
-/**
- * POST /api/billing/:billId/submit-proof
- * Legacy compatibility route. New monthly bill payments must use online checkout.
- */
-router.post("/:billId/submit-proof", billingController.submitPaymentProof);
+// POST /:billId/submit-proof — REMOVED: manual billing proof decommissioned.
+// All billing payments are handled via automated PayMongo checkout.
 
 // ============================================================================
 // ADMIN ROUTES
@@ -141,17 +138,7 @@ router.get(
   billingController.getRoomsWithTenants,
 );
 
-/**
- * GET /api/billing/pending-verifications
- * Get bills with pending payment proof verifications (Admin only)
- */
-router.get(
-  "/pending-verifications",
-  verifyAdmin,
-  requirePermission("manageBilling"),
-  filterByBranch,
-  billingController.getPendingVerifications,
-);
+// GET /pending-verifications — REMOVED: manual billing proof review decommissioned.
 
 /**
  * GET /api/billing/report
@@ -249,17 +236,7 @@ router.post(
   billingController.sendBillReminder,
 );
 
-/**
- * POST /api/billing/:billId/verify
- * Admin approves or rejects payment proof
- */
-router.post(
-  "/:billId/verify",
-  verifyAdmin,
-  requirePermission("manageBilling"),
-  filterByBranch,
-  billingController.verifyPayment,
-);
+// POST /:billId/verify — REMOVED: manual billing proof review decommissioned.
 
 /**
  * POST /api/billing/:billId/mark-paid

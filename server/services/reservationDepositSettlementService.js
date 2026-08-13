@@ -153,7 +153,10 @@ const assertRoomAvailability = async ({ reservation, room, session }) => {
     _id: { $ne: reservationId },
     roomId,
     isArchived: { $ne: true },
-    status: { $in: ["reserved", "moveIn"] },
+    // FCFS model: a bed is blocked if another reservation has confirmed it (reserved/moveIn)
+    // OR is currently in an active payment window (payment_pending).
+    // The first applicant to submit payment proof holds the bed for 24 hours.
+    status: { $in: ["reserved", "moveIn", "payment_pending"] },
   };
   if (selectedBedId) conflictingQuery["selectedBed.id"] = selectedBedId;
 

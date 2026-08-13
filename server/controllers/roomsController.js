@@ -172,10 +172,12 @@ const syncRealtimeBedStatuses = async (rooms) => {
         return {
           ...bed,
           status: nextStatus,
-          available: false,
-          expectedVacancyDate,
-          daysRemaining,
-          occupiedBy: {
+          // FCFS model: early-stage reservations (pending, review, etc.) resolve to
+          // "available" — bed must be marked available so other tenants can select it.
+          available: nextStatus !== "available",
+          expectedVacancyDate: nextStatus !== "available" ? expectedVacancyDate : null,
+          daysRemaining: nextStatus !== "available" ? daysRemaining : null,
+          occupiedBy: nextStatus !== "available" ? {
             userId: occUserId || null,
             reservationId: matchingHold._id || bed.occupiedBy?.reservationId || null,
             occupiedSince: bed.occupiedBy?.occupiedSince || matchingHold.moveInDate || matchingHold.createdAt || null,
@@ -187,6 +189,19 @@ const syncRealtimeBedStatuses = async (rooms) => {
             role: userDoc?.role || null,
             user_id: userDoc?.user_id || null,
             status: matchingHold.status || null,
+          } : {
+            // Pre-payment stage — clear occupant data so bed appears truly vacant
+            userId: null,
+            reservationId: null,
+            occupiedSince: null,
+            name: null,
+            firstName: null,
+            lastName: null,
+            email: null,
+            phone: null,
+            role: null,
+            user_id: null,
+            status: null,
           },
         };
       }
@@ -1762,3 +1777,94 @@ export const reconcileAllOccupancy = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * POST /api/rooms/:roomId/beds/:bedId/release
+ *
+ * Admin emergency action — forcefully releases a payment-window locked bed
+ * back to Vacant. Used when a bed is stuck in "Payment Pending" state and
+ * the admin needs to manually free it (e.g. applicant abandoned payment,
+ * system timer didn't fire, or a data anomaly occurred).
+ *
+ * Also auto-cancels any linked payment_pending reservation for this bed.
+ *
+ * Access: Admin / Owner only (manageRooms permission)
+ */
+export const releaseBed = async (req, res, next) => {
+  try {
+    const { roomId, bedId } = req.params;
+    const admin = await User.findOne({ firebaseUid: req.user.uid }).select(
+      "firstName lastName role branch _id",
+    );
+    if (!admin) throw new AppError("Administrator not found.", 404);
+
+    const room = await Room.findById(roomId);
+    if (!room || room.isArchived) {
+      throw new AppError("Room not found.", 404);
+    }
+
+    const bed = room.beds.find((b) => b.id === bedId);
+    if (!bed) throw new AppError("Bed not found in this room.", 404);
+
+    if (bed.status !== "locked") {
+      return res.status(409).json({
+        success: false,
+        code: "BED_NOT_LOCKED",
+        message: "This bed is not currently in a Payment Pending state.",
+      });
+    }
+
+    const previousBedState = { ...bed.toObject() };
+
+    // Release the bed back to available
+    bed.status = "available";
+    bed.lockedBy = null;
+    bed.lockExpiresAt = null;
+    bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+
+    await room.save();
+
+    // Auto-cancel any linked payment_pending reservation for this bed
+    let cancelledReservation = null;
+    const linkedReservation = await Reservation.findOne({
+      roomId: room._id,
+      "selectedBed.id": bedId,
+      status: "payment_pending",
+      isArchived: { $ne: true },
+    });
+
+    if (linkedReservation) {
+      linkedReservation.status = "cancelled";
+      linkedReservation.cancelledAt = new Date();
+      linkedReservation.cancellationSource = "admin_manual_release";
+      linkedReservation.cancellationReason =
+        "Bed manually released by administrator. Payment window voided.";
+      await linkedReservation.save();
+      cancelledReservation = linkedReservation._id;
+    }
+
+    emitRoomUpdate(room._id, {
+      currentOccupancy: room.currentOccupancy,
+      available: room.available,
+      capacity: room.capacity,
+    });
+
+    await auditLogger.logModification(
+      req,
+      "room",
+      room._id,
+      { bed: previousBedState },
+      { bed: bed.toObject(), cancelledReservationId: cancelledReservation },
+      `Admin manually released payment-pending bed ${bedId} back to available`,
+    );
+
+    return sendSuccess(res, {
+      message: "Bed released successfully. It is now available.",
+      bedId,
+      cancelledReservationId: cancelledReservation,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

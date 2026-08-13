@@ -468,7 +468,6 @@ function ReservationsPage() {
         key: "status",
         options: [
           { value: "all", label: "All Statuses" },
-          { value: "in_progress", label: "In Progress" },
           { value: "reserved", label: "Reserved" },
           { value: "moveIn", label: "Moved In" },
           { value: "cancelled", label: "Cancelled" },
@@ -902,8 +901,7 @@ function ReservationsPage() {
                 statusFilter === item.key ||
                 (item.key === "pending_review" &&
                   (statusFilter === "pending_application_review" ||
-                    statusFilter === "needs_revision" ||
-                    statusFilter === "in_progress")) ||
+                    statusFilter === "needs_revision")) ||
                 (item.key === "reserved" &&
                   (statusFilter === "approved_for_payment" ||
                     statusFilter === "reserved"));

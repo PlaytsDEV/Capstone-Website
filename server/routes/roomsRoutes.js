@@ -37,6 +37,7 @@ import {
   deleteBed,
   updateBedStatus,
   repairRoomOccupancy,
+  releaseBed,
 } from "../controllers/roomsController.js";
 import {
   uploadRoomPhotos,
@@ -260,6 +261,23 @@ router.post(
   requirePermission("manageRooms"),
   filterByBranch,
   repairRoomOccupancy,
+);
+
+/**
+ * POST /api/rooms/:roomId/beds/:bedId/release
+ *
+ * Admin emergency action — releases a payment-pending (locked) bed back
+ * to Vacant and auto-cancels the linked reservation's payment window.
+ *
+ * Access: Admin / Owner only (manageRooms permission)
+ */
+router.post(
+  "/:roomId/beds/:bedId/release",
+  verifyToken,
+  verifyAdmin,
+  requirePermission("manageRooms"),
+  filterByBranch,
+  releaseBed,
 );
 
 export default router;

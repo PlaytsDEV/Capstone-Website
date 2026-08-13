@@ -83,14 +83,7 @@ export function isPendingAdminApproval(reservation) {
     return true;
   }
 
-  // 2. Proof of payment uploaded (requiring admin verification)
-  if (
-    reservation.paymentStatus === "proof_uploaded" ||
-    status === "payment_uploaded" ||
-    status === "awaiting_verification"
-  ) {
-    return true;
-  }
+  // Proof uploaded check removed — manual proof decommissioned (PayMongo only)
 
   // 3. Pending cancellation request
   if (hasPendingCancellationRequest(reservation)) {
@@ -422,7 +415,7 @@ export function applyQuickChip(row, chip) {
   if (chip === "new") return Boolean(row?.isNew);
   if (chip === "cancellation") return hasPendingCancellationRequest(row);
   if (chip === "awaiting_payment") return row?.paymentStatus === "pending" && row?.status === "approved_for_payment";
-  if (chip === "proof_uploaded") return row?.paymentStatus === "proof_uploaded";
+  // proof_uploaded chip removed — manual proof decommissioned (PayMongo only)
   return true;
 }
 

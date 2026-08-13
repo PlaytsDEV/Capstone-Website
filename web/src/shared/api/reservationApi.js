@@ -201,16 +201,7 @@ export const reservationApi = {
       }),
     ),
 
-  /**
-   * Upload proof of payment for reservation fee (tenant only)
-   */
-  uploadPaymentProof: (reservationId, data) =>
-    withLifecycleNormalization(
-      authFetch(`/reservations/${reservationId}/payment-proof`, {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
-    ),
+  // uploadPaymentProof — REMOVED: manual proof upload decommissioned.
 
   /**
    * Validate applicant valid ID using backend OCR/manual review fallback.
@@ -464,30 +455,10 @@ export const reservationApi = {
       body: JSON.stringify(data),
     }),
 
-  listPaymentProofReviews: (status = "") =>
-    authFetch(
-      `/reservations/payment-proofs/review${
-        status ? `?status=${encodeURIComponent(status)}` : ""
-      }`,
-    ),
-
-  submitPaymentProof: (reservationId, data) =>
-    authFetch(`/reservations/${reservationId}/payment-proof`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  approvePaymentProof: (reservationId, paymentId) =>
-    authFetch(
-      `/reservations/${reservationId}/payment-proof/${paymentId}/approve`,
-      { method: "POST", body: JSON.stringify({}) },
-    ),
-
-  rejectPaymentProof: (reservationId, paymentId, data) =>
-    authFetch(
-      `/reservations/${reservationId}/payment-proof/${paymentId}/reject`,
-      { method: "POST", body: JSON.stringify(data) },
-    ),
+  // listPaymentProofReviews — REMOVED: manual proof review decommissioned.
+  // submitPaymentProof — REMOVED: manual proof decommissioned.
+  // approvePaymentProof — REMOVED: manual proof decommissioned.
+  // rejectPaymentProof — REMOVED: manual proof decommissioned.
 
   // ── Checkout Lock (P2-01) ──
   acquireBedLock: (roomId, bedId) =>

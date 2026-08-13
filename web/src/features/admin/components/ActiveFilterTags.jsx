@@ -33,11 +33,11 @@ const PAYMENT_LABELS = {
 };
 
 const STATUS_LABELS = {
-  in_progress: "In Progress",
   new: "New Applications",
   pending_application_review: "Under Review",
   needs_revision: "Needs Revision",
   approved_for_payment: "Awaiting Payment",
+  payment_pending: "Payment Pending",
   reserved: "Reserved",
   cancellation_requested: "Cancellation Requested",
   moveIn: "Moved In",

@@ -115,4 +115,12 @@ export const roomApi = {
    */
   repairOccupancy: (roomId) =>
     authFetch(`/rooms/${roomId}/repair-occupancy`, { method: "POST" }),
+
+  /**
+   * Admin emergency action — release a payment-pending (locked) bed back
+   * to Vacant. Also auto-cancels the linked payment_pending reservation.
+   * Admin only (manageRooms permission required).
+   */
+  releaseBed: (roomId, bedId) =>
+    authFetch(`/rooms/${roomId}/beds/${bedId}/release`, { method: "POST" }),
 };

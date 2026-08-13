@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Lock,
   CheckCircle2,
+  Unlock,
   Tag,
 } from "lucide-react";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
@@ -39,6 +40,7 @@ export default function BedOccupantDetailModal({
   room,
   onClose,
   onNavigateToTenants,
+  onReleaseBed,
 }) {
   useEscapeClose(true, onClose);
   const [extraDetails, setExtraDetails] = useState(null);
@@ -106,7 +108,7 @@ export default function BedOccupantDetailModal({
 
   const bedLabel = getBedDisplayLabel(bed || {});
   const roomName = room?.name || room?.roomNumber || "Room";
-  const initials = occupantName ? getInitials(occupantName) : isReserved ? "RES" : isLocked ? "HLD" : "OCC";
+  const initials = occupantName ? getInitials(occupantName) : isReserved ? "RES" : isLocked ? "PAY" : "OCC";
 
   const modalContent = (
     <div
@@ -135,7 +137,7 @@ export default function BedOccupantDetailModal({
             </div>
             <div className="min-w-0">
               <h3 className="font-bold text-sm text-foreground truncate leading-snug">
-                {occupantName || (isReserved ? "Reserved Bed" : isLocked ? "In Progress (Hold)" : "Occupied Bed")}
+                {occupantName || (isReserved ? "Reserved Bed" : isLocked ? "Payment Pending" : "Occupied Bed")}
               </h3>
               <p className="text-xs text-muted-foreground truncate mt-0.5">
                 {roomName} &bull; {bedLabel}
@@ -167,7 +169,7 @@ export default function BedOccupantDetailModal({
               }`}
             >
               {isReserved ? <Lock size={12} /> : isLocked ? <Lock size={12} /> : <CheckCircle2 size={12} />}
-              {isReserved ? "Reserved" : isLocked ? "In Progress (Hold)" : "Moved In"}
+              {isReserved ? "Reserved" : isLocked ? "Payment Pending" : "Moved In"}
             </span>
 
             {reservationId && (
@@ -206,22 +208,38 @@ export default function BedOccupantDetailModal({
         </div>
 
         {/* Compact Footer Actions */}
-        <div className="p-3 border-t border-border bg-muted/20 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            className="px-3 py-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md text-xs font-medium transition-colors"
-            onClick={onClose}
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-opacity"
-            onClick={handleOpenTenantsPage}
-          >
-            Full Profile
-            <ExternalLink size={12} />
-          </button>
+        <div className="p-3 border-t border-border bg-muted/20 flex items-center justify-between gap-2">
+          {/* Release Bed — only shown for payment-pending (locked) beds */}
+          <div>
+            {isLocked && onReleaseBed && (
+              <button
+                type="button"
+                className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/60 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors"
+                onClick={() => { onReleaseBed(bed); onClose(); }}
+                title="Release this bed back to Vacant. This will cancel the applicant's payment window."
+              >
+                <Unlock size={12} />
+                Release Bed
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="px-3 py-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md text-xs font-medium transition-colors"
+              onClick={onClose}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-opacity"
+              onClick={handleOpenTenantsPage}
+            >
+              Full Profile
+              <ExternalLink size={12} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

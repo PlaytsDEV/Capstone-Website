@@ -732,7 +732,7 @@ export default function RoomConfigModal({
                                 <span className="bed-occupant-name truncate max-w-[120px]">
                                   {occupantName || (
                                     normStatus === "reserved" ? "Reserved"
-                                    : normStatus === "locked" ? "In Progress"
+                                    : normStatus === "locked" ? "Payment Pending"
                                     : "Occupied"
                                   )}
                                 </span>
@@ -929,6 +929,15 @@ export default function RoomConfigModal({
           room={draftRoom}
           onClose={() => setSelectedOccupantBed(null)}
           onNavigateToTenants={handleNavigateToTenants}
+          onReleaseBed={async (bed) => {
+            try {
+              await roomApi.releaseBed(draftRoom._id, bed.id);
+              queryClient.invalidateQueries({ queryKey: ["room", draftRoom._id] });
+              queryClient.invalidateQueries({ queryKey: ["rooms"] });
+            } catch (err) {
+              console.error("Failed to release bed:", err);
+            }
+          }}
         />
       )}
     </div>,

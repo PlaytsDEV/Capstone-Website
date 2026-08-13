@@ -293,7 +293,7 @@ export const updateReservation = async (req, res, next) => {
       req.body.applicationReviewedAt = new Date();
       req.body.applicationReviewedBy = req.adminId || null;
       req.body.approvedForPaymentAt = new Date();
-      req.body.paymentExpiresAt = dayjs().add(24, "hour").toDate();
+      req.body.paymentExpiresAt = dayjs().add(15, "minute").toDate();
       req.body.applicationReviewReason = null;
 
       if (

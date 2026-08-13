@@ -136,6 +136,7 @@ await jest.unstable_mockModule("../controllers/roomsController.js", () => ({
   deleteBed: noop,
   updateBedStatus: noop,
   repairRoomOccupancy: noop,
+  releaseBed: noop,
 }));
 await jest.unstable_mockModule("../controllers/billingController.js", () => ({
   getCurrentBilling: noop,

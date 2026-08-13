@@ -14,7 +14,9 @@ export async function checkAndReleaseExpiredPaymentHolds() {
     const expiredReservations = await Reservation.find({
       paymentExpiresAt: { $lte: now },
       paymentStatus: "pending",
-      status: { $in: ["approved_for_payment", "approved", "pending", "pending_application_review"] },
+      // FCFS model: payment_pending is the primary status that holds a bed lock.
+      // It MUST be included here so the 24-hr timer correctly releases the bed.
+      status: { $in: ["payment_pending", "approved_for_payment", "approved", "pending", "pending_application_review"] },
       isArchived: { $ne: true },
     }).populate("roomId");
 
@@ -24,7 +26,7 @@ export async function checkAndReleaseExpiredPaymentHolds() {
       reservation.status = "cancelled";
       reservation.cancelledAt = now;
       reservation.cancellationSource = "system";
-      reservation.cancellationReason = "Reservation Fee payment window expired (24 hours)";
+      reservation.cancellationReason = "Reservation Fee payment window expired (15 minutes)";
       await reservation.save();
 
       // Release bed lock if held
@@ -58,7 +60,7 @@ export async function checkAndReleaseExpiredPaymentHolds() {
           await notify.general(
             reservation.userId._id || reservation.userId,
             "Reservation Hold Expired",
-            "Your 24-hour Reservation Fee payment window has expired and your temporary room hold has been released.",
+            "Your 15-minute Reservation Fee payment window has expired and your temporary room hold has been released.",
             { entityType: "reservation", entityId: String(reservation._id) }
           );
         } catch (notifyErr) {

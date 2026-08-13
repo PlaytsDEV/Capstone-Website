@@ -23,17 +23,21 @@ const ACTIVE_OCCUPANCY_STATUSES = ACTIVE_OCCUPANCY_STATUS_QUERY;
 
 /**
  * Maps a reservation status to the bed display status.
- * - In-progress (pre-payment) reservations → "locked" (temporarily held)
- * - Payment-confirmed reservations         → "reserved"
- * - Checked-in tenants                     → "occupied"
+ *
+ * FCFS Payment-Window Model:
+ * - Checked-in tenants                          → "occupied"
+ * - Payment-confirmed reservations              → "reserved"
+ * - Active payment window (payment_pending)     → "locked"  (24-hr timer hold)
+ * - All earlier stages (pending, review, etc.)  → "available" (bed stays open)
  */
 export const getDisplayStatusForReservation = (status) => {
   if (hasReservationStatus(status, "moveIn")) return "occupied";
   if (hasReservationStatus(status, "reserved")) return "reserved";
-  // All early-stage statuses (pending, visit_pending, pending_application_review,
-  // needs_revision, approved_for_payment, payment_pending, etc.) are treated as
-  // temporarily locked — NOT yet confirmed/reserved.
-  return "locked";
+  // Only the active payment-proof window holds the bed.
+  // This prevents bed-hoarding during application/review stages (FCFS model).
+  if (hasReservationStatus(status, "payment_pending")) return "locked";
+  // All other pre-payment stages: bed remains available for other applicants.
+  return "available";
 };
 
 const buildOccupantSnapshot = (userRef, reservation, occupiedSince = null) => {
@@ -137,7 +141,7 @@ export const deriveRoomOccupancyState = (room, reservations = []) => {
     }
     if (matchedReservation) {
       const normResStatus = normalizeReservationStatus(matchedReservation.status);
-      if (normResStatus === "cancelled" || normResStatus === "archived") {
+      if (normResStatus === "cancelled" || normResStatus === "archived" || normResStatus === "rejected") {
         if (status === "locked" || status === "reserved" || status === "occupied") {
           status = "available";
         }
@@ -393,10 +397,38 @@ export const updateOccupancyOnReservationChange = async (
         }
       }
 
+      // FCFS model: if the reservation was in the payment window (payment_pending)
+      // and moves to any status that is NOT reserved or moveIn, the bed lock must
+      // be physically cleared. This covers the payment proof rejection case
+      // (payment_pending → approved_for_payment) where no other branch fires.
+      if (
+        previousStatus === "payment_pending" &&
+        newStatus !== "reserved" &&
+        newStatus !== "moveIn" &&
+        newStatus !== "cancelled" &&  // These are handled below
+        newStatus !== "archived" &&
+        newStatus !== "rejected"
+      ) {
+        if (reservation.selectedBed?.id) {
+          const bed = room.beds.find((b) => b.id === reservation.selectedBed.id);
+          if (bed && bed.status === "locked") {
+            bed.status = "available";
+            bed.lockedBy = null;
+            bed.lockExpiresAt = null;
+            bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+            roomChanged = true;
+            logger.info(
+              { reservationId: String(reservation._id), bedId: reservation.selectedBed.id, newStatus },
+              "FCFS: bed lock released on payment_pending → non-confirmed status transition",
+            );
+          }
+        }
+      }
+
       const previouslyHeldOccupancy =
         ACTIVE_OCCUPANCY_STATUSES.includes(previousStatus);
 
-      if (newStatus === "cancelled" || newStatus === "archived") {
+      if (newStatus === "cancelled" || newStatus === "archived" || newStatus === "rejected") {
         if (previouslyHeldOccupancy) {
           await decreaseOccupancy();
         }
@@ -406,7 +438,8 @@ export const updateOccupancyOnReservationChange = async (
           if (vacated) roomChanged = true;
         }
 
-        // Fallback sweep — clear ALL beds that reference this reservation or are locked by this user
+        // Fallback sweep — clear ALL beds that reference this reservation or are locked by this user.
+        // This ensures rejected applications release their payment-window lock (FCFS model).
         const reservationIdStr = String(reservation._id);
         const userIdStr = reservation.userId
           ? String(reservation.userId._id || reservation.userId)
@@ -511,16 +544,25 @@ export const recalculateRoomOccupancy = async (roomId) => {
         (res) => res.selectedBed?.id === bed.id,
       );
       if (occupier) {
-        // Use the canonical display-status mapping so in-progress reservations
-        // show as "locked" (temporarily held) rather than "reserved".
-        bed.status = getDisplayStatusForReservation(occupier.status);
-        bed.occupiedBy = {
-          userId: occupier.userId,
-          reservationId: occupier._id,
-          occupiedSince: hasReservationStatus(occupier.status, "moveIn")
-            ? occupier.moveInDate || occupier.createdAt || new Date()
-            : null,
-        };
+        // FCFS model: getDisplayStatusForReservation now returns "available" for
+        // all pre-payment stages (pending, review, approved_for_payment).
+        // Only "payment_pending" → "locked", "reserved" → "reserved", "moveIn" → "occupied".
+        const derivedStatus = getDisplayStatusForReservation(occupier.status);
+        bed.status = derivedStatus;
+        if (derivedStatus !== "available") {
+          bed.occupiedBy = {
+            userId: occupier.userId,
+            reservationId: occupier._id,
+            occupiedSince: hasReservationStatus(occupier.status, "moveIn")
+              ? occupier.moveInDate || occupier.createdAt || new Date()
+              : null,
+          };
+        } else {
+          // Pre-payment stage: bed reference is cleared so other applicants can select it
+          bed.lockedBy = null;
+          bed.lockExpiresAt = null;
+          bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+        }
       } else {
         bed.status = "available";
         bed.lockedBy = null;

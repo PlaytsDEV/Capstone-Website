@@ -85,48 +85,8 @@ import {
   getBranchOccupancyStatistics,
   getVacancyForecast,
 } from "../controllers/occupancyController.js";
-import {
-  approveReservationPaymentProof,
-  listReservationPaymentReviews,
-  rejectReservationPaymentProof,
-  submitReservationPaymentProof,
-} from "../controllers/reservationPaymentController.js";
 
 const router = express.Router();
-
-router.get(
-  "/payment-proofs/review",
-  verifyToken,
-  verifyAdmin,
-  requirePermission("manageBilling"),
-  filterByBranch,
-  listReservationPaymentReviews,
-);
-
-router.post(
-  "/:reservationId/payment-proof",
-  verifyToken,
-  verifyApplicant,
-  submitReservationPaymentProof,
-);
-
-router.post(
-  "/:reservationId/payment-proof/:paymentId/approve",
-  verifyToken,
-  verifyAdmin,
-  requirePermission("manageBilling"),
-  filterByBranch,
-  approveReservationPaymentProof,
-);
-
-router.post(
-  "/:reservationId/payment-proof/:paymentId/reject",
-  verifyToken,
-  verifyAdmin,
-  requirePermission("manageBilling"),
-  filterByBranch,
-  rejectReservationPaymentProof,
-);
 
 /**
  * GET /api/reservations
@@ -481,16 +441,8 @@ router.post(
   submitApplication,
 );
 
-/**
- * POST /api/reservations/:reservationId/payment
- * Upload proof of payment for reservation fee (tenant only).
- */
-router.post(
-  "/:reservationId/payment",
-  verifyToken,
-  verifyApplicant,
-  submitReservationPaymentProof,
-);
+// POST /:reservationId/payment — REMOVED: manual proof upload decommissioned.
+// All reservation fee payments are handled via automated PayMongo checkout.
 
 /**
  * PATCH /api/reservations/:reservationId/cancel
