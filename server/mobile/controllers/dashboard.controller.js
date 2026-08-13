@@ -1,5 +1,32 @@
 const { getDb } = require('../config/database');
 const { ObjectId } = require('mongodb');
+const { sanitizeUserForClient, normalizeUser } = require('./user.controller');
+
+// Round to 2 decimal places, matching services/billing/billingPolicy.js
+// roundMoney() — kept local (not imported) since this file is CommonJS and
+// billingPolicy.js is ESM.
+function roundMoney(value) {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0;
+}
+
+// Compute the SAME effective status/remaining-amount truth the canonical
+// billing bridge uses (services/billing/billingPolicy.js getVisibleBillSnapshot:
+// remainingAmount = max(totalAmount - paidAmount, 0), status derived from
+// that, never from the raw stored status/remainingAmount fields). Phase 4.5
+// cutover audit found this dashboard previously trusted the RAW stored
+// `b.status`/`b.remainingAmount` fields directly — exactly the "stale
+// stored field" risk the Phase 3.6 billing-reconciliation review flagged
+// for the `bills` collection. This keeps the dashboard's "current bill"
+// card consistent with what /billing/me/latest (mobileBillingRoutes.js)
+// already shows for the same bill.
+function effectiveBillingFields(b) {
+  const totalAmount = roundMoney(b.totalAmount);
+  const paidAmount = roundMoney(b.paidAmount);
+  const remainingAmount = roundMoney(Math.max(totalAmount - paidAmount, 0));
+  const status = b.status === 'draft' ? 'draft' : remainingAmount <= 0 ? 'paid' : (paidAmount > 0 ? 'partially_paid' : (b.status || 'unpaid'));
+  return { totalAmount, paidAmount, remainingAmount, status };
+}
 
 // Convert slug like 'quadruple-sharing' → 'Quadruple Sharing'
 function formatRoomType(type) {
@@ -187,26 +214,29 @@ async function getDashboard(req, res) {
         .limit(10)
         .toArray();
 
-      billing = bills.map((b) => ({
-        billing_id: b._id?.toString(),
-        user_id: userId,
-        description: b.billingMonth || b.description || 'Bill',
-        billing_type: 'consolidated',
-        due_date: b.dueDate,
-        release_date: b.billingCycleStart,
-        billing_period: b.billingMonth,
-        status: b.status,
-        amount: b.totalAmount,
-        total: b.totalAmount,
-        gross_amount: b.grossAmount,
-        remaining_amount: b.remainingAmount,
-        payment_method: b.paymentMethod,
-        payment_date: b.paidAt,
-        charges: b.charges,
-        additional_charges: b.additionalCharges,
-        reservation_id: b.reservationId?.toString(),
-        created_at: b.createdAt,
-      }));
+      billing = bills.map((b) => {
+        const effective = effectiveBillingFields(b);
+        return {
+          billing_id: b._id?.toString(),
+          user_id: userId,
+          description: b.billingMonth || b.description || 'Bill',
+          billing_type: 'consolidated',
+          due_date: b.dueDate,
+          release_date: b.billingCycleStart,
+          billing_period: b.billingMonth,
+          status: effective.status,
+          amount: effective.totalAmount,
+          total: effective.totalAmount,
+          gross_amount: b.grossAmount,
+          remaining_amount: effective.remainingAmount,
+          payment_method: b.paymentMethod,
+          payment_date: b.paidAt,
+          charges: b.charges,
+          additional_charges: b.additionalCharges,
+          reservation_id: b.reservationId?.toString(),
+          created_at: b.createdAt,
+        };
+      });
     }
 
     // Fallback: old 'billing' collection (keyed by string user_id)
@@ -259,7 +289,10 @@ async function getDashboard(req, res) {
     const activeMaintenanceCount = activeMaintenanceMap.size;
 
     res.json({
-      user: { ...req.user, _id: undefined },
+      // Phase 4.5 cutover audit found this previously leaked the entire raw
+      // `users` Mongo document (minus `_id`) to the client — see the
+      // identical fix/rationale in controllers/user.controller.js getMe.
+      user: sanitizeUserForClient(normalizeUser(req.user)),
       assignment,
       room,
       billing,

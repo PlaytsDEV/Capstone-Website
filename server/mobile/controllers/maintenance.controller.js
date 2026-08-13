@@ -15,6 +15,14 @@ const COLLECTIONS = [...new Set([PRIMARY_COLLECTION, LEGACY_COLLECTION])];
 const ACTIVE_RESERVATION_STATUSES = ['moveIn', 'active', 'completed', 'confirmed'];
 const VALID_URGENCIES = ['low', 'normal', 'high'];
 const VALID_STATUSES = ['pending', 'viewed', 'in_progress', 'resolved', 'completed', 'rejected', 'cancelled'];
+// Matches the current mobile frontend's fixed request-type list
+// (app/(tabs)/services.jsx REQUEST_TYPES) and the currently-live standalone
+// mobile backend's VALID_REQUEST_TYPES. Phase 4.5 cutover audit found this
+// canonical controller previously accepted any string as a category.
+const VALID_REQUEST_TYPES = ['maintenance', 'plumbing', 'electrical', 'aircon', 'cleaning', 'pest', 'furniture', 'other'];
+const DESCRIPTION_MIN = 10;
+const DESCRIPTION_MAX = 1000;
+const MAX_TENANT_ATTACHMENTS = 4;
 const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|jpeg|jpg|png|svg|webp)(?:$|[?#])/i;
 const PDF_FILE_PATTERN = /\.pdf(?:$|[?#])/i;
 const PUBLIC_REPLY_TYPES = new Set(['admin_reply', 'admin_update', 'tenant_reply', 'tenant_summary', 'summary']);
@@ -629,13 +637,23 @@ async function sendTenantReply(req, res) {
     if (!message && attachments.length === 0) {
       return res.status(400).json({ detail: 'Message or attachment is required' });
     }
+    if (Array.isArray(req.body?.attachments) && req.body.attachments.length > MAX_TENANT_ATTACHMENTS) {
+      return res.status(400).json({ detail: `A maximum of ${MAX_TENANT_ATTACHMENTS} attachments is allowed.` });
+    }
 
     const located = await findRequestForUser(db, requestId, req.user.user_id);
     if (!located) {
       return res.status(404).json({ detail: 'Request not found' });
     }
 
-    const closedStatuses = ['cancelled', 'closed', 'rejected'];
+    // Blocks replies on already-closed-out requests, matching the currently-
+    // live standalone mobile backend (and the frontend's own
+    // canReplyToRequest gate in app/(tabs)/services.jsx, which already hides
+    // the reply box for resolved/completed/cancelled/rejected). Phase 4.5
+    // cutover audit found this canonical guard previously only blocked
+    // cancelled/closed/rejected, silently allowing replies to pile up on an
+    // already-resolved/completed request.
+    const closedStatuses = ['cancelled', 'closed', 'rejected', 'resolved', 'completed'];
     if (closedStatuses.includes(String(located.request.status || '').toLowerCase())) {
       return res.status(400).json({ detail: 'This request is closed.' });
     }
@@ -705,8 +723,17 @@ async function createMaintenance(req, res) {
     if (!requestType) {
       return res.status(400).json({ detail: 'request_type is required' });
     }
+    if (!VALID_REQUEST_TYPES.includes(requestType)) {
+      return res.status(400).json({ detail: 'Validation failed.', errors: { request_type: `request_type must be one of: ${VALID_REQUEST_TYPES.join(', ')}` } });
+    }
     if (!description) {
       return res.status(400).json({ detail: 'description is required' });
+    }
+    if (description.length < DESCRIPTION_MIN || description.length > DESCRIPTION_MAX) {
+      return res.status(400).json({ detail: 'Validation failed.', errors: { description: `description must be between ${DESCRIPTION_MIN} and ${DESCRIPTION_MAX} characters.` } });
+    }
+    if (Array.isArray(attachmentsRaw) && attachmentsRaw.length > MAX_TENANT_ATTACHMENTS) {
+      return res.status(400).json({ detail: `A maximum of ${MAX_TENANT_ATTACHMENTS} attachments is allowed.` });
     }
 
     const urgency = VALID_URGENCIES.includes(urgencyRaw) ? urgencyRaw : 'normal';
@@ -922,6 +949,65 @@ async function reopenMaintenance(req, res) {
   }
 }
 
+// Tenant confirms a resolved request is actually fixed (resolved -> completed).
+// Phase 4.5 cutover audit found this handler/route was entirely missing from
+// canonical — the app's "Confirm Resolved" button had no backing endpoint
+// and would 404. Matches the currently-live standalone mobile backend's
+// resolved-only transition rule (never completed->completed, never from any
+// other status) and sets tenant_confirmed_resolved so the frontend's own
+// button-gating condition (`!detailRequest.tenant_confirmed_resolved`) hides
+// both this button and "Still an Issue" afterward.
+async function confirmMaintenanceResolved(req, res) {
+  try {
+    const { requestId } = req.params;
+    const db = getDb();
+
+    const located = await findRequestForUser(db, requestId, req.user.user_id);
+    if (!located) {
+      return res.status(404).json({ detail: 'Request not found' });
+    }
+    if ((located.request.status || '').toLowerCase() !== 'resolved') {
+      return res.status(400).json({ detail: 'Only resolved requests can be confirmed.' });
+    }
+
+    const now = new Date();
+    const statusHistory = Array.isArray(located.request.statusHistory)
+      ? [...located.request.statusHistory]
+      : [];
+    statusHistory.push({
+      event: 'tenant_confirmed_resolved',
+      status: 'completed',
+      actor_id: req.user.user_id || null,
+      actor_name: actorNameFromUser(req.user),
+      actor_role: req.user.role || null,
+      note: null,
+      timestamp: now,
+    });
+
+    await db.collection(located.collectionName).updateOne(
+      { request_id: requestId },
+      {
+        $set: {
+          status: 'completed',
+          tenant_confirmed_resolved: true,
+          resolved_at: located.request.resolved_at || now,
+          statusHistory,
+          updated_at: now,
+          updatedAt: now,
+        },
+      }
+    );
+
+    const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });
+    const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
+      .catch(() => updatedSource);
+    res.json(stripTenantRequestFields(updated));
+  } catch (error) {
+    console.error('Confirm maintenance resolved error:', error);
+    res.status(500).json({ detail: 'Failed to confirm maintenance request as resolved' });
+  }
+}
+
 // Admin: update maintenance request status and notify tenant
 async function adminUpdateStatus(req, res) {
   try {
@@ -1022,6 +1108,7 @@ module.exports = {
   updateMaintenance,
   cancelMaintenance,
   reopenMaintenance,
+  confirmMaintenanceResolved,
   adminUpdateStatus,
   adminGetAll,
 };

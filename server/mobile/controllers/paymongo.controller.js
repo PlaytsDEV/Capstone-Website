@@ -13,9 +13,18 @@ const PAYMONGO_BASE = 'https://api.paymongo.com/v1';
 let _webhookSecret = process.env.PAYMONGO_WEBHOOK_SECRET || null;
 
 function verifyWebhookSignature(req) {
+  // SECURITY: fail CLOSED, not open, when the secret is unavailable. This
+  // endpoint previously auto-passed (`return true`) whenever
+  // PAYMONGO_WEBHOOK_SECRET was unset, in every environment including
+  // production — meaning any unauthenticated caller could POST a forged
+  // "payment succeeded" event and have it processed as genuine. Bills are
+  // no longer settled through this handler for mobile checkout (see
+  // routes/mobilePaymongoRoutes.js, which reuses the canonical
+  // already-fail-closed webhook instead), but this route remains mounted
+  // and reachable, so it must never silently accept unsigned requests.
   if (!_webhookSecret) {
-    console.warn('[PayMongo] PAYMONGO_WEBHOOK_SECRET not set — skipping signature verification');
-    return true;
+    console.warn('[PayMongo] PAYMONGO_WEBHOOK_SECRET not set — rejecting webhook (fail closed)');
+    return false;
   }
   const header = req.headers['paymongo-signature'] || req.headers['x-paymongo-signature'];
   if (!header) return false;

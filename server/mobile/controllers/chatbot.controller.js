@@ -55,6 +55,18 @@ function normalizeSessionId(rawSessionId, userId) {
   return { ok: true, value: candidate };
 }
 
+// A sessionId is a client-supplied, guessable/enumerable string — it must
+// never be treated as proof of ownership. Every read/write against
+// liveChatQueue that isn't already admin-gated must resolve the session
+// through this helper so a tenant who knows or guesses another tenant's
+// sessionId cannot read their live-chat status/messages or inject messages
+// into their active admin conversation.
+function getOwnedLiveChat(sessionId, userId) {
+  const liveChat = liveChatQueue.get(sessionId);
+  if (!liveChat || liveChat.user_id !== userId) return null;
+  return liveChat;
+}
+
 function normalizeUserMessage(rawMessage) {
   if (typeof rawMessage !== 'string') {
     return { ok: false, error: 'Message must be text' };
@@ -346,7 +358,7 @@ async function sendMessage(req, res) {
     ]);
 
     // Check if this is an active live chat (admin is responding)
-    const liveChat = liveChatQueue.get(sessionId);
+    const liveChat = getOwnedLiveChat(sessionId, userId);
     if (liveChat && liveChat.status === 'active') {
       liveChat.messages.push({ sender: 'tenant', content: userMessage, timestamp: new Date() });
       return res.json({ response: null, session_id: sessionId, live_chat_active: true, admin_name: liveChat.admin_name, message: 'Message sent to admin' });
@@ -582,7 +594,7 @@ async function getLiveStatus(req, res) {
     if (!normalizedSession.ok) {
       return res.status(400).json({ detail: normalizedSession.error });
     }
-    const liveChat = liveChatQueue.get(normalizedSession.value);
+    const liveChat = getOwnedLiveChat(normalizedSession.value, req.user.user_id);
     if (!liveChat) {
       return res.json({ active: false, in_queue: false });
     }
@@ -739,5 +751,9 @@ module.exports = {
   acceptLiveChat,
   sendAdminMessage,
   closeLiveChat,
-  getChatHistory
+  getChatHistory,
+  __test: {
+    getOwnedLiveChat,
+    liveChatQueue,
+  },
 };
