@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  CheckCircle2,
+  Clock,
   ClipboardList,
   FileText,
   Image as ImageIcon,
@@ -11,7 +13,6 @@ import {
   Plus,
   RefreshCcw,
   Trash2,
-  Wrench,
   X,
 } from "lucide-react";
 import {
@@ -48,6 +49,7 @@ import {
   validateFile,
 } from "../../../../shared/utils/firebaseStorageUpload";
 import "../../styles/tenant-common.css";
+import "../../../admin/styles/design-tokens.css";
 
 const EMPTY_FORM_DATA = Object.freeze({
   request_type: "other",
@@ -55,6 +57,22 @@ const EMPTY_FORM_DATA = Object.freeze({
   description: "",
   attachments: [],
 });
+
+// Statuses considered "done" for the purposes of the status badge icon.
+const RESOLVED_STATUS_SET = new Set(["resolved", "completed", "closed"]);
+const REJECTED_STATUS_SET = new Set(["rejected", "cancelled", "canceled"]);
+
+const STATUS_FILTERS = [
+  { key: "active", label: "Active" },
+  { key: "resolved", label: "Resolved" },
+  { key: "all", label: "All" },
+];
+
+const DETAIL_TABS = [
+  { key: "details", label: "Details" },
+  { key: "conversation", label: "Conversation" },
+  { key: "reopen", label: "Reopen" },
+];
 
 const createAttachmentClientId = () =>
   `maintenance-attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -93,6 +111,30 @@ const buildUploadedAttachment = (file, uploadResult = {}) => {
   };
 };
 
+// Runs validateFile() across a FileList/array and returns { validFiles, rejected }.
+// Any rejected file surfaces a notification immediately so failures are caught
+// before an upload call is ever made (previously only new-request attachments
+// got this check; reply + edit-mode uploads went straight to the network).
+const filterValidFiles = (files) => {
+  const validFiles = [];
+  const rejected = [];
+
+  files.forEach((file) => {
+    const check = validateFile(file);
+    if (check.valid) {
+      validFiles.push(file);
+    } else {
+      rejected.push({ file, error: check.error });
+    }
+  });
+
+  rejected.forEach(({ file, error }) => {
+    showNotification(error || `"${file.name}" cannot be uploaded.`, "error");
+  });
+
+  return validFiles;
+};
+
 const fmtDate = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Unknown date";
@@ -121,6 +163,15 @@ const formatSlaLabel = (slaState) => {
   if (slaState.label === "priority") return "Priority";
   if (slaState.label === "closed") return "Closed";
   return "On Track";
+};
+
+// Small non-color cue alongside each status badge so status isn't communicated
+// by background/text color alone.
+const getStatusIcon = (status) => {
+  if (RESOLVED_STATUS_SET.has(status)) return CheckCircle2;
+  if (REJECTED_STATUS_SET.has(status)) return X;
+  if (status === "pending") return Clock;
+  return RefreshCcw;
 };
 
 const cloneAttachments = (attachments) => normalizeMaintenanceAttachments(attachments);
@@ -169,13 +220,13 @@ function AttachmentLink({ attachment, index, onPreview }) {
           type="button"
           onClick={() => onPreview?.({ uri, name })}
           style={{
-            border: "1px solid #CBD5E1",
+            border: "1px solid var(--border)",
             borderRadius: 16,
             overflow: "hidden",
             padding: 0,
-            background: "#F8FAFC",
+            background: "var(--muted)",
             cursor: "pointer",
-            boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08)",
+            boxShadow: "0 8px 24px color-mix(in srgb, var(--foreground) 12%, transparent)",
           }}
         >
           <img
@@ -186,7 +237,7 @@ function AttachmentLink({ attachment, index, onPreview }) {
               width: "100%",
               height: 148,
               objectFit: "cover",
-              background: "#E2E8F0",
+              background: "var(--border)",
             }}
           />
         </button>
@@ -196,7 +247,7 @@ function AttachmentLink({ attachment, index, onPreview }) {
             style={{
               fontSize: 13,
               fontWeight: 600,
-              color: "#0F172A",
+              color: "var(--foreground)",
               wordBreak: "break-word",
             }}
           >
@@ -209,7 +260,7 @@ function AttachmentLink({ attachment, index, onPreview }) {
               style={{
                 border: "none",
                 background: "none",
-                color: "#2563EB",
+                color: "var(--info)",
                 padding: 0,
                 cursor: "pointer",
                 fontWeight: 600,
@@ -221,7 +272,7 @@ function AttachmentLink({ attachment, index, onPreview }) {
               href={uri}
               target="_blank"
               rel="noreferrer"
-              style={{ color: "#475569", fontWeight: 500 }}
+              style={{ color: "var(--muted-foreground)", fontWeight: 500 }}
             >
               Open Original
             </a>
@@ -238,24 +289,23 @@ function AttachmentLink({ attachment, index, onPreview }) {
           display: "inline-flex",
           alignItems: "center",
           gap: 10,
-          color: "#64748B",
+          color: "var(--muted-foreground)",
           fontSize: 13,
           width: "fit-content",
           padding: "10px 12px",
           borderRadius: 12,
-          border: "1px solid #CBD5E1",
-          background: "#F8FAFC",
+          border: "1px solid var(--border)",
+          background: "var(--muted)",
         }}
       >
         <Icon size={14} />
         <div style={{ display: "grid", gap: 2 }}>
           <span style={{ fontWeight: 600 }}>{name}</span>
-          <span style={{ color: "#94A3B8" }}>Attachment unavailable</span>
+          <span style={{ color: "var(--neutral)" }}>Attachment unavailable</span>
         </div>
       </div>
     );
   }
-
 
   return (
     <a
@@ -266,21 +316,60 @@ function AttachmentLink({ attachment, index, onPreview }) {
         display: "inline-flex",
         alignItems: "center",
         gap: 10,
-        color: "#2563EB",
+        color: "var(--info)",
         fontSize: 13,
         width: "fit-content",
         padding: "10px 12px",
         borderRadius: 12,
-        border: "1px solid #CBD5E1",
-        background: "#F8FAFC",
+        border: "1px solid var(--border)",
+        background: "var(--muted)",
       }}
     >
       <Icon size={14} />
       <div style={{ display: "grid", gap: 2 }}>
         <span style={{ fontWeight: 600 }}>{name}</span>
-        <span style={{ color: "#64748B" }}>{label}</span>
+        <span style={{ color: "var(--muted-foreground)" }}>{label}</span>
       </div>
     </a>
+  );
+}
+
+// Lightweight in-app confirm dialog, styled to match the maintenance modal
+// rather than falling back to the browser's window.confirm().
+function ConfirmDialog({ title, message, confirmLabel = "Confirm", danger, onConfirm, onCancel }) {
+  return (
+    <div
+      className="maintenance-modal-backdrop"
+      onClick={onCancel}
+      style={{ zIndex: 10000 }}
+    >
+      <div
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          background: "var(--card)",
+          borderRadius: 16,
+          padding: 24,
+          maxWidth: 380,
+          width: "90%",
+          boxShadow: "0 24px 64px color-mix(in srgb, var(--foreground) 20%, transparent)",
+        }}
+      >
+        <h3 style={{ margin: "0 0 8px" }}>{title}</h3>
+        <p style={{ margin: "0 0 20px", color: "var(--muted-foreground)" }}>{message}</p>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button type="button" className="btn btn-secondary" onClick={onCancel}>
+            Never mind
+          </button>
+          <button
+            type="button"
+            className={danger ? "btn btn-secondary maintenance-danger-button" : "btn btn-primary"}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -289,12 +378,17 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [editingRequestId, setEditingRequestId] = useState(null);
   const [selectedRequestId, setSelectedRequestId] = useState(null);
+  const [detailTab, setDetailTab] = useState("details");
   const [previewAttachment, setPreviewAttachment] = useState(null);
   const [reopenNote, setReopenNote] = useState("");
   const [replyMessage, setReplyMessage] = useState("");
   const [replyAttachments, setReplyAttachments] = useState([]);
   const [uploadingReplyAttachment, setUploadingReplyAttachment] = useState(false);
   const [formData, setFormData] = useState({ ...EMPTY_FORM_DATA });
+  const [statusFilter, setStatusFilter] = useState("active");
+  const [pendingCancelRequest, setPendingCancelRequest] = useState(null);
+
+  const formSectionRef = useRef(null);
 
   const { data, isLoading } = useMyMaintenanceRequests({ limit: 50 });
   const createMutation = useCreateMaintenanceRequest();
@@ -309,10 +403,29 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     [requests, selectedRequestId],
   );
 
+  const filteredRequests = useMemo(() => {
+    if (statusFilter === "all") return requests;
+    if (statusFilter === "active") {
+      return requests.filter((request) => ACTIVE_MAINTENANCE_STATUSES.includes(request.status));
+    }
+    return requests.filter((request) =>
+      ["resolved", "completed", "rejected", "closed"].includes(request.status),
+    );
+  }, [requests, statusFilter]);
+
   useEffect(() => {
     setReplyMessage("");
     setReplyAttachments([]);
+    setDetailTab("details");
   }, [selectedRequestId]);
+
+  // Jump the composer into view whenever it opens for editing, since the
+  // "Edit" button lives inside a card further down the page.
+  useEffect(() => {
+    if (showForm && formSectionRef.current) {
+      formSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [showForm, editingRequestId]);
 
   const isEditing = Boolean(editingRequestId);
   const isSavingForm = createMutation.isPending || updateMutation.isPending || uploadingAttachment;
@@ -363,24 +476,15 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     if (files.length === 0) return;
 
     if (!isEditing) {
-      const staged = [];
-
-      files.forEach((file) => {
-        const check = validateFile(file);
-        if (!check.valid) {
-          showNotification(check.error || "This file cannot be uploaded.", "error");
-          return;
-        }
-
-        staged.push({
-          clientId: createAttachmentClientId(),
-          name: file.name,
-          type: file.type || "application/octet-stream",
-          size: file.size,
-          file,
-          uploadStatus: "pending",
-        });
-      });
+      const validFiles = filterValidFiles(files);
+      const staged = validFiles.map((file) => ({
+        clientId: createAttachmentClientId(),
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        size: file.size,
+        file,
+        uploadStatus: "pending",
+      }));
 
       if (staged.length > 0) {
         setFormData((current) => ({
@@ -397,12 +501,18 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       return;
     }
 
+    const validFiles = filterValidFiles(files);
+    if (validFiles.length === 0) {
+      event.target.value = "";
+      return;
+    }
+
     setUploadingAttachment(true);
 
     try {
       const uploaded = [];
 
-      for (const file of files) {
+      for (const file of validFiles) {
         const uploadResult = await uploadMaintenanceAttachment(file, {
           documentType: "maintenance-attachment",
           context: "maintenance_request",
@@ -443,12 +553,18 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     const files = Array.from(event.target.files || []).filter(Boolean);
     if (files.length === 0 || !selectedRequest) return;
 
+    const validFiles = filterValidFiles(files);
+    if (validFiles.length === 0) {
+      event.target.value = "";
+      return;
+    }
+
     setUploadingReplyAttachment(true);
 
     try {
       const uploaded = [];
 
-      for (const file of files) {
+      for (const file of validFiles) {
         const uploadResult = await uploadMaintenanceAttachment(file, {
           documentType: "maintenance-reply-attachment",
           context: "maintenance_reply",
@@ -602,8 +718,11 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     }
   };
 
-  const handleCancelRequest = async (request) => {
-    if (!window.confirm("Cancel this maintenance request?")) return;
+  const requestCancelConfirmation = (request) => setPendingCancelRequest(request);
+
+  const confirmCancelRequest = async () => {
+    const request = pendingCancelRequest;
+    if (!request) return;
 
     try {
       await cancelMutation.mutateAsync(request.request_id);
@@ -616,6 +735,8 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         error.message || "Failed to cancel maintenance request.",
         "error",
       );
+    } finally {
+      setPendingCancelRequest(null);
     }
   };
 
@@ -640,10 +761,10 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
 
   return (
     <div className={embedded ? "" : "tenant-page"}>
-      <div className="page-header">
+      <div className="page-header maintenance-page-header">
         <div>
           <h1>
-            <Wrench size={22} /> Maintenance Requests
+            Maintenance Requests
           </h1>
           <p>
             Report repair, room, or bed concerns, check request progress, and
@@ -667,7 +788,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       </div>
 
       {showForm ? (
-        <div className="section-card">
+        <div className="section-card" ref={formSectionRef}>
           <h2>{isEditing ? "Edit Maintenance Request" : "Submit Maintenance Request"}</h2>
           <form className="maintenance-form" onSubmit={handleSubmitRequest}>
             <div className="form-group">
@@ -841,52 +962,89 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         </div>
       ) : null}
 
-      {requests.length > 0 ? (
-        <div className="section-card" style={{ marginBottom: 20 }}>
-          <h2>Overview</h2>
-          <div
-            style={{
-              display: "grid",
-              gap: 12,
-              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-            }}
-          >
-            {[
-              { label: "Total Requests", value: summary.total },
-              { label: "Active", value: summary.active },
-              { label: "Resolved", value: summary.resolved },
-            ].map((item) => (
+      <div className="section-card" style={{ marginBottom: 20 }}>
+        <h2>Overview</h2>
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+          }}
+        >
+          {[
+            { label: "Total Requests", value: summary.total },
+            { label: "Active", value: summary.active },
+            { label: "Resolved", value: summary.resolved },
+          ].map((item) => (
+            <div
+              key={item.label}
+              style={{
+                border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
+                borderRadius: 12,
+                padding: "14px 16px",
+                background: "var(--card)",
+              }}
+            >
               <div
-                key={item.label}
                 style={{
-                  border: "1px solid rgba(15, 23, 42, 0.08)",
-                  borderRadius: 12,
-                  padding: "14px 16px",
-                  background: "#fff",
+                  fontSize: 12,
+                  color: "var(--muted-foreground)",
+                  marginBottom: 6,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#64748B",
-                    marginBottom: 6,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                  }}
-                >
-                  {item.label}
-                </div>
-                <strong style={{ fontSize: 22, color: "#0F172A" }}>
-                  {item.value}
-                </strong>
+                {item.label}
               </div>
-            ))}
-          </div>
+              <strong style={{ fontSize: 22, color: "var(--foreground)" }}>
+                {item.value}
+              </strong>
+            </div>
+          ))}
         </div>
-      ) : null}
+      </div>
 
       <div className="section-card">
-        <h2>Request History</h2>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 12,
+            marginBottom: 4,
+          }}
+        >
+          <h2 style={{ margin: 0 }}>Request History</h2>
+          {requests.length > 0 ? (
+            <div style={{ display: "inline-flex", gap: 6 }}>
+              {STATUS_FILTERS.map((filter) => (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() => setStatusFilter(filter.key)}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: 999,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    border:
+                      statusFilter === filter.key
+                        ? "1px solid var(--info)"
+                        : "1px solid var(--border)",
+                    background:
+                      statusFilter === filter.key ? "var(--info-light)" : "transparent",
+                    color: statusFilter === filter.key ? "var(--info-dark)" : "var(--muted-foreground)",
+                  }}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
         {isLoading ? (
           <p>Loading maintenance requests...</p>
         ) : requests.length === 0 ? (
@@ -900,13 +1058,22 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               </p>
             </div>
           </div>
+        ) : filteredRequests.length === 0 ? (
+          <div className="maintenance-empty-state">
+            <ClipboardList size={30} />
+            <div>
+              <strong>No {statusFilter === "resolved" ? "resolved" : "active"} requests</strong>
+              <p>Switch filters above to see the rest of your request history.</p>
+            </div>
+          </div>
         ) : (
           <div className="maintenance-list">
-            {requests.map((request) => {
+            {filteredRequests.map((request) => {
               const typeMeta = getMaintenanceTypeMeta(request.request_type);
               const urgencyMeta = getMaintenanceUrgencyMeta(request.urgency);
               const statusMeta = getMaintenanceStatusMeta(request.status);
               const TypeIcon = typeMeta.icon;
+              const StatusIcon = getStatusIcon(request.status);
               const isPending = request.status === "pending";
               const isReopenable = REOPENABLE_MAINTENANCE_STATUSES.includes(request.status);
               const visibleRequestAttachments = getTenantVisibleAttachments(request.attachments);
@@ -945,7 +1112,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                       </div>
                       <div>
                         <h3 style={{ margin: "0 0 4px" }}>{typeMeta.label}</h3>
-                        <p style={{ margin: 0, color: "#64748B" }}>
+                        <p style={{ margin: 0, color: "var(--muted-foreground)" }}>
                           {fmtDate(request.created_at)} - {urgencyMeta.label}
                         </p>
                       </div>
@@ -964,11 +1131,12 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         fontWeight: 700,
                       }}
                     >
+                      <StatusIcon size={12} />
                       {formatMaintenanceStatus(request.status)}
                     </span>
                   </div>
 
-                  <p style={{ margin: "14px 0 0", color: "#334155" }}>
+                  <p style={{ margin: "14px 0 0", color: "var(--foreground)" }}>
                     {request.description}
                   </p>
 
@@ -978,7 +1146,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                       display: "flex",
                       flexWrap: "wrap",
                       gap: 10,
-                      color: "#64748B",
+                      color: "var(--muted-foreground)",
                       fontSize: 13,
                     }}
                   >
@@ -994,8 +1162,8 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         marginTop: 14,
                         borderRadius: 12,
                         padding: "12px 14px",
-                        background: "#FEF3C7",
-                        color: "#92400E",
+                        background: "var(--warning-light)",
+                        color: "var(--warning-dark)",
                         display: "flex",
                         gap: 10,
                         alignItems: "flex-start",
@@ -1017,8 +1185,8 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         marginTop: 14,
                         borderRadius: 12,
                         padding: "12px 14px",
-                        background: "#E0F2FE",
-                        color: "#075985",
+                        background: "var(--info-light)",
+                        color: "var(--info-dark)",
                         display: "flex",
                         gap: 10,
                         alignItems: "flex-start",
@@ -1076,7 +1244,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                           type="button"
                           className="btn btn-secondary maintenance-danger-button"
                           disabled={cancelMutation.isPending}
-                          onClick={() => handleCancelRequest(request)}
+                          onClick={() => requestCancelConfirmation(request)}
                         >
                           <Trash2 size={14} />
                           Cancel
@@ -1089,6 +1257,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                           className="btn btn-secondary"
                           onClick={() => {
                             setSelectedRequestId(request.request_id);
+                            setDetailTab("reopen");
                             setReopenNote(request.reopen_note || "");
                           }}
                         >
@@ -1137,177 +1306,248 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               </button>
             </div>
 
-            <div className="maintenance-detail-grid">
-              <div>
-                <span>Status</span>
-                <strong>{formatMaintenanceStatus(selectedRequest.status)}</strong>
-              </div>
-              <div>
-                <span>Urgency</span>
-                <strong>{getMaintenanceUrgencyMeta(selectedRequest.urgency).label}</strong>
-              </div>
-              <div>
-                <span>SLA</span>
-                <strong>{formatSlaLabel(selectedRequest.slaState)}</strong>
-              </div>
-              <div>
-                <span>ETA</span>
-                <strong>{getMaintenanceUrgencyMeta(selectedRequest.urgency).estimate}</strong>
-              </div>
-              <div>
-                <span>Last Updated</span>
-                <strong>{fmtDateTime(selectedRequest.updated_at)}</strong>
-              </div>
-              <div>
-                <span>Attachments</span>
-                <strong>{getTenantVisibleAttachments(selectedRequest.attachments).length}</strong>
-              </div>
+            {/* Tab bar: keeps the modal from becoming one long scroll of
+                overview + description + attachments + conversation + status
+                history + reopen form all stacked together. */}
+            <div
+              style={{
+                display: "flex",
+                gap: 6,
+                borderBottom: "1px solid var(--border)",
+                marginBottom: 18,
+              }}
+            >
+              {DETAIL_TABS.filter(
+                (tab) =>
+                  tab.key !== "reopen" ||
+                  REOPENABLE_MAINTENANCE_STATUSES.includes(selectedRequest.status),
+              ).map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setDetailTab(tab.key)}
+                  style={{
+                    padding: "10px 16px",
+                    border: "none",
+                    background: "none",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: detailTab === tab.key ? "var(--info)" : "var(--muted-foreground)",
+                    borderBottom: detailTab === tab.key ? "2px solid var(--info)" : "2px solid transparent",
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
-            <section className="maintenance-detail-section">
-              <h3>Description</h3>
-              <p>{selectedRequest.description}</p>
-            </section>
-
-            {getTenantVisibleAttachments(selectedRequest.attachments).length ? (
-              <section className="maintenance-detail-section">
-                <h3>Attachments</h3>
-                <div className="maintenance-detail-links">
-                  {getTenantVisibleAttachments(selectedRequest.attachments).map((attachment, index) => (
-                    <AttachmentLink
-                      key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
-                      attachment={attachment}
-                      index={index}
-                      onPreview={setPreviewAttachment}
-                    />
-                  ))}
+            {detailTab === "details" ? (
+              <>
+                <div className="maintenance-detail-grid">
+                  <div>
+                    <span>Status</span>
+                    <strong>{formatMaintenanceStatus(selectedRequest.status)}</strong>
+                  </div>
+                  <div>
+                    <span>Urgency</span>
+                    <strong>{getMaintenanceUrgencyMeta(selectedRequest.urgency).label}</strong>
+                  </div>
+                  <div>
+                    <span>SLA</span>
+                    <strong>{formatSlaLabel(selectedRequest.slaState)}</strong>
+                  </div>
+                  <div>
+                    <span>ETA</span>
+                    <strong>{getMaintenanceUrgencyMeta(selectedRequest.urgency).estimate}</strong>
+                  </div>
+                  <div>
+                    <span>Last Updated</span>
+                    <strong>{fmtDateTime(selectedRequest.updated_at)}</strong>
+                  </div>
+                  <div>
+                    <span>Attachments</span>
+                    <strong>{getTenantVisibleAttachments(selectedRequest.attachments).length}</strong>
+                  </div>
                 </div>
-              </section>
+
+                <section className="maintenance-detail-section">
+                  <h3>Description</h3>
+                  <p>{selectedRequest.description}</p>
+                </section>
+
+                {getTenantVisibleAttachments(selectedRequest.attachments).length ? (
+                  <section className="maintenance-detail-section">
+                    <h3>Attachments</h3>
+                    <div className="maintenance-detail-links">
+                      {getTenantVisibleAttachments(selectedRequest.attachments).map((attachment, index) => (
+                        <AttachmentLink
+                          key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
+                          attachment={attachment}
+                          index={index}
+                          onPreview={setPreviewAttachment}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                {selectedRequest.notes ? (
+                  <div className="maintenance-detail-callout">
+                    <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div>
+                      <h3>Admin Response</h3>
+                      <p>{selectedRequest.notes}</p>
+                    </div>
+                  </div>
+                ) : null}
+
+                {selectedRequest.statusHistory?.length ? (
+                  <section className="maintenance-detail-section">
+                    <h3>Status Timeline</h3>
+                    <div className="maintenance-timeline">
+                      {selectedRequest.statusHistory.map((entry, index) => (
+                        <article key={`${entry.timestamp}-${index}`}>
+                          <strong>{fmtDateTime(entry.timestamp)}</strong>
+                          <span>
+                            {formatMaintenanceStatus(entry.status)}
+                            {entry.actor_name ? ` - ${entry.actor_name}` : ""}
+                          </span>
+                          <p>{entry.note || entry.event || "Status updated."}</p>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                <div className="form-actions maintenance-detail-actions">
+                  {selectedRequest.status === "pending" ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => openEditForm(selectedRequest)}
+                    >
+                      <Pencil size={14} />
+                      Edit Request
+                    </button>
+                  ) : null}
+
+                  {selectedRequest.status === "pending" ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary maintenance-danger-button"
+                      disabled={cancelMutation.isPending}
+                      onClick={() => requestCancelConfirmation(selectedRequest)}
+                    >
+                      <Trash2 size={14} />
+                      Cancel Request
+                    </button>
+                  ) : null}
+                </div>
+              </>
             ) : null}
 
-            {selectedRequest.notes ? (
-              <div className="maintenance-detail-callout">
-                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-                <div>
-                  <h3>Admin Response</h3>
-                  <p>{selectedRequest.notes}</p>
-                </div>
-              </div>
-            ) : null}
+            {detailTab === "conversation" ? (
+              <>
+                {selectedRequest.conversation?.length ? (
+                  <section className="maintenance-detail-section">
+                    <h3>Reply History</h3>
+                    <div className="maintenance-timeline">
+                      {selectedRequest.conversation.map((entry, index) => (
+                        <article key={`${entry.created_at}-${index}`}>
+                          <strong>{fmtDateTime(entry.created_at)}</strong>
+                          <span>
+                            {entry.sender_side === "tenant" ? "Tenant" : "Dormitory Admin"}
+                            {entry.sender_name ? ` - ${entry.sender_name}` : ""}
+                          </span>
+                          {entry.message ? <p>{entry.message}</p> : null}
+                          {getTenantVisibleAttachments(entry.attachments).length ? (
+                            <div className="maintenance-detail-links" style={{ marginTop: 10 }}>
+                              {getTenantVisibleAttachments(entry.attachments).map((attachment, attachmentIndex) => (
+                                <AttachmentLink
+                                  key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${attachmentIndex}`}
+                                  attachment={attachment}
+                                  index={attachmentIndex}
+                                  onPreview={setPreviewAttachment}
+                                />
+                              ))}
+                            </div>
+                          ) : null}
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : (
+                  <p style={{ color: "var(--muted-foreground)" }}>No replies yet.</p>
+                )}
 
-            {selectedRequest.conversation?.length ? (
-              <section className="maintenance-detail-section">
-                <h3>Reply History</h3>
-                <div className="maintenance-timeline">
-                  {selectedRequest.conversation.map((entry, index) => (
-                    <article key={`${entry.created_at}-${index}`}>
-                      <strong>{fmtDateTime(entry.created_at)}</strong>
-                      <span>
-                        {entry.sender_side === "tenant" ? "Tenant" : "Dormitory Admin"}
-                        {entry.sender_name ? ` - ${entry.sender_name}` : ""}
-                      </span>
-                      {entry.message ? <p>{entry.message}</p> : null}
-                      {getTenantVisibleAttachments(entry.attachments).length ? (
-                        <div className="maintenance-detail-links" style={{ marginTop: 10 }}>
-                          {getTenantVisibleAttachments(entry.attachments).map((attachment, attachmentIndex) => (
-                            <AttachmentLink
-                              key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${attachmentIndex}`}
-                              attachment={attachment}
-                              index={attachmentIndex}
-                              onPreview={setPreviewAttachment}
-                            />
-                          ))}
+                {ACTIVE_MAINTENANCE_STATUSES.includes(selectedRequest.status) ? (
+                  <section className="maintenance-detail-section">
+                    <h3>Send Reply</h3>
+                    <form className="maintenance-form" onSubmit={handleSendReply}>
+                      <textarea
+                        className="form-control"
+                        rows="3"
+                        placeholder="Add an update for the admin team."
+                        value={replyMessage}
+                        onChange={(event) => setReplyMessage(event.target.value)}
+                      />
+                      <div className="form-actions" style={{ justifyContent: "space-between" }}>
+                        <label
+                          htmlFor="maintenance-reply-attachments"
+                          className="btn btn-secondary"
+                          style={{ width: "fit-content", display: "inline-flex", gap: 8 }}
+                        >
+                          <Paperclip size={14} />
+                          {uploadingReplyAttachment ? "Uploading..." : "Attach Photo"}
+                        </label>
+                        <input
+                          id="maintenance-reply-attachments"
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+                          multiple
+                          onChange={handleReplyAttachmentUpload}
+                          disabled={uploadingReplyAttachment || sendReplyMutation.isPending}
+                          style={{ display: "none" }}
+                        />
+                        <button
+                          type="submit"
+                          className="btn btn-primary"
+                          disabled={uploadingReplyAttachment || sendReplyMutation.isPending}
+                        >
+                          <MessageSquare size={14} />
+                          {sendReplyMutation.isPending ? "Sending..." : "Send Reply"}
+                        </button>
+                      </div>
+                      {replyAttachments.length ? (
+                        <div className="maintenance-attachment-list">
+                          {replyAttachments.map((attachment, index) => {
+                            const uri = getMaintenanceAttachmentUri(attachment);
+                            return (
+                              <div
+                                key={`${uri || attachment.name}-${index}`}
+                                className="maintenance-attachment-row"
+                              >
+                                <span>{getMaintenanceAttachmentName(attachment, index)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveReplyAttachment(uri)}
+                                  aria-label="Remove attachment"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                       ) : null}
-                    </article>
-                  ))}
-                </div>
-              </section>
+                    </form>
+                  </section>
+                ) : null}
+              </>
             ) : null}
 
-            {ACTIVE_MAINTENANCE_STATUSES.includes(selectedRequest.status) ? (
-              <section className="maintenance-detail-section">
-                <h3>Send Reply</h3>
-                <form className="maintenance-form" onSubmit={handleSendReply}>
-                  <textarea
-                    className="form-control"
-                    rows="3"
-                    placeholder="Add an update for the admin team."
-                    value={replyMessage}
-                    onChange={(event) => setReplyMessage(event.target.value)}
-                  />
-                  <div className="form-actions" style={{ justifyContent: "space-between" }}>
-                    <label
-                      htmlFor="maintenance-reply-attachments"
-                      className="btn btn-secondary"
-                      style={{ width: "fit-content", display: "inline-flex", gap: 8 }}
-                    >
-                      <Paperclip size={14} />
-                      {uploadingReplyAttachment ? "Uploading..." : "Attach Photo"}
-                    </label>
-                    <input
-                      id="maintenance-reply-attachments"
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
-                      multiple
-                      onChange={handleReplyAttachmentUpload}
-                      disabled={uploadingReplyAttachment || sendReplyMutation.isPending}
-                      style={{ display: "none" }}
-                    />
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      disabled={uploadingReplyAttachment || sendReplyMutation.isPending}
-                    >
-                      <MessageSquare size={14} />
-                      {sendReplyMutation.isPending ? "Sending..." : "Send Reply"}
-                    </button>
-                  </div>
-                  {replyAttachments.length ? (
-                    <div className="maintenance-attachment-list">
-                      {replyAttachments.map((attachment, index) => {
-                        const uri = getMaintenanceAttachmentUri(attachment);
-                        return (
-                          <div
-                            key={`${uri || attachment.name}-${index}`}
-                            className="maintenance-attachment-row"
-                          >
-                            <span>{getMaintenanceAttachmentName(attachment, index)}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveReplyAttachment(uri)}
-                              aria-label="Remove attachment"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </form>
-              </section>
-            ) : null}
-
-            {selectedRequest.statusHistory?.length ? (
-              <section className="maintenance-detail-section">
-                <h3>Status Timeline</h3>
-                <div className="maintenance-timeline">
-                  {selectedRequest.statusHistory.map((entry, index) => (
-                    <article key={`${entry.timestamp}-${index}`}>
-                      <strong>{fmtDateTime(entry.timestamp)}</strong>
-                      <span>
-                        {formatMaintenanceStatus(entry.status)}
-                        {entry.actor_name ? ` - ${entry.actor_name}` : ""}
-                      </span>
-                      <p>{entry.note || entry.event || "Status updated."}</p>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-
-            {REOPENABLE_MAINTENANCE_STATUSES.includes(selectedRequest.status) ? (
+            {detailTab === "reopen" && REOPENABLE_MAINTENANCE_STATUSES.includes(selectedRequest.status) ? (
               <section className="maintenance-detail-section">
                 <h3>Reopen Request</h3>
                 <p>
@@ -1322,45 +1562,19 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                   value={reopenNote}
                   onChange={(event) => setReopenNote(event.target.value)}
                 />
+                <div className="form-actions maintenance-detail-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={reopenMutation.isPending}
+                    onClick={handleReopenRequest}
+                  >
+                    <RefreshCcw size={14} />
+                    {reopenMutation.isPending ? "Reopening..." : "Reopen Request"}
+                  </button>
+                </div>
               </section>
             ) : null}
-
-            <div className="form-actions maintenance-detail-actions">
-              {selectedRequest.status === "pending" ? (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => openEditForm(selectedRequest)}
-                >
-                  <Pencil size={14} />
-                  Edit Request
-                </button>
-              ) : null}
-
-              {selectedRequest.status === "pending" ? (
-                <button
-                  type="button"
-                  className="btn btn-secondary maintenance-danger-button"
-                  disabled={cancelMutation.isPending}
-                  onClick={() => handleCancelRequest(selectedRequest)}
-                >
-                  <Trash2 size={14} />
-                  Cancel Request
-                </button>
-              ) : null}
-
-              {REOPENABLE_MAINTENANCE_STATUSES.includes(selectedRequest.status) ? (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={reopenMutation.isPending}
-                  onClick={handleReopenRequest}
-                >
-                  <RefreshCcw size={14} />
-                  {reopenMutation.isPending ? "Reopening..." : "Reopen Request"}
-                </button>
-              ) : null}
-            </div>
           </div>
         </div>
       ) : null}
@@ -1372,7 +1586,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             position: "fixed",
             inset: 0,
             zIndex: 9999,
-            background: "rgba(0,0,0,0.85)",
+            background: "color-mix(in srgb, var(--foreground) 12%, transparent)",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -1388,7 +1602,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               position: "absolute",
               top: 20,
               right: 20,
-              background: "rgba(255,255,255,0.15)",
+              background: "color-mix(in srgb, var(--foreground) 12%, transparent)",
               border: "none",
               borderRadius: "50%",
               width: 40,
@@ -1396,7 +1610,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               display: "grid",
               placeItems: "center",
               cursor: "pointer",
-              color: "#fff",
+              color: "var(--card)",
             }}
           >
             <X size={20} />
@@ -1409,12 +1623,23 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               maxWidth: "90vw",
               maxHeight: "80vh",
               borderRadius: 12,
-              boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
+              boxShadow: "0 24px 64px color-mix(in srgb, var(--foreground) 12%, transparent)",
               objectFit: "contain",
             }}
           />
-          <span style={{ color: "#CBD5E1", fontSize: 13 }}>{previewAttachment.name}</span>
+          <span style={{ color: "var(--border)", fontSize: 13 }}>{previewAttachment.name}</span>
         </div>
+      ) : null}
+
+      {pendingCancelRequest ? (
+        <ConfirmDialog
+          title="Cancel this request?"
+          message="This maintenance request will be marked as cancelled and removed from your active list. This can't be undone."
+          confirmLabel={cancelMutation.isPending ? "Cancelling..." : "Cancel Request"}
+          danger
+          onConfirm={confirmCancelRequest}
+          onCancel={() => setPendingCancelRequest(null)}
+        />
       ) : null}
     </div>
   );
