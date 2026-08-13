@@ -3,34 +3,17 @@ import mongoose from "mongoose";
 import { SurveyAssignment, SurveyResponse } from "../models/index.js";
 import { validateSurveyAnswers } from "../services/surveyValidationService.js";
 import auditLogger from "../utils/auditLogger.js";
+import { mobileTenantAuth as mobileTenant } from "../middleware/mobileTenantAuth.js";
 
 const router = express.Router();
 const asyncRoute = (handler) => (req, res, next) =>
   Promise.resolve(handler(req, res, next)).catch(next);
 
-// Same session-token resolution as mobileContractRoutes.js: identity is
-// derived server-side from the mobile session, never from client input.
-const mobileTenant = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.startsWith("Bearer ")
-      ? req.headers.authorization.slice(7)
-      : req.cookies?.session_token;
-    if (!token) return res.status(401).json({ detail: "Not authenticated" });
-    const session = await mongoose.connection.db.collection("user_sessions").findOne({
-      session_token: token,
-      expires_at: { $gt: new Date() },
-    });
-    if (!session?.user_id) return res.status(401).json({ detail: "Invalid or expired session" });
-    const user = await mongoose.connection.db.collection("users").findOne({ user_id: session.user_id });
-    if (!user || !["tenant", "applicant"].includes(user.role)) {
-      return res.status(403).json({ detail: "Tenant survey access denied" });
-    }
-    req.mobileTenant = user;
-    return next();
-  } catch {
-    return res.status(401).json({ detail: "Authentication error" });
-  }
-};
+// Session validation now lives in one place — middleware/mobileTenantAuth.js
+// — instead of being duplicated inline here (see that file's header comment).
+// This also means req.user is now populated here too (it previously wasn't),
+// a strict superset of what this router used before; no downstream code in
+// this file read req.user, so nothing here depends on its previous absence.
 
 // ─── Web SurveyTemplate/SurveyAssignment/SurveyResponse → mobile survey shape ──
 // Mobile's UI (frontend/app/surveys.jsx, survey-form.jsx) was built around the
