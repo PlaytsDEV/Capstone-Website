@@ -82,6 +82,50 @@ const canInitialize = missingEnvVars.length === 0;
  * IMPORTANT: Check if already initialized to prevent multiple initialization
  * errors when nodemon restarts the server.
  */
+/**
+ * Resolve the Cloud Storage bucket name to use, without requiring
+ * FIREBASE_STORAGE_BUCKET to be explicitly set.
+ *
+ * `admin.storage().bucket()` (no argument) only resolves a bucket when the
+ * app was initialized with an explicit `storageBucket` — which, on this
+ * deployment, it was not (FIREBASE_STORAGE_BUCKET is absent from Render).
+ * Rather than depending on that missing env var, resolve deterministically:
+ *
+ *   1. FIREBASE_STORAGE_BUCKET (explicit, if ever set — wins outright)
+ *   2. GCLOUD_STORAGE_BUCKET / GOOGLE_CLOUD_STORAGE_BUCKET (explicit,
+ *      common Google Cloud tooling convention, if ever set)
+ *   3. `${FIREBASE_PROJECT_ID}.firebasestorage.app` — the verified real
+ *      bucket for this project (manually confirmed:
+ *      dormitorymanagement-caps-572cf.firebasestorage.app). This is the
+ *      *current* Firebase default-bucket naming convention (projects
+ *      created after ~Oct 2024 default to `.firebasestorage.app`, not the
+ *      legacy `.appspot.com`), so it is safe to assume as a fallback for
+ *      this project rather than a guess.
+ *
+ * A leading `gs://` is stripped from any explicit value, matching the
+ * convention already accepted elsewhere in this codebase for stored bucket
+ * URIs (see services/attachmentUploadService.js).
+ */
+function stripGsPrefix(value) {
+  return String(value || "").trim().replace(/^gs:\/\//i, "");
+}
+
+export function resolveFirebaseStorageBucket() {
+  const explicit = stripGsPrefix(
+    process.env.FIREBASE_STORAGE_BUCKET
+      || process.env.GCLOUD_STORAGE_BUCKET
+      || process.env.GOOGLE_CLOUD_STORAGE_BUCKET,
+  );
+  if (explicit) return explicit;
+
+  const projectId = String(process.env.FIREBASE_PROJECT_ID || "").trim();
+  if (projectId) return `${projectId}.firebasestorage.app`;
+
+  return null;
+}
+
+const resolvedStorageBucket = resolveFirebaseStorageBucket();
+
 try {
   if (!canInitialize) {
     console.error(
@@ -91,9 +135,12 @@ try {
   } else if (!admin.apps.length) {
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+      storageBucket: resolvedStorageBucket || undefined,
     });
     console.log("✅ Firebase Admin SDK initialized successfully");
+    if (!process.env.FIREBASE_STORAGE_BUCKET && resolvedStorageBucket) {
+      console.log(`ℹ️ FIREBASE_STORAGE_BUCKET not set — using derived bucket: ${resolvedStorageBucket}`);
+    }
   } else {
     console.log("ℹ️ Firebase Admin SDK already initialized");
   }
@@ -121,14 +168,25 @@ export const getAuth = () => {
 /**
  * Export Firebase Storage bucket (lazy)
  *
- * Returns the default Cloud Storage bucket using the Admin SDK.
- * Uploads via this bypass client-side Storage security rules.
+ * Returns the Cloud Storage bucket using the Admin SDK. Uploads via this
+ * bypass client-side Storage security rules.
+ *
+ * Always passed an explicit bucket name (resolveFirebaseStorageBucket()),
+ * rather than relying on `admin.storage().bucket()`'s bare default-bucket
+ * resolution — that bare form only works when the app was initialized with
+ * an explicit `storageBucket`, which is not guaranteed here (see
+ * resolveFirebaseStorageBucket() above for why). This is the one source of
+ * truth for which bucket every caller in this codebase uses.
  */
 export const getFirebaseStorage = () => {
   if (!admin.apps.length) {
     throw new Error("Firebase Admin SDK is not initialized.");
   }
-  return admin.storage().bucket();
+  const bucketName = resolveFirebaseStorageBucket();
+  if (!bucketName) {
+    throw new Error("Firebase Storage bucket could not be resolved (no FIREBASE_STORAGE_BUCKET and no FIREBASE_PROJECT_ID).");
+  }
+  return admin.storage().bucket(bucketName);
 };
 
 /**
