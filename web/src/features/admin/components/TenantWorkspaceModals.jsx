@@ -899,7 +899,7 @@ export function TransferTenantModal({
         {step > 1 && (
           <button
             type="button"
-            className="tenant-modal-btn tenant-modal-btn--ghost"
+            className="tenant-modal-btn tenant-modal-btn--back"
             onClick={() => setStep((s) => s - 1)}
           >
             <ChevronLeft size={16} />
@@ -927,7 +927,7 @@ export function TransferTenantModal({
         ) : (
           <button
             type="button"
-            className="tenant-modal-btn tenant-modal-btn--primary"
+            className="tenant-modal-btn tenant-modal-btn--success"
             disabled={loading || !step1Valid || !step2Valid}
             onClick={() => {
               if (!step1Valid || !step2Valid) {
@@ -1393,7 +1393,7 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
         {step > 1 && (
           <button
             type="button"
-            className="tenant-modal-btn tenant-modal-btn--ghost"
+            className="tenant-modal-btn tenant-modal-btn--back"
             onClick={() => setStep((s) => s - 1)}
           >
             <ChevronLeft size={16} />
