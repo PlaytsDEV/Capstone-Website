@@ -1,22 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  PH_HOLIDAYS_2026,
-  PRESET_BUNDLES,
+  getTodayISO,
+  getTomorrowISO,
+  formatBlackoutDateDisplay,
   getBlackoutDateStatus,
-  mergeBlackoutPresets,
   filterAndSortBlackouts,
   partitionExpiredBlackouts,
 } from "./visitPresetDates.js";
 
 test("visitPresetDates utility test suite", async (t) => {
-  await t.test("should provide structured 2026 PH holiday presets", () => {
-    assert.equal(PH_HOLIDAYS_2026.length, 17);
-    assert.equal(PRESET_BUNDLES.length, 4);
+  await t.test("should return valid YYYY-MM-DD for today and tomorrow ISO helpers", () => {
+    const today = getTodayISO();
+    const tomorrow = getTomorrowISO();
+    assert.match(today, /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(tomorrow, /^\d{4}-\d{2}-\d{2}$/);
+  });
 
-    const first = PH_HOLIDAYS_2026[0];
-    assert.equal(first.date, "2026-01-01");
-    assert.equal(first.name, "New Year's Day");
+  await t.test("should format ISO dates into human-readable display text", () => {
+    assert.equal(formatBlackoutDateDisplay("2026-12-25"), "Dec 25, 2026");
+    assert.equal(formatBlackoutDateDisplay(""), "—");
   });
 
   await t.test("should correctly identify date status (past, today, upcoming)", () => {
@@ -25,23 +28,6 @@ test("visitPresetDates utility test suite", async (t) => {
     assert.equal(getBlackoutDateStatus("2026-08-10", todayStr), "past");
     assert.equal(getBlackoutDateStatus("2026-08-13", todayStr), "today");
     assert.equal(getBlackoutDateStatus("2026-08-25", todayStr), "upcoming");
-  });
-
-  await t.test("should merge preset blackout dates without duplicates", () => {
-    const existing = [
-      { date: "2026-01-01", reason: "Existing New Year" },
-    ];
-    const newItems = [
-      { date: "2026-01-01", reason: "Regular Holiday - New Year's Day" },
-      { date: "2026-12-25", reason: "Regular Holiday - Christmas Day" },
-    ];
-
-    const { mergedList, addedCount, skippedCount } = mergeBlackoutPresets(existing, newItems);
-    assert.equal(mergedList.length, 2);
-    assert.equal(addedCount, 1);
-    assert.equal(skippedCount, 1);
-    assert.equal(mergedList[0].reason, "Existing New Year");
-    assert.equal(mergedList[1].date, "2026-12-25");
   });
 
   await t.test("should filter and sort blackout dates cleanly", () => {
