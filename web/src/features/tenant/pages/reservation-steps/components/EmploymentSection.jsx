@@ -3,7 +3,7 @@ import FileUploadField from "./FileUploadField";
 import { validatePHPhoneOrLandline } from "../../../utils/reservationValidation";
 
 const errBorder = (show, value) =>
- show && !value ? "1.5px solid #dc2626" : undefined;
+ show && !value ? "1.5px solid var(--danger)" : undefined;
 
 const EMPLOYER_CONTACT_MAX_LENGTH = 13;
 
@@ -64,7 +64,7 @@ const EmploymentSection = ({
  }}
  style={{
  border: fieldErrors.employerSchool
- ? "1.5px solid #dc2626"
+ ? "1.5px solid var(--danger)"
  : errBorder(showValidationErrors, employerSchool),
  }}
  />
@@ -95,7 +95,7 @@ const EmploymentSection = ({
  style={{
  resize: "vertical",
  border: fieldErrors.employerAddress
- ? "1.5px solid #dc2626"
+ ? "1.5px solid var(--danger)"
  : errBorder(showValidationErrors, employerAddress),
  }}
  />
@@ -111,7 +111,7 @@ const EmploymentSection = ({
  <div className="form-group" data-field="employerContact">
  <label className="form-label">
  Employer's Contact Number{" "}
- <span style={{ fontSize: "11px", color: "#6B7280", fontWeight: 400 }}>(optional)</span>
+ <span style={{ fontSize: "11px", color: "var(--muted-foreground)", fontWeight: 400 }}>(optional)</span>
  </label>
  <input
  type="tel"
@@ -125,9 +125,9 @@ const EmploymentSection = ({
  }}
  style={{
  border: fieldErrors.employerContact
- ? "1.5px solid #dc2626"
+ ? "1.5px solid var(--danger)"
  : showValidationErrors && employerContact && !validatePHPhoneOrLandline(employerContact)
- ? "1.5px solid #dc2626"
+ ? "1.5px solid var(--danger)"
  : undefined,
  }}
  />
@@ -170,7 +170,7 @@ const EmploymentSection = ({
  style={{
  resize: "vertical",
  border: fieldErrors.occupation
- ? "1.5px solid #dc2626"
+ ? "1.5px solid var(--danger)"
  : errBorder(showValidationErrors, occupation),
  }}
  />

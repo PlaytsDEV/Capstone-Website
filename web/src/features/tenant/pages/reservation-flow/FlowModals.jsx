@@ -22,7 +22,7 @@ export const LoginConfirmModal = ({ show, onLogin, onDismiss }) => {
       confirmText="Go to Login"
       onConfirm={onLogin}
     >
-      <p style={{ margin: 0, color: "var(--text-secondary, #475569)", lineHeight: 1.5 }}>
+      <p style={{ margin: 0, color: "var(--text-secondary, var(--muted-foreground))", lineHeight: 1.5 }}>
         You need to be logged in to complete your reservation. Your reservation choices will be saved.
       </p>
     </BaseModal>
@@ -43,7 +43,7 @@ export const CancelConfirmModal = ({ show, onConfirm, onDismiss }) => {
       confirmText="Discard Changes"
       onConfirm={onConfirm}
     >
-      <p style={{ margin: 0, color: "var(--text-secondary, #475569)", lineHeight: 1.5 }}>
+      <p style={{ margin: 0, color: "var(--text-secondary, var(--muted-foreground))", lineHeight: 1.5 }}>
         Are you sure you want to exit? Your current progress will be lost and you will need to start over.
       </p>
     </BaseModal>
@@ -76,7 +76,7 @@ export const StageConfirmModal = ({
       confirmText="Proceed"
       onConfirm={onConfirm}
     >
-      <p style={{ margin: 0, color: "var(--text-secondary, #475569)", lineHeight: 1.5 }}>
+      <p style={{ margin: 0, color: "var(--text-secondary, var(--muted-foreground))", lineHeight: 1.5 }}>
         {message}
       </p>
     </BaseModal>

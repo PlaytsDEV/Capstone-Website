@@ -42,6 +42,7 @@ import {
 } from "./reservationCancellationUi";
 import { getRoomImages } from "../../pages/check-availability/checkAvailabilityConstants";
 import { getResolvedMonthlyRate } from "../../utils/pricingDisplayHelpers";
+import "../../../admin/styles/design-tokens.css";
 
 /* ── Ordinal suffix helper ────────────────────────── */
 function ordinal(n) {
@@ -101,30 +102,30 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  return (
  <div style={{ width: "100%" }}>
  <div style={{ marginBottom: 24 }}>
- <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0A1628", margin: "0 0 4px" }}>My Reservation</h1>
- <p style={{ fontSize: 13, color: "#9CA3AF", margin: 0 }}>Your active reservation details</p>
+ <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--foreground)", margin: "0 0 4px" }}>My Reservation</h1>
+ <p style={{ fontSize: 13, color: "var(--muted-foreground)", margin: 0 }}>Your active reservation details</p>
  </div>
  <div style={{
  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
  textAlign: "center", padding: "56px 24px",
- background: "#fff", borderRadius: 10, border: "1px solid #E8EBF0",
- }}>
- <Building size={48} color="#D1D5DB" />
- <h3 style={{ fontSize: 16, fontWeight: 600, color: "#374151", margin: "16px 0 8px" }}>
+ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)",
+}}>
+ <Building size={48} color="var(--neutral)" />
+ <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--foreground)", margin: "16px 0 8px" }}>
  No Reservation Yet
  </h3>
- <p style={{ fontSize: 13, color: "#9CA3AF", maxWidth: 300, margin: "0 0 24px", lineHeight: 1.6 }}>
+ <p style={{ fontSize: 13, color: "var(--muted-foreground)", maxWidth: 300, margin: "0 0 24px", lineHeight: 1.6 }}>
  You don't have an active reservation. Browse available rooms and start your application.
  </p>
  <button
  onClick={() => navigate("/applicant/check-availability")}
  style={{
- padding: "12px 28px", background: "#E8734A", color: "#fff",
+ padding: "12px 28px", background: "var(--primary)", color: "var(--primary-foreground)",
  border: "none", borderRadius: 10, fontSize: 14, fontWeight: 600,
  cursor: "pointer", transition: "all 0.15s",
  }}
- onMouseEnter={(e) => { e.currentTarget.style.background = "#D4622F"; e.currentTarget.style.transform = "translateY(-1px)"; }}
- onMouseLeave={(e) => { e.currentTarget.style.background = "#E8734A"; e.currentTarget.style.transform = "translateY(0)"; }}
+ onMouseEnter={(e) => { e.currentTarget.style.background = "var(--ring)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+ onMouseLeave={(e) => { e.currentTarget.style.background = "var(--primary)"; e.currentTarget.style.transform = "translateY(0)"; }}
  >
  Browse Available Rooms
  </button>
@@ -163,28 +164,28 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  const paymentDescriptor = isFullTenantReservation ? "deposit" : "reservation fee";
  const statusDisplay = (() => {
  const s = reservationStatus;
- if (s === "cancelled") return { label: "Cancelled", bg: "#EF4444" };
- if (hasReservationStatus(s, "moveOut")) return { label: "Completed", bg: "#6B7280" };
- if (hasReservationStatus(s, "moveIn")) return { label: "Moved In", bg: "#6366F1" };
+ if (s === "cancelled") return { label: "Cancelled", bg: "var(--danger)" };
+ if (hasReservationStatus(s, "moveOut")) return { label: "Completed", bg: "var(--neutral)" };
+ if (hasReservationStatus(s, "moveIn")) return { label: "Moved In", bg: "var(--chart-4)" };
  if (s === "reserved" || reservation.paymentStatus === "paid")
- return { label: "Reserved", bg: "#059669" };
+ return { label: "Reserved", bg: "var(--success)" };
  if (s === "pending_application_review")
- return { label: "Pending Review", bg: "#D97706" };
+ return { label: "Pending Review", bg: "var(--warning)" };
  if (s === "needs_revision")
- return { label: "Needs Revision", bg: "#EA580C" };
+ return { label: "Needs Revision", bg: "var(--warning)" };
  if (s === "approved_for_payment" || canReservationAccessPayment(s))
- return { label: "Approved for Payment", bg: "#0F766E" };
+ return { label: "Approved for Payment", bg: "var(--info)" };
  if (s === "payment_pending")
- return { label: "Payment Pending", bg: "#D97706" };
+ return { label: "Payment Pending", bg: "var(--warning)" };
  if (s === "viewing_preference_selected")
- return { label: "Viewing Preference Selected", bg: "#2563EB" };
+ return { label: "Viewing Preference Selected", bg: "var(--info)" };
  if (s === "visit_approved" || reservation.scheduleApproved || reservation.visitApproved)
- return { label: "Visit Approved", bg: "#7C3AED" };
+ return { label: "Visit Approved", bg: "var(--chart-4)" };
  if (s === "visit_pending" || (reservation.visitDate && !reservation.scheduleRejected))
- return { label: "Visit Scheduled", bg: "#2563EB" };
+ return { label: "Visit Scheduled", bg: "var(--info)" };
  if (reservation.scheduleRejected)
- return { label: "Reschedule Needed", bg: "#DC2626" };
- return { label: "Room Selected", bg: "#0EA5E9" };
+ return { label: "Reschedule Needed", bg: "var(--danger)" };
+ return { label: "Room Selected", bg: "var(--info)" };
  })();
 
  const monthlyRent = getEffectiveMonthlyRent(reservation);
@@ -206,16 +207,16 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
 
  /* ── Styles ──────────────────────────────────────── */
  const card = {
- background: "var(--surface-card, #fff)",
+ background: "var(--card)",
  borderRadius: 12,
- border: "1px solid var(--border-card, #E8EBF0)",
+ border: "1px solid var(--border)",
  padding: 24,
  marginBottom: 16,
  };
  const sectionTitle = {
  fontSize: 15,
  fontWeight: 700,
- color: "var(--text-heading, #0A1628)",
+ color: "var(--foreground)",
  margin: "0 0 16px",
  };
  const detailRow = {
@@ -223,7 +224,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  justifyContent: "space-between",
  alignItems: "center",
  padding: "10px 0",
- borderBottom: "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+ borderBottom: "1px solid var(--border)",
  fontSize: 13,
  };
 
@@ -285,7 +286,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  borderRadius: 14,
  overflow: "hidden",
  marginBottom: 20,
- background: "#1E293B",
+ background: "var(--muted)",
  }}
  >
  {heroImage ? (
@@ -311,13 +312,13 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  flexDirection: "column",
  alignItems: "center",
  justifyContent: "center",
- color: "#475569",
+ color: "var(--muted-foreground)",
  gap: 8,
- background: "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)",
+ background: "linear-gradient(135deg, var(--background) 0%, var(--muted) 100%)",
  }}
  >
- <Building size={32} style={{ opacity: 0.3, color: "#94A3B8" }} />
- <span style={{ fontSize: 12, color: "#64748B", fontWeight: 500 }}>
+ <Building size={32} style={{ opacity: 0.3, color: "var(--muted-foreground)" }} />
+ <span style={{ fontSize: 12, color: "var(--muted-foreground)", fontWeight: 500 }}>
  Room photos not yet available
  </span>
  </div>
@@ -330,7 +331,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  left: 0,
  right: 0,
  height: 100,
- background: "linear-gradient(transparent, rgba(0,0,0,0.7))",
+ background: "linear-gradient(transparent, color-mix(in srgb, var(--foreground) 70%, transparent))",
  }}
  />
  {/* Code + badge */}
@@ -349,7 +350,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  fontFamily: "monospace",
  fontSize: 18,
  fontWeight: 700,
- color: "#fff",
+ color: "var(--text-inverse)",
  letterSpacing: "0.02em",
  }}
  >
@@ -358,7 +359,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  <span
  style={{
  background: statusDisplay.bg,
- color: "#fff",
+ color: "var(--text-inverse)",
  fontSize: 12,
  fontWeight: 600,
  padding: "4px 12px",
@@ -375,8 +376,8 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  <div
  style={{
  ...card,
- background: "#F0FDF4",
- borderColor: "#BBF7D0",
+ background: "var(--success-light)",
+ borderColor: "var(--success)",
  display: "flex",
  alignItems: "flex-start",
  gap: 12,
@@ -387,23 +388,23 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  width: 40,
  height: 40,
  borderRadius: 999,
- background: "#DCFCE7",
+ background: "var(--status-success-bg)",
  display: "flex",
  alignItems: "center",
  justifyContent: "center",
  flexShrink: 0,
  }}
  >
- <ShieldCheck size={20} color="#047857" />
+ <ShieldCheck size={20} color="var(--success)" />
  </div>
  <div>
- <h2 style={{ fontSize: 18, fontWeight: 700, color: "#065F46", margin: "0 0 6px" }}>
+ <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--success-dark)", margin: "0 0 6px" }}>
  Room Reserved
  </h2>
- <p style={{ color: "#166534", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+ <p style={{ color: "var(--success-dark)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
  Your room reservation has been confirmed. Please wait for further instructions from the admin.
  </p>
- <p style={{ color: "#047857", fontSize: 12, lineHeight: 1.6, margin: "8px 0 0" }}>
+ <p style={{ color: "var(--success)", fontSize: 12, lineHeight: 1.6, margin: "8px 0 0" }}>
  You remain an applicant until admin completes the tenant conversion.
  </p>
  </div>
@@ -415,7 +416,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  <div style={{ flex: "1 1 520px", minWidth: 300 }}>
  {/* Room Info Card */}
  <div style={card}>
- <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 12px" }}>
+ <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--foreground)", margin: "0 0 12px" }}>
  {room.name || "Room"}
  </h2>
 
@@ -438,8 +439,8 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  <span
  key={tag}
  style={{
- background: "#F1F5F9",
- color: "#475569",
+ background: "var(--muted)",
+ color: "var(--muted-foreground)",
  fontSize: 12,
  fontWeight: 500,
  padding: "4px 12px",
@@ -454,28 +455,28 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  {/* Room Details List */}
  <div style={{ marginBottom: images.length > 1 ? 20 : 0 }}>
  <div style={detailRow}>
- <span style={{ color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>
+ <span style={{ color: "var(--muted-foreground)", display: "flex", alignItems: "center", gap: 6 }}>
  <MapPin size={14} /> Branch
  </span>
- <span style={{ color: "var(--text-heading, #0A1628)", fontWeight: 600 }}>{branchDisplay}</span>
+ <span style={{ color: "var(--foreground)", fontWeight: 600 }}>{branchDisplay}</span>
  </div>
  <div style={detailRow}>
- <span style={{ color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>
+ <span style={{ color: "var(--muted-foreground)", display: "flex", alignItems: "center", gap: 6 }}>
  <Layers size={14} /> Floor
  </span>
- <span style={{ color: "var(--text-heading, #0A1628)", fontWeight: 600 }}>{ordinal(room.floor || 1)} Floor</span>
+ <span style={{ color: "var(--foreground)", fontWeight: 600 }}>{ordinal(room.floor || 1)} Floor</span>
  </div>
  <div style={detailRow}>
- <span style={{ color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>
+ <span style={{ color: "var(--muted-foreground)", display: "flex", alignItems: "center", gap: 6 }}>
  <DoorOpen size={14} /> Room Type
  </span>
- <span style={{ color: "var(--text-heading, #0A1628)", fontWeight: 600 }}>{roomType}</span>
+ <span style={{ color: "var(--foreground)", fontWeight: 600 }}>{roomType}</span>
  </div>
  <div style={detailRow}>
- <span style={{ color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>
+ <span style={{ color: "var(--muted-foreground)", display: "flex", alignItems: "center", gap: 6 }}>
  <Users size={14} /> Capacity
  </span>
- <span style={{ color: "var(--text-heading, #0A1628)", fontWeight: 600 }}>
+ <span style={{ color: "var(--foreground)", fontWeight: 600 }}>
  {(() => {
  const cap = room.capacity || (
  room.type === "private" ? 1
@@ -490,18 +491,18 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  </div>
  {room.type !== "private" && (
  <div style={detailRow}>
- <span style={{ color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>
+ <span style={{ color: "var(--muted-foreground)", display: "flex", alignItems: "center", gap: 6 }}>
  <Bed size={14} /> Assigned Bed
  </span>
- <span style={{ color: "var(--text-heading, #0A1628)", fontWeight: 600 }}>
+ <span style={{ color: "var(--foreground)", fontWeight: 600 }}>
  {reservation.selectedBed ? getBedDisplayLabel(reservation.selectedBed) : "TBD"}
  </span>
  </div>
  )}
  {room.description && (
  <div style={{ ...detailRow, borderBottom: "none", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
- <span style={{ color: "#64748B", fontSize: 12, fontWeight: 500 }}>Description</span>
- <span style={{ color: "#475569", fontSize: 13, lineHeight: 1.5 }}>{room.description}</span>
+ <span style={{ color: "var(--muted-foreground)", fontSize: 12, fontWeight: 500 }}>Description</span>
+ <span style={{ color: "var(--foreground)", fontSize: 13, lineHeight: 1.5 }}>{room.description}</span>
  </div>
  )}
  </div>
@@ -524,7 +525,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  overflow: "hidden",
  cursor: "pointer",
  border:
- selectedImage === i ? "2px solid #E8734A" : "2px solid transparent",
+ selectedImage === i ? "2px solid var(--primary)" : "2px solid transparent",
  transition: "border-color 0.15s",
  }}
  >
@@ -567,15 +568,15 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  width: 40,
  height: 40,
  borderRadius: 10,
- background: "#F8FAFC",
+ background: "var(--muted)",
  display: "flex",
  alignItems: "center",
  justifyContent: "center",
  }}
  >
- <Icon size={18} color="#475569" />
+ <Icon size={18} color="var(--muted-foreground)" />
  </div>
- <span style={{ fontSize: 11, color: "#64748B", fontWeight: 500, textAlign: "center" }}>
+ <span style={{ fontSize: 11, color: "var(--muted-foreground)", fontWeight: 500, textAlign: "center" }}>
  {amenity}
  </span>
  </div>
@@ -608,10 +609,10 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  },
  ].map(({ label, value, highlight, paid }) => (
  <div key={label} style={detailRow}>
- <span style={{ color: "#64748B", fontWeight: 500 }}>{label}</span>
+ <span style={{ color: "var(--muted-foreground)", fontWeight: 500 }}>{label}</span>
  <span
  style={{
- color: highlight ? "#E8734A" : paid ? "#059669" : "#0A1628",
+ color: highlight ? "var(--primary)" : paid ? "var(--success)" : "var(--foreground)",
  fontWeight: 600,
  }}
  >
@@ -622,9 +623,9 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  </div>
 
  {/* Receipt Download Card */}
- <div style={{ ...card, background: "var(--surface-muted, #F8FAFC)" }}>
+ <div style={{ ...card, background: "var(--muted)" }}>
  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
- <FileText size={16} color="#475569" />
+ <FileText size={16} color="var(--muted-foreground)" />
  <h3 style={{ ...sectionTitle, margin: 0 }}>
  {isFullTenantReservation ? "Payment Receipt" : "Reservation Fee Payment"}
  </h3>
@@ -632,7 +633,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
 
  {paymentDate ? (
  <>
- <p style={{ color: "#64748B", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+ <p style={{ color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
  Your {paymentDescriptor} payment of <strong>{`PHP ${reservationFeeAmount.toLocaleString("en-PH")}`}</strong> was confirmed on{" "}
  <strong>{paymentDate}</strong>.
  </p>
@@ -646,9 +647,9 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  justifyContent: "center",
  gap: 6,
  padding: "10px 16px",
- background: "#059669",
- color: "#fff",
- border: "1px solid #047857",
+ background: "var(--success)",
+ color: "var(--success-foreground)",
+ border: "1px solid var(--success)",
  borderRadius: 8,
  fontSize: 13,
  fontWeight: 600,
@@ -656,11 +657,11 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  transition: "all 0.15s",
  }}
  onMouseEnter={(e) => {
- e.currentTarget.style.background = "#047857";
+ e.currentTarget.style.background = "var(--success-dark)";
  e.currentTarget.style.transform = "translateY(-1px)";
  }}
  onMouseLeave={(e) => {
- e.currentTarget.style.background = "#059669";
+ e.currentTarget.style.background = "var(--success)";
  e.currentTarget.style.transform = "translateY(0)";
  }}
  >
@@ -675,9 +676,9 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  justifyContent: "center",
  gap: 6,
  padding: "10px 16px",
- background: "#FFFFFF",
- color: "#1E293B",
- border: "1px solid #CBD5E1",
+ background: "var(--card)",
+ color: "var(--foreground)",
+ border: "1px solid var(--border)",
  borderRadius: 8,
  fontSize: 13,
  fontWeight: 600,
@@ -685,14 +686,14 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  transition: "all 0.15s",
  }}
  onMouseEnter={(e) => {
- e.currentTarget.style.background = "#F8FAFC";
- e.currentTarget.style.borderColor = "#94A3B8";
- e.currentTarget.style.color = "#0F172A";
+ e.currentTarget.style.background = "var(--muted)";
+ e.currentTarget.style.borderColor = "var(--ring)";
+ e.currentTarget.style.color = "var(--foreground)";
  }}
  onMouseLeave={(e) => {
- e.currentTarget.style.background = "#FFFFFF";
- e.currentTarget.style.borderColor = "#CBD5E1";
- e.currentTarget.style.color = "#1E293B";
+ e.currentTarget.style.background = "var(--card)";
+ e.currentTarget.style.borderColor = "var(--border)";
+ e.currentTarget.style.color = "var(--foreground)";
  }}
  >
  <Eye size={14} /> View Receipt
@@ -700,7 +701,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  </div>
  </>
  ) : (
- <p style={{ color: "#94A3B8", fontSize: 13, lineHeight: 1.6 }}>
+ <p style={{ color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.6 }}>
  Your receipt will appear here once your Reservation Fee is confirmed.
  </p>
  )}
@@ -708,14 +709,14 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
 
  {/* Cancellation Request Card */}
  {cancellationUi.visible && (
- <div style={{ ...card, borderColor: cancellationUi.isPending ? "#F59E0B" : "#FECACA" }}>
+ <div style={{ ...card, borderColor: cancellationUi.isPending ? "var(--warning)" : "var(--danger)" }}>
  <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
- <AlertCircle size={18} color={cancellationUi.isPending ? "#D97706" : "#DC2626"} style={{ marginTop: 1 }} />
+ <AlertCircle size={18} color={cancellationUi.isPending ? "var(--warning)" : "var(--danger)"} style={{ marginTop: 1 }} />
  <div>
  <h3 style={{ ...sectionTitle, margin: 0 }}>
  {cancellationUi.isPending ? "Cancellation Request Pending" : "Request Reservation Cancellation"}
  </h3>
- <p style={{ color: "#64748B", fontSize: 13, lineHeight: 1.6, margin: "8px 0 0" }}>
+ <p style={{ color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.6, margin: "8px 0 0" }}>
  {cancellationUi.isPending
  ? "Your cancellation request is waiting for admin review. Your bed remains reserved until admin approves the request."
  : RESERVATION_FEE_NON_REFUNDABLE_NOTICE}
@@ -727,8 +728,8 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  <div
  style={{
  borderRadius: 8,
- background: "#FFFBEB",
- color: "#92400E",
+ background: "var(--warning-light)",
+ color: "var(--warning-dark)",
  padding: "10px 12px",
  fontSize: 13,
  fontWeight: 600,
@@ -743,8 +744,8 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  style={{
  width: "100%",
  padding: "11px 16px",
- background: "#DC2626",
- color: "#fff",
+ background: "var(--danger)",
+ color: "var(--danger-foreground)",
  border: "none",
  borderRadius: 8,
  fontSize: 13,
@@ -767,7 +768,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  style={{
  position: "fixed",
  inset: 0,
- background: "rgba(15, 23, 42, 0.55)",
+ background: "color-mix(in srgb, var(--foreground) 55%, transparent)",
  display: "flex",
  alignItems: "center",
  justifyContent: "center",
@@ -779,9 +780,9 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  onClick={(event) => event.stopPropagation()}
  style={{
  width: "min(520px, 100%)",
- background: "#fff",
+ background: "var(--card)",
  borderRadius: 18,
- boxShadow: "0 20px 50px -10px rgba(15, 23, 42, 0.2)",
+ boxShadow: "var(--shadow-xl)",
  padding: 26,
  }}
  >
@@ -791,8 +792,8 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  width: 44,
  height: 44,
  borderRadius: 12,
- background: "#FEE2E2",
- color: "#DC2626",
+ background: "var(--danger-light)",
+ color: "var(--danger)",
  display: "grid",
  placeItems: "center",
  flexShrink: 0,
@@ -801,10 +802,10 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  <AlertCircle size={22} />
  </div>
  <div>
- <h3 style={{ margin: "0 0 6px", fontSize: 19, fontWeight: 600, color: "#111827" }}>
+ <h3 style={{ margin: "0 0 6px", fontSize: 19, fontWeight: 600, color: "var(--foreground)" }}>
  Request reservation cancellation?
  </h3>
- <p style={{ margin: 0, color: "#475569", fontSize: 13, lineHeight: 1.6 }}>
+ <p style={{ margin: 0, color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.6 }}>
  {RESERVATION_FEE_NON_REFUNDABLE_NOTICE} Your bed will only be released if admin approves your request.
  </p>
  </div>
@@ -812,14 +813,14 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
 
  <div style={{ marginTop: 18 }}>
  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
- <span style={{ color: "#1E293B", fontSize: 13, fontWeight: 700 }}>
+ <span style={{ color: "var(--foreground)", fontSize: 13, fontWeight: 700 }}>
  Reason for cancellation (optional)
  </span>
  <span
  style={{
  fontSize: 11,
  fontWeight: 600,
- color: cancellationReason.length >= MAX_CANCELLATION_REASON_LENGTH ? "#DC2626" : "#64748B",
+ color: cancellationReason.length >= MAX_CANCELLATION_REASON_LENGTH ? "var(--danger)" : "var(--muted-foreground)",
  }}
  >
  {cancellationReason.length} / {MAX_CANCELLATION_REASON_LENGTH}
@@ -840,9 +841,9 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  borderRadius: 16,
  fontSize: 12,
  fontWeight: 500,
- border: isSelected ? "1px solid #0A2463" : "1px solid #CBD5E1",
- background: isSelected ? "#0A2463" : "#F8FAFC",
- color: isSelected ? "#FFFFFF" : "#334155",
+ border: isSelected ? "1px solid var(--secondary)" : "1px solid var(--border)",
+ background: isSelected ? "var(--secondary)" : "var(--muted)",
+ color: isSelected ? "var(--secondary-foreground)" : "var(--foreground)",
  cursor: isRequestingCancellation ? "default" : "pointer",
  transition: "all 0.15s ease",
  }}
@@ -865,11 +866,11 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  style={{
  width: "100%",
  resize: "vertical",
- border: "1px solid #CBD5E1",
+ border: "1px solid var(--border)",
  borderRadius: 10,
  padding: "10px 12px",
  fontSize: 13,
- color: "#0F172A",
+ color: "var(--foreground)",
  outline: "none",
  boxSizing: "border-box",
  fontFamily: "inherit",
@@ -884,10 +885,10 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  alignItems: "flex-start",
  marginTop: 16,
  padding: "14px 16px",
- background: "#FFF7ED",
- border: "1px solid #FED7AA",
+ background: "var(--warning-light)",
+ border: "1px solid var(--warning)",
  borderRadius: 10,
- color: "#7C2D12",
+ color: "var(--warning-dark)",
  fontSize: 13,
  lineHeight: 1.5,
  cursor: isRequestingCancellation ? "default" : "pointer",
@@ -898,7 +899,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  checked={acknowledgedCancellationPolicy}
  onChange={(event) => setAcknowledgedCancellationPolicy(event.target.checked)}
  disabled={isRequestingCancellation}
- style={{ marginTop: 2, accentColor: "#DC2626", width: 16, height: 16, cursor: isRequestingCancellation ? "default" : "pointer" }}
+ style={{ marginTop: 2, accentColor: "var(--danger)", width: 16, height: 16, cursor: isRequestingCancellation ? "default" : "pointer" }}
  />
  <span>
  I understand that the <strong>reservation fee is non-refundable</strong> even if my cancellation request is approved.
@@ -913,9 +914,9 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  style={{
  padding: "10px 20px",
  borderRadius: 8,
- border: "1px solid #CBD5E1",
- background: "#fff",
- color: "#0F172A",
+ border: "1px solid var(--border)",
+ background: "var(--card)",
+ color: "var(--foreground)",
  fontSize: 13,
  fontWeight: 700,
  cursor: isRequestingCancellation ? "default" : "pointer",
@@ -931,8 +932,8 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  padding: "10px 20px",
  borderRadius: 8,
  border: "none",
- background: "#E54D4D",
- color: "#fff",
+ background: "var(--danger)",
+ color: "var(--danger-foreground)",
  fontSize: 13,
  fontWeight: 700,
  cursor: isRequestingCancellation || !acknowledgedCancellationPolicy ? "default" : "pointer",

@@ -12,8 +12,8 @@ export default function ReservationPageSkeleton() {
       <div
         className="p-6 rounded-xl border bg-card flex flex-col gap-4"
         style={{
-          borderColor: "var(--border-divider, #e5e7eb)",
-          background: "var(--surface-card, #ffffff)",
+          borderColor: "var(--border-divider, var(--border))",
+          background: "var(--surface-card, var(--text-inverse))",
         }}
       >
         <div className="flex justify-between items-center">
@@ -37,8 +37,8 @@ export default function ReservationPageSkeleton() {
         <div
           className="lg:col-span-2 p-6 rounded-xl border bg-card space-y-5"
           style={{
-            borderColor: "var(--border-divider, #e5e7eb)",
-            background: "var(--surface-card, #ffffff)",
+            borderColor: "var(--border-divider, var(--border))",
+            background: "var(--surface-card, var(--text-inverse))",
           }}
         >
           <SkeletonPulse width="200px" height="20px" />
@@ -72,8 +72,8 @@ export default function ReservationPageSkeleton() {
         <div
           className="p-6 rounded-xl border bg-card space-y-4 h-fit"
           style={{
-            borderColor: "var(--border-divider, #e5e7eb)",
-            background: "var(--surface-card, #ffffff)",
+            borderColor: "var(--border-divider, var(--border))",
+            background: "var(--surface-card, var(--text-inverse))",
           }}
         >
           <SkeletonPulse width="140px" height="18px" />

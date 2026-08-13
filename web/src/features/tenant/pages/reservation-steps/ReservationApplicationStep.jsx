@@ -231,7 +231,7 @@ const ReservationApplicationStep = ({
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "start" });
         el.style.transition = "background-color 0.3s ease";
-        el.style.backgroundColor = "rgba(255, 140, 66, 0.12)";
+        el.style.backgroundColor = "color-mix(in srgb, var(--foreground) 12%, transparent)";
         setTimeout(() => {
           el.style.backgroundColor = "";
         }, 1500);

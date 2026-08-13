@@ -52,7 +52,7 @@ const RoomInfoBanner = ({ room, pricingDisplay }) => {
   return (
     <div className="rf-room-banner">
       <div className="rf-room-banner-icon">
-        <Home size={18} color="#FF8C42" />
+        <Home size={18} color="#ffffff" />
       </div>
       <div className="rf-room-banner-info">
         <div className="rf-room-banner-name">{roomName}</div>

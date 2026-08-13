@@ -2,7 +2,7 @@ import React from "react";
 import PhoneInput from "../../../../../shared/components/PhoneInput";
 
 const errBorder = (show, value) =>
- show && !value ? "1.5px solid #dc2626" : undefined;
+ show && !value ? "1.5px solid var(--danger)" : undefined;
 
 /**
  * Section 3: Emergency Contact — name, relationship, phone, health concerns.
@@ -40,7 +40,7 @@ const EmergencyContactSection = ({
  }
  style={{
  border: fieldErrors.emergencyContactName
- ? "1.5px solid #dc2626"
+ ? "1.5px solid var(--danger)"
  : errBorder(showValidationErrors, emergencyContactName),
  }}
  />
@@ -64,7 +64,7 @@ const EmergencyContactSection = ({
  }}
  style={{
  border: fieldErrors.emergencyRelationship
- ? "1.5px solid #dc2626"
+ ? "1.5px solid var(--danger)"
  : errBorder(showValidationErrors, emergencyRelationship),
  }}
  >
@@ -147,7 +147,7 @@ const EmergencyContactSection = ({
  maxLength={500}
  style={{
  border: fieldErrors.healthConcerns
- ? "1.5px solid #dc2626"
+ ? "1.5px solid var(--danger)"
  : errBorder(showValidationErrors, healthConcerns),
  }}
  />
@@ -159,7 +159,7 @@ const EmergencyContactSection = ({
  : fieldErrors.healthConcerns
  }
  />
- <span style={{ fontSize: "11px", color: "#9CA3AF" }}>
+ <span style={{ fontSize: "11px", color: "var(--neutral)" }}>
  {healthConcerns.length}/500
  </span>
  </div>

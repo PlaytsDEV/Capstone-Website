@@ -5,7 +5,7 @@ import PhoneInput from "../../../../../shared/components/PhoneInput";
 import { validateBirthday } from "../../../utils/reservationValidation";
 
 const errBorder = (show, value) =>
-  show && !value ? "1.5px solid #dc2626" : undefined;
+  show && !value ? "1.5px solid var(--danger)" : undefined;
 
 const ID_TYPE_LABELS = {
   national_id: "National ID",
@@ -609,7 +609,7 @@ const NameField = ({
       style={{
         border:
           (showValidationErrors && required && !value) || errors[fieldKey]
-            ? "1.5px solid #dc2626"
+            ? "1.5px solid var(--danger)"
             : undefined,
       }}
     />
