@@ -1,7 +1,7 @@
 import React from "react";
 
 /**
- * Helper to wrap dynamic import calls in React.lazy with automatic retry
+ * Helper to wrap dynamic import calls in React.lazy with automatic in-memory retry,
  * and session-guarded page reload on module resolution/fetch failure.
  *
  * @param {Function} importFn - Dynamic import function, e.g. () => import('./SomePage')
@@ -10,12 +10,26 @@ import React from "react";
 const lazyWithRetry = (importFn) =>
   React.lazy(async () => {
     const pageKey = `module_retry_${window.location.pathname}`;
+
+    // Attempt in-memory retry first to handle transient Vite HMR / transform delays
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const component = await importFn();
+        sessionStorage.removeItem(pageKey);
+        return component;
+      } catch (err) {
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+      }
+    }
+
     try {
       const component = await importFn();
       sessionStorage.removeItem(pageKey);
       return component;
     } catch (error) {
-      console.warn("[lazyWithRetry] Dynamic import failed:", error);
+      console.warn("[lazyWithRetry] Dynamic import failed after retry:", error);
       const isAlreadyRetried = sessionStorage.getItem(pageKey);
       if (!isAlreadyRetried) {
         sessionStorage.setItem(pageKey, "true");
@@ -28,22 +42,25 @@ const lazyWithRetry = (importFn) =>
   });
 
 export const LandingPage = lazyWithRetry(
-  () => import("../features/public/pages/LandingPage"),
+  () => import("../features/public/pages/LandingPage.jsx"),
 );
 export const PrivacyPolicyPage = lazyWithRetry(
-  () => import("../features/public/pages/PrivacyPolicyPage"),
+  () => import("../features/public/pages/PrivacyPolicyPage.jsx"),
 );
 export const TermsOfServicePage = lazyWithRetry(
-  () => import("../features/public/pages/TermsOfServicePage"),
+  () => import("../features/public/pages/TermsOfServicePage.jsx"),
 );
 export const NotFoundPage = lazyWithRetry(
-  () => import("../features/public/pages/NotFoundPage"),
+  () => import("../features/public/pages/NotFoundPage.jsx"),
 );
 export const SignUp = lazyWithRetry(
   () => import("../features/public/pages/SignUp.jsx"),
 );
 export const AuthAction = lazyWithRetry(
   () => import("../features/tenant/pages/AuthAction.jsx"),
+);
+export const PublicStayVerificationPage = lazyWithRetry(
+  () => import("../features/public/pages/PublicStayVerificationPage.jsx"),
 );
 
 export const SignIn = lazyWithRetry(
@@ -59,65 +76,62 @@ export const ResetPassword = lazyWithRetry(
   () => import("../features/tenant/pages/ResetPassword.jsx"),
 );
 export const CheckAvailabilityPage = lazyWithRetry(
-  () => import("../features/tenant/pages/CheckAvailabilityPage"),
+  () => import("../features/tenant/pages/CheckAvailabilityPage.jsx"),
 );
 export const ReservationFlowPage = lazyWithRetry(
-  () => import("../features/tenant/pages/ReservationFlowPage"),
+  () => import("../features/tenant/pages/ReservationFlowPage.jsx"),
 );
 export const ProfilePage = lazyWithRetry(
-  () => import("../features/tenant/pages/ProfilePage"),
+  () => import("../features/tenant/pages/ProfilePage.jsx"),
 );
 export const ContractsPage = lazyWithRetry(
-  () => import("../features/tenant/pages/ContractsPage"),
+  () => import("../features/tenant/pages/ContractsPage.jsx"),
 );
 export const TenantBillingPage = lazyWithRetry(
-  () => import("../features/tenant/pages/BillingPage"),
+  () => import("../features/tenant/pages/BillingPage.jsx"),
 );
 export const TenantMaintenancePage = lazyWithRetry(
-  () => import("../features/tenant/pages/MaintenanceWorkspacePage"),
+  () => import("../features/tenant/pages/MaintenanceWorkspacePage.jsx"),
 );
 export const TenantAnnouncementsPage = lazyWithRetry(
-  () => import("../features/tenant/pages/AnnouncementsPage"),
-);
-export const TenantSurveysPage = lazyWithRetry(
-  () => import("../features/tenant/pages/SurveysPage.jsx"),
+  () => import("../features/tenant/pages/AnnouncementsPage.jsx"),
 );
 
 export const AdminLayout = lazyWithRetry(
-  () => import("../features/admin/components/AdminLayout"),
+  () => import("../features/admin/components/AdminLayout.jsx"),
 );
 export const AdminDashboardPage = lazyWithRetry(
-  () => import("../features/admin/pages/Dashboard"),
+  () => import("../features/admin/pages/Dashboard.jsx"),
 );
 export const ReservationsPage = lazyWithRetry(
-  () => import("../features/admin/pages/ReservationsPage"),
+  () => import("../features/admin/pages/ReservationsPage.jsx"),
 );
 export const RoomAvailabilityPage = lazyWithRetry(
-  () => import("../features/admin/pages/RoomAvailabilityPage"),
+  () => import("../features/admin/pages/RoomAvailabilityPage.jsx"),
 );
 export const TenantsWorkspacePage = lazyWithRetry(
-  () => import("../features/admin/pages/TenantsWorkspacePage"),
+  () => import("../features/admin/pages/TenantsWorkspacePage.jsx"),
 );
 export const AdminContractsPage = lazyWithRetry(
-  () => import("../features/admin/pages/AdminContractsPage"),
+  () => import("../features/admin/pages/AdminContractsPage.jsx"),
 );
 export const AuditLogsPage = lazyWithRetry(
-  () => import("../features/admin/pages/AuditLogsPage"),
+  () => import("../features/admin/pages/AuditLogsPage.jsx"),
 );
 export const UserManagementPage = lazyWithRetry(
-  () => import("../features/admin/pages/UserManagementPage"),
+  () => import("../features/admin/pages/UserManagementPage.jsx"),
 );
 export const AdminBillingPage = lazyWithRetry(
-  () => import("../features/admin/pages/AdminBillingPage"),
+  () => import("../features/admin/pages/AdminBillingPage.jsx"),
 );
 export const AdminAnnouncementsPage = lazyWithRetry(
-  () => import("../features/admin/pages/AdminAnnouncementsPage"),
+  () => import("../features/admin/pages/AdminAnnouncementsPage.jsx"),
 );
 export const AdminChatPage = lazyWithRetry(
   () => import("../features/admin/pages/AdminChatPage.jsx"),
 );
 export const InquiriesPage = lazyWithRetry(
-  () => import("../features/admin/pages/InquiriesPage"),
+  () => import("../features/admin/pages/InquiriesPage.jsx"),
 );
 export const MaintenancePage = lazyWithRetry(
   () => import("../features/admin/pages/AdminMaintenancePage.jsx"),
@@ -128,21 +142,18 @@ export const AnalyticsPage = lazyWithRetry(
 export const AnalyticsDetailsPage = lazyWithRetry(
   () => import("../features/admin/pages/AnalyticsDetailsPage.jsx"),
 );
-export const SurveyAnalyticsPage = lazyWithRetry(
-  () => import("../features/admin/pages/SurveyAnalyticsPage.jsx"),
-);
 export const BranchManagementPage = lazyWithRetry(
-  () => import("../features/super-admin/pages/BranchManagementPage"),
+  () => import("../features/super-admin/pages/BranchManagementPage.jsx"),
 );
 export const RolePermissionsPage = lazyWithRetry(
-  () => import("../features/super-admin/pages/RolePermissionsPage"),
+  () => import("../features/super-admin/pages/RolePermissionsPage.jsx"),
 );
 export const SystemSettingsPage = lazyWithRetry(
-  () => import("../features/super-admin/pages/SystemSettingsPage"),
+  () => import("../features/super-admin/pages/SystemSettingsPage.jsx"),
 );
 export const AdminNotificationsPage = lazyWithRetry(
-  () => import("../features/admin/pages/AdminNotificationsPage"),
+  () => import("../features/admin/pages/AdminNotificationsPage.jsx"),
 );
 export const SystemBackupPage = lazyWithRetry(
-  () => import("../features/admin/pages/SystemBackupPage"),
+  () => import("../features/admin/pages/SystemBackupPage.jsx"),
 );

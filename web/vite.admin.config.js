@@ -21,6 +21,7 @@ export default defineConfig({
     exclude: [],
   },
   optimizeDeps: {
+    include: ["jspdf", "html2canvas"],
     esbuildOptions: {
       loader: {
         ".js": "jsx",

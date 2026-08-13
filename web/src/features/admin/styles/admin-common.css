@@ -485,7 +485,7 @@
   box-shadow: var(--shadow-xs);
 }
 
-/* Shared Analytics section navigation, including nested survey analytics. */
+/* Shared Analytics section navigation. */
 .analytics-tabs {
   display: flex;
   overflow-x: auto;

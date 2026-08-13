@@ -46,6 +46,8 @@ import {
   TransferTenantModal,
   MoveOutModal,
 } from "./TenantWorkspaceModals";
+import DigitalContractPaper from "../../tenant/components/contracts/DigitalContractPaper";
+import SignedContractUploadSection from "./SignedContractUploadSection";
 
 const WARNING_DETAILS_MAP = {
   room_history_incomplete: {
@@ -354,6 +356,44 @@ const navigate = useNavigate();
   const [previewDoc, setPreviewDoc] = useState(null);
   const [isHistoryFolded, setIsHistoryFolded] = useState(false);
   const [isDocsPanelOpen, setIsDocsPanelOpen] = useState(true);
+  const [downloadingProof, setDownloadingProof] = useState(false);
+  const [showDigitalContractModal, setShowDigitalContractModal] = useState(false);
+  const [digitalContractData, setDigitalContractData] = useState(null);
+  const [loadingDigitalContract, setLoadingDigitalContract] = useState(false);
+
+  const handleDownloadStayProof = async () => {
+    setDownloadingProof(true);
+    try {
+      const targetId = dedicatedContract?._id || dedicatedContract?.contractNumber || tenant?.reservationId || tenant?.reservationCode || tenant?._id || tenant?.id;
+      const blob = await contractApi.getStayProofFile(targetId, true);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Lilycrest-Lease-Contract-${dedicatedContract?.contractNumber || tenant?.reservationCode || "Tenant"}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      showNotification("Failed to generate Lease Contract PDF", "error");
+    } finally {
+      setDownloadingProof(false);
+    }
+  };
+
+  const handleOpenDigitalContract = async () => {
+    setLoadingDigitalContract(true);
+    setShowDigitalContractModal(true);
+    try {
+      const targetId = dedicatedContract?._id || dedicatedContract?.contractNumber || tenant?.reservationId || tenant?.reservationCode || tenant?._id || tenant?.id;
+      const res = await contractApi.getStayProofData(targetId);
+      if (res?.stayProof) {
+        setDigitalContractData(res.stayProof);
+      }
+    } catch {
+      // fallback to tenant local fields if error
+    } finally {
+      setLoadingDigitalContract(false);
+    }
+  };
 
   const toggleWarningDetails = (id) => {
     setExpandedWarnings((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -611,7 +651,13 @@ const navigate = useNavigate();
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Bed Position</span>
-                    <span className="font-medium text-foreground">{formatBedPosition(tenant.bed)}</span>
+                    <span className="font-medium text-foreground">
+                      {String(tenant.roomType || tenant.room || "").toLowerCase().includes("private") ||
+                      String(tenant.bed || "").toLowerCase().includes("private") ||
+                      String(tenant.bed || "").toLowerCase().includes("entire")
+                        ? "Private Room"
+                        : formatBedPosition(tenant.bed)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Move-in Date</span>
@@ -796,63 +842,68 @@ const navigate = useNavigate();
                 {/* TAB 1: OVERVIEW & CONTRACT */}
                 {activeTab === "overview" && (
                   <div className="space-y-4">
-                    {/* Lease Contract Details Card */}
+                    {/* Digital Stay Record & Tenancy Proof Card */}
                     <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
                       <h4 className="text-xs font-semibold text-foreground flex items-center justify-between uppercase tracking-wide">
                         <span className="flex items-center gap-1.5">
                           <FileText className="w-3.5 h-3.5 text-primary" />
-                          Lease Contract Details
+                          Digital Stay Record &amp; Proof
                         </span>
-                        {dedicatedContract && (
-                          <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs ${contractConfig.color}`}>
-                            <div className={`w-1.5 h-1.5 rounded-full ${contractConfig.dot}`} />
-                            <span className="font-semibold">{formatContractStatus(dedicatedContract.status)}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs text-success font-bold bg-success-light">
+                          <div className="w-1.5 h-1.5 rounded-full bg-success" />
+                          <span>Verified Active Stay</span>
+                        </div>
                       </h4>
 
-                      {dedicatedContract ? (
-                        <div className="space-y-3">
-                          <div className="grid grid-cols-2 gap-4 text-xs">
-                            <div>
-                              <span className="text-muted-foreground block text-[11px]">Contract End Date</span>
-                              <span className="font-semibold text-foreground">{formatDate(dedicatedContract.leaseEndDate)}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground block text-[11px]">Contract Reference</span>
-                              <span className="font-semibold text-foreground">{dedicatedContract.contractNumber || "Pending"}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground block text-[11px]">Next Action Required</span>
-                              <span className="font-semibold text-foreground">{getContractNextAction(dedicatedContract.status)}</span>
-                            </div>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Move-in Date</span>
+                            <span className="font-semibold text-foreground">{formatDate(dedicatedContract?.leaseStartDate || tenant.moveInDate || tenant.moveIn)}</span>
                           </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Lease End Date</span>
+                            <span className="font-semibold text-foreground">{formatDate(dedicatedContract?.leaseEndDate || tenant.contractEnd || tenant.moveOut || tenant.leaseEndDate)}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Stay Reference</span>
+                            <span className="font-semibold font-mono text-foreground">{dedicatedContract?.contractNumber || tenant.reservationCode || "LIL-RES-RECORD"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Monthly Rent Rate</span>
+                            <span className="font-semibold text-foreground">{formatMoney(tenant.monthlyRate || dedicatedContract?.approvedMonthlyRate)}</span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                           <button
                             type="button"
-                            className="w-full mt-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm flex items-center justify-center gap-2"
-                            onClick={() => { onClose(); navigate(`/admin/contracts/${dedicatedContract._id}`); }}
+                            className="w-full px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                            onClick={handleOpenDigitalContract}
                           >
-                            <FileText className="w-3.5 h-3.5" />
-                            View Detailed Contract Record
+                            <Eye className="w-3.5 h-3.5" />
+                            View Digital Contract
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={downloadingProof}
+                            className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-xs font-semibold hover:bg-muted transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                            onClick={handleDownloadStayProof}
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            {downloadingProof ? "Generating PDF…" : "Download Lease Contract (PDF)"}
                           </button>
                         </div>
-                      ) : (
-                        <div className="py-4 text-center space-y-2">
-                          <p className="text-xs text-muted-foreground">
-                            {contractLookupDone ? "No dedicated Contract record exists for this tenant." : "Checking for a dedicated Contract record…"}
-                          </p>
-                          {contractLookupDone && (
-                            <button
-                              type="button"
-                              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
-                              onClick={() => { onClose(); navigate("/admin/contracts?create=true"); }}
-                            >
-                              Create Contract Draft
-                            </button>
-                          )}
-                        </div>
-                      )}
+                      </div>
                     </div>
+
+                    {/* Wet-Signed & Scanned Contract Upload Section */}
+                    <SignedContractUploadSection
+                      tenant={tenant}
+                      dedicatedContract={dedicatedContract}
+                      onContractUpdated={(updated) => setDedicatedContract(updated)}
+                    />
 
                     {/* Submitted Tenant Application Form Card */}
                     <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
@@ -1147,7 +1198,7 @@ const navigate = useNavigate();
                         <MapPin className="w-3.5 h-3.5 text-primary" />
                         Current Room Assignment
                       </h4>
-                      <div className="p-3 bg-card border border-border rounded-lg text-xs space-y-1.5">
+                      <div className="p-3 bg-card border border-border rounded-lg text-xs space-y-2">
                         <div className="flex justify-between font-semibold text-foreground">
                           <span>{tenant.branch} — {tenant.room}</span>
                           <span className="text-success font-medium">Current</span>
@@ -1155,6 +1206,25 @@ const navigate = useNavigate();
                         <div className="text-muted-foreground">
                           Bed: <span className="text-foreground capitalize font-medium">{tenant.bed || "N/A"}</span> • Move-in Date: {tenant.moveInDate || tenant.moveIn || "N/A"}
                         </div>
+                        {dedicatedContract && (
+                          <div className="pt-2 border-t border-border/40 flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 text-muted-foreground">
+                              <FileText className="w-3.5 h-3.5 text-primary" />
+                              <span>Current Lease Contract: <strong className="text-foreground">{dedicatedContract.contractNumber || "Pending"}</strong></span>
+                            </div>
+                            <button
+                              type="button"
+                              className="text-primary hover:underline font-semibold flex items-center gap-1 text-xs"
+                              onClick={() => {
+                                onClose();
+                                navigate(`/admin/contracts/${dedicatedContract._id}`);
+                              }}
+                            >
+                              <FileCheck className="w-3.5 h-3.5" />
+                              View Contract Proof
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1203,6 +1273,7 @@ const navigate = useNavigate();
                                   try { return new Date(room.moveOutDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }); }
                                   catch { return room.moveOutDate; }
                                 })();
+                                const stayContract = room.contract || (isCurrent ? dedicatedContract : null);
                                 return (
                                   <div key={room.id || room._id || idx} className="stay-timeline__entry">
                                     <div className="stay-timeline__left">
@@ -1212,7 +1283,7 @@ const navigate = useNavigate();
                                     <div className="stay-timeline__body">
                                       <div className="stay-timeline__header">
                                         <span className="stay-timeline__room">
-                                          {room.room || "Unknown Room"}
+                                          {room.room || room.roomName || "Unknown Room"}
                                           {room.bed ? ` \u2014 ${room.bed}` : ""}
                                         </span>
                                         <span className={`stay-timeline__badge ${isCurrent ? "stay-timeline__badge--current" : "stay-timeline__badge--past"}`}>
@@ -1229,6 +1300,34 @@ const navigate = useNavigate();
                                           </span>
                                         )}
                                       </div>
+
+                                      {/* Contract Proof for this Stay */}
+                                      {stayContract && (
+                                        <div className="mt-2.5 pt-2 border-t border-border/40 flex items-center justify-between gap-2 flex-wrap text-xs bg-muted/20 p-2 rounded-lg">
+                                          <div className="flex items-center gap-1.5 min-w-0">
+                                            <FileText className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                                            <span className="text-muted-foreground truncate">
+                                              Contract: <strong className="text-foreground">{stayContract.contractNumber}</strong>
+                                            </span>
+                                            {stayContract.purpose === "replacement" && (
+                                              <span className="text-[10px] bg-primary/10 text-primary font-semibold px-1.5 py-0.5 rounded flex-shrink-0">
+                                                Transfer Replacement
+                                              </span>
+                                            )}
+                                          </div>
+                                          <button
+                                            type="button"
+                                            className="text-primary hover:underline font-semibold flex items-center gap-1 text-xs ml-auto flex-shrink-0"
+                                            onClick={() => {
+                                              onClose();
+                                              navigate(`/admin/contracts/${stayContract.id || stayContract._id}`);
+                                            }}
+                                          >
+                                            <FileCheck className="w-3.5 h-3.5" />
+                                            View Contract Proof
+                                          </button>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 );
@@ -1736,6 +1835,56 @@ const navigate = useNavigate();
             </div>
           )}
         </div>
+      </div>
+    </div>
+  )}
+
+  {showDigitalContractModal && (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto"
+      onClick={() => setShowDigitalContractModal(false)}
+    >
+      <div
+        className="bg-card border border-border rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-4 sm:p-6 shadow-2xl space-y-4 my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-border/80 pb-3">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-bold text-foreground">Official First JRAC Lease Contract</h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowDigitalContractModal(false)}
+            className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {loadingDigitalContract && !digitalContractData ? (
+          <div className="py-16 text-center text-muted-foreground text-xs animate-pulse">
+            Loading contract data and legal clauses…
+          </div>
+        ) : (
+          <DigitalContractPaper
+            stayData={digitalContractData || {
+              tenantName: tenant?.fullName || tenant?.name,
+              roomNumber: tenant?.roomNumber || tenant?.roomName,
+              bedLabel: tenant?.bedNumber || tenant?.bedLabel,
+              roomType: tenant?.roomType,
+              branchName: tenant?.branchName || tenant?.branch,
+              leaseStartDate: tenant?.startDate || tenant?.leaseStart,
+              leaseEndDate: tenant?.endDate || tenant?.leaseEnd,
+              monthlyRent: tenant?.monthlyRent || tenant?.rentAmount,
+              securityDeposit: tenant?.securityDeposit,
+              referenceNumber: dedicatedContract?.contractNumber || tenant?.reservationCode || "LIL-CONTRACT",
+            }}
+            contract={dedicatedContract}
+            onDownloadPdf={handleDownloadStayProof}
+            isDownloading={downloadingProof}
+          />
+        )}
       </div>
     </div>
   )}

@@ -18,7 +18,7 @@ import {
  formatAnnouncementCategory,
  getAnnouncementCategoryMeta,
 } from "../../../../shared/utils/announcementConfig";
-import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
+import { AnnouncementListSkeleton } from "../../../../shared/components/LoadingSkeletons";
 import "../../../admin/styles/design-tokens.css";
 
 const CATEGORY_ICONS = {
@@ -70,12 +70,20 @@ const fmtDate = (value) =>
 const getAnnouncementId = (announcement) => announcement.id || announcement._id;
 
 const LoadingState = () => (
- <div style={s.root}>
+ <div style={{ width: "100%" }}>
  <div style={s.heading}>
+ <div>
  <h1 style={s.title}>Announcements</h1>
- <p style={s.subtitle}>Stay updated with branch notices, policy versions, and required acknowledgments</p>
+ <p style={s.subtitle}>
+ Stay updated with branch notices, policy versions, and required acknowledgments.
+ </p>
  </div>
- <ListSkeleton rows={4} />
+ <div
+ className="sk-shimmer"
+ style={{ width: 68, height: 26, borderRadius: 999, flexShrink: 0 }}
+ />
+ </div>
+ <AnnouncementListSkeleton count={3} />
  </div>
 );
 

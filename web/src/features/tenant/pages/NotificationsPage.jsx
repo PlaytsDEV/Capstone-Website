@@ -1,3 +1,5 @@
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Bell,
   CheckCheck,
@@ -12,10 +14,34 @@ import {
   FileSpreadsheet,
   Wrench,
   Lock,
+  Unlock,
   Megaphone,
   Info,
 } from "lucide-react";
+import { useAuth } from "../../../shared/hooks/useAuth";
+import {
+  useNotifications,
+  useUnreadCount,
+  useMarkAsRead,
+  useMarkAllAsRead,
+} from "../../../shared/hooks/queries/useNotifications";
+import { getVisibleNotificationsForUser } from "../../../shared/utils/notificationVisibility";
+import {
+  formatNotificationTitle,
+  cleanNotificationMessage,
+} from "../../../shared/utils/notification";
 import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
+
+const ALL_FILTER_TABS = [
+  { key: "all", label: "All", roles: ["applicant", "tenant"] },
+  { key: "reservation", label: "Reservations", roles: ["applicant"] },
+  { key: "application", label: "Applications", roles: ["applicant"] },
+  { key: "visit", label: "Visits", roles: ["applicant"] },
+  { key: "payment", label: "Payments", roles: ["applicant", "tenant"] },
+  { key: "billing", label: "Billing", roles: ["tenant"] },
+  { key: "maintenance", label: "Maintenance", roles: ["tenant"] },
+  { key: "announcement", label: "Announcements", roles: ["tenant"] },
+];
 
 function NotificationIcon({ type }) {
   const iconProps = { size: 18, strokeWidth: 2 };
@@ -120,7 +146,11 @@ export default function NotificationsPage() {
 
   const handleClick = (notification) => {
     if (!notification.isRead) markAsRead.mutate(String(notification._id));
-    if (notification.actionUrl) navigate(notification.actionUrl);
+    if (notification.type === "announcement") {
+      navigate("/applicant/announcements");
+    } else if (notification.actionUrl) {
+      navigate(notification.actionUrl);
+    }
   };
 
   return (
@@ -233,14 +263,16 @@ export default function NotificationsPage() {
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 14, fontWeight: n.isRead ? 500 : 700, color: "#111827", margin: 0 }}>
-                  {n.title}
+                  {formatNotificationTitle(n.title)}
                 </p>
                 <p style={{ fontSize: 13, color: "#6B7280", margin: "3px 0 0", lineHeight: 1.5 }}>
-                  {n.message}
+                  {cleanNotificationMessage(n.message)}
                 </p>
-                <span style={{ fontSize: 11, color: "#9CA3AF", marginTop: 5, display: "block" }}>
-                  {timeAgo(n.createdAt)}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+                  <span style={{ fontSize: 11, color: "#9CA3AF" }}>
+                    {timeAgo(n.createdAt)}
+                  </span>
+                </div>
               </div>
               {!n.isRead && (
                 <span

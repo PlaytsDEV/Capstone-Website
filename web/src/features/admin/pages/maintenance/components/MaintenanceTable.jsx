@@ -1,5 +1,21 @@
 import { useMemo } from "react";
-import { formatMaintenanceStatus, getMaintenanceTypeMeta, getMaintenanceUrgencyMeta } from "../../../../../shared/utils/maintenanceConfig";
+import {
+  Archive,
+  CheckCircle2,
+  CheckSquare,
+  Clock,
+  Download,
+  Eye,
+  Layers,
+  Square,
+  Wrench,
+  X,
+} from "lucide-react";
+import {
+  formatMaintenanceStatus,
+  getMaintenanceTypeMeta,
+  getMaintenanceUrgencyMeta,
+} from "../../../../../shared/utils/maintenanceConfig";
 import { DataTable } from "../../../components/shared";
 import { BranchTableText } from "./BranchBadge";
 import {
@@ -20,9 +36,67 @@ export function MaintenanceTable({
   currentPage = 1,
   onPageChange,
   onRowClick,
+  selectedRequestIds = [],
+  onToggleSelect,
+  onSelectAll,
+  onBulkUpdateStatus,
+  onBulkArchive,
+  onBulkExport,
+  isBulkUpdating = false,
 }) {
+  const allPageIds = useMemo(() => requests.map((r) => r.request_id), [requests]);
+  const isAllSelected =
+    allPageIds.length > 0 && allPageIds.every((id) => selectedRequestIds.includes(id));
+  const isSomeSelected =
+    selectedRequestIds.length > 0 && !isAllSelected;
+
   const columns = useMemo(
     () => [
+      ...(onToggleSelect
+        ? [
+            {
+              key: "select",
+              label: (
+                <div
+                  className="flex items-center justify-center"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectAll?.(allPageIds);
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = isSomeSelected;
+                    }}
+                    onChange={() => onSelectAll?.(allPageIds)}
+                    className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                  />
+                </div>
+              ),
+              render: (row) => {
+                const isChecked = selectedRequestIds.includes(row.request_id);
+                return (
+                  <div
+                    className="flex items-center justify-center"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSelect(row.request_id);
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => onToggleSelect(row.request_id)}
+                      className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                    />
+                  </div>
+                );
+              },
+            },
+          ]
+        : []),
       {
         key: "tenant",
         label: "Tenant",
@@ -96,7 +170,7 @@ export function MaintenanceTable({
             <div className="max-w-[240px] truncate text-sm text-muted-foreground">
               {row.description}
             </div>
-            <div className="text-xs text-muted-foreground">{row.request_id}</div>
+            <div className="text-xs text-muted-foreground font-mono">{row.request_id}</div>
           </div>
         ),
       },
@@ -149,8 +223,12 @@ export function MaintenanceTable({
       },
       {
         key: "assigned_to",
-        label: "Assigned Service Provider",
-        render: (row) => getAssignedProviderName(row) || "Unassigned",
+        label: "Assigned Technician",
+        render: (row) => (
+          <span className="text-xs font-medium text-card-foreground">
+            {getAssignedProviderName(row) || <span className="text-muted-foreground italic">Unassigned</span>}
+          </span>
+        ),
       },
       {
         key: "created_at",
@@ -159,12 +237,67 @@ export function MaintenanceTable({
         render: (row) => fmtDate(row.created_at),
       },
     ],
-    [],
+    [allPageIds, isAllSelected, isSomeSelected, onSelectAll, onToggleSelect, selectedRequestIds],
   );
 
   return (
-    <div className="mt-4 border-t border-border pt-4">
-      <div className="overflow-hidden rounded-lg border border-border">
+    <div className="mt-4 space-y-4">
+      {/* Sticky Floating Bulk Action Bar */}
+      {selectedRequestIds.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3.5 shadow-md animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+              {selectedRequestIds.length}
+            </span>
+            <span className="text-xs font-semibold text-card-foreground">
+              {selectedRequestIds.length} request{selectedRequestIds.length === 1 ? "" : "s"} selected
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onBulkUpdateStatus?.("viewed")}
+              disabled={isBulkUpdating}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground hover:bg-muted"
+            >
+              <Eye size={13} />
+              <span>Mark as Viewed</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onBulkArchive?.()}
+              disabled={isBulkUpdating}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground hover:bg-muted"
+            >
+              <Archive size={13} />
+              <span>Archive</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onBulkExport?.()}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground hover:bg-muted"
+            >
+              <Download size={13} />
+              <span>Export Selected CSV</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onSelectAll?.([])}
+              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-card px-2.5 text-xs text-muted-foreground hover:bg-muted"
+              title="Clear selection"
+            >
+              <X size={13} />
+              <span>Clear</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <DataTable
           columns={columns}
           data={requests}
@@ -198,7 +331,7 @@ export function AnalyticsRequestsTable({
       { key: "requestTypeLabel", label: "Request Type" },
       { key: "urgencyLabel", label: "Urgency" },
       { key: "statusLabel", label: "Status" },
-      { key: "assignedProvider", label: "Assigned Service Provider" },
+      { key: "assignedProvider", label: "Assigned Technician" },
       { key: "createdAt", label: "Created", render: (row) => fmtDate(row.createdAt) },
       { key: "updatedAt", label: "Last Updated", render: (row) => fmtDate(row.updatedAt) },
       { key: "resolutionAt", label: "Resolution", render: (row) => row.resolutionAt ? fmtDate(row.resolutionAt) : "Not completed" },
@@ -231,7 +364,7 @@ export function AnalyticsRequestsTable({
               className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-muted"
               onClick={() => onRowClick?.(row.requestId)}
             >
-              View Request
+              View Details
             </button>
             <button
               type="button"
@@ -243,16 +376,6 @@ export function AnalyticsRequestsTable({
             >
               Admin Report
             </button>
-            <button
-              type="button"
-              className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-muted"
-              onClick={() => {
-                onRowClick?.(row.requestId);
-                onGenerateReport?.("tenant", row.requestId);
-              }}
-            >
-              Tenant Summary
-            </button>
           </div>
         ),
       },
@@ -261,16 +384,19 @@ export function AnalyticsRequestsTable({
   );
 
   return (
-    <DataTable
-      columns={analyticsColumns}
-      data={requests}
-      loading={isLoading}
-      pagination={{
-        pageSize: ITEMS_PER_PAGE,
-        currentPage,
-        onPageChange,
-      }}
-    />
+    <div className="overflow-hidden rounded-lg border border-border">
+      <DataTable
+        columns={analyticsColumns}
+        data={requests}
+        loading={isLoading}
+        onRowClick={(row) => onRowClick?.(row.requestId)}
+        pagination={{
+          pageSize: ITEMS_PER_PAGE,
+          currentPage,
+          onPageChange,
+        }}
+      />
+    </div>
   );
 }
 
@@ -281,17 +407,31 @@ export function ProviderPerformanceTable({
   const providerColumns = useMemo(
     () => [
       { key: "providerName", label: "Provider Name" },
-      { key: "contactNumber", label: "Contact Number", render: (row) => row.contactNumber || "Not recorded" },
-      { key: "assignedRequests", label: "Assigned" },
-      { key: "completedRequests", label: "Completed" },
-      { key: "activeRequests", label: "Pending/In Progress" },
-      { key: "overdueRequests", label: "Overdue" },
-      { key: "averageCompletionTimeLabel", label: "Avg Completion" },
-      { key: "lastAssignedRequestDate", label: "Last Assigned", render: (row) => row.lastAssignedRequestDate ? fmtDate(row.lastAssignedRequestDate) : "Not recorded" },
-      { key: "relatedRequestTypes", label: "Request Types", render: (row) => row.relatedRequestTypes?.join(", ") || "Not recorded" },
+      { key: "category", label: "Category" },
+      { key: "totalAssigned", label: "Total Assigned" },
+      { key: "activeJobs", label: "Active Jobs" },
+      { key: "completedJobs", label: "Completed" },
+      { key: "overdueJobs", label: "Overdue" },
+      {
+        key: "completionRate",
+        label: "Completion Rate",
+        render: (row) => (
+          <span className="font-semibold text-card-foreground">
+            {row.completionRate ? `${row.completionRate}%` : "N/A"}
+          </span>
+        ),
+      },
     ],
     [],
   );
 
-  return <DataTable columns={providerColumns} data={providers} loading={isLoading} />;
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <DataTable
+        columns={providerColumns}
+        data={providers}
+        loading={isLoading}
+      />
+    </div>
+  );
 }

@@ -18,6 +18,7 @@
  */
 
 import React, { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
 	Bell,
 	Check,
@@ -40,7 +41,10 @@ import {
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
 import { getVisibleNotificationsForUser } from "../../../../shared/utils/notificationVisibility";
-import { formatNotificationTitle, cleanNotificationMessage } from "../../../../shared/utils/notification";
+import {
+	formatNotificationTitle,
+	cleanNotificationMessage,
+} from "../../../../shared/utils/notification";
 import "../../../admin/styles/design-tokens.css";
 
 // ── Filter tabs per role ──
@@ -239,6 +243,7 @@ const getFilterPillStyle = (isActive, accentColor) => ({
 // ── Component ──
 
 const NotificationsTab = () => {
+	const navigate = useNavigate();
 	const { user } = useAuth();
 	const [page, setPage] = useState(1);
 	const [typeFilter, setTypeFilter] = useState("all");
@@ -278,6 +283,17 @@ const NotificationsTab = () => {
 
 	const handleMarkAllRead = () => {
 		markAllAsRead.mutate();
+	};
+
+	const handleNotificationClick = (notification) => {
+		if (!notification.isRead) {
+			markAsRead.mutate(notification._id);
+		}
+		if (notification.type === "announcement") {
+			navigate("/applicant/announcements");
+		} else if (notification.actionUrl) {
+			navigate(notification.actionUrl);
+		}
 	};
 
 	const handleFilterChange = (key) => {
@@ -405,6 +421,7 @@ const NotificationsTab = () => {
 				</button>
 			</div>
 
+
 			{/* Loading */}
 			{isLoading && (
 				<ListSkeleton rows={5} avatar />
@@ -477,23 +494,26 @@ const NotificationsTab = () => {
 								{items.map((notification, idx) => {
 									const config = getNotificationConfig(notification);
 									const Icon = config.icon;
+									const isAnnouncement = notification.type === "announcement";
 
 									return (
 										<div
 											key={notification._id}
-											onClick={() => !notification.isRead && handleMarkRead(notification._id)}
-											role={!notification.isRead ? "button" : undefined}
-											tabIndex={!notification.isRead ? 0 : undefined}
+											onClick={() => handleNotificationClick(notification)}
+											role="button"
+											tabIndex={0}
 											onKeyDown={(e) => {
-												if (!notification.isRead && (e.key === "Enter" || e.key === " ")) {
+												if (e.key === "Enter" || e.key === " ") {
 													e.preventDefault();
-													handleMarkRead(notification._id);
+													handleNotificationClick(notification);
 												}
 											}}
 											aria-label={
-												!notification.isRead
-													? `Mark "${notification.title}" as read`
-													: undefined
+												isAnnouncement
+													? `Open announcement: ${notification.title}`
+													: !notification.isRead
+														? `Mark "${notification.title}" as read`
+														: undefined
 											}
 											style={{
 												display: "flex",
@@ -501,9 +521,11 @@ const NotificationsTab = () => {
 												gap: "12px",
 												padding: "16px 20px",
 												borderBottom:
-											idx < items.length - 1 ? "1px solid var(--color-border-subtle)" : "none",
-										backgroundColor: notification.isRead ? "var(--card)" : "color-mix(in srgb, var(--primary) 4%, transparent)",
-												cursor: notification.isRead ? "default" : "pointer",
+													idx < items.length - 1 ? "1px solid var(--color-border-subtle)" : "none",
+												backgroundColor: notification.isRead
+													? "var(--card)"
+													: "color-mix(in srgb, var(--primary) 4%, transparent)",
+												cursor: "pointer",
 												transition: "background-color 0.15s",
 												outlineOffset: "-2px",
 											}}
@@ -579,14 +601,16 @@ const NotificationsTab = () => {
 												>
 													{cleanNotificationMessage(notification.message)}
 												</p>
-												<span
-													style={{
-														fontSize: "12px",
-														color: "var(--text-muted)",
-													}}
-												>
-													{formatTime(notification.createdAt)}
-												</span>
+												<div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "2px" }}>
+													<span
+														style={{
+															fontSize: "12px",
+															color: "var(--text-muted)",
+														}}
+													>
+														{formatTime(notification.createdAt)}
+													</span>
+												</div>
 											</div>
 
 											{/* Unread dot */}

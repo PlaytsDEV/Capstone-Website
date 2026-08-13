@@ -365,3 +365,72 @@
 .sk-modal__body--short {
   width: 60%;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ANNOUNCEMENTS skeleton
+   ═══════════════════════════════════════════════════════════════ */
+.sk-announcements {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.sk-announcements__filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.sk-announcements__chip {
+  flex-shrink: 0;
+}
+
+.sk-announcements__list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sk-announcement-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow-xs);
+}
+
+.sk-announcement-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.sk-announcement-card__title-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.sk-announcement-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sk-announcement-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sk-announcement-card__action {
+  margin-top: 2px;
+  display: flex;
+}
+

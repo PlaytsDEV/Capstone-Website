@@ -92,6 +92,7 @@ export const formatBedPosition = (bedOrPos) => {
     return getBedDisplayLabel(bedOrPos);
   }
   const pos = String(bedOrPos).toLowerCase();
+  if (pos === "private room" || pos === "private" || pos === "entire room") return "Private Room";
   if (pos === "upper") return "Bunk Bed — Upper";
   if (pos === "lower") return "Bunk Bed — Lower";
   if (pos === "single") return "Single Bed";
@@ -100,14 +101,17 @@ export const formatBedPosition = (bedOrPos) => {
 
 /**
  * Formats a complete coded room and bed identifier string for display across the system
- * Example: "Gil Puyat — Room 305 (Bunk Bed — Upper)"
+ * Example: "Gil Puyat — Room 305 (Bunk Bed — Upper)" or "Gil Puyat — GP - Room 803" for private rooms.
  */
 export const formatCodedRoomAndBed = (roomNumberOrObj, bedOrPos, branchName = "") => {
   const roomNum = typeof roomNumberOrObj === "object" ? (roomNumberOrObj?.roomNumber || roomNumberOrObj?.name || "") : (roomNumberOrObj || "");
-  const bedLabel = formatBedPosition(bedOrPos);
+  const roomType = typeof roomNumberOrObj === "object" ? String(roomNumberOrObj?.type || "").toLowerCase() : "";
+  const bedPosStr = String(bedOrPos || "").toLowerCase();
+  const isPrivate = roomType.includes("private") || String(roomNum).toLowerCase().includes("private") || bedPosStr.includes("private");
+  const bedLabel = isPrivate ? "" : formatBedPosition(bedOrPos);
 
   const roomStr = roomNum ? (roomNum.toString().toLowerCase().startsWith("room") ? roomNum : `Room ${roomNum}`) : "";
-  const bedStr = bedLabel && bedLabel !== "No Bed Assigned" ? `(${bedLabel})` : "";
+  const bedStr = bedLabel && bedLabel !== "No Bed Assigned" && bedLabel !== "Private Room" ? `(${bedLabel})` : "";
   
   const parts = [];
   if (branchName) parts.push(branchName);

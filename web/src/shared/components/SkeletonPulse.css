@@ -25,8 +25,8 @@
 }
 
 html[data-theme="dark"] .skeleton-pulse {
-  --skeleton-base: color-mix(in srgb, var(--muted, #1e293b) 72%, black);
-  --skeleton-highlight: rgba(255, 255, 255, 0.09);
+  --skeleton-base: color-mix(in srgb, var(--muted, #27272a) 72%, black);
+  --skeleton-highlight: rgba(255, 255, 255, 0.08);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -391,13 +391,13 @@ const AdminBillingPage = () => {
     try {
       const { rows, columns } = await fetchCurrentTabData();
       if (!rows.length) {
-        showNotification({ type: "info", message: "No data available to export for the selected range and branch filter." });
+        showNotification("No data available to export for the selected range and branch filter.", "info");
         return;
       }
       exportToCSV(rows, columns, buildFilename(activeTab, effectiveBranch, preset));
     } catch (err) {
       console.error("[BillingExport] CSV export failed:", err);
-      showNotification({ type: "error", message: "CSV export failed. Please try again." });
+      showNotification("CSV export failed. Please try again.", "error");
     } finally {
       setIsExporting(false);
     }
@@ -409,7 +409,7 @@ const AdminBillingPage = () => {
     try {
       const { rows, columns, title, headers } = await fetchCurrentTabData();
       if (!rows.length) {
-        showNotification({ type: "info", message: "No data available to export for the selected range and branch filter." });
+        showNotification("No data available to export for the selected range and branch filter.", "info");
         return;
       }
 
@@ -452,7 +452,7 @@ const AdminBillingPage = () => {
       });
     } catch (err) {
       console.error("[BillingExport] PDF export failed:", err);
-      showNotification({ type: "error", message: "PDF export failed. Please try again." });
+      showNotification("PDF export failed. Please try again.", "error");
     } finally {
       setIsExporting(false);
     }

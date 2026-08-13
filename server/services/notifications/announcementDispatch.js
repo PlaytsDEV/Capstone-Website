@@ -38,11 +38,7 @@ export const buildAnnouncementNotificationMessage = (content) => {
     return "A new announcement is available.";
   }
 
-  if (normalized.length <= 160) {
-    return normalized;
-  }
-
-  return `${normalized.slice(0, 157)}...`;
+  return normalized;
 };
 
 export const buildNotificationPayload = (notification) => {

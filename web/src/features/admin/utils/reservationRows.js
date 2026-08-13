@@ -415,7 +415,7 @@ export function applyQuickChip(row, chip) {
   if (chip === "new") return Boolean(row?.isNew);
   if (chip === "cancellation") return hasPendingCancellationRequest(row);
   if (chip === "awaiting_payment") return row?.paymentStatus === "pending" && row?.status === "approved_for_payment";
-  // proof_uploaded chip removed — manual proof decommissioned (PayMongo only)
+  if (chip === "proof_uploaded") return row?.paymentStatus === "proof_uploaded";
   return true;
 }
 
