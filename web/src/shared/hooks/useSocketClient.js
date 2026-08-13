@@ -104,7 +104,18 @@ export default function useSocketClient() {
         }
         addNotification(notification);
         if (!notification?.isRead) {
-          showNotification(notification.title || "New notification", "info", 4500);
+          const typeLower = `${notification.type || ""} ${notification.title || ""}`.toLowerCase();
+          const toastType =
+            /completed|approved|verified|success|paid|confirmed/i.test(typeLower)
+              ? "success"
+              : /rejected|cancelled|failed|error|no_show|missed/i.test(typeLower)
+              ? "error"
+              : /warning|overdue|deadline|expired/i.test(typeLower)
+              ? "warning"
+              : "info";
+
+          const toastMessage = notification.message || notification.title || "New notification";
+          showNotification(toastMessage, toastType, 4500);
           const scope = getNotificationQueryScope(user);
           qc.setQueryData(notificationQueryKeys.unread(scope), (current) => ({
             unreadCount: (current?.unreadCount ?? 0) + 1,

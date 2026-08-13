@@ -187,7 +187,11 @@ const ReservationConfirmationStep = ({
           </div>
           <div className="rf-summary-label">Move-In Schedule</div>
           <div className="rf-summary-value">{fmtDate(finalMoveInDate)}</div>
-          <div className="rf-summary-meta">{leaseDuration || 12}-month lease</div>
+          <div className="rf-summary-meta">
+            {leaseDuration
+              ? (Number(leaseDuration) === 12 ? "12-month lease (1 year)" : `${leaseDuration}-month lease`)
+              : "Selected lease term"}
+          </div>
         </div>
 
         {confirmationState.showPaymentCard && (

@@ -565,8 +565,11 @@ async function buildReceiptDoc(reservation, profile) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.text(`Bed Space / Slot: ${bedDisplay}`, rightX, y + 5.5);
-  doc.text(`Room Type: ${roomTypeLabel}`, rightX, y + 11);
-  doc.text(`Lease Term: ${reservation.leaseDuration || 12}-Month Agreement`, rightX, y + 16.5);
+  const leaseDurationMonths = Number(reservation.leaseDuration || reservation.applicationForm?.leaseDuration);
+  const leaseTermDisplay = Number.isFinite(leaseDurationMonths) && leaseDurationMonths > 0
+    ? `${leaseDurationMonths}-Month Agreement`
+    : "Standard Agreement";
+  doc.text(`Lease Term: ${leaseTermDisplay}`, rightX, y + 16.5);
   doc.text(`Scheduled Move-In: ${moveInDisplay}`, rightX, y + 22);
 
   y += 28;

@@ -592,34 +592,46 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  {/* Reservation Summary */}
  <div style={card}>
  <h3 style={sectionTitle}>Reservation Summary</h3>
- {[
- { label: personLabel, value: personName },
- { label: "Booked On", value: bookedOn },
- { label: "Move-in Date", value: moveInDateLabel },
- { label: "Lease Duration", value: `${reservation.leaseDuration || 12} months` },
- {
- label: "Monthly Rent",
- value: monthlyRent === null ? "Pricing will be confirmed during review" : `₱${monthlyRent.toLocaleString()}`,
- highlight: true,
- },
- {
- label: reservationFeeLabel,
- value: paymentDate ? `PHP ${reservationFeeAmount.toLocaleString("en-PH")} — Paid ✓` : "Pending",
- paid: !!paymentDate,
- },
- ].map(({ label, value, highlight, paid }) => (
- <div key={label} style={detailRow}>
- <span style={{ color: "var(--muted-foreground)", fontWeight: 500 }}>{label}</span>
- <span
- style={{
- color: highlight ? "var(--primary)" : paid ? "var(--success)" : "var(--foreground)",
- fontWeight: 600,
- }}
- >
- {value}
- </span>
- </div>
- ))}
+ {(() => {
+   const resolvedLeaseDuration =
+     reservation.leaseDuration || reservation.applicationForm?.leaseDuration;
+   const leaseDurationText = resolvedLeaseDuration
+     ? (Number(resolvedLeaseDuration) === 12
+         ? "12 months (1 year)"
+         : `${resolvedLeaseDuration} ${Number(resolvedLeaseDuration) === 1 ? "month" : "months"}`)
+     : "Pending review";
+
+   const summaryRows = [
+     { label: personLabel, value: personName },
+     { label: "Booked On", value: bookedOn },
+     { label: "Move-in Date", value: moveInDateLabel },
+     { label: "Lease Duration", value: leaseDurationText },
+     {
+       label: "Monthly Rent",
+       value: monthlyRent === null ? "Pricing will be confirmed during review" : `₱${monthlyRent.toLocaleString()}`,
+       highlight: true,
+     },
+     {
+       label: reservationFeeLabel,
+       value: paymentDate ? `PHP ${reservationFeeAmount.toLocaleString("en-PH")} — Paid ✓` : "Pending",
+       paid: !!paymentDate,
+     },
+   ];
+
+   return summaryRows.map(({ label, value, highlight, paid }) => (
+     <div key={label} style={detailRow}>
+       <span style={{ color: "var(--muted-foreground)", fontWeight: 500 }}>{label}</span>
+       <span
+         style={{
+           color: highlight ? "var(--primary)" : paid ? "var(--success)" : "var(--foreground)",
+           fontWeight: 600,
+         }}
+       >
+         {value}
+       </span>
+     </div>
+   ));
+ })()}
  </div>
 
  {/* Receipt Download Card */}

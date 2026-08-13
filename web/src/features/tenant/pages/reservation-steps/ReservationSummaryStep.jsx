@@ -305,6 +305,16 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
               {capacityLabel} Beds total
             </span>
           </div>
+          {(reservationData?.leaseDuration || room?.leaseDuration) && (
+            <div className="summary-row">
+              <span className="summary-label">Selected Lease Term</span>
+              <span className="summary-value font-semibold text-slate-800 dark:text-slate-200">
+                {Number(reservationData?.leaseDuration || room?.leaseDuration) === 12
+                  ? "12 Months (1 Year)"
+                  : `${reservationData?.leaseDuration || room?.leaseDuration} ${Number(reservationData?.leaseDuration || room?.leaseDuration) === 1 ? "Month" : "Months"}`}
+              </span>
+            </div>
+          )}
         </div>
       </section>
 

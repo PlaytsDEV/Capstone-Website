@@ -2540,9 +2540,9 @@ export const manageReservationVisit = async (req, res, next) => {
       ) {
         reservation.status = "visit_approved";
       }
-      applicantNotificationTitle = "Physical Visit Update";
+      applicantNotificationTitle = "Physical Visit Completed";
       applicantNotificationMessage =
-        "Your physical visit has been recorded successfully. You may now proceed with your tenant application. Payment will remain locked until your application and required documents are approved.";
+        "Your physical visit has been confirmed and marked as completed. You may now complete and submit your tenant application.";
       applicantEmailStatus = "visit_completed";
     }
 

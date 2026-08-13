@@ -128,15 +128,9 @@ const DormPreferencesSection = ({
  onChange={(e) => handleTimeInput(e.target.value)}
  style={{
  cursor: "pointer",
- padding: "10px 12px",
- borderRadius: "8px",
- border:
- fieldErrors.estimatedMoveInTime
+ border: fieldErrors.estimatedMoveInTime
  ? "1.5px solid var(--danger)"
- : errBorder(showValidationErrors, estimatedMoveInTime) || "1.5px solid var(--border)",
- fontSize: "14px",
- background: "var(--card)",
- width: "100%",
+ : errBorder(showValidationErrors, estimatedMoveInTime),
  }}
  >
  <option value="">Select time...</option>
@@ -178,6 +172,11 @@ const DormPreferencesSection = ({
  </option>
  ))}
  </select>
+ {leaseDuration && (
+    <div className="form-helper">
+      Preferred term selected during room booking: {Number(leaseDuration) === 12 ? "1 year (12 months)" : `${leaseDuration} ${Number(leaseDuration) === 1 ? "month" : "months"}`}
+    </div>
+  )}
  <FieldError
  error={
  showValidationErrors && !leaseDuration
