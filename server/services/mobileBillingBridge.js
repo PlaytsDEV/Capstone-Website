@@ -7,7 +7,7 @@
  * engine and the mobile app's existing (legacy-mobile-backend-shaped) JSON
  * contract, so mobile screens keep working unmodified while the data
  * underneath is the authoritative canonical Bill — the same pattern already
- * used by routes/mobileContractRoutes.js and routes/mobileSurveyRoutes.js.
+ * used by routes/mobileContractRoutes.js.
  *
  * This module must NEVER write to the database and must NEVER derive its
  * output from anything client-supplied — only from a resolved canonical

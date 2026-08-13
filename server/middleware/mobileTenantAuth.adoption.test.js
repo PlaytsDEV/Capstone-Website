@@ -16,7 +16,6 @@ import { describe, expect, test } from "@jest/globals";
 
 const BRIDGE_FILES = [
   "mobileContractRoutes.js",
-  "mobileSurveyRoutes.js",
   "mobileBillingRoutes.js",
   "mobilePaymongoRoutes.js",
   "mobileDocumentRoutes.js",

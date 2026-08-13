@@ -577,12 +577,6 @@ export const moveOutReservation = async (req, res, next) => {
     if (denied) return;
 
     const actor = await findDbUser(req.user.uid);
-    const {
-      ensureMoveOutSurveyAssignment,
-      assertMoveOutSurveyComplete,
-    } = await import("../../services/surveyAutomationService.js");
-    await ensureMoveOutSurveyAssignment(reservation);
-    await assertMoveOutSurveyComplete(reservation._id);
     const oldData = reservation.toObject();
     const result = await moveOutStayWorkflow({
       reservationId,
@@ -624,9 +618,6 @@ export const moveOutReservation = async (req, res, next) => {
       return res.status(error.statusCode).json({
         error: error.message,
         code: error.code || "MOVEOUT_FAILED",
-        ...(error.surveyAssignmentId !== undefined && {
-          surveyAssignmentId: error.surveyAssignmentId,
-        }),
         ...(error.outstandingBalance !== undefined && {
           outstandingBalance: error.outstandingBalance,
           paymentStatus: error.paymentStatus,

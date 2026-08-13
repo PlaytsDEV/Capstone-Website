@@ -12,8 +12,8 @@
  *
  * Mounted at /api/m BEFORE the vendored mobile router (server.js), so every
  * path defined here fully supersedes the vendored controller for mobile
- * billing traffic — same pattern as routes/mobileContractRoutes.js and
- * routes/mobileSurveyRoutes.js. Paths NOT defined here (there are none for
+ * billing traffic — same pattern as routes/mobileContractRoutes.js.
+ * Paths NOT defined here (there are none for
  * billing after this change) would fall through to the vendored router.
  *
  * Every route derives tenant identity exclusively from the resolved mobile

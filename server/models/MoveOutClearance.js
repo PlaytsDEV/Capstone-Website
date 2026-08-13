@@ -164,10 +164,7 @@ const moveOutClearanceSchema = new mongoose.Schema(
       required: true,
       // Admin who opened the clearance process
     },
-    moveOutSurveySentAt: {
-      type: Date,
-      default: null,
-    },
+
     finalMeterReadingId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "MeterReading",

@@ -199,8 +199,8 @@ export const getTenantWorkspaceById = async (req, res) => {
       });
     }
 
-    const { Bill, BedHistory, Stay } = await import("../../models/index.js");
-    const [bills, bedHistoryRecords, stayHistory, branchRooms] = await Promise.all([
+    const { Bill, BedHistory, Stay, Contract } = await import("../../models/index.js");
+    const [bills, bedHistoryRecords, stayHistory, branchRooms, contracts] = await Promise.all([
       Bill.find({
         reservationId: reservation._id,
         isArchived: { $ne: true },
@@ -222,6 +222,14 @@ export const getTenantWorkspaceById = async (req, res) => {
         isArchived: { $ne: true },
       })
         .select("_id beds")
+        .lean(),
+      Contract.find({
+        $or: [
+          { reservationId: reservation._id },
+          { tenantId: reservation.userId?._id || reservation.userId },
+        ],
+      })
+        .sort({ version: -1, createdAt: -1 })
         .lean(),
     ]);
     const currentStay =
@@ -245,6 +253,7 @@ export const getTenantWorkspaceById = async (req, res) => {
       stayHistory,
       bills,
       bedHistoryRecords,
+      contracts,
       tenantStatus: reservation.userId?.tenantStatus || "applicant",
       hasAvailableBedsInBranch,
       now: new Date(),

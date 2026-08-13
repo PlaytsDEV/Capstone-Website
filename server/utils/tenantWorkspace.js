@@ -279,33 +279,72 @@ export function buildAllowedActions({
   };
 }
 
-function buildRoomHistoryEntries({ reservation, bedHistoryRecords = [] }) {
+function buildRoomHistoryEntries({ reservation, bedHistoryRecords = [], contracts = [] }) {
   if (bedHistoryRecords.length > 0) {
-    return bedHistoryRecords.map((record) => ({
-      id: String(record._id),
-      roomName: record.roomId?.name || reservation.roomId?.name || "Unknown room",
-      branch: record.roomId?.branch || reservation.roomId?.branch || "",
-      bedId: record.bedId || "",
-      bedLabel: record.bedId || record.bedId === 0 ? String(record.bedId) : "",
-      moveInDate: record.moveInDate || null,
-      moveOutDate: record.moveOutDate || null,
-      source: "history",
-    }));
+    return bedHistoryRecords.map((record) => {
+      const recordRoomId = String(record.roomId?._id || record.roomId || "");
+      const recordBedId = String(record.bedId || "");
+      const matchedContract =
+        contracts.find((c) => (
+          (record.stayId && String(c.stayId) === String(record.stayId)) ||
+          (recordRoomId && String(c.roomId) === recordRoomId && recordBedId && String(c.bedId) === recordBedId)
+        )) ||
+        contracts.find((c) => recordRoomId && String(c.roomId) === recordRoomId) ||
+        contracts[0] ||
+        null;
+
+      return {
+        id: String(record._id),
+        room: record.roomId?.name || record.roomId?.roomNumber || reservation.roomId?.name || "Unknown room",
+        roomName: record.roomId?.name || reservation.roomId?.name || "Unknown room",
+        branch: record.roomId?.branch || reservation.roomId?.branch || "",
+        bedId: record.bedId || "",
+        bed: record.bedId || record.bedId === 0 ? String(record.bedId) : "",
+        bedLabel: record.bedId || record.bedId === 0 ? String(record.bedId) : "",
+        moveInDate: record.moveInDate || null,
+        moveOutDate: record.moveOutDate || null,
+        source: "history",
+        contract: matchedContract ? {
+          id: String(matchedContract._id),
+          contractNumber: matchedContract.contractNumber || "Pending",
+          status: matchedContract.status,
+          purpose: matchedContract.contractPurpose || "initial",
+          isCurrent: matchedContract.isCurrent,
+          leaseStartDate: matchedContract.leaseStartDate || null,
+          leaseEndDate: matchedContract.leaseEndDate || null,
+          approvedMonthlyRate: matchedContract.approvedMonthlyRate || null,
+        } : null,
+      };
+    });
   }
 
   const moveInDate = readMoveInDate(reservation);
   if (!moveInDate) return [];
 
+  const matchedContract = contracts[0] || null;
+
   return [
     {
       id: `fallback:${reservation?._id || reservation?.id || "stay"}`,
+      room: reservation.roomId?.name || reservation.roomId?.roomNumber || "Unknown room",
       roomName: reservation.roomId?.name || "Unknown room",
       branch: reservation.roomId?.branch || "",
       bedId: reservation.selectedBed?.id || "",
+      bed: reservation.selectedBed?.position || reservation.selectedBed?.id || "",
       bedLabel: reservation.selectedBed?.position || reservation.selectedBed?.id || "",
       moveInDate,
       moveOutDate: readMoveOutDate(reservation),
       source: "reservation_fallback",
+      contract: matchedContract ? {
+        id: String(matchedContract._id),
+        contractNumber: matchedContract.contractNumber || "Pending",
+        status: matchedContract.status,
+        purpose: matchedContract.contractPurpose || "initial",
+        isCurrent: matchedContract.isCurrent,
+        leaseStartDate: matchedContract.leaseStartDate || null,
+        leaseEndDate: matchedContract.leaseEndDate || null,
+        approvedMonthlyRate: matchedContract.approvedMonthlyRate || null,
+      } : null,
     },
   ];
 }
@@ -316,6 +355,7 @@ export function buildTenantWorkspaceEntry({
   stayHistory = [],
   bills = [],
   bedHistoryRecords = [],
+  contracts = [],
   tenantStatus = "",
   hasAvailableBedsInBranch = true,
   now = new Date(),
@@ -328,7 +368,7 @@ export function buildTenantWorkspaceEntry({
       ? "moved_out"
       : buildStayStatus(reservation, now);
   const leaseStatus = buildLeaseStatus(daysUntilLeaseEnd);
-  const roomHistory = buildRoomHistoryEntries({ reservation, bedHistoryRecords });
+  const roomHistory = buildRoomHistoryEntries({ reservation, bedHistoryRecords, contracts });
   const warningFlags = buildWarningFlags({
     leaseStatus,
     billingSummary,
@@ -408,12 +448,17 @@ export function buildTenantWorkspaceEntry({
     branch: reservation.roomId?.branch || "",
     room: reservation.roomId?.name || reservation.roomId?.roomNumber || "",
     roomId: currentStay?.roomId ? String(currentStay.roomId) : reservation.roomId?._id ? String(reservation.roomId._id) : "",
-    bed: reservation.selectedBed?.position || reservation.selectedBed?.id || "",
-    bedId: currentStay?.bedId || reservation.selectedBed?.id || "",
+    bed: (String(reservation.roomId?.type || "").toLowerCase().includes("private") || reservation.roomId?.capacity === 1)
+      ? "Private Room"
+      : (reservation.selectedBed?.position || reservation.selectedBed?.id || ""),
+    bedId: (String(reservation.roomId?.type || "").toLowerCase().includes("private") || reservation.roomId?.capacity === 1)
+      ? ""
+      : (currentStay?.bedId || reservation.selectedBed?.id || ""),
     moveInDate: currentStay?.leaseStartDate || readMoveInDate(reservation),
     moveOutDate: readMoveOutDate(reservation),
     leaseEndDate,
     daysUntilLeaseEnd,
+    monthlyRate: financialSummary.monthlyRate,
     currentBalance: billingSummary.currentBalance,
     currentStayId: currentStay?._id ? String(currentStay._id) : String(reservation.currentStayId || ""),
     tenantStatus: normalizeTenantStatus(tenantStatus),

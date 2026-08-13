@@ -4,14 +4,14 @@
  * ============================================================================
  *
  * This is now the ONE shared session validator for every canonical /api/m
- * bridge router (billing, PayMongo, documents, contracts, surveys). It used
+ * bridge router (billing, PayMongo, documents, contracts). It used
  * to only check session-token expiry + role, while the vendored mobile
  * backend's own validator (server/mobile/security/mobileAuthCore.js,
  * `evaluateAccount` + the securityVersion comparison in `resolve()`) also
  * enforced account-restriction state and session revocation — meaning a
  * disabled/restricted tenant, or a tenant whose sessions were revoked
  * (password change, security incident), could still reach billing/contracts/
- * surveys/documents through this shallower check even though the exact same
+ * documents through this shallower check even though the exact same
  * disabled/revoked session was already correctly rejected by the vendored
  * router. This function now performs the SAME account-restriction and
  * securityVersion checks as mobileAuthCore.js's `resolve()`, against the

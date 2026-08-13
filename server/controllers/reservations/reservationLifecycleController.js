@@ -840,32 +840,29 @@ export const updateReservation = async (req, res, next) => {
         );
       }
 
-      // Repair pass: the primary Contract-creation point is settlement
-      // (reservationDepositSettlementService.js, when the reservation first
-      // becomes "reserved"). This is only a backstop for a reservation that
-      // reached moveIn without one — e.g. the settlement-time attempt hit a
-      // transient error and was never retried. createDraftContract's own
-      // duplicate detection makes this a no-op in the normal case.
+      // ── Automated Contract Creation & Prepared PDF Generation ──────────────
+      // On moveIn, ensure contract exists and auto-generate the prepared PDF in
+      // the background so it's immediately ready for physical signing.
       try {
-        const { createDraftContract } = await import("../../services/contractService.js");
-        const draftResult = await createDraftContract({
+        const { autoGenerateMoveInContract } = await import(
+          "../../services/autoContractOrchestratorService.js"
+        );
+        autoGenerateMoveInContract({
           reservationId: updatedReservation._id,
-          stayId: updatedReservation.currentStayId || null,
-          actorId: req.adminId || updatedReservation.userId?._id || updatedReservation.userId,
-        }).catch((error) => {
-          if (error?.code === "DUPLICATE_CONTRACT") return null;
-          throw error;
-        });
-        if (draftResult) {
-          logger.info(
-            { contractId: draftResult._id, reservationId: updatedReservation._id },
-            "Repaired missing draft Contract during moveIn status update",
+          actorId:
+            req.adminId ||
+            updatedReservation.userId?._id ||
+            updatedReservation.userId,
+        }).catch((err) => {
+          logger.warn(
+            { err, requestId: req.id, reservationId: updatedReservation._id },
+            "Background Move-In contract auto-generation encountered an issue (non-fatal)",
           );
-        }
+        });
       } catch (contractErr) {
         logger.error(
           { err: contractErr, requestId: req.id },
-          "Failed to repair missing draft Contract during moveIn (non-fatal)",
+          "Failed to invoke autoGenerateMoveInContract during moveIn (non-fatal)",
         );
       }
     }

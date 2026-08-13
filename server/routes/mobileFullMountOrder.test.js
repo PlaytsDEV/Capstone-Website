@@ -28,12 +28,9 @@ jest.unstable_mockModule("../services/preparedContractDocumentService.js", () =>
 }));
 jest.unstable_mockModule("../utils/auditLogger.js", () => ({ default: { logModification: jest.fn(), log: jest.fn() } }));
 jest.unstable_mockModule("../models/index.js", () => ({
-  SurveyAssignment: { find: jest.fn(), findOne: jest.fn() },
-  SurveyResponse: { findOne: jest.fn(), findOneAndUpdate: jest.fn() },
   Bill: { find: jest.fn(), findOne: jest.fn(), findById: jest.fn() },
   Reservation: { findById: jest.fn() },
 }));
-jest.unstable_mockModule("../services/surveyValidationService.js", () => ({ validateSurveyAnswers: jest.fn() }));
 jest.unstable_mockModule("../controllers/billing/_helpers.js", () => ({
   generateRentBillPdf: jest.fn(),
   formatBillReference: jest.fn(() => "LC-RB-TEST"),
@@ -64,7 +61,6 @@ jest.unstable_mockModule("../config/firebase.js", () => ({
 }));
 
 const { default: mobileContractRoutes } = await import("./mobileContractRoutes.js");
-const { default: mobileSurveyRoutes } = await import("./mobileSurveyRoutes.js");
 const { default: mobileBillingRoutes } = await import("./mobileBillingRoutes.js");
 const { default: mobilePaymongoRoutes } = await import("./mobilePaymongoRoutes.js");
 const { default: mobileDocumentRoutes } = await import("./mobileDocumentRoutes.js");
@@ -80,7 +76,6 @@ async function startApp() {
   app.use(express.json());
   // Exact server.js order (see server.js lines ~282-306).
   app.use("/api/m", mobileContractRoutes);
-  app.use("/api/m", mobileSurveyRoutes);
   app.use("/api/m", mobileBillingRoutes);
   app.use("/api/m", mobilePaymongoRoutes);
   app.use("/api/m", mobileDocumentRoutes);
@@ -133,7 +128,6 @@ describe("full /api/m mount order — no bridge shadows a vendored-only domain",
 
   test.each([
     ["GET", "/api/m/contracts/current"],
-    ["GET", "/api/m/surveys/me"],
     ["GET", "/api/m/billing/history"],
     ["POST", "/api/m/paymongo/checkout"],
     ["GET", "/api/m/users/documents"],

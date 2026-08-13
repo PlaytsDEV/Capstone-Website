@@ -16,12 +16,14 @@ import {
   UtilityReading,
   BedHistory,
   Stay,
+  Contract,
   ROOM_BRANCHES,
 } from "../../models/index.js";
 import { BUSINESS } from "../../config/constants.js";
 import { isOwnerRole, isAdminRole, OWNER_ROLE_VALUES } from "../../config/roles.js";
 import logger from "../../middleware/logger.js";
 import auditLogger from "../../utils/auditLogger.js";
+import { resolveRoomDiscountPricing } from "../../services/contractPricingResolver.js";
 import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
 import { notify } from "../../utils/notificationService.js";
 
@@ -1293,47 +1295,19 @@ export const validateSelectedAppliancesForReservation = ({
 export const resolveReservationRent = ({ room, leaseDuration, isDiscountEnabled, settings }) => {
   const parsedLeaseDuration = Number(leaseDuration);
   const minMonths = settings?.longTermLeaseMinMonths ?? room?.longTermLeaseMinMonths ?? 6;
-  const discountActive = isDiscountEnabled !== false && room?.isDiscountEnabled !== false;
   const isLongTerm = Number.isFinite(parsedLeaseDuration) && parsedLeaseDuration >= minMonths;
-
-  if (isLongTerm && typeof room?.monthlyPrice === "number" && room.monthlyPrice > 0) {
-    return roundMoney(room.monthlyPrice);
-  }
-
   const normType = String(room?.type || "").toLowerCase();
-  let baseLongRate = 6000;
-  let baseShortRate = 7000;
-  let configuredDiscountPercent = settings?.quadrupleDiscountPercent ?? room?.quadrupleDiscountPercent ?? 10;
 
-  if (normType.includes("double")) {
-    baseLongRate = room?.regularLongRate ?? 9000;
-    baseShortRate = room?.regularShortRate ?? 10000;
-    configuredDiscountPercent = settings?.doubleDiscountPercent ?? room?.doubleDiscountPercent ?? 20;
-  } else if (normType.includes("private")) {
-    baseLongRate = room?.regularLongRate ?? 15000;
-    baseShortRate = room?.regularShortRate ?? 16000;
-    configuredDiscountPercent = settings?.privateDiscountPercent ?? room?.privateDiscountPercent ?? 10;
-  } else {
-    baseLongRate = room?.regularLongRate ?? 6000;
-    baseShortRate = room?.regularShortRate ?? 7000;
-    configuredDiscountPercent =
-      settings?.quadrupleDiscountPercent ??
-      room?.quadrupleDiscountPercent ??
-      settings?.defaultLongTermDiscountPercent ??
-      10;
+  const pricing = resolveRoomDiscountPricing(normType, settings, room);
+  const discountActive =
+    isDiscountEnabled !== false &&
+    room?.isDiscountEnabled !== false &&
+    pricing.isDiscountEnabled !== false;
+
+  if (isLongTerm) {
+    return roundMoney(discountActive ? pricing.monthlyPrice : pricing.regularLongRate);
   }
-
-  const discountPercent = discountActive ? configuredDiscountPercent : 0;
-  const baseRate = isLongTerm ? baseLongRate : baseShortRate;
-  const preferredRent = discountActive
-    ? Math.round(baseRate * (1 - discountPercent / 100))
-    : baseRate;
-
-  if (Number.isFinite(preferredRent) && preferredRent >= 0) {
-    return roundMoney(preferredRent);
-  }
-
-  return roundMoney(baseRate || 6000);
+  return roundMoney(discountActive ? pricing.shortTermRate : pricing.regularShortRate);
 };
 
 export const buildReservationPricing = async ({
@@ -1566,7 +1540,7 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
     ),
   ];
 
-  const [bills, bedHistoryRecords, stays, branchRooms] = await Promise.all([
+  const [bills, bedHistoryRecords, stays, branchRooms, contracts] = await Promise.all([
     Bill.find({
       reservationId: { $in: reservationIds },
       isArchived: { $ne: true },
@@ -1591,6 +1565,14 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
     })
       .select("branch _id beds")
       .lean(),
+    Contract.find({
+      $or: [
+        { reservationId: { $in: reservationIds } },
+        { tenantId: { $in: tenantIds } },
+      ],
+    })
+      .sort({ version: -1, createdAt: -1 })
+      .lean(),
   ]);
 
   const billsByReservationId = new Map();
@@ -1604,7 +1586,23 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
   const historyByReservationId = new Map();
   const historyByTenantId = new Map();
   const staysByReservationId = new Map();
+  const contractsByReservationId = new Map();
+  const contractsByTenantId = new Map();
   const branchAvailability = new Map();
+
+  for (const contract of contracts) {
+    if (contract.reservationId) {
+      const resKey = String(contract.reservationId);
+      if (!contractsByReservationId.has(resKey)) contractsByReservationId.set(resKey, []);
+      contractsByReservationId.get(resKey).push(contract);
+    }
+    if (contract.tenantId) {
+      const tenantKey = String(contract.tenantId);
+      if (!contractsByTenantId.has(tenantKey)) contractsByTenantId.set(tenantKey, []);
+      contractsByTenantId.get(tenantKey).push(contract);
+    }
+  }
+
   for (const record of bedHistoryRecords) {
     if (record.reservationId) {
       const reservationKey = String(record.reservationId);
@@ -1666,6 +1664,10 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
       bedHistoryRecords:
         historyByReservationId.get(reservationKey) ||
         historyByTenantId.get(tenantKey) ||
+        [],
+      contracts:
+        contractsByReservationId.get(reservationKey) ||
+        contractsByTenantId.get(tenantKey) ||
         [],
       tenantStatus: reservation.userId?.tenantStatus || "applicant",
       hasAvailableBedsInBranch,

@@ -11,8 +11,7 @@
  * inline-base64-only document store (server/mobile/routes/user.routes.js).
  *
  * Mounted at /api/m BEFORE the vendored mobile router (server.js) — same
- * pattern as routes/mobileBillingRoutes.js, routes/mobileContractRoutes.js,
- * routes/mobileSurveyRoutes.js — so every path defined here fully supersedes
+ * pattern as routes/mobileBillingRoutes.js, routes/mobileContractRoutes.js — so every path defined here fully supersedes
  * the vendored controllers for mobile document traffic. Paths not defined
  * here (e.g. GET /users/documents/:docId, the metadata-only variant the
  * mobile frontend never calls — see documentManager.js comment) fall through

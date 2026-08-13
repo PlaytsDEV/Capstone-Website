@@ -4,7 +4,7 @@ import express from "express";
 /**
  * Real Express-level regression test for the Auth/Session Consolidation
  * phase's mount-order requirement: every canonical /api/m bridge (contracts,
- * surveys, billing, PayMongo, documents) is mounted BEFORE the vendored
+ * billing, PayMongo, documents) is mounted BEFORE the vendored
  * mobile router (server.js) that owns /api/m/auth/*. None of those bridges
  * define an /auth/* path themselves, but since mobileTenantAuth is a real
  * per-route middleware (never router.use()), this proves — with a real HTTP
@@ -31,12 +31,9 @@ jest.unstable_mockModule("../services/preparedContractDocumentService.js", () =>
 }));
 jest.unstable_mockModule("../utils/auditLogger.js", () => ({ default: { logModification: jest.fn() } }));
 jest.unstable_mockModule("../models/index.js", () => ({
-  SurveyAssignment: { find: jest.fn(), findOne: jest.fn() },
-  SurveyResponse: { findOne: jest.fn(), findOneAndUpdate: jest.fn() },
   Bill: { find: jest.fn(), findOne: jest.fn(), findById: jest.fn() },
   Reservation: { findById: jest.fn() },
 }));
-jest.unstable_mockModule("../services/surveyValidationService.js", () => ({ validateSurveyAnswers: jest.fn() }));
 jest.unstable_mockModule("../controllers/billing/_helpers.js", () => ({
   generateRentBillPdf: jest.fn(),
   formatBillReference: jest.fn(() => "LC-RB-TEST"),
@@ -59,7 +56,6 @@ jest.unstable_mockModule("../services/mobileUserDocumentService.js", () => ({
 }));
 
 const { default: mobileContractRoutes } = await import("./mobileContractRoutes.js");
-const { default: mobileSurveyRoutes } = await import("./mobileSurveyRoutes.js");
 const { default: mobileBillingRoutes } = await import("./mobileBillingRoutes.js");
 const { default: mobilePaymongoRoutes } = await import("./mobilePaymongoRoutes.js");
 const { default: mobileDocumentRoutes } = await import("./mobileDocumentRoutes.js");
@@ -73,7 +69,6 @@ beforeEach(async () => {
   // Exact server.js mount order: every canonical bridge before the
   // (stand-in) vendored mobile router that owns /api/m/auth/*.
   app.use("/api/m", mobileContractRoutes);
-  app.use("/api/m", mobileSurveyRoutes);
   app.use("/api/m", mobileBillingRoutes);
   app.use("/api/m", mobilePaymongoRoutes);
   app.use("/api/m", mobileDocumentRoutes);
