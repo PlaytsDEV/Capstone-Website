@@ -168,3 +168,34 @@ export const cleanNotificationMessage = (message) => {
     .trim();
 };
 
+/**
+ * Transforms past-participle verb titles (e.g. "Reservation Cancelled") into formal event titles (e.g. "Reservation Cancellation")
+ */
+export const formatNotificationTitle = (title) => {
+  if (!title || typeof title !== "string") return title;
+  const exactMap = {
+    "Reservation Cancelled": "Reservation Cancellation",
+    "Physical Visit Completed": "Physical Visit Summary",
+    "Visit Schedule Rejected": "Visit Schedule Update",
+    "Visit Schedule Confirmed": "Visit Schedule Confirmation",
+    "Physical Visit Scheduled": "Physical Visit Request",
+    "Application Submitted": "Application Submission",
+    "Approved for Payment": "Application Approval",
+    "Revision Requested": "Application Revision Request",
+    "Application Rejected": "Application Status Update",
+    "Payment Confirmed": "Payment Confirmation",
+    "Reservation Confirmed": "Reservation Confirmation",
+  };
+  if (exactMap[title]) return exactMap[title];
+
+  return title
+    .replace(/\bCancelled\b/gi, "Cancellation")
+    .replace(/\bCanceled\b/gi, "Cancellation")
+    .replace(/\bCompleted\b/gi, "Summary")
+    .replace(/\bRejected\b/gi, "Update")
+    .replace(/\bConfirmed\b/gi, "Confirmation")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+

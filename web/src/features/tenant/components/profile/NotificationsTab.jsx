@@ -40,6 +40,7 @@ import {
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
 import { getVisibleNotificationsForUser } from "../../../../shared/utils/notificationVisibility";
+import { formatNotificationTitle, cleanNotificationMessage } from "../../../../shared/utils/notification";
 import "../../../admin/styles/design-tokens.css";
 
 // ── Filter tabs per role ──
@@ -551,7 +552,7 @@ const NotificationsTab = () => {
 															minWidth: 0,
 														}}
 													>
-														{notification.title}
+														{formatNotificationTitle(notification.title)}
 													</span>
 													<span
 														style={{
@@ -576,7 +577,7 @@ const NotificationsTab = () => {
 														lineHeight: 1.4,
 													}}
 												>
-													{notification.message}
+													{cleanNotificationMessage(notification.message)}
 												</p>
 												<span
 													style={{

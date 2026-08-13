@@ -69,243 +69,243 @@ const buildTimeline = (r, direction = "desc") => {
  const events = [];
 
  if (r.createdAt) {
- events.push({
- id: "created", icon: Home, iconBg: "#EEF2FF", iconColor: "#0A1628",
- title: "Reservation Created",
- description: `Room ${r.roomId?.name || r.roomId?.roomNumber || "—"} selected`,
- date: r.createdAt, status: "Completed", statusColor: "#059669", statusBg: "#F0FDF4",
- });
+  events.push({
+    id: "created", icon: Home, iconBg: "#EEF2FF", iconColor: "#0A1628",
+    title: "Reservation Selection",
+    description: `Room ${r.roomId?.name || r.roomId?.roomNumber || "—"} selected`,
+    date: r.createdAt, status: "Initiated", statusColor: "#059669", statusBg: "#F0FDF4",
+  });
  }
 
  if (r.visitHistory && r.visitHistory.length > 0) {
- r.visitHistory.forEach((attempt, idx) => {
- const suffix = r.visitHistory.length > 1 ? ` (Attempt ${idx + 1})` : "";
- const viewType =
- attempt.viewingType === "virtual" ? "2D Remote Viewing" : "Physical Visit";
- const visitDateStr = attempt.visitDate
- ? fmtDate(attempt.visitDate) + (attempt.visitTime ? ` at ${attempt.visitTime}` : "")
- : "Date not set";
+  r.visitHistory.forEach((attempt, idx) => {
+    const suffix = r.visitHistory.length > 1 ? ` (Attempt ${idx + 1})` : "";
+    const viewType =
+      attempt.viewingType === "virtual" ? "2D Remote Viewing" : "Physical Visit";
+    const visitDateStr = attempt.visitDate
+      ? fmtDate(attempt.visitDate) + (attempt.visitTime ? ` at ${attempt.visitTime}` : "")
+      : "Date not set";
 
- // Event 1: Tenant submitted the visit schedule request
- if (attempt.status !== "cancelled") {
- events.push({
- id: `visit-${idx}-scheduled`,
- icon: Calendar, iconBg: "#DBEAFE", iconColor: "#2563EB",
- title: `Physical Visit Scheduled${suffix}`,
- description: `${viewType} requested for ${visitDateStr}`,
- // scheduledAt = when the tenant submitted the schedule form (visitScheduledAt)
- date: attempt.scheduledAt,
- status: "Scheduled", statusColor: "#D97706", statusBg: "#FFFBEB",
- });
- }
+    // Event 1: Tenant submitted the visit schedule request
+    if (attempt.status !== "cancelled") {
+      events.push({
+        id: `visit-${idx}-scheduled`,
+        icon: Calendar, iconBg: "#DBEAFE", iconColor: "#2563EB",
+        title: `Physical Visit Request${suffix}`,
+        description: `Requested ${viewType.toLowerCase()} schedule for ${visitDateStr}`,
+        // scheduledAt = when the tenant submitted the schedule form (visitScheduledAt)
+        date: attempt.scheduledAt,
+        status: "Scheduled", statusColor: "#D97706", statusBg: "#FFFBEB",
+      });
+    }
 
- // Event 2: Admin outcome
- if (attempt.status === "approved") {
- events.push({
- id: `visit-${idx}-approved`,
- icon: CheckCircle, iconBg: "#F0FDF4", iconColor: "#059669",
- title: `Visit Schedule Confirmed${suffix}`,
- description: `Admin confirmed your ${viewType.toLowerCase()} for viewing coordination on ${visitDateStr}`,
- date: attempt.approvedAt,
- status: "Approved", statusColor: "#059669", statusBg: "#F0FDF4",
- });
- } else if (attempt.status === "rejected") {
- events.push({
- id: `visit-${idx}-rejected`,
- icon: XCircle, iconBg: "#FEF2F2", iconColor: "#DC2626",
- title: `Visit Rejected${suffix}`,
- description: attempt.rejectionReason || "Admin rejected the schedule. Please reschedule.",
- date: attempt.rejectedAt,
- status: "Rejected", statusColor: "#DC2626", statusBg: "#FEF2F2",
- });
- } else if (attempt.status === "cancelled") {
- events.push({
- id: `visit-${idx}-cancelled`,
- icon: XCircle, iconBg: "#F3F4F6", iconColor: "#6B7280",
- title: `Visit Skipped${suffix}`,
- description: `${viewType} visit on ${visitDateStr} was not pushed through`,
- date: attempt.scheduledAt,
- status: "Skipped", statusColor: "#6B7280", statusBg: "#F3F4F6",
- });
- }
- });
+    // Event 2: Admin outcome
+    if (attempt.status === "approved") {
+      events.push({
+        id: `visit-${idx}-approved`,
+        icon: CheckCircle, iconBg: "#F0FDF4", iconColor: "#059669",
+        title: `Visit Schedule Confirmation${suffix}`,
+        description: `Administration confirmed your ${viewType.toLowerCase()} schedule for ${visitDateStr}`,
+        date: attempt.approvedAt,
+        status: "Confirmed", statusColor: "#059669", statusBg: "#F0FDF4",
+      });
+    } else if (attempt.status === "rejected") {
+      events.push({
+        id: `visit-${idx}-rejected`,
+        icon: XCircle, iconBg: "#FEF2F2", iconColor: "#DC2626",
+        title: `Visit Schedule Update${suffix}`,
+        description: attempt.rejectionReason || "The requested visit schedule is unavailable. Please select another date or time.",
+        date: attempt.rejectedAt,
+        status: "Reschedule Needed", statusColor: "#DC2626", statusBg: "#FEF2F2",
+      });
+    } else if (attempt.status === "cancelled") {
+      events.push({
+        id: `visit-${idx}-cancelled`,
+        icon: XCircle, iconBg: "#F3F4F6", iconColor: "#6B7280",
+        title: `Physical Visit Summary${suffix}`,
+        description: `The scheduled ${viewType.toLowerCase()} on ${visitDateStr} was not conducted`,
+        date: attempt.scheduledAt,
+        status: "Skipped", statusColor: "#6B7280", statusBg: "#F3F4F6",
+      });
+    }
+  });
 
- const terminalStatuses = ["cancelled", "moveOut", "archived"];
- if (
- r.visitDate &&
- !r.scheduleRejected &&
- !r.visitApproved &&
- !terminalStatuses.includes(r.status)
- ) {
- const attemptNum = r.visitHistory.length + 1;
- const visitDateStr = fmtDate(r.visitDate) + (r.visitTime ? ` at ${r.visitTime}` : "");
- events.push({
- id: "visit-current", icon: Calendar, iconBg: "#DBEAFE", iconColor: "#2563EB",
- title: attemptNum > 1 ? `Physical Visit Scheduled (Attempt ${attemptNum})` : "Physical Visit Scheduled",
- description: `Physical visit requested for ${visitDateStr}`,
- // visitScheduledAt = when the tenant submitted this schedule (not updatedAt/createdAt)
- date: r.visitScheduledAt,
- status: "Pending", statusColor: "#D97706", statusBg: "#FFFBEB",
- });
- }
+  const terminalStatuses = ["cancelled", "moveOut", "archived"];
+  if (
+    r.visitDate &&
+    !r.scheduleRejected &&
+    !r.visitApproved &&
+    !terminalStatuses.includes(r.status)
+  ) {
+    const attemptNum = r.visitHistory.length + 1;
+    const visitDateStr = fmtDate(r.visitDate) + (r.visitTime ? ` at ${r.visitTime}` : "");
+    events.push({
+      id: "visit-current", icon: Calendar, iconBg: "#DBEAFE", iconColor: "#2563EB",
+      title: attemptNum > 1 ? `Physical Visit Request (Attempt ${attemptNum})` : "Physical Visit Request",
+      description: `Physical visit requested for ${visitDateStr}`,
+      // visitScheduledAt = when the tenant submitted this schedule (not updatedAt/createdAt)
+      date: r.visitScheduledAt,
+      status: "Pending Review", statusColor: "#D97706", statusBg: "#FFFBEB",
+    });
+  }
  } else {
- if (r.viewingPreference || r.viewingType || r.isUrgentMoveIn) {
- events.push({
- id: "viewing-preference",
- icon: Calendar,
- iconBg: "#DBEAFE",
- iconColor: "#2563EB",
- title: "Viewing Preference Selected",
- description:
- getViewingPreferenceLabel(r) === "Physical Visit" && r.visitDate
- ? `Physical visit requested for ${fmtDate(r.visitDate)}${r.visitTime ? ` at ${r.visitTime}` : ""}`
- : getViewingPreferenceLabel(r),
- date: r.visitScheduledAt || r.updatedAt || r.createdAt,
- status: r.scheduleRejected ? "Rejected" : "Saved",
- statusColor: r.scheduleRejected ? "#DC2626" : "#2563EB",
- statusBg: r.scheduleRejected ? "#FEF2F2" : "#DBEAFE",
- });
- }
- if (r.visitDate) {
- events.push({
- id: "visit-scheduled", icon: Calendar, iconBg: "#DBEAFE", iconColor: "#2563EB",
- title: "Physical Visit Scheduled",
- description: `Physical visit on ${fmtDate(r.visitDate)}${r.visitTime ? ` at ${r.visitTime}` : ""}`,
- // visitScheduledAt = when the tenant submitted the schedule form
- date: r.visitScheduledAt || r.updatedAt || r.createdAt,
- status: r.scheduleRejected ? "Rejected" : r.scheduleApproved ? "Approved" : "Pending",
- statusColor: r.scheduleRejected ? "#DC2626" : r.scheduleApproved ? "#059669" : "#D97706",
- statusBg: r.scheduleRejected ? "#FEF2F2" : r.scheduleApproved ? "#F0FDF4" : "#FFFBEB",
- });
- }
- if (r.scheduleRejected && r.scheduleRejectedAt) {
- events.push({
- id: "schedule-rejected", icon: XCircle, iconBg: "#FEF2F2", iconColor: "#DC2626",
- title: "Visit Schedule Rejected",
- description: r.scheduleRejectionReason || "Admin requested reschedule",
- date: r.scheduleRejectedAt,
- status: "Rejected", statusColor: "#DC2626", statusBg: "#FEF2F2",
- });
- }
+  if (r.viewingPreference || r.viewingType || r.isUrgentMoveIn) {
+    events.push({
+      id: "viewing-preference",
+      icon: Calendar,
+      iconBg: "#DBEAFE",
+      iconColor: "#2563EB",
+      title: "Viewing Preference Saved",
+      description:
+        getViewingPreferenceLabel(r) === "Physical Visit" && r.visitDate
+          ? `Physical visit requested for ${fmtDate(r.visitDate)}${r.visitTime ? ` at ${r.visitTime}` : ""}`
+          : getViewingPreferenceLabel(r),
+      date: r.visitScheduledAt || r.updatedAt || r.createdAt,
+      status: r.scheduleRejected ? "Reschedule Needed" : "Saved",
+      statusColor: r.scheduleRejected ? "#DC2626" : "#2563EB",
+      statusBg: r.scheduleRejected ? "#FEF2F2" : "#DBEAFE",
+    });
+  }
+  if (r.visitDate) {
+    events.push({
+      id: "visit-scheduled", icon: Calendar, iconBg: "#DBEAFE", iconColor: "#2563EB",
+      title: "Physical Visit Request",
+      description: `Physical visit requested for ${fmtDate(r.visitDate)}${r.visitTime ? ` at ${r.visitTime}` : ""}`,
+      // visitScheduledAt = when the tenant submitted the schedule form
+      date: r.visitScheduledAt || r.updatedAt || r.createdAt,
+      status: r.scheduleRejected ? "Reschedule Needed" : r.scheduleApproved ? "Confirmed" : "Pending Review",
+      statusColor: r.scheduleRejected ? "#DC2626" : r.scheduleApproved ? "#059669" : "#D97706",
+      statusBg: r.scheduleRejected ? "#FEF2F2" : r.scheduleApproved ? "#F0FDF4" : "#FFFBEB",
+    });
+  }
+  if (r.scheduleRejected && r.scheduleRejectedAt) {
+    events.push({
+      id: "schedule-rejected", icon: XCircle, iconBg: "#FEF2F2", iconColor: "#DC2626",
+      title: "Visit Schedule Update",
+      description: r.scheduleRejectionReason || "Administration requested a schedule adjustment.",
+      date: r.scheduleRejectedAt,
+      status: "Reschedule Needed", statusColor: "#DC2626", statusBg: "#FEF2F2",
+    });
+  }
  }
 
  // Visit approved by admin (non-history path)
  // Only show if visitHistory doesn't already contain an approved entry (avoids duplicate)
  const hasApprovedInHistory = r.visitHistory?.some((a) => a.status === "approved");
  if (r.scheduleApproved && r.scheduleApprovedAt && !hasApprovedInHistory) {
- events.push({
- id: "visit-approved", icon: CheckCircle, iconBg: "#F0FDF4", iconColor: "#059669",
- title: "Visit Schedule Confirmed",
- description: "Admin confirmed your physical visit schedule for viewing coordination only.",
- date: r.scheduleApprovedAt,
- status: "Approved", statusColor: "#059669", statusBg: "#F0FDF4",
- });
+  events.push({
+    id: "visit-approved", icon: CheckCircle, iconBg: "#F0FDF4", iconColor: "#059669",
+    title: "Visit Schedule Confirmation",
+    description: "Administration confirmed your physical visit schedule for viewing coordination.",
+    date: r.scheduleApprovedAt,
+    status: "Confirmed", statusColor: "#059669", statusBg: "#F0FDF4",
+  });
  }
 
  if (r.firstName && r.lastName && r.agreedToCertification) {
- const appDate = r.applicationSubmittedAt || r.updatedAt || r.createdAt;
- events.push({
- id: "application", icon: FileText, iconBg: "#FFF7ED", iconColor: "#EA580C",
- title: "Application Submitted",
- description: "Personal details and documents submitted.",
- date: appDate,
- status: "Submitted", statusColor: "#EA580C", statusBg: "#FFF7ED",
- });
+  const appDate = r.applicationSubmittedAt || r.updatedAt || r.createdAt;
+  events.push({
+    id: "application", icon: FileText, iconBg: "#FFF7ED", iconColor: "#EA580C",
+    title: "Application Submission",
+    description: "Personal details and required documents submitted for review.",
+    date: appDate,
+    status: "Submitted", statusColor: "#EA580C", statusBg: "#FFF7ED",
+  });
  }
 
  if (r.applicationReviewedAt && hasReservationStatus(r.status, "approved_for_payment")) {
- events.push({
- id: "application-approved",
- icon: ClipboardCheck,
- iconBg: "#ECFEFF",
- iconColor: "#0F766E",
- title: "Approved for Payment",
- description: "Admin approved your application and documents. Payment is now available.",
- date: r.applicationReviewedAt,
- status: "Approved",
- statusColor: "#0F766E",
- statusBg: "#ECFEFF",
- });
+  events.push({
+    id: "application-approved",
+    icon: ClipboardCheck,
+    iconBg: "#ECFEFF",
+    iconColor: "#0F766E",
+    title: "Application Approval",
+    description: "Administration approved your application and supporting documents. Payment access is now unlocked.",
+    date: r.applicationReviewedAt,
+    status: "Approved for Payment",
+    statusColor: "#0F766E",
+    statusBg: "#ECFEFF",
+  });
  }
 
  if (r.applicationReviewedAt && hasReservationStatus(r.status, "needs_revision")) {
- events.push({
- id: "application-revision",
- icon: Clock,
- iconBg: "#FFF7ED",
- iconColor: "#EA580C",
- title: "Revision Requested",
- description: r.applicationReviewReason || "Admin requested updates to your application or documents.",
- date: r.applicationReviewedAt,
- status: "Needs Revision",
- statusColor: "#EA580C",
- statusBg: "#FFF7ED",
- });
+  events.push({
+    id: "application-revision",
+    icon: Clock,
+    iconBg: "#FFF7ED",
+    iconColor: "#EA580C",
+    title: "Application Revision Request",
+    description: r.applicationReviewReason || "Administrative updates are requested for your application or supporting documents.",
+    date: r.applicationReviewedAt,
+    status: "Action Required",
+    statusColor: "#EA580C",
+    statusBg: "#FFF7ED",
+  });
  }
 
  if (r.applicationReviewedAt && hasReservationStatus(r.status, "rejected")) {
- events.push({
- id: "application-rejected",
- icon: XCircle,
- iconBg: "#FEF2F2",
- iconColor: "#DC2626",
- title: "Application Rejected",
- description: r.applicationReviewReason || "Admin rejected your application.",
- date: r.applicationReviewedAt,
- status: "Rejected",
- statusColor: "#DC2626",
- statusBg: "#FEF2F2",
- });
+  events.push({
+    id: "application-rejected",
+    icon: XCircle,
+    iconBg: "#FEF2F2",
+    iconColor: "#DC2626",
+    title: "Application Status Update",
+    description: r.applicationReviewReason || "Regrettably, your application could not be approved at this time.",
+    date: r.applicationReviewedAt,
+    status: "Application Declined",
+    statusColor: "#DC2626",
+    statusBg: "#FEF2F2",
+  });
  }
 
  if (r.paymentStatus === "paid" || r.paymentDate || r.status === "reserved") {
- events.push({
- id: "payment", icon: CreditCard, iconBg: "#F0FDF4", iconColor: "#059669",
- title: "Payment Confirmed",
- description: `PHP ${(r.reservationFeeAmount || 2000).toLocaleString("en-PH")} reservation fee paid${r.paymentMethod ? ` via ${formatMethod(r.paymentMethod)}` : ""}`,
- date: r.paymentDate || r.reservedAt || r.updatedAt,
- status: "Paid", statusColor: "#059669", statusBg: "#F0FDF4",
- });
+  events.push({
+    id: "payment", icon: CreditCard, iconBg: "#F0FDF4", iconColor: "#059669",
+    title: "Payment Confirmation",
+    description: `PHP ${(r.reservationFeeAmount || 2000).toLocaleString("en-PH")} reservation fee received${r.paymentMethod ? ` via ${formatMethod(r.paymentMethod)}` : ""}. Thank you!`,
+    date: r.paymentDate || r.reservedAt || r.updatedAt,
+    status: "Payment Received", statusColor: "#059669", statusBg: "#F0FDF4",
+  });
  }
 
  if (r.status === "reserved") {
- events.push({
- id: "reserved", icon: ClipboardCheck, iconBg: "#F0FDF4", iconColor: "#059669",
- title: "Reservation Confirmed",
- description: `Reservation secured. Code: ${r.reservationCode || "—"}`,
- date: r.reservedAt || r.paymentDate || r.updatedAt,
- status: "Reserved", statusColor: "#059669", statusBg: "#F0FDF4",
- });
+  events.push({
+    id: "reserved", icon: ClipboardCheck, iconBg: "#F0FDF4", iconColor: "#059669",
+    title: "Reservation Confirmation",
+    description: `Reservation secured under code ${r.reservationCode || "—"}.`,
+    date: r.reservedAt || r.paymentDate || r.updatedAt,
+    status: "Reservation Active", statusColor: "#059669", statusBg: "#F0FDF4",
+  });
  }
 
  if (hasReservationStatus(r.status, "moveIn")) {
- events.push({
- id: "movein", icon: UserCheck, iconBg: "#EEF2FF", iconColor: "#6366F1",
- title: "Moved In",
- description: "You have officially moved into your room.",
- date: readMoveInDate(r) || r.updatedAt,
- status: "Active", statusColor: "#6366F1", statusBg: "#EEF2FF",
- });
+  events.push({
+    id: "movein", icon: UserCheck, iconBg: "#EEF2FF", iconColor: "#6366F1",
+    title: "Move-in Confirmation",
+    description: "Welcome! You have officially moved into your room.",
+    date: readMoveInDate(r) || r.updatedAt,
+    status: "Official Tenant", statusColor: "#6366F1", statusBg: "#EEF2FF",
+  });
  }
 
  if (hasReservationStatus(r.status, "moveOut")) {
- events.push({
- id: "moveout", icon: Home, iconBg: "#F3F4F6", iconColor: "#6B7280",
- title: "Moved Out",
- description: "Your stay has ended.",
- date: readMoveOutDate(r) || r.updatedAt,
- status: "Completed", statusColor: "#059669", statusBg: "#F0FDF4",
- });
+  events.push({
+    id: "moveout", icon: Home, iconBg: "#F3F4F6", iconColor: "#6B7280",
+    title: "Move-out Summary",
+    description: "Your stay at Lilycrest Dormitory has concluded.",
+    date: readMoveOutDate(r) || r.updatedAt,
+    status: "Stay Completed", statusColor: "#059669", statusBg: "#F0FDF4",
+  });
  }
 
  if (r.status === "cancelled" || r.reservationStatus === "cancelled") {
- events.push({
- id: "cancelled", icon: XCircle, iconBg: "#FEF2F2", iconColor: "#DC2626",
- title: "Reservation Cancelled",
- description: "You cancelled your reservation",
- date: r.cancelledAt || r.updatedAt,
- status: "Cancelled", statusColor: "#DC2626", statusBg: "#FEF2F2",
- });
+  events.push({
+    id: "cancelled", icon: XCircle, iconBg: "#FEF2F2", iconColor: "#DC2626",
+    title: "Reservation Cancellation",
+    description: r.cancellationReason || r.cancelReason ? `Reservation cancelled. Reason: ${r.cancellationReason || r.cancelReason}` : "Your reservation was successfully cancelled at your request.",
+    date: r.cancelledAt || r.updatedAt,
+    status: "Cancelled", statusColor: "#DC2626", statusBg: "#FEF2F2",
+  });
  }
 
  // Logical step order for tie-breaking when timestamps are identical

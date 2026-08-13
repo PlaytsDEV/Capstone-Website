@@ -2543,9 +2543,9 @@ export const manageReservationVisit = async (req, res, next) => {
       ) {
         reservation.status = "visit_approved";
       }
-      applicantNotificationTitle = "Physical Visit Completed";
+      applicantNotificationTitle = "Physical Visit Update";
       applicantNotificationMessage =
-        "Your physical visit has been recorded. You may now continue to your tenant application. Payment remains locked until your application and required documents are approved.";
+        "Your physical visit has been recorded successfully. You may now proceed with your tenant application. Payment will remain locked until your application and required documents are approved.";
       applicantEmailStatus = "visit_completed";
     }
 
@@ -2576,9 +2576,9 @@ export const manageReservationVisit = async (req, res, next) => {
       reservation.cancellationReason = note || "No-show at scheduled visit";
       reservation.reservationFeeRefundable = false;
       reservation.reservationFeeForfeited = true;
-      applicantNotificationTitle = "Reservation Cancelled — Missed Visit";
+      applicantNotificationTitle = "Reservation Cancellation — Missed Visit";
       applicantNotificationMessage =
-        "You missed your scheduled visit and your room reservation has been automatically cancelled. Please contact admin if you believe this was in error.";
+        "Your scheduled visit was missed and your room reservation has been automatically cancelled. Please reach out to administration if you believe this was in error.";
       applicantEmailStatus = "no_show";
     }
 

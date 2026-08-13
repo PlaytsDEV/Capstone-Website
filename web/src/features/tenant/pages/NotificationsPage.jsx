@@ -124,7 +124,7 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "24px 16px" }}>
+    <div style={{ maxWidth: 1100, width: "100%", margin: "0 auto", padding: "24px 20px" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24, gap: 12 }}>
         <div>
