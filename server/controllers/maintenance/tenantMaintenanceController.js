@@ -212,6 +212,22 @@ export const createRequest = async (req, res, next) => {
 
     await request.save();
 
+    try {
+      const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
+      notify
+        .newMaintenanceTicket(
+          branchResolution.branch,
+          tenantName,
+          "",
+          urgency,
+          requestType,
+          request.request_id || request._id,
+        )
+        .catch((e) => logger.warn({ err: e }, "Maintenance admin notification failed (non-fatal)"));
+    } catch (notifErr) {
+      // non-fatal
+    }
+
     sendSuccess(
       res,
       {
@@ -398,6 +414,19 @@ export const reopenMyRequest = async (req, res, next) => {
 
     await request.save();
 
+    try {
+      const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
+      notify
+        .maintenanceReopened(
+          request.branch,
+          tenantName,
+          request.request_id || request._id,
+        )
+        .catch((e) => logger.warn({ err: e }, "Maintenance reopen notification failed (non-fatal)"));
+    } catch (notifErr) {
+      // non-fatal
+    }
+
     sendSuccess(res, {
       request: serializeMaintenanceRequest(
         request.toObject(),
@@ -489,6 +518,19 @@ export const sendTenantReply = async (req, res, next) => {
     }
 
     await request.save();
+
+    try {
+      const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
+      notify
+        .maintenanceTenantReply(
+          request.branch,
+          tenantName,
+          request.request_id || request._id,
+        )
+        .catch((e) => logger.warn({ err: e }, "Maintenance tenant reply notification failed (non-fatal)"));
+    } catch (notifErr) {
+      // non-fatal
+    }
 
     sendSuccess(res, {
       message: "Reply sent successfully.",

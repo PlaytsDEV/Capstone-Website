@@ -97,7 +97,7 @@ function CheckAvailabilityPage() {
  useState(false);
  const [changeRoomLocked, setChangeRoomLocked] = useState(false);
  const [currentPage, setCurrentPage] = useState(1);
- const ROOMS_PER_PAGE = 6;
+ const ROOMS_PER_PAGE = 15;
 
  // ── TanStack Query ─────────────────────────────────────────
  const { data: rawRooms = [], isLoading: roomsLoading, error: roomsQueryError } = useRooms(
@@ -656,35 +656,7 @@ function CheckAvailabilityPage() {
  </div>
  )}
 
- {/* Coming Soon */}
- <section style={{ marginTop: "56px" }}>
- <h2 className="ca-section-title">Coming Soon</h2>
- <p className="ca-section-subtitle">Rooms that will be available soon</p>
- <div className="ca-grid">
- <div
- className="ca-coming-soon-card"
- onClick={() => setIsInquiryModalOpen(true)}
- >
- <div className="ca-card-image-wrap">
- <img
- src={ROOM_IMAGES.gpQuadRoom}
- alt={UPCOMING_ROOM.title}
- loading="lazy"
- />
- <span className="ca-coming-soon-badge">Coming Soon</span>
- </div>
- <div className="ca-card-body">
- <div className="ca-card-title">{UPCOMING_ROOM.title}</div>
- <div className="ca-card-location">
- <span>{UPCOMING_ROOM.branch} · {UPCOMING_ROOM.type}</span>
- </div>
- <p style={{ fontSize: "13px", color: "#9CA3AF" }}>
- Available from {UPCOMING_ROOM.availableFrom}
- </p>
- </div>
- </div>
- </div>
- </section>
+
  </main>
 
   {isDetailsModalOpen && selectedRoom && (

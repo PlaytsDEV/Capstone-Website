@@ -439,6 +439,26 @@ export const updateVisitPreferenceAndSchedule = async (req, res, next) => {
             },
           );
         }
+
+        try {
+          const applicantName = `${updatedReservation.userId.firstName || ""} ${updatedReservation.userId.lastName || ""}`.trim() || updatedReservation.userId.email;
+          const roomName = updatedReservation.roomId?.name || "";
+          const branchName = updatedReservation.roomId?.branch || dbUser.branch || "";
+          const visitDateLabel = updatedReservation.visitDate
+            ? new Date(updatedReservation.visitDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })
+            : "";
+          notify
+            .newVisitRequested(
+              branchName,
+              applicantName,
+              roomName,
+              visitDateLabel || "TBD",
+              updatedReservation.visitTime || "",
+            )
+            .catch((e) => logger.warn({ err: e }, "Admin visit request notification failed (non-fatal)"));
+        } catch (adminVisitErr) {
+          // non-fatal
+        }
       } catch (notifyErr) {
         logger.warn(
           { err: notifyErr, requestId: req.id },

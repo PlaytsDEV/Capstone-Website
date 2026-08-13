@@ -6,7 +6,7 @@ import dayjs from "dayjs";
 import { Inquiry, User } from "../models/index.js";
 import { sendInquiryResponseEmail } from "../config/email.js";
 import auditLogger from "../utils/auditLogger.js";
-import { createNotification } from "../services/notifications/notificationService.js";
+import { createNotification, notifyBranchAdmins } from "../services/notifications/notificationService.js";
 import {
   sendSuccess,
   sendError,
@@ -294,31 +294,17 @@ export const createInquiry = async (req, res, next) => {
 
     // Create automated notification for admin users
     try {
-      const adminUsers = await User.find({
-        role: { $in: ["admin", "super-admin"] },
-        isActive: { $ne: false },
-      }).select("_id branch role");
-
-      for (const admin of adminUsers) {
-        if (
-          admin.role === "super-admin" ||
-          !admin.branch ||
-          admin.branch === branch ||
-          branch === "general"
-        ) {
-          await createNotification(
-            admin._id,
-            "inquiry_new",
-            "New Customer Inquiry Received",
-            `New inquiry from ${name.trim()} (${email.toLowerCase().trim()}) regarding "${subject.trim()}".`,
-            {
-              actionUrl: "/admin/reservations?tab=inquiries",
-              entityType: "Inquiry",
-              entityId: inquiry._id,
-            }
-          );
+      await notifyBranchAdmins(
+        branch,
+        "inquiry_new",
+        "New Customer Inquiry Received",
+        `New inquiry from ${name.trim()} (${email.toLowerCase().trim()}) regarding "${subject.trim()}".`,
+        {
+          actionUrl: "/admin/reservations?tab=inquiries",
+          entityType: "Inquiry",
+          entityId: inquiry._id,
         }
-      }
+      );
     } catch (notifErr) {
       console.error("⚠️ Failed to create admin inquiry notification:", notifErr);
     }

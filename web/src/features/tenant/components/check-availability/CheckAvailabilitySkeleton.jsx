@@ -5,7 +5,7 @@ import SkeletonPulse from "../../../../shared/components/SkeletonPulse";
  * CheckAvailabilitySkeleton — shimmer skeleton room cards shown while rooms load.
  * Renders inside <div className="ca-grid"> to match RoomCard grid dimensions.
  */
-export default function CheckAvailabilitySkeleton({ count = 6 }) {
+export default function CheckAvailabilitySkeleton({ count = 15 }) {
   return (
     <>
       {Array.from({ length: count }).map((_, i) => (

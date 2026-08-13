@@ -7,6 +7,7 @@
  */
 
 import Notification from "../../models/Notification.js";
+import User from "../../models/User.js";
 import {
   buildMaintenanceNotificationBody,
   buildMaintenanceNotificationTitle,
@@ -505,7 +506,109 @@ const notify = {
 
     return notification;
   },
+
+  newMaintenanceTicket: (branch, tenantName, roomName, urgency, category, requestId) => {
+    const isEmergency = urgency === "emergency" || urgency === "high";
+    const title = isEmergency
+      ? `CRITICAL: Emergency Maintenance Request`
+      : `New Maintenance Request`;
+    const message = `${tenantName} in ${roomName || "assigned room"} filed a ${urgency ? urgency.toUpperCase() : "NORMAL"} maintenance request (${category || "General"}).`;
+    return notifyBranchAdmins(branch, "maintenance_new", title, message, {
+      entityType: "maintenance",
+      entityId: requestId ? String(requestId) : null,
+      actionUrl: requestId ? `/admin/maintenance?requestId=${String(requestId)}` : "/admin/maintenance",
+    });
+  },
+
+  maintenanceTenantReply: (branch, tenantName, requestId) =>
+    notifyBranchAdmins(branch, "maintenance_new", "Maintenance Reply Received",
+      `${tenantName} replied to maintenance request.`,
+      {
+        entityType: "maintenance",
+        entityId: requestId ? String(requestId) : null,
+        actionUrl: requestId ? `/admin/maintenance?requestId=${String(requestId)}` : "/admin/maintenance",
+      }),
+
+  maintenanceReopened: (branch, tenantName, requestId) =>
+    notifyBranchAdmins(branch, "maintenance_new", "Maintenance Ticket Re-opened",
+      `${tenantName} re-opened maintenance request. Action required.`,
+      {
+        entityType: "maintenance",
+        entityId: requestId ? String(requestId) : null,
+        actionUrl: requestId ? `/admin/maintenance?requestId=${String(requestId)}` : "/admin/maintenance",
+      }),
+
+  newApplicationSubmitted: (branch, applicantName, roomName, reservationId) =>
+    notifyBranchAdmins(branch, "application_submitted", "New Application Received",
+      `New application submitted by ${applicantName} for ${roomName || "room"}. Document review required.`,
+      {
+        entityType: "reservation",
+        entityId: reservationId ? String(reservationId) : null,
+        actionUrl: reservationId ? `/admin/reservations?reservationId=${String(reservationId)}` : "/admin/reservations",
+      }),
+
+  contractSignedByTenant: (branch, tenantName, roomName, contractId) =>
+    notifyBranchAdmins(branch, "contract_signed", "Lease Contract Signed",
+      `${tenantName} has signed the lease contract for ${roomName || "room"}. Ready for admin verification.`,
+      {
+        entityType: "contract",
+        entityId: contractId ? String(contractId) : null,
+        actionUrl: "/admin/contracts",
+      }),
+
+  paymentProofSubmitted: (branch, tenantName, billingMonth, amount, billId) => {
+    const formattedAmount = typeof amount === "number" ? amount.toLocaleString() : amount;
+    return notifyBranchAdmins(branch, "payment_proof_submitted", "Payment Verification Pending",
+      `${tenantName} submitted payment proof of ₱${formattedAmount} for ${billingMonth}. Verification required.`,
+      {
+        entityType: "bill",
+        entityId: billId ? String(billId) : null,
+        actionUrl: billId ? `/admin/billing?billId=${String(billId)}` : "/admin/billing",
+      });
+  },
+
+  newVisitRequested: (branch, applicantName, roomName, visitDate, visitTime) =>
+    notifyBranchAdmins(branch, "visit_requested", "New Visit Scheduled",
+      `${applicantName} scheduled a viewing visit for ${roomName || "room"} on ${visitDate}${visitTime ? ` at ${visitTime}` : ""}.`,
+      {
+        entityType: "reservation",
+        actionUrl: "/admin/reservations?tab=visits",
+      }),
 };
+
+export async function notifyBranchAdmins(branch, type, title, message, options = {}) {
+  try {
+    const adminRecipients = branch
+      ? [
+          { role: "branch_admin", branch },
+          { role: "owner" },
+        ]
+      : [
+          { role: "branch_admin" },
+          { role: "owner" },
+        ];
+
+    const adminUsers = await User.find({
+      $or: adminRecipients,
+      accountStatus: "active",
+      isArchived: { $ne: true },
+    }).select("_id branch role").lean();
+
+    const notifications = await Promise.all(
+      adminUsers.map((admin) =>
+        createNotification(admin._id, type, title, message, options)
+      )
+    );
+
+    return notifications.filter(Boolean);
+  } catch (error) {
+    logger.warn(
+      { err: error, branch, type },
+      "[Notification] Failed to notify branch admins",
+    );
+    return [];
+  }
+}
 
 export { createNotification, notify };
 export default notify;

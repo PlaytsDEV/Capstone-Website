@@ -4,6 +4,7 @@ import fsPromises from "fs/promises";
 import { Contract, Reservation, User } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
 import logger from "../middleware/logger.js";
+import { notify } from "../utils/notificationService.js";
 import {
   createDraftContract, findCurrentContract,
   transitionContract, validateContractForGeneration,
@@ -428,6 +429,20 @@ const signatureAction = (signer) => async (req, res) => {
       contract, signer, value: req.body?.status, actorId: admin._id,
     });
     await auditSigningChange(req, before, contract, `${signer} signature changed from ${result.previousValue} to ${result.newValue}`);
+
+    if (signer === "tenant" && (result.newValue === "completed" || result.newValue === "signed")) {
+      try {
+        const tenantName = contract.tenantName || "Tenant";
+        const roomName = contract.roomName || "";
+        const branchName = contract.branch || "";
+        notify
+          .contractSignedByTenant(branchName, tenantName, roomName, contract._id)
+          .catch((e) => logger.warn({ err: e }, "Contract signed admin notification failed (non-fatal)"));
+      } catch (notifErr) {
+        // non-fatal
+      }
+    }
+
     res.json({ success: true, status: contract.status, previousValue: result.previousValue, newValue: result.newValue });
   } catch (error) { fail(res, error); }
 };
@@ -445,6 +460,20 @@ export const uploadSignedDocument = async (req, res) => {
       replacementReason: req.body?.replacementReason,
     });
     await auditSigningChange(req, before, contract, document.version === 1 ? "Signed Contract copy uploaded" : "Signed Contract copy replaced");
+
+    if (document.version === 1) {
+      try {
+        const tenantName = contract.tenantName || "Tenant";
+        const roomName = contract.roomName || "";
+        const branchName = contract.branch || "";
+        notify
+          .contractSignedByTenant(branchName, tenantName, roomName, contract._id)
+          .catch((e) => logger.warn({ err: e }, "Contract signed admin notification failed (non-fatal)"));
+      } catch (notifErr) {
+        // non-fatal
+      }
+    }
+
     res.status(201).json({ success: true, document: {
       version: document.version, fileName: document.fileName, fileHash: document.fileHash,
       fileSize: document.fileSize, mimeType: document.mimeType, uploadedAt: document.uploadedAt,

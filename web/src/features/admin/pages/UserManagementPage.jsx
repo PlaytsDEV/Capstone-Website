@@ -564,7 +564,6 @@ function getAvatarColor(user) {
     users.length;
 
   const refetchAll = async () => {
-    setOptimisticStatuses({});
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["users"] }),
       queryClient.invalidateQueries({
@@ -889,6 +888,26 @@ function getAvatarColor(user) {
     }
   };
 
+  const { activeDelta, suspendedDelta } = useMemo(() => {
+    let activeD = 0;
+    let suspendedD = 0;
+    Object.entries(optimisticStatuses).forEach(([id, newStatus]) => {
+      const u = users.find((item) => String(item._id || item.id) === String(id));
+      if (!u) return;
+      const oldStatus = u.accountStatus || (u.isActive ? "active" : "suspended");
+      const wasActive = u.isActive !== false && oldStatus === "active";
+      const isNowActive = newStatus === "active";
+      if (wasActive && !isNowActive) {
+        activeD -= 1;
+        suspendedD += 1;
+      } else if (!wasActive && isNowActive) {
+        activeD += 1;
+        suspendedD -= 1;
+      }
+    });
+    return { activeDelta: activeD, suspendedDelta: suspendedD };
+  }, [optimisticStatuses, users]);
+
   const summaryItems = useMemo(
     () => [
       {
@@ -896,7 +915,11 @@ function getAvatarColor(user) {
         value: stats?.total || totalUsers,
         color: "blue",
       },
-      { label: "Active", value: stats?.activeCount || 0, color: "green" },
+      {
+        label: "Active",
+        value: Math.max(0, (stats?.activeCount || 0) + activeDelta),
+        color: "green",
+      },
       {
         label: "Admin Accounts",
         value: (stats?.byRole?.branch_admin || 0) + (stats?.byRole?.owner || 0),
@@ -904,9 +927,12 @@ function getAvatarColor(user) {
       },
       {
         label: "Blocked",
-        value:
+        value: Math.max(
+          0,
           (stats?.byAccountStatus?.suspended || 0) +
-          (stats?.byAccountStatus?.banned || 0),
+            (stats?.byAccountStatus?.banned || 0) +
+            suspendedDelta,
+        ),
         color: "orange",
       },
       {
@@ -915,7 +941,7 @@ function getAvatarColor(user) {
         color: "red",
       },
     ],
-    [stats, totalUsers],
+    [stats, totalUsers, activeDelta, suspendedDelta],
   );
 
   const filters = [
