@@ -68,6 +68,20 @@ export function useMaintenanceData() {
       ? requestedTab
       : "requests",
   );
+
+  const handleTabChange = (nextTab) => {
+    setActiveTab(nextTab);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (nextTab === "requests") {
+        next.delete("tab");
+      } else {
+        next.set("tab", nextTab);
+      }
+      return next;
+    });
+  };
+
   const defaultReportRange = useMemo(() => getDefaultMaintenanceReportRange(), []);
 
   const [statusFilter, setStatusFilter] = useState("all");
@@ -355,11 +369,6 @@ export function useMaintenanceData() {
       ),
     [dateFrom, dateTo, searchedRequests, slaFilter, summaryCardKey],
   );
-
-  const handleTabChange = (tabKey) => {
-    setActiveTab(tabKey);
-    setSearchParams({ tab: tabKey });
-  };
 
   const handleResetFilters = () => {
     setStatusFilter("all");

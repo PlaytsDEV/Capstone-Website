@@ -205,6 +205,8 @@ await jest.unstable_mockModule("../controllers/maintenanceController.js", () => 
   updateRequest: noop,
   updateAdminRequestStatus: noop,
   updateAdminRequestStatusCompat: noop,
+  updateAdminMaintenanceCost: noop,
+  getAdminMaintenanceDuplicates: noop,
   assignAdminMaintenanceProvider: noop,
   assignAdminMaintenanceBranch: noop,
   generateAdminMaintenanceUpdate: noop,
@@ -443,6 +445,16 @@ describe("route access guards", () => {
       "/admin/:requestId/send-tenant-summary",
       "post",
     );
+    const adminCostHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/cost",
+      "patch",
+    );
+    const adminDuplicatesHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/duplicates",
+      "get",
+    );
     const adminSuggestProviderHandlers = getRouteHandlers(
       maintenanceRoutes,
       "/admin/:requestId/suggest-provider",
@@ -487,7 +499,7 @@ describe("route access guards", () => {
       ),
     ).toBe(true);
 
-    [adminAnalyticsHandlers, adminBranchReportHandlers, adminProviderReportHandlers, adminAssignProviderHandlers, adminAssignBranchHandlers, adminGenerateUpdateHandlers, adminGenerateReportHandlers, adminSendTenantSummaryHandlers, adminSuggestProviderHandlers].forEach(
+    [adminAnalyticsHandlers, adminBranchReportHandlers, adminProviderReportHandlers, adminAssignProviderHandlers, adminAssignBranchHandlers, adminGenerateUpdateHandlers, adminGenerateReportHandlers, adminSendTenantSummaryHandlers, adminCostHandlers, adminDuplicatesHandlers, adminSuggestProviderHandlers].forEach(
       (handlers) => {
         expect(handlers).toContain(verifyAdmin);
         expect(handlers).toContain(filterByBranch);

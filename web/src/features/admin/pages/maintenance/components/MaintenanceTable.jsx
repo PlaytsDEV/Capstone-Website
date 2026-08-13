@@ -43,6 +43,7 @@ export function MaintenanceTable({
   onBulkArchive,
   onBulkExport,
   isBulkUpdating = false,
+  onQuickStatusChange,
 }) {
   const allPageIds = useMemo(() => requests.map((r) => r.request_id), [requests]);
   const isAllSelected =
@@ -236,8 +237,38 @@ export function MaintenanceTable({
         sortable: true,
         render: (row) => fmtDate(row.created_at),
       },
+      {
+        key: "actions",
+        label: "Action",
+        align: "right",
+        render: (row) => (
+          <div
+            className="flex items-center justify-end gap-1.5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {row.status === "pending" && onQuickStatusChange ? (
+              <button
+                type="button"
+                onClick={() => onQuickStatusChange(row.request_id, "viewed")}
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-muted/50 px-2 text-[11px] font-semibold text-card-foreground transition hover:bg-primary hover:text-primary-foreground"
+                title="Acknowledge request"
+              >
+                <Eye size={12} />
+                <span>Acknowledge</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => onRowClick?.(row)}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-[11px] font-semibold text-card-foreground transition hover:bg-muted"
+            >
+              <span>Open</span>
+            </button>
+          </div>
+        ),
+      },
     ],
-    [allPageIds, isAllSelected, isSomeSelected, onSelectAll, onToggleSelect, selectedRequestIds],
+    [allPageIds, isAllSelected, isSomeSelected, onQuickStatusChange, onRowClick, onSelectAll, onToggleSelect, selectedRequestIds],
   );
 
   return (

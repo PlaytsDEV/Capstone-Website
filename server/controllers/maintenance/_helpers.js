@@ -951,6 +951,16 @@ export const serializeMaintenanceRequest = (
     resolved_at: request.resolved_at ?? null,
     closed_at: request.closed_at ?? null,
     estimated_resolution: getResolutionEstimate(request.urgency),
+    estimatedCost: Number(request.estimatedCost || request.costBreakdown?.totalCost || 0),
+    actualCost: Number(request.actualCost || request.costBreakdown?.totalCost || 0),
+    costBreakdown: {
+      laborCost: Number(request.costBreakdown?.laborCost || 0),
+      materialsCost: Number(request.costBreakdown?.materialsCost || 0),
+      totalCost: Number(request.costBreakdown?.totalCost || request.actualCost || request.estimatedCost || 0),
+      isTenantChargeable: Boolean(request.costBreakdown?.isTenantChargeable),
+      chargeReason: request.costBreakdown?.chargeReason || null,
+      billId: request.costBreakdown?.billId ? String(request.costBreakdown.billId) : null,
+    },
     tenant,
     branch: request.branch || null,
     roomId: request.roomId || null,
@@ -1578,6 +1588,30 @@ export const buildAdminGeneratedBy = (adminUser) =>
   adminUser?.user_id ||
   null;
 
+/**
+ * Finds potential duplicate or overlapping maintenance requests for the same room / unit.
+ */
+export const findOverlappingRoomRequests = async (request, { hoursWindow = 48 } = {}) => {
+  if (!request?.roomId) return [];
+  const MaintenanceRequest = (await import("../../models/MaintenanceRequest.js")).default;
+  const createdAt = request.created_at ? new Date(request.created_at) : new Date();
+  const windowStart = new Date(createdAt.getTime() - hoursWindow * 60 * 60 * 1000);
+  const windowEnd = new Date(createdAt.getTime() + hoursWindow * 60 * 60 * 1000);
+
+  const query = {
+    roomId: request.roomId,
+    _id: { $ne: request._id },
+    request_id: { $ne: request.request_id },
+    isArchived: false,
+    created_at: { $gte: windowStart, $lte: windowEnd },
+    status: { $nin: ["cancelled", "rejected"] },
+  };
+
+  return MaintenanceRequest.find(query)
+    .sort({ created_at: -1 })
+    .limit(5)
+    .lean();
+};
 
 export {
   resolveMaintenanceRequestBranch,

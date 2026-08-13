@@ -1,7 +1,9 @@
-import { Lightbulb, PhoneCall } from "lucide-react";
+import { useState } from "react";
+import { Check, Copy, Lightbulb, PhoneCall } from "lucide-react";
 import {
   buildFieldClassName,
   formatBranchLabel,
+  formatContractorDispatchTicket,
   getAssignedProviderCategory,
   getAssignedProviderContact,
   getAssignedProviderName,
@@ -13,6 +15,7 @@ import {
   PROVIDER_MANUAL_CHOICE,
   PROVIDER_NONE_CHOICE,
 } from "../maintenanceUtils";
+import { showNotification } from "../../../../../shared/utils/notification";
 import { DetailDrawer } from "../../../components/shared";
 import { SectionBadge } from "./SectionBadge";
 
@@ -37,6 +40,7 @@ export function ServiceProviderAssignmentPanel({
   onSuggest,
   onUseSuggestion,
 }) {
+  const [isCopied, setIsCopied] = useState(false);
   const currentName = getAssignedProviderName(request);
   const currentContact = getAssignedProviderContact(request);
   const currentCategory = getAssignedProviderCategory(request);
@@ -94,8 +98,28 @@ export function ServiceProviderAssignmentPanel({
         </p>
 
         <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            Current Assignment
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Current Assignment
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const text = formatContractorDispatchTicket(request);
+                navigator.clipboard?.writeText(text);
+                setIsCopied(true);
+                setTimeout(() => setIsCopied(false), 2000);
+                showNotification({
+                  title: "Dispatch Ticket Copied",
+                  message: "Formatted contractor dispatch instructions copied to clipboard.",
+                  type: "success",
+                });
+              }}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-[11px] font-semibold text-card-foreground transition hover:bg-muted"
+            >
+              {isCopied ? <Check size={11} className="text-emerald-700 dark:text-emerald-400" /> : <Copy size={11} />}
+              <span>{isCopied ? "Copied!" : "Copy Dispatch Info"}</span>
+            </button>
           </div>
           {currentName ? (
             <div className="mt-2 space-y-1 text-card-foreground">

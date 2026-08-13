@@ -233,6 +233,42 @@ const statusHistorySchema = new mongoose.Schema(
   { _id: false },
 );
 
+const costBreakdownSchema = new mongoose.Schema(
+  {
+    laborCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    materialsCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    totalCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    isTenantChargeable: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    chargeReason: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    billId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Billing",
+      default: null,
+    },
+  },
+  { _id: false },
+);
+
 const workLogSchema = new mongoose.Schema(
   {
     note: {
@@ -564,6 +600,20 @@ const maintenanceRequestSchema = new mongoose.Schema(
       ref: "User",
       default: null,
       index: true,
+    },
+    estimatedCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    actualCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    costBreakdown: {
+      type: costBreakdownSchema,
+      default: () => ({}),
     },
   },
   {

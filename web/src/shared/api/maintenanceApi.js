@@ -155,6 +155,15 @@ export const maintenanceApi = {
       body: JSON.stringify(payload),
     }),
 
+  updateAdminCost: (requestId, payload) =>
+    authFetch(`/maintenance/admin/${requestId}/cost`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  getAdminDuplicates: (requestId) =>
+    authFetch(`/maintenance/admin/${requestId}/duplicates`),
+
   generateAdminUpdate: (requestId) =>
     authFetch(`/maintenance/admin/${requestId}/generate-update`, {
       method: "POST",

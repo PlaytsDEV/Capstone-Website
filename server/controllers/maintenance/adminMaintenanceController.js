@@ -50,6 +50,7 @@ import {
   resolveAdminBranchFilter,
   loadTenantMap,
   buildMaintenanceReportPayload,
+  findOverlappingRoomRequests,
 } from "./_helpers.js";
 import { notify } from "../../utils/notificationService.js";
 
@@ -1138,6 +1139,94 @@ export const restoreAdminMaintenanceRequest = async (req, res, next) => {
       request: serializeMaintenanceRequest(
         request.toObject(),
         serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/maintenance/admin/:requestId/cost
+ */
+export const updateAdminMaintenanceCost = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+    const adminUser = await getDbUser(req.user.uid);
+
+    const laborCost = Math.max(0, Number(req.body?.laborCost) || 0);
+    const materialsCost = Math.max(0, Number(req.body?.materialsCost) || 0);
+    const totalCost = laborCost + materialsCost;
+    const isTenantChargeable = Boolean(req.body?.isTenantChargeable);
+    const chargeReason = toOptionalText(req.body?.chargeReason);
+
+    request.estimatedCost = totalCost;
+    request.actualCost = totalCost;
+    request.costBreakdown = {
+      laborCost,
+      materialsCost,
+      totalCost,
+      isTenantChargeable,
+      chargeReason,
+      billId: request.costBreakdown?.billId || null,
+    };
+
+    if (isTenantChargeable && !request.chargeableTenantId && request.userId) {
+      request.chargeableTenantId = request.userId;
+    }
+
+    const eventTimestamp = new Date();
+    appendStatusHistory(request, {
+      event: "cost_attribution_updated",
+      status: request.status,
+      ...buildActorSnapshot(adminUser),
+      note: `Cost: PHP ${totalCost.toLocaleString("en-PH", { minimumFractionDigits: 2 })} (${isTenantChargeable ? "Tenant Chargeable" : "Dormitory Absorbed"})`,
+      timestamp: eventTimestamp,
+    });
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      message: "Cost breakdown updated successfully.",
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/maintenance/admin/:requestId/duplicates
+ */
+export const getAdminMaintenanceDuplicates = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+
+    const overlapping = await findOverlappingRoomRequests(request);
+    const tenantMap = await loadTenantMap(overlapping);
+
+    sendSuccess(res, {
+      count: overlapping.length,
+      hasPotentialDuplicates: overlapping.length > 0,
+      duplicates: overlapping.map((dup) =>
+        serializeMaintenanceRequest(
+          dup,
+          serializeTenantSummary(tenantMap.get(dup.user_id), dup),
+        ),
       ),
     });
   } catch (error) {

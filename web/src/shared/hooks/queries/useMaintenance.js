@@ -321,6 +321,33 @@ export function useRestoreMaintenanceRequest() {
   });
 }
 
+/** Update maintenance request cost attribution (admin) */
+export function useUpdateMaintenanceCost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.updateAdminCost(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+/** Fetch potential duplicate requests for the same room */
+export function useMaintenanceDuplicates(requestId) {
+  return useQuery({
+    queryKey: ["maintenance", "duplicates", requestId],
+    queryFn: () => maintenanceApi.getAdminDuplicates(requestId),
+    enabled: Boolean(requestId),
+    staleTime: 30_000,
+  });
+}
+
 /** Bulk update maintenance requests (admin) */
 export function useBulkMaintenanceUpdate() {
   const qc = useQueryClient();

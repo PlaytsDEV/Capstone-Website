@@ -66,6 +66,22 @@ router.patch(
   maintenanceController.updateAdminRequestStatus,
 );
 
+router.patch(
+  "/admin/:requestId/cost",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.updateAdminMaintenanceCost,
+);
+
+router.get(
+  "/admin/:requestId/duplicates",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.getAdminMaintenanceDuplicates,
+);
+
 router.post(
   "/admin/:requestId/reply",
   verifyAdmin,

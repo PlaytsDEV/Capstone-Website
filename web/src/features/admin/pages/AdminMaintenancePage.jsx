@@ -24,6 +24,7 @@ import {
   useGenerateMaintenanceUpdate,
   useMaintenanceAnalytics,
   useMaintenanceBranchReport,
+  useMaintenanceDuplicates,
   useMaintenanceProviderReport,
   useMaintenanceRequest,
   useRemoveMaintenanceAttachment,
@@ -33,6 +34,7 @@ import {
   useSendMaintenanceTenantSummary,
   useServiceProviders,
   useSuggestMaintenanceProvider,
+  useUpdateMaintenanceCost,
   useUpdateMaintenanceRequest,
 } from "../../../shared/hooks/queries/useMaintenance";
 import { maintenanceApi } from "../../../shared/api/maintenanceApi";
@@ -103,6 +105,8 @@ import { ConfirmationModal } from "./maintenance/components/ConfirmationModal";
 import { AssignBranchModal } from "./maintenance/components/AssignBranchModal";
 import { AttachmentRemovalModal } from "./maintenance/components/AttachmentRemovalModal";
 import { ServiceProviderAssignmentPanel } from "./maintenance/components/ServiceProviderAssignmentPanel";
+import { CostAttributionCard } from "./maintenance/components/CostAttributionCard";
+import { MaintenanceProofInspector } from "./maintenance/components/MaintenanceProofInspector";
 import { MaintenanceSummaryCards } from "./maintenance/components/MaintenanceSummaryCards";
 import { MaintenanceFilters } from "./maintenance/components/MaintenanceFilters";
 import {
@@ -259,6 +263,8 @@ export default function AdminMaintenancePage() {
     [selectedRequest],
   );
 
+  const { data: duplicateData } = useMaintenanceDuplicates(selectedRequest?.request_id);
+
   const activeFilterChips = useMemo(() => {
     const chips = [];
     if (statusFilter !== "all") {
@@ -293,6 +299,26 @@ export default function AdminMaintenancePage() {
     setSummaryCardKey((current) => (current === cardKey ? null : cardKey));
   };
 
+  const handleQuickStatusChange = async (requestId, nextStatus) => {
+    try {
+      await updateRequestMutation.mutateAsync({
+        requestId,
+        payload: { status: nextStatus },
+      });
+      showNotification({
+        title: "Request Acknowledged",
+        message: `Request #${requestId} has been marked as ${formatMaintenanceStatus(nextStatus)}.`,
+        type: "success",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Update Failed",
+        message: getMaintenanceApiErrorMessage(err, "Failed to update request status"),
+        type: "error",
+      });
+    }
+  };
+
   return (
     <div>
       <div className="mb-4">
@@ -303,11 +329,36 @@ export default function AdminMaintenancePage() {
       </div>
 
       <PageShell>
-        <MaintenanceSummaryCards
-          summaryItems={summaryItems}
-          activeSummaryIndex={activeSummaryIndex}
-          onSummaryFilter={handleSummaryFilter}
-        />
+        {/* Navigation Tabs */}
+        <div className="mb-4 flex flex-wrap gap-1 rounded-xl border border-border bg-card p-1">
+          {MAINTENANCE_TABS.map((tab) => {
+            const TabIcon = tab.icon;
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => handleTabChange(tab.key)}
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition ${
+                  isActive
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <TabIcon size={14} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {activeTab === "requests" ? (
+          <MaintenanceSummaryCards
+            summaryItems={summaryItems}
+            activeSummaryIndex={activeSummaryIndex}
+            onSummaryFilter={handleSummaryFilter}
+          />
+        ) : null}
 
         <PageShell.Actions>
           {activeTab === "requests" ? (
@@ -352,6 +403,7 @@ export default function AdminMaintenancePage() {
               currentPage={currentPage}
               onPageChange={setCurrentPage}
               onRowClick={(row) => setSelectedRequestId(row.request_id)}
+              onQuickStatusChange={handleQuickStatusChange}
             />
           ) : null}
 
@@ -464,6 +516,18 @@ export default function AdminMaintenancePage() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {duplicateData?.hasPotentialDuplicates ? (
+                    <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200">
+                      <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <div>
+                        <span className="font-semibold">Potential Duplicate Tickets Detected</span>
+                        <p className="mt-0.5 text-amber-800 dark:text-amber-300">
+                          {duplicateData.count} other ticket(s) logged for this unit/room within a 48-hour window. Please check existing work orders before dispatching new contractors.
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-xl border border-border bg-card p-5">
                       <DetailDrawer.Section label="Request Details">
@@ -490,6 +554,11 @@ export default function AdminMaintenancePage() {
                       onManualChange={(k, v) => setManualProvider((curr) => ({ ...curr, [k]: v }))}
                       onSaveForFutureChange={setSaveManualProviderForFuture}
                     />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <CostAttributionCard request={selectedRequest} />
+                    <MaintenanceProofInspector request={selectedRequest} />
                   </div>
 
                   <div className="rounded-xl border border-border bg-card p-5">

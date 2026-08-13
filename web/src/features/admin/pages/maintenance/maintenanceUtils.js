@@ -3,8 +3,10 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock3,
+  FileText,
   RefreshCcw,
   UserRound,
+  Wrench,
   XCircle,
 } from "lucide-react";
 import {
@@ -95,6 +97,9 @@ export const REPORT_EXPORT_COLUMNS = [
 ];
 export const MAINTENANCE_TABS = [
   { key: "requests", label: "Requests", icon: ClipboardList },
+  { key: "service_providers", label: "Service Providers", icon: Wrench },
+  { key: "analytics", label: "Analytics & SLA", icon: Clock3 },
+  { key: "branch_reports", label: "Branch Reports", icon: FileText },
 ];
 export const ASSIGNMENT_FILTER_OPTIONS = [
   { key: "all", label: "All assignments" },
@@ -1229,5 +1234,31 @@ export const exportCsvFile = (rows, filename = "download") => {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+};
+
+export const formatContractorDispatchTicket = (request) => {
+  if (!request) return "";
+  const typeMeta = getMaintenanceTypeMeta(request.request_type || request.requestType);
+  const urgencyMeta = getMaintenanceUrgencyMeta(request.urgency);
+  const branchName = BRANCH_DISPLAY_NAMES[request.branch] || request.branch || "Branch";
+  const roomName = request.room?.name || request.roomId?.name || "Assigned Unit";
+  const tenantName = request.tenant?.full_name || request.tenant?.name || "Resident";
+  const tenantPhone = request.tenant?.phone || request.tenant?.contact || "N/A";
+  const dateStr = fmtDateTime(request.created_at || new Date());
+
+  return `[LILYCREST MAINTENANCE DISPATCH]
+Ticket ID: #${request.request_id || request.id}
+Branch: ${branchName}
+Unit / Room: ${roomName}
+Category: ${typeMeta.label}
+Priority: ${urgencyMeta.label}
+Date Logged: ${dateStr}
+
+Resident: ${tenantName} (Contact: ${tenantPhone})
+Issue Description:
+"${request.description || "N/A"}"
+
+Special Notes / Instructions:
+${request.notes || request.assignedProviderNotes || "Please coordinate with branch management upon arrival."}`;
 };
 
