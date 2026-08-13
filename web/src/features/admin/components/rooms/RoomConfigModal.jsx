@@ -11,7 +11,10 @@ import {
   ArrowUp,
   Bed,
   Building2,
+  DollarSign,
   ExternalLink,
+  FileText,
+  Hash,
   Image as ImageIcon,
   ImagePlus,
   Loader2,
@@ -23,6 +26,7 @@ import {
   Star,
   Trash2,
   User,
+  Users,
   X,
 } from "lucide-react";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
@@ -48,7 +52,7 @@ export const getMaxBedsForRoomType = (type) => {
     return 2;
   }
   if (normType === "private" || normType.includes("single")) {
-    return 1;
+    return 2;
   }
   return 4;
 };
@@ -69,11 +73,110 @@ export default function RoomConfigModal({
   const [activeMenuBedId, setActiveMenuBedId] = useState(null);
   const [selectedOccupantBed, setSelectedOccupantBed] = useState(null);
   const [repairing, setRepairing] = useState(false);
-  const [repairMsg, setRepairMsg] = useState(null); // { type: 'success'|'error', text: string }
-  useEscapeClose(true, onClose);
+  const [repairMsg, setRepairMsg] = useState(null);
+  const [newAmenityInput, setNewAmenityInput] = useState("");
+  const [showConfirmClose, setShowConfirmClose] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
 
-  // Fetch a fresh individual room record so images (and other fields that
-  // may be absent from the paginated list cache) are always current.
+  const COMMON_AMENITIES_PRESETS = [
+    "Air Conditioning",
+    "WiFi",
+    "Double Decker Bed",
+    "Mattress",
+    "Table",
+    "Chair",
+    "Cabinet",
+    "Shower Water Heater",
+  ];
+
+  const getNormalizedAmenities = (amenities) => {
+    if (Array.isArray(amenities)) {
+      return amenities.map((a) => String(a).trim()).filter(Boolean);
+    }
+    if (typeof amenities === "string") {
+      return amenities
+        .split(",")
+        .map((a) => a.trim())
+        .filter(Boolean);
+    }
+    return [];
+  };
+
+  const isFormDirty = () => {
+    if (!isEditing) return false;
+    const fieldsToCompare = ["name", "roomNumber", "price", "description", "isPopular"];
+    for (const field of fieldsToCompare) {
+      const origVal = room?.[field] ?? "";
+      const draftVal = draftRoom?.[field] ?? "";
+      if (String(origVal) !== String(draftVal)) return true;
+    }
+    const origAmenities = getNormalizedAmenities(room?.amenities).join(",");
+    const draftAmenities = getNormalizedAmenities(draftRoom?.amenities).join(",");
+    if (origAmenities !== draftAmenities) return true;
+    return false;
+  };
+
+  const handleAttemptClose = () => {
+    if (isFormDirty()) {
+      setPendingAction("close");
+      setShowConfirmClose(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleAttemptToggleEdit = () => {
+    if (isEditing && isFormDirty()) {
+      setPendingAction("toggleEdit");
+      setShowConfirmClose(true);
+    } else {
+      setIsEditing(!isEditing);
+    }
+  };
+
+  const handleConfirmDiscard = () => {
+    setShowConfirmClose(false);
+    if (pendingAction === "toggleEdit") {
+      setDraftRoom(room);
+      setIsEditing(false);
+    } else {
+      onClose();
+    }
+    setPendingAction(null);
+  };
+
+  const handleAddAmenity = (amenityToAdd) => {
+    const clean = amenityToAdd.trim();
+    if (!clean) return;
+    const currentList = getNormalizedAmenities(draftRoom?.amenities);
+    if (currentList.some((a) => a.toLowerCase() === clean.toLowerCase())) {
+      return;
+    }
+    const updated = [...currentList, clean];
+    handleFieldChange("amenities", updated);
+    setNewAmenityInput("");
+  };
+
+  const handleRemoveAmenity = (indexToRemove) => {
+    const currentList = getNormalizedAmenities(draftRoom?.amenities);
+    const updated = currentList.filter((_, idx) => idx !== indexToRemove);
+    handleFieldChange("amenities", updated);
+  };
+
+  const handleTogglePresetAmenity = (preset) => {
+    const currentList = getNormalizedAmenities(draftRoom?.amenities);
+    const exists = currentList.some((a) => a.toLowerCase() === preset.toLowerCase());
+    if (exists) {
+      const updated = currentList.filter((a) => a.toLowerCase() !== preset.toLowerCase());
+      handleFieldChange("amenities", updated);
+    } else {
+      const updated = [...currentList, preset];
+      handleFieldChange("amenities", updated);
+    }
+  };
+
+  useEscapeClose(true, handleAttemptClose);
+
   const { data: freshRoom } = useRoom(room?._id);
 
   const roomType = draftRoom?.type || room?.type;
@@ -95,14 +198,12 @@ export default function RoomConfigModal({
     return rawImages;
   };
 
-  // Populate draft room when the prop changes (e.g., parent re-opens modal)
   useEffect(() => {
     setDraftRoom(room);
     const imgs = getInitialImages(room);
     setImagesState(imgs.map(buildImageState));
   }, [room]);
 
-  // Overwrite imagesState and draftRoom with the freshly-fetched per-room data the moment it arrives.
   useEffect(() => {
     if (!freshRoom) return;
     setDraftRoom((prev) => ({
@@ -114,7 +215,6 @@ export default function RoomConfigModal({
     setImagesState(imgs.map(buildImageState));
   }, [freshRoom]);
 
-  // Close bed action menu on click outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!e.target.closest(".bed-action-menu")) {
@@ -125,7 +225,6 @@ export default function RoomConfigModal({
     return () => document.removeEventListener("pointerdown", handleClickOutside);
   }, []);
 
-  // Lock background scroll while modal is open
   useEffect(() => {
     document.body.classList.add("modal-open");
     return () => {
@@ -144,10 +243,18 @@ export default function RoomConfigModal({
   };
 
   const handleFieldChange = (field, value) => {
-    setDraftRoom((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    if (field === "name") {
+      const lettersOnly = value.replace(/[^a-zA-Z\s-]/g, "");
+      setDraftRoom((prev) => ({ ...prev, name: lettersOnly }));
+    } else if (field === "roomNumber") {
+      const digitsOnly = value.replace(/\D/g, "");
+      setDraftRoom((prev) => ({ ...prev, roomNumber: digitsOnly }));
+    } else {
+      setDraftRoom((prev) => ({
+        ...prev,
+        [field]: value,
+      }));
+    }
   };
 
   const handleImageSelection = (event) => {
@@ -233,6 +340,43 @@ export default function RoomConfigModal({
   };
 
   const handleSaveAll = async () => {
+    // 1. Unique Bed Code Validation
+    const bedIds = (draftRoom.beds || []).map((b) => String(b.id || "").trim().toLowerCase());
+    const uniqueBedIds = new Set(bedIds);
+    if (bedIds.length !== uniqueBedIds.size) {
+      alert("Each bed must have a unique Code (e.g. bed-1, bed-2). Duplicate bed codes are not allowed.");
+      return;
+    }
+
+    // 2. Room Name validation
+    const nameVal = (draftRoom.name || "").trim();
+    if (!nameVal) {
+      alert("Room name is required.");
+      return;
+    }
+    if (nameVal.length > 50) {
+      alert("Room name cannot exceed 50 characters.");
+      return;
+    }
+
+    // 3. Room Number validation
+    const roomNumVal = (draftRoom.roomNumber || "").trim();
+    if (!roomNumVal) {
+      alert("Room number is required.");
+      return;
+    }
+    if (roomNumVal.length > 10) {
+      alert("Room number cannot exceed 10 digits.");
+      return;
+    }
+
+    // 4. Base Price validation
+    const priceVal = Number(draftRoom.price || 0);
+    if (priceVal < 0 || priceVal > 1000000) {
+      alert("Base price must be between ₱0 and ₱1,000,000.");
+      return;
+    }
+
     setSaving(true);
     try {
       const uploadedImages = await Promise.all(
@@ -254,11 +398,11 @@ export default function RoomConfigModal({
 
       const updatedDraft = {
         ...draftRoom,
-        name: (draftRoom.name || "").trim(),
-        roomNumber: (draftRoom.roomNumber || "").trim(),
+        name: nameVal,
+        roomNumber: roomNumVal,
         description: (draftRoom.description || "").trim(),
-        price: Number(draftRoom.price || 0),
-        monthlyPrice: Number(draftRoom.monthlyPrice || draftRoom.price || 0),
+        price: priceVal,
+        monthlyPrice: 0,
         isPopular: Boolean(draftRoom.isPopular),
         amenities: parsedAmenities,
         policies: parsedPolicies,
@@ -280,16 +424,11 @@ export default function RoomConfigModal({
     }
   };
 
-  /** Detect occupancy drift: counter > 0 but every bed is available */
   const hasDrift =
     !isPrivate &&
     (draftRoom.currentOccupancy || 0) > 0 &&
     (draftRoom.beds || []).every((b) => getBedStatus(b) === "available");
 
-  /**
-   * Detect the GP-201-type stale pointer: a bed is "reserved" or "occupied"
-   * but no other bed in the same room carries the same occupant.
-   */
   const reservationIdCounts = {};
   for (const bed of draftRoom.beds || []) {
     const s = getBedStatus(bed);
@@ -348,43 +487,60 @@ export default function RoomConfigModal({
     ),
   );
 
+  // Group beds by bunk pairs (2 beds per bunk)
+  const bedsArray = draftRoom.beds || [];
+  const bunksList = [];
+  for (let i = 0; i < bedsArray.length; i += 2) {
+    const bunkLetter = String.fromCharCode(65 + Math.floor(i / 2));
+    bunksList.push({
+      bunkBlock: bunkLetter,
+      bunkLabel: `Bunk ${bunkLetter}`,
+      beds: bedsArray.slice(i, i + 2).map((bed, offset) => ({
+        ...bed,
+        bunkBlock: bunkLetter,
+        globalIndex: i + offset,
+      })),
+    });
+  }
+
   return createPortal(
-    <div className="admin-modal-overlay" onClick={onClose}>
+    <div className="admin-modal-overlay" onClick={handleAttemptClose}>
       <div
         className="admin-modal-content room-config-modal-wide"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header — sticky at top */}
-        <div className="admin-modal-header">
-          <div className="room-config-modal__header-title">
-            <h2>Configure Room: {draftRoom.name || `Room ${draftRoom.roomNumber}`}</h2>
-            <div className="room-config-modal__header-badges">
-              <span className="room-config-modal__badge">
-                <Building2 size={12} />
-                {formatBranch(draftRoom.branch)}
-              </span>
-              <span className="room-config-modal__badge">
-                Floor {draftRoom.floor}
-              </span>
-              {isEditing && (
-                <span className="px-2 py-0.5 text-[11px] font-bold uppercase rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                  Edit Mode Active
+        {/* Header */}
+        <div className="admin-modal-header rfm-header">
+          <div className="rfm-header__title-block">
+            <div className="rfm-header__icon">
+              <Building2 size={18} />
+            </div>
+            <div>
+              <h2>Configure Room: {draftRoom.name || `Room ${draftRoom.roomNumber}`}</h2>
+              <div className="room-config-modal__header-badges">
+                <span className="room-config-modal__badge">
+                  <Building2 size={11} />
+                  {formatBranch(draftRoom.branch)}
                 </span>
-              )}
+                <span className="room-config-modal__badge">
+                  Floor {draftRoom.floor}
+                </span>
+                {isEditing && (
+                  <span className="room-config-modal__badge room-config-modal__badge--editing">
+                    Editing Mode Active
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
           <div className="room-config-modal__header-actions">
             <button
               type="button"
-              className={`room-config-modal__icon-btn ${
-                isEditing
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : ""
-              }`}
-              onClick={() => setIsEditing(!isEditing)}
+              className={`room-config-modal__icon-btn ${isEditing ? "rfm-type-card--active" : ""}`}
+              onClick={handleAttemptToggleEdit}
               aria-label={isEditing ? "View mode" : "Edit room configuration"}
-              title={isEditing ? "Switch to View Mode" : "Edit Room & Bed Details"}
+              title={isEditing ? "Switch to View Mode" : "Edit Room Details"}
             >
               <Pencil size={16} />
             </button>
@@ -401,7 +557,7 @@ export default function RoomConfigModal({
             )}
             <button
               className="modal-close-btn"
-              onClick={onClose}
+              onClick={handleAttemptClose}
               aria-label="Close modal"
             >
               <X size={20} />
@@ -409,36 +565,37 @@ export default function RoomConfigModal({
           </div>
         </div>
 
-        {/* Body — Single Column Scroll Container */}
-        <div className="admin-modal-body">
-          {/* Room Overview Section */}
-          <div className="room-info-section">
-            <div className="room-config-section-header">
-              <div className="room-config-section-title">
-                <Building2 size={15} className="text-muted-foreground" />
-                <h3>Room Overview</h3>
-              </div>
+        {/* Body */}
+        <div className="admin-modal-body rfm-body">
+          {/* Section: Overview / Details */}
+          <div className="rfm-section">
+            <div className="rfm-section-label">
+              <Building2 size={13} />
+              Room Overview
             </div>
 
             {isEditing ? (
-              /* Inline Edit Mode Fields */
-              <div className="space-y-4 pt-1">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-foreground">Room Name / Title</label>
+              <div className="space-y-3">
+                <div className="room-form-row">
+                  <div className="room-form-group">
+                    <label>Room Name / Title <span className="rfm-required">*</span></label>
                     <input
                       type="text"
-                      className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary"
+                      spellCheck={false}
+                      maxLength={50}
                       value={draftRoom.name || ""}
                       onChange={(e) => handleFieldChange("name", e.target.value)}
-                      placeholder="e.g. Premium Suite GP-202"
+                      placeholder="e.g. Premium Suite"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-foreground">Room Number</label>
+                  <div className="room-form-group">
+                    <label>Room Number <span className="rfm-required">*</span></label>
                     <input
                       type="text"
-                      className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      spellCheck={false}
+                      maxLength={10}
                       value={draftRoom.roomNumber || ""}
                       onChange={(e) => handleFieldChange("roomNumber", e.target.value)}
                       placeholder="e.g. 202"
@@ -446,184 +603,227 @@ export default function RoomConfigModal({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-foreground">Monthly Rate (₱)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary font-semibold text-primary"
-                      value={draftRoom.monthlyPrice ?? draftRoom.price ?? 0}
-                      onChange={(e) => handleFieldChange("monthlyPrice", e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-foreground">Base Price (₱)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary"
-                      value={draftRoom.price ?? 0}
-                      onChange={(e) => handleFieldChange("price", e.target.value)}
-                    />
-                  </div>
+                <div className="room-form-group">
+                  <label>Base Price (₱) <span className="rfm-required">*</span></label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1000000"
+                    value={draftRoom.price ?? 0}
+                    onChange={(e) => handleFieldChange("price", e.target.value)}
+                  />
+                  <span className="capacity-hint">
+                    Undiscounted rate per tenant/month. Effective long-term monthly rates are automatically calculated using your Business Settings discount percentages.
+                  </span>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-foreground">Public Description</label>
+                <div className="room-form-group">
+                  <label>Public Description</label>
                   <textarea
                     rows={2}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary"
+                    maxLength={500}
                     value={draftRoom.description || ""}
                     onChange={(e) => handleFieldChange("description", e.target.value)}
                     placeholder="Brief details about room furnishings, view, or amenities..."
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-foreground">Amenities (comma-separated)</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary"
-                    value={
-                      Array.isArray(draftRoom.amenities)
-                        ? draftRoom.amenities.join(", ")
-                        : draftRoom.amenities || ""
-                    }
-                    onChange={(e) => handleFieldChange("amenities", e.target.value)}
-                    placeholder="Wi-Fi, Air Conditioning, Private Bathroom, Mattress"
-                  />
-                </div>
-
-                {/* Photos Edit Section */}
-                <div className="space-y-2 pt-1">
-                  <label className="text-xs font-semibold text-foreground flex items-center justify-between">
-                    <span>Room Photos ({imagesState.length})</span>
-                  </label>
-                  <div className="border border-dashed border-border rounded-xl p-3 bg-muted/20 space-y-3">
-                    <label className="flex items-center justify-center gap-2 py-2 px-3 border border-border rounded-lg bg-background text-xs font-medium cursor-pointer hover:bg-muted transition-colors text-foreground shadow-xs">
-                      <ImagePlus size={16} className="text-primary" />
-                      <span>Upload Room Photos</span>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/heic"
-                        multiple
-                        hidden
-                        onChange={handleImageSelection}
-                      />
-                    </label>
-
-                    {imagesState.length > 0 ? (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {imagesState.map((entry) => (
-                          <div
-                            key={entry.id}
-                            className="relative group rounded-lg overflow-hidden border border-border h-20 bg-muted"
+                <div className="room-form-group">
+                  <label>Amenities</label>
+                  <div className="amenities-tag-container">
+                    {getNormalizedAmenities(draftRoom.amenities).length > 0 ? (
+                      getNormalizedAmenities(draftRoom.amenities).map((tag, idx) => (
+                        <span key={idx} className="amenity-chip">
+                          {tag}
+                          <button
+                            type="button"
+                            className="amenity-chip__remove"
+                            onClick={() => handleRemoveAmenity(idx)}
+                            title={`Remove ${tag}`}
+                            aria-label={`Remove ${tag}`}
                           >
-                            <img
-                              src={entry.preview}
-                              alt="Room"
-                              className="w-full h-full object-cover"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveImage(entry.id)}
-                              className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full opacity-80 hover:opacity-100 transition-opacity shadow-xs"
-                              title="Remove photo"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))
                     ) : (
-                      <p className="text-[11px] text-muted-foreground text-center py-1">
-                        No photos added yet. Upload room photos for website listings.
-                      </p>
+                      <span className="amenities-empty-hint">No amenities added yet</span>
                     )}
                   </div>
-                </div>
 
-                <div className="flex items-center justify-between p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                  <div className="flex items-center gap-2">
-                    <Star className="w-4 h-4 text-amber-500 fill-current" />
-                    <div>
-                      <span className="text-xs font-bold text-foreground block">
-                        Mark as "Most Popular" Room
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        Displays a highlighted badge for public visitors
-                      </span>
+                  <div className="amenity-input-row">
+                    <input
+                      type="text"
+                      value={newAmenityInput}
+                      onChange={(e) => setNewAmenityInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddAmenity(newAmenityInput);
+                        }
+                      }}
+                      placeholder="Type amenity and press Enter..."
+                      className="amenity-custom-input"
+                    />
+                    <button
+                      type="button"
+                      className="btn-add-amenity"
+                      onClick={() => handleAddAmenity(newAmenityInput)}
+                      disabled={!newAmenityInput.trim()}
+                    >
+                      <Plus size={14} />
+                      Add
+                    </button>
+                  </div>
+
+                  <div className="amenities-presets-block">
+                    <span className="amenities-presets-label">Quick Presets</span>
+                    <div className="amenities-presets-list">
+                      {COMMON_AMENITIES_PRESETS.map((preset) => {
+                        const isSelected = getNormalizedAmenities(draftRoom.amenities).some(
+                          (a) => a.toLowerCase() === preset.toLowerCase()
+                        );
+                        return (
+                          <button
+                            key={preset}
+                            type="button"
+                            className={`amenity-preset-btn ${isSelected ? "amenity-preset-btn--selected" : ""}`}
+                            onClick={() => handleTogglePresetAmenity(preset)}
+                          >
+                            {isSelected ? "✓ " : "+ "}
+                            {preset}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(draftRoom.isPopular)}
-                    onChange={(e) => handleFieldChange("isPopular", e.target.checked)}
-                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
-                  />
+                </div>
+
+                <div
+                  className="rfm-beds-notice rfm-beds-notice--clickable"
+                  onClick={() => handleFieldChange("isPopular", !draftRoom.isPopular)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <Star size={14} className={draftRoom.isPopular ? "text-amber-500 fill-amber-500" : ""} />
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span>Mark as "Most Popular" Room for public listings</span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(draftRoom.isPopular)}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleFieldChange("isPopular", e.target.checked);
+                      }}
+                      style={{ cursor: "pointer", width: "16px", height: "16px" }}
+                    />
+                  </div>
                 </div>
               </div>
             ) : (
-              /* View Mode Overview Cards & Photos */
-              <div className="space-y-4">
-                <div className="info-grid">
-                  <div className="info-tile">
-                    <span className="info-tile__label">Type</span>
-                    <span className="info-tile__value">{formatRoomType(draftRoom.type)}</span>
-                  </div>
-                  <div className="info-tile">
-                    <span className="info-tile__label">Capacity</span>
-                    <span className="info-tile__value">{draftRoom.capacity} pax</span>
-                  </div>
-                  <div className="info-tile">
-                    <span className="info-tile__label">Base Price</span>
-                    <span className="info-tile__value info-tile__value--price">
-                      ₱{Number(draftRoom.price || 0).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="info-tile">
-                    <span className="info-tile__label">Monthly Price</span>
-                    <span className="info-tile__value info-tile__value--price-highlight">
-                      ₱{Number(draftRoom.monthlyPrice || draftRoom.price || 0).toLocaleString()}
-                    </span>
-                  </div>
+              <div className="info-grid">
+                <div className="info-tile">
+                  <span className="info-tile__label">Type</span>
+                  <span className="info-tile__value">{formatRoomType(draftRoom.type)}</span>
                 </div>
-
-                {/* View Mode Photos Grid */}
-                {imagesState.length > 0 && (
-                  <div className="space-y-1.5 pt-1">
-                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                      <ImageIcon size={13} className="text-muted-foreground" />
-                      Room Photos ({imagesState.length})
-                    </span>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {imagesState.map((entry) => (
-                        <div
-                          key={entry.id}
-                          className="rounded-lg overflow-hidden border border-border/70 h-20 bg-muted"
-                        >
-                          <img
-                            src={entry.preview}
-                            alt="Room photo"
-                            className="w-full h-full object-cover hover:scale-105 transition-transform"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <div className="info-tile">
+                  <span className="info-tile__label">Capacity</span>
+                  <span className="info-tile__value">{draftRoom.capacity} pax</span>
+                </div>
+                <div className="info-tile">
+                  <span className="info-tile__label">Base Price</span>
+                  <span className="info-tile__value info-tile__value--price">
+                    ₱{Number(draftRoom.price || 0).toLocaleString()}
+                  </span>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Bed Configuration Section */}
+          {/* Section: Photos */}
+          <div className="rfm-section">
+            <div className="rfm-section-label">
+              <ImagePlus size={13} />
+              Room Photos ({imagesState.length})
+            </div>
+
+            {isEditing ? (
+              imagesState.length > 0 ? (
+                <div className="image-preview-grid">
+                  {imagesState.map((entry) => (
+                    <article key={entry.id} className="image-preview-card">
+                      <img
+                        src={entry.preview}
+                        alt="Room"
+                        className="image-preview-card__img"
+                      />
+                      <div className="image-preview-card__footer">
+                        <span className="image-preview-card__name">{entry.name}</span>
+                        <button
+                          type="button"
+                          className="image-preview-card__remove"
+                          onClick={() => handleRemoveImage(entry.id)}
+                          aria-label="Remove image"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                  <label className="rfm-photo-add-more">
+                    <ImagePlus size={18} />
+                    <span>Add more</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/heic"
+                      multiple
+                      hidden
+                      onChange={handleImageSelection}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <label className="rfm-photo-dropzone">
+                  <ImagePlus size={22} />
+                  <span className="rfm-photo-dropzone__title">Upload room photos</span>
+                  <span className="rfm-photo-dropzone__hint">
+                    Applicants will see these photos while browsing available rooms
+                  </span>
+                  <span className="rfm-photo-dropzone__btn">Choose Photos</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic"
+                    multiple
+                    hidden
+                    onChange={handleImageSelection}
+                  />
+                </label>
+              )
+            ) : (
+              imagesState.length > 0 ? (
+                <div className="image-preview-grid">
+                  {imagesState.map((entry) => (
+                    <div key={entry.id} className="image-preview-card" style={{ height: "80px" }}>
+                      <img
+                        src={entry.preview}
+                        alt="Room photo"
+                        className="image-preview-card__img"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span className="capacity-hint">No photos added yet.</span>
+              )
+            )}
+          </div>
+
+          {/* Section: Bed Configuration (Bunk Pair Groupings) */}
           {!isPrivate && (
-            <div className="bed-config-section">
+            <div className="rfm-section">
               <div className="bed-config-section__header">
-                <div className="room-config-section-title mb-0">
-                  <Bed size={15} className="text-muted-foreground" />
-                  <h3>Bed Configuration</h3>
+                <div className="rfm-section-label" style={{ marginBottom: 0 }}>
+                  <Bed size={13} />
+                  Bed Configuration
                   <span className={`bed-count-pill ${isMaxBedsReached ? "bed-count-pill--full" : ""}`}>
                     {currentBedsCount}/{maxBeds} Beds
                   </span>
@@ -651,176 +851,196 @@ export default function RoomConfigModal({
                 </div>
               )}
 
+              {/* Render beds grouped by Bunk Pair */}
               <div className="bed-list">
-                {draftRoom.beds && draftRoom.beds.length > 0 ? (
-                  draftRoom.beds.map((bed, index) => {
-                    const rawStatus = getBedStatus(bed);
-                    const normStatus = String(rawStatus || "").toLowerCase();
-                    const isLocked = ["occupied", "reserved", "locked"].includes(normStatus);
-                    const occupant = bed.occupiedBy || {};
-                    const occupantName =
-                      occupant.name ||
-                      occupant.userName ||
-                      bed.userName ||
-                      bed.tenantName ||
-                      (occupant.firstName || occupant.lastName
-                        ? `${occupant.firstName || ""} ${occupant.lastName || ""}`.trim()
-                        : null);
-
-                    const isOccupiedOrReserved =
-                      ["occupied", "reserved", "locked"].includes(normStatus) ||
-                      bed.available === false ||
-                      Boolean(occupantName) ||
-                      Boolean(occupant.userId) ||
-                      Boolean(occupant.reservationId);
-
-                    return (
-                      <div
-                        key={`${bed.id || "bed"}-${index}`}
-                        className={`bed-item flex-nowrap whitespace-nowrap${activeMenuBedId === bed.id ? " bed-item--menu-active" : ""}`}
-                      >
-                        <div className="bed-info flex-nowrap items-center min-w-0 flex-1 whitespace-nowrap">
-                          <span className="bed-label-tag shrink-0 w-32 truncate">
-                            {getBedDisplayLabel(bed, index)}
-                          </span>
-
-                          <div className="bed-field-group shrink-0">
-                            <span className="bed-field-label">Code</span>
-                            <input
-                              className="bed-id w-24"
-                              value={bed.id || ""}
-                              onChange={(event) =>
-                                handleBedFieldChange(bed.id, "id", event.target.value)
-                              }
-                              disabled={isLocked}
-                              placeholder="e.g. bed-1"
-                            />
-                          </div>
-
-                          <div className="bed-field-group shrink-0">
-                            <span className="bed-field-label">Position</span>
-                            <select
-                              className="bed-position"
-                              value={bed.position || "lower"}
-                              onChange={(event) =>
-                                handleBedFieldChange(
-                                  bed.id,
-                                  "position",
-                                  event.target.value,
-                                )
-                              }
-                              disabled={isLocked}
-                            >
-                              <option value="upper">Upper</option>
-                              <option value="lower">Lower</option>
-                            </select>
-                          </div>
-
-                          {isOccupiedOrReserved ? (
-                            <div className="shrink-0">
-                              <button
-                                type="button"
-                                className={`bed-occupant-badge bed-occupant-badge--${
-                                  normStatus === "reserved" ? "reserved"
-                                  : normStatus === "locked" ? "locked"
-                                  : "occupied"
-                                }`}
-                                onClick={() => handleOpenOccupantDetails(bed)}
-                                title={`View summary for ${occupantName || "occupant"}`}
-                              >
-                                <User size={13} className="bed-occupant-icon" />
-                                <span className="bed-occupant-name truncate max-w-[120px]">
-                                  {occupantName || (
-                                    normStatus === "reserved" ? "Reserved"
-                                    : normStatus === "locked" ? "Payment Pending"
-                                    : "Occupied"
-                                  )}
-                                </span>
-                                <ExternalLink size={12} className="bed-occupant-link-icon shrink-0" />
-                              </button>
-                            </div>
-                          ) : (
-                            <span className={`status-badge status-badge--${normStatus} shrink-0`}>
-                              {rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1)}
-                            </span>
-                          )}
+                {bunksList.length > 0 ? (
+                  bunksList.map((bunkGroup) => (
+                    <div key={bunkGroup.bunkLabel} className="rfm-bunk-card">
+                      <div className="rfm-bunk-card__header" style={{ justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <Bed size={13} className="rfm-bunk-card__icon" />
+                          <span className="rfm-bunk-card__title">{bunkGroup.bunkLabel}</span>
                         </div>
-
-                        <div className="bed-action-menu shrink-0">
-                          <button
-                            type="button"
-                            className={`bed-menu-trigger${activeMenuBedId === bed.id ? " bed-menu-trigger--active" : ""}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveMenuBedId(activeMenuBedId === bed.id ? null : bed.id);
-                            }}
-                            aria-label="Bed options"
-                            title="Bed options"
-                          >
-                            <MoreVertical size={16} />
-                          </button>
-
-                          {activeMenuBedId === bed.id && (
-                            <div className="bed-menu-dropdown">
-                              <button
-                                type="button"
-                                className="bed-menu-item"
-                                onClick={() => {
-                                  handleToggleMaintenance(bed.id);
-                                  setActiveMenuBedId(null);
-                                }}
-                                disabled={isLocked}
-                              >
-                                <Lock size={14} />
-                                {normStatus === "maintenance" ? "Unlock Bed" : "Maintenance Mode"}
-                              </button>
-
-                              <button
-                                type="button"
-                                className="bed-menu-item"
-                                onClick={() => {
-                                  handleMoveBed(bed.id, "up");
-                                  setActiveMenuBedId(null);
-                                }}
-                                disabled={index === 0}
-                              >
-                                <ArrowUp size={14} />
-                                Move Up
-                              </button>
-
-                              <button
-                                type="button"
-                                className="bed-menu-item"
-                                onClick={() => {
-                                  handleMoveBed(bed.id, "down");
-                                  setActiveMenuBedId(null);
-                                }}
-                                disabled={index === draftRoom.beds.length - 1}
-                              >
-                                <ArrowDown size={14} />
-                                Move Down
-                              </button>
-
-                              <div className="bed-menu-divider" />
-
-                              <button
-                                type="button"
-                                className="bed-menu-item bed-menu-item--danger"
-                                onClick={() => {
-                                  handleRemoveBed(bed.id);
-                                  setActiveMenuBedId(null);
-                                }}
-                                disabled={isLocked}
-                              >
-                                <Trash2 size={14} />
-                                Remove Bed
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                        <span className="room-config-modal__badge" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>
+                          {bunkGroup.beds.length} {bunkGroup.beds.length === 1 ? "Bed" : "Beds"}
+                        </span>
                       </div>
-                    );
-                  })
+
+                      <div className="rfm-bunk-card__body">
+                        {bunkGroup.beds.map((bed) => {
+                          const index = bed.globalIndex;
+                          const rawStatus = getBedStatus(bed);
+                          const normStatus = String(rawStatus || "").toLowerCase();
+                          const isLocked = ["occupied", "reserved", "locked"].includes(normStatus);
+                          const occupant = bed.occupiedBy || {};
+                          const occupantName =
+                            occupant.name ||
+                            occupant.userName ||
+                            bed.userName ||
+                            bed.tenantName ||
+                            (occupant.firstName || occupant.lastName
+                              ? `${occupant.firstName || ""} ${occupant.lastName || ""}`.trim()
+                              : null);
+
+                          const isOccupiedOrReserved =
+                            ["occupied", "reserved", "locked"].includes(normStatus) ||
+                            bed.available === false ||
+                            Boolean(occupantName) ||
+                            Boolean(occupant.userId) ||
+                            Boolean(occupant.reservationId);
+
+                          const isUpper = bed.position === "upper";
+
+                          return (
+                            <div
+                              key={`${bed.id || "bed"}-${index}`}
+                              className={`bed-item flex-nowrap whitespace-nowrap${activeMenuBedId === bed.id ? " bed-item--menu-active" : ""}`}
+                            >
+                              <div className="bed-info flex-nowrap items-center min-w-0 flex-1 whitespace-nowrap gap-3">
+                                <span className="bed-label-tag shrink-0 w-36 truncate font-semibold">
+                                  {bunkGroup.bunkLabel} — {isUpper ? "Upper" : "Lower"}
+                                </span>
+
+                                <div className="bed-field-group shrink-0">
+                                  <input
+                                    className="bed-id w-28"
+                                    value={bed.id || ""}
+                                    onChange={(event) =>
+                                      handleBedFieldChange(bed.id, "id", event.target.value)
+                                    }
+                                    disabled={isLocked}
+                                    placeholder="Bed Code"
+                                    title="Bed Code (e.g. bed-1)"
+                                  />
+                                </div>
+
+                                <div className="bed-field-group shrink-0">
+                                  <select
+                                    className="bed-position"
+                                    value={bed.position || "lower"}
+                                    onChange={(event) =>
+                                      handleBedFieldChange(
+                                        bed.id,
+                                        "position",
+                                        event.target.value,
+                                      )
+                                    }
+                                    disabled={isLocked}
+                                    title="Bed Position"
+                                  >
+                                    <option value="lower">Lower Deck</option>
+                                    <option value="upper">Upper Deck</option>
+                                  </select>
+                                </div>
+
+                                {isOccupiedOrReserved ? (
+                                  <div className="shrink-0">
+                                    <button
+                                      type="button"
+                                      className={`bed-occupant-badge bed-occupant-badge--${
+                                        normStatus === "reserved" ? "reserved"
+                                        : normStatus === "locked" ? "locked"
+                                        : "occupied"
+                                      }`}
+                                      onClick={() => handleOpenOccupantDetails(bed)}
+                                      title={`View summary for ${occupantName || "occupant"}`}
+                                    >
+                                      <User size={13} className="bed-occupant-icon" />
+                                      <span className="bed-occupant-name truncate max-w-[120px]">
+                                        {occupantName || (
+                                          normStatus === "reserved" ? "Reserved"
+                                          : normStatus === "locked" ? "Payment Pending"
+                                          : "Occupied"
+                                        )}
+                                      </span>
+                                      <ExternalLink size={12} className="bed-occupant-link-icon shrink-0" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className={`status-badge status-badge--${normStatus} shrink-0`}>
+                                    {rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1)}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="bed-action-menu shrink-0">
+                                <button
+                                  type="button"
+                                  className={`bed-menu-trigger${activeMenuBedId === bed.id ? " bed-menu-trigger--active" : ""}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuBedId(activeMenuBedId === bed.id ? null : bed.id);
+                                  }}
+                                  aria-label="Bed options"
+                                  title="Bed options"
+                                >
+                                  <MoreVertical size={16} />
+                                </button>
+
+                                {activeMenuBedId === bed.id && (
+                                  <div className="bed-menu-dropdown">
+                                    <button
+                                      type="button"
+                                      className="bed-menu-item"
+                                      onClick={() => {
+                                        handleToggleMaintenance(bed.id);
+                                        setActiveMenuBedId(null);
+                                      }}
+                                      disabled={isLocked}
+                                    >
+                                      <Lock size={14} />
+                                      {normStatus === "maintenance" ? "Unlock Bed" : "Maintenance Mode"}
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      className="bed-menu-item"
+                                      onClick={() => {
+                                        handleMoveBed(bed.id, "up");
+                                        setActiveMenuBedId(null);
+                                      }}
+                                      disabled={index === 0}
+                                    >
+                                      <ArrowUp size={14} />
+                                      Move Up
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      className="bed-menu-item"
+                                      onClick={() => {
+                                        handleMoveBed(bed.id, "down");
+                                        setActiveMenuBedId(null);
+                                      }}
+                                      disabled={index === draftRoom.beds.length - 1}
+                                    >
+                                      <ArrowDown size={14} />
+                                      Move Down
+                                    </button>
+
+                                    <div className="bed-menu-divider" />
+
+                                    <button
+                                      type="button"
+                                      className="bed-menu-item bed-menu-item--danger"
+                                      onClick={() => {
+                                        handleRemoveBed(bed.id);
+                                        setActiveMenuBedId(null);
+                                      }}
+                                      disabled={isLocked}
+                                    >
+                                      <Trash2 size={14} />
+                                      Remove Bed
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
                 ) : (
                   <div className="room-config-empty-state">
                     <span>No beds have been configured for this room.</span>
@@ -830,10 +1050,13 @@ export default function RoomConfigModal({
             </div>
           )}
 
-          {/* Occupancy Section */}
-          <div className="occupancy-info">
+          {/* Section: Current Occupancy */}
+          <div className="rfm-section">
             <div className="occupancy-header">
-              <h3>Current Occupancy</h3>
+              <div className="rfm-section-label" style={{ marginBottom: 0 }}>
+                <Users size={13} />
+                Current Occupancy
+              </div>
               <span className="occupancy-percentage-tag">
                 {occupancyPercent}% Occupied
               </span>
@@ -850,7 +1073,6 @@ export default function RoomConfigModal({
                 : `${draftRoom.currentOccupancy || 0} of ${draftRoom.capacity || 1} beds currently occupied`}
             </p>
 
-            {/* Drift repair */}
             {hasDrift && (
               <div className="occupancy-drift-alert">
                 <div className="occupancy-drift-alert__content">
@@ -872,7 +1094,6 @@ export default function RoomConfigModal({
               </div>
             )}
 
-            {/* Stale pointer repair */}
             {!hasDrift && hasDualBedPointer && (
               <div className="occupancy-drift-alert occupancy-drift-alert--warning">
                 <div className="occupancy-drift-alert__content">
@@ -894,7 +1115,6 @@ export default function RoomConfigModal({
               </div>
             )}
 
-            {/* Inline repair feedback */}
             {repairMsg && (
               <p
                 className={`occupancy-repair-msg occupancy-repair-msg--${
@@ -907,9 +1127,9 @@ export default function RoomConfigModal({
           </div>
         </div>
 
-        {/* Footer — Save / Cancel Buttons */}
+        {/* Footer */}
         <div className="admin-modal-footer">
-          <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>
+          <button type="button" className="btn-secondary" onClick={handleAttemptClose} disabled={saving}>
             Cancel
           </button>
           <button
@@ -923,6 +1143,7 @@ export default function RoomConfigModal({
           </button>
         </div>
       </div>
+
       {selectedOccupantBed && (
         <BedOccupantDetailModal
           bed={selectedOccupantBed}
@@ -932,13 +1153,39 @@ export default function RoomConfigModal({
           onReleaseBed={async (bed) => {
             try {
               await roomApi.releaseBed(draftRoom._id, bed.id);
-              queryClient.invalidateQueries({ queryKey: ["room", draftRoom._id] });
-              queryClient.invalidateQueries({ queryKey: ["rooms"] });
+              qc.invalidateQueries({ queryKey: ["room", draftRoom._id] });
+              qc.invalidateQueries({ queryKey: ["rooms"] });
             } catch (err) {
               console.error("Failed to release bed:", err);
             }
           }}
         />
+      )}
+
+      {showConfirmClose && (
+        <div className="confirm-discard-overlay" onClick={() => setShowConfirmClose(false)}>
+          <div className="confirm-discard-card" onClick={(e) => e.stopPropagation()}>
+            <h3>Discard Unsaved Changes?</h3>
+            <p>You have unsaved changes to this room. Are you sure you want to discard them?</p>
+            <div className="confirm-discard-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowConfirmClose(false)}
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ background: "#dc2626", borderColor: "#dc2626", color: "#ffffff" }}
+                onClick={handleConfirmDiscard}
+              >
+                Discard Changes
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>,
     document.body

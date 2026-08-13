@@ -275,10 +275,14 @@ function CheckAvailabilityPage() {
   const filteredRooms = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return rooms.filter((room) => {
+      const hasAvailableBeds = room.availableBeds > 0;
       const matchesSearch =
         !query ||
         room.title.toLowerCase().includes(query) ||
-        room.branch.toLowerCase().includes(query);
+        room.branch.toLowerCase().includes(query) ||
+        (room.id && String(room.id).toLowerCase().includes(query)) ||
+        (room.type && room.type.toLowerCase().includes(query)) ||
+        (room.description && room.description.toLowerCase().includes(query));
 
       let effectivePrice = room.price;
       if (selectedLeaseTermFilter === "shortTerm") {
@@ -288,6 +292,7 @@ function CheckAvailabilityPage() {
       }
 
       return (
+        hasAvailableBeds &&
         matchesSearch &&
         (selectedBranch === "All" || room.branch === selectedBranch) &&
         (selectedRoomType === "All" || room.type === selectedRoomType) &&
@@ -579,9 +584,9 @@ function CheckAvailabilityPage() {
  <div style={{ marginBottom: "8px" }}>
  {!isChangeRoomMode && <h1 className="ca-section-title">Available Rooms</h1>}
  {!roomsLoading && (
- <p className="ca-room-count">
- {`${filteredRooms.length} room${filteredRooms.length !== 1 ? "s" : ""} found`}
- </p>
+  <p className="ca-room-count">
+  {`${filteredRooms.length} available room${filteredRooms.length !== 1 ? "s" : ""} found`}
+  </p>
  )}
  {!user && (
  <p className="ca-signin-prompt">

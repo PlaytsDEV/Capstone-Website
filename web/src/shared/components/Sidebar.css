@@ -346,24 +346,24 @@ html[data-theme="dark"] .sidebar {
   justify-content: center;
   min-width: 20px;
   height: 20px;
-  padding: 0 6px;
+  padding: 0 7px;
   border-radius: 999px;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
-  background: #ef4444;
-  color: #ffffff;
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
   flex-shrink: 0;
   user-select: none;
   transition: all 0.18s ease;
 }
 
-/* Active navigation item badge contrast styling */
+/* Active navigation item badge contrast styling — Soft Translucent Tint */
 .sidebar-nav-item.active .sidebar-badge {
-  background: #0f172a;
-  color: #ffffff;
-  font-weight: 700;
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.2);
+  background: rgba(15, 23, 42, 0.15);
+  color: var(--primary-foreground, #0f172a);
+  font-weight: 600;
+  box-shadow: none;
 }
 
 /* ── Footer ── */

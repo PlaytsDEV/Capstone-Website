@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
@@ -6,6 +6,7 @@ import { formatBranch } from "../utils/formatters";
 import { resolveDepositFromPaymentInfo } from "../../../shared/utils/depositUtils";
 import { formatBedPosition, getBedDisplayLabel, getBedShortCode } from "../../../shared/utils/bedIdentifier";
 import { reservationApi } from "../../../shared/api/reservationApi";
+import { showNotification } from "../../../shared/utils/notification";
 import { Clock, History } from "lucide-react";
 
 const fmtDate = (value) =>
@@ -506,12 +507,141 @@ function WizardStepper({ steps, currentStep }) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   Searchable Room Dropdown Component
+   ───────────────────────────────────────────────────────────────────────────── */
+function SearchableRoomSelect({ rooms, value, onChange, disabled, placeholder = "Select a room...", fmtMoney, isInvalid }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const containerRef = useRef(null);
+
+  const selectedRoom = useMemo(
+    () => rooms.find((r) => String(r._id || r.id) === String(value)),
+    [rooms, value],
+  );
+
+  useEffect(() => {
+    if (!isOpen) {
+      if (selectedRoom) {
+        setSearchTerm(
+          `${selectedRoom.name || selectedRoom.roomNumber} (${fmtMoney(selectedRoom.monthlyPrice || selectedRoom.price)})`,
+        );
+      } else {
+        setSearchTerm("");
+      }
+    }
+  }, [value, selectedRoom, isOpen, fmtMoney]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredRooms = useMemo(() => {
+    const selectedLabel = selectedRoom
+      ? `${selectedRoom.name || selectedRoom.roomNumber} (${fmtMoney(selectedRoom.monthlyPrice || selectedRoom.price)})`
+      : "";
+    if (!searchTerm || (selectedRoom && searchTerm === selectedLabel)) {
+      return rooms;
+    }
+    const q = searchTerm.toLowerCase().trim();
+    return rooms.filter((r) => {
+      const name = String(r.name || r.roomNumber || "").toLowerCase();
+      const price = String(r.monthlyPrice || r.price || "").toLowerCase();
+      const floor = String(r.floor || "").toLowerCase();
+      return name.includes(q) || price.includes(q) || floor.includes(q);
+    });
+  }, [rooms, searchTerm, selectedRoom, fmtMoney]);
+
+  return (
+    <div className="twm-search-select" ref={containerRef}>
+      <div className="twm-search-select__input-wrap">
+        <input
+          type="text"
+          className={`twm-search-select__input ${isInvalid ? "tenant-modal-field--invalid" : ""}`}
+          placeholder={disabled ? "Loading available rooms..." : placeholder}
+          value={searchTerm}
+          disabled={disabled}
+          onFocus={() => setIsOpen(true)}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            if (!isOpen) setIsOpen(true);
+          }}
+        />
+        <span className={`twm-search-select__arrow ${isOpen ? "twm-search-select__arrow--open" : ""}`}>
+          ▼
+        </span>
+      </div>
+
+      {isOpen && !disabled && (
+        <div className="twm-search-select__dropdown">
+          {filteredRooms.length === 0 ? (
+            <div className="twm-search-select__empty">No matching rooms found</div>
+          ) : (
+            filteredRooms.map((room) => {
+              const rId = String(room._id || room.id);
+              const isSelected = String(value) === rId;
+              const hasAvail =
+                Array.isArray(room.beds) &&
+                room.beds.some(
+                  (b) => b.status === "available" || (b.status === undefined && b.available !== false),
+                );
+              const roomLabel = `${room.name || room.roomNumber} (${fmtMoney(room.monthlyPrice || room.price)})`;
+
+              return (
+                <div
+                  key={rId}
+                  className={`twm-search-select__option ${isSelected ? "twm-search-select__option--selected" : ""} ${!hasAvail ? "twm-search-select__option--disabled" : ""}`}
+                  onClick={() => {
+                    if (!hasAvail) {
+                      showNotification(
+                        `Room ${room.name || room.roomNumber} has no available beds.`,
+                        "warning",
+                      );
+                      return;
+                    }
+                    onChange(rId);
+                    setIsOpen(false);
+                  }}
+                >
+                  <span style={{ fontWeight: isSelected ? 700 : 500 }}>{roomLabel}</span>
+                  <span
+                    className={`twm-search-select__badge ${
+                      hasAvail ? "twm-search-select__badge--avail" : "twm-search-select__badge--full"
+                    }`}
+                  >
+                    {hasAvail ? "Available" : "Full"}
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    Transfer Tenant Modal — 3-Step Wizard
    Step 1: Target Room & Date
    Step 2: Meter Readings
    Step 3: Review & Settlement Preview
    ───────────────────────────────────────────────────────────────────────────── */
-export function TransferTenantModal({ open, tenant, detail, loading, onClose, onSubmit, sourceRoomLatestReading, electricityRatePerUnit }) {
+export function TransferTenantModal({
+  open,
+  tenant,
+  detail,
+  loading,
+  onClose,
+  onSubmit,
+  sourceRoomLatestReading,
+  electricityRatePerUnit,
+}) {
   const branch = detail?.basicInfo?.branch || tenant?.branch || "";
   const { data: roomsData = [], isLoading: roomsLoading } = useRooms(
     open && branch ? { branch } : {},
@@ -520,6 +650,8 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
 
   // ── Wizard step state ─────────────────────────────────────────────────────
   const [step, setStep] = useState(1);
+  const [attemptedStep1, setAttemptedStep1] = useState(false);
+  const [attemptedStep2, setAttemptedStep2] = useState(false);
 
   // ── Form state ────────────────────────────────────────────────────────────
   const [roomId, setRoomId] = useState("");
@@ -539,6 +671,8 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
   useEffect(() => {
     if (!open) return;
     setStep(1);
+    setAttemptedStep1(false);
+    setAttemptedStep2(false);
     setRoomId("");
     setBedId("");
     setTargetRoomBaseline(null);
@@ -637,6 +771,50 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
   const step1Valid = !!roomId && !!bedId && (!hasOutstanding || forceOverride);
   const step2Valid = !sourceBelowBaseline && !targetBelowBaseline && reason.trim().length > 0;
 
+  // ── Step transition validation handlers with friendly toasts ────────────────
+  const handleNextStep1 = () => {
+    setAttemptedStep1(true);
+    if (!roomId) {
+      showNotification("Please select a target room for the transfer.", "warning");
+      return;
+    }
+    if (!bedId) {
+      showNotification("Please select an available bed in the target room.", "warning");
+      return;
+    }
+    if (hasOutstanding && !forceOverride) {
+      showNotification(
+        "Please acknowledge the tenant's outstanding balance before proceeding.",
+        "warning",
+      );
+      return;
+    }
+    setStep(2);
+  };
+
+  const handleNextStep2 = () => {
+    setAttemptedStep2(true);
+    if (sourceBelowBaseline) {
+      showNotification(
+        `Current room meter reading (${sourceEntered?.toLocaleString()} kWh) cannot be lower than the recorded baseline (${sourceBaseline?.toLocaleString()} kWh).`,
+        "warning",
+      );
+      return;
+    }
+    if (targetBelowBaseline) {
+      showNotification(
+        `New room opening meter reading (${targetEntered?.toLocaleString()} kWh) cannot be lower than the recorded baseline (${targetBaseline?.toLocaleString()} kWh).`,
+        "warning",
+      );
+      return;
+    }
+    if (!reason.trim()) {
+      showNotification("Please enter a reason for the room transfer.", "warning");
+      return;
+    }
+    setStep(3);
+  };
+
   // ── Bed label helper ─────────────────────────────────────────────────────
   const selectedBed = roomBeds.find((b) => String(b.id || b._id) === String(bedId));
   const selectedBedLabel = selectedBed
@@ -671,6 +849,7 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
       });
     } catch (err) {
       console.error("Settlement PDF generation failed:", err);
+      showNotification("Failed to generate settlement receipt PDF.", "error");
     } finally {
       setPdfLoading(false);
     }
@@ -703,12 +882,19 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
           {pdfLoading ? "Generating..." : "Download Estimate"}
         </button>
       )}
-      {step < 3 ? (
+      {step === 1 ? (
         <button
           type="button"
           className="tenant-modal-btn tenant-modal-btn--primary"
-          disabled={step === 1 ? !step1Valid : !step2Valid}
-          onClick={() => setStep((s) => s + 1)}
+          onClick={handleNextStep1}
+        >
+          Next
+        </button>
+      ) : step === 2 ? (
+        <button
+          type="button"
+          className="tenant-modal-btn tenant-modal-btn--primary"
+          onClick={handleNextStep2}
         >
           Next
         </button>
@@ -717,7 +903,11 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
           type="button"
           className="tenant-modal-btn tenant-modal-btn--primary"
           disabled={loading || !step1Valid || !step2Valid}
-          onClick={() =>
+          onClick={() => {
+            if (!step1Valid || !step2Valid) {
+              showNotification("Please make sure all transfer details are valid.", "warning");
+              return;
+            }
             onSubmit({
               roomId,
               bedId,
@@ -726,8 +916,8 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
               effectiveTransferDate: effectiveTransferDate || undefined,
               sourceRoomMeterReading: sourceRoomMeterReading ? Number(sourceRoomMeterReading) : null,
               targetRoomMeterReading: targetRoomMeterReading ? Number(targetRoomMeterReading) : null,
-            })
-          }
+            });
+          }}
         >
           {loading ? "Saving..." : "Confirm Transfer"}
         </button>
@@ -787,38 +977,30 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
           </div>
 
           <div className="tenant-modal-grid">
-            <label className="tenant-modal-field">
+            <label className={`tenant-modal-field ${attemptedStep1 && !roomId ? "tenant-modal-field--invalid" : ""}`}>
               <span>New Room</span>
-              <select
+              <SearchableRoomSelect
+                rooms={targetRooms}
                 value={roomId}
-                onChange={(event) => {
-                  const newRoomId = event.target.value;
+                onChange={(newRoomId) => {
                   setRoomId(newRoomId);
                   setBedId("");
                   fetchTargetBaseline(newRoomId);
                 }}
                 disabled={roomsLoading}
-              >
-                <option value="">Select a room</option>
-                {targetRooms.map((room) => {
-                  const hasAvail = Array.isArray(room.beds) &&
-                    room.beds.some((b) => b.status === "available" || (b.status === undefined && b.available !== false));
-                  return (
-                    <option key={room._id || room.id} value={room._id || room.id}>
-                      {room.name || room.roomNumber} ({fmtMoney(room.monthlyPrice || room.price)})
-                      {!hasAvail ? " — Full" : ""}
-                    </option>
-                  );
-                })}
-              </select>
+                placeholder="Search and select room..."
+                fmtMoney={fmtMoney}
+                isInvalid={attemptedStep1 && !roomId}
+              />
             </label>
 
-            <label className="tenant-modal-field">
+            <label className={`tenant-modal-field ${attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}`}>
               <span>New Bed</span>
               <select
                 value={bedId}
                 onChange={(event) => setBedId(event.target.value)}
                 disabled={!roomId}
+                className={attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}
               >
                 <option value="">Select a bed</option>
                 {roomBeds.map((bed, index) => {
@@ -870,7 +1052,7 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
 
           <div className="tenant-modal-grid">
             {/* Source Room Meter */}
-            <label className="tenant-modal-field">
+            <label className={`tenant-modal-field ${sourceBelowBaseline ? "tenant-modal-field--invalid" : ""}`}>
               <span>Current Room — Final Meter (kWh)</span>
               <input
                 type="number"
@@ -894,14 +1076,14 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
                 )}
                 {sourceBelowBaseline && (
                   <span className="twm-meter-hint twm-meter-hint--warn">
-                    ⚠ Reading ({sourceEntered?.toLocaleString()} kWh) is lower than the last recorded baseline ({sourceBaseline?.toLocaleString()} kWh). Please check the meter.
+                    ⚠ Reading ({sourceEntered?.toLocaleString()} kWh) cannot be lower than recorded baseline ({sourceBaseline?.toLocaleString()} kWh). Please check the meter.
                   </span>
                 )}
               </div>
             </label>
 
             {/* Target Room Meter */}
-            <label className="tenant-modal-field">
+            <label className={`tenant-modal-field ${targetBelowBaseline ? "tenant-modal-field--invalid" : ""}`}>
               <span>New Room — Opening Meter (kWh)</span>
               <input
                 type="number"
@@ -924,14 +1106,14 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
                 ) : null}
                 {targetBelowBaseline && (
                   <span className="twm-meter-hint twm-meter-hint--warn">
-                    ⚠ Opening reading ({targetEntered?.toLocaleString()} kWh) is lower than the last recorded baseline ({targetBaseline?.toLocaleString()} kWh).
+                    ⚠ Opening reading ({targetEntered?.toLocaleString()} kWh) cannot be lower than recorded baseline ({targetBaseline?.toLocaleString()} kWh).
                   </span>
                 )}
               </div>
             </label>
           </div>
 
-          <label className="tenant-modal-field">
+          <label className={`tenant-modal-field ${attemptedStep2 && !reason.trim() ? "tenant-modal-field--invalid" : ""}`}>
             <span>Reason for Transfer</span>
             <textarea
               rows={3}

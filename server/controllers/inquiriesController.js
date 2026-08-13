@@ -15,9 +15,13 @@ import {
 
 export const getInquiryStats = async (req, res, next) => {
   try {
-    const matchQuery = req.branchFilter
-      ? { branch: req.branchFilter, isArchived: { $ne: true } }
-      : { isArchived: { $ne: true } };
+    const matchQuery = { isArchived: { $ne: true } };
+    if (req.branchFilter) {
+      matchQuery.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
+    }
 
     // Get counts by status
     const statusCounts = await Inquiry.aggregate([
@@ -30,7 +34,12 @@ export const getInquiryStats = async (req, res, next) => {
     if (req.isOwner) {
       branchCounts = await Inquiry.aggregate([
         { $match: { isArchived: { $ne: true } } },
-        { $group: { _id: "$branch", count: { $sum: 1 } } },
+        {
+          $group: {
+            _id: { $ifNull: ["$preferredBranch", "$branch"] },
+            count: { $sum: 1 },
+          },
+        },
       ]);
     }
 
@@ -75,7 +84,9 @@ export const getInquiriesByBranch = async (req, res, next) => {
       });
     }
 
-    const inquiries = await Inquiry.find({ branch })
+    const inquiries = await Inquiry.find({
+      $or: [{ preferredBranch: branch }, { branch }],
+    })
       .sort({ createdAt: -1 })
       .populate("respondedBy", "firstName lastName email")
       .select("-__v");
@@ -108,28 +119,41 @@ export const getInquiries = async (req, res, next) => {
     } = req.query;
 
     // Build query with branch filter
-    const query = { isArchived: { $ne: true } }; // Exclude archived inquiries
+    const queryConditions = [{ isArchived: { $ne: true } }];
 
-    if (req.branchFilter) {
-      query.branch = req.branchFilter;
-    } else if (branch) {
-      query.branch = branch;
+    const targetBranch = req.branchFilter || branch;
+    if (targetBranch) {
+      queryConditions.push({
+        $or: [
+          { preferredBranch: targetBranch },
+          { branch: targetBranch },
+        ],
+      });
     }
 
     if (status) {
       // Map frontend "responded" to backend "resolved"
-      query.status = status === "responded" ? "resolved" : status;
+      queryConditions.push({
+        status: status === "responded" ? "resolved" : status,
+      });
     }
 
     if (search && search.trim()) {
       const regex = new RegExp(search.trim(), "i");
-      query.$or = [
-        { name: regex },
-        { fullName: regex },
-        { email: regex },
-        { subject: regex },
-      ];
+      queryConditions.push({
+        $or: [
+          { name: regex },
+          { fullName: regex },
+          { email: regex },
+          { subject: regex },
+        ],
+      });
     }
+
+    const query =
+      queryConditions.length === 1
+        ? queryConditions[0]
+        : { $and: queryConditions };
 
     // Pagination
     const pageNum = parseInt(page, 10);
@@ -188,7 +212,10 @@ export const getInquiryById = async (req, res, next) => {
 
     const query = { _id: id };
     if (req.branchFilter) {
-      query.branch = req.branchFilter;
+      query.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
     }
 
     const inquiry = await Inquiry.findOne(query)
@@ -325,7 +352,10 @@ export const updateInquiry = async (req, res, next) => {
 
     const query = { _id: id };
     if (req.branchFilter) {
-      query.branch = req.branchFilter;
+      query.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
     }
 
     const existingInquiry = await Inquiry.findOne(query);
@@ -455,7 +485,10 @@ export const deleteInquiry = async (req, res, next) => {
 
     const query = { _id: id };
     if (req.branchFilter) {
-      query.branch = req.branchFilter;
+      query.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
     }
 
     const inquiry = await Inquiry.findOne(query);

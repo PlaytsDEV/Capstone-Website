@@ -357,26 +357,26 @@ body.modal-open {
 
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
   font-size: var(--font-size-base);
 }
 
-@media (min-width: 640px) {
+@media (max-width: 540px) {
   .info-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: 1fr;
   }
 }
 
 .info-grid div,
 .info-tile {
   background: var(--bg-card, #ffffff);
-  padding: 14px 16px;
+  padding: 10px 14px;
   border: 1px solid var(--border-card, #e2e8f0);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-lg, 10px);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   box-shadow: var(--shadow-xs, 0 1px 2px rgba(0, 0, 0, 0.03));
   transition: all var(--duration-fast) var(--ease-out);
 }
@@ -1036,15 +1036,22 @@ body.modal-open {
   color: var(--text-primary);
   font-family: inherit;
   transition: border-color var(--duration-fast) var(--ease-out),
-              box-shadow var(--duration-fast) var(--ease-out);
+              box-shadow var(--duration-fast) var(--ease-out),
+              background-color var(--duration-fast) var(--ease-out);
+}
+
+.room-form-group input:hover,
+.room-form-group select:hover,
+.room-form-group textarea:hover {
+  border-color: color-mix(in srgb, var(--foreground) 35%, var(--border-default));
 }
 
 .room-form-group input:focus,
 .room-form-group select:focus,
 .room-form-group textarea:focus {
   outline: none;
-  border-color: var(--ring);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 18%, transparent);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 .room-form-group input:disabled,
@@ -1062,6 +1069,12 @@ body.modal-open {
 .room-form-group.has-error input,
 .room-form-group.has-error select {
   border-color: var(--status-error);
+}
+
+.room-form-group.has-error input:focus,
+.room-form-group.has-error select:focus {
+  border-color: var(--status-error);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-error) 15%, transparent);
 }
 
 .room-form-group .field-error {
@@ -1303,4 +1316,516 @@ body.modal-open {
 .occupancy-drift-alert--warning svg {
   color: hsl(25 90% 45%);
 }
+
+/* =============================================================================
+   ROOM FORM MODAL (RFM) — Redesigned friendly layout
+   ============================================================================= */
+
+/* ── Header ── */
+.rfm-header {
+  gap: var(--spacing-md);
+}
+
+.rfm-header__title-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.rfm-header__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rfm-header__title-block h2 {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rfm-header__subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  display: block;
+  margin-top: 1px;
+  font-weight: 400;
+}
+
+/* ── Body: optimized space efficiency ── */
+.rfm-body {
+  gap: 14px !important;
+  padding: 16px 20px !important;
+}
+
+/* ── Section wrapper ── */
+.rfm-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.rfm-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* ── Section label (icon + text) ── */
+.rfm-section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.rfm-section-label svg {
+  opacity: 0.7;
+}
+
+/* ── Required asterisk ── */
+.rfm-required {
+  color: var(--status-error);
+  margin-left: 1px;
+}
+
+/* ── Room Type pill card selector ── */
+.rfm-type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-sm);
+}
+
+@media (max-width: 560px) {
+  .rfm-type-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rfm-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--border-default);
+  background: var(--bg-card);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+
+.rfm-type-card svg {
+  color: var(--text-muted);
+  transition: color var(--duration-fast) var(--ease-out);
+  margin-bottom: 2px;
+}
+
+.rfm-type-card:hover {
+  border-color: var(--ring);
+  background: color-mix(in srgb, var(--ring) 5%, transparent);
+}
+
+.rfm-type-card:hover svg {
+  color: var(--primary);
+}
+
+.rfm-type-card--active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.rfm-type-card--active svg {
+  color: var(--primary);
+}
+
+.rfm-type-card__label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.rfm-type-card__desc {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+/* ── Capacity locked badge ── */
+.rfm-capacity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-light);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  width: fit-content;
+}
+
+.rfm-capacity-badge svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.rfm-capacity-badge strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ── Photo dropzone (empty state) ── */
+.rfm-photo-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 28px 20px;
+  border: 1.5px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-inset);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+
+.rfm-photo-dropzone:hover {
+  border-color: var(--ring);
+  background: color-mix(in srgb, var(--ring) 4%, var(--bg-inset));
+}
+
+.rfm-photo-dropzone svg {
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.rfm-photo-dropzone__title {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.rfm-photo-dropzone__hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  max-width: 300px;
+  line-height: 1.5;
+}
+
+.rfm-photo-dropzone__btn {
+  margin-top: 4px;
+  padding: 6px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-card);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  pointer-events: none;
+}
+
+/* ── Add more photos card (in grid) ── */
+.rfm-photo-add-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--radius-md);
+  border: 1.5px dashed var(--border-default);
+  background: var(--bg-inset);
+  cursor: pointer;
+  min-height: 80px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+
+.rfm-photo-add-more:hover {
+  border-color: var(--ring);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--ring) 5%, transparent);
+}
+
+/* ── Beds auto-generate notice ── */
+.rfm-beds-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.rfm-beds-notice svg {
+  color: var(--primary);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── Bunk Card Container Group ── */
+.rfm-bunk-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+  background: var(--bg-inset);
+  margin-bottom: var(--spacing-sm);
+}
+
+.rfm-bunk-card:last-child {
+  margin-bottom: 0;
+}
+
+.rfm-bunk-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rfm-bunk-card__icon {
+  color: var(--primary);
+}
+
+.rfm-bunk-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-top: 4px;
+}
+
+/* =============================================================================
+   EDITING MODE ACTIVE BADGE & AMENITIES TAG SYSTEM
+   ============================================================================= */
+
+.room-config-modal__badge--editing {
+  background: rgba(234, 179, 8, 0.12);
+  color: #b45309;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  font-weight: 600;
+}
+
+.amenities-tag-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--bg-inset, #f8fafc);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: var(--radius-md, 6px);
+  min-height: 42px;
+  align-items: center;
+}
+
+.amenity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 10px;
+  background: #ffffff;
+  border: 1px solid var(--border-subtle, #cbd5e1);
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-main, #1e293b);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.amenity-chip__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.amenity-chip__remove:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.amenities-empty-hint {
+  font-size: 0.8125rem;
+  color: var(--text-muted, #94a3b8);
+  font-style: italic;
+}
+
+.amenity-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.amenity-custom-input {
+  flex: 1;
+}
+
+.btn-add-amenity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  background: var(--bg-inset, #f1f5f9);
+  border: 1px solid var(--border-subtle, #cbd5e1);
+  border-radius: var(--radius-md, 6px);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-main, #334155);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-add-amenity:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.btn-add-amenity:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.amenities-presets-block {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.amenities-presets-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.amenities-presets-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.amenity-preset-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  background: #ffffff;
+  border: 1px dashed var(--border-subtle, #cbd5e1);
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted, #475569);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.amenity-preset-btn:hover {
+  border-color: var(--primary, #d97706);
+  color: var(--primary, #d97706);
+}
+
+.amenity-preset-btn--selected {
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  color: #b45309;
+  font-weight: 600;
+}
+
+.rfm-beds-notice--clickable {
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.rfm-beds-notice--clickable:hover {
+  border-color: rgba(234, 179, 8, 0.5);
+  background-color: rgba(254, 243, 199, 0.4);
+}
+
+/* Discard Unsaved Changes Modal */
+.confirm-discard-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(2px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.confirm-discard-card {
+  background: #ffffff;
+  border-radius: var(--radius-lg, 12px);
+  padding: 24px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+}
+
+.confirm-discard-card h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-main, #0f172a);
+}
+
+.confirm-discard-card p {
+  margin: 0 0 20px 0;
+  font-size: 0.875rem;
+  color: var(--text-muted, #64748b);
+  line-height: 1.5;
+}
+
+.confirm-discard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 

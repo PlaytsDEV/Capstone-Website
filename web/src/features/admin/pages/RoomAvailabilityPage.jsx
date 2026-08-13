@@ -1214,89 +1214,55 @@ function RoomAvailabilityPage() {
             <div className="space-y-4 overflow-y-auto pr-1 flex-1">
               {/* Executive KPI Metric Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setVacancyUrgencyFilter("urgent")}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.99] ${
-                    vacancyUrgencyFilter === "urgent"
-                      ? "bg-amber-500/15 border-amber-500/50 shadow-xs ring-2 ring-amber-500/40"
-                      : "bg-amber-500/10 border-amber-500/25 hover:border-amber-500/40 hover:bg-amber-500/15"
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-xs font-semibold text-amber-700 dark:text-amber-400">
-                    <span>Urgent (&le;30 Days)</span>
-                    <AlertTriangle className="w-4 h-4 text-amber-500" />
-                  </div>
-                  <div className="text-2xl font-bold text-amber-950 dark:text-amber-100 mt-1">
-                    {vacancyKPIs.urgent}
-                  </div>
-                  <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 mt-0.5 font-medium">
-                    Immediate turnovers
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setVacancyUrgencyFilter("upcoming")}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.99] ${
-                    vacancyUrgencyFilter === "upcoming"
-                      ? "bg-blue-500/15 border-blue-500/50 shadow-xs ring-2 ring-blue-500/40"
-                      : "bg-blue-500/10 border-blue-500/25 hover:border-blue-500/40 hover:bg-blue-500/15"
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-xs font-semibold text-blue-700 dark:text-blue-400">
-                    <span>31 &ndash; 90 Days</span>
-                    <Calendar className="w-4 h-4 text-blue-500" />
-                  </div>
-                  <div className="text-2xl font-bold text-blue-950 dark:text-blue-100 mt-1">
-                    {vacancyKPIs.upcoming}
-                  </div>
-                  <p className="text-[10px] text-blue-700/80 dark:text-blue-400/80 mt-0.5 font-medium">
-                    Next quarter move-outs
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setVacancyUrgencyFilter("longterm")}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.99] ${
-                    vacancyUrgencyFilter === "longterm"
-                      ? "bg-emerald-500/15 border-emerald-500/50 shadow-xs ring-2 ring-emerald-500/40"
-                      : "bg-emerald-500/10 border-emerald-500/25 hover:border-emerald-500/40 hover:bg-emerald-500/15"
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                    <span>90+ Days</span>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  </div>
-                  <div className="text-2xl font-bold text-emerald-950 dark:text-emerald-100 mt-1">
-                    {vacancyKPIs.longTerm}
-                  </div>
-                  <p className="text-[10px] text-emerald-700/80 dark:text-emerald-400/80 mt-0.5 font-medium">
-                    Distant contract ends
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setVacancyUrgencyFilter("all")}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.99] ${
-                    vacancyUrgencyFilter === "all"
-                      ? "bg-indigo-500/15 border-indigo-500/50 shadow-xs ring-2 ring-indigo-500/40"
-                      : "bg-indigo-500/10 border-indigo-500/25 hover:border-indigo-500/40 hover:bg-indigo-500/15"
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-xs font-semibold text-indigo-700 dark:text-indigo-400">
-                    <span>Total Move-Outs</span>
-                    <Bed className="w-4 h-4 text-indigo-500" />
-                  </div>
-                  <div className="text-2xl font-bold text-indigo-950 dark:text-indigo-100 mt-1">
-                    {vacancyKPIs.total}
-                  </div>
-                  <p className="text-[10px] text-indigo-700/80 dark:text-indigo-400/80 mt-0.5 font-medium">
-                    Active scheduled list
-                  </p>
-                </button>
+                {[
+                  {
+                    id: "urgent",
+                    label: "Urgent (\u226430 Days)",
+                    icon: AlertTriangle,
+                    count: vacancyKPIs.urgent,
+                    subtext: "Immediate turnovers",
+                  },
+                  {
+                    id: "upcoming",
+                    label: "31 \u2013 90 Days",
+                    icon: Calendar,
+                    count: vacancyKPIs.upcoming,
+                    subtext: "Next quarter move-outs",
+                  },
+                  {
+                    id: "longterm",
+                    label: "90+ Days",
+                    icon: CheckCircle2,
+                    count: vacancyKPIs.longTerm,
+                    subtext: "Distant contract ends",
+                  },
+                  {
+                    id: "all",
+                    label: "Total Move-Outs",
+                    icon: Bed,
+                    count: vacancyKPIs.total,
+                    subtext: "Active scheduled list",
+                  },
+                ].map((kpi) => {
+                  const Icon = kpi.icon;
+                  return (
+                    <div
+                      key={kpi.id}
+                      className="p-3 rounded-xl border border-border bg-card text-foreground"
+                    >
+                      <div className="flex items-center justify-between text-xs font-semibold text-foreground">
+                        <span>{kpi.label}</span>
+                        <Icon className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                      <div className="text-2xl font-bold text-foreground mt-1">
+                        {kpi.count}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
+                        {kpi.subtext}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Search & Filter Controls Bar */}

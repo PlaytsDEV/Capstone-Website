@@ -88,24 +88,117 @@ function matchesFilter(notification, filter) {
 	return notification.type === filter;
 }
 
+// ── Notification color object schemes (Modern Minimalist Light Tints) ──
+const NOTIFICATION_COLOR_SCHEMES = {
+	success: {
+		icon: "#059669",
+		iconBg: "#F0FDF4",
+		badgeBg: "#F0FDF4",
+		badgeText: "#047857",
+		border: "#DCFCE7",
+	},
+	danger: {
+		icon: "#DC2626",
+		iconBg: "#FEF2F2",
+		badgeBg: "#FEF2F2",
+		badgeText: "#B91C1C",
+		border: "#FEE2E2",
+	},
+	warning: {
+		icon: "#D97706",
+		iconBg: "#FFFBEB",
+		badgeBg: "#FFFBEB",
+		badgeText: "#B45309",
+		border: "#FEF3C7",
+	},
+	info: {
+		icon: "#2563EB",
+		iconBg: "#EFF6FF",
+		badgeBg: "#EFF6FF",
+		badgeText: "#1D4ED8",
+		border: "#DBEAFE",
+	},
+	purple: {
+		icon: "#7C3AED",
+		iconBg: "#F5F3FF",
+		badgeBg: "#F5F3FF",
+		badgeText: "#6D28D9",
+		border: "#DDD6FE",
+	},
+	indigo: {
+		icon: "#4F46E5",
+		iconBg: "#EEF2FF",
+		badgeBg: "#EEF2FF",
+		badgeText: "#4338CA",
+		border: "#E0E7FF",
+	},
+	orange: {
+		icon: "#EA580C",
+		iconBg: "#FFF7ED",
+		badgeBg: "#FFF7ED",
+		badgeText: "#C2410C",
+		border: "#FFEDD5",
+	},
+	neutral: {
+		icon: "#6B7280",
+		iconBg: "#F8FAFC",
+		badgeBg: "#F8FAFC",
+		badgeText: "#475569",
+		border: "#E2E8F0",
+	},
+};
+
 // ── Notification type → icon + color mapping ──
 const TYPE_CONFIG = {
-	reservation_confirmed: { icon: Calendar, color: "#10B981", label: "Reservation" },
-	reservation_cancelled: { icon: Calendar, color: "#EF4444", label: "Reservation" },
-	visit_approved: { icon: Home, color: "#10B981", label: "Visit" },
-	visit_rejected: { icon: Home, color: "#EF4444", label: "Visit" },
-	payment_approved: { icon: CreditCard, color: "#10B981", label: "Payment" },
-	payment_rejected: { icon: CreditCard, color: "#EF4444", label: "Payment" },
-	bill_generated: { icon: CreditCard, color: "#F59E0B", label: "Billing" },
-	bill_due_reminder: { icon: AlertCircle, color: "#EF4444", label: "Billing" },
-	grace_period_warning: { icon: AlertCircle, color: "#EF4444", label: "Warning" },
-	move_in_reminder: { icon: Home, color: "#6366F1", label: "Move-in" },
-	account_suspended: { icon: AlertCircle, color: "#EF4444", label: "Account" },
-	account_reactivated: { icon: Check, color: "#10B981", label: "Account" },
-	maintenance_update: { icon: Wrench, color: "#8B5CF6", label: "Maintenance" },
-	announcement: { icon: Megaphone, color: "#FF8C42", label: "Announcement" },
-	general: { icon: Bell, color: "#6B7280", label: "General" },
+	reservation_confirmed: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Confirmed" },
+	reservation_cancelled: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Cancelled" },
+	visit_approved: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Completed" },
+	visit_rejected: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Rejected" },
+	payment_approved: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Approved" },
+	payment_rejected: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Rejected" },
+	bill_generated: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Generated" },
+	bill_due_reminder: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Due Soon" },
+	grace_period_warning: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Warning" },
+	move_in_reminder: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.indigo, label: "Move-In Notice" },
+	account_suspended: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Suspended" },
+	account_reactivated: { icon: Check, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Reactivated" },
+	maintenance_update: { icon: Wrench, colors: NOTIFICATION_COLOR_SCHEMES.purple, label: "Updated" },
+	announcement: { icon: Megaphone, colors: NOTIFICATION_COLOR_SCHEMES.orange, label: "Announcement" },
+	general: { icon: Bell, colors: NOTIFICATION_COLOR_SCHEMES.neutral, label: "Notice" },
 };
+
+/**
+ * Resolves notification icon, verb label, and color object scheme.
+ * Dynamically detects action verbs (Completed, Cancelled, Rejected, Approved) if type is general.
+ */
+function getNotificationConfig(notification = {}) {
+	const type = notification.type;
+	const baseConfig = TYPE_CONFIG[type] || TYPE_CONFIG.general;
+
+	let label = baseConfig.label;
+	let colors = baseConfig.colors;
+
+	const titleLower = (notification.title || "").toLowerCase();
+	if (titleLower.includes("completed")) {
+		label = "Completed";
+		colors = NOTIFICATION_COLOR_SCHEMES.success;
+	} else if (titleLower.includes("cancelled") || titleLower.includes("canceled")) {
+		label = "Cancelled";
+		colors = NOTIFICATION_COLOR_SCHEMES.danger;
+	} else if (titleLower.includes("rejected")) {
+		label = "Rejected";
+		colors = NOTIFICATION_COLOR_SCHEMES.danger;
+	} else if (titleLower.includes("approved") || titleLower.includes("confirmed")) {
+		label = "Approved";
+		colors = NOTIFICATION_COLOR_SCHEMES.success;
+	}
+
+	return {
+		icon: baseConfig.icon,
+		colors,
+		label,
+	};
+}
 
 // ── Date grouping helper ──
 const getDateLabel = (dateStr) => {
@@ -577,7 +670,7 @@ const NotificationsTab = ({ onTabChange }) => {
 							</p>
 							<div style={{ ...cardStyle, overflow: "hidden" }}>
 								{items.map((notification, idx) => {
-									const config = TYPE_CONFIG[notification.type] || TYPE_CONFIG.general;
+									const config = getNotificationConfig(notification);
 									const Icon = config.icon;
 
 									return (
@@ -602,7 +695,8 @@ const NotificationsTab = ({ onTabChange }) => {
 													width: "36px",
 													height: "36px",
 													borderRadius: "10px",
-													backgroundColor: `${config.color}10`,
+													backgroundColor: config.colors.iconBg,
+													border: `1px solid ${config.colors.border}`,
 													display: "flex",
 													alignItems: "center",
 													justifyContent: "center",
@@ -613,7 +707,7 @@ const NotificationsTab = ({ onTabChange }) => {
 													style={{
 														width: "18px",
 														height: "18px",
-														color: config.color,
+														color: config.colors.icon,
 													}}
 												/>
 											</div>
@@ -640,10 +734,11 @@ const NotificationsTab = ({ onTabChange }) => {
 													<span
 														style={{
 															fontSize: "11px",
-															fontWeight: 500,
-															color: config.color,
-															backgroundColor: `${config.color}15`,
-															padding: "1px 6px",
+															fontWeight: 600,
+															color: config.colors.badgeText,
+															backgroundColor: config.colors.badgeBg,
+															border: `1px solid ${config.colors.border}`,
+															padding: "1px 7px",
 															borderRadius: "4px",
 														}}
 													>

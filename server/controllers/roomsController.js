@@ -465,8 +465,10 @@ const pickFields = (payload, allowedFields) =>
 
 const generateDefaultBeds = (type, capacity) => {
   if (type === "private") {
+    // Private = 1 tenant but 2 beds (1 bunk: upper + lower)
     return [
-      { id: "bed-1", position: "lower", status: "available" },
+      { id: "bed-1", position: "upper", status: "available" },
+      { id: "bed-2", position: "lower", status: "available" },
     ];
   }
 
@@ -476,6 +478,7 @@ const generateDefaultBeds = (type, capacity) => {
     status: "available",
   }));
 };
+
 
 const normalizeBedPayload = (beds = [], fallbackType, fallbackCapacity) => {
   const sourceBeds = Array.isArray(beds) && beds.length > 0
@@ -749,10 +752,12 @@ export const getMaxBedsForRoomType = (type) => {
     return 2;
   }
   if (normType === "private" || normType.includes("single")) {
-    return 1;
+    // Private rooms have a bunk bed (upper + lower) reserved for 1 tenant = 2 physical bed objects
+    return 2;
   }
   return 4;
 };
+
 
 const formatRoomTypeLabel = (type) => {
   const normType = String(type || "").toLowerCase().trim();

@@ -7,6 +7,10 @@
  * Gets the Bunk Block letter ('A', 'B', etc.) for a bed based on its index or bunkBlock field.
  */
 export const getBunkBlockLetter = (bed, index = 0) => {
+  if (typeof index === "number" && index >= 0) {
+    const blockIndex = Math.floor(index / 2);
+    return String.fromCharCode(65 + blockIndex);
+  }
   if (bed?.bunkBlock && bed.bunkBlock !== "none") {
     return bed.bunkBlock;
   }
@@ -17,10 +21,7 @@ export const getBunkBlockLetter = (bed, index = 0) => {
     return match[1].toUpperCase();
   }
 
-  // Numerical fallback based on index in room beds array
-  // Index 0 & 1 -> Bunk A, Index 2 & 3 -> Bunk B, Index 4 & 5 -> Bunk C
-  const blockIndex = Math.floor(index / 2);
-  return String.fromCharCode(65 + blockIndex); // 65 = 'A'
+  return "A";
 };
 
 /**

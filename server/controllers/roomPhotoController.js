@@ -85,8 +85,8 @@ export const uploadRoomPhotos = async (req, res, next) => {
   try {
     const { roomId } = req.params;
 
-    if (!roomId || !/^[0-9a-fA-F]{24}$/.test(roomId)) {
-      throw new AppError("Invalid room ID.", 400, "INVALID_ROOM_ID");
+    if (!roomId || typeof roomId !== "string" || !/^[a-zA-Z0-9_-]{1,64}$/.test(roomId)) {
+      throw new AppError("Invalid room ID format.", 400, "INVALID_ROOM_ID");
     }
 
     const files = req.files || [];

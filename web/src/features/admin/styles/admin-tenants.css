@@ -513,6 +513,118 @@
   resize: vertical;
 }
 
+.tenant-modal-field--invalid input,
+.tenant-modal-field--invalid select,
+.tenant-modal-field--invalid textarea {
+  border-color: var(--danger, #dc2626) !important;
+  background-color: var(--danger-light, #fef2f2) !important;
+}
+
+/* ── Searchable Room Dropdown Component ─────────────────────────────────────── */
+.twm-search-select {
+  position: relative;
+  width: 100%;
+}
+
+.twm-search-select__input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.twm-search-select__input {
+  width: 100%;
+  padding-right: 32px !important;
+  cursor: text;
+}
+
+.twm-search-select__arrow {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--text-muted, #64748b);
+  pointer-events: none;
+  transition: transform 0.15s ease;
+}
+
+.twm-search-select__arrow--open {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.twm-search-select__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 230px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid var(--border-default, #cbd5e1);
+  border-radius: 10px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  z-index: 1200;
+  padding: 4px;
+}
+
+.twm-search-select__option {
+  padding: 9px 12px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-primary, #0f172a);
+  gap: 8px;
+  transition: background 0.12s ease;
+}
+
+.twm-search-select__option:hover:not(.twm-search-select__option--disabled) {
+  background: #f1f5f9;
+}
+
+.twm-search-select__option--selected {
+  background: #e2e8f0;
+  font-weight: 600;
+}
+
+.twm-search-select__option--disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #f8fafc;
+}
+
+.twm-search-select__badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.twm-search-select__badge--avail {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.twm-search-select__badge--full {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.twm-search-select__empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+  font-style: italic;
+}
+
 /* Meter reading history baseline hint */
 .meter-baseline-hint {
   font-size: 11px;

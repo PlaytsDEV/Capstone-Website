@@ -1047,7 +1047,7 @@ async function buildSettlementDoc(data) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.0);
   doc.setTextColor(...COLORS.accent);
-  doc.text("⚠ PRELIMINARY ESTIMATE", margin + PAGE.pad, y + 6.5);
+  doc.text("PRELIMINARY ESTIMATE", margin + PAGE.pad, y + 6.5);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.8);
   doc.setTextColor(...COLORS.body);
