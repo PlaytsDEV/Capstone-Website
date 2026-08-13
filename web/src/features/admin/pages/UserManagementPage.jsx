@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Users,
   UserPlus,
@@ -60,20 +61,58 @@ function UserActionMenu({
   isOwner,
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef(null);
+  const [menuStyle, setMenuStyle] = useState({});
+  const triggerRef = useRef(null);
+  const dropdownRef = useRef(null);
+
+  const calculatePosition = () => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const placeAbove = spaceBelow < 240 && rect.top > 240;
+
+    setMenuStyle({
+      position: "fixed",
+      top: placeAbove ? "auto" : `${rect.bottom + 6}px`,
+      bottom: placeAbove ? `${window.innerHeight - rect.top + 6}px` : "auto",
+      right: `${window.innerWidth - rect.right}px`,
+      zIndex: 9999,
+    });
+  };
+
+  const handleToggle = (e) => {
+    e.stopPropagation();
+    if (!isOpen) {
+      calculatePosition();
+    }
+    setIsOpen(!isOpen);
+  };
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(event.target) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target)
+      ) {
         setIsOpen(false);
       }
     }
 
+    function handleScrollOrResize() {
+      setIsOpen(false);
+    }
+
     if (isOpen) {
       document.addEventListener("mousedown", handleClickOutside);
+      window.addEventListener("scroll", handleScrollOrResize, true);
+      window.addEventListener("resize", handleScrollOrResize);
     }
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+      window.removeEventListener("resize", handleScrollOrResize);
     };
   }, [isOpen]);
 
@@ -101,22 +140,17 @@ function UserActionMenu({
   const canForceDeleteAccount =
     canManageUsers && isOwner && !isCurrentUser && (!isPrivilegedAccount || isOwner);
 
-  // If there are literally no actions available, render nothing
-  if (
-    !canEditAccount &&
-    !canBlockAccount &&
-    !canUnblockAccount &&
-    !canRestoreAccount &&
-    !canDeleteAccount &&
-    !canForceDeleteAccount &&
-    u.role !== "branch_admin"
-  ) {
-    return <div className="w-16" />;
-  }
+  const canManagePermissions = isOwner && u.role === "branch_admin";
+  const hasAnyMenuItem =
+    canManagePermissions ||
+    canEditAccount ||
+    canRestoreAccount ||
+    canDeleteAccount ||
+    canForceDeleteAccount;
 
   return (
     <div
-      ref={menuRef}
+      ref={triggerRef}
       className="relative flex items-center justify-start gap-1"
       onClick={(e) => e.stopPropagation()}
     >
@@ -138,104 +172,88 @@ function UserActionMenu({
         </button>
       )}
 
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted"
-        title="More actions"
-      >
-        <MoreVertical className="h-4 w-4" />
-      </button>
-
-      {isOpen && (
-        <div className="absolute right-0 top-10 z-50 min-w-[170px] rounded-lg border border-border bg-card p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100">
-          {isOwner && u.role === "branch_admin" && (
-            <button
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
-              onClick={() => {
-                setIsOpen(false);
-                handleOpenPermissions(u);
-              }}
-            >
-              <Key className="h-4 w-4" /> Permissions
-            </button>
-          )}
-          
-          {canEditAccount && (
-            <button
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
-              onClick={() => {
-                setIsOpen(false);
-                setAccessDrawerUser(u);
-              }}
-            >
-              <Shield className="h-4 w-4" /> View Access
-            </button>
-          )}
-
-          {canBlockAccount && (
-            <button
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-danger hover:bg-danger/10"
-              onClick={() => {
-                setIsOpen(false);
-                setSelectedUser(u);
-                setAccountAction({ type: "ban", user: u });
-              }}
-            >
-              <Lock className="h-4 w-4" /> Block Account
-            </button>
-          )}
-
-          {canUnblockAccount && (
-            <button
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-primary hover:bg-primary/10"
-              onClick={() => {
-                setIsOpen(false);
-                setSelectedUser(u);
-                setAccountAction({ type: "reactivate", user: u });
-              }}
-            >
-              <Unlock className="h-4 w-4" /> Unblock Account
-            </button>
-          )}
-
-          {canRestoreAccount && (
-            <button
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-primary hover:bg-primary/10"
-              onClick={() => {
-                setIsOpen(false);
-                setSelectedUser(u);
-                setAccountAction({ type: "restore", user: u });
-              }}
-            >
-              <Unlock className="h-4 w-4" /> Restore Account
-            </button>
-          )}
-
-          {canDeleteAccount && (
-            <button
-              className="mt-1 flex w-full items-center gap-2 border-t border-border pt-1.5 px-2 py-1.5 text-sm font-medium text-danger hover:bg-danger/10"
-              onClick={() => {
-                setIsOpen(false);
-                handleArchiveClick(u);
-              }}
-            >
-              <Trash2 className="h-4 w-4" /> Archive / Delete
-            </button>
-          )}
-
-          {canForceDeleteAccount && (
-            <button
-              className="mt-1 flex w-full items-center gap-2 border-t border-danger/20 pt-1.5 px-2 py-1.5 text-sm font-bold text-danger hover:bg-danger-light"
-              onClick={() => {
-                setIsOpen(false);
-                handleHardDeleteClick(u);
-              }}
-            >
-              <Trash2 className="h-4 w-4" /> Force Delete
-            </button>
-          )}
-        </div>
+      {hasAnyMenuItem && (
+        <button
+          onClick={handleToggle}
+          className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted"
+          title="More actions"
+        >
+          <MoreVertical className="h-4 w-4" />
+        </button>
       )}
+
+      {isOpen &&
+        hasAnyMenuItem &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            style={menuStyle}
+            className="min-w-[170px] rounded-lg border border-border bg-card p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {canManagePermissions && (
+              <button
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+                onClick={() => {
+                  setIsOpen(false);
+                  handleOpenPermissions(u);
+                }}
+              >
+                <Key className="h-4 w-4" /> Permissions
+              </button>
+            )}
+            
+            {canEditAccount && (
+              <button
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+                onClick={() => {
+                  setIsOpen(false);
+                  setAccessDrawerUser(u);
+                }}
+              >
+                <Shield className="h-4 w-4" /> View Access
+              </button>
+            )}
+
+            {canRestoreAccount && (
+              <button
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-primary hover:bg-primary/10"
+                onClick={() => {
+                  setIsOpen(false);
+                  setSelectedUser(u);
+                  setAccountAction({ type: "restore", user: u });
+                }}
+              >
+                <Unlock className="h-4 w-4" /> Restore Account
+              </button>
+            )}
+
+            {canDeleteAccount && (
+              <button
+                className="mt-1 flex w-full items-center gap-2 border-t border-border pt-1.5 px-2 py-1.5 text-sm font-medium text-danger hover:bg-danger/10"
+                onClick={() => {
+                  setIsOpen(false);
+                  handleArchiveClick(u);
+                }}
+              >
+                <Trash2 className="h-4 w-4" /> Archive Account
+              </button>
+            )}
+
+            {canForceDeleteAccount && (
+              <button
+                className="mt-1 flex w-full items-center gap-2 border-t border-danger/20 pt-1.5 px-2 py-1.5 text-sm font-bold text-danger hover:bg-danger-light"
+                onClick={() => {
+                  setIsOpen(false);
+                  handleHardDeleteClick(u);
+                }}
+              >
+                <Trash2 className="h-4 w-4" /> Force Delete
+              </button>
+            )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -260,6 +278,7 @@ function UserManagementPage() {
     type: null,
     user: null,
   });
+  const [optimisticStatuses, setOptimisticStatuses] = useState({});
 
   const [searchQuery, setSearchQuery] = useState(
     () => searchParams.get("search") || "",
@@ -544,14 +563,16 @@ function getAvatarColor(user) {
     usersData?.pagination?.total ||
     users.length;
 
-  const refetchAll = () =>
-    Promise.all([
+  const refetchAll = async () => {
+    setOptimisticStatuses({});
+    await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["users"] }),
       queryClient.invalidateQueries({
         queryKey: ["reservations", "currentResidents"],
       }),
       queryClient.invalidateQueries({ queryKey: ["reservations"] }),
     ]);
+  };
 
   const formatUserLabel = (userData) => {
     if (!userData) return "User";
@@ -1304,7 +1325,26 @@ function getAvatarColor(user) {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {users.map((u) => (
+              {users.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
+                        <Users className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <p className="text-sm font-semibold" style={{ color: "var(--color-text-primary)" }}>
+                        No users found
+                      </p>
+                      <p className="text-xs max-w-sm mx-auto" style={{ color: "var(--color-text-secondary)" }}>
+                        {searchQuery || roleFilter !== "all" || statusFilter !== "all" || branchFilter !== "all"
+                          ? "No user accounts match your active search or filters. Try adjusting your search criteria."
+                          : "There are currently no user accounts registered in this section."}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                users.map((u) => (
                 <tr
                   key={u._id || u.id}
                   className="hover:bg-muted/10 transition-colors"
@@ -1349,15 +1389,20 @@ function getAvatarColor(user) {
                   </td>
                   <td className="px-6 py-4">
                     {(() => {
+                      const userId = String(u._id || u.id);
                       const isCurrentUser = u._id === (user?._id || user?.uid);
                       const isArchived = u.isArchived === true;
                       const isPrivilegedAccount = ["branch_admin", "owner"].includes(u.role);
+                      const optStatus = optimisticStatuses[userId];
                       const status =
                         isArchived
                           ? "archived"
-                          : u.accountStatus ||
+                          : optStatus ||
+                            u.accountStatus ||
                             (u.isActive ? "active" : "suspended");
-                      const isActive = u.isActive !== false && status === "active";
+                      const isActive = optStatus
+                        ? optStatus === "active"
+                        : u.isActive !== false && status === "active";
                       const canToggle =
                         canManageUsers &&
                         !isCurrentUser &&
@@ -1386,8 +1431,8 @@ function getAvatarColor(user) {
                           color: "var(--color-danger)",
                         },
                       }[status] || {
-                        label: u.isActive ? "Active" : "Inactive",
-                        color: u.isActive
+                        label: isActive ? "Active" : "Inactive",
+                        color: isActive
                           ? "var(--color-success)"
                           : "var(--color-warning)",
                       };
@@ -1403,21 +1448,28 @@ function getAvatarColor(user) {
                             size="sm"
                             ariaLabel={`Toggle status for ${u.firstName || u.username}`}
                             onChange={async (nextActive) => {
+                              const nextStatus = nextActive ? "active" : "suspended";
+                              setOptimisticStatuses((prev) => ({
+                                ...prev,
+                                [userId]: nextStatus,
+                              }));
                               try {
-                                const userLabel = formatUserLabel(u);
                                 if (nextActive) {
-                                  await authFetch(`/users/${u._id}/reactivate`, { method: "PATCH" });
-                                  showNotification(`${userLabel} activated successfully`, "success", 2500);
+                                  await authFetch(`/users/${userId}/reactivate`, { method: "PATCH" });
                                 } else {
-                                  await authFetch(`/users/${u._id}/suspend`, {
+                                  await authFetch(`/users/${userId}/suspend`, {
                                     method: "PATCH",
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({ reason: "Deactivated via status switch" }),
                                   });
-                                  showNotification(`${userLabel} deactivated successfully`, "success", 2500);
                                 }
-                                refetchAll();
+                                await refetchAll();
                               } catch (err) {
+                                setOptimisticStatuses((prev) => {
+                                  const copy = { ...prev };
+                                  delete copy[userId];
+                                  return copy;
+                                });
                                 showNotification(err.message || "Failed to update status", "error", 3000);
                               }
                             }}
@@ -1443,8 +1495,6 @@ function getAvatarColor(user) {
                         setAccessDrawerUser={setAccessDrawerUser}
                         handleOpenPermissions={handleOpenPermissions}
                         handleEditClick={handleEditClick}
-                        setSelectedUser={setSelectedUser}
-                        setAccountAction={setAccountAction}
                         handleArchiveClick={handleArchiveClick}
                         handleHardDeleteClick={handleHardDeleteClick}
                         canManageUsers={canManageUsers}
@@ -1453,7 +1503,7 @@ function getAvatarColor(user) {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

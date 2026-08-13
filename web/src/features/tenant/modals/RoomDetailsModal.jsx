@@ -21,6 +21,7 @@ import SpotlightCard from "../components/SpotlightCard";
 import BedSelector from "../components/BedSelector";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 import { showNotification } from "../../../shared/utils/notification";
+import { LEASE_OPTIONS } from "../pages/reservation-steps/applicationFormConstants";
 
 function getAvailabilityLabel(room) {
  const beds = room.beds || [];
@@ -641,7 +642,8 @@ export default function RoomDetailsModal({
       </label>
       <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
         {(() => {
-          const defaultTerms = [1, 2, 3, 4, 5, 6, 12];
+          // Derive terms from LEASE_OPTIONS so the calculator always matches the form dropdown
+          const defaultTerms = LEASE_OPTIONS.map((opt) => Number(opt.value)).sort((a, b) => a - b);
           if (!defaultTerms.includes(minMonths)) {
             defaultTerms.push(minMonths);
             defaultTerms.sort((a, b) => a - b);

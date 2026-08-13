@@ -353,6 +353,7 @@ const navigate = useNavigate();
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [previewDoc, setPreviewDoc] = useState(null);
   const [isHistoryFolded, setIsHistoryFolded] = useState(false);
+  const [isDocsPanelOpen, setIsDocsPanelOpen] = useState(true);
 
   const toggleWarningDetails = (id) => {
     setExpandedWarnings((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -363,7 +364,25 @@ const navigate = useNavigate();
   const { data: fetchedDetail } = useTenantWorkspaceDetail(reservationId);
   const { data: actionContext } = useTenantActionContext(reservationId);
 
+  // Derive a stable Tenant ID from the user's _id (not the reservation).
+  // tenantId stays consistent across renewals, transfers, and stays.
+  const tenantDisplayCode = useMemo(() => {
+    const rawTenantId =
+      fetchedDetail?.tenantId ||
+      tenant?.tenantId?._id ||
+      tenant?.tenantId ||
+      tenant?.userId?._id ||
+      tenant?.userId ||
+      "";
+    const raw = String(rawTenantId);
+    if (!raw) return "N/A";
+    // TEN- prefix + last 8 hex chars of the MongoDB ObjectId, uppercased
+    return `TEN-${raw.slice(-8).toUpperCase()}`;
+  }, [fetchedDetail, tenant]);
+
   const attachedDocs = useMemo(() => {
+    // Prefer fetchedDetail (which now carries the URL fields from the backend)
+    // Fall back to the tenant list-row prop
     const source = fetchedDetail || tenant || {};
     const docs = [];
 
@@ -843,7 +862,7 @@ const navigate = useNavigate();
                           Submitted Tenant Application Form
                         </span>
                         <span className="text-[11px] font-mono text-muted-foreground bg-card px-2 py-0.5 rounded border border-border/50">
-                          {tenant.reservationCode || tenant.reservationId || "RES-APP"}
+                          {fetchedDetail?.reservationCode || tenant.reservationCode || tenant.reservationId || "RES-APP"}
                         </span>
                       </h4>
 
@@ -856,27 +875,27 @@ const navigate = useNavigate();
                           <div className="grid grid-cols-2 gap-2.5">
                             <div>
                               <span className="text-muted-foreground block text-[11px] font-medium">Full Name</span>
-                              <span className="font-semibold text-foreground text-xs">{tenant.name || tenant.tenantName}</span>
+                              <span className="font-semibold text-foreground text-xs">{fetchedDetail?.name || tenant.name || tenant.tenantName}</span>
                             </div>
                             <div>
                               <span className="text-muted-foreground block text-[11px] font-medium">Gender</span>
-                              <span className="font-semibold text-foreground text-xs capitalize">{tenant.gender || tenant.userId?.gender || "Not specified"}</span>
+                              <span className="font-semibold text-foreground text-xs capitalize">{fetchedDetail?.gender || tenant.gender || tenant.userId?.gender || "Not specified"}</span>
                             </div>
                             <div>
                               <span className="text-muted-foreground block text-[11px] font-medium">Date of Birth</span>
-                              <span className="font-semibold text-foreground text-xs">{formatDate(tenant.birthday || tenant.userId?.dateOfBirth)}</span>
+                              <span className="font-semibold text-foreground text-xs">{formatDate(fetchedDetail?.birthday || tenant.birthday || tenant.userId?.dateOfBirth)}</span>
                             </div>
                             <div>
                               <span className="text-muted-foreground block text-[11px] font-medium">Civil / Marital Status</span>
-                              <span className="font-semibold text-foreground text-xs capitalize">{tenant.civilStatus || tenant.maritalStatus || tenant.userId?.civilStatus || "Single"}</span>
+                              <span className="font-semibold text-foreground text-xs capitalize">{fetchedDetail?.civilStatus || tenant.civilStatus || tenant.maritalStatus || tenant.userId?.civilStatus || "Not specified"}</span>
                             </div>
                             <div>
                               <span className="text-muted-foreground block text-[11px] font-medium">Nationality</span>
-                              <span className="font-semibold text-foreground text-xs">{tenant.nationality || tenant.userId?.nationality || "Filipino"}</span>
+                              <span className="font-semibold text-foreground text-xs">{fetchedDetail?.nationality || tenant.nationality || tenant.userId?.nationality || "Not specified"}</span>
                             </div>
                             <div>
                               <span className="text-muted-foreground block text-[11px] font-medium">Occupation / Status</span>
-                              <span className="font-semibold text-foreground text-xs capitalize">{tenant.occupation || tenant.employment || tenant.userId?.occupation || "Not specified"}</span>
+                              <span className="font-semibold text-foreground text-xs capitalize">{fetchedDetail?.occupation || tenant.occupation || tenant.employment || tenant.userId?.occupation || "Not specified"}</span>
                             </div>
                           </div>
                         </div>
@@ -889,19 +908,19 @@ const navigate = useNavigate();
                           <div className="grid grid-cols-2 gap-2.5">
                             <div>
                               <span className="text-muted-foreground block text-[11px] font-medium">Street / House No.</span>
-                              <span className="font-semibold text-foreground text-xs">{tenant.address?.street || tenant.address?.unitHouseNo || tenant.userId?.address?.street || "Not specified"}</span>
+                              <span className="font-semibold text-foreground text-xs">{fetchedDetail?.address?.street || tenant.address?.street || tenant.address?.unitHouseNo || tenant.userId?.address?.street || "Not specified"}</span>
                             </div>
                             <div>
                               <span className="text-muted-foreground block text-[11px] font-medium">Barangay</span>
-                              <span className="font-semibold text-foreground text-xs">{tenant.address?.barangay || tenant.userId?.address?.barangay || "Not specified"}</span>
+                              <span className="font-semibold text-foreground text-xs">{fetchedDetail?.address?.barangay || tenant.address?.barangay || tenant.userId?.address?.barangay || "Not specified"}</span>
                             </div>
                             <div>
                               <span className="text-muted-foreground block text-[11px] font-medium">City / Municipality</span>
-                              <span className="font-semibold text-foreground text-xs">{tenant.address?.city || tenant.userId?.city || tenant.city || "Not specified"}</span>
+                              <span className="font-semibold text-foreground text-xs">{fetchedDetail?.address?.city || tenant.address?.city || tenant.userId?.city || tenant.city || "Not specified"}</span>
                             </div>
                             <div>
                               <span className="text-muted-foreground block text-[11px] font-medium">Province / Region</span>
-                              <span className="font-semibold text-foreground text-xs">{tenant.address?.province || tenant.userId?.province || tenant.province || "Not specified"}</span>
+                              <span className="font-semibold text-foreground text-xs">{fetchedDetail?.address?.province || tenant.address?.province || tenant.userId?.province || tenant.province || "Not specified"}</span>
                             </div>
                           </div>
                         </div>
@@ -914,15 +933,15 @@ const navigate = useNavigate();
                           <div className="grid grid-cols-2 gap-2.5">
                             <div className="col-span-2 sm:col-span-1">
                               <span className="text-muted-foreground block text-[11px] font-medium">Contact Name</span>
-                              <span className="font-semibold text-foreground text-xs">{tenant.emergencyContact || tenant.userId?.emergencyContact || "Not specified"}</span>
+                              <span className="font-semibold text-foreground text-xs">{fetchedDetail?.emergencyContact || tenant.emergencyContact || tenant.userId?.emergencyContact || "Not specified"}</span>
                             </div>
                             <div>
                               <span className="text-muted-foreground block text-[11px] font-medium">Contact Phone</span>
-                              <span className="font-semibold text-foreground text-xs">{tenant.emergencyPhone || tenant.userId?.emergencyPhone || "Not specified"}</span>
+                              <span className="font-semibold text-foreground text-xs">{fetchedDetail?.emergencyPhone || tenant.emergencyPhone || tenant.userId?.emergencyPhone || "Not specified"}</span>
                             </div>
                             <div>
                               <span className="text-muted-foreground block text-[11px] font-medium">Relationship</span>
-                              <span className="font-semibold text-foreground text-xs capitalize">{tenant.emergencyRelationship || tenant.userId?.emergencyRelationship || "Not specified"}</span>
+                              <span className="font-semibold text-foreground text-xs capitalize">{fetchedDetail?.emergencyRelationship || tenant.emergencyRelationship || tenant.userId?.emergencyRelationship || "Not specified"}</span>
                             </div>
                           </div>
                         </div>
@@ -936,7 +955,7 @@ const navigate = useNavigate();
                             <div className="grid grid-cols-2 gap-2.5">
                               <div>
                                 <span className="text-muted-foreground block text-[11px] font-medium">Intended Move-in Date</span>
-                                <span className="font-semibold text-foreground text-xs">{tenant.moveInDate || tenant.intendedMoveInDate || "N/A"}</span>
+                                <span className="font-semibold text-foreground text-xs">{formatDate(fetchedDetail?.intendedMoveInDate || tenant.moveInDate || tenant.intendedMoveInDate)}</span>
                               </div>
                               <div>
                                 <span className="text-muted-foreground block text-[11px] font-medium">Selected Room & Bed</span>
@@ -949,7 +968,7 @@ const navigate = useNavigate();
                             <div className="pt-1.5 border-t border-border/40">
                               <span className="text-muted-foreground block text-[11px] font-medium mb-1">Special Requests / Personal Notes</span>
                               <div className="p-2.5 bg-muted/40 rounded-lg border border-border/50 text-foreground text-[11px] leading-relaxed">
-                                {tenant.notes || tenant.personalNotes || "No special requests or additional notes submitted in the application form."}
+                                {fetchedDetail?.notes || tenant.notes || tenant.personalNotes || "No special requests or additional notes submitted in the application form."}
                               </div>
                             </div>
                           </div>
@@ -958,78 +977,79 @@ const navigate = useNavigate();
                     </div>
 
                     {/* Attached Verification Documents & Media Card */}
-                    <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
-                      <h4 className="text-xs font-semibold text-foreground flex items-center justify-between uppercase tracking-wide">
-                        <span className="flex items-center gap-1.5">
+                    <div className="bg-muted/30 border border-border/60 rounded-xl overflow-hidden">
+                      {/* Collapsible Header */}
+                      <button
+                        type="button"
+                        onClick={() => setIsDocsPanelOpen((v) => !v)}
+                        className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/40 transition-colors"
+                      >
+                        <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground uppercase tracking-wide">
                           <FileCheck className="w-3.5 h-3.5 text-primary" />
-                          Attached Verification Documents & Media ({attachedDocs.length})
+                          Attached Verification Documents &amp; Media ({attachedDocs.length})
                         </span>
-                        {attachedDocs.length > 0 ? (
-                          <span className="text-[11px] font-semibold text-success bg-success-light px-2.5 py-0.5 rounded-full">
-                            Documents Uploaded
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-muted-foreground bg-card px-2 py-0.5 rounded border border-border/50">
-                            No Files Attached
-                          </span>
-                        )}
-                      </h4>
+                        <span className="flex items-center gap-2">
+                          {attachedDocs.length > 0 ? (
+                            <span className="text-[11px] font-semibold text-success bg-success-light px-2.5 py-0.5 rounded-full">
+                              Documents Uploaded
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground bg-card px-2 py-0.5 rounded border border-border/50">
+                              No Files Attached
+                            </span>
+                          )}
+                          {isDocsPanelOpen
+                            ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                            : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+                        </span>
+                      </button>
 
-                      {attachedDocs.length > 0 ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1 text-xs">
-                          {attachedDocs.map((doc) => (
-                            <div key={doc.id} className="p-3 bg-card border border-border rounded-lg space-y-2.5 flex flex-col justify-between shadow-sm hover:border-primary/50 transition-colors">
-                              <div>
-                                <div className="flex items-center justify-between gap-2 mb-1.5">
-                                  <span className="font-semibold text-foreground truncate">{doc.label}</span>
-                                  <span className="text-[10px] uppercase font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded">
-                                    {doc.type}
-                                  </span>
-                                </div>
-                                {doc.url && (doc.url.match(/\.(jpeg|jpg|png|gif|webp)($|\?)/i) || doc.category === "photo" || doc.category === "identity") ? (
-                                  <div
-                                    className="w-full h-28 bg-muted/40 rounded border border-border/50 overflow-hidden relative group cursor-pointer"
-                                    onClick={() => setPreviewDoc(doc)}
-                                  >
-                                    <img src={doc.url} alt={doc.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-medium text-xs gap-1.5">
-                                      <Eye className="w-4 h-4" /> Click to View
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="w-full h-20 bg-muted/40 rounded border border-border/50 flex flex-col items-center justify-center text-muted-foreground gap-1">
-                                    <FileText className="w-6 h-6 text-primary" />
-                                    <span className="text-[11px] font-medium">Document File</span>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-2 pt-2 border-t border-border/40">
-                                <button
-                                  type="button"
+                      {/* Collapsible Body */}
+                      {isDocsPanelOpen && (
+                        <div className="px-4 pb-4">
+                          {attachedDocs.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1 text-xs">
+                              {attachedDocs.map((doc) => (
+                                <div
+                                  key={doc.id}
                                   onClick={() => setPreviewDoc(doc)}
-                                  className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded bg-muted hover:bg-muted/80 text-foreground text-[11px] font-semibold transition-colors"
+                                  className="bg-card border border-border rounded-lg overflow-hidden shadow-sm hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group"
+                                  title={`Click to view: ${doc.label}`}
                                 >
-                                  <Eye className="w-3.5 h-3.5 text-primary" />
-                                  View File
-                                </button>
-                                <a
-                                  href={doc.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center justify-center p-1.5 rounded border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                                  title="Open file in new tab"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
-                              </div>
+                                  {/* Thumbnail or File Placeholder */}
+                                  {doc.url && (doc.url.match(/\.(jpeg|jpg|png|gif|webp)($|\?)/i) || doc.category === "photo" || doc.category === "identity") ? (
+                                    <div className="w-full h-32 bg-muted/40 overflow-hidden relative">
+                                      <img
+                                        src={doc.url}
+                                        alt={doc.label}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                      />
+                                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-[11px] font-semibold">
+                                        <Eye className="w-4 h-4" /> View Full
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="w-full h-20 bg-muted/40 flex flex-col items-center justify-center text-muted-foreground gap-1.5 group-hover:bg-muted/60 transition-colors">
+                                      <FileText className="w-6 h-6 text-primary" />
+                                      <span className="text-[11px] font-medium">Document File</span>
+                                    </div>
+                                  )}
+                                  {/* Label row */}
+                                  <div className="flex items-center justify-between gap-2 px-2.5 py-2 border-t border-border/40">
+                                    <span className="font-semibold text-foreground text-[11px] truncate">{doc.label}</span>
+                                    <span className="text-[10px] uppercase font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded flex-shrink-0">
+                                      {doc.type}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="p-4 bg-card border border-border rounded-lg text-center space-y-1">
-                          <p className="text-xs font-medium text-foreground">No verification documents attached to this application.</p>
-                          <p className="text-[11px] text-muted-foreground">The tenant did not upload custom ID photos or clearance files during registration.</p>
+                          ) : (
+                            <div className="py-4 bg-card border border-border rounded-lg text-center space-y-1">
+                              <p className="text-xs font-medium text-foreground">No verification documents attached to this application.</p>
+                              <p className="text-[11px] text-muted-foreground">The tenant did not upload custom ID photos or clearance files during registration.</p>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1451,22 +1471,15 @@ const navigate = useNavigate();
           {/* FOOTER */}
           <div className="px-6 py-3 border-t border-border bg-card flex items-center justify-between rounded-b-xl flex-shrink-0">
             <div className="text-xs text-muted-foreground">
-              Tenant ID: <span className="font-mono text-foreground">{reservationId || "N/A"}</span>
+              <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground/70 mr-1">Tenant ID:</span>
+              <span className="font-mono text-foreground text-[11px] font-semibold tracking-wide">{tenantDisplayCode}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 border border-border rounded-lg hover:bg-muted transition-colors text-xs font-semibold text-foreground"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => setDialogState({ type: "renew", loading: false, error: null })}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-xs font-semibold shadow-sm"
-              >
-                Extend Stay
-              </button>
-            </div>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 border border-border rounded-lg hover:bg-muted transition-colors text-xs font-semibold text-foreground"
+            >
+              Close
+            </button>
           </div>
 
         </div>
