@@ -43,15 +43,15 @@ const NAV_SECTIONS = [
     label: "My Stay",
     items: [
       { id: "reservation", label: "My Reservation", icon: Bed },
-      { id: "contract", label: "My Contract", icon: FileText },
-      { id: "maintenance", label: "Maintenance", icon: Wrench },
+      { id: "contract", label: "My Contract", icon: FileText, tenantOnly: true },
+      { id: "maintenance", label: "Maintenance", icon: Wrench, tenantOnly: true },
+      { id: "history", label: "Activity & History", icon: History },
     ],
   },
   {
-    label: "Financials",
+    label: "Billing & Payments",
     items: [
-      { id: "billing", label: "My Bills", icon: CreditCard },
-      { id: "history", label: "My History", icon: History },
+      { id: "billing", label: "My Bills", icon: CreditCard, tenantOnly: true },
     ],
   },
   {

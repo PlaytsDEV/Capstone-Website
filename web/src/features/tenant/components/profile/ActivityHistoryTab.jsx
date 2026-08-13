@@ -603,8 +603,8 @@ const ActivityHistoryTab = ({ reservations = [] }) => {
  return (
  <div style={{ width: "100%" }}>
  <div style={{ marginBottom: 24 }}>
- <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 4px" }}>My History</h1>
- <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", margin: 0 }}>Your reservation history and activity log</p>
+ <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 4px" }}>Activity & History</h1>
+ <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", margin: 0 }}>Your application timeline, reservation history, and activity log</p>
  </div>
  <div style={{
  display: "flex", flexDirection: "column", alignItems: "center",
@@ -627,8 +627,8 @@ const ActivityHistoryTab = ({ reservations = [] }) => {
  <div style={{ width: "100%" }}>
  {/* Header */}
  <div style={{ marginBottom: 20 }}>
- <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 4px" }}>My History</h1>
- <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", margin: 0 }}>Your reservation history and activity log</p>
+ <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 4px" }}>Activity & History</h1>
+ <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", margin: 0 }}>Your application timeline, reservation history, and activity log</p>
  </div>
 
  {/* Stats row */}

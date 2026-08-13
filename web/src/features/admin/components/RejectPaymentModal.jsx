@@ -2,6 +2,13 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 
+const PAYMENT_REJECT_PRESETS = [
+  { label: "Amount mismatch", text: "Payment amount does not match the required reservation fee. Please review and resubmit." },
+  { label: "Illegible receipt", text: "The uploaded payment proof image is blurry or unreadable. Please attach a clearer receipt." },
+  { label: "Invalid reference", text: "The transaction reference number could not be verified with our records." },
+  { label: "Duplicate submission", text: "This payment reference number has already been used for another transaction." },
+];
+
 /**
  * RejectPaymentModal — requires an admin-typed reason before confirming.
  *
@@ -47,7 +54,7 @@ export default function RejectPaymentModal({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "rgba(15, 23, 42, 0.3)",
+        background: "rgba(15, 23, 42, 0.4)",
         animation: "cmFadeIn 0.15s ease",
       }}
       onClick={() => { if (!loading) onClose(); }}
@@ -66,9 +73,9 @@ export default function RejectPaymentModal({
           background: "var(--surface-card, #fff)",
           borderRadius: 12,
           boxShadow:
-            "0 4px 24px rgba(0,0,0,0.1), 0 1px 4px rgba(0,0,0,0.06)",
+            "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06)",
           width: "100%",
-          maxWidth: 440,
+          maxWidth: 460,
           margin: "0 16px",
           animation: "cmSlideIn 0.2s ease",
         }}
@@ -80,7 +87,7 @@ export default function RejectPaymentModal({
               display: "flex",
               alignItems: "center",
               gap: 10,
-              marginBottom: 14,
+              marginBottom: 10,
             }}
           >
             <div
@@ -88,7 +95,7 @@ export default function RejectPaymentModal({
                 width: 36,
                 height: 36,
                 borderRadius: 8,
-                background: "rgba(220,38,38,0.08)",
+                background: "#FEE2E2",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -110,35 +117,63 @@ export default function RejectPaymentModal({
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
             </div>
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 15,
-                fontWeight: 600,
-                color: "var(--text-heading, #0f172a)",
-              }}
-            >
-              Reject Payment
-            </h3>
+            <div>
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: 15,
+                  fontWeight: 700,
+                  color: "var(--text-heading, #0f172a)",
+                }}
+              >
+                Reject Payment
+              </h3>
+              <p
+                style={{
+                  margin: "2px 0 0",
+                  fontSize: 12,
+                  color: "var(--text-muted, #64748b)",
+                  lineHeight: 1.4,
+                }}
+              >
+                Select a preset or type a specific reason for rejection.
+              </p>
+            </div>
           </div>
 
-          <p
-            style={{
-              margin: "0 0 12px",
-              fontSize: 13,
-              color: "var(--text-muted, #64748b)",
-              lineHeight: 1.5,
-            }}
-          >
-            Provide a reason for rejection. The tenant will see this
-            message and be asked to resubmit.
-          </p>
+          {/* Quick presets */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "14px 0 10px" }}>
+            {PAYMENT_REJECT_PRESETS.map((p) => {
+              const isActive = reason === p.text;
+              return (
+                <button
+                  key={p.label}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => setReason(isActive ? "" : p.text)}
+                  style={{
+                    padding: "5px 12px",
+                    borderRadius: 20,
+                    border: isActive ? "1.5px solid #DC2626" : "1px solid #FECACA",
+                    background: isActive ? "#DC2626" : "#FFFFFF",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: isActive ? "#FFFFFF" : "#7F1D1D",
+                    cursor: loading ? "not-allowed" : "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
 
           <textarea
             value={reason}
-            onChange={(e) => setReason(e.target.value)}
+            onChange={(e) => setReason(e.target.value.slice(0, 500))}
             disabled={loading}
-            placeholder="e.g. Payment amount does not match the required reservation fee. Please resubmit with the correct amount."
+            placeholder="Type specific reason for rejection..."
             maxLength={500}
             rows={4}
             autoFocus
@@ -154,21 +189,24 @@ export default function RejectPaymentModal({
               resize: "vertical",
               background: loading
                 ? "var(--surface-muted, #f1f5f9)"
-                : "var(--surface-muted, #f8fafc)",
+                : "#ffffff",
               outline: "none",
               fontFamily: "inherit",
             }}
             onFocus={(e) => {
               e.target.style.borderColor = "#DC2626";
+              e.target.style.boxShadow = "0 0 0 2px rgba(220, 38, 38, 0.12)";
             }}
             onBlur={(e) => {
               e.target.style.borderColor = "var(--border-card, #e2e8f0)";
+              e.target.style.boxShadow = "none";
             }}
           />
           <div
             style={{
               fontSize: 11,
-              color: "var(--text-muted, #94a3b8)",
+              fontWeight: 500,
+              color: reason.length >= 480 ? "#DC2626" : "var(--text-muted, #94a3b8)",
               textAlign: "right",
               marginTop: 4,
             }}

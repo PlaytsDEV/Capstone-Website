@@ -91,30 +91,30 @@ const buildNavSections = (isTenant) => [
             },
           ]
         : []),
-    ],
-  },
-  {
-    label: "Financials",
-    items: [
-      ...(isTenant
-        ? [
-            {
-              id: "billing",
-              label: "My Bills",
-              icon: CreditCard,
-              path: "/applicant/billing",
-            },
-          ]
-        : []),
       {
         id: "history",
-        label: "My History",
+        label: "Activity & History",
         icon: History,
         path: "/applicant/profile",
         tab: "history",
       },
     ],
   },
+  ...(isTenant
+    ? [
+        {
+          label: "Billing & Payments",
+          items: [
+            {
+              id: "billing",
+              label: "My Bills",
+              icon: CreditCard,
+              path: "/applicant/billing",
+            },
+          ],
+        },
+      ]
+    : []),
   {
     label: "Account",
     items: [
@@ -316,7 +316,7 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
         onConfirm={confirmLogout}
         title="Log Out"
         message="Are you sure you want to log out of your account?"
-        variant="warning"
+        variant="danger"
         confirmText="Log Out"
         loading={isLoggingOut}
       />

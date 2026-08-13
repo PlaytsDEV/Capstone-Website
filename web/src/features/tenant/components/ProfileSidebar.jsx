@@ -108,7 +108,7 @@ const ProfileSidebar = ({
  }
  >
  <History className="w-5 h-5" />
- <span>Activity Log</span>
+ <span>Activity & History</span>
  </button>
  </div>
  </div>

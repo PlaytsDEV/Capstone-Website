@@ -169,7 +169,7 @@ function VisitActionMenu({
                 }}
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Delete History Entry
+                Delete
               </button>
             ) : (
               <>
@@ -223,7 +223,7 @@ function VisitActionMenu({
                   }}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  Archive Schedule
+                  Delete
                 </button>
               </>
             )}
@@ -393,31 +393,59 @@ function VisitSchedulesTab() {
 
   const handleDelete = (id) => {
     confirmAction(
-      "Archive Visit Schedule",
-      "This action archives the reservation record for this visit schedule and preserves billing history.",
+      "Delete Visit Schedule?",
+      "Remove this visit appointment from your active list? The time slot will be reopened for new visitors, and your record history is safely saved.",
       "danger",
-      "Archive",
+      "Delete Schedule",
       async () => {
+        // Real-time optimistic UI removal: mark item as archived immediately in React Query cache
+        queryClient.setQueriesData(
+          { queryKey: ["reservations"] },
+          (oldData) => {
+            if (!Array.isArray(oldData)) return oldData;
+            return oldData.map((res) =>
+              res._id === id || res.id === id
+                ? { ...res, isArchived: true, status: "archived" }
+                : res,
+            );
+          },
+        );
         await reservationApi.delete(id);
       },
-      "Visit schedule archived",
-      "Failed to archive visit schedule. Please try again.",
+      "Visit schedule deleted successfully.",
+      "Failed to delete visit schedule. Please try again.",
     );
   };
 
   const handleDeleteHistoryEntry = (reservationId, historyIndex) => {
     confirmAction(
-      "Delete History Entry",
-      "Remove this visit history entry?",
+      "Delete History Entry?",
+      "Remove this specific visit history record? This will delete this past visit entry from the visitor's log.",
       "danger",
-      "Delete",
+      "Delete Entry",
       async () => {
+        // Real-time optimistic update: immediately update history list in React Query cache
+        queryClient.setQueriesData(
+          { queryKey: ["reservations"] },
+          (oldData) => {
+            if (!Array.isArray(oldData)) return oldData;
+            return oldData.map((res) => {
+              if (res._id === reservationId || res.id === reservationId) {
+                const nextHistory = Array.isArray(res.visitHistory)
+                  ? res.visitHistory.filter((_, idx) => idx !== historyIndex)
+                  : [];
+                return { ...res, visitHistory: nextHistory };
+              }
+              return res;
+            });
+          },
+        );
         await reservationApi.update(reservationId, {
           removeVisitHistoryIndex: historyIndex,
         });
       },
-      "History entry removed",
-      "Failed to remove history entry. Please try again.",
+      "History entry deleted successfully.",
+      "Failed to delete history entry. Please try again.",
     );
   };
 

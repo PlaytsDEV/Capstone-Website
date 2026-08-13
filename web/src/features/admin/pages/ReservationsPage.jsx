@@ -650,29 +650,45 @@ function ReservationsPage() {
     (reservationId) => {
       setConfirmModal({
         open: true,
-        title: "Archive Reservation",
+        title: "Delete Reservation?",
         message:
-          "This will hide the reservation from the active list and preserve billing history. You can restore it later from Archived Reservations. Permanent deletion is restricted when issued bills exist.",
+          "Remove this reservation from your active list? Billing and record history are safely preserved in the background, and you can restore it anytime.",
         variant: "danger",
-        confirmText: "Archive",
+        confirmText: "Delete Reservation",
         onConfirm: async () => {
           setConfirmModal((previous) => ({ ...previous, open: false }));
+
+          // Real-time optimistic UI removal: mark item as archived immediately in React Query cache
+          queryClient.setQueriesData(
+            { queryKey: ["reservations"] },
+            (oldData) => {
+              if (!Array.isArray(oldData)) return oldData;
+              return oldData.map((res) =>
+                res._id === reservationId || res.id === reservationId
+                  ? { ...res, isArchived: true, status: "archived" }
+                  : res,
+              );
+            },
+          );
+
+          showNotification("Reservation deleted successfully.", "success", 4000);
+
           try {
             await reservationApi.archive(reservationId, {
-              reason: "Archived from Reservations page",
+              reason: "Deleted from Reservations page",
             });
-            showNotification("Reservation archived", "success");
             refetchReservations();
           } catch (error) {
+            refetchReservations();
             showNotification(
-              error?.message || "Failed to archive reservation",
+              error?.message || "Failed to delete reservation. Please try again.",
               "error",
             );
           }
         },
       });
     },
-    [refetchReservations],
+    [queryClient, refetchReservations],
   );
 
   const handleRestore = useCallback(
