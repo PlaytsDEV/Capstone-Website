@@ -16,15 +16,20 @@ import {
   Moon,
   Building2,
   RotateCcw,
+  History,
 } from "lucide-react";
 import {
   useUpdateVisitAvailabilitySettings,
   useVisitAvailability,
   useVisitAvailabilitySettings,
+  useVisitAvailabilityPreflight,
 } from "../../../shared/hooks/queries/useReservations";
 import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
 import { showNotification } from "../../../shared/utils/notification";
 import { getBranchLabel } from "../utils/reservationRows";
+import VisitAvailabilityHistoryDrawer from "./VisitAvailabilityHistoryDrawer";
+import VisitConflictWarningModal from "./VisitConflictWarningModal";
+import VisitSlotVisitorsModal from "./VisitSlotVisitorsModal";
 import "../styles/design-tokens.css";
 import "../styles/admin-reservations.css";
 
@@ -101,6 +106,10 @@ function VisitAvailabilityTab() {
   const [branch, setBranch] = useState(branchOptions[0]?.value || "gil-puyat");
   const [draft, setDraft] = useState(createDefaultDraft);
   const [usageDate, setUsageDate] = useState(getTomorrowISO);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [conflictReport, setConflictReport] = useState(null);
+  const [warningModalOpen, setWarningModalOpen] = useState(false);
+  const [slotVisitorInspect, setSlotVisitorInspect] = useState(null);
 
   const canLoadSettings =
     Boolean(currentUser) && (!isBranchAdmin || branch === currentUser.branch);
@@ -117,6 +126,7 @@ function VisitAvailabilityTab() {
     { enabled: canLoadSettings && Boolean(usageDate) },
   );
   const updateSettings = useUpdateVisitAvailabilitySettings();
+  const preflightCheck = useVisitAvailabilityPreflight();
 
   useEffect(() => {
     if (isBranchAdmin && currentUser?.branch && branch !== currentUser.branch) {
@@ -244,19 +254,17 @@ function VisitAvailabilityTab() {
     showNotification("Reset to standard defaults", "info", 2500);
   };
 
-  const save = async () => {
+  const executeSave = async (payload, extraData = {}) => {
     try {
       await updateSettings.mutateAsync({
         branch,
         data: {
-          enabledWeekdays: draft.enabledWeekdays,
-          slots: draft.slots.map((slot) => ({
-            ...slot,
-            capacity: Math.max(0, Math.floor(Number(slot.capacity) || 0)),
-          })),
-          blackoutDates: draft.blackoutDates.filter((item) => item.date),
+          ...payload,
+          ...extraData,
         },
       });
+      setWarningModalOpen(false);
+      setConflictReport(null);
       showNotification("Visit availability rules saved successfully", "success", 3000);
     } catch (error) {
       showNotification(
@@ -265,6 +273,55 @@ function VisitAvailabilityTab() {
         4000,
       );
     }
+  };
+
+  const save = async () => {
+    const payload = {
+      enabledWeekdays: draft.enabledWeekdays,
+      slots: draft.slots.map((slot) => ({
+        ...slot,
+        capacity: Math.max(0, Math.floor(Number(slot.capacity) || 0)),
+      })),
+      blackoutDates: draft.blackoutDates.filter((item) => item.date),
+    };
+
+    try {
+      const res = await preflightCheck.mutateAsync({
+        branch,
+        data: payload,
+      });
+
+      const report = res?.data || res;
+      if (report && report.hasConflicts) {
+        setConflictReport(report);
+        setWarningModalOpen(true);
+        return;
+      }
+
+      await executeSave(payload);
+    } catch (error) {
+      showNotification(
+        error?.response?.data?.error || "Failed to verify schedule conflicts before saving.",
+        "error",
+        4000,
+      );
+    }
+  };
+
+  const handleConfirmConflictSave = async ({ adminNote }) => {
+    const payload = {
+      enabledWeekdays: draft.enabledWeekdays,
+      slots: draft.slots.map((slot) => ({
+        ...slot,
+        capacity: Math.max(0, Math.floor(Number(slot.capacity) || 0)),
+      })),
+      blackoutDates: draft.blackoutDates.filter((item) => item.date),
+    };
+
+    await executeSave(payload, {
+      acknowledgeConflicts: true,
+      adminNote,
+    });
   };
 
   return (
@@ -307,12 +364,22 @@ function VisitAvailabilityTab() {
 
           <button
             type="button"
+            className="res-action-btn res-action-btn--secondary"
+            onClick={() => setHistoryOpen(true)}
+            title="View Availability Rule Change History"
+          >
+            <History size={16} />
+            <span>History</span>
+          </button>
+
+          <button
+            type="button"
             className="res-action-btn res-action-btn--success visit-avail-save-btn"
-            disabled={isLoading || updateSettings.isPending}
+            disabled={isLoading || updateSettings.isPending || preflightCheck.isPending}
             onClick={save}
           >
             <Save size={16} />
-            <span>{updateSettings.isPending ? "Saving..." : "Save"}</span>
+            <span>{updateSettings.isPending || preflightCheck.isPending ? "Checking..." : "Save"}</span>
           </button>
         </div>
       </div>
@@ -465,8 +532,9 @@ function VisitAvailabilityTab() {
               <div className="visit-slot-table">
                 {morningSlots.map((slot) => {
                   const globalIndex = draft.slots.findIndex((s) => s.label === slot.label);
+                  const rowId = `slot-row-${slot.label.replace(/\s+/g, "-").toLowerCase()}`;
                   return (
-                    <div key={slot.label} className={`visit-slot-row ${slot.enabled ? "" : "visit-slot-row--disabled"}`}>
+                    <div id={rowId} key={slot.label} className={`visit-slot-row ${slot.enabled ? "" : "visit-slot-row--disabled"}`}>
                       <div className="visit-slot-time">
                         <strong>{slot.label}</strong>
                       </div>
@@ -520,8 +588,9 @@ function VisitAvailabilityTab() {
               <div className="visit-slot-table">
                 {afternoonSlots.map((slot) => {
                   const globalIndex = draft.slots.findIndex((s) => s.label === slot.label);
+                  const rowId = `slot-row-${slot.label.replace(/\s+/g, "-").toLowerCase()}`;
                   return (
-                    <div key={slot.label} className={`visit-slot-row ${slot.enabled ? "" : "visit-slot-row--disabled"}`}>
+                    <div id={rowId} key={slot.label} className={`visit-slot-row ${slot.enabled ? "" : "visit-slot-row--disabled"}`}>
                       <div className="visit-slot-time">
                         <strong>{slot.label}</strong>
                       </div>
@@ -630,11 +699,17 @@ function VisitAvailabilityTab() {
                 return (
                   <div
                     key={configuredSlot.label}
-                    className={`visit-live-card ${isFull ? "visit-live-card--full" : ""} ${isClosed ? "visit-live-card--closed" : ""}`}
+                    onClick={() => {
+                      if (bookedCount > 0) {
+                        setSlotVisitorInspect({ slot: configuredSlot.label, date: usageDate });
+                      }
+                    }}
+                    className={`visit-live-card ${isFull ? "visit-live-card--full" : ""} ${isClosed ? "visit-live-card--closed" : ""} ${bookedCount > 0 ? "visit-live-card--interactive cursor-pointer hover:border-blue-400 dark:hover:border-blue-600 transition-all shadow-2xs hover:shadow-xs" : ""}`}
+                    title={bookedCount > 0 ? `Click to inspect ${bookedCount} visitor(s)` : `${configuredSlot.label} — ${bookedCount} bookings`}
                   >
                     <div className="visit-live-card__header">
                       <strong>{configuredSlot.label}</strong>
-                      <span className="visit-live-card__badge">
+                      <span className={`visit-live-card__badge ${bookedCount > 0 ? "bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-semibold" : ""}`}>
                         {isClosed ? "CLOSED" : isFull ? "FULL" : `${bookedCount}/${capacity} Booked`}
                       </span>
                     </div>
@@ -646,7 +721,7 @@ function VisitAvailabilityTab() {
                       />
                     </div>
 
-                    <div className="visit-live-card__footer">
+                    <div className="visit-live-card__footer flex items-center justify-between">
                       <span>
                         {isClosed
                           ? "Slot Disabled"
@@ -654,6 +729,11 @@ function VisitAvailabilityTab() {
                             ? formatRemainingSlots(liveSlot)
                             : `${capacity} Available`}
                       </span>
+                      {bookedCount > 0 && (
+                        <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 underline">
+                          View &rarr;
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
@@ -721,6 +801,28 @@ function VisitAvailabilityTab() {
           </div>
         </section>
       </div>
+
+      <VisitAvailabilityHistoryDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        branch={branch}
+      />
+
+      <VisitConflictWarningModal
+        isOpen={warningModalOpen}
+        conflictReport={conflictReport}
+        onCancel={() => setWarningModalOpen(false)}
+        onConfirmSave={handleConfirmConflictSave}
+        isSaving={updateSettings.isPending}
+      />
+
+      <VisitSlotVisitorsModal
+        isOpen={Boolean(slotVisitorInspect)}
+        onClose={() => setSlotVisitorInspect(null)}
+        branch={branch}
+        date={slotVisitorInspect?.date}
+        slot={slotVisitorInspect?.slot}
+      />
     </div>
   );
 }

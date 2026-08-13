@@ -39,6 +39,8 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   User: { find: userFind, findOne: userFindOne },
   Room: { find: roomFind, findById: roomFindById },
   VisitAvailability: { findOne: visitAvailabilityFindOne, create: visitAvailabilityCreate },
+  VisitAvailabilityHistory: { create: jest.fn().mockResolvedValue({}) },
+  VisitConflictLog: { create: jest.fn().mockResolvedValue({}) },
   Bill: { countDocuments: jest.fn(), deleteMany: jest.fn() },
   Payment: {},
   AuditLog: { create: jest.fn() },
@@ -260,6 +262,10 @@ describe("reservationsController.updateReservation access hardening", () => {
     userFind.mockReset();
     userFindOne.mockReset();
     roomFind.mockReset();
+    roomFind.mockImplementation(() => ({ distinct: jest.fn().mockResolvedValue([]) }));
+    reservationFind.mockImplementation(() => ({
+      select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }),
+    }));
     roomFindById.mockReset();
     utilityReadingFindOne.mockReset();
     visitAvailabilityFindOne.mockReset();

@@ -117,7 +117,71 @@ export function useUpdateVisitAvailabilitySettings() {
       Promise.all([
         qc.invalidateQueries({ queryKey: queryKeys.reservations.visitAvailabilitySettings(branch) }),
         qc.invalidateQueries({ queryKey: ["reservations", "visitAvailability"] }),
+        // Refresh history drawer
+        qc.invalidateQueries({ queryKey: ["reservations", "visitAvailabilityHistory", branch] }),
       ]),
+  });
+}
+
+/**
+ * Fetch paginated availability rules change history for a branch.
+ * Used by VisitAvailabilityHistoryDrawer.
+ *
+ * @param {string} branch  - Target branch
+ * @param {Object} params  - { page, limit }
+ * @param {Object} options - TanStack Query options
+ */
+export function useVisitAvailabilityHistory(branch, params = {}, options = {}) {
+  return useQuery({
+    queryKey: queryKeys.reservations.visitAvailabilityHistory(branch, params),
+    queryFn: () => reservationApi.getVisitAvailabilityHistory(branch, params),
+    enabled: !!branch && options.enabled !== false,
+    staleTime: 30 * 1000,
+    ...options,
+  });
+}
+
+/** Preflight check for visit availability rule changes */
+export function useVisitAvailabilityPreflight() {
+  return useMutation({
+    mutationFn: ({ branch, data }) =>
+      reservationApi.preflightVisitAvailabilityRules(branch, data),
+  });
+}
+
+/** Get paginated visit availability conflict history */
+export function useVisitConflictHistory(branch, params = {}, options = {}) {
+  return useQuery({
+    queryKey: queryKeys.reservations.visitConflictHistory(branch, params),
+    queryFn: () => reservationApi.getVisitConflictHistory(branch, params),
+    enabled: !!branch && options.enabled !== false,
+    staleTime: 30 * 1000,
+    ...options,
+  });
+}
+
+/** Toggle resolution status of a visit conflict log entry */
+export function useToggleResolveVisitConflict() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ branch, conflictId, resolved }) =>
+      reservationApi.toggleResolveVisitConflict(branch, conflictId, resolved),
+    onSuccess: (_data, { branch }) => {
+      qc.invalidateQueries({
+        queryKey: ["reservations", "visitConflictHistory"],
+      });
+    },
+  });
+}
+
+/** Get booked visitors for a specific date and time slot */
+export function useVisitSlotVisitors(branch, date, slot, options = {}) {
+  return useQuery({
+    queryKey: queryKeys.reservations.visitSlotVisitors(branch, date, slot),
+    queryFn: () => reservationApi.getVisitSlotVisitors(branch, date, slot),
+    enabled: !!branch && !!date && !!slot && options.enabled !== false,
+    staleTime: 30 * 1000,
+    ...options,
   });
 }
 

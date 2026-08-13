@@ -961,6 +961,17 @@
   opacity: 0.6;
 }
 
+.visit-live-card--interactive {
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.visit-live-card--interactive:hover {
+  transform: translateY(-1px);
+  border-color: var(--primary, #3b82f6);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
 .visit-live-card__header {
   display: flex;
   align-items: center;
@@ -1518,5 +1529,343 @@
 
 .res-drawer__btn-apply:hover {
   opacity: 0.9;
+}
+
+/* ============================================================================
+ * VISIT AVAILABILITY HISTORY DRAWER STYLES
+ * ============================================================================ */
+
+.visit-history-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+  z-index: 998;
+  animation: visitHistoryFadeIn 0.2s ease-out;
+}
+
+@keyframes visitHistoryFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.visit-history-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 440px;
+  max-width: 100vw;
+  background-color: var(--bg-surface, #ffffff);
+  border-left: 1px solid var(--border-light, #e2e8f0);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.visit-history-drawer--open {
+  transform: translateX(0);
+}
+
+.visit-history-drawer__header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-light, #e2e8f0);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--bg-surface, #ffffff);
+}
+
+.visit-history-drawer__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+}
+
+.visit-history-branch-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background-color: var(--bg-inset, #f1f5f9);
+  color: var(--text-secondary, #475569);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.visit-history-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--border-light, #e2e8f0);
+  background-color: transparent;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.visit-history-close-btn:hover {
+  background-color: var(--bg-inset, #f8fafc);
+  color: var(--text-primary, #0f172a);
+}
+
+.visit-history-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.visit-history-records-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.visit-history-record {
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light, #e2e8f0);
+  background-color: var(--bg-surface, #ffffff);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.visit-history-record:hover {
+  border-color: var(--border-default, #cbd5e1);
+}
+
+.visit-history-record__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.visit-history-record__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.visit-history-record__time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted, #64748b);
+  font-weight: 500;
+}
+
+.visit-history-record__actor {
+  color: var(--text-secondary, #334155);
+  font-weight: 500;
+}
+
+.visit-history-role-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background-color: #3b82f6;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.visit-history-expand-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.visit-history-expand-btn:hover {
+  color: var(--text-primary, #0f172a);
+  background-color: var(--bg-inset, #f1f5f9);
+}
+
+.visit-history-record__note {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-secondary, #475569);
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background-color: var(--bg-inset, #f8fafc);
+  border-left: 3px solid var(--primary, #2563eb);
+}
+
+.visit-diff-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.visit-diff-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.visit-diff-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
+.visit-diff-badge--added {
+  background-color: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.visit-diff-badge--modified {
+  background-color: #fffbebfb;
+  color: #b45309;
+  border: 1px solid #fef3c7;
+}
+
+.visit-diff-badge--removed {
+  background-color: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.visit-history-no-diff {
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+}
+
+.visit-history-record__snapshot {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background-color: var(--bg-inset, #f8fafc);
+  border: 1px solid var(--border-light, #e2e8f0);
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.visit-history-snapshot-label {
+  font-weight: 600;
+  color: var(--text-secondary, #475569);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 10px;
+}
+
+.visit-history-snapshot-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-primary, #1e293b);
+}
+
+.visit-history-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  gap: 12px;
+  color: var(--text-muted, #64748b);
+}
+
+.visit-history-state--loading {
+  font-size: 13px;
+}
+
+.visit-history-state--error {
+  color: #dc2626;
+  font-size: 13px;
+}
+
+.visit-history-state--empty {
+  color: var(--text-muted, #64748b);
+  gap: 8px;
+}
+
+.visit-history-state--empty strong {
+  font-size: 14px;
+  color: var(--text-primary, #0f172a);
+}
+
+.visit-history-state--empty span {
+  font-size: 12px;
+  max-width: 260px;
+  line-height: 1.5;
+}
+
+.visit-history-drawer__footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-light, #e2e8f0);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--bg-surface, #ffffff);
+}
+
+.visit-history-pagination-info {
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+  font-weight: 500;
+}
+
+.visit-history-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.visit-history-page-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border-light, #e2e8f0);
+  background-color: transparent;
+  color: var(--text-primary, #0f172a);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.visit-history-page-btn:hover:not(:disabled) {
+  background-color: var(--bg-inset, #f1f5f9);
+}
+
+.visit-history-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 

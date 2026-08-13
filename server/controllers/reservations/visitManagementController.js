@@ -6,7 +6,13 @@
  * Handles physical visit scheduling, availability rules, visit outcomes, and document prechecks.
  */
 
-import { Reservation } from "../../models/index.js";
+import {
+  Reservation,
+  Room,
+  VisitAvailabilityHistory,
+  VisitConflictLog,
+} from "../../models/index.js";
+import { reservationStatusesForQuery } from "../../utils/lifecycleNaming.js";
 import logger from "../../middleware/logger.js";
 import auditLogger from "../../utils/auditLogger.js";
 import { sendSuccess } from "../../middleware/errorHandler.js";
@@ -16,14 +22,20 @@ import {
 } from "../../utils/reservationHelpers.js";
 import {
   buildVisitAvailability,
+  getDateRangeForKey,
   getVisitAvailabilitySettings,
   serializeVisitAvailabilitySettings,
   updateVisitAvailabilitySettings,
 } from "../../utils/visitAvailability.js";
 import {
+  computeAvailabilityDiff,
+  isDiffEmpty,
+} from "../../utils/visitAvailabilityDiff.js";
+import {
   isAllowedReservationDocumentUrl,
   runReservationDocumentPrecheck,
 } from "../../services/reservationDocumentPrecheckService.js";
+import { detectVisitConflicts } from "../../services/visitConflictDetectionService.js";
 import {
   DOCUMENT_PRECHECK_TYPES,
   findDbUser,
@@ -86,6 +98,38 @@ export const getVisitAvailabilityRules = async (req, res, next) => {
   }
 };
 
+export const preflightVisitAvailabilityRules = async (req, res, next) => {
+  try {
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser) {
+      return res
+        .status(404)
+        .json({ error: "User not found in database", code: "USER_NOT_FOUND" });
+    }
+
+    const branchResult = resolveVisitAvailabilityBranch(req, dbUser);
+    if (branchResult.error) {
+      return res
+        .status(branchResult.code === "BRANCH_ACCESS_DENIED" ? 403 : 400)
+        .json(branchResult);
+    }
+
+    const currentSettings = await getVisitAvailabilitySettings(branchResult.branch);
+    const currentPayload = serializeVisitAvailabilitySettings(currentSettings);
+    const proposedPayload = req.body || {};
+
+    const report = await detectVisitConflicts(
+      branchResult.branch,
+      proposedPayload,
+      currentPayload,
+    );
+
+    return sendSuccess(res, report);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updateVisitAvailabilityRules = async (req, res, next) => {
   try {
     const dbUser = await findDbUser(req.user.uid);
@@ -104,10 +148,20 @@ export const updateVisitAvailabilityRules = async (req, res, next) => {
 
     const beforeSettings = await getVisitAvailabilitySettings(branchResult.branch);
     const beforePayload = serializeVisitAvailabilitySettings(beforeSettings);
+    
+    // Check conflicts before persisting updates
+    const conflictReport = await detectVisitConflicts(
+      branchResult.branch,
+      req.body || {},
+      beforePayload,
+    );
+
+    const actor = buildVisitAvailabilityActor(req, dbUser);
+
     const settings = await updateVisitAvailabilitySettings(
       branchResult.branch,
       req.body || {},
-      buildVisitAvailabilityActor(req, dbUser),
+      actor,
     );
     const afterPayload = serializeVisitAvailabilitySettings(settings);
 
@@ -120,7 +174,266 @@ export const updateVisitAvailabilityRules = async (req, res, next) => {
       "Updated visit availability rules",
     );
 
-    return sendSuccess(res, afterPayload);
+    // ── Write history snapshot (skip if nothing actually changed) ──────────
+    let historyRecord = null;
+    const diff = computeAvailabilityDiff(beforePayload, afterPayload);
+    if (!isDiffEmpty(diff)) {
+      historyRecord = await VisitAvailabilityHistory.create({
+        branch: branchResult.branch,
+        snapshot: {
+          enabledWeekdays: afterPayload.enabledWeekdays ?? [],
+          slots: afterPayload.slots ?? [],
+          blackoutDates: afterPayload.blackoutDates ?? [],
+        },
+        changedBy: actor,
+        changedAt: new Date(),
+        changeDescription: String(req.body?.changeDescription || "").trim(),
+        diff,
+      });
+    }
+
+    // ── Log conflict events if conflicts were detected upon saving ──────────
+    if (conflictReport.hasConflicts) {
+      const adminNote = String(req.body?.adminNote || "").trim();
+      for (const conflict of conflictReport.conflicts) {
+        await VisitConflictLog.create({
+          branch: branchResult.branch,
+          ruleChangeType: conflict.type,
+          trigger: conflict.trigger,
+          affectedReservations: conflict.reservations || [],
+          affectedCount: conflict.affectedCount || 0,
+          acknowledgedBy: actor,
+          acknowledgedAt: new Date(),
+          adminNote,
+          resolved: false,
+          historyId: historyRecord ? historyRecord._id : null,
+        });
+      }
+    }
+
+    return sendSuccess(res, {
+      ...afterPayload,
+      conflictReport,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/reservations/visit-availability/history?branch=&page=1&limit=20
+ *
+ * Returns paginated audit history for availability rules changes for a branch.
+ * Branch admins are automatically scoped to their own branch via filterByBranch middleware.
+ */
+export const getVisitAvailabilityHistory = async (req, res, next) => {
+  try {
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser) {
+      return res
+        .status(404)
+        .json({ error: "User not found in database", code: "USER_NOT_FOUND" });
+    }
+
+    const branchResult = resolveVisitAvailabilityBranch(req, dbUser);
+    if (branchResult.error) {
+      return res
+        .status(branchResult.code === "BRANCH_ACCESS_DENIED" ? 403 : 400)
+        .json(branchResult);
+    }
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const filter = { branch: branchResult.branch };
+
+    const [records, total] = await Promise.all([
+      VisitAvailabilityHistory.find(filter)
+        .sort({ changedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      VisitAvailabilityHistory.countDocuments(filter),
+    ]);
+
+    return sendSuccess(res, { records, total, page, limit });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getVisitConflictHistory = async (req, res, next) => {
+  try {
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser) {
+      return res
+        .status(404)
+        .json({ error: "User not found in database", code: "USER_NOT_FOUND" });
+    }
+
+    const branchResult = resolveVisitAvailabilityBranch(req, dbUser);
+    if (branchResult.error) {
+      return res
+        .status(branchResult.code === "BRANCH_ACCESS_DENIED" ? 403 : 400)
+        .json(branchResult);
+    }
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const filter = { branch: branchResult.branch };
+    if (req.query.resolved === "true") {
+      filter.resolved = true;
+    } else if (req.query.resolved === "false") {
+      filter.resolved = false;
+    }
+
+    const [records, total] = await Promise.all([
+      VisitConflictLog.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      VisitConflictLog.countDocuments(filter),
+    ]);
+
+    return sendSuccess(res, { records, total, page, limit });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const toggleResolveVisitConflict = async (req, res, next) => {
+  try {
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser) {
+      return res
+        .status(404)
+        .json({ error: "User not found in database", code: "USER_NOT_FOUND" });
+    }
+
+    const branchResult = resolveVisitAvailabilityBranch(req, dbUser);
+    if (branchResult.error) {
+      return res
+        .status(branchResult.code === "BRANCH_ACCESS_DENIED" ? 403 : 400)
+        .json(branchResult);
+    }
+
+    const { conflictId } = req.params;
+    if (!isValidObjectId(conflictId)) return invalidIdResponse(res);
+
+    const conflictLog = await VisitConflictLog.findOne({
+      _id: conflictId,
+      branch: branchResult.branch,
+    });
+
+    if (!conflictLog) {
+      return res.status(404).json({
+        error: "Conflict log entry not found",
+        code: "CONFLICT_LOG_NOT_FOUND",
+      });
+    }
+
+    const resolved = typeof req.body.resolved === "boolean" ? req.body.resolved : !conflictLog.resolved;
+    const actor = buildVisitAvailabilityActor(req, dbUser);
+
+    conflictLog.resolved = resolved;
+    conflictLog.resolvedBy = resolved ? actor : null;
+    conflictLog.resolvedAt = resolved ? new Date() : null;
+
+    await conflictLog.save();
+
+    return sendSuccess(res, conflictLog);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getVisitSlotVisitors = async (req, res, next) => {
+  try {
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser) {
+      return res
+        .status(404)
+        .json({ error: "User not found in database", code: "USER_NOT_FOUND" });
+    }
+
+    const branchResult = resolveVisitAvailabilityBranch(req, dbUser);
+    if (branchResult.error) {
+      return res
+        .status(branchResult.code === "BRANCH_ACCESS_DENIED" ? 403 : 400)
+        .json(branchResult);
+    }
+
+    const dateKey = String(req.query.date || "").trim();
+    const slotLabel = String(req.query.slot || "").trim();
+
+    if (!dateKey || !slotLabel) {
+      return res.status(400).json({
+        error: "Date and slot query parameters are required.",
+        code: "INVALID_SLOT_VISITOR_QUERY",
+      });
+    }
+
+    const range = getDateRangeForKey(dateKey);
+    if (!range) {
+      return res.status(400).json({
+        error: "Invalid date format. Expected YYYY-MM-DD.",
+        code: "INVALID_DATE_FORMAT",
+      });
+    }
+
+    const roomIds = await Room.find({ branch: branchResult.branch }).distinct("_id");
+    const branchFilter =
+      roomIds.length > 0
+        ? { $or: [{ branch: branchResult.branch }, { roomId: { $in: roomIds } }] }
+        : { branch: branchResult.branch };
+
+    const ACTIVE_VISIT_STATUSES = reservationStatusesForQuery(
+      "pending",
+      "viewing_preference_selected",
+      "visit_pending",
+      "visit_approved",
+    );
+
+    const query = {
+      ...branchFilter,
+      visitDate: { $gte: range.start, $lt: range.end },
+      $or: [{ visitTime: slotLabel }, { visitSlot: slotLabel }],
+      status: { $in: ACTIVE_VISIT_STATUSES },
+      isArchived: { $ne: true },
+    };
+
+    const reservations = await Reservation.find(query)
+      .populate("roomId", "roomNumber name branch")
+      .select(
+        "_id tenantName fullName email userEmail phone userPhone visitDate visitTime visitSlot status viewingType viewingPreference createdAt roomId",
+      )
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const visitors = reservations.map((r) => ({
+      reservationId: r._id,
+      tenantName: r.tenantName || r.fullName || "Applicant",
+      email: r.email || r.userEmail || "",
+      phone: r.phone || r.userPhone || "",
+      visitDate: dateKey,
+      visitSlot: r.visitTime || r.visitSlot || slotLabel,
+      status: r.status || "pending",
+      viewingType: r.viewingPreference || r.viewingType || "inperson",
+      roomNumber: r.roomId?.roomNumber || r.roomId?.name || "N/A",
+      createdAt: r.createdAt,
+    }));
+
+    return sendSuccess(res, {
+      branch: branchResult.branch,
+      date: dateKey,
+      slot: slotLabel,
+      totalBooked: visitors.length,
+      visitors,
+    });
   } catch (error) {
     next(error);
   }
@@ -223,3 +536,4 @@ export const precheckReservationDocument = async (req, res, next) => {
     return next(error);
   }
 };
+

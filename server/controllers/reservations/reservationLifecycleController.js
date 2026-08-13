@@ -92,6 +92,7 @@ import {
   buildActorDisplayName,
 } from "./_helpers.js";
 import { cancelReservationByUser } from "./cancellationController.js";
+import { branchHasSubmeter } from "../../config/branches.js";
 import {
   isStructuredInitialPaymentEnabled,
   STRUCTURED_INITIAL_PAYMENT_WORKFLOW,
@@ -409,9 +410,15 @@ export const updateReservation = async (req, res, next) => {
         });
       }
 
+      // Meter reading is only required for branches with physical submeters
+      // (e.g. Gil Puyat). Guadalupe uses fixed-rate billing with no submeter.
+      const roomBranch = existingReservation.roomId?.branch ?? "";
+      const moveInRequiresMeter = branchHasSubmeter(roomBranch);
+
       if (
-        req.body.meterReading == null ||
-        isNaN(Number(req.body.meterReading))
+        moveInRequiresMeter &&
+        (req.body.meterReading == null ||
+          isNaN(Number(req.body.meterReading)))
       ) {
         return res.status(400).json({
           error: "A meter reading (kWh) is required when moving in a tenant.",
@@ -420,23 +427,26 @@ export const updateReservation = async (req, res, next) => {
       }
 
       // Meter reading continuity check against previous room reading
-      const previousReadingDoc = await UtilityReading.findOne({
-        roomId: existingReservation.roomId?._id || existingReservation.roomId,
-        isArchived: false,
-      })
-        .sort({ date: -1, createdAt: -1 })
-        .lean();
+      // (only applicable on submeter branches where a reading is provided)
+      if (moveInRequiresMeter) {
+        const previousReadingDoc = await UtilityReading.findOne({
+          roomId: existingReservation.roomId?._id || existingReservation.roomId,
+          isArchived: false,
+        })
+          .sort({ date: -1, createdAt: -1 })
+          .lean();
 
-      if (
-        previousReadingDoc &&
-        Number.isFinite(previousReadingDoc.reading) &&
-        Number(req.body.meterReading) < previousReadingDoc.reading
-      ) {
-        return res.status(400).json({
-          error: `Initial meter reading (${req.body.meterReading} kWh) cannot be lower than the room's previous reading (${previousReadingDoc.reading} kWh).`,
-          code: "METER_READING_CONTINUITY_ERROR",
-          previousReading: previousReadingDoc.reading,
-        });
+        if (
+          previousReadingDoc &&
+          Number.isFinite(previousReadingDoc.reading) &&
+          Number(req.body.meterReading) < previousReadingDoc.reading
+        ) {
+          return res.status(400).json({
+            error: `Initial meter reading (${req.body.meterReading} kWh) cannot be lower than the room's previous reading (${previousReadingDoc.reading} kWh).`,
+            code: "METER_READING_CONTINUITY_ERROR",
+            previousReading: previousReadingDoc.reading,
+          });
+        }
       }
 
       if (

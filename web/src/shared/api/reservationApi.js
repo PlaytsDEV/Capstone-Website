@@ -74,6 +74,62 @@ export const reservationApi = {
   },
 
   /**
+   * Get paginated availability rules change history for a branch.
+   */
+  getVisitAvailabilityHistory: (branch, params = {}) => {
+    const searchParams = new URLSearchParams({ branch });
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.limit) searchParams.set("limit", String(params.limit));
+    return authFetch(`/reservations/visit-availability/history?${searchParams.toString()}`);
+  },
+
+  /**
+   * Preflight check for rule change conflicts.
+   */
+  preflightVisitAvailabilityRules: (branch, data) => {
+    const queryString = new URLSearchParams({ branch }).toString();
+    return authFetch(`/reservations/visit-availability/rules/preflight?${queryString}`, {
+      method: "POST",
+      body: JSON.stringify({ ...data, weekdaySystem: "js-get-day" }),
+    });
+  },
+
+  /**
+   * Get paginated rule change conflict history for a branch.
+   */
+  getVisitConflictHistory: (branch, params = {}) => {
+    const searchParams = new URLSearchParams({ branch });
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.limit) searchParams.set("limit", String(params.limit));
+    if (params.resolved !== undefined && params.resolved !== null && params.resolved !== "") {
+      searchParams.set("resolved", String(params.resolved));
+    }
+    return authFetch(`/reservations/visit-availability/conflicts?${searchParams.toString()}`);
+  },
+
+  /**
+   * Resolve or unresolve a visit conflict log entry.
+   */
+  toggleResolveVisitConflict: (branch, conflictId, resolved) => {
+    const searchParams = new URLSearchParams({ branch });
+    return authFetch(
+      `/reservations/visit-availability/conflicts/${conflictId}/resolve?${searchParams.toString()}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ resolved }),
+      },
+    );
+  },
+
+  /**
+   * Get booked visitors for a specific date and time slot.
+   */
+  getVisitSlotVisitors: (branch, date, slot) => {
+    const searchParams = new URLSearchParams({ branch, date, slot });
+    return authFetch(`/reservations/visit-availability/slot-visitors?${searchParams.toString()}`);
+  },
+
+  /**
    * Get reservation by ID
    */
   getById: (reservationId) =>

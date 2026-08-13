@@ -36,6 +36,9 @@ export const queryKeys = {
     tenantActionContext: (id) => ["reservations", "tenantActionContext", id],
     visitAvailability: (params) => ["reservations", "visitAvailability", params || {}],
     visitAvailabilitySettings: (branch) => ["reservations", "visitAvailabilitySettings", branch || ""],
+    visitAvailabilityHistory: (branch, params) => ["reservations", "visitAvailabilityHistory", branch || "", params || {}],
+    visitConflictHistory: (branch, params) => ["reservations", "visitConflictHistory", branch || "", params || {}],
+    visitSlotVisitors: (branch, date, slot) => ["reservations", "visitSlotVisitors", branch || "", date || "", slot || ""],
   },
 
   // ── Billing ──

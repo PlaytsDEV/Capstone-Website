@@ -45,6 +45,8 @@ import BedCheckoutLock from "./BedCheckoutLock.js";
 // 3. Reservations & Visit Domain
 import Reservation from "./Reservation.js";
 import VisitAvailability from "./VisitAvailability.js";
+import VisitAvailabilityHistory from "./VisitAvailabilityHistory.js";
+import VisitConflictLog from "./VisitConflictLog.js";
 import LeaseRenewal from "./LeaseRenewal.js";
 
 // 4. Billing & Utility Domain (Active Modular System)
@@ -129,6 +131,8 @@ export {
   AcknowledgmentAccount,
   BusinessSettings,
   VisitAvailability,
+  VisitAvailabilityHistory,
+  VisitConflictLog,
   LeaseRenewal,
   ChatConversation,
   ChatMessage,
@@ -250,6 +254,8 @@ export default {
   AcknowledgmentAccount,
   BusinessSettings,
   VisitAvailability,
+  VisitAvailabilityHistory,
+  VisitConflictLog,
   LeaseRenewal,
   ChatConversation,
   ChatMessage,

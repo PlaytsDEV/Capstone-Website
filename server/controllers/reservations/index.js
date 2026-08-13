@@ -19,7 +19,12 @@ export {
 export {
   getVisitAvailability,
   getVisitAvailabilityRules,
+  getVisitAvailabilityHistory,
   updateVisitAvailabilityRules,
+  preflightVisitAvailabilityRules,
+  getVisitConflictHistory,
+  toggleResolveVisitConflict,
+  getVisitSlotVisitors,
   precheckReservationDocument,
 } from "./visitManagementController.js";
 

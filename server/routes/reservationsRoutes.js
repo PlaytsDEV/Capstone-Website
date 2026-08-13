@@ -37,6 +37,11 @@ import {
   getRoomMeterBaseline,
   getVisitAvailability,
   getVisitAvailabilityRules,
+  getVisitAvailabilityHistory,
+  preflightVisitAvailabilityRules,
+  getVisitConflictHistory,
+  toggleResolveVisitConflict,
+  getVisitSlotVisitors,
   getReservationById,
   manageReservationVisit,
   precheckReservationDocument,
@@ -168,6 +173,77 @@ router.put(
   filterByBranch,
   requirePermission("manageReservations"),
   updateVisitAvailabilityRules,
+);
+
+/**
+ * POST /api/reservations/visit-availability/rules/preflight
+ * Preflight check for rule change conflicts without persisting changes.
+ */
+router.post(
+  "/visit-availability/rules/preflight",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  preflightVisitAvailabilityRules,
+);
+
+/**
+ * GET /api/reservations/visit-availability/history
+ *
+ * Returns paginated change history for availability rules for a branch.
+ * Branch admins are scoped to their own branch via filterByBranch.
+ *
+ * @query {string} branch - Target branch (required for super admin)
+ * @query {number} page   - Page number (default: 1)
+ * @query {number} limit  - Records per page (default: 20, max: 50)
+ */
+router.get(
+  "/visit-availability/history",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  getVisitAvailabilityHistory,
+);
+
+/**
+ * GET /api/reservations/visit-availability/slot-visitors
+ * Returns booked visitors for a specific date and time slot.
+ */
+router.get(
+  "/visit-availability/slot-visitors",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  getVisitSlotVisitors,
+);
+
+/**
+ * GET /api/reservations/visit-availability/conflicts
+ * Returns paginated conflict logs for availability rule changes.
+ */
+router.get(
+  "/visit-availability/conflicts",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  getVisitConflictHistory,
+);
+
+/**
+ * PATCH /api/reservations/visit-availability/conflicts/:conflictId/resolve
+ * Toggles or updates resolution status of a conflict log record.
+ */
+router.patch(
+  "/visit-availability/conflicts/:conflictId/resolve",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  toggleResolveVisitConflict,
 );
 
 router.get(

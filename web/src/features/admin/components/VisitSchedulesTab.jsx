@@ -24,9 +24,15 @@ import {
   StatGridSkeleton,
   TableSkeleton,
 } from "../../../shared/components/LoadingSkeletons";
+import Pagination from "../../../shared/components/Pagination";
 import VisitDetailsModal from "./VisitDetailsModal";
 import { StatusBadge } from "./shared";
 import { mapVisitScheduleRows } from "../utils/reservationRows";
+import { ExportButtons } from "../pages/analyticsTabShared";
+import {
+  handleExportVisitSchedulesCSV,
+  handleExportVisitSchedulesPDF,
+} from "../utils/visitExportUtils";
 import "../styles/design-tokens.css";
 import "../styles/admin-reservations.css";
 
@@ -247,7 +253,7 @@ function VisitSchedulesTab() {
   const [branchFilter, setBranchFilter] = useState(isOwner ? "all" : (user?.branch || "all"));
   const [sortBy, setSortBy] = useState("recent");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const { data: rawReservations = [], isLoading: loading } = useReservations({
     view: "admin-list",
@@ -454,6 +460,25 @@ function VisitSchedulesTab() {
     ],
   );
 
+  const counts = useMemo(
+    () => ({
+      total: schedules.length,
+      awaitingVisit: awaitingVisit.length,
+      completed: completed.length,
+      noShows: noShows.length,
+      rejected: rejected.length,
+      cancelled: cancelled.length,
+    }),
+    [
+      awaitingVisit.length,
+      cancelled.length,
+      completed.length,
+      noShows.length,
+      rejected.length,
+      schedules.length,
+    ],
+  );
+
   const displayData = useMemo(() => {
     let base;
     if (activeFilter === 0) base = schedules;
@@ -528,14 +553,55 @@ function VisitSchedulesTab() {
     }
   }, [currentPage, totalPages]);
 
+  const activeFilterLabel = summaryItems[activeFilter]?.label || "All Visits";
+
+  const handleExportCSV = useCallback(() => {
+    handleExportVisitSchedulesCSV({
+      schedules: displayData,
+      branchFilter,
+    });
+  }, [branchFilter, displayData]);
+
+  const handleExportPDF = useCallback(async () => {
+    try {
+      await handleExportVisitSchedulesPDF({
+        schedules: displayData,
+        counts,
+        branchFilter,
+        activeFilterLabel,
+        searchTerm,
+      });
+    } catch (err) {
+      console.error("[VisitSchedulesExport] PDF generation failed:", err);
+      showNotification("Failed to generate PDF report. Please try again.", "error");
+    }
+  }, [activeFilterLabel, branchFilter, counts, displayData, searchTerm]);
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        {/* Stat-card row skeleton */}
+        <StatGridSkeleton count={6} />
+
+        {/* Table card skeleton */}
+        <div
+          className="border rounded-lg p-6"
+          style={{ backgroundColor: "var(--bg-card)", borderColor: "var(--border-light)" }}
+        >
+          {/* Toolbar placeholder */}
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="sk-shimmer flex-1" style={{ height: 36, borderRadius: 8 }} />
+            <div className="sk-shimmer" style={{ width: 140, height: 36, borderRadius: 8 }} />
+            <div className="sk-shimmer" style={{ width: 140, height: 36, borderRadius: 8 }} />
+          </div>
+          <TableSkeleton rows={7} columns={7} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {loading ? (
-        <StatGridSkeleton
-          count={6}
-          className="grid grid-flow-col auto-cols-[minmax(150px,1fr)] gap-3 overflow-x-auto pb-1"
-        />
-      ) : (
       <div className="grid grid-flow-col auto-cols-[minmax(150px,1fr)] gap-3 overflow-x-auto pb-1">
         {summaryItems.map((item, index) => {
           const Icon = item.icon;
@@ -576,18 +642,17 @@ function VisitSchedulesTab() {
           );
         })}
       </div>
-      )}
 
       <div
-        className="border rounded-lg p-6"
+        className="border rounded-lg p-5 overflow-visible"
         style={{
           backgroundColor: "var(--bg-card)",
           borderColor: "var(--border-light)",
         }}
       >
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between mb-4">
+          <div className="relative flex-1 min-w-[240px]">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               type="text"
               value={searchTerm}
@@ -597,11 +662,11 @@ function VisitSchedulesTab() {
                 backgroundColor: "var(--input-background)",
                 borderColor: "var(--border-light)",
               }}
-              className="w-full pl-10 pr-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="w-full pl-10 pr-4 h-9 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2.5 sm:justify-start lg:justify-end">
             {isOwner && (
               <select
                 value={branchFilter}
@@ -610,7 +675,7 @@ function VisitSchedulesTab() {
                   backgroundColor: "var(--input-background)",
                   borderColor: "var(--border-light)",
                 }}
-                className="px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
               >
                 <option value="all">All Branches</option>
                 <option value="Gil Puyat">Gil Puyat</option>
@@ -625,20 +690,24 @@ function VisitSchedulesTab() {
                 backgroundColor: "var(--input-background)",
                 borderColor: "var(--border-light)",
               }}
-              className="px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
             >
               <option value="recent">Most Recent</option>
               <option value="oldest">Oldest First</option>
               <option value="name-az">Name A-Z</option>
               <option value="name-za">Name Z-A</option>
             </select>
+
+            <ExportButtons
+              onCsv={handleExportCSV}
+              onPdf={handleExportPDF}
+              disabled={displayData.length === 0}
+            />
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          {loading ? (
-            <TableSkeleton rows={7} columns={7} style={{ border: 0 }} />
-          ) : displayData.length === 0 ? (
+          {displayData.length === 0 ? (
             <div className="p-12 text-center">
               <CalendarDays className="mx-auto mb-3 h-12 w-12 text-muted-foreground" />
               <p className="text-base font-medium text-foreground">
@@ -649,7 +718,7 @@ function VisitSchedulesTab() {
               </p>
             </div>
           ) : (
-            <table className="w-full">
+            <table className="w-full table-fixed">
               <thead>
                 <tr
                   className="border-b"
@@ -659,25 +728,25 @@ function VisitSchedulesTab() {
                       "color-mix(in srgb, var(--bg-inset) 30%, transparent)",
                   }}
                 >
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <th style={{ width: "26%" }} className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Visitor
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <th style={{ width: "13%" }} className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Branch
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <th style={{ width: "13%" }} className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Room
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <th style={{ width: "15%" }} className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Requested
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <th style={{ width: "17%" }} className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Visit Appointment
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <th style={{ width: "16%" }} className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <th style={{ width: "100px" }} className="text-right py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -873,26 +942,22 @@ function VisitSchedulesTab() {
           )}
         </div>
 
-        {totalPages > 1 && (
-          <div className="flex justify-end items-center gap-2 mt-4 pt-4 border-t border-[var(--border-light)]">
-            <button
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => p - 1)}
-              className="px-3 py-1 text-sm border border-[var(--border-light)] rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            <span className="px-3 py-1 text-sm text-muted-foreground">
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((p) => p + 1)}
-              className="px-3 py-1 text-sm border border-[var(--border-light)] rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
-          </div>
+        {displayData.length > 0 && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={Math.max(1, Math.ceil(displayData.length / itemsPerPage))}
+            totalItems={displayData.length}
+            itemsPerPage={itemsPerPage}
+            onPageChange={setCurrentPage}
+            onLimitChange={(newLimit) => {
+              setItemsPerPage(newLimit);
+              setCurrentPage(1);
+            }}
+            pageSizeOptions={[5, 10, 20, 50]}
+            itemLabel="visit schedules"
+            variant="numbered"
+            className="mt-4 pt-4 border-t border-border"
+          />
         )}
       </div>
 
