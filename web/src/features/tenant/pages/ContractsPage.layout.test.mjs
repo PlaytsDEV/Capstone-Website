@@ -13,24 +13,20 @@ test("uses the resident breadcrumb for tenant sessions", () => {
   assert.match(topBar, /user\?\.role === "tenant" \? "(Tenant|Resident)" : "Applicant"/);
 });
 
-test("renders the three-part tenant Contract hierarchy without repetition", () => {
-  assert.match(page, />Contract Summary</);
-  assert.match(page, />Contract Document</);
-  assert.match(page, /contract-status-title/);
-  assert.ok((page.match(/contract\.contractNumber/g) || []).length >= 1);
-  assert.equal((page.match(/tenant-contract-notice/g) || []).length, 1);
+const digitalPaper = readFileSync(new URL("../components/contracts/DigitalContractPaper.jsx", import.meta.url), "utf8");
+
+test("renders tenant Contract hierarchy with DigitalContractPaper integration", () => {
+  assert.match(page, /DigitalContractPaper/);
+  assert.match(page, /Official Lease Contract/);
+  assert.match(digitalPaper, /CONTRACT OF LEASE/);
+  assert.match(digitalPaper, /POPULATED_COLOR/);
 });
 
-test("keeps document actions and loading feedback visible", () => {
-  assert.match(page, /View Prepared Copy/);
-  assert.match(page, /Download Prepared Copy/);
-  assert.match(page, /Opening Contract/);
-  assert.match(page, /Preparing Download/);
-  assert.match(page, /final wet-signed and notarized Contract is still being processed/);
-  assert.match(page, /Final Signed and Notarized Contract/);
-  assert.match(page, /View Final Contract/);
-  assert.match(page, /Download Final Contract/);
-  assert.match(page, /Prepared Copy — Not Yet Signed or Notarized/);
+test("keeps document actions and signed contract handling available", () => {
+  assert.match(page, /handleViewSignedCopy/);
+  assert.match(page, /handleDownloadSignedCopy/);
+  assert.match(digitalPaper, /onViewSigned/);
+  assert.match(digitalPaper, /onDownloadSigned/);
 });
 
 test("uses a centered responsive layout without a heavy active border", () => {

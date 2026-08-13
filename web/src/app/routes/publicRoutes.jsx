@@ -15,6 +15,7 @@ import {
   OtpVerify,
   AuthAction,
   ResetPassword,
+  PublicStayVerificationPage,
 } from "../lazyPages";
 
 import LandingPageSkeleton from "../../features/public/components/LandingPageSkeleton";
@@ -23,6 +24,14 @@ import PublicPageSkeleton from "../../shared/components/PublicPageSkeleton";
 export function PublicRoutes() {
   return (
     <>
+      <Route
+        path="/verify-stay/:referenceId"
+        element={
+          <RouteShell name="PublicStayVerification" fallback={<PublicPageSkeleton />}>
+            <PublicStayVerificationPage />
+          </RouteShell>
+        }
+      />
       <Route element={<PublicFrame />}>
         <Route
           path="/"

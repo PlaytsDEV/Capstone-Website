@@ -28,6 +28,9 @@ async function loadFirebaseConfig({ bucketFn } = {}) {
   const initializeApp = jest.fn();
   const bucket = jest.fn(bucketFn || ((name) => ({ name })));
   const apps = [];
+  jest.unstable_mockModule("dotenv", () => ({
+    default: { config: jest.fn() },
+  }));
   jest.unstable_mockModule("firebase-admin", () => ({
     default: {
       apps,

@@ -17,10 +17,15 @@ import {
   uploadNotarizedDocument, streamNotarizedDocument, verifyNotarizedDocument,
   rejectNotarizedDocument,
   readyContractForPublication, publishContract, streamFinalContract,
-  streamMyFinalContract,
+  streamMyFinalContract, streamMySignedContract,
   confirmLegacyReservationApproval,
   archiveContract, restoreContract, getContractDeletionEligibility,
   permanentlyDeleteContract,
+  downloadMyStayProof,
+  getMyStayProofData,
+  getPublicStayVerification,
+  getStayProofDataForAdmin,
+  downloadStayProofForAdmin,
 } from "../controllers/contractController.js";
 
 const router = express.Router();
@@ -28,13 +33,24 @@ const signedUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
 });
+
+// Public verification route for scanned QR codes
+router.get("/verify/:referenceId", getPublicStayVerification);
+
+// Tenant stay proof routes
+router.get("/my/stay-proof", verifyToken, verifyApplicant, downloadMyStayProof);
+router.get("/my/stay-proof-data", verifyToken, verifyApplicant, getMyStayProofData);
 router.get("/my/current", verifyToken, verifyApplicant, getMyCurrentContract);
 router.get("/my/history", verifyToken, verifyApplicant, getMyContractHistory);
 router.get("/my/:contractId/documents/prepared/:version?", verifyToken, verifyApplicant, streamMyPreparedContract);
+router.get("/my/:contractId/documents/signed/:version?", verifyToken, verifyApplicant, streamMySignedContract);
 router.get("/my/:contractId/documents/final", verifyToken, verifyApplicant, streamMyFinalContract);
 router.get("/my/:contractId", verifyToken, verifyApplicant, getMyContractDetails);
 
 router.use(verifyToken, verifyAdmin, filterByBranch, requirePermission("manageTenants"));
+
+router.get("/:id/stay-proof", downloadStayProofForAdmin);
+router.get("/:id/stay-proof-data", getStayProofDataForAdmin);
 
 router.post("/", createContract);
 router.get("/", listContracts);

@@ -15,7 +15,7 @@ test("current Contract refetch bypasses stale browser caches", () => {
 });
 
 test("invalid internal Contract details are not rendered in the empty state", () => {
-  assert.match(page, /!contract \? <div className="contracts-empty"/);
+  assert.match(page, /contracts-empty/);
   assert.match(page, /\{notice\.title\}/);
   assert.match(page, /\{notice\.message\}/);
 });

@@ -58,7 +58,10 @@ export const requiredSignaturesComplete = (contract) =>
   ["completed", "not_required"].includes(contract.witnessSignatureStatus);
 
 export const resolvePhysicalSigningStage = (contract) => {
-  if (!contract.printedAt) return contract.status;
+  if (["active", "published", "ready_for_publication", "notarized", "awaiting_notarization", "signed", "expiring_soon", "renewed"].includes(contract.status)) {
+    return contract.status;
+  }
+  if (!contract.printedAt && !contract.signedStorageKey) return contract.status;
   if (requiredSignaturesComplete(contract) && contract.signedStorageKey && contract.signingVerifiedAt) return "signed";
   const progressed = [
     contract.tenantSignatureStatus,
@@ -66,7 +69,7 @@ export const resolvePhysicalSigningStage = (contract) => {
     contract.witnessSignatureStatus,
   ].some((value) => value === "completed" || value === "not_required") ||
     Boolean(contract.signedStorageKey) || Boolean(contract.signingRejectionReason);
-  return progressed ? "partially_signed" : "awaiting_signatures";
+  return progressed ? "partially_signed" : (contract.status === "draft" ? "draft" : "awaiting_signatures");
 };
 
 const applyDerivedStatus = async (contract, actorId, reason) => {
@@ -108,13 +111,14 @@ export const updatePhysicalSignature = async ({ contract, signer, value, actorId
 };
 
 export const uploadSignedContract = async ({ contract, file, actorId, replacementReason = "" }) => {
-  if (!["awaiting_signatures", "partially_signed"].includes(contract.status)) {
+  if (["terminated", "cancelled", "archived", "voided", "rejected"].includes(contract.status)) {
     throw error("Signed copy upload is not allowed in the current Contract status.", "SIGNED_DOCUMENT_UPLOAD_NOT_ALLOWED", 409);
   }
   const type = validateSignedDocumentUpload(file);
   if ((contract.signedDocuments?.length || 0) > 0 && !String(replacementReason).trim()) {
     throw error("A replacement reason is required.", "SIGNED_DOCUMENT_REPLACEMENT_REASON_REQUIRED");
   }
+  const resolvedReason = String(replacementReason || "").trim() || "Uploaded signed contract copy";
   const version = Math.max(0, ...(contract.signedDocuments || []).map((item) => Number(item.version) || 0)) + 1;
   const storedName = `${safePart(contract.contractNumber)}_signed_v${version}${type.extension}`;
   const storageKey = [safePart(contract.branch), String(contract.contractYear), safePart(contract.contractNumber), storedName].join("/");
@@ -127,7 +131,8 @@ export const uploadSignedContract = async ({ contract, file, actorId, replacemen
   contract.signedDocuments.push({
     version, storageKey, fileName: storedName, fileHash, fileSize: type.fileSize,
     mimeType: type.mimeType, uploadedAt, uploadedBy: actorId,
-    preparedDocumentVersion: contract.generatedVersion, superseded: false,
+    preparedDocumentVersion: contract.generatedVersion || 1, superseded: false,
+    replacementReason: resolvedReason,
   });
   Object.assign(contract, {
     signedStorageKey: storageKey, signedFileName: storedName, signedFileHash: fileHash,
@@ -137,7 +142,11 @@ export const uploadSignedContract = async ({ contract, file, actorId, replacemen
     signingRejectionReason: "",
   });
   try {
-    await applyDerivedStatus(contract, actorId, version === 1 ? "Signed Contract copy uploaded" : `Signed Contract copy replaced: ${replacementReason}`);
+    if (["active", "published", "ready_for_publication", "notarized", "awaiting_notarization", "signed", "expiring_soon", "renewed"].includes(contract.status)) {
+      await contract.save();
+    } else {
+      await applyDerivedStatus(contract, actorId, version === 1 ? "Signed Contract copy uploaded" : `Signed Contract copy replaced: ${resolvedReason}`);
+    }
   } catch (saveError) {
     await fs.rm(absolute, { force: true }).catch(() => {});
     throw saveError;

@@ -69,7 +69,14 @@ export default function AdminContractsPage() {
   const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
 
   const columns = [
-    { key: "contractNumber", label: "Contract No.", sortable: true, render: (row) => <strong className="contract-number">{row.contractNumber || "Pending"}</strong> },
+    { key: "contractNumber", label: "Contract No.", sortable: true, render: (row) => (
+      <div>
+        <strong className="contract-number">{row.contractNumber || "Pending"}</strong>
+        {row.contractPurpose === "replacement" && (
+          <span className="contract-badge-replacement" style={{ marginLeft: "0.4rem" }}>Transfer</span>
+        )}
+      </div>
+    ) },
     { key: "tenantLegalName", label: "Tenant", sortable: true },
     ...(isOwner ? [{ key: "branch", label: "Branch", render: (row) => formatContractValue(row.branch) }] : []),
     { key: "roomNumber", label: "Room / Bed", render: (row) => <span>{row.roomNumber || "—"}<small className="contract-table-sub">{row.bedLabel || "No bed label"}</small></span> },

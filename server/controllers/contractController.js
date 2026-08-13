@@ -54,6 +54,11 @@ import {
   permanentlyDeleteTestContract,
   restoreArchivedContract,
 } from "../services/contractArchiveService.js";
+import {
+  resolveDigitalStayProofData,
+  renderDigitalStayProofPdf,
+  buildDigitalStayProofHtml,
+} from "../services/digitalStayProofService.js";
 
 const fail = (res, error) => res.status(error.statusCode || 500).json({
   error: error.message || "Contract operation failed",
@@ -1044,6 +1049,40 @@ export const getMyCurrentContract = async (req, res) => {
     const user = await tenantActor(req);
     const contract = await resolveTenantCanonicalContract(user._id);
     if (!contract) {
+      try {
+        const stayData = await resolveDigitalStayProofData({ tenantId: user._id });
+        if (stayData) {
+          return res.json({
+            contractAvailable: true,
+            state: "STAY_PROOF_AVAILABLE",
+            contract: {
+              id: stayData.referenceNumber,
+              contractId: stayData.referenceNumber,
+              contractNumber: stayData.referenceNumber,
+              isCanonical: true,
+              status: "active",
+              displayStatus: "Verified Active Stay",
+              branch: stayData.branchName,
+              propertyName: "Lilycrest Dormitory",
+              roomNumber: stayData.roomNumber,
+              bedLabel: stayData.bedLabel,
+              roomType: stayData.roomType,
+              leaseStartDate: stayData.leaseStartDate,
+              leaseEndDate: stayData.leaseEndDate,
+              leaseDurationMonths: stayData.leaseDurationMonths,
+              approvedMonthlyRate: stayData.monthlyRent,
+              advanceRentAmount: stayData.advanceRent,
+              securityDepositAmount: stayData.securityDeposit,
+              stayProofAvailable: true,
+              preparedDocument: { available: true },
+              finalDocument: { available: true },
+            },
+            documents: { prepared: { available: true } },
+          });
+        }
+      } catch {
+        // Fall through to standard empty response
+      }
       return res.json({
         contractAvailable: false,
         state: "NO_PUBLISHED_CONTRACT",
@@ -1081,6 +1120,122 @@ export const getMyCurrentContract = async (req, res) => {
         "Multiple resident-visible canonical Contracts detected",
       );
     }
+    fail(res, error);
+  }
+};
+
+export const downloadMyStayProof = async (req, res) => {
+  try {
+    const user = await tenantActor(req);
+    const stayData = await resolveDigitalStayProofData({ tenantId: user._id });
+    const pdfBuffer = await renderDigitalStayProofPdf(stayData);
+    const isDownload = req.query?.download !== "0" && req.query?.download !== "false";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Length", pdfBuffer.length);
+    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="Lilycrest-Lease-Contract-${stayData.referenceNumber}.pdf"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(pdfBuffer);
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const getMyStayProofData = async (req, res) => {
+  try {
+    const user = await tenantActor(req);
+    const stayData = await resolveDigitalStayProofData({ tenantId: user._id });
+    res.json({ success: true, stayProof: stayData });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const getPublicStayVerification = async (req, res) => {
+  try {
+    const { referenceId } = req.params;
+    if (!referenceId) return res.status(400).json({ verified: false, message: "Reference ID is required" });
+    
+    const cleanRef = referenceId.trim();
+    let contract = await Contract.findOne({
+      $or: [
+        { contractNumber: cleanRef },
+        { contractNumber: cleanRef.toUpperCase() },
+      ],
+    }).lean();
+
+    let reservation = null;
+    if (!contract) {
+      reservation = await Reservation.findOne({
+        $or: [
+          { reservationCode: cleanRef },
+          { reservationCode: cleanRef.toUpperCase() },
+        ],
+      }).lean();
+    }
+
+    if (!contract && !reservation) {
+      return res.status(404).json({
+        verified: false,
+        message: "No active residency record matching this reference number was found.",
+      });
+    }
+
+    const stayData = await resolveDigitalStayProofData({
+      contractId: contract?._id,
+      reservationId: reservation?._id,
+      tenantId: contract?.tenantId || reservation?.userId,
+    });
+
+    res.json({
+      verified: true,
+      verification: {
+        referenceNumber: stayData.referenceNumber,
+        tenantName: stayData.tenantName,
+        branchName: stayData.branchName,
+        branchAddress: stayData.branchAddress,
+        roomNumber: stayData.roomNumber,
+        bedLabel: stayData.bedLabel,
+        roomType: stayData.roomType,
+        leaseStartDate: stayData.leaseStartDate,
+        leaseEndDate: stayData.leaseEndDate,
+        leaseDurationMonths: stayData.leaseDurationMonths,
+        status: stayData.status,
+        verificationStatus: stayData.verificationStatus,
+        issuedAt: stayData.issuedAt,
+      },
+    });
+  } catch (error) {
+    res.status(404).json({
+      verified: false,
+      message: error.message || "Unable to verify residency record.",
+    });
+  }
+};
+
+export const getStayProofDataForAdmin = async (req, res) => {
+  try {
+    await actor(req);
+    const { id } = req.params;
+    const stayData = await resolveDigitalStayProofData({ id });
+    res.json({ success: true, stayProof: stayData });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const downloadStayProofForAdmin = async (req, res) => {
+  try {
+    await actor(req);
+    const { id } = req.params;
+    const stayData = await resolveDigitalStayProofData({ id });
+    const pdfBuffer = await renderDigitalStayProofPdf(stayData);
+    const isDownload = req.query?.download === "1" || req.query?.download === "true";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Length", pdfBuffer.length);
+    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="Lilycrest-Lease-Contract-${stayData.referenceNumber}.pdf"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(pdfBuffer);
+  } catch (error) {
     fail(res, error);
   }
 };
@@ -1144,6 +1299,44 @@ export const streamMyFinalContract = async (req, res) => {
   try {
     const { contract } = await findOwnedContract(req);
     await streamFinal({ req, res, contract, channel: "tenant_web" });
+  } catch (error) { fail(res, error); }
+};
+
+export const streamMySignedContract = async (req, res) => {
+  try {
+    const user = await tenantActor(req);
+    let contract = null;
+    if (req.params.contractId && mongoose.isValidObjectId(req.params.contractId)) {
+      contract = await Contract.findOne({ _id: req.params.contractId, tenantId: user._id });
+    }
+    if (!contract) {
+      contract = await resolveTenantCanonicalContract(user._id);
+    }
+    if (!contract) {
+      return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    }
+    const requested = req.params.version ? Number(req.params.version) : null;
+    const document = requested
+      ? contract.signedDocuments.find((item) => Number(item.version) === requested)
+      : [...(contract.signedDocuments || [])].filter((item) => !item.superseded)
+        .sort((a, b) => Number(b.version) - Number(a.version))[0];
+    if (!document) {
+      return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
+    }
+    const absolute = resolveSignedContractPath(document.storageKey);
+    const stat = await fsPromises.stat(absolute).catch(() => null);
+    if (!stat?.isFile()) {
+      return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
+    }
+    await auditLogger.logModification(req, "contract", contract._id, null, null,
+      `Tenant ${req.query?.download === "true" || req.query?.download === "1" ? "downloaded" : "previewed"} signed Contract ${contract.contractNumber} version ${document.version}`);
+    res.setHeader("Content-Type", document.mimeType || "application/pdf");
+    res.setHeader("Content-Length", stat.size);
+    const isDownload = req.query?.download === "true" || req.query?.download === "1";
+    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="${document.fileName ? document.fileName.replaceAll('"', '') : `signed-contract-v${document.version}.pdf`}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Pragma", "no-cache");
+    fs.createReadStream(absolute).on("error", (streamError) => res.destroy(streamError)).pipe(res);
   } catch (error) { fail(res, error); }
 };
 

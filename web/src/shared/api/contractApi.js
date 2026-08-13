@@ -171,4 +171,8 @@ export const contractApi = {
       method: "DELETE",
       body: JSON.stringify({ confirmationContractNumber, reason }),
     }),
+  getStayProofFile: (id, download = false) =>
+    fetchPrivateContractBlob(`/contracts/${id}/stay-proof${download ? "?download=1" : ""}`),
+  getStayProofData: (id) =>
+    authFetch(`/contracts/${id}/stay-proof-data`),
 };

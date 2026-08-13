@@ -283,7 +283,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
         anchor.click();
         window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       } else {
-        const child = window.open(url, "_blank", "noopener,noreferrer");
+        const child = window.open(url, "_blank");
         if (mode === "print" && child) child.addEventListener("load", () => child.print(), { once: true });
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
@@ -361,7 +361,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
       if (download) {
         const anchor = document.createElement("a");
         anchor.href = url; anchor.download = currentSigned?.fileName || "signed-contract"; anchor.click();
-      } else window.open(url, "_blank", "noopener,noreferrer");
+      } else window.open(url, "_blank");
       window.setTimeout(() => URL.revokeObjectURL(url), download ? 1000 : 60_000);
     } catch (requestError) { setError(getContractErrorMessage(requestError)); }
     finally { setBusy(""); }
@@ -443,7 +443,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
       if (download) {
         const anchor = document.createElement("a");
         anchor.href = url; anchor.download = currentNotarized?.fileName || "notarized-contract"; anchor.click();
-      } else window.open(url, "_blank", "noopener,noreferrer");
+      } else window.open(url, "_blank");
       window.setTimeout(() => URL.revokeObjectURL(url), download ? 1000 : 60_000);
     } catch (requestError) { setError(getContractErrorMessage(requestError)); }
     finally { setBusy(""); }
@@ -458,7 +458,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
         anchor.href = url;
         anchor.download = contract?.finalDocument?.fileName || "final-contract";
         anchor.click();
-      } else window.open(url, "_blank", "noopener,noreferrer");
+      } else window.open(url, "_blank");
       window.setTimeout(() => URL.revokeObjectURL(url), download ? 1000 : 60_000);
     } catch (requestError) { setError(getContractErrorMessage(requestError)); }
     finally { setBusy(""); }
@@ -512,7 +512,35 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
           <summary>View full details</summary>
         <div className="contract-detail-grid">
           <section><h3>Contract Overview</h3>
-            <dl><dt>Status</dt><dd>{formatContractStatus(contract.status)}</dd><dt>Contract Version</dt><dd>{contract.version}</dd><dt>Template</dt><dd>{formatContractValue(contract.templateType)}</dd><dt>Created</dt><dd>{date(contract.createdAt)}</dd><dt>Updated</dt><dd>{date(contract.updatedAt)}</dd></dl>
+            <dl>
+              <dt>Status</dt><dd>{formatContractStatus(contract.status)}</dd>
+              {contract.contractPurpose === "replacement" && (
+                <>
+                  <dt>Contract Type</dt>
+                  <dd><span className="contract-badge-replacement">Room Transfer Replacement</span></dd>
+                  <dt>Replacement Note</dt>
+                  <dd>{contract.replacementReason || "Replaces previous contract due to room transfer"}</dd>
+                  {contract.replacesContractId && (
+                    <>
+                      <dt>Predecessor</dt>
+                      <dd>
+                        <button
+                          type="button"
+                          className="contract-lineage-link"
+                          onClick={() => navigate(`/admin/contracts/${contract.replacesContractId}`)}
+                        >
+                          View Previous Contract
+                        </button>
+                      </dd>
+                    </>
+                  )}
+                </>
+              )}
+              <dt>Contract Version</dt><dd>{contract.version}</dd>
+              <dt>Template</dt><dd>{formatContractValue(contract.templateType)}</dd>
+              <dt>Created</dt><dd>{date(contract.createdAt)}</dd>
+              <dt>Updated</dt><dd>{date(contract.updatedAt)}</dd>
+            </dl>
           </section>
           <section><h3>Tenant</h3>
             <dl><dt>Legal Name</dt><dd>{contract.tenantLegalName || "—"}</dd><dt>Email</dt><dd>{contract.tenantEmail || "—"}</dd><dt>Phone</dt><dd>{contract.tenantPhone || "—"}</dd><dt>Address</dt><dd>{contract.tenantAddress || "—"}</dd><dt>Nationality</dt><dd>{contract.tenantNationality || "—"}</dd></dl>

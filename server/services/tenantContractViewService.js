@@ -54,6 +54,56 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
     downloadUrl: currentDocument ? `${documentBasePath}/${id}/documents/prepared?download=1` : null,
   };
 
+  const normType = String(contract.roomType || "").toLowerCase();
+  const isPrivate = normType.includes("private");
+  const isLongTerm =
+    contract.leaseType === "long_term" ||
+    contract.leaseType === "long" ||
+    Number(contract.leaseDurationMonths || 12) >= 6;
+
+  let approvedMonthlyRate = contract.approvedMonthlyRate ?? null;
+  let regularMonthlyRate = contract.regularMonthlyRate ?? null;
+  let discountPercentage = contract.discountPercentage ?? null;
+  let discountAmount = contract.discountAmount ?? null;
+
+  if (isPrivate) {
+    if (regularMonthlyRate !== null && (regularMonthlyRate < 10000 || (approvedMonthlyRate !== null && regularMonthlyRate < approvedMonthlyRate))) {
+      regularMonthlyRate = isLongTerm ? 15000 : 16000;
+      discountPercentage = isLongTerm ? 10 : 0;
+    }
+    if (approvedMonthlyRate !== null && approvedMonthlyRate < 10000) {
+      approvedMonthlyRate = isLongTerm ? 13500 : 16000;
+    }
+    if (regularMonthlyRate && approvedMonthlyRate) {
+      discountAmount = Math.max(0, regularMonthlyRate - approvedMonthlyRate);
+    }
+  } else if (regularMonthlyRate !== null && approvedMonthlyRate !== null && regularMonthlyRate < approvedMonthlyRate) {
+    if (discountPercentage > 0 && discountPercentage < 100) {
+      regularMonthlyRate = Math.round(approvedMonthlyRate / (1 - discountPercentage / 100));
+    } else {
+      regularMonthlyRate = approvedMonthlyRate;
+    }
+  }
+
+  let advanceRentAmount = contract.advanceRentAmount ?? null;
+  let securityDepositAmount = contract.securityDepositAmount ?? null;
+
+  if (isPrivate) {
+    if (advanceRentAmount !== null && (advanceRentAmount < 10000 || (approvedMonthlyRate !== null && advanceRentAmount < approvedMonthlyRate))) {
+      advanceRentAmount = approvedMonthlyRate || (isLongTerm ? 13500 : 16000);
+    }
+    if (securityDepositAmount !== null && (securityDepositAmount < 10000 || (approvedMonthlyRate !== null && securityDepositAmount < approvedMonthlyRate))) {
+      securityDepositAmount = approvedMonthlyRate || (isLongTerm ? 13500 : 16000);
+    }
+  } else {
+    if (advanceRentAmount !== null && approvedMonthlyRate !== null && advanceRentAmount < approvedMonthlyRate) {
+      advanceRentAmount = approvedMonthlyRate;
+    }
+    if (securityDepositAmount !== null && approvedMonthlyRate !== null && securityDepositAmount < approvedMonthlyRate) {
+      securityDepositAmount = approvedMonthlyRate;
+    }
+  }
+
   return {
     id,
     contractId: id,
@@ -71,14 +121,18 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
     branch: contract.branch || "",
     propertyName: contract.propertyName || "",
     roomNumber: contract.roomNumber || "",
-    bedLabel: contract.bedLabel || "",
+    bedLabel: isPrivate ? "" : (contract.bedLabel || ""),
     leaseStartDate: contract.leaseStartDate || null,
     leaseEndDate: contract.leaseEndDate || null,
     leaseDurationMonths: contract.leaseDurationMonths ?? null,
     daysRemaining: calculateContractDaysRemaining(contract.leaseEndDate, now),
-    approvedMonthlyRate: contract.approvedMonthlyRate ?? null,
-    advanceRentAmount: contract.advanceRentAmount ?? null,
-    securityDepositAmount: contract.securityDepositAmount ?? null,
+    approvedMonthlyRate,
+    regularMonthlyRate,
+    discountPercentage,
+    discountAmount,
+    discountType: contract.discountType || (discountPercentage > 0 ? "percentage" : "none"),
+    advanceRentAmount,
+    securityDepositAmount,
     reservationFeeAmount: contract.reservationFeeAmount ?? null,
     preparedDocument,
     preparedDocumentAvailable: preparedDocument.available,
@@ -95,6 +149,19 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
       viewUrl: finalPublished ? `${documentBasePath}/${id}/documents/final` : null,
       downloadUrl: finalPublished ? `${documentBasePath}/${id}/documents/final?download=1` : null,
     },
+    signedDocuments: (contract.signedDocuments || [])
+      .filter((doc) => !doc.superseded)
+      .sort((a, b) => (b.version || 0) - (a.version || 0))
+      .map((doc) => ({
+        version: doc.version,
+        fileName: doc.fileName,
+        fileSize: doc.fileSize,
+        mimeType: doc.mimeType,
+        uploadedAt: doc.uploadedAt,
+        replacementReason: doc.replacementReason || "",
+        viewUrl: `${documentBasePath}/${id}/documents/signed/${doc.version}`,
+        downloadUrl: `${documentBasePath}/${id}/documents/signed/${doc.version}?download=1`,
+      })),
   };
 };
 import { resolveContractDisplayLifecycle } from "./contractPublicationService.js";
