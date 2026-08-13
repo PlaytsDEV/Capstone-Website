@@ -64,15 +64,12 @@ import backupRoutes from "./routes/backupRoutes.js";
 import serviceProviderRoutes from "./routes/serviceProviderRoutes.js";
 import contractRoutes from "./routes/contractRoutes.js";
 import mobileContractRoutes from "./routes/mobileContractRoutes.js";
-import mobileSurveyRoutes from "./routes/mobileSurveyRoutes.js";
 import mobileBillingRoutes from "./routes/mobileBillingRoutes.js";
 import mobilePaymongoRoutes from "./routes/mobilePaymongoRoutes.js";
 import mobileDocumentRoutes from "./routes/mobileDocumentRoutes.js";
 import mobileAuthRoutes from "./routes/mobileAuthRoutes.js";
 import mobileNotificationRoutes from "./routes/mobileNotificationRoutes.js";
 import mobileUploadRoutes from "./routes/mobileUploadRoutes.js";
-import surveyRoutes from "./routes/surveyRoutes.js";
-import tenantSurveyRoutes from "./routes/tenantSurveyRoutes.js";
 import { initSocket } from "./utils/socket.js";
 import mobileRoutes from "./mobile/mobileRoutes.mjs";
 
@@ -280,7 +277,6 @@ app.use("/api/announcements", announcementRoutes);
 // by the web Firebase-token middleware. Web/admin maintenance routes still
 // fall through to the contract router below.
 app.use("/api/m", mobileContractRoutes);
-app.use("/api/m", mobileSurveyRoutes);
 // Billing/PayMongo bridge to canonical Bill data — must be mounted before
 // mobileRoutes (the vendored mobile backend copy) so /api/m/billing/* and
 // /api/m/paymongo/checkout* are answered from the authoritative Bill model
@@ -317,8 +313,6 @@ app.use("/api/utilities", utilityBillingRoutes);
 app.use("/api/financial", financialRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/analytics", analyticsRoutes);
-app.use("/api/surveys", surveyRoutes);
-app.use("/api/tenant/surveys", tenantSurveyRoutes);
 app.use("/api/branches", branchSummaryRoutes);
 app.use("/api/backups", backupRoutes);
 

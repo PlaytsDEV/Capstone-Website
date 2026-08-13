@@ -50,7 +50,6 @@ import AnalyticsConsolidatedTab from "./AnalyticsConsolidatedTab";
 import AnalyticsFinancialsTab from "./AnalyticsFinancialsTab";
 import AnalyticsMonitoringTab from "./AnalyticsMonitoringTab";
 import AnalyticsDemographicsTab from "./AnalyticsDemographicsTab";
-import { SurveyAnalyticsTab } from "./SurveyAnalyticsPage";
 import MarketingSourceReport from "../components/MarketingSourceReport";
 import InquiryPipelineBoard from "../components/InquiryPipelineBoard";
 
@@ -494,7 +493,6 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isOwner = user?.role === "owner";
-  const canViewSurveyAnalytics = can("viewSurveyAnalytics");
   const requestedTab = searchParams.get("tab") || "overview";
   const [activeTab, setActiveTab] = useState(requestedTab);
   const requestedRange = searchParams.get("range");
@@ -644,10 +642,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   };
 
 
-  const surveyParams = new URLSearchParams(
-    isOwner && branch !== "all" ? { branch } : {},
-  );
-  const surveyAnalyticsHref = `/admin/analytics/feedback-surveys${surveyParams.size ? `?${surveyParams}` : ""}`;
+
 
   const detailSharedProps = useMemo(
     () => ({
@@ -717,15 +712,6 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
             <Target className="analytics-tab-icon" />
             Marketing ROI
           </button>
-          {canViewSurveyAnalytics && (
-            <button
-              className={`analytics-tab ${activeTab === "surveys" || activeTab === "feedback-surveys" ? "active" : ""}`}
-              onClick={() => handleTabChange("surveys")}
-            >
-              <ClipboardList className="analytics-tab-icon" />
-              Feedback &amp; Surveys
-            </button>
-          )}
           {isOwner && (
             <button
               className={`analytics-tab ${activeTab === "consolidated" ? "active" : ""}`}
@@ -983,9 +969,6 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
               <InquiryPipelineBoard />
               <MarketingSourceReport />
             </div>
-          )}
-          {(activeTab === "surveys" || activeTab === "feedback-surveys") && (
-            <SurveyAnalyticsTab />
           )}
           {activeTab === "consolidated" && <AnalyticsConsolidatedTab {...detailSharedProps} />}
         </main>

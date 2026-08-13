@@ -7,13 +7,6 @@ export const ALL_PERMISSIONS = Object.freeze([
   "manageAnnouncements",
   "viewReports",
   "manageUsers",
-  "viewSurveyAnalytics",
-  "manageSurveyTemplates",
-  "manageSurveySchedules",
-  "viewSurveyResponses",
-  "generateSurveyAIReports",
-  "overrideMoveOutSurvey",
-  "exportSurveyReports",
 ]);
 
 export const DEFAULT_BRANCH_ADMIN_PERMISSIONS = Object.freeze([
@@ -25,9 +18,6 @@ export const DEFAULT_BRANCH_ADMIN_PERMISSIONS = Object.freeze([
   "manageMaintenance",
   "manageAnnouncements",
   "viewReports",
-  "viewSurveyAnalytics",
-  "manageSurveySchedules",
-  "viewSurveyResponses",
 ]);
 
 export const DEFAULT_PERMISSIONS = Object.freeze({
@@ -46,13 +36,6 @@ export const PERMISSION_LABELS = Object.freeze({
   manageAnnouncements: "Manage Announcements",
   viewReports: "View Reports",
   manageUsers: "Manage Users",
-  viewSurveyAnalytics: "View Survey Analytics",
-  manageSurveyTemplates: "Manage Survey Templates",
-  manageSurveySchedules: "Manage Survey Schedules",
-  viewSurveyResponses: "View Survey Responses",
-  generateSurveyAIReports: "Generate Survey AI Reports",
-  overrideMoveOutSurvey: "Override Move-Out Survey",
-  exportSurveyReports: "Export Survey Reports",
 });
 
 export const normalizePermissions = (permissions = []) => {
