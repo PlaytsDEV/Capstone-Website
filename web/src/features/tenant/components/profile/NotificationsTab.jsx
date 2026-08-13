@@ -162,7 +162,6 @@ const TYPE_CONFIG = {
 	announcement: { icon: Megaphone, colors: NOTIFICATION_COLOR_SCHEMES.orange, label: "Announcement" },
 	general: { icon: Bell, colors: NOTIFICATION_COLOR_SCHEMES.neutral, label: "Notice" },
 };
-};
 
 /**
  * Resolves notification icon, verb label, and color object scheme.
