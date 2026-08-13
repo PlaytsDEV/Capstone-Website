@@ -25,18 +25,18 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #0a1628;
-  border: 1px solid #0a1628;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
   border-radius: 16px;
-  box-shadow: 0 24px 60px rgba(10, 22, 40, 0.22);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
   animation: rdm-slide-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ── Executive Dark Navy Header Bar ── */
+/* ── Light Executive Header Bar ── */
 .rdm-top-card {
   margin: 0;
   padding: 0;
-  background: #0a1628;
+  background: #ffffff;
   border: none;
   box-shadow: none;
   flex-shrink: 0;
@@ -49,10 +49,10 @@
   justify-content: space-between;
   gap: 16px;
   padding: 18px 24px;
-  background: #0a1628;
+  background: #ffffff;
   border: none;
-  border-bottom: 1px solid #1e293b;
-  color: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  color: #0f172a;
 }
 
 .rdm-guest-block {
@@ -70,9 +70,9 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: #1e293b;
-  border: 2px solid #d4af37;
-  color: #ffffff;
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  color: #0f172a;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -85,7 +85,7 @@
 .rdm-title,
 .rdm-top-header--gradient .rdm-title {
   margin: 0 0 2px;
-  color: #ffffff;
+  color: #0f172a;
   font-size: 1.35rem;
   font-weight: 700;
   line-height: 1.2;
@@ -105,23 +105,30 @@
 .rdm-top-header--gradient .rdm-code,
 .rdm-top-header--gradient .rdm-header-detail,
 .rdm-top-header--gradient .rdm-header-sep {
-  color: #94a3b8;
   font-size: 0.82rem;
   font-weight: 500;
 }
 
-.rdm-code {
+.rdm-code,
+.rdm-top-header--gradient .rdm-code {
   font-weight: 700;
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.12);
+  color: #334155;
+  background: #f1f5f9;
   padding: 2px 8px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid #e2e8f0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-.rdm-header-sep {
-  opacity: 0.5;
+.rdm-header-detail,
+.rdm-top-header--gradient .rdm-header-detail {
+  color: #64748b;
+}
+
+.rdm-header-sep,
+.rdm-top-header--gradient .rdm-header-sep {
+  color: #cbd5e1;
+  opacity: 0.9;
 }
 
 .rdm-header-actions {
@@ -143,9 +150,9 @@
 }
 
 .rdm-status-chip-dark {
-  background: color-mix(in srgb, var(--rdm-status-bg, #334155) 85%, white 15%);
-  color: var(--rdm-status-color, #ffffff);
-  border: 1px solid color-mix(in srgb, var(--rdm-status-bg, #475569) 90%, black 10%);
+  background: var(--rdm-status-bg, #f1f5f9);
+  color: var(--rdm-status-color, #0f172a);
+  border: 1px solid color-mix(in srgb, var(--rdm-status-color, #94a3b8) 25%, transparent);
 }
 
 .rdm-status-dot {
@@ -177,18 +184,18 @@
   width: 34px;
   height: 34px;
   padding: 0;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
   border-radius: 50%;
-  color: #ffffff;
+  color: #475569;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .rdm-close:hover,
 .rdm-close-dark:hover {
-  background: rgba(255, 255, 255, 0.25);
-  color: #ffffff;
+  background: #e2e8f0;
+  color: #0f172a;
 }
 
 /* ── Modal Grid Body Layout ── */
@@ -642,6 +649,47 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.rdm-empty-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  transition: all 0.15s ease-in-out;
+}
+
+.rdm-empty-actions-icon-wrap {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rdm-empty-actions-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.rdm-empty-actions-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.3;
+}
+
+.rdm-empty-actions-desc {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #475569;
+  line-height: 1.45;
 }
 
 .rdm-stage-guide {

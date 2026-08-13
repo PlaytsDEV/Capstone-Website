@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Calendar, Camera, CheckCircle, ClipboardList, CreditCard, Eye, Image as ImageIcon, Info, Maximize2 } from "lucide-react";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { reservationApi } from "../../../shared/api/apiClient";
+import { SUBMETER_BRANCHES } from "../../../shared/utils/constants";
 import { useVisitAvailability } from "../../../shared/hooks/queries/useReservations";
 import { useUtilityLatestReading } from "../../../shared/hooks/queries/useUtility";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
@@ -12,6 +13,7 @@ import getFriendlyError from "../../../shared/utils/friendlyError";
 import {
  getAllowedReservationActions,
  getReservationStatusAppearance,
+ normalizeReservationStatus,
  readMoveInDate,
 } from "../../../shared/utils/lifecycleNaming";
 import {
@@ -79,10 +81,80 @@ import "../styles/reservation-details-modal.css";
  },
 };
 
+const getQuickActionsEmptyState = (status, isMovedOut) => {
+  const normStatus = normalizeReservationStatus(status);
+  if (normStatus === "moveIn" || normStatus === "checked-in") {
+    return {
+      Icon: CheckCircle,
+      iconColor: "#059669",
+      bgColor: "#ECFDF5",
+      borderColor: "#A7F3D0",
+      title: "Tenant Currently Moved In",
+      desc: "This tenant has completed move-in. Occupancy, room stay details, and utility billing are actively managed under Tenancy & Rooms.",
+    };
+  }
+  if (normStatus === "moveOut" || isMovedOut) {
+    return {
+      Icon: CheckCircle,
+      iconColor: "#475569",
+      bgColor: "#F8FAFC",
+      borderColor: "#E2E8F0",
+      title: "Tenant Checked Out",
+      desc: "This tenant's stay has ended and they have checked out of the room.",
+    };
+  }
+  if (normStatus === "cancelled") {
+    return {
+      Icon: Info,
+      iconColor: "#DC2626",
+      bgColor: "#FEF2F2",
+      borderColor: "#FCA5A5",
+      title: "Reservation Cancelled",
+      desc: "This reservation is cancelled. The assigned bed has been released and no further admin actions are required.",
+    };
+  }
+  if (normStatus === "rejected") {
+    return {
+      Icon: Info,
+      iconColor: "#DC2626",
+      bgColor: "#FEF2F2",
+      borderColor: "#FCA5A5",
+      title: "Application Rejected",
+      desc: "This application was rejected. No further admin actions are required.",
+    };
+  }
+  if (normStatus === "approved_for_payment") {
+    return {
+      Icon: Info,
+      iconColor: "#2563EB",
+      bgColor: "#EFF6FF",
+      borderColor: "#BFDBFE",
+      title: "Awaiting Tenant Payment",
+      desc: "Application approved. Waiting for the applicant to settle their reservation payment.",
+    };
+  }
+  if (normStatus === "payment_pending") {
+    return {
+      Icon: Info,
+      iconColor: "#D97706",
+      bgColor: "#FFFBEB",
+      borderColor: "#FDE68A",
+      title: "Payment Processing",
+      desc: "Payment has been submitted and is awaiting settlement confirmation from the gateway.",
+    };
+  }
+  return {
+    Icon: Info,
+    iconColor: "#475569",
+    bgColor: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    title: "No Quick Actions Available",
+    desc: "There are no pending quick actions required for this reservation stage.",
+  };
+};
+
 const fmt = (value) =>
  value === null || value === undefined || value === "" ? "\u2014" : value;
-
-
 
 const fmtDate = sharedFmtDate;
 const fmtDateTime = sharedFmtDateTime;
@@ -484,17 +556,26 @@ export default function ReservationDetailsModal({
  });
  const visitBranch = reservation?.roomId?.branch || reservation?.branch || "";
  const visitRoomId = reservation?.roomId?._id || reservation?.roomId || "";
+ /** True for branches with physical submeters (e.g. Gil Puyat). False for fixed-rate branches (e.g. Guadalupe). */
+ const branchUsesSubmeter = SUBMETER_BRANCHES.has(visitBranch);
  const appearance = getReservationStatusAppearance(status);
  const allowedActions = getAllowedReservationActions(status);
- const hasQuickActions =
+ const isMovedOut = status === "moveOut";
+ const stageGuide = STAGE_GUIDANCE[status];
+ const hasActionButtons =
    allowedActions.includes("moveIn") ||
    allowedActions.includes("extend") ||
    allowedActions.includes("approve_for_payment") ||
    allowedActions.includes("needs_revision") ||
    allowedActions.includes("rejected") ||
    (allowedActions.includes("cancelled") && !cancellationPending);
+ const hasQuickActions = showMeterPrompt || Boolean(stageGuide) || hasActionButtons;
+ const emptyStateInfo = useMemo(
+   () => getQuickActionsEmptyState(status, isMovedOut),
+   [status, isMovedOut],
+ );
+
  const moveInDate = readMoveInDate(reservation);
- const isMovedOut = status === "moveOut";
  const isOverdue =
  status === "reserved" && moveInDate && new Date(moveInDate) < new Date();
  const daysOverdue = isOverdue
@@ -503,12 +584,7 @@ export default function ReservationDetailsModal({
  const docs = reservation ? buildDocs(reservation) : [];
  const guestName = reservation?.customer ?? "Unknown";
  const guestInitials = getInitials(guestName);
- // Prefers the applicant's current live profile photo over the
- // application-time submitted selfie; falls back to a safe initials avatar
- // (never a broken-image icon — see ProfileAvatar.jsx) when neither exists
- // or the URL fails to load.
  const guestPhotoUrl = resolveApplicantPhotoUrl(reservation);
- const stageGuide = STAGE_GUIDANCE[status];
  const availabilityParams = useMemo(
  () => ({
  branch: visitBranch,
@@ -528,7 +604,7 @@ export default function ReservationDetailsModal({
   const { data: latestUtilityRes } = useUtilityLatestReading(
     "electricity",
     visitRoomId,
-    { enabled: Boolean(visitRoomId) },
+    { enabled: Boolean(visitRoomId) && branchUsesSubmeter },
   );
   const previousMeterReading =
     latestUtilityRes?.reading ??
@@ -658,10 +734,6 @@ export default function ReservationDetailsModal({
     },
   ].filter(Boolean);
 
- // Admin-facing pricing preview, sourced exclusively from the server's
- // reservation.pricingDisplay (buildPricingDisplay in
- // server/services/contractPricingResolver.js) — no client-side
- // recomputation of rates/discounts here.
  const pricingDisplay = reservation?.pricingDisplay || null;
  const { pricingIsUsable, pricingIsMissing, pricingBlocksApproval } =
  resolveReservationApprovalPricingGate(pricingDisplay);
@@ -879,7 +951,7 @@ export default function ReservationDetailsModal({
  <div className="rdm-overlay" onClick={onClose}>
  <div className="rdm" onClick={(event) => event.stopPropagation()}>
  <div className="rdm-top-card">
- <div className="rdm-top-header rdm-top-header--gradient">
+ <div className="rdm-top-header">
  <div className="rdm-guest-block">
  <ProfileAvatar
  className="rdm-avatar"
@@ -903,7 +975,7 @@ export default function ReservationDetailsModal({
  </div>
  <div className="rdm-header-actions">
  <div
- className="rdm-status-chip rdm-status-chip-dark"
+ className="rdm-status-chip"
  style={{
  "--rdm-status-bg": appearance.bg,
  "--rdm-status-color": appearance.color,
@@ -919,7 +991,7 @@ export default function ReservationDetailsModal({
  </div>
  )}
  <button
- className="rdm-close rdm-close-dark"
+ className="rdm-close"
  onClick={onClose}
  aria-label="Close"
  >
@@ -958,7 +1030,7 @@ export default function ReservationDetailsModal({
  Pending Review
  </span>
  </div>
- <div className="rdm-info-grid rdm-info-grid-dark rdm-cancellation-request__details">
+ <div className="rdm-info-grid rdm-cancellation-request__details">
  {cancellationRequestDetails.map(([label, value]) => (
  <div className="rdm-info-item" key={label}>
  <span className="rdm-info-label">{label}</span>
@@ -1003,7 +1075,7 @@ export default function ReservationDetailsModal({
 
  <div className="rdm-section rdm-surface-card">
  <h3 className="rdm-top-section-label">Booking Details</h3>
- <div className="rdm-info-grid rdm-info-grid-dark">
+ <div className="rdm-info-grid">
  {bookingDetails.map(([label, value, opts = {}]) => (
  <div className={`rdm-info-item${opts.wide ? " rdm-info-item--wide" : ""}`} key={label}>
  <span className="rdm-info-label">{label}</span>
@@ -1021,7 +1093,7 @@ export default function ReservationDetailsModal({
  <h3 className="rdm-top-section-label">Pricing &amp; Initial Payment</h3>
  {pricingIsUsable ? (
  <>
- <div className="rdm-info-grid rdm-info-grid-dark">
+ <div className="rdm-info-grid">
  <div className="rdm-info-item">
  <span className="rdm-info-label">Lease Category</span>
  <span className="rdm-info-value">{leaseCategoryLabel}</span>
@@ -1745,11 +1817,39 @@ export default function ReservationDetailsModal({
  <h4 className="rdm-side-title">
  {showMeterPrompt ? "Move-In Details" : "Quick Actions"}
  </h4>
- <div className="rdm-actions-card rdm-actions-card-dark">
- {showMeterPrompt ? (
+ <div className="rdm-actions-card">
+ {!hasQuickActions ? (
+ <div
+ className="rdm-empty-actions"
+ style={{
+ background: emptyStateInfo.bgColor,
+ border: `1px solid ${emptyStateInfo.borderColor}`,
+ }}
+ >
+ <div
+ className="rdm-empty-actions-icon-wrap"
+ style={{ background: "rgba(255, 255, 255, 0.7)" }}
+ >
+ <emptyStateInfo.Icon
+ size={18}
+ style={{ color: emptyStateInfo.iconColor }}
+ />
+ </div>
+ <div className="rdm-empty-actions-content">
+ <h5 className="rdm-empty-actions-title">
+ {emptyStateInfo.title}
+ </h5>
+ <p className="rdm-empty-actions-desc">
+ {emptyStateInfo.desc}
+ </p>
+ </div>
+ </div>
+ ) : showMeterPrompt ? (
  <div className="rdm-inline-movein-form">
  <p className="rdm-inline-form-copy">
- Confirm actual move-in date and initial meter reading before recording occupancy.
+ {branchUsesSubmeter
+   ? "Confirm actual move-in date and initial meter reading before recording occupancy."
+   : "Confirm actual move-in date before recording occupancy."}
  </p>
 
  <div className="rdm-inline-field">
@@ -1764,37 +1864,38 @@ export default function ReservationDetailsModal({
  />
  </div>
 
+ {branchUsesSubmeter && (
  <div className="rdm-inline-field">
-                      <div className="rdm-inline-label-group">
-                        <label className="rdm-inline-label">
-                          Starting Meter Reading <span className="rdm-asterisk">*</span>
-                        </label>
-                        <div
-                          className="rdm-meter-info-badge"
-                          onClick={() => {
-                            if (previousMeterReading != null) {
-                              setMeterReadingVal(String(previousMeterReading));
-                            }
-                          }}
-                          title={previousMeterReading != null ? "Click to auto-fill previous reading baseline" : "No previous reading logged"}
-                        >
-                          <Info size={16} className="rdm-meter-info-icon" />
-                          <div className="rdm-meter-tooltip">
-                            <span>
-                              {previousMeterReading != null ? (
-                                <>Last Recorded: <strong>{Number(previousMeterReading).toLocaleString("en-PH")} kWh</strong></>
-                              ) : (
-                                "No previous reading logged yet for this room."
-                              )}
-                            </span>
-                            <span className="rdm-meter-tooltip-hint">
-                              {previousMeterReading != null
-                                ? "Click to auto-fill starting baseline"
-                                : "Enter initial room meter reading"}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
+                       <div className="rdm-inline-label-group">
+                         <label className="rdm-inline-label">
+                           Starting Meter Reading <span className="rdm-asterisk">*</span>
+                         </label>
+                         <div
+                           className="rdm-meter-info-badge"
+                           onClick={() => {
+                             if (previousMeterReading != null) {
+                               setMeterReadingVal(String(previousMeterReading));
+                             }
+                           }}
+                           title={previousMeterReading != null ? "Click to auto-fill previous reading baseline" : "No previous reading logged"}
+                         >
+                           <Info size={16} className="rdm-meter-info-icon" />
+                           <div className="rdm-meter-tooltip">
+                             <span>
+                               {previousMeterReading != null ? (
+                                 <>Last Recorded: <strong>{Number(previousMeterReading).toLocaleString("en-PH")} kWh</strong></>
+                               ) : (
+                                 "No previous reading logged yet for this room."
+                               )}
+                             </span>
+                             <span className="rdm-meter-tooltip-hint">
+                               {previousMeterReading != null
+                                 ? "Click to auto-fill starting baseline"
+                                 : "Enter initial room meter reading"}
+                             </span>
+                           </div>
+                         </div>
+                       </div>
  <div className="rdm-inline-addon-group">
  <input
  type="number"
@@ -1810,6 +1911,7 @@ export default function ReservationDetailsModal({
  <span className="rdm-inline-addon-label">kWh</span>
  </div>
  </div>
+ )}
 
  <div className="rdm-inline-actions">
  <button
@@ -1824,8 +1926,8 @@ export default function ReservationDetailsModal({
  type="button"
  className="rdm-action rdm-action-primary rdm-action-success"
  onClick={() => {
- const reading = Number(meterReadingVal);
- if (!meterReadingVal.trim() || Number.isNaN(reading) || reading < 0) {
+ const reading = branchUsesSubmeter ? Number(meterReadingVal) : null;
+ if (branchUsesSubmeter && (!meterReadingVal.trim() || Number.isNaN(reading) || reading < 0)) {
  showNotification(
  "A valid meter reading (kWh) is required.",
  "error",
@@ -1844,7 +1946,7 @@ export default function ReservationDetailsModal({
  try {
  await reservationApi.update(reservation.id, {
  status: "moveIn",
- meterReading: reading,
+ ...(branchUsesSubmeter && reading !== null ? { meterReading: reading } : {}),
  actualMoveInDate,
  houseRulesPrepared: true,
  });
@@ -1873,7 +1975,7 @@ export default function ReservationDetailsModal({
  ) : (
  <>
  {stageGuide && (
- <div className="rdm-stage-guide rdm-stage-guide-dark">
+ <div className="rdm-stage-guide">
  <div className="rdm-stage-guide-icon-wrap">
  <stageGuide.Icon size={16} strokeWidth={1.75} />
  </div>

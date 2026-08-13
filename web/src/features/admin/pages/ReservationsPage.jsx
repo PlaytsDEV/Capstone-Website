@@ -19,8 +19,12 @@ import { useAuth } from "../../../shared/hooks/useAuth";
 import { usePermissions } from "../../../shared/hooks/usePermissions";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { queryKeys } from "../../../shared/lib/queryKeys";
-import { showNotification } from "../../../shared/utils/notification";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
+import { ExportButtons } from "./analyticsTabShared";
+import {
+  handleExportReservationsCSV,
+  handleExportReservationsPDF,
+} from "../utils/reservationExportUtils";
 import {
   normalizeBranchFilterValue,
   syncBranchSearchParam,
@@ -37,6 +41,7 @@ import ReservationDetailsModal from "../components/ReservationDetailsModal";
 import VisitSchedulesTab from "../components/VisitSchedulesTab";
 import VisitAvailabilityTab from "../components/VisitAvailabilityTab";
 import InquiriesPage from "./InquiriesPage";
+import Pagination from "../../../shared/components/Pagination";
 import {
   ActionBar,
   DataTable,
@@ -182,7 +187,7 @@ function ReservationsPage() {
     variant: "info",
     onConfirm: null,
   });
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const {
     data: rawReservations = [],
@@ -697,32 +702,27 @@ function ReservationsPage() {
     [refetchReservations],
   );
 
-  const handleExportReservations = useCallback(() => {
-    exportToCSV(
-      sortedReservations.map((reservation) => ({
-        reservationCode: reservation.reservationCode,
-        applicant: reservation.customer,
-        email: reservation.email,
-        branch: reservation.branch,
-        room: reservation.room,
-        status:
-          RESERVATION_STATUS_LABELS[reservation.status] || reservation.status,
-        moveInDate: formatShortDate(readMoveInDate(reservation)),
-        createdAt: formatShortDate(reservation.createdAt),
-      })),
-      [
-        { key: "reservationCode", label: "Reservation Code" },
-        { key: "applicant", label: "Applicant" },
-        { key: "email", label: "Email" },
-        { key: "branch", label: "Branch" },
-        { key: "room", label: "Room" },
-        { key: "status", label: "Status" },
-        { key: "moveInDate", label: "Move In" },
-        { key: "createdAt", label: "Created" },
-      ],
-      "reservations",
-    );
-  }, [sortedReservations]);
+  const handleExportCSV = useCallback(() => {
+    handleExportReservationsCSV({
+      reservations: sortedReservations,
+      branchFilter,
+    });
+  }, [branchFilter, sortedReservations]);
+
+  const handleExportPDF = useCallback(async () => {
+    try {
+      await handleExportReservationsPDF({
+        reservations: sortedReservations,
+        counts,
+        branchFilter,
+        statusFilter,
+        searchTerm,
+      });
+    } catch (error) {
+      console.error("[ReservationsExport] PDF generation failed:", error);
+      showNotification("Failed to generate PDF report. Please try again.", "error");
+    }
+  }, [branchFilter, counts, sortedReservations, statusFilter, searchTerm]);
 
   const columns = useMemo(
     () => [
@@ -731,6 +731,7 @@ function ReservationsPage() {
         sortKey: "customer",
         label: "Applicant",
         sortable: true,
+        width: "30%",
         render: (row) => {
           const rowInitials = initials(row.customer);
           const docWarnings = getReservationDocumentWarnings(row);
@@ -781,6 +782,7 @@ function ReservationsPage() {
         key: "room",
         label: "Room",
         sortable: true,
+        width: "22%",
         render: (row) => (
           <div className="res-room-cell">
             <span className="res-room-name">{row.room}</span>
@@ -793,6 +795,7 @@ function ReservationsPage() {
       {
         key: "status",
         label: "Status",
+        width: "18%",
         render: (row) => (
           <StatusBadge
             status={checkOverdueReservation(row) ? "overdue" : row.status}
@@ -803,18 +806,20 @@ function ReservationsPage() {
         key: "moveInDate",
         label: isArchivedView ? "Archived" : "Move-In",
         sortable: true,
+        width: "14%",
         render: (row) => formatShortDate(row.moveInDate),
       },
       {
         key: "createdAt",
         label: isArchivedView ? "Archived By" : "Date",
         sortable: false,
+        width: "14%",
         render: (row) => formatShortDate(row.createdAt),
       },
       {
         key: "actions",
         label: "",
-        width: "70px",
+        width: "80px",
         align: "right",
         render: (row) => (
           <div
@@ -953,11 +958,11 @@ function ReservationsPage() {
 
           <div
             style={{ backgroundColor: "var(--bg-card)", border: `1px solid var(--border-light)` }}
-            className="border rounded-lg p-6 overflow-x-auto"
+            className="border rounded-lg p-5 overflow-visible"
           >
-            <div className="flex flex-col md:flex-row gap-4 mb-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between mb-4">
+              <div className="relative flex-1 min-w-[240px]">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   type="text"
                   placeholder="Search by name, email, code, or room..."
@@ -967,10 +972,11 @@ function ReservationsPage() {
                     setCurrentPage(1);
                   }}
                   style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                  className="w-full pl-10 pr-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full pl-10 pr-4 h-9 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
                 />
               </div>
-              <div className="flex gap-2">
+
+              <div className="flex flex-wrap items-center gap-2.5 sm:justify-start lg:justify-end">
                 <select
                   value={`${sortState.key}-${sortState.dir}`}
                   onChange={(e) => {
@@ -979,7 +985,7 @@ function ReservationsPage() {
                     setCurrentPage(1);
                   }}
                   style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                  className="px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring font-medium"
+                  className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
                   title="Sort reservations"
                 >
                   <option value="createdAt-desc">Recent Transaction</option>
@@ -987,6 +993,7 @@ function ReservationsPage() {
                   <option value="customer-asc">Alphabetical (A - Z)</option>
                   <option value="customer-desc">Alphabetical (Z - A)</option>
                 </select>
+
                 {isOwner && (
                   <select
                     value={branchFilter}
@@ -995,7 +1002,7 @@ function ReservationsPage() {
                       setCurrentPage(1);
                     }}
                     style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                    className="px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
                   >
                     {OWNER_BRANCH_FILTER_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
@@ -1004,6 +1011,7 @@ function ReservationsPage() {
                     ))}
                   </select>
                 )}
+
                 <select
                   value={statusFilter}
                   onChange={(e) => {
@@ -1011,7 +1019,7 @@ function ReservationsPage() {
                     setCurrentPage(1);
                   }}
                   style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                  className="px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
                 >
                   {filters
                     .find((f) => f.key === "status")
@@ -1025,25 +1033,22 @@ function ReservationsPage() {
                 <button
                   type="button"
                   onClick={() => setMoreFiltersOpen(true)}
-                  className="px-4 py-2 border border-[var(--border-light)] rounded-md hover:bg-muted transition-colors flex items-center gap-2 text-sm font-medium"
+                  className="h-9 px-3.5 border border-[var(--border-light)] rounded-lg hover:bg-muted transition-colors flex items-center gap-2 text-xs font-medium cursor-pointer"
                 >
-                  <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
                   <span>More Filters</span>
                   {activeAdvancedFilterCount > 0 && (
-                    <span className="res-chip__count bg-[color:var(--primary)] text-white">
+                    <span className="res-chip__count bg-[color:var(--primary)] text-white text-[10px]">
                       {activeAdvancedFilterCount}
                     </span>
                   )}
                 </button>
 
-                <button
-                  onClick={handleExportReservations}
-                  className="px-4 py-2 border border-[var(--border-light)]
- rounded-md hover:bg-muted transition-colors flex items-center gap-2 text-sm font-medium"
-                >
-                  <Download className="w-4 h-4" />
-                  Export CSV
-                </button>
+                <ExportButtons
+                  onCsv={handleExportCSV}
+                  onPdf={handleExportPDF}
+                  disabled={sortedReservations.length === 0}
+                />
               </div>
             </div>
 
@@ -1097,13 +1102,14 @@ function ReservationsPage() {
               </div>
             )}
 
-            <div className="overflow-x-auto" style={{ backgroundColor: "var(--bg-card)" }}>
-              <table className="w-full">
+            <div className="overflow-x-auto min-h-[380px]" style={{ backgroundColor: "var(--bg-card)" }}>
+              <table className="w-full table-fixed">
                 <thead>
                   <tr className="border-b" style={{ borderColor: "var(--border-light)", backgroundColor: "color-mix(in srgb, var(--bg-inset) 30%, transparent)" }}>
                     {columns.slice(0, 5).map((col) => (
                       <th
                         key={col.key}
+                        style={{ width: col.width }}
                         className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground"
                         onClick={() => {
                           if (col.sortable) {
@@ -1126,7 +1132,7 @@ function ReservationsPage() {
                         </div>
                       </th>
                     ))}
-                    <th className="text-right py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th style={{ width: "80px" }} className="text-right py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -1283,31 +1289,22 @@ function ReservationsPage() {
                   )}
                 </tbody>
               </table>
-              {totalFiltered > itemsPerPage && (
-                <div className="flex justify-end items-center gap-2 mt-4 pt-4 border-t border-[var(--border-light)]">
-                  <button
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage((p) => p - 1)}
-                    className="px-3 py-1 text-sm border border-[var(--border-light)]
- rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Previous
-                  </button>
-                  <span className="px-3 py-1 text-sm text-muted-foreground">
-                    Page {currentPage} of{" "}
-                    {Math.ceil(totalFiltered / itemsPerPage)}
-                  </span>
-                  <button
-                    disabled={
-                      currentPage === Math.ceil(totalFiltered / itemsPerPage)
-                    }
-                    onClick={() => setCurrentPage((p) => p + 1)}
-                    className="px-3 py-1 text-sm border border-[var(--border-light)]
- rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Next
-                  </button>
-                </div>
+              {sortedReservations.length > 0 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={Math.max(1, Math.ceil(sortedReservations.length / itemsPerPage))}
+                  totalItems={sortedReservations.length}
+                  itemsPerPage={itemsPerPage}
+                  onPageChange={setCurrentPage}
+                  onLimitChange={(newLimit) => {
+                    setItemsPerPage(newLimit);
+                    setCurrentPage(1);
+                  }}
+                  pageSizeOptions={[5, 10, 20, 50]}
+                  itemLabel="reservations"
+                  variant="numbered"
+                  className="mt-4 pt-4 border-t border-border"
+                />
               )}
             </div>
           </div>

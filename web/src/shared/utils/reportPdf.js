@@ -1,5 +1,4 @@
 import { jsPDF } from "jspdf";
-import defaultLogo from "../../assets/images/LOGO.png";
 
 // ─────────────────────────────────────────────────────────────
 // UNIT SYSTEM  (all mm unless noted)
