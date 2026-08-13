@@ -197,9 +197,9 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
           </span>
         </div>
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-3">
-            <div className="p-2.5 bg-slate-900 dark:bg-amber-600 text-white rounded-xl shadow-sm flex items-center justify-center">
-              <Home className="w-5 h-5 text-white" />
+          <h2 className="text-2xl sm:text-3xl font-bold mb-1 flex items-center gap-3">
+            <div className="p-2.5 rounded-xl shadow-sm flex items-center justify-center">
+              <Home className="w-5 h-5" />
             </div>
             Room Summary
           </h2>
@@ -283,7 +283,7 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
           </div>
           <div className="summary-row">
             <span className="summary-label">Room Designation</span>
-            <span className="summary-value font-bold text-slate-900 dark:text-white">{getRoomName(room)}</span>
+            <span className="summary-value font-bold">{getRoomName(room)}</span>
           </div>
           {floorLabel && (
             <div className="summary-row">
@@ -344,7 +344,7 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
         <div className="summary-section">
           <div className="summary-row">
             <span className="summary-label">Monthly Rent</span>
-            <span className="summary-value font-semibold text-slate-900 dark:text-white">
+            <span className="summary-value font-semibold">
               {hasResolvedMonthlyRate ? `${formatCurrency(monthlyRent)} / month` : "Calculated upon review"}
             </span>
           </div>
@@ -373,12 +373,16 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
             </span>
           </div>
 
-          <div className="total-section mt-4 bg-slate-900 text-white rounded-xl p-4 flex items-center justify-between shadow-sm">
+          <div className="total-section mt-4 rounded-xl p-4 flex items-center justify-between shadow-sm">
             <div className="flex flex-col">
-              <span className="text-xs uppercase tracking-wide font-medium text-slate-300">Estimated Monthly Total</span>
-              <span className="text-[11px] text-slate-400 font-normal">Excludes utility water/electricity share</span>
+              <span className="text-xs uppercase tracking-wide font-medium text-zinc-900">
+  Estimated Monthly Total
+</span>
+<span className="text-[11px] text-zinc-800/70 font-normal">
+  Excludes utility water/electricity share
+</span>
             </div>
-            <span className="total-amount text-xl font-bold text-white">
+            <span className="total-amount text-xl font-bold">
               {hasResolvedMonthlyRate ? formatCurrency(estimatedMonthlyTotal) : "To be confirmed"}
             </span>
           </div>
@@ -424,8 +428,8 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
 
       {/* Room Change Confirmation Modal */}
       {showRoomChangeConfirm && createPortal(
-        <div className="rf-photo-viewer" role="dialog" aria-modal="true" style={{ backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl space-y-4 border border-slate-100" onClick={(e) => e.stopPropagation()}>
+        <div className="rf-photo-viewer" role="dialog" aria-modal="true" style={{ backgroundColor: 'color-mix(in srgb, var(--foreground) 12%, transparent)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl space-y-4 border" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 text-amber-600">
               <div className="p-2.5 bg-amber-50 rounded-xl">
                 <AlertCircle className="w-6 h-6" />
@@ -445,7 +449,7 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
               </button>
               <button
                 type="button"
-                className="px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-colors shadow-sm"
+                className="px-4 py-2 text-sm font-medium rounded-xl transition-colors shadow-sm"
                 onClick={() => {
                   setShowRoomChangeConfirm(false);
                   onChangeRoom();
@@ -463,4 +467,3 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
 };
 
 export default ReservationSummaryStep;
-

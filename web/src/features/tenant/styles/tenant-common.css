@@ -19,7 +19,7 @@
 
 .page-header h1 {
   font-size: 1.875rem;
-  color: var(--text-heading);
+  color: var(--foreground);
   margin: 0 0 0.5rem 0;
   display: flex;
   align-items: center;
@@ -29,30 +29,54 @@
 }
 
 .page-header p {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   margin: 0;
   font-size: 0.96rem;
   max-width: 720px;
 }
 
+/* Keep the maintenance workspace aligned with the profile tab headings. */
+.maintenance-page-header {
+  margin-bottom: 1.5rem;
+}
+
+.maintenance-page-header h1 {
+  font-size: 22px;
+  letter-spacing: normal;
+  margin-bottom: 4px;
+}
+
+.maintenance-page-header p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* Section Cards */
 .section-card {
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--card);
   border-radius: 1rem;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
-  border: 1px solid rgba(10, 22, 40, 0.08);
-  box-shadow: 0 14px 28px rgba(10, 22, 40, 0.05);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
 }
 
 .section-card h2 {
   font-size: 1.25rem;
-  color: var(--text-heading);
+  color: var(--foreground);
   margin: 0 0 1rem 0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-weight: 600;
+}
+
+/* All body copy inside cards defaults to the base text size unless a
+   more specific rule below overrides it, so it never outsizes headings. */
+.section-card p,
+.maintenance-item p,
+.maintenance-description-preview {
+  font-size: var(--font-size);
 }
 
 /* Billing Styles */
@@ -65,10 +89,10 @@
 
 .balance-card,
 .breakdown-card {
-  background: white;
+  background: var(--card);
   border-radius: 0.75rem;
   padding: 1.5rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
 }
 
 .balance-header {
@@ -80,13 +104,13 @@
 
 .due-date {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--muted-foreground);
 }
 
 .balance-amount {
   font-size: 3rem;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--foreground);
   margin-bottom: 1.5rem;
 }
 
@@ -100,12 +124,12 @@
   display: flex;
   justify-content: space-between;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border-card);
+  border-bottom: 1px solid var(--border);
   font-size: 1rem;
 }
 
 .breakdown-item.penalty {
-  color: var(--color-danger);
+  color: var(--danger);
   font-weight: 600;
 }
 
@@ -122,13 +146,14 @@
 .payment-history-table td {
   padding: 1rem;
   text-align: left;
-  border-bottom: 1px solid var(--border-card);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--font-size);
 }
 
 .payment-history-table th {
-  background: #f9fafb;
+  background: var(--muted);
   font-weight: 600;
-  color: #374151;
+  color: var(--foreground);
 }
 
 /* Maintenance Styles */
@@ -161,8 +186,9 @@
   padding: 0.95rem 1.1rem;
   border-radius: 14px;
   margin-bottom: 1rem;
-  border: 1px solid rgba(10, 22, 40, 0.1);
+  border: 1px solid var(--border);
   font-weight: 700;
+  font-size: var(--font-size);
 }
 
 .maintenance-banner button {
@@ -174,21 +200,21 @@
 }
 
 .maintenance-banner--success {
-  background: #ecfdf3;
-  border-color: #bbf7d0;
-  color: #166534;
+  background: var(--success-light);
+  border-color: var(--success);
+  color: var(--success-dark);
 }
 
 .maintenance-banner--error {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #b91c1c;
+  background: var(--danger-light);
+  border-color: var(--danger-light);
+  color: var(--danger-dark);
 }
 
 .maintenance-banner--warning {
-  background: #fffbeb;
-  border-color: #fde68a;
-  color: #92400e;
+  background: var(--warning-light);
+  border-color: var(--warning-light);
+  color: var(--warning-dark);
 }
 
 .maintenance-summary-grid {
@@ -198,15 +224,15 @@
 }
 
 .maintenance-summary-card {
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px 16px;
-  background: #fff;
+  background: var(--card);
 }
 
 .maintenance-summary-card div {
   font-size: 12px;
-  color: #64748b;
+  color: var(--muted-foreground);
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -214,7 +240,7 @@
 
 .maintenance-summary-card strong {
   font-size: 22px;
-  color: #0f172a;
+  color: var(--foreground);
 }
 
 .maintenance-history-header {
@@ -229,10 +255,10 @@
   gap: 0.5rem;
   min-width: min(320px, 100%);
   padding: 0.7rem 0.9rem;
-  border: 1px solid rgba(10, 22, 40, 0.12);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: rgba(248, 250, 252, 0.78);
-  color: #64748b;
+  background: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .maintenance-search input {
@@ -240,7 +266,8 @@
   outline: 0;
   width: 100%;
   background: transparent;
-  color: var(--text-body);
+  color: var(--foreground);
+  font-size: var(--font-size);
 }
 
 .maintenance-tabs {
@@ -251,19 +278,20 @@
 }
 
 .maintenance-tabs button {
-  border: 1px solid rgba(10, 22, 40, 0.12);
-  background: rgba(255, 255, 255, 0.88);
-  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--muted-foreground);
   border-radius: 999px;
   padding: 0.65rem 1rem;
   cursor: pointer;
   font-weight: 700;
+  font-size: var(--font-size);
 }
 
 .maintenance-tabs button.active {
-  background: #1e3a5f;
-  color: white;
-  border-color: #1e3a5f;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
 }
 
 .maintenance-list {
@@ -277,9 +305,9 @@
   justify-content: space-between;
   align-items: center;
   padding: 1.5rem;
-  border: 1px solid rgba(10, 22, 40, 0.08);
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: rgba(248, 250, 252, 0.76);
+  background: var(--card);
   transition:
     background 0.2s ease,
     border-color 0.2s ease,
@@ -304,11 +332,13 @@
 
 .maintenance-card-title h3 {
   margin: 0 0 4px;
+  font-size: 1rem;
 }
 
 .maintenance-card-title p {
   margin: 0;
-  color: #64748b;
+  color: var(--muted-foreground);
+  font-size: var(--font-size);
 }
 
 .maintenance-type-icon {
@@ -333,31 +363,31 @@
 
 .maintenance-description-preview {
   margin: 14px 0 0;
-  color: #334155;
+  color: var(--foreground);
 }
 
 .maintenance-card-meta {
   margin-top: 12px;
   flex-wrap: wrap;
   gap: 10px;
-  color: #64748b;
+  color: var(--muted-foreground);
   font-size: 13px;
 }
 
 .maintenance-field-error {
   margin: 0.45rem 0 0;
-  color: #b91c1c;
+  color: var(--danger-dark);
   font-size: 0.85rem;
   font-weight: 600;
 }
 
 .form-group.has-error .form-control {
-  border-color: #fca5a5;
+  border-color: var(--danger-light);
 }
 
 .maintenance-help-text {
   margin-top: 8px;
-  color: #64748b;
+  color: var(--muted-foreground);
   font-size: 13px;
 }
 
@@ -374,11 +404,11 @@
   gap: 10px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: #f8fafc;
+  background: var(--muted);
 }
 
 .maintenance-attachment-row span {
-  color: #334155;
+  color: var(--foreground);
   font-size: 13px;
 }
 
@@ -386,7 +416,7 @@
   position: fixed;
   inset: 0;
   z-index: 80;
-  background: rgba(15, 23, 42, 0.45);
+  background: color-mix(in srgb, var(--foreground) 45%, transparent);
   display: grid;
   place-items: center;
   padding: 1.25rem;
@@ -397,11 +427,11 @@
   width: min(760px, 100%);
   max-height: min(88vh, 900px);
   overflow: auto;
-  background: var(--surface-card, #fff);
+  background: var(--card);
   border-radius: 18px;
   padding: 1.35rem;
-  border: 1px solid rgba(10, 22, 40, 0.12);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xl);
 }
 
 .maintenance-confirm {
@@ -419,25 +449,27 @@
 .maintenance-modal__header h2,
 .maintenance-confirm h2 {
   margin: 0 0 0.25rem;
-  color: var(--text-heading);
+  color: var(--foreground);
+  font-size: 1.125rem;
 }
 
 .maintenance-modal__header p,
 .maintenance-confirm p {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
+  font-size: var(--font-size);
 }
 
 .maintenance-modal__header button {
-  border: 1px solid rgba(10, 22, 40, 0.1);
+  border: 1px solid var(--border);
   border-radius: 999px;
   width: 36px;
   height: 36px;
   display: grid;
   place-items: center;
-  background: rgba(248, 250, 252, 0.88);
+  background: var(--muted);
   cursor: pointer;
-  color: #64748b;
+  color: var(--muted-foreground);
 }
 
 .maintenance-detail-grid {
@@ -448,15 +480,15 @@
 }
 
 .maintenance-detail-grid > div {
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.85rem;
-  background: #f8fafc;
+  background: var(--muted);
 }
 
 .maintenance-detail-grid span {
   display: block;
-  color: #64748b;
+  color: var(--muted-foreground);
   font-size: 0.78rem;
   font-weight: 700;
   margin-bottom: 0.35rem;
@@ -465,27 +497,29 @@
 }
 
 .maintenance-detail-grid strong {
-  color: #0f172a;
+  color: var(--foreground);
+  font-size: var(--font-size);
 }
 
 .maintenance-detail-section {
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  border-top: 1px solid var(--border);
   padding-top: 1rem;
   margin-top: 1rem;
 }
 
 .maintenance-detail-section h3,
 .maintenance-detail-callout h3 {
-  color: var(--text-heading);
+  color: var(--foreground);
   font-size: 0.95rem;
   margin: 0 0 0.45rem;
 }
 
 .maintenance-detail-section p,
 .maintenance-detail-callout p {
-  color: #475569;
+  color: var(--muted-foreground);
   margin: 0;
   line-height: 1.55;
+  font-size: var(--font-size);
 }
 
 .maintenance-detail-callout {
@@ -495,15 +529,15 @@
   border-radius: 12px;
   padding: 0.95rem;
   margin-top: 1rem;
-  background: #fffbeb;
-  color: #92400e;
-  border: 1px solid #fde68a;
+  background: var(--warning-light);
+  color: var(--warning-dark);
+  border: 1px solid var(--warning-light);
 }
 
 .maintenance-detail-callout--info {
-  background: #eff6ff;
-  color: #2563eb;
-  border-color: #bfdbfe;
+  background: var(--info-light);
+  color: var(--info-dark);
+  border-color: var(--info-light);
 }
 
 .maintenance-detail-links {
@@ -515,7 +549,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  color: #2563eb;
+  color: var(--info);
   font-size: 0.9rem;
   width: fit-content;
 }
@@ -526,22 +560,22 @@
 }
 
 .maintenance-timeline article {
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.85rem;
-  background: #f8fafc;
+  background: var(--muted);
 }
 
 .maintenance-timeline strong {
   display: block;
-  color: #0f172a;
+  color: var(--foreground);
   font-size: 0.86rem;
   margin-bottom: 0.2rem;
 }
 
 .maintenance-timeline span,
 .maintenance-timeline p {
-  color: #64748b;
+  color: var(--muted-foreground);
   font-size: 0.86rem;
 }
 
@@ -554,25 +588,25 @@
 }
 
 .maintenance-danger-button {
-  color: #b91c1c;
-  border-color: #fecaca;
-  background: #fef2f2;
+  color: var(--danger-dark);
+  border-color: var(--danger-light);
+  background: var(--danger-light);
 }
 
 .maintenance-item:hover {
-  background: var(--surface-card);
-  border-color: rgba(10, 22, 40, 0.12);
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
   transform: translateY(-1px);
 }
 
 .maintenance-info h3 {
   font-size: 1.125rem;
-  color: var(--text-heading);
+  color: var(--foreground);
   margin: 0 0 0.5rem 0;
 }
 
 .maintenance-info p {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   margin: 0;
   font-size: 0.875rem;
 }
@@ -582,20 +616,21 @@
   align-items: center;
   gap: 1rem;
   padding: 1.5rem;
-  border: 1px dashed rgba(10, 22, 40, 0.14);
+  border: 1px dashed var(--border);
   border-radius: 16px;
-  color: var(--text-secondary);
-  background: rgba(248, 250, 252, 0.72);
+  color: var(--muted-foreground);
+  background: var(--muted);
 }
 
 .maintenance-empty-state strong {
   display: block;
-  color: var(--text-heading);
+  color: var(--foreground);
   margin-bottom: 0.25rem;
 }
 
 .maintenance-empty-state p {
   margin: 0;
+  font-size: var(--font-size);
 }
 
 /* Announcements Styles */
@@ -608,18 +643,19 @@
 
 .filter-tabs .tab {
   padding: 0.75rem 1.5rem;
-  background: white;
-  border: 1px solid var(--border-card);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--muted-foreground);
+  font-size: var(--font-size);
 }
 
 .filter-tabs .tab.active {
-  background: none 0%, #1E3A5F 100%);
-  color: white;
+  background: var(--primary);
+  color: var(--primary-foreground);
   border-color: transparent;
 }
 
@@ -630,14 +666,15 @@
 }
 
 .announcement-card {
-  background: white;
+  background: var(--card);
   border-radius: 12px;
   padding: 2rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
 }
 
 .announcement-card.unread {
-  border-left: 4px solid #ef4444;
+  border-left: 4px solid var(--danger);
 }
 
 .announcement-header {
@@ -654,14 +691,14 @@
 .unread-indicator {
   width: 10px;
   height: 10px;
-  background: #ef4444;
+  background: var(--danger);
   border-radius: 50%;
   flex-shrink: 0;
 }
 
 .announcement-header h3 {
   font-size: 1.25rem;
-  color: #1f2937;
+  color: var(--foreground);
   margin: 0;
 }
 
@@ -679,34 +716,35 @@
 }
 
 .category-reminder {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--warning-light);
+  color: var(--warning-dark);
 }
 
 .category-maintenance {
-  background: var(--color-info-bg);
-  color: #1e40af;
+  background: var(--info-light);
+  color: var(--info-dark);
 }
 
 .category-policy {
-  background: #e0e7ff;
-  color: #4338ca;
+  background: var(--accent-purple-bg);
+  color: var(--chart-4);
 }
 
 .category-utilities {
-  background: #d1fae5;
-  color: #065f46;
+  background: var(--success-light);
+  color: var(--success-dark);
 }
 
 .announcement-date {
-  color: #6b7280;
+  color: var(--muted-foreground);
   font-size: 0.875rem;
 }
 
 .announcement-content {
-  color: #374151;
+  color: var(--foreground);
   line-height: 1.6;
   margin: 0 0 1rem 0;
+  font-size: var(--font-size);
 }
 
 .announcement-actions {
@@ -726,7 +764,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 1.5rem 0;
-  border-bottom: 1px solid var(--border-card);
+  border-bottom: 1px solid var(--border);
 }
 
 .settings-item:last-child {
@@ -735,12 +773,12 @@
 
 .settings-item h4 {
   font-size: 1rem;
-  color: #1f2937;
+  color: var(--foreground);
   margin: 0 0 0.25rem 0;
 }
 
 .settings-item p {
-  color: #6b7280;
+  color: var(--muted-foreground);
   margin: 0;
   font-size: 0.875rem;
 }
@@ -765,7 +803,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: #cbd5e1;
+  background: var(--border);
   border-radius: 26px;
   transition: 0.4s;
 }
@@ -777,13 +815,13 @@
   width: 20px;
   left: 3px;
   bottom: 3px;
-  background: white;
+  background: var(--card);
   border-radius: 50%;
   transition: 0.4s;
 }
 
 .toggle-switch input:checked + .toggle-slider {
-  background: var(--text-heading);
+  background: var(--foreground);
 }
 
 .toggle-switch input:checked + .toggle-slider::before {
@@ -799,23 +837,24 @@
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 500;
-  color: #374151;
+  color: var(--foreground);
+  font-size: var(--font-size);
 }
 
 .form-control {
   width: 100%;
   padding: 0.85rem 0.95rem;
-  border: 1px solid rgba(10, 22, 40, 0.12);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  font-size: 1rem;
-  color: var(--text-body);
-  background: rgba(248, 250, 252, 0.7);
+  font-size: var(--font-size-md);
+  color: var(--foreground);
+  background: var(--input-background);
 }
 
 .form-control:focus {
   outline: none;
-  border-color: rgba(212, 175, 55, 0.7);
-  box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.12);
+  border-color: var(--ring);
+  box-shadow: 0 0 0 4px var(--border-focus);
 }
 
 .form-actions {
@@ -848,24 +887,24 @@
 }
 
 .btn-primary {
-  background: #1E3A5F;
-  color: white;
-  box-shadow: 0 4px 12px rgba(10, 22, 40, 0.16);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 16px 28px rgba(10, 22, 40, 0.22);
+  box-shadow: var(--shadow-lg);
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.86);
-  color: var(--text-secondary);
-  border-color: rgba(10, 22, 40, 0.12);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  border-color: var(--border);
 }
 
 .btn-secondary:hover {
-  background: rgba(248, 250, 252, 1);
+  background: var(--bg-hover);
 }
 
 /* Badges */
@@ -877,18 +916,18 @@
 }
 
 .badge-success {
-  background: #d1fae5;
-  color: #065f46;
+  background: var(--success-light);
+  color: var(--success-dark);
 }
 
 .badge-info {
-  background: var(--color-info-bg);
-  color: #1e40af;
+  background: var(--info-light);
+  color: var(--info-dark);
 }
 
 .badge-warning {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--warning-light);
+  color: var(--warning-dark);
 }
 
 /* Alert */
@@ -902,9 +941,9 @@
 }
 
 .alert-warning {
-  background: #fef3c7;
-  border: 1px solid #fde68a;
-  color: #92400e;
+  background: var(--warning-light);
+  border: 1px solid var(--warning-light);
+  color: var(--warning-dark);
 }
 
 .profile-alert i {
@@ -955,71 +994,17 @@
 
 /* ══════════════════════════════════════════════════════════════
    TENANT COMMON — DARK MODE
+   (design-tokens.css already swaps the underlying --foreground,
+   --card, --border, --muted, etc. values under html[data-theme="dark"],
+   so most rules above adapt automatically. These overrides only
+   handle the couple of cases that need a different treatment,
+   e.g. a lighter hover state than the flat --bg-hover mix gives.)
    ══════════════════════════════════════════════════════════════ */
 
-html[data-theme="dark"] .page-header h1 { color: var(--text-heading); }
-html[data-theme="dark"] .page-header p  { color: var(--text-secondary); }
-
-html[data-theme="dark"] .section-card {
-  background: var(--surface-card);
-  border-color: var(--border-card);
-}
-html[data-theme="dark"] .section-card h2 { color: var(--text-heading); }
-
-html[data-theme="dark"] .balance-card,
-html[data-theme="dark"] .breakdown-card {
-  background: var(--surface-card);
-  border-color: var(--border-card);
-}
-html[data-theme="dark"] .due-date        { color: var(--text-secondary); }
-html[data-theme="dark"] .balance-amount  { color: var(--text-heading); }
-html[data-theme="dark"] .breakdown-item  { border-bottom-color: var(--border-subtle); }
-
-html[data-theme="dark"] .payment-history-table th {
-  background: var(--surface-muted);
-  color: var(--text-body);
-}
-html[data-theme="dark"] .payment-history-table th,
-html[data-theme="dark"] .payment-history-table td {
-  border-bottom-color: var(--border-subtle);
+html[data-theme="dark"] .maintenance-item:hover {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
 }
 
-html[data-theme="dark"] .maintenance-item { border-color: var(--border-card); }
-html[data-theme="dark"] .maintenance-item:hover { background: var(--surface-hover); }
-html[data-theme="dark"] .maintenance-info h3 { color: var(--text-heading); }
-html[data-theme="dark"] .maintenance-info p  { color: var(--text-secondary); }
-html[data-theme="dark"] .maintenance-empty-state {
-  border-color: var(--border-card);
-  background: var(--surface-card);
+html[data-theme="dark"] .filter-tabs .tab.active {
+  color: var(--primary-foreground);
 }
-
-html[data-theme="dark"] .filter-tabs .tab {
-  background: var(--surface-card);
-  border-color: var(--border-card);
-  color: var(--text-secondary);
-}
-
-html[data-theme="dark"] .announcement-card {
-  background: var(--surface-card);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-}
-html[data-theme="dark"] .announcement-header h3 { color: var(--text-heading); }
-html[data-theme="dark"] .announcement-date     { color: var(--text-muted); }
-html[data-theme="dark"] .announcement-content  { color: var(--text-body); }
-
-html[data-theme="dark"] .settings-item        { border-bottom-color: var(--border-subtle); }
-html[data-theme="dark"] .settings-item h4     { color: var(--text-heading); }
-html[data-theme="dark"] .settings-item p      { color: var(--text-secondary); }
-
-html[data-theme="dark"] .form-group label     { color: var(--text-body); }
-html[data-theme="dark"] .form-control {
-  border-color: var(--border-card);
-  color: var(--text-body);
-}
-
-html[data-theme="dark"] .btn-secondary {
-  background: var(--surface-card);
-  color: var(--text-secondary);
-  border-color: var(--border-card);
-}
-html[data-theme="dark"] .btn-secondary:hover { background: var(--surface-hover); }

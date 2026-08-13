@@ -127,7 +127,7 @@ const ReservationConfirmationStep = ({
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
             <path
               d="M20 6L9 17l-5-5"
-              stroke="#fff"
+              stroke="var(--text-inverse)"
               strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"

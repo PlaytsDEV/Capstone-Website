@@ -19,6 +19,7 @@ import {
  getAnnouncementCategoryMeta,
 } from "../../../../shared/utils/announcementConfig";
 import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
+import "../../../admin/styles/design-tokens.css";
 
 const CATEGORY_ICONS = {
  general: Megaphone,
@@ -29,13 +30,34 @@ const CATEGORY_ICONS = {
  event: Megaphone,
 };
 
+const FILTER_CATEGORIES = ["all", "general", "reminder", "maintenance", "policy", "event", "alert"];
+
 const CATEGORY_COLORS = {
- neutral: { color: "#0A1628", bg: "#F1F5F9" },
- info: { color: "#2563EB", bg: "#EFF6FF" },
- warning: { color: "#D97706", bg: "#FFFBEB" },
- accent: { color: "#7C3AED", bg: "#F5F3FF" },
- success: { color: "#059669", bg: "#ECFDF5" },
- danger: { color: "#DC2626", bg: "#FEF2F2" },
+ slate: { color: "var(--muted-foreground)", bg: "var(--muted)" },
+ teal: {
+ color: "var(--chart-2)",
+ bg: "color-mix(in srgb, var(--chart-2) 14%, var(--card))",
+ },
+ orange: {
+ color: "var(--chart-3)",
+ bg: "color-mix(in srgb, var(--chart-3) 14%, var(--card))",
+ },
+ blue: {
+ color: "var(--info-dark)",
+ bg: "color-mix(in srgb, var(--info) 14%, var(--card))",
+ },
+ purple: {
+ color: "var(--chart-4)",
+ bg: "color-mix(in srgb, var(--chart-4) 14%, var(--card))",
+ },
+ green: {
+ color: "var(--success-dark)",
+ bg: "color-mix(in srgb, var(--success) 14%, var(--card))",
+ },
+ red: {
+ color: "var(--danger-dark)",
+ bg: "color-mix(in srgb, var(--danger) 14%, var(--card))",
+ },
 };
 
 const fmtDate = (value) =>
@@ -48,7 +70,7 @@ const fmtDate = (value) =>
 const getAnnouncementId = (announcement) => announcement.id || announcement._id;
 
 const LoadingState = () => (
- <div style={{ width: "100%" }}>
+ <div style={s.root}>
  <div style={s.heading}>
  <h1 style={s.title}>Announcements</h1>
  <p style={s.subtitle}>Stay updated with branch notices, policy versions, and required acknowledgments</p>
@@ -68,7 +90,7 @@ export default function AnnouncementsTab() {
 
  const filters = useMemo(() => {
  const values = [
- "all",
+ ...FILTER_CATEGORIES,
  ...new Set(
  announcements
  .map((announcement) => announcement.category)
@@ -76,7 +98,7 @@ export default function AnnouncementsTab() {
  ),
  ];
 
- return values.map((value) => ({
+ return [...new Set(values)].map((value) => ({
  value,
  label: value === "all" ? "All" : formatAnnouncementCategory(value),
  }));
@@ -140,13 +162,16 @@ export default function AnnouncementsTab() {
  return (
  <div style={{ width: "100%" }}>
  <div style={s.heading}>
+ <div>
  <h1 style={s.title}>Announcements</h1>
  <p style={s.subtitle}>
- Stay updated with branch notices, policy versions, and required acknowledgments
+ Stay updated with branch notices, policy versions, and required acknowledgments.
  </p>
  </div>
+ <span style={s.countBadge}>{filtered.length} shown</span>
+ </div>
 
- <div style={s.filterRow}>
+ <div style={s.filterRow} aria-label="Filter announcements">
  {filters.map((item) => (
  <button
  key={item.value}
@@ -163,7 +188,7 @@ export default function AnnouncementsTab() {
 
  {filtered.length === 0 ? (
  <div style={s.emptyState}>
- <Megaphone size={48} color="#D1D5DB" />
+ <Megaphone size={48} color="var(--neutral)" />
  <h3 style={s.emptyTitle}>No announcements</h3>
  <p style={s.emptyBody}>
  {filter === "all"
@@ -172,11 +197,11 @@ export default function AnnouncementsTab() {
  </p>
  </div>
  ) : (
- <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+ <div style={s.list}>
  {filtered.map((announcement) => {
  const categoryMeta = getAnnouncementCategoryMeta(announcement.category);
  const tone =
- CATEGORY_COLORS[categoryMeta.tone] || CATEGORY_COLORS.neutral;
+ CATEGORY_COLORS[categoryMeta.tone] || CATEGORY_COLORS.slate;
  const CategoryIcon =
  CATEGORY_ICONS[announcement.category] || Megaphone;
 
@@ -185,8 +210,7 @@ export default function AnnouncementsTab() {
  key={getAnnouncementId(announcement)}
  style={{
  ...s.card,
- borderLeft: `3px solid ${tone.color}`,
- ...(announcement.unread ? { background: "var(--surface-page)" } : {}),
+ ...(announcement.unread ? { background: "var(--card)", boxShadow: "var(--shadow-sm)" } : {}),
  }}
  >
  <div style={s.cardTop}>
@@ -213,7 +237,7 @@ export default function AnnouncementsTab() {
  <p style={s.cardBody}>{announcement.content}</p>
 
  {announcement.contentType === "policy" ? (
- <div style={{ marginTop: 10, color: "#64748B", fontSize: 12 }}>
+ <div style={{ marginTop: 10, color: "var(--muted-foreground)", fontSize: 12 }}>
  Version {announcement.version || 1}
  {announcement.effectiveDate
  ? ` • Effective ${fmtDate(announcement.effectiveDate)}`
@@ -229,7 +253,7 @@ export default function AnnouncementsTab() {
  <Check size={13} /> Acknowledged
  </span>
  {announcement.acknowledgedAt ? (
- <span style={{ color: "#64748B", fontSize: 12 }}>
+ <span style={{ color: "var(--muted-foreground)", fontSize: 12 }}>
  Acknowledged {fmtDate(announcement.acknowledgedAt)}
  </span>
  ) : null}
@@ -255,18 +279,36 @@ export default function AnnouncementsTab() {
 }
 
 const s = {
- heading: { marginBottom: 24 },
+ root: { width: "100%", maxWidth: 920, margin: "0 auto" },
+ heading: {
+ display: "flex",
+ justifyContent: "space-between",
+ alignItems: "flex-start",
+ gap: 16,
+ marginBottom: 20,
+ },
  title: {
  fontSize: 22,
  fontWeight: 700,
  color: "var(--text-heading)",
  margin: 0,
  },
- subtitle: { fontSize: 13, color: "var(--text-muted)", marginTop: 4 },
+ subtitle: { fontSize: 13, color: "var(--muted-foreground)", margin: "4px 0 0", lineHeight: 1.5 },
+ countBadge: {
+ flexShrink: 0,
+ padding: "5px 10px",
+ borderRadius: 999,
+ background: "var(--muted)",
+ color: "var(--muted-foreground)",
+ fontSize: 12,
+ fontWeight: 600,
+ },
  filterRow: {
  display: "flex",
  gap: 8,
- marginBottom: 20,
+ marginBottom: 16,
+ paddingBottom: 4,
+ overflowX: "auto",
  flexWrap: "wrap",
  },
  chip: {
@@ -276,23 +318,25 @@ const s = {
  padding: "6px 14px",
  borderRadius: 20,
  border: "1px solid var(--border-card)",
- background: "var(--surface-card)",
- color: "var(--text-secondary)",
+ background: "var(--card)",
+ color: "var(--muted-foreground)",
  fontSize: 13,
  fontWeight: 500,
  cursor: "pointer",
  transition: "all 0.15s",
  },
  chipActive: {
- background: "#0A1628",
- color: "#fff",
- border: "1px solid #0A1628",
- },
+ background: "var(--primary)",
+ color: "var(--primary-foreground)",
+ border: "1px solid var(--primary)",
+},
+ list: { display: "flex", flexDirection: "column", gap: 12 },
  card: {
  padding: "16px 18px",
- background: "var(--surface-card)",
- border: "1px solid var(--border-card)",
- borderRadius: 10,
+ background: "var(--card)",
+ border: "1px solid var(--border)",
+ borderRadius: 12,
+ boxShadow: "var(--shadow-xs)",
  },
  cardTop: {
  display: "flex",
@@ -312,7 +356,7 @@ const s = {
  width: 7,
  height: 7,
  borderRadius: "50%",
- background: "#FF8C42",
+ background: "var(--primary)",
  flexShrink: 0,
  },
  cardTitle: {
@@ -341,7 +385,7 @@ const s = {
  },
  dateText: {
  fontSize: 11,
- color: "#9CA3AF",
+ color: "var(--neutral)",
  },
  cardBody: {
  fontSize: 13,
@@ -358,15 +402,15 @@ const s = {
  gap: 5,
  fontSize: 12,
  fontWeight: 600,
- color: "#059669",
+ color: "var(--success)",
  },
  ackButton: {
  display: "inline-flex",
  alignItems: "center",
  gap: 5,
  padding: "6px 14px",
- background: "#FF8C42",
- color: "#fff",
+ background: "var(--primary)",
+ color: "var(--primary-foreground)",
  border: "none",
  borderRadius: 6,
  fontSize: 12,
@@ -380,19 +424,19 @@ const s = {
  justifyContent: "center",
  textAlign: "center",
  padding: "56px 24px",
- background: "var(--surface-card)",
+ background: "var(--card)",
  borderRadius: 10,
- border: "1px solid var(--border-card)",
+ border: "1px solid var(--border)",
  },
  emptyTitle: {
  fontSize: 16,
  fontWeight: 600,
- color: "#374151",
+ color: "var(--foreground)",
  margin: "16px 0 8px",
  },
  emptyBody: {
  fontSize: 13,
- color: "#9CA3AF",
+ color: "var(--muted-foreground)",
  maxWidth: 280,
  },
 };

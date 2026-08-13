@@ -303,7 +303,7 @@ const AddressCascadeFields = ({
 
  // ── Error border helper ─────────────────────────────────────
  const errBorder = (show, value) =>
- show && !value ? "1.5px solid #dc2626" : undefined;
+ show && !value ? "1.5px solid var(--danger)" : undefined;
 
  return (
  <>

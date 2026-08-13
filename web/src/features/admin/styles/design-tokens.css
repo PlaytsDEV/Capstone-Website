@@ -7,6 +7,13 @@
 
 
 :root {
+  /* Profile page palette — used by PersonalDetailsTab */
+  --profile-navy: #0A2463;
+  --profile-navy-bg: color-mix(in srgb, var(--profile-navy) 8%, transparent);
+  --profile-accent: #FF8C42;
+  --profile-accent-bg: color-mix(in srgb, var(--profile-accent) 6%, transparent);
+  --profile-accent-ring: color-mix(in srgb, var(--profile-accent) 10%, transparent);
+  
   /* Core semantic source of truth — Analytics Typography System */
   --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-family: var(--font-sans, "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
@@ -91,6 +98,15 @@
   --text-secondary: var(--muted-foreground);
   --text-muted: var(--neutral);
   --text-inverse: var(--background);
+  /* Aliases used by tenant-common.css so both naming schemes resolve
+     to the same real tokens instead of silently falling back to
+     browser defaults. */
+  --text-heading: var(--foreground);
+  --text-body: var(--foreground);
+  --surface-card: var(--card);
+  --surface-muted: var(--muted);
+  --surface-hover: var(--bg-hover);
+  --border-card: var(--border);
 
   --bg-page: var(--background);
   --bg-card: var(--card);
@@ -105,6 +121,7 @@
   --border-default: var(--border);
   --border-strong: color-mix(in srgb, var(--border) 140%, var(--foreground));
   --border-focus: color-mix(in srgb, var(--ring) 60%, transparent);
+  --border-subtle: var(--border-light);
 
   --status-success: var(--success);
   --status-success-bg: color-mix(in srgb, var(--success) 12%, transparent);
@@ -131,6 +148,7 @@
   --color-danger: var(--danger);
   --color-error: var(--danger);
   --color-info: var(--info);
+  --color-info-bg: var(--info-light);
 
   --accent-blue: var(--info);
   --accent-blue-bg: color-mix(in srgb, var(--info) 10%, transparent);
@@ -290,9 +308,19 @@ html[data-theme="dark"] {
   border-color: var(--border);
 }
 
+html {
+  font-family: var(--font-family);
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
+  /* Base text size for any element that doesn't set its own font-size
+     (previously undefined, so unstyled text fell back to the browser's
+     16px default and ended up looking bigger than headings/subtitles
+     that had explicit smaller sizes). */
+  font-size: var(--font-size);
+  line-height: 1.5;
 }
 
 input,
@@ -300,5 +328,9 @@ select,
 textarea {
   background-color: var(--input-background);
   color: var(--foreground);
+  font-size: var(--font-size-md);
 }
 
+.notif-filter-scroll::-webkit-scrollbar {
+  display: none;
+}

@@ -7,7 +7,7 @@ import {
 } from "../applicationFormConstants";
 
 const errBorder = (show, value) =>
- show && !value ? "1.5px solid #dc2626" : undefined;
+ show && !value ? "1.5px solid var(--danger)" : undefined;
 
 const openDatePicker = (event) => {
  event.currentTarget.showPicker?.();
@@ -39,7 +39,7 @@ const DormPreferencesSection = ({
  className="radio-group"
  style={{
  border: fieldErrors.referralSource
- ? "1.5px solid #dc2626"
+ ? "1.5px solid var(--danger)"
  : errBorder(showValidationErrors, referralSource),
   borderRadius: "8px",
   padding: showValidationErrors && !referralSource ? "8px" : undefined,
@@ -109,7 +109,7 @@ const DormPreferencesSection = ({
  colorScheme: "light",
  cursor: readOnly ? "not-allowed" : "pointer",
  border: fieldErrors.targetMoveInDate
- ? "1.5px solid #dc2626"
+ ? "1.5px solid var(--danger)"
  : errBorder(showValidationErrors, targetMoveInDate),
  }}
  />
@@ -132,10 +132,10 @@ const DormPreferencesSection = ({
  borderRadius: "8px",
  border:
  fieldErrors.estimatedMoveInTime
- ? "1.5px solid #dc2626"
- : errBorder(showValidationErrors, estimatedMoveInTime) || "1.5px solid #d1d5db",
+ ? "1.5px solid var(--danger)"
+ : errBorder(showValidationErrors, estimatedMoveInTime) || "1.5px solid var(--border)",
  fontSize: "14px",
- background: "white",
+ background: "var(--card)",
  width: "100%",
  }}
  >
@@ -167,7 +167,7 @@ const DormPreferencesSection = ({
  required
  style={{
  border: fieldErrors.leaseDuration
- ? "1.5px solid #dc2626"
+ ? "1.5px solid var(--danger)"
  : errBorder(showValidationErrors, leaseDuration),
  }}
  >
@@ -196,7 +196,7 @@ const DormPreferencesSection = ({
  className="radio-group"
  style={{
  border: fieldErrors.workSchedule
- ? "1.5px solid #dc2626"
+ ? "1.5px solid var(--danger)"
  : errBorder(showValidationErrors, workSchedule),
   borderRadius: "8px",
   padding: showValidationErrors && !workSchedule ? "8px" : undefined,
@@ -251,7 +251,7 @@ const DormPreferencesSection = ({
   placeholder="Please describe your typical work schedule"
   style={{
   border: fieldErrors.workScheduleOther
-  ? "1.5px solid #dc2626"
+  ? "1.5px solid var(--danger)"
   : workSchedule === "others"
   ? errBorder(showValidationErrors, workScheduleOther)
   : undefined,

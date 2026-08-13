@@ -9,38 +9,16 @@ import {
   resolveCurrentPreparedDocument,
   selectCurrentPreparedDocument,
 } from "../services/preparedContractDocumentService.js";
+import { mobileTenantAuth as mobileTenant } from "../middleware/mobileTenantAuth.js";
 
 const router = express.Router();
 const asyncRoute = (handler) => (req, res, next) =>
   Promise.resolve(handler(req, res, next)).catch(next);
 
-const mobileTenant = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.startsWith("Bearer ")
-      ? req.headers.authorization.slice(7)
-      : req.cookies?.session_token;
-    if (!token) return res.status(401).json({ detail: "Not authenticated" });
-    const session = await mongoose.connection.db.collection("user_sessions").findOne({
-      session_token: token,
-      expires_at: { $gt: new Date() },
-    });
-    if (!session?.user_id) return res.status(401).json({ detail: "Invalid or expired session" });
-    const user = await mongoose.connection.db.collection("users").findOne({ user_id: session.user_id });
-    if (!user || !["tenant", "applicant"].includes(user.role)) {
-      return res.status(403).json({ detail: "Tenant Contract access denied" });
-    }
-    req.mobileTenant = user;
-    req.user = {
-      mongoId: user._id,
-      email: user.email,
-      role: user.role,
-      branch: user.branch || "",
-    };
-    return next();
-  } catch {
-    return res.status(401).json({ detail: "Authentication error" });
-  }
-};
+// Session validation (expiry, account-restriction, securityVersion
+// revocation) now lives in one place — middleware/mobileTenantAuth.js —
+// instead of being duplicated inline here. See that file's header comment
+// for why. Local alias keeps every `mobileTenant` call site below unchanged.
 
 // Mobile must show the tenant's authoritative Contract starting from draft,
 // not only once it reaches "generated"/signed/published — unlike the Web "My

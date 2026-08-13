@@ -574,6 +574,15 @@ async function resendOtp(req, res) {
 // ─── GOOGLE SIGN-IN ─────────────────────────────────────────────────────────
 
 async function googleSignIn(req, res) {
+  // Stage timing — diagnostic only, no tokens/PII. Added to correlate
+  // intermittent client-observed timeouts against backend-side stage
+  // durations (see Phase 5.7 investigation notes).
+  const stageStart = process.hrtime.bigint();
+  const stageLog = { start: 0 };
+  const markStage = (name) => {
+    stageLog[name] = Number(process.hrtime.bigint() - stageStart) / 1e6;
+  };
+
   try {
     const { idToken } = req.body;
     if (!idToken) {
@@ -586,6 +595,7 @@ async function googleSignIn(req, res) {
     } catch {
       return res.status(401).json({ detail: 'Invalid Firebase ID token' });
     }
+    markStage('firebase_verify_ms');
 
     const { email, uid: fbUid } = decoded;
     if (!email) {
@@ -623,6 +633,8 @@ async function googleSignIn(req, res) {
       if (tenant) console.log('[GoogleSignIn] Found by Firebase identity', { user_fingerprint: shortFingerprint(tenant.user_id) });
     }
 
+    markStage('mongo_user_lookup_ms');
+
     // Not found → not a registered tenant
     if (!tenant) {
       console.log('[GoogleSignIn] Tenant lookup failed', { email_fingerprint: shortFingerprint(email) });
@@ -647,6 +659,7 @@ async function googleSignIn(req, res) {
       await invalidateMobileIdentity(db, tenant, 'identity_conflict', req);
       return res.status(401).json({ detail: 'Authentication failed. Please contact the administrator if the problem continues.', code: 'AUTHENTICATION_FAILED' });
     }
+    markStage('identity_conflict_check_ms');
 
     // Build update — only set email if it won't conflict with another user
     const updateFields = {
@@ -681,16 +694,39 @@ async function googleSignIn(req, res) {
         throw updateErr;
       }
     }
+    markStage('user_update_ms');
 
-    // Create session
-    const session = await createSession(db, tenant.user_id);
+    // Idempotency guard: if this exact user already has a session minted in
+    // the last few seconds, reuse it instead of unconditionally rotating.
+    // This exists so that a client-side connection-timeout retry (the
+    // mobile client retries this endpoint once on a connect failure — see
+    // AuthContext.signInWithGoogle) can never invalidate a session whose
+    // success response the client simply never received, or race-create a
+    // second one. Outside this narrow window, behavior is unchanged: a
+    // fresh login always rotates the session as before.
+    const RECENT_SESSION_WINDOW_MS = 10_000;
+    const recentSession = await db.collection('user_sessions').findOne(
+      { user_id: tenant.user_id, created_at: { $gt: new Date(Date.now() - RECENT_SESSION_WINDOW_MS) } },
+      { sort: { created_at: -1 } },
+    );
+    const session = recentSession
+      ? { session_token: recentSession.session_token, expires_at: recentSession.expires_at }
+      : await createSession(db, tenant.user_id);
     res.cookie('session_token', session.session_token, cookieOptions());
+    markStage('session_create_ms');
 
-    const user = await getCleanUser(db, tenant.user_id);
+    // Build the response user from the already-fetched `tenant` doc plus the
+    // exact fields we just wrote, instead of a redundant findOne — we know
+    // precisely what changed, so there is nothing a fresh fetch would add.
+    const { _id, ...tenantWithoutId } = tenant;
+    const user = normalizeUser({ ...tenantWithoutId, ...updateFields });
+    markStage('response_ready_ms');
+
     console.log('[GoogleSignIn] Success', {
       user_fingerprint: shortFingerprint(tenant.user_id),
       success: true,
     });
+    console.log('mobile_google_auth_stage', stageLog);
     res.json({ user, session_token: session.session_token });
   } catch (error) {
     console.error('Google auth error:', error);

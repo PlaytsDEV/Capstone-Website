@@ -78,6 +78,55 @@ function normalizeUser(doc) {
   return u;
 }
 
+// Client-visible field allowlist — mirrors the currently-live standalone
+// mobile backend's utils/normalizeUser.js CLIENT_VISIBLE_USER_FIELDS.
+//
+// Phase 4.5 cutover audit found this canonical getMe/dashboard previously
+// returned the ENTIRE raw `users` Mongo document to the mobile client
+// (`normalizeUser(user)` with no allowlist, dashboard.controller.js used
+// `{ ...req.user, _id: undefined }`) — leaking every internal field ever
+// written to that document (push tokens, admin-only flags, hashed
+// credentials if present, etc.) to any authenticated tenant. This allowlist
+// closes that gap; only these fields are ever sent to the mobile client.
+const CLIENT_VISIBLE_USER_FIELDS = [
+  'user_id', 'email', 'name', 'firstName', 'lastName', 'phone', 'address',
+  'username', 'usernameNextAllowedAt', 'serverTime', 'picture', 'role',
+];
+
+function sanitizeUserForClient(user) {
+  if (!user) return user;
+  const safe = {};
+  for (const field of CLIENT_VISIBLE_USER_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(user, field)) {
+      safe[field] = user[field];
+    }
+  }
+  return safe;
+}
+
+const USERNAME_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+function usernameCooldownState(lastUsernameChangedAt, now = new Date()) {
+  const lastChanged = lastUsernameChangedAt ? new Date(lastUsernameChangedAt) : null;
+  if (!lastChanged || Number.isNaN(lastChanged.getTime())) return { active: false, nextAllowedAt: null };
+  const nextAllowedAt = new Date(lastChanged.getTime() + USERNAME_COOLDOWN_MS);
+  return { active: now < nextAllowedAt, nextAllowedAt };
+}
+
+// Attach the same usernameNextAllowedAt/serverTime fields the frontend's
+// cooldown UI depends on (profile.jsx reads user.usernameNextAllowedAt /
+// user.serverTime — see AuthContext.js's 429 USERNAME_COOLDOWN handling)
+// so cooldown state is visible even outside the 429 error path (e.g. after
+// an app restart / session hydration via GET /users/me).
+function withUsernameCooldownFields(user, now = new Date()) {
+  const cooldown = usernameCooldownState(user.lastUsernameChangedAt, now);
+  return {
+    ...user,
+    usernameNextAllowedAt: cooldown.active ? cooldown.nextAllowedAt : null,
+    serverTime: now,
+  };
+}
+
 // Get current user profile
 async function getMe(req, res) {
   try {
@@ -91,7 +140,7 @@ async function getMe(req, res) {
       return res.status(404).json({ detail: 'User not found' });
     }
 
-    res.json(normalizeUser(user));
+    res.json(sanitizeUserForClient(withUsernameCooldownFields(normalizeUser(user))));
   } catch (error) {
     console.error('getMe error:', error);
     res.status(500).json({ detail: 'Failed to load profile' });
@@ -175,7 +224,16 @@ async function updateMe(req, res) {
       return res.status(400).json({ detail: 'Request body is required.' });
     }
 
-    const allowedFields = ['name', 'username', 'email', 'phone', 'address', 'picture'];
+    // Only username/phone/picture are tenant-editable — name/email/address
+    // are managed from the approved tenant application / admin, matching the
+    // currently-live standalone mobile backend's business rule (see
+    // backend/controllers/user.controller.js updateMe). Phase 4.5 cutover
+    // audit found this canonical handler previously allowed a tenant to
+    // self-edit their legal name, sign-in email, and application-derived
+    // address, bypassing the admin-verification workflow — closed here by
+    // simply never accepting those fields (silently ignored if sent, same
+    // as any other unrecognized body field).
+    const allowedFields = ['username', 'phone', 'picture'];
     const updateData = {};
     const fieldErrors = {};
 
@@ -201,31 +259,56 @@ async function updateMe(req, res) {
 
     const db = getDb();
     const userId = req.user.user_id;
+    const now = new Date();
 
-    // Uniqueness checks for username and email
+    // Uniqueness + cooldown checks for username
     if (updateData.username) {
-      const usernameRegex = new RegExp(`^${updateData.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-      const existingUsername = await db.collection('users').findOne({
-        username: usernameRegex,
-        user_id: { $ne: userId },
-      });
-      if (existingUsername) {
-        return res.status(400).json({ detail: 'Validation failed.', errors: { username: 'This username is already taken.' } });
+      const currentUser = await db.collection('users').findOne(
+        { user_id: userId },
+        { projection: { username: 1, lastUsernameChangedAt: 1 } },
+      );
+      const currentUsername = String(currentUser?.username || '').trim().toLowerCase();
+
+      if (updateData.username !== currentUsername) {
+        // 7-day username-change cooldown, matching the currently-live
+        // standalone mobile backend (backend/controllers/user.controller.js
+        // usernameCooldownState). Phase 4.5 audit found this canonical
+        // handler had no cooldown at all, letting a tenant change their
+        // username unlimited times — closed here, same 429 wire contract
+        // AuthContext.js/profile.jsx already expect (code: 'USERNAME_COOLDOWN',
+        // errors.username, nextAllowedAt, serverTime).
+        const cooldown = usernameCooldownState(currentUser?.lastUsernameChangedAt, now);
+        if (cooldown.active) {
+          return res.status(429).json({
+            detail: `You can change your username again on ${cooldown.nextAllowedAt.toISOString()}.`,
+            code: 'USERNAME_COOLDOWN',
+            errors: { username: 'Username change is still under cooldown.' },
+            nextAllowedAt: cooldown.nextAllowedAt,
+            serverTime: now,
+          });
+        }
+
+        const usernameRegex = new RegExp(`^${updateData.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+        const existingUsername = await db.collection('users').findOne({
+          username: usernameRegex,
+          user_id: { $ne: userId },
+        });
+        if (existingUsername) {
+          return res.status(400).json({ detail: 'Validation failed.', errors: { username: 'This username is already taken.' } });
+        }
+        updateData.lastUsernameChangedAt = now;
+      } else {
+        // No-op username (equal to current) — do not touch the cooldown.
+        delete updateData.username;
       }
     }
 
-    if (updateData.email) {
-      const emailRegex = new RegExp(`^${updateData.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-      const existingEmail = await db.collection('users').findOne({
-        email: emailRegex,
-        user_id: { $ne: userId },
-      });
-      if (existingEmail) {
-        return res.status(400).json({ detail: 'Validation failed.', errors: { email: 'This email is already in use.' } });
-      }
+    if (Object.keys(updateData).length === 0) {
+      const currentUser = await db.collection('users').findOne({ user_id: userId }, { projection: { _id: 0 } });
+      return res.json(sanitizeUserForClient(withUsernameCooldownFields(normalizeUser(currentUser), now)));
     }
 
-    updateData.updated_at = new Date();
+    updateData.updated_at = now;
 
     await db.collection('users').updateOne(
       { user_id: userId },
@@ -237,7 +320,7 @@ async function updateMe(req, res) {
       { projection: { _id: 0 } }
     );
 
-    res.json(normalizeUser(updatedUser));
+    res.json(sanitizeUserForClient(withUsernameCooldownFields(normalizeUser(updatedUser), now)));
   } catch (error) {
     console.error('Update user error:', error);
     res.status(500).json({ detail: 'Failed to update user' });
@@ -639,4 +722,6 @@ module.exports = {
   getUserDocuments,
   getDocumentFile,
   deleteDocument,
+  sanitizeUserForClient,
+  normalizeUser,
 };

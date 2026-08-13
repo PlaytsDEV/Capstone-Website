@@ -18,7 +18,6 @@
  */
 
 import React, { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import {
 	Bell,
 	Check,
@@ -32,9 +31,6 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	Filter,
-	RotateCcw,
-	ArrowRight,
-	Bed,
 } from "lucide-react";
 import {
 	useNotifications,
@@ -44,7 +40,7 @@ import {
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
 import { getVisibleNotificationsForUser } from "../../../../shared/utils/notificationVisibility";
-import { cleanNotificationMessage } from "../../../../shared/utils/notification";
+import "../../../admin/styles/design-tokens.css";
 
 // ── Filter tabs per role ──
 const ALL_FILTER_TABS = [
@@ -166,6 +162,7 @@ const TYPE_CONFIG = {
 	announcement: { icon: Megaphone, colors: NOTIFICATION_COLOR_SCHEMES.orange, label: "Announcement" },
 	general: { icon: Bell, colors: NOTIFICATION_COLOR_SCHEMES.neutral, label: "Notice" },
 };
+};
 
 /**
  * Resolves notification icon, verb label, and color object scheme.
@@ -232,18 +229,17 @@ const getFilterPillStyle = (isActive, accentColor) => ({
 	fontSize: "12px",
 	fontWeight: 500,
 	cursor: "pointer",
-	backgroundColor: isActive ? (accentColor || "var(--text-heading, #1F2937)") : "var(--surface-card, #fff)",
-	color: isActive ? "#fff" : "var(--text-secondary, #6B7280)",
-	borderColor: isActive ? (accentColor || "var(--text-heading, #1F2937)") : "var(--border-card, #E8EBF0)",
+	backgroundColor: isActive ? (accentColor || "var(--primary)") : "var(--card)",
+	color: isActive ? "var(--primary-foreground)" : "var(--text-secondary)",
+	borderColor: isActive ? (accentColor || "var(--primary)") : "var(--border)",
 	transition: "all 0.18s ease",
 	whiteSpace: "nowrap",
 });
 
 // ── Component ──
 
-const NotificationsTab = ({ onTabChange }) => {
+const NotificationsTab = () => {
 	const { user } = useAuth();
-	const navigate = useNavigate();
 	const [page, setPage] = useState(1);
 	const [typeFilter, setTypeFilter] = useState("all");
 	const [unreadOnly, setUnreadOnly] = useState(false);
@@ -258,30 +254,6 @@ const NotificationsTab = ({ onTabChange }) => {
 
 	const currentRole = isApplicant ? "applicant" : "tenant";
 	const filterTabs = ALL_FILTER_TABS.filter((t) => t.roles.includes(currentRole));
-
-	// Compute category notification counts
-	const categoryCounts = useMemo(() => {
-		const counts = { all: notifications.length };
-		filterTabs.forEach((tab) => {
-			if (tab.key !== "all") {
-				counts[tab.key] = notifications.filter((n) => matchesFilter(n, tab.key)).length;
-			}
-		});
-		return counts;
-	}, [notifications, filterTabs]);
-
-	// Navigation Handlers
-	const handleBrowseRooms = () => {
-		navigate("/applicant/check-availability");
-	};
-
-	const handleCheckReservation = () => {
-		if (onTabChange) {
-			onTabChange("reservation");
-		} else {
-			navigate("/applicant/profile", { state: { tab: "reservation" } });
-		}
-	};
 
 	// Apply type filter
 	const filtered = useMemo(
@@ -318,22 +290,16 @@ const NotificationsTab = ({ onTabChange }) => {
 		setPage(1);
 	};
 
-	const handleResetFilters = () => {
-		setTypeFilter("all");
-		setUnreadOnly(false);
-		setPage(1);
-	};
-
 	// ── Styles ──
 	const cardStyle = {
-		backgroundColor: "var(--surface-card, #fff)",
+		backgroundColor: "var(--card)",
 		borderRadius: "12px",
-		border: "1px solid var(--border-card, #E8EBF0)",
+		border: "1px solid var(--border)",
 		overflow: "hidden",
 	};
 
 	return (
-		<div style={{ width: "100%" }}>
+		<div style={{ maxWidth: "1200px" }}>
 			{/* Header */}
 			<div
 				style={{
@@ -341,8 +307,6 @@ const NotificationsTab = ({ onTabChange }) => {
 					alignItems: "center",
 					justifyContent: "space-between",
 					marginBottom: "16px",
-					flexWrap: "wrap",
-					gap: "12px",
 				}}
 			>
 				<div>
@@ -350,92 +314,81 @@ const NotificationsTab = ({ onTabChange }) => {
 						style={{
 							fontSize: "22px",
 							fontWeight: 700,
-							color: "var(--text-heading, #1F2937)",
-							margin: "0 0 4px 0",
+							color: "var(--foreground)",
+							margin: "0 0 4px",
 						}}
 					>
 						Notifications
 					</h1>
-					<p style={{ fontSize: "14px", color: "var(--text-muted, #94A3B8)", margin: 0 }}>
+					<p style={{ fontSize: "14px", color: "var(--text-muted)", margin: 0 }}>
 						{isApplicant
 							? "Stay updated on your reservation, visit, and application progress"
 							: "Stay updated on billing, maintenance, contracts, and account notices"}
 					</p>
 				</div>
 
-				{unreadCount > 0 && (
-					<button
-						onClick={handleMarkAllRead}
-						disabled={markAllAsRead.isPending}
-						style={{
-							display: "flex",
-							alignItems: "center",
-							gap: "6px",
-							backgroundColor: "var(--surface-card, #fff)",
-							border: "1px solid var(--border-card, #E8EBF0)",
-							borderRadius: "8px",
-							padding: "8px 14px",
-							fontSize: "13px",
-							fontWeight: 500,
-							color: "var(--text-secondary, #6B7280)",
-							cursor: "pointer",
-							transition: "all 0.18s ease",
-						}}
+				<button
+					onClick={handleMarkAllRead}
+					disabled={markAllAsRead.isPending || unreadCount === 0}
+					style={{
+						display: "flex",
+						alignItems: "center",
+						gap: "6px",
+						backgroundColor: "transparent",
+						border: "1px solid var(--border)",
+						borderRadius: "8px",
+						padding: "8px 14px",
+						fontSize: "13px",
+						fontWeight: 500,
+						color: "var(--text-secondary)",
+						cursor: unreadCount === 0 ? "default" : "pointer",
+						opacity: unreadCount === 0 ? 0 : 1,
+						visibility: unreadCount === 0 ? "hidden" : "visible",
+						transition: "all 0.2s",
+					}}
 						onMouseEnter={(e) => {
-							e.currentTarget.style.backgroundColor = "var(--surface-muted, #F8FAFC)";
-							e.currentTarget.style.borderColor = "#CBD5E1";
+							e.currentTarget.style.backgroundColor = "var(--muted)";
 						}}
 						onMouseLeave={(e) => {
-							e.currentTarget.style.backgroundColor = "var(--surface-card, #fff)";
-							e.currentTarget.style.borderColor = "var(--border-card, #E8EBF0)";
+							e.currentTarget.style.backgroundColor = "transparent";
 						}}
 					>
-						<CheckCheck style={{ width: "14px", height: "14px", color: "#10B981" }} />
+						<CheckCheck style={{ width: "14px", height: "14px" }} />
 						Mark all as read
 					</button>
-				)}
 			</div>
 
 			{/* Filter pills */}
 			<div
+				className="notif-filter-scroll"
 				style={{
 					display: "flex",
 					gap: "8px",
 					marginBottom: "20px",
-					flexWrap: "wrap",
+					flexWrap: "nowrap",
 					alignItems: "center",
+					overflowX: "auto",
+					paddingBottom: "4px",
+					scrollbarWidth: "none",
+					WebkitOverflowScrolling: "touch",
 				}}
 			>
-				{filterTabs.map((tab) => {
-					const isActive = typeFilter === tab.key;
-					const count = categoryCounts[tab.key] || 0;
-					return (
-						<button
-							key={tab.key}
-							onClick={() => handleFilterChange(tab.key)}
-							style={getFilterPillStyle(isActive)}
-						>
-							{tab.label}
-							<span
-								style={{
-									marginLeft: "5px",
-									fontSize: "11px",
-									opacity: isActive ? 0.9 : 0.6,
-									fontWeight: isActive ? 600 : 400,
-								}}
-							>
-								({count})
-							</span>
-						</button>
-					);
-				})}
+				{filterTabs.map((tab) => (
+					<button
+						key={tab.key}
+						onClick={() => handleFilterChange(tab.key)}
+						style={getFilterPillStyle(typeFilter === tab.key)}
+					>
+						{tab.label}
+					</button>
+				))}
 
 				{/* Separator */}
 				<span
 					style={{
 						width: "1px",
 						height: "20px",
-						backgroundColor: "var(--border-card, #E8EBF0)",
+						backgroundColor: "var(--border)",
 						margin: "0 2px",
 					}}
 				/>
@@ -443,11 +396,11 @@ const NotificationsTab = ({ onTabChange }) => {
 				{/* Unread only toggle */}
 				<button
 					onClick={handleToggleUnread}
-					style={getFilterPillStyle(unreadOnly, "#1F2937")}
+					style={getFilterPillStyle(unreadOnly, "var(--primary)")}
 				>
-					<span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+					<span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
 						<Filter style={{ width: "12px", height: "12px" }} />
-						Unread only ({unreadCount})
+						Unread only
 					</span>
 				</button>
 			</div>
@@ -460,8 +413,8 @@ const NotificationsTab = ({ onTabChange }) => {
 			{/* Error */}
 			{error && (
 				<div style={{ ...cardStyle, padding: "48px", textAlign: "center" }}>
-					<AlertCircle style={{ width: "32px", height: "32px", color: "#EF4444", margin: "0 auto 12px" }} />
-					<p style={{ color: "#EF4444", fontSize: "14px" }}>Failed to load notifications</p>
+					<AlertCircle style={{ width: "32px", height: "32px", color: "var(--danger)", margin: "0 auto 12px" }} />
+					<p style={{ color: "var(--danger)", fontSize: "14px" }}>Failed to load notifications</p>
 				</div>
 			)}
 
@@ -470,184 +423,36 @@ const NotificationsTab = ({ onTabChange }) => {
 				<div
 					style={{
 						...cardStyle,
-						padding: "56px 32px",
+						padding: "64px 32px",
 						textAlign: "center",
 					}}
 				>
 					<div
 						style={{
-							width: "60px",
-							height: "60px",
+							width: "64px",
+							height: "64px",
 							borderRadius: "50%",
-							backgroundColor: "#F1F5F9",
-							border: "1px solid #E2E8F0",
+							backgroundColor: "var(--muted)",
 							display: "flex",
 							alignItems: "center",
 							justifyContent: "center",
 							margin: "0 auto 16px",
 						}}
 					>
-						<Bell style={{ width: "26px", height: "26px", color: "#64748B" }} />
+						<Bell style={{ width: "28px", height: "28px", color: "var(--neutral)" }} />
 					</div>
-					<p style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-heading, #1F2937)", margin: "0 0 6px" }}>
+					<p style={{ fontSize: "16px", fontWeight: 600, color: "var(--foreground)", margin: "0 0 4px" }}>
 						{typeFilter !== "all" || unreadOnly
 							? "No matching notifications"
 							: "No notifications yet"}
 					</p>
-					<p style={{ fontSize: "14px", color: "var(--text-muted, #94A3B8)", margin: "0 0 20px", maxWidth: "480px", marginLeft: "auto", marginRight: "auto" }}>
+					<p style={{ fontSize: "14px", color: "var(--text-muted)", margin: 0 }}>
 						{typeFilter !== "all"
 							? `No ${filterTabs.find((t) => t.key === typeFilter)?.label?.toLowerCase() || ""} notifications found.`
 							: unreadOnly
 								? "No unread notifications — you're all caught up!"
-								: "You're all caught up! We'll notify you when something happens with your reservations or stay."}
+								: "You're all caught up! We'll notify you when something happens."}
 					</p>
-
-					{/* Active Filter Reset */}
-					{(typeFilter !== "all" || unreadOnly) && (
-						<button
-							onClick={handleResetFilters}
-							style={{
-								display: "inline-flex",
-								alignItems: "center",
-								gap: "6px",
-								padding: "8px 16px",
-								borderRadius: "8px",
-								border: "1px solid var(--border-card, #E8EBF0)",
-								backgroundColor: "var(--surface-card, #fff)",
-								color: "var(--text-heading, #1F2937)",
-								fontSize: "13px",
-								fontWeight: 500,
-								cursor: "pointer",
-								transition: "all 0.18s ease",
-							}}
-							onMouseEnter={(e) => {
-								e.currentTarget.style.backgroundColor = "var(--surface-muted, #F8FAFC)";
-							}}
-							onMouseLeave={(e) => {
-								e.currentTarget.style.backgroundColor = "var(--surface-card, #fff)";
-							}}
-						>
-							<RotateCcw style={{ width: "14px", height: "14px" }} />
-							Reset Filters
-						</button>
-					)}
-
-					{/* Actionable Quick Links when inbox is completely empty */}
-					{typeFilter === "all" && !unreadOnly && (
-						<div
-							style={{
-								display: "flex",
-								alignItems: "center",
-								justifyContent: "center",
-								gap: "12px",
-								flexWrap: "wrap",
-							}}
-						>
-							{isApplicant ? (
-								<>
-									<button
-										onClick={handleBrowseRooms}
-										style={{
-											display: "inline-flex",
-											alignItems: "center",
-											gap: "8px",
-											padding: "9px 18px",
-											borderRadius: "8px",
-											border: "1px solid #1F2937",
-											backgroundColor: "#1F2937",
-											color: "#FFFFFF",
-											fontSize: "13px",
-											fontWeight: 600,
-											cursor: "pointer",
-											transition: "all 0.18s ease",
-										}}
-										onMouseEnter={(e) => {
-											e.currentTarget.style.backgroundColor = "#111827";
-										}}
-										onMouseLeave={(e) => {
-											e.currentTarget.style.backgroundColor = "#1F2937";
-										}}
-									>
-										<Bed style={{ width: "15px", height: "15px" }} />
-										Browse Available Rooms
-										<ArrowRight style={{ width: "14px", height: "14px" }} />
-									</button>
-									<button
-										onClick={handleCheckReservation}
-										style={{
-											display: "inline-flex",
-											alignItems: "center",
-											gap: "8px",
-											padding: "9px 18px",
-											borderRadius: "8px",
-											border: "1px solid var(--border-card, #E8EBF0)",
-											backgroundColor: "var(--surface-card, #fff)",
-											color: "var(--text-heading, #1F2937)",
-											fontSize: "13px",
-											fontWeight: 600,
-											cursor: "pointer",
-											transition: "all 0.18s ease",
-										}}
-										onMouseEnter={(e) => {
-											e.currentTarget.style.backgroundColor = "var(--surface-muted, #F8FAFC)";
-											e.currentTarget.style.borderColor = "#CBD5E1";
-										}}
-										onMouseLeave={(e) => {
-											e.currentTarget.style.backgroundColor = "var(--surface-card, #fff)";
-											e.currentTarget.style.borderColor = "var(--border-card, #E8EBF0)";
-										}}
-									>
-										<Calendar style={{ width: "15px", height: "15px", color: "#6B7280" }} />
-										Check Reservation
-									</button>
-								</>
-							) : (
-								<>
-									<button
-										onClick={() => navigate("/applicant/billing")}
-										style={{
-											display: "inline-flex",
-											alignItems: "center",
-											gap: "8px",
-											padding: "9px 18px",
-											borderRadius: "8px",
-											border: "1px solid #1F2937",
-											backgroundColor: "#1F2937",
-											color: "#FFFFFF",
-											fontSize: "13px",
-											fontWeight: 600,
-											cursor: "pointer",
-											transition: "all 0.18s ease",
-										}}
-									>
-										<CreditCard style={{ width: "15px", height: "15px" }} />
-										View My Bills
-										<ArrowRight style={{ width: "14px", height: "14px" }} />
-									</button>
-									<button
-										onClick={() => navigate("/applicant/maintenance")}
-										style={{
-											display: "inline-flex",
-											alignItems: "center",
-											gap: "8px",
-											padding: "9px 18px",
-											borderRadius: "8px",
-											border: "1px solid var(--border-card, #E8EBF0)",
-											backgroundColor: "var(--surface-card, #fff)",
-											color: "var(--text-heading, #1F2937)",
-											fontSize: "13px",
-											fontWeight: 500,
-											cursor: "pointer",
-											transition: "all 0.18s ease",
-										}}
-									>
-										<Wrench style={{ width: "15px", height: "15px" }} />
-										Request Maintenance
-									</button>
-								</>
-							)}
-						</div>
-					)}
 				</div>
 			)}
 
@@ -660,7 +465,7 @@ const NotificationsTab = ({ onTabChange }) => {
 								style={{
 									fontSize: "12px",
 									fontWeight: 600,
-									color: "#94A3B8",
+									color: "var(--text-muted)",
 									textTransform: "uppercase",
 									letterSpacing: "0.5px",
 									margin: "0 0 8px",
@@ -677,16 +482,30 @@ const NotificationsTab = ({ onTabChange }) => {
 										<div
 											key={notification._id}
 											onClick={() => !notification.isRead && handleMarkRead(notification._id)}
+											role={!notification.isRead ? "button" : undefined}
+											tabIndex={!notification.isRead ? 0 : undefined}
+											onKeyDown={(e) => {
+												if (!notification.isRead && (e.key === "Enter" || e.key === " ")) {
+													e.preventDefault();
+													handleMarkRead(notification._id);
+												}
+											}}
+											aria-label={
+												!notification.isRead
+													? `Mark "${notification.title}" as read`
+													: undefined
+											}
 											style={{
 												display: "flex",
 												alignItems: "flex-start",
 												gap: "12px",
 												padding: "16px 20px",
 												borderBottom:
-													idx < items.length - 1 ? "1px solid var(--border-subtle, #F1F5F9)" : "none",
-												backgroundColor: notification.isRead ? "var(--surface-card, #fff)" : "rgba(255, 140, 66, 0.04)",
+											idx < items.length - 1 ? "1px solid var(--color-border-subtle)" : "none",
+										backgroundColor: notification.isRead ? "var(--card)" : "color-mix(in srgb, var(--primary) 4%, transparent)",
 												cursor: notification.isRead ? "default" : "pointer",
 												transition: "background-color 0.15s",
+												outlineOffset: "-2px",
 											}}
 										>
 											{/* Icon */}
@@ -726,7 +545,11 @@ const NotificationsTab = ({ onTabChange }) => {
 														style={{
 															fontSize: "14px",
 															fontWeight: notification.isRead ? 500 : 600,
-															color: "var(--text-heading, #1F2937)",
+															color: "var(--foreground)",
+															overflow: "hidden",
+															textOverflow: "ellipsis",
+															whiteSpace: "nowrap",
+															minWidth: 0,
 														}}
 													>
 														{notification.title}
@@ -740,6 +563,7 @@ const NotificationsTab = ({ onTabChange }) => {
 															border: `1px solid ${config.colors.border}`,
 															padding: "1px 7px",
 															borderRadius: "4px",
+															flexShrink: 0,
 														}}
 													>
 														{config.label}
@@ -748,17 +572,17 @@ const NotificationsTab = ({ onTabChange }) => {
 												<p
 													style={{
 														fontSize: "13px",
-														color: "var(--text-secondary, #6B7280)",
+														color: "var(--text-secondary)",
 														margin: "0 0 4px",
 														lineHeight: 1.4,
 													}}
 												>
-													{cleanNotificationMessage(notification.message)}
+													{notification.message}
 												</p>
 												<span
 													style={{
 														fontSize: "12px",
-														color: "#94A3B8",
+														color: "var(--text-muted)",
 													}}
 												>
 													{formatTime(notification.createdAt)}
@@ -772,7 +596,7 @@ const NotificationsTab = ({ onTabChange }) => {
 														width: "8px",
 														height: "8px",
 														borderRadius: "50%",
-														backgroundColor: "#FF8C42",
+														backgroundColor: "var(--primary)",
 														flexShrink: 0,
 														marginTop: "6px",
 													}}
@@ -804,18 +628,18 @@ const NotificationsTab = ({ onTabChange }) => {
 									alignItems: "center",
 									gap: "4px",
 									padding: "6px 12px",
-									border: "1px solid var(--border-card, #E8EBF0)",
+									border: "1px solid var(--border)",
 									borderRadius: "8px",
-									backgroundColor: "var(--surface-card, #fff)",
+									backgroundColor: "var(--card)",
 									fontSize: "13px",
-									color: page <= 1 ? "#CBD5E1" : "#6B7280",
+									color: page <= 1 ? "var(--neutral-light)" : "var(--text-secondary)",
 									cursor: page <= 1 ? "not-allowed" : "pointer",
 								}}
 							>
 								<ChevronLeft style={{ width: "14px", height: "14px" }} />
 								Previous
 							</button>
-							<span style={{ fontSize: "13px", color: "#6B7280" }}>
+							<span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
 								Page {page} of {pagination.totalPages}
 							</span>
 							<button
@@ -828,11 +652,11 @@ const NotificationsTab = ({ onTabChange }) => {
 									alignItems: "center",
 									gap: "4px",
 									padding: "6px 12px",
-									border: "1px solid var(--border-card, #E8EBF0)",
+									border: "1px solid var(--border)",
 									borderRadius: "8px",
-									backgroundColor: "var(--surface-card, #fff)",
+									backgroundColor: "var(--card)",
 									fontSize: "13px",
-									color: page >= pagination.totalPages ? "#CBD5E1" : "#6B7280",
+									color: page >= pagination.totalPages ? "var(--neutral-light)" : "var(--text-secondary)",
 									cursor: page >= pagination.totalPages ? "not-allowed" : "pointer",
 								}}
 							>
@@ -848,4 +672,3 @@ const NotificationsTab = ({ onTabChange }) => {
 };
 
 export default NotificationsTab;
-

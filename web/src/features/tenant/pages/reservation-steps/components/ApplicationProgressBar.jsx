@@ -29,12 +29,12 @@ const ApplicationProgressBar = ({
  fontWeight: "500",
  color:
  saveStatus === "saving"
- ? "#6B7280"
+ ? "var(--muted-foreground)"
  : saveStatus === "saved"
- ? "#059669"
+ ? "var(--success)"
  : saveStatus === "error"
- ? "#DC2626"
- : "#9CA3AF",
+ ? "var(--danger)"
+ : "var(--neutral)",
  display: "flex",
  alignItems: "center",
  gap: "4px",
@@ -48,7 +48,7 @@ const ApplicationProgressBar = ({
  <span
  style={{
  fontSize: "12px",
- color: completedCount === totalSections ? "#059669" : "#9CA3AF",
+ color: completedCount === totalSections ? "var(--success)" : "var(--neutral)",
  }}
  >
  {completedCount === totalSections
@@ -61,7 +61,7 @@ const ApplicationProgressBar = ({
  style={{
  width: "100%",
  height: "6px",
- backgroundColor: "#E5E7EB",
+ backgroundColor: "var(--border)",
  borderRadius: "999px",
  overflow: "hidden",
  }}
@@ -71,7 +71,7 @@ const ApplicationProgressBar = ({
  width: `${(completedCount / totalSections) * 100}%`,
  height: "100%",
  backgroundColor:
- completedCount === totalSections ? "#10B981" : "#FF8C42",
+ completedCount === totalSections ? "var(--success)" : "var(--primary)",
  borderRadius: "999px",
  transition: "width 0.3s ease",
  }}

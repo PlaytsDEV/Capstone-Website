@@ -8,10 +8,16 @@ describe("mobile Survey route safety", () => {
   );
   const serverEntry = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
 
-  test("tenant identity is resolved server-side from the session, never from client input", () => {
-    expect(routes).toContain('mongoose.connection.db.collection("user_sessions")');
-    expect(routes).toContain('mongoose.connection.db.collection("users")');
-    expect(routes).toContain("req.mobileTenant = user");
+  test("tenant identity is resolved server-side from the one canonical shared session validator, never from client input", () => {
+    // Session lookup used to be duplicated inline in this file; it now lives
+    // in middleware/mobileTenantAuth.js (the one canonical mobile session
+    // authority, hardened during Auth/Session Consolidation) and is imported
+    // here under a local alias so every `mobileTenant` route wiring below is
+    // unchanged. Assert the import, not the old inline implementation.
+    expect(routes).toContain(
+      'import { mobileTenantAuth as mobileTenant } from "../middleware/mobileTenantAuth.js"',
+    );
+    expect(routes).not.toMatch(/mongoose\.connection\.db\.collection\(["']user_sessions["']\)/);
   });
 
   test("every survey/assignment lookup is scoped to the authenticated tenant", () => {
