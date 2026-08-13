@@ -14,6 +14,11 @@ import {
   getContractNextAction,
   getContractStage,
 } from "../utils/contractUi.mjs";
+import {
+  handleExportContractsCSV,
+  handleExportContractsPDF,
+} from "../utils/contractExportUtils";
+import { MaintenanceExportDropdown } from "./maintenance/components/MaintenanceReportModal";
 import "../styles/admin-contracts.css";
 
 const PAGE_SIZE = 12;
@@ -101,6 +106,46 @@ export default function AdminContractsPage() {
     { key: "updatedAt", label: "Updated", sortable: true, render: (row) => fmtDate(row.updatedAt) },
   ];
 
+  const counts = useMemo(() => {
+    const res = { draft: 0, generated: 0, signed: 0, archived: 0 };
+    for (const c of contracts) {
+      if (c.archivedAt) res.archived++;
+      else if (c.status === "draft") res.draft++;
+      else if (c.status === "generated") res.generated++;
+      else if (["signed", "active", "completed"].includes(c.status)) res.signed++;
+    }
+    return res;
+  }, [contracts]);
+
+  const handleExportCSV = () => {
+    handleExportContractsCSV({ contracts: filtered, branchFilter: filters.branch });
+  };
+
+  const handleExportPDF = () => {
+    handleExportContractsPDF({
+      contracts: filtered,
+      counts,
+      branchFilter: filters.branch,
+      statusFilter: filters.status,
+      searchTerm: filters.search,
+    });
+  };
+
+  const exportOptions = [
+    {
+      key: "contracts-pdf",
+      label: "Download Contracts as PDF",
+      onClick: handleExportPDF,
+      disabled: filtered.length === 0,
+    },
+    {
+      key: "contracts-csv",
+      label: "Download Contracts as CSV",
+      onClick: handleExportCSV,
+      disabled: filtered.length === 0,
+    },
+  ];
+
   return (
     <div className="contract-workspace">
       <div className="contract-page-heading">
@@ -120,6 +165,7 @@ export default function AdminContractsPage() {
             <select aria-label="Status" value={filters.status} onChange={(event) => updateFilter("status", event.target.value)}><option value={ALL}>All Statuses</option>{Object.entries(CONTRACT_STAGE_GROUPS).map(([key, group]) => <option key={key} value={key}>{group.label}</option>)}</select>
             <select aria-label="Room type" value={filters.roomType} onChange={(event) => updateFilter("roomType", event.target.value)}><option value={ALL}>All room types</option><option value="private">Private Room</option><option value="double_sharing">Double Sharing</option><option value="quadruple_sharing">Quadruple Sharing</option></select>
             <select aria-label="Lease type" value={filters.leaseType} onChange={(event) => updateFilter("leaseType", event.target.value)}><option value={ALL}>All lease types</option><option value="short_term">Short Term</option><option value="long_term">Long Term</option></select>
+            <MaintenanceExportDropdown options={exportOptions} disabled={filtered.length === 0} />
             <button className="contract-icon-button" type="button" onClick={load} aria-label="Refresh contracts"><RefreshCw size={16} /></button>
           </div>
         </PageShell.Actions>

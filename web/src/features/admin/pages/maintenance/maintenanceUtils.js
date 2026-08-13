@@ -13,6 +13,7 @@ import {
   BRANCH_OPTIONS,
   BRANCH_DISPLAY_NAMES,
 } from "../../../../shared/utils/constants";
+import { exportReportPdf } from "../../../../shared/utils/reportPdf";
 import {
   formatMaintenanceStatus,
   getMaintenanceTypeMeta,
@@ -273,50 +274,50 @@ export const MANAGEMENT_SUMMARY_CARDS = [
     key: "open_queue",
     label: "Open Queue",
     icon: ClipboardList,
-    color: "orange",
-    description: "Pending and viewed requests",
+    color: "blue",
+    description: "Pending & viewed",
   },
   {
     key: "in_progress",
     label: "In Progress",
     icon: RefreshCcw,
-    color: "blue",
-    description: "Requests actively handled",
+    color: "purple",
+    description: "Actively handled",
   },
   {
     key: "overdue",
     label: "SLA Overdue",
     icon: AlertTriangle,
     color: "red",
-    description: "SLA delayed and not terminal",
+    description: "Delayed past SLA",
   },
   {
     key: "due_soon",
     label: "SLA Due Soon",
     icon: Clock3,
-    color: "purple",
-    description: "SLA priority and non-terminal",
+    color: "orange",
+    description: "Priority resolution",
   },
   {
     key: "completed_today",
-    label: "Resolved in Period",
+    label: "Resolved",
     icon: CheckCircle2,
     color: "green",
-    description: "Resolved or completed in date range",
+    description: "Completed in period",
   },
   {
     key: "unassigned_high",
     label: "Unassigned High",
     icon: UserRound,
     color: "orange",
-    description: "High urgency with no assignee",
+    description: "High urgency no tech",
   },
   {
     key: "exceptions",
     label: "Exceptions",
     icon: XCircle,
-    color: "red",
-    description: "Rejected or cancelled requests",
+    color: "neutral",
+    description: "Rejected or cancelled",
   },
 ];
 
@@ -1236,6 +1237,61 @@ export const exportCsvFile = (rows, filename = "download") => {
   document.body.removeChild(link);
 };
 
+export const exportMaintenanceRequestsPdf = async ({
+  requests = [],
+  summaryItems = [],
+  branchFilter = "all",
+  statusFilter = "all",
+  searchQuery = "",
+}) => {
+  const d = new Date();
+  const dateSlug = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const filename = `Lilycrest_Maintenance_Requests_${dateSlug}.pdf`;
+
+  const kpis = summaryItems.map((item) => ({
+    label: item.label.toUpperCase(),
+    value: String(item.value || 0),
+    format: "number",
+  }));
+
+  const tableRows = requests.map((req) => ({
+    ID: `#${(req.request_id || req.requestId || "").slice(-6).toUpperCase()}`,
+    Tenant: req.tenant?.full_name || req.tenantName || "Deleted Account",
+    Branch: req.branch || "Unassigned",
+    Type: getMaintenanceTypeMeta(req.request_type || req.requestType).label,
+    Urgency: getMaintenanceUrgencyMeta(req.urgency).label,
+    Status: formatMaintenanceStatus(req.status),
+    Submitted: fmtDate(req.created_at || req.createdAt),
+  }));
+
+  const filterDesc = [
+    `Branch: ${branchFilter === "all" ? "All Branches" : branchFilter}`,
+    `Status: ${statusFilter === "all" ? "All Statuses" : formatMaintenanceStatus(statusFilter)}`,
+    searchQuery ? `Search: "${searchQuery}"` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
+  await exportReportPdf({
+    title: "Maintenance Requests Report",
+    subtitle: `Filter Context: ${filterDesc}`,
+    filename,
+    period: `Generated on ${d.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`,
+    reportType: "Maintenance",
+    kpis: kpis.slice(0, 6),
+    sections: [
+      {
+        type: "table",
+        title: "Filtered Maintenance Requests List",
+        description: `Export containing ${requests.length} maintenance records matching the active filter criteria.`,
+        headers: ["ID", "Tenant", "Branch", "Type", "Urgency", "Status", "Submitted"],
+        colWidths: [22, 38, 26, 28, 22, 22, 16],
+        rows: tableRows,
+      },
+    ],
+  });
+};
+
 export const formatContractorDispatchTicket = (request) => {
   if (!request) return "";
   const typeMeta = getMaintenanceTypeMeta(request.request_type || request.requestType);
@@ -1261,4 +1317,6 @@ Issue Description:
 Special Notes / Instructions:
 ${request.notes || request.assignedProviderNotes || "Please coordinate with branch management upon arrival."}`;
 };
+
+
 

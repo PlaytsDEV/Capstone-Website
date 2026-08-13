@@ -395,25 +395,21 @@ export function ServiceProviderAssignmentPanel({
           <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-60 transition"
               onClick={onSuggest}
               disabled={disabled || isSuggesting || isAssigning}
             >
-              <Lightbulb size={14} />
-              {isSuggesting ? "Suggesting..." : "Suggest Provider"}
+              <Lightbulb size={13} />
+              <span>{isSuggesting ? "Suggesting..." : "Suggest Provider"}</span>
             </button>
             <button
               type="button"
-              className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm hover:opacity-90 disabled:opacity-60"
-              style={{
-                backgroundColor: "var(--primary)",
-                color: "var(--primary-foreground)",
-              }}
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50 transition"
               onClick={onAssign}
               disabled={disabled || assignmentDisabled || isAssigning || !hasAssignmentChanges || Object.keys(fieldErrors).some((key) => Boolean(fieldErrors[key]))}
               title={!hasAssignmentChanges ? "No assignment changes to save." : undefined}
             >
-              {isAssigning ? "Saving..." : "Save Assignment"}
+              <span>{isAssigning ? "Saving..." : "Save Assignment"}</span>
             </button>
           </div>
         </div>

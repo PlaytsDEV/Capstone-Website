@@ -1,4 +1,4 @@
-import { PageShell, SummaryBar } from "../../../components/shared";
+import { SummaryBar } from "../../../components/shared";
 
 export function MaintenanceSummaryCards({
   summaryItems = [],
@@ -6,12 +6,10 @@ export function MaintenanceSummaryCards({
   onSummaryFilter,
 }) {
   return (
-    <PageShell.Summary>
-      <SummaryBar
-        items={summaryItems}
-        activeIndex={activeSummaryIndex}
-        onItemClick={(index) => onSummaryFilter?.(index)}
-      />
-    </PageShell.Summary>
+    <SummaryBar
+      items={summaryItems}
+      activeIndex={activeSummaryIndex}
+      onItemClick={(index) => onSummaryFilter?.(index)}
+    />
   );
 }

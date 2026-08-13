@@ -2,12 +2,12 @@ import { useMemo } from "react";
 import {
   Archive,
   CheckCircle2,
-  CheckSquare,
+  ChevronRight,
   Clock,
   Download,
   Eye,
-  Layers,
-  Square,
+  Paperclip,
+  UserX,
   Wrench,
   X,
 } from "lucide-react";
@@ -57,6 +57,7 @@ export function MaintenanceTable({
         ? [
             {
               key: "select",
+              width: "44px",
               label: (
                 <div
                   className="flex items-center justify-center"
@@ -72,7 +73,7 @@ export function MaintenanceTable({
                       if (el) el.indeterminate = isSomeSelected;
                     }}
                     onChange={() => onSelectAll?.(allPageIds)}
-                    className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-700 accent-blue-600 cursor-pointer"
                   />
                 </div>
               ),
@@ -90,7 +91,7 @@ export function MaintenanceTable({
                       type="checkbox"
                       checked={isChecked}
                       onChange={() => onToggleSelect(row.request_id)}
-                      className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-700 accent-blue-600 cursor-pointer"
                     />
                   </div>
                 );
@@ -101,31 +102,65 @@ export function MaintenanceTable({
       {
         key: "tenant",
         label: "Tenant",
-        render: (row) => (
-          <div className="flex items-center gap-3">
-            <div
-              className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold ${
-                getAvatarPalette(row.tenant?.full_name).bg
-              } ${getAvatarPalette(row.tenant?.full_name).text}`}
-            >
-              {(row.tenant?.full_name || "T")
-                .split(/\s+/)
-                .filter(Boolean)
-                .slice(0, 2)
-                .map((part) => part[0])
-                .join("")
-                .toUpperCase()}
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-card-foreground">
-                {row.tenant?.full_name || "Unknown Tenant"}
+        render: (row) => {
+          const rawName = row.tenant?.full_name || "";
+          const isDeleted =
+            !rawName ||
+            rawName.toLowerCase().includes("deleted") ||
+            row.tenant?.is_deleted ||
+            row.is_deleted;
+          const palette = getAvatarPalette(rawName);
+
+          if (isDeleted) {
+            return (
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500">
+                  <UserX size={14} />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                    Deleted Account
+                  </div>
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                    Former Resident
+                  </div>
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground">
-                {row.tenant?.user_id || row.user_id}
+            );
+          }
+
+          const initials = rawName
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((part) => part[0])
+            .join("")
+            .toUpperCase() || "T";
+
+          return (
+            <div className="flex items-center gap-2.5">
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${palette.bg} ${palette.text}`}
+              >
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                  {rawName}
+                </div>
+                {row.room_number ? (
+                  <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                    Room {row.room_number}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                    Tenant
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        ),
+          );
+        },
       },
       {
         key: "branch",
@@ -138,26 +173,30 @@ export function MaintenanceTable({
         render: (row) => {
           const typeMeta = getMaintenanceTypeMeta(row.request_type);
           const TypeIcon = typeMeta.icon;
+          const attachmentCount = row.attachments?.length || 0;
 
           return (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <span
-                className="flex h-9 w-9 items-center justify-center rounded-lg"
+                className="flex h-7 w-7 items-center justify-center rounded-lg border"
                 style={{
-                  backgroundColor: `${typeMeta.color}1A`,
+                  backgroundColor: `${typeMeta.color}14`,
+                  borderColor: `${typeMeta.color}33`,
                   color: typeMeta.color,
                 }}
               >
-                <TypeIcon size={16} />
+                <TypeIcon size={14} />
               </span>
               <div>
-                <div className="text-sm font-semibold text-card-foreground">
+                <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
                   {typeMeta.label}
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  {row.attachments?.length || 0} attachment
-                  {(row.attachments?.length || 0) === 1 ? "" : "s"}
-                </div>
+                {attachmentCount > 0 && (
+                  <div className="flex items-center gap-0.5 text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                    <Paperclip size={10} />
+                    <span>{attachmentCount} file{attachmentCount === 1 ? "" : "s"}</span>
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -166,14 +205,21 @@ export function MaintenanceTable({
       {
         key: "description",
         label: "Description",
-        render: (row) => (
-          <div>
-            <div className="max-w-[240px] truncate text-sm text-muted-foreground">
-              {row.description}
+        render: (row) => {
+          const shortId = row.request_id ? `#${row.request_id.slice(-6).toUpperCase()}` : "";
+          return (
+            <div className="max-w-[260px]">
+              <div className="truncate text-xs font-medium text-slate-700 dark:text-slate-300" title={row.description}>
+                {row.description}
+              </div>
+              {shortId && (
+                <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                  {shortId}
+                </span>
+              )}
             </div>
-            <div className="text-xs text-muted-foreground font-mono">{row.request_id}</div>
-          </div>
-        ),
+          );
+        },
       },
       {
         key: "urgency",
@@ -182,9 +228,10 @@ export function MaintenanceTable({
           const urgencyMeta = getMaintenanceUrgencyMeta(row.urgency);
           return (
             <span
-              className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
+              className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold"
               style={{
-                backgroundColor: `${urgencyMeta.color}1A`,
+                backgroundColor: `${urgencyMeta.color}14`,
+                borderColor: `${urgencyMeta.color}33`,
                 color: urgencyMeta.color,
               }}
             >
@@ -198,7 +245,7 @@ export function MaintenanceTable({
         label: "Status",
         render: (row) => (
           <div
-            className={`flex items-center gap-2 text-[13px] font-medium ${getStatusTextClass(
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold ${getStatusTextClass(
               row.status,
             )}`}
           >
@@ -210,32 +257,50 @@ export function MaintenanceTable({
       {
         key: "sla",
         label: "SLA Health",
-        render: (row) => (
-          <span
-            className="inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
-            style={{
-              background: getSlaTone(row.slaState).bg,
-              color: getSlaTone(row.slaState).color,
-            }}
-          >
-            {formatSlaState(row.slaState)}
-          </span>
-        ),
+        render: (row) => {
+          const tone = getSlaTone(row.slaState);
+          return (
+            <span
+              className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold"
+              style={{
+                background: tone.bg,
+                color: tone.color,
+                borderColor: `${tone.color}33`,
+              }}
+            >
+              {formatSlaState(row.slaState)}
+            </span>
+          );
+        },
       },
       {
         key: "assigned_to",
-        label: "Assigned Technician",
-        render: (row) => (
-          <span className="text-xs font-medium text-card-foreground">
-            {getAssignedProviderName(row) || <span className="text-muted-foreground italic">Unassigned</span>}
-          </span>
-        ),
+        label: "Technician",
+        render: (row) => {
+          const provider = getAssignedProviderName(row);
+          if (!provider) {
+            return (
+              <span className="inline-flex items-center rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                Unassigned
+              </span>
+            );
+          }
+          return (
+            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+              {provider}
+            </span>
+          );
+        },
       },
       {
         key: "created_at",
         label: "Date",
         sortable: true,
-        render: (row) => fmtDate(row.created_at),
+        render: (row) => (
+          <span className="text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">
+            {fmtDate(row.created_at)}
+          </span>
+        ),
       },
       {
         key: "actions",
@@ -250,7 +315,7 @@ export function MaintenanceTable({
               <button
                 type="button"
                 onClick={() => onQuickStatusChange(row.request_id, "viewed")}
-                className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-muted/50 px-2 text-[11px] font-semibold text-card-foreground transition hover:bg-primary hover:text-primary-foreground"
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-300 dark:border-emerald-800/80 bg-emerald-50 dark:bg-emerald-950/60 px-2 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 transition hover:bg-emerald-600 hover:text-white"
                 title="Acknowledge request"
               >
                 <Eye size={12} />
@@ -260,9 +325,10 @@ export function MaintenanceTable({
             <button
               type="button"
               onClick={() => onRowClick?.(row)}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-[11px] font-semibold text-card-foreground transition hover:bg-muted"
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
             >
               <span>Open</span>
+              <ChevronRight size={12} className="text-slate-400" />
             </button>
           </div>
         ),
@@ -272,15 +338,15 @@ export function MaintenanceTable({
   );
 
   return (
-    <div className="mt-4 space-y-4">
-      {/* Sticky Floating Bulk Action Bar */}
+    <div className="space-y-3">
+      {/* Sticky Bulk Action Bar */}
       {selectedRequestIds.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3.5 shadow-md animate-in fade-in slide-in-from-top-2">
-          <div className="flex items-center gap-3">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/90 dark:bg-blue-950/60 p-3 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
               {selectedRequestIds.length}
             </span>
-            <span className="text-xs font-semibold text-card-foreground">
+            <span className="text-xs font-bold text-blue-950 dark:text-blue-200">
               {selectedRequestIds.length} request{selectedRequestIds.length === 1 ? "" : "s"} selected
             </span>
           </div>
@@ -290,7 +356,7 @@ export function MaintenanceTable({
               type="button"
               onClick={() => onBulkUpdateStatus?.("viewed")}
               disabled={isBulkUpdating}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground hover:bg-muted"
+              className="inline-flex h-7.5 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
             >
               <Eye size={13} />
               <span>Mark as Viewed</span>
@@ -300,7 +366,7 @@ export function MaintenanceTable({
               type="button"
               onClick={() => onBulkArchive?.()}
               disabled={isBulkUpdating}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground hover:bg-muted"
+              className="inline-flex h-7.5 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
             >
               <Archive size={13} />
               <span>Archive</span>
@@ -309,16 +375,16 @@ export function MaintenanceTable({
             <button
               type="button"
               onClick={() => onBulkExport?.()}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground hover:bg-muted"
+              className="inline-flex h-7.5 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
             >
               <Download size={13} />
-              <span>Export Selected CSV</span>
+              <span>Export CSV</span>
             </button>
 
             <button
               type="button"
               onClick={() => onSelectAll?.([])}
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-card px-2.5 text-xs text-muted-foreground hover:bg-muted"
+              className="inline-flex h-7.5 items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-xs text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
               title="Clear selection"
             >
               <X size={13} />
@@ -328,7 +394,7 @@ export function MaintenanceTable({
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
         <DataTable
           columns={columns}
           data={requests}
@@ -355,30 +421,29 @@ export function AnalyticsRequestsTable({
 }) {
   const analyticsColumns = useMemo(
     () => [
-      { key: "requestId", label: "Request ID" },
+      { key: "requestId", label: "Request ID", render: (row) => `#${(row.requestId || "").slice(-6).toUpperCase()}` },
       { key: "tenantName", label: "Tenant Name" },
       { key: "branchLabel", label: "Branch" },
       { key: "room", label: "Room/Unit", render: (row) => row.room || "Not recorded" },
       { key: "requestTypeLabel", label: "Request Type" },
       { key: "urgencyLabel", label: "Urgency" },
       { key: "statusLabel", label: "Status" },
-      { key: "assignedProvider", label: "Assigned Technician" },
+      { key: "assignedProvider", label: "Assigned Technician", render: (row) => row.assignedProvider || "Unassigned" },
       { key: "createdAt", label: "Created", render: (row) => fmtDate(row.createdAt) },
-      { key: "updatedAt", label: "Last Updated", render: (row) => fmtDate(row.updatedAt) },
-      { key: "resolutionAt", label: "Resolution", render: (row) => row.resolutionAt ? fmtDate(row.resolutionAt) : "Not completed" },
+      { key: "resolutionAt", label: "Resolution", render: (row) => row.resolutionAt ? fmtDate(row.resolutionAt) : "Pending" },
       {
         key: "sla",
         label: "SLA",
         render: (row) => (
           <span
-            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold border ${
               row.sla?.key === "overdue"
-                ? "bg-rose-50 text-rose-700"
+                ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300"
                 : row.sla?.key === "due_soon"
-                ? "bg-amber-50 text-amber-700"
+                ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300"
                 : row.sla?.key === "completed"
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-sky-50 text-sky-700"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300"
+                : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300"
             }`}
           >
             {row.sla?.label || "On Track"}
@@ -388,25 +453,28 @@ export function AnalyticsRequestsTable({
       {
         key: "actions",
         label: "Actions",
+        align: "right",
         render: (row) => (
-          <div className="flex flex-wrap gap-1" onClick={(event) => event.stopPropagation()}>
+          <div className="flex items-center justify-end gap-1.5" onClick={(event) => event.stopPropagation()}>
             <button
               type="button"
-              className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-muted"
+              className="inline-flex h-7 items-center rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
               onClick={() => onRowClick?.(row.requestId)}
             >
-              View Details
+              Details
             </button>
-            <button
-              type="button"
-              className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-muted"
-              onClick={() => {
-                onRowClick?.(row.requestId);
-                onGenerateReport?.("admin", row.requestId);
-              }}
-            >
-              Admin Report
-            </button>
+            {onGenerateReport && (
+              <button
+                type="button"
+                className="inline-flex h-7 items-center rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                onClick={() => {
+                  onRowClick?.(row.requestId);
+                  onGenerateReport?.("admin", row.requestId);
+                }}
+              >
+                Report
+              </button>
+            )}
           </div>
         ),
       },
@@ -415,7 +483,7 @@ export function AnalyticsRequestsTable({
   );
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div className="overflow-hidden rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
       <DataTable
         columns={analyticsColumns}
         data={requests}
@@ -447,8 +515,8 @@ export function ProviderPerformanceTable({
         key: "completionRate",
         label: "Completion Rate",
         render: (row) => (
-          <span className="font-semibold text-card-foreground">
-            {row.completionRate ? `${row.completionRate}%` : "N/A"}
+          <span className="font-bold text-slate-900 dark:text-slate-100">
+            {row.completionRate ? `${row.completionRate}%` : "—"}
           </span>
         ),
       },
@@ -457,7 +525,7 @@ export function ProviderPerformanceTable({
   );
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
+    <div className="overflow-hidden rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
       <DataTable
         columns={providerColumns}
         data={providers}

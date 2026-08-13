@@ -541,62 +541,62 @@ export default function DigitalContractPaper({
             <div className="flex-1 min-h-0 p-3.5 overflow-y-auto bg-muted/10 flex justify-center">
               <article
                 id="digital-contract-paper"
-                className="w-full bg-white text-black p-6 sm:p-8 rounded-lg border border-border/80 shadow-xs space-y-3.5 transition-transform duration-150"
+                className="w-full bg-white text-slate-900 p-8 sm:p-12 rounded-xl border border-slate-300 dark:border-slate-700 shadow-md space-y-4 transition-transform duration-150"
                 style={{
-                  fontFamily: '"Times New Roman", Times, serif',
-                  fontSize: "11.5px",
-                  lineHeight: "1.4",
+                  fontFamily: '"Times New Roman", Times, "Liberation Serif", Georgia, serif',
+                  fontSize: "12.5px",
+                  lineHeight: "1.55",
                   color: "#0f172a",
                   transform: `scale(${digitalZoom / 100})`,
                   transformOrigin: "top center",
-                  marginBottom: digitalZoom > 100 ? `${(digitalZoom - 100) * 6}px` : "0px",
+                  marginBottom: digitalZoom > 100 ? `${(digitalZoom - 100) * 8}px` : "0px",
                 }}
               >
-                <div className="text-center pb-1">
-                  <p className="text-[10px] font-semibold text-primary uppercase tracking-widest mb-0.5">
-                    OFFICIAL DIGITAL AGREEMENT COPY
+                <div className="text-center pb-2 border-b border-slate-200">
+                  <p className="text-[11px] font-bold text-blue-700 uppercase tracking-widest mb-0.5">
+                    OFFICIAL DIGITAL LEASE AGREEMENT
                   </p>
-                  <h1 className="text-sm sm:text-base font-bold tracking-wide uppercase m-0">
+                  <h1 className="text-base sm:text-lg font-bold tracking-wide uppercase m-0 text-slate-900">
                     CONTRACT OF LEASE
                   </h1>
-                  <h2 className="text-[11px] sm:text-xs font-bold tracking-wider uppercase mt-0.5">
+                  <h2 className="text-xs sm:text-sm font-bold tracking-wider uppercase mt-1">
                     <Populated>{roomLabel} — {termLabel} LEASE</Populated>
                   </h2>
                 </div>
 
-                <p className="font-semibold uppercase tracking-wider text-[10px] text-slate-900 mt-2 mb-1">
+                <p className="font-bold uppercase tracking-wider text-[11px] text-slate-900 mt-3 mb-1">
                   KNOWN TO ALL MEN BY THESE PRESENTS:
                 </p>
 
-                <p className="text-justify indent-5">
+                <p className="text-justify indent-6 text-slate-800">
                   This <strong>CONTRACT OF LEASE</strong> is made and executed in the City of Makati, this{" "}
                   <Populated>{executionDay}</Populated> day of{" "}
                   <Populated>{executionMonth} {executionYear}</Populated>, by and between:
                 </p>
 
-                <p className="text-justify indent-5">
+                <p className="text-justify indent-6 text-slate-800">
                   <strong>FIRST JRAC PARTNERSHIP CO.</strong>, a general partnership duly organized and existing under and by virtue of the laws of the Republic of the Philippines, with principal office at 9431 Magallanes St., Guadalupe Nuevo, Makati City, represented herein by its General Partner, <strong>JOANNE ONG</strong>, hereinafter referred to as the <strong>LESSOR</strong>;
                 </p>
 
-                <p className="text-center font-bold tracking-widest text-[10px] my-0.5">
+                <p className="text-center font-bold tracking-widest text-[11px] my-1 text-slate-700">
                   — and —
                 </p>
 
-                <p className="text-justify indent-5">
+                <p className="text-justify indent-6 text-slate-800">
                   <Populated>{tenantName}</Populated>, of legal age, Filipino, with postal and residential address at{" "}
                   <Populated>{tenantAddress}</Populated>, hereinafter referred to as the <strong>LESSEE</strong>;
                 </p>
 
-                <p className="font-bold tracking-wide text-[10px] mt-1.5 mb-0.5">
+                <p className="font-bold tracking-wide text-[11px] mt-2 mb-1 text-slate-900">
                   WITNESSETH: That
                 </p>
 
-                <p className="text-justify indent-5">
+                <p className="text-justify indent-6 text-slate-800">
                   <strong>WHEREAS</strong>, the LESSOR is the owner of a residential establishment known as{" "}
                   <Populated>{branchName}</Populated>, located at <Populated>{branchAddress}</Populated>;
                 </p>
 
-                <p className="text-justify indent-5">
+                <p className="text-justify indent-6 text-slate-800">
                   <strong>WHEREAS</strong>, the LESSOR agrees to lease to the LESSEE a <Populated>{roomLabel}</Populated> accommodation known as Room{" "}
                   <Populated>{roomNumber}</Populated>
                   {!isPrivate && (
@@ -607,15 +607,15 @@ export default function DigitalContractPaper({
                   (the “LEASED PREMISES”) within the said establishment, and the LESSEE is willing to lease the same for a limited time or period;
                 </p>
 
-                <p className="text-justify indent-5">
+                <p className="text-justify indent-6 text-slate-800">
                   <strong>NOW THEREFORE</strong>, for and in consideration of the foregoing premises, the LESSOR leases unto the LESSEE and the LESSEE hereby accepts from the LESSOR the LEASED PREMISES, subject to the following:
                 </p>
 
-                <div className="text-center font-bold tracking-wider text-[10px] uppercase my-2 border-y border-slate-300 py-0.5">
+                <div className="text-center font-bold tracking-wider text-xs uppercase my-3 border-y border-slate-300 py-1 text-slate-900">
                   TERMS AND CONDITIONS
                 </div>
 
-                <div className="space-y-2.5 text-justify text-[11px]">
+                <div className="space-y-3 text-justify text-[12px] sm:text-[12.5px] leading-relaxed text-slate-800">
                   <p>
                     <strong>SECTION 1 – PURPOSE.</strong> The leased premises shall be used exclusively by the LESSEE for residential purposes only and shall not be diverted to other uses. It is hereby expressly agreed that if at any time the premises are used for other purposes, the LESSOR shall have the right to rescind this Contract, without prejudice to its other rights under the law.
                   </p>
@@ -681,58 +681,64 @@ export default function DigitalContractPaper({
                   </p>
                 </div>
 
-                <p className="text-justify indent-5 pt-2">
+                <p className="text-justify indent-6 pt-3 text-slate-800 font-medium">
                   <strong>IN WITNESS WHEREOF</strong>, both parties herein have affixed their signatures on the date and place first above written.
                 </p>
 
                 {/* Signatures Grid */}
-                <div className="grid grid-cols-2 gap-8 pt-5 pb-2 text-center text-[10.5px]">
+                <div className="grid grid-cols-2 gap-8 pt-6 pb-2 text-center text-xs">
                   <div className="flex flex-col justify-end">
                     <div className="h-10"></div>
-                    <div className="border-t border-slate-900 pt-1 font-bold text-slate-900">
-                      <Populated className="block">{tenantName}</Populated>
+                    <div className="border-t border-slate-900 pt-1.5 font-bold text-slate-900">
+                      <Populated className="block text-[13px]">{tenantName}</Populated>
                     </div>
-                    <div className="text-slate-600 text-[10px] uppercase tracking-wider mt-0.5">LESSEE</div>
+                    <div className="text-slate-600 text-[11px] uppercase tracking-wider font-semibold mt-0.5">
+                      LESSEE
+                    </div>
                   </div>
 
                   <div className="flex flex-col justify-end">
-                    <div className="font-bold text-slate-900">FIRST JRAC PARTNERSHIP CO.</div>
-                    <div className="text-[10px] italic text-slate-600 mt-0.5 mb-5">By:</div>
-                    <div className="border-t border-slate-900 pt-1 font-bold text-slate-900">
+                    <div className="font-bold text-slate-900 text-xs">FIRST JRAC PARTNERSHIP CO.</div>
+                    <div className="text-[11px] italic text-slate-600 mt-0.5 mb-6">By:</div>
+                    <div className="border-t border-slate-900 pt-1.5 font-bold text-slate-900 text-[13px]">
                       JOANNE ONG
                     </div>
-                    <div className="text-slate-600 text-[10px] mt-0.5">General Partner – LESSOR</div>
+                    <div className="text-slate-600 text-[11px] font-semibold mt-0.5">
+                      General Partner – LESSOR
+                    </div>
                   </div>
                 </div>
 
-                <div className="pt-3 text-[10px]">
-                  <span className="font-bold tracking-wide">SIGNED IN THE PRESENCE OF:</span>
-                  <div className="grid grid-cols-2 gap-8 pt-6 pb-1">
+                <div className="pt-4 text-xs">
+                  <span className="font-bold tracking-wide text-slate-900 text-[11px]">
+                    SIGNED IN THE PRESENCE OF:
+                  </span>
+                  <div className="grid grid-cols-2 gap-8 pt-8 pb-1">
                     <div className="border-b border-slate-900 h-0"></div>
                     <div className="border-b border-slate-900 h-0"></div>
                   </div>
                 </div>
 
                 {/* Notarial Acknowledgment */}
-                <div className="pt-3 border-t border-slate-300 mt-3 space-y-1.5 text-[10px]">
-                  <div className="text-center font-bold tracking-wider uppercase text-[9.5px]">
+                <div className="pt-4 border-t border-slate-300 mt-4 space-y-2 text-[11px] text-slate-800">
+                  <div className="text-center font-bold tracking-wider uppercase text-xs text-slate-900">
                     ACKNOWLEDGMENT
                   </div>
                   <p className="leading-tight">
                     REPUBLIC OF THE PHILIPPINES )<br />
                     CITY OF MAKATI &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;) S.S.
                   </p>
-                  <p className="text-justify indent-5">
+                  <p className="text-justify indent-6">
                     BEFORE ME, this ______ day of ____________________, personally appeared the above-named parties, all known to me and to me known to be the same persons who executed the foregoing instrument, and who acknowledged to me that the same is their free and voluntary act and deed.
                   </p>
-                  <p className="text-justify indent-5">
+                  <p className="text-justify indent-6">
                     This instrument, consisting of __________ ( ______ ) page/s, including the page on which this acknowledgment is written, has been signed on each and every page thereof by the concerned parties and their witnesses, and sealed with my notarial seal.
                   </p>
-                  <p className="indent-5">
+                  <p className="indent-6">
                     WITNESS MY HAND AND SEAL, on the date and place first above written.
                   </p>
 
-                  <div className="grid grid-cols-2 max-w-xs pt-1 text-[9.5px] text-slate-700">
+                  <div className="grid grid-cols-2 max-w-xs pt-2 text-[10.5px] text-slate-700 font-mono">
                     <div>Doc. No. ________;</div>
                     <div>Page No. ________;</div>
                     <div>Book No. ________;</div>
