@@ -1,35 +1,62 @@
 /**
  * ============================================================================
- * MOBILE AUTH ROUTES (session-teardown bridge)
+ * MOBILE AUTH ROUTES (session-teardown + reset-token status bridge)
  * ============================================================================
  *
- * Closes the gap identified in the Phase 3 Auth/Session Consolidation audit:
- * the shipped mobile app calls POST /api/m/auth/session-teardown (see
- * frontend/src/services/api.js `teardownExpiredSession()`) whenever a 401
- * (SESSION_REVOKED / generic expiry) or 403 ACCOUNT_INACTIVE response
- * indicates the client's session is already dead — but the canonical
- * backend's vendored mobile router (mobile/routes/auth.routes.js) never
- * defined this path, so it 404'd for any client already pointed here.
+ * Closes two gaps the mobile/canonical reconciliation audit found in the
+ * vendored mobile router (mobile/routes/auth.routes.js):
+ *
+ * 1. Session teardown — the shipped mobile app calls
+ *    POST /api/m/auth/session-teardown (see
+ *    frontend/src/services/api.js `teardownExpiredSession()`) whenever a 401
+ *    (SESSION_REVOKED / generic expiry) or 403 ACCOUNT_INACTIVE response
+ *    indicates the client's session is already dead — the vendored router
+ *    never defined this path, so it 404'd for any client already pointed
+ *    here.
+ *
+ * 2. Reset-token status — a read-only, non-consuming check of whether a
+ *    password-reset token is still valid, so a client (e.g. a future
+ *    canonical web/auth-action page) can show "this link is expired" before
+ *    asking for a new password, without spending the token's one use. The
+ *    vendored router only exposes the *consuming* POST /auth/reset-password;
+ *    there was no way to check status without risking a wasted attempt.
  *
  * Mounted at /api/m BEFORE mobileRoutes (the vendored mobile backend copy)
  * — same pattern as mobileContractRoutes.js, mobileBillingRoutes.js, etc. —
- * so this definition fully supersedes the vendored router for this one path.
- * Every other /api/m/auth/* path (login, OTP, logout, ...) is untouched and
- * continues to fall through to the vendored router unchanged.
+ * so these definitions fully supersede the vendored router for these two
+ * paths. Every other /api/m/auth/* path (login, OTP, logout, forgot/reset
+ * password itself, ...) is untouched and continues to fall through to the
+ * vendored router unchanged.
  *
- * Uses the dedicated middleware/mobileSessionTeardownAuth.js resolver, NOT
- * mobileTenantAuth — see that file's header for why a relaxed, single-purpose
- * check is required here and why it must never be reused elsewhere.
+ * Session teardown uses the dedicated middleware/mobileSessionTeardownAuth.js
+ * resolver, NOT mobileTenantAuth — see that file's header for why a relaxed,
+ * single-purpose check is required here and why it must never be reused
+ * elsewhere. Reset-token status is unauthenticated (like forgot-password),
+ * so it reuses the canonical authLimiter instead.
+ *
+ * Reset-token status reuses mobile/security/resetTokenEligibility.js (the
+ * exact same hashResetToken + resetTokenEligibilityFilter the vendored
+ * mobile/controllers/auth.controller.js's resetPassword uses) rather than
+ * requiring the full vendored auth controller — that module is
+ * dependency-free (only Node's crypto), so unlike the controller it carries
+ * no config/database or config/firebase require-cache-shim ordering risk and
+ * is safe to import eagerly, in tests or in production.
  */
 
 import express from "express";
 import mongoose from "mongoose";
+import { createRequire } from "module";
 
 import { mobileSessionTeardownAuth } from "../middleware/mobileSessionTeardownAuth.js";
+import { authLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
 const asyncRoute = (handler) => (req, res, next) =>
   Promise.resolve(handler(req, res, next)).catch(next);
+
+const { hashResetToken, resetTokenEligibilityFilter } = createRequire(import.meta.url)(
+  "../mobile/security/resetTokenEligibility.js",
+);
 
 // IMPORTANT: mobileSessionTeardownAuth is attached per-route below, NEVER
 // via router.use() at the router level — see the identical note in
@@ -63,6 +90,35 @@ router.post("/auth/session-teardown", mobileSessionTeardownAuth, asyncRoute(asyn
   await db.collection("user_sessions").deleteOne({ _id: session._id });
 
   res.json({ status: "ok" });
+}));
+
+// Read-only, non-consuming reset-token status check. Reuses the exact same
+// eligibility semantics as the real reset (hashResetToken +
+// resetTokenEligibilityFilter from mobile/security/resetTokenEligibility.js)
+// so this can never drift from what POST /auth/reset-password itself accepts.
+//
+// Response is deliberately ONLY { valid: boolean } on every path — malformed
+// input, unknown/garbage token, expired, already-used, and internal errors
+// are all indistinguishable "false" results. No email/user id/expiry/reason
+// is ever returned, and the raw token is never logged.
+router.post("/auth/reset-password/status", authLimiter, asyncRoute(async (req, res) => {
+  const token = req.body?.token;
+  if (typeof token !== "string" || !token.trim()) {
+    res.json({ valid: false });
+    return;
+  }
+
+  try {
+    const db = mongoose.connection.db;
+    const hashedToken = hashResetToken(token);
+    const record = await db.collection("password_reset_tokens").findOne(
+      resetTokenEligibilityFilter(hashedToken),
+    );
+    res.json({ valid: Boolean(record) });
+  } catch (error) {
+    console.error("[mobileAuthRoutes] reset-password/status check failed:", error?.message);
+    res.status(500).json({ valid: false });
+  }
 }));
 
 export default router;

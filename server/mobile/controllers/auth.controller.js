@@ -5,6 +5,7 @@ const { verifyFirebaseIdToken, verifyTenantInFirebase, admin } = require('../con
 const { sendPasswordResetEmail, sendPasswordChangedEmail } = require('../services/emailService');
 const { invalidateUserSessionsCore } = require('../../security/sessionInvalidationCore.cjs');
 const { createSession } = require('../security/mobileSession');
+const { hashResetToken, resetTokenEligibilityFilter } = require('../security/resetTokenEligibility');
 const authTestDependencies = {
   getDb,
   sendLoginOtpEmail: (...args) => require('../services/emailService').sendLoginOtpEmail(...args),
@@ -1203,13 +1204,11 @@ async function resetPassword(req, res) {
       return res.status(400).json({ detail: passwordErrors[0] });
     }
 
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+    const hashedToken = hashResetToken(token);
     const db = getDb();
-    const record = await db.collection('password_reset_tokens').findOne({
-      hashedToken,
-      used: false,
-      expiresAt: { $gt: new Date() },
-    });
+    const record = await db.collection('password_reset_tokens').findOne(
+      resetTokenEligibilityFilter(hashedToken),
+    );
 
     if (!record) {
       return res.status(400).json({ detail: 'This reset link is invalid or has expired. Please request a new one.' });
@@ -1250,6 +1249,8 @@ module.exports = {
   forgotPassword,
   getResetPasswordPage,
   resetPassword,
+  hashResetToken,
+  resetTokenEligibilityFilter,
   __test: {
     hashOtp,
     otpMatches,
