@@ -29,7 +29,7 @@ const VISIT_APPLICATION_LOCK_STATUSES = new Set([
 ]);
 
 export const PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE =
-  "Tenant application will be available after the admin marks your physical visit as completed.";
+  "Your tenant application will be available once your physical visit is completed.";
 export const TENANT_APPLICATION_LOCKED_MESSAGE =
   "Tenant application is locked for this reservation status.";
 
@@ -164,9 +164,9 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
     case "visit_completed":
       return {
         statusKey: status,
-        title: "Physical Visit Confirmed",
+        title: "Physical Visit Complete",
         message:
-          "Your physical visit has been confirmed. You may now complete your tenant application.",
+          "Your physical visit is complete. You may now proceed with your tenant application.",
         buttonLabel: "Fill Application",
         route: "/applicant/reservation?step=3",
         canFillApplication: true,
@@ -178,7 +178,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
         statusKey: status,
         title: "Application Access Granted",
         message:
-          "Admin has allowed you to continue your tenant application without a completed physical visit.",
+          "You have been granted access to proceed with your tenant application without a physical visit.",
         buttonLabel: "Fill Application",
         route: "/applicant/reservation?step=3",
         canFillApplication: true,
@@ -190,7 +190,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
         statusKey: status,
         title: "Visit Marked as No-Show",
         message:
-          "You missed your scheduled visit. Please reschedule your visit or contact admin.",
+          "Your scheduled visit was marked as missed. Please reschedule your visit or contact administration.",
         buttonLabel: "View Status",
         route: "/applicant/reservation?step=2",
         canFillApplication: false,
@@ -202,7 +202,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
         statusKey: status,
         title: "Visit Schedule Cancelled",
         message:
-          "Your physical visit schedule was cancelled. Please contact admin or request a new visit schedule before continuing.",
+          "Your visit schedule was cancelled. Please request a new visit schedule or contact administration.",
         buttonLabel: "Review Visit",
         route: "/applicant/reservation?step=2",
         canFillApplication: false,
@@ -212,9 +212,9 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
     case "schedule_approved":
       return {
         statusKey: status,
-        title: "Visit Confirmed — Attend Your Visit",
+        title: "Visit Schedule Confirmed",
         message:
-          "Your visit schedule has been confirmed. Please attend on the scheduled date. You may continue to the tenant application after admin records your visit.",
+          "Your visit schedule is confirmed. You may proceed with your application once your visit is completed.",
         buttonLabel: "Review Visit",
         route: "/applicant/reservation?step=2",
         canFillApplication: false,
@@ -226,7 +226,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
         statusKey: status,
         title: "Visit Rescheduled",
         message:
-          "Please attend your updated room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.",
+          "Please attend your updated visit. You may proceed with your application once your visit is completed.",
         buttonLabel: "Review Visit",
         route: "/applicant/reservation?step=2",
         canFillApplication: false,
@@ -239,7 +239,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
         statusKey: status || "physical_visit_scheduled",
         title: "Physical Visit Scheduled",
         message:
-          "Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.",
+          "Please attend your scheduled visit. You may proceed with your application once your visit is completed.",
         buttonLabel: "Review Visit",
         route: "/applicant/reservation?step=2",
         canFillApplication: false,

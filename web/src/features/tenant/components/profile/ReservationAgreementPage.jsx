@@ -152,8 +152,6 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  : "TBD";
  const reservationStatus = reservation.reservationStatus || reservation.status || "pending";
  const isFullTenantReservation = hasReservationStatus(reservationStatus, "moveIn", "moveOut");
- const isReservedApplicant =
- hasReservationStatus(reservationStatus, "reserved") && !isFullTenantReservation;
  const personLabel = isFullTenantReservation ? "Tenant" : "Applicant";
  const resFirstName = reservation.firstName || profile?.firstName || "";
  const resLastName = reservation.lastName || profile?.lastName || "";
@@ -372,45 +370,6 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  </div>
 
  {/* ── Two Column Layout ──────────────────────── */}
- {isReservedApplicant && (
- <div
- style={{
- ...card,
- background: "var(--success-light)",
- borderColor: "var(--success)",
- display: "flex",
- alignItems: "flex-start",
- gap: 12,
- }}
- >
- <div
- style={{
- width: 40,
- height: 40,
- borderRadius: 999,
- background: "var(--status-success-bg)",
- display: "flex",
- alignItems: "center",
- justifyContent: "center",
- flexShrink: 0,
- }}
- >
- <ShieldCheck size={20} color="var(--success)" />
- </div>
- <div>
- <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--success-dark)", margin: "0 0 6px" }}>
- Room Reserved
- </h2>
- <p style={{ color: "var(--success-dark)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
- Your room reservation has been confirmed. Please wait for further instructions from the admin.
- </p>
- <p style={{ color: "var(--success)", fontSize: 12, lineHeight: 1.6, margin: "8px 0 0" }}>
- You remain an applicant until admin completes the tenant conversion.
- </p>
- </div>
- </div>
- )}
-
  <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
  {/* LEFT: Room Details ────────────────────────── */}
  <div style={{ flex: "1 1 520px", minWidth: 300 }}>
@@ -772,192 +731,200 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  )}
  </div>
  </div>
- {showCancellationModal && (
- <div
- onClick={() => {
- if (!isRequestingCancellation) resetCancellationModal();
- }}
- style={{
- position: "fixed",
- inset: 0,
- background: "color-mix(in srgb, var(--foreground) 55%, transparent)",
- display: "flex",
- alignItems: "center",
- justifyContent: "center",
- padding: 20,
- zIndex: 1000,
- }}
- >
- <div
- onClick={(event) => event.stopPropagation()}
- style={{
- width: "min(520px, 100%)",
- background: "var(--card)",
- borderRadius: 18,
- boxShadow: "var(--shadow-xl)",
- padding: 26,
- }}
- >
- <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 16 }}>
- <div
- style={{
- width: 44,
- height: 44,
- borderRadius: 12,
- background: "var(--danger-light)",
- color: "var(--danger)",
- display: "grid",
- placeItems: "center",
- flexShrink: 0,
- }}
- >
- <AlertCircle size={22} />
- </div>
- <div>
- <h3 style={{ margin: "0 0 6px", fontSize: 19, fontWeight: 600, color: "var(--foreground)" }}>
- Request reservation cancellation?
- </h3>
- <p style={{ margin: 0, color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.6 }}>
- {RESERVATION_FEE_NON_REFUNDABLE_NOTICE} Your bed will only be released if admin approves your request.
- </p>
- </div>
- </div>
+  {showCancellationModal && (
+    <div
+      onClick={() => {
+        if (!isRequestingCancellation) resetCancellationModal();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        backgroundColor: "rgba(10, 22, 40, 0.65)",
+        backdropFilter: "blur(2px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        zIndex: 1000,
+      }}
+    >
+      <div
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: "min(540px, 100%)",
+          background: "var(--surface-card, #FFFFFF)",
+          border: "1px solid var(--border-card, #E2E8F0)",
+          borderRadius: 16,
+          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.15)",
+          padding: 28,
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 16 }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: "#FEF2F2",
+              border: "1px solid #FEE2E2",
+              color: "#DC2626",
+              display: "grid",
+              placeItems: "center",
+              flexShrink: 0,
+            }}
+          >
+            <AlertCircle size={22} />
+          </div>
+          <div>
+            <h3 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 700, color: "var(--text-heading, #0F172A)" }}>
+              Request Reservation Cancellation?
+            </h3>
+            <p style={{ margin: 0, color: "var(--text-secondary, #64748B)", fontSize: 13, lineHeight: 1.5 }}>
+              The reservation fee is non-refundable. If approved by the admin, your slot will be released and the reservation fee will not be returned.
+            </p>
+          </div>
+        </div>
 
- <div style={{ marginTop: 18 }}>
- <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
- <span style={{ color: "var(--foreground)", fontSize: 13, fontWeight: 700 }}>
- Reason for cancellation (optional)
- </span>
- <span
- style={{
- fontSize: 11,
- fontWeight: 600,
- color: cancellationReason.length >= MAX_CANCELLATION_REASON_LENGTH ? "var(--danger)" : "var(--muted-foreground)",
- }}
- >
- {cancellationReason.length} / {MAX_CANCELLATION_REASON_LENGTH}
- </span>
- </div>
+        {/* Reason Selection */}
+        <div style={{ marginTop: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ color: "var(--text-heading, #0F172A)", fontSize: 13, fontWeight: 600 }}>
+              Reason for cancellation <span style={{ fontWeight: 400, color: "var(--text-muted, #94A3B8)" }}>(optional)</span>
+            </span>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: cancellationReason.length >= MAX_CANCELLATION_REASON_LENGTH ? "#DC2626" : "var(--text-muted, #94A3B8)",
+              }}
+            >
+              {cancellationReason.length} / {MAX_CANCELLATION_REASON_LENGTH}
+            </span>
+          </div>
 
- <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
- {PREDEFINED_CANCELLATION_REASONS.map((reasonText) => {
- const isSelected = cancellationReason === reasonText;
- return (
- <button
- key={reasonText}
- type="button"
- disabled={isRequestingCancellation}
- onClick={() => setCancellationReason(isSelected ? "" : reasonText)}
- style={{
- padding: "5px 11px",
- borderRadius: 16,
- fontSize: 12,
- fontWeight: 500,
- border: isSelected ? "1px solid var(--secondary)" : "1px solid var(--border)",
- background: isSelected ? "var(--secondary)" : "var(--muted)",
- color: isSelected ? "var(--secondary-foreground)" : "var(--foreground)",
- cursor: isRequestingCancellation ? "default" : "pointer",
- transition: "all 0.15s ease",
- }}
- >
- {reasonText}
- </button>
- );
- })}
- </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+            {PREDEFINED_CANCELLATION_REASONS.map((reasonText) => {
+              const isSelected = cancellationReason === reasonText;
+              return (
+                <button
+                  key={reasonText}
+                  type="button"
+                  disabled={isRequestingCancellation}
+                  onClick={() => setCancellationReason(isSelected ? "" : reasonText)}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: 20,
+                    fontSize: 12,
+                    fontWeight: isSelected ? 600 : 500,
+                    border: isSelected ? "1px solid var(--color-primary, #0A1628)" : "1px solid var(--border-card, #E2E8F0)",
+                    background: isSelected ? "var(--color-primary, #0A1628)" : "var(--surface-card, #FFFFFF)",
+                    color: isSelected ? "#FFFFFF" : "var(--text-heading, #0F172A)",
+                    cursor: isRequestingCancellation ? "default" : "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {reasonText}
+                </button>
+              );
+            })}
+          </div>
 
- <textarea
- rows={3}
- maxLength={MAX_CANCELLATION_REASON_LENGTH}
- value={cancellationReason}
- onChange={(event) =>
- setCancellationReason(event.target.value.slice(0, MAX_CANCELLATION_REASON_LENGTH))
- }
- disabled={isRequestingCancellation}
- placeholder="Share a short reason or select an option above."
- style={{
- width: "100%",
- resize: "vertical",
- border: "1px solid var(--border)",
- borderRadius: 10,
- padding: "10px 12px",
- fontSize: 13,
- color: "var(--foreground)",
- outline: "none",
- boxSizing: "border-box",
- fontFamily: "inherit",
- }}
- />
- </div>
+          <textarea
+            rows={3}
+            maxLength={MAX_CANCELLATION_REASON_LENGTH}
+            value={cancellationReason}
+            onChange={(event) =>
+              setCancellationReason(event.target.value.slice(0, MAX_CANCELLATION_REASON_LENGTH))
+            }
+            disabled={isRequestingCancellation}
+            placeholder="Tell us why or select an option above..."
+            style={{
+              width: "100%",
+              resize: "vertical",
+              border: "1px solid var(--border-card, #E2E8F0)",
+              borderRadius: 10,
+              padding: "10px 14px",
+              fontSize: 13,
+              color: "var(--text-heading, #0F172A)",
+              backgroundColor: "var(--surface-page, #F8FAFC)",
+              outline: "none",
+              boxSizing: "border-box",
+              fontFamily: "inherit",
+            }}
+          />
+        </div>
 
- <label
- style={{
- display: "flex",
- gap: 12,
- alignItems: "flex-start",
- marginTop: 16,
- padding: "14px 16px",
- background: "var(--warning-light)",
- border: "1px solid var(--warning)",
- borderRadius: 10,
- color: "var(--warning-dark)",
- fontSize: 13,
- lineHeight: 1.5,
- cursor: isRequestingCancellation ? "default" : "pointer",
- }}
- >
- <input
- type="checkbox"
- checked={acknowledgedCancellationPolicy}
- onChange={(event) => setAcknowledgedCancellationPolicy(event.target.checked)}
- disabled={isRequestingCancellation}
- style={{ marginTop: 2, accentColor: "var(--danger)", width: 16, height: 16, cursor: isRequestingCancellation ? "default" : "pointer" }}
- />
- <span>
- I understand that the <strong>reservation fee is non-refundable</strong> even if my cancellation request is approved.
- </span>
- </label>
+        {/* Policy Acknowledgement Box (Clean, Neutral, 0 Yellow) */}
+        <label
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "flex-start",
+            marginTop: 18,
+            padding: "12px 14px",
+            background: "var(--surface-page, #F8FAFC)",
+            border: "1px solid var(--border-card, #E2E8F0)",
+            borderRadius: 10,
+            fontSize: 13,
+            lineHeight: 1.5,
+            cursor: isRequestingCancellation ? "default" : "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={acknowledgedCancellationPolicy}
+            onChange={(event) => setAcknowledgedCancellationPolicy(event.target.checked)}
+            disabled={isRequestingCancellation}
+            style={{ marginTop: 2, accentColor: "var(--color-primary, #0A1628)", width: 16, height: 16, cursor: isRequestingCancellation ? "default" : "pointer" }}
+          />
+          <span style={{ color: "var(--text-secondary, #334155)" }}>
+            I understand that the <strong style={{ color: "var(--text-heading, #0F172A)" }}>reservation fee is non-refundable</strong> even if my cancellation request is approved.
+          </span>
+        </label>
 
- <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 24 }}>
- <button
- type="button"
- onClick={resetCancellationModal}
- disabled={isRequestingCancellation}
- style={{
- padding: "10px 20px",
- borderRadius: 8,
- border: "1px solid var(--border)",
- background: "var(--card)",
- color: "var(--foreground)",
- fontSize: 13,
- fontWeight: 700,
- cursor: isRequestingCancellation ? "default" : "pointer",
- }}
- >
- Keep Reservation
- </button>
- <button
- type="button"
- onClick={handleRequestCancellation}
- disabled={isRequestingCancellation || !acknowledgedCancellationPolicy}
- style={{
- padding: "10px 20px",
- borderRadius: 8,
- border: "none",
- background: "var(--danger)",
- color: "var(--danger-foreground)",
- fontSize: 13,
- fontWeight: 700,
- cursor: isRequestingCancellation || !acknowledgedCancellationPolicy ? "default" : "pointer",
- opacity: isRequestingCancellation || !acknowledgedCancellationPolicy ? 0.6 : 1,
- }}
- >
- {isRequestingCancellation ? "Submitting..." : "Submit Request"}
- </button>
- </div>
- </div>
- </div>
- )}
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 24 }}>
+          <button
+            type="button"
+            onClick={resetCancellationModal}
+            disabled={isRequestingCancellation}
+            style={{
+              padding: "10px 20px",
+              borderRadius: 8,
+              border: "1px solid var(--border-card, #CBD5E1)",
+              background: "var(--surface-card, #FFFFFF)",
+              color: "var(--text-heading, #0F172A)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: isRequestingCancellation ? "default" : "pointer",
+            }}
+          >
+            Keep Reservation
+          </button>
+          <button
+            type="button"
+            onClick={handleRequestCancellation}
+            disabled={isRequestingCancellation || !acknowledgedCancellationPolicy}
+            title={!acknowledgedCancellationPolicy ? "Please check the non-refundable fee agreement box before submitting" : undefined}
+            style={{
+              padding: "10px 22px",
+              borderRadius: 8,
+              border: "none",
+              background: acknowledgedCancellationPolicy ? "#DC2626" : "#E2E8F0",
+              color: acknowledgedCancellationPolicy ? "#FFFFFF" : "#94A3B8",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: isRequestingCancellation || !acknowledgedCancellationPolicy ? "not-allowed" : "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            {isRequestingCancellation ? "Submitting..." : "Submit Request"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
  </div>
  );
 };

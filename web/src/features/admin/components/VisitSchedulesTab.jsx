@@ -255,9 +255,10 @@ function VisitSchedulesTab() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  const { data: rawReservations = [], isLoading: loading } = useReservations({
-    view: "admin-list",
-  });
+  const { data: rawReservations = [], isLoading: loading } = useReservations(
+    { view: "admin-list" },
+    { refetchInterval: 5000, refetchOnWindowFocus: true, refetchOnMount: true },
+  );
 
   const schedules = useMemo(
     () => mapVisitScheduleRows(rawReservations),

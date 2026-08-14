@@ -810,6 +810,65 @@ export async function notifyAdminsOfCancellationRequest(reservation, dbUser) {
   );
 }
 
+export async function notifyAdminsOfVisitSchedule({
+  reservation,
+  applicantUser,
+  viewingPreference,
+  visitDate,
+  visitTime,
+}) {
+  if (!reservation) return;
+  try {
+    const roomId = reservation.roomId?._id || reservation.roomId;
+    const room = roomId
+      ? await Room.findById(roomId).select("name roomNumber branch").lean()
+      : null;
+    const branch = reservation.branch || room?.branch || "";
+    const roomName = room?.name || room?.roomNumber || reservation.preferredRoomNumber || "a room";
+    const tenantName = applicantUser
+      ? `${applicantUser.firstName || ""} ${applicantUser.lastName || ""}`.trim() || applicantUser.email || "An applicant"
+      : "An applicant";
+
+    const adminRecipients = branch
+      ? [
+          { role: "branch_admin", branch },
+          { role: "owner" },
+        ]
+      : [
+          { role: "branch_admin" },
+          { role: "owner" },
+        ];
+
+    const adminUsers = await User.find({
+      $or: adminRecipients,
+      accountStatus: "active",
+      isArchived: { $ne: true },
+    }).select("_id").lean();
+
+    await Promise.all(
+      adminUsers.map(async (admin) => {
+        const notification = await notify.visitScheduledAlert(admin._id, {
+          tenantName,
+          roomName,
+          branch,
+          visitDate: visitDate || reservation.visitDate,
+          visitTime: visitTime || reservation.visitTime,
+          reservationId: reservation._id,
+          viewingPreference: viewingPreference || reservation.viewingPreference,
+        });
+        if (notification) {
+          emitToUser(admin._id, "notification:new", notification);
+        }
+      }),
+    );
+  } catch (error) {
+    logger.warn(
+      { err: error, reservationId: reservation._id },
+      "Failed to notify admins of visit schedule (non-fatal)",
+    );
+  }
+}
+
 export const normalizeViewingPreferenceInput = (value, fallback = null) => {
   if (value == null || value === "") return fallback;
   const normalized = String(value).trim().toLowerCase();

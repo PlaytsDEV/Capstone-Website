@@ -601,7 +601,7 @@ html[data-theme="dark"] .rf-modal-icon-wrap--emerald {
 .radio-label {
   display: block;
   padding: 14px 18px 14px 46px;
-  border: 1.5px solid var(--rf-border);
+  border: 1px solid var(--rf-border);
   border-radius: var(--rf-radius-sm);
   background: var(--rf-surface);
   transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
@@ -622,7 +622,7 @@ html[data-theme="dark"] .rf-modal-icon-wrap--emerald {
   transform: translateY(-50%);
   width: 18px;
   height: 18px;
-  border: 2px solid var(--rf-border);
+  border: 1.5px solid var(--rf-border);
   border-radius: 50%;
   background: var(--card);
   transition: border-color 0.15s ease, background-color 0.15s ease;
@@ -640,11 +640,11 @@ html[data-theme="dark"] .rf-modal-icon-wrap--emerald {
   transition: transform 0.15s ease;
 }
 
-/* Radio option Checked State */
+/* Radio option Checked State (Subtle 1px focused selection) */
 .radio-option input[type="radio"]:checked + .radio-label {
   border-color: #059669;
   background: #f0fdf4;
-  box-shadow: 0 0 0 1px #059669;
+  box-shadow: none;
 }
 .radio-option input[type="radio"]:checked + .radio-label::before {
   border-color: #059669;
@@ -658,10 +658,10 @@ html[data-theme="dark"] .rf-modal-icon-wrap--emerald {
 .radio-option input[type="radio"]:focus-visible + .radio-label {
   outline: none;
   border-color: #059669;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
 }
 .radio-option input[type="radio"]:checked:focus-visible + .radio-label {
-  box-shadow: 0 0 0 1px #059669, 0 0 0 3px rgba(16, 185, 129, 0.25);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
 }
 
 /* Dark Mode Support */
@@ -669,9 +669,9 @@ html[data-theme="dark"] .radio-label:hover {
   background: rgba(16, 185, 129, 0.05);
 }
 html[data-theme="dark"] .radio-option input[type="radio"]:checked + .radio-label {
-  background: rgba(16, 185, 129, 0.12);
+  background: rgba(16, 185, 129, 0.08);
   border-color: #10b981;
-  box-shadow: 0 0 0 1px #10b981;
+  box-shadow: none;
 }
 html[data-theme="dark"] .radio-option input[type="radio"]:checked + .radio-label::before {
   border-color: #10b981;
@@ -1194,27 +1194,86 @@ html[data-theme="dark"] .rf-hint-pending {
 .rf-calendar-weekday { min-width: 0; padding: 0 4px 2px; text-align: center; font-size: 11px; font-weight: 700; color: var(--rf-text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .rf-date-empty { min-height: 80px; border-radius: 10px; }
 
-.rf-date-btn { all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer; position: relative; }
+.rf-date-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  position: relative;
+  border-radius: 10px;
+  outline: none;
+}
+.rf-date-btn:focus-visible .rf-date-card {
+  outline: 2px solid var(--info, #2563eb);
+  outline-offset: 2px;
+}
 .rf-date-btn:disabled { cursor: not-allowed; }
 
-.rf-date-card { box-sizing: border-box; height: 80px; padding: 9px 8px; border-radius: 10px; border: 2px solid var(--rf-border-card); background: var(--rf-surface); display: flex; flex-direction: column; justify-content: center; text-align: center; transition: all 0.15s ease; cursor: pointer; }
-.rf-date-card:hover { background: var(--rf-hover-bg); border-color: var(--rf-text-muted); }
-.rf-date-card.disabled { background: var(--rf-surface-alt); border-color: transparent; cursor: not-allowed; opacity: 0.40; }
-.rf-date-card.disabled:hover { background: var(--rf-surface-alt); border-color: transparent; }
-.rf-date-card.selected { border-color: var(--rf-selection-border); background: var(--rf-selection-bg); }
+.rf-date-card {
+  box-sizing: border-box;
+  height: 80px;
+  padding: 9px 8px;
+  border-radius: 10px;
+  border: 2px solid var(--rf-border-card, #e2e8f0);
+  background: var(--rf-surface, #ffffff);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  transition: all 0.18s ease;
+  cursor: pointer;
+}
+.rf-date-card:hover {
+  background: var(--rf-hover-bg, #f8fafc);
+  border-color: #93c5fd;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+}
+.rf-date-card.disabled {
+  background: var(--rf-surface-alt, #f8fafc);
+  border-color: transparent;
+  cursor: not-allowed;
+  opacity: 0.40;
+}
+.rf-date-card.disabled:hover {
+  background: var(--rf-surface-alt, #f8fafc);
+  border-color: transparent;
+  transform: none;
+  box-shadow: none;
+}
+.rf-date-card.selected {
+  border-color: var(--info, #2563eb);
+  background: #eff6ff;
+  box-shadow: 0 0 0 1px var(--info, #2563eb), 0 2px 8px rgba(37, 99, 235, 0.14);
+}
 
 .rf-date-day { font-size: 11px; font-weight: 600; color: var(--rf-text-muted); text-transform: uppercase; margin-bottom: 4px; }
 .rf-date-card:not(.disabled) .rf-date-day { color: var(--rf-text-secondary); }
-.rf-date-card.selected .rf-date-day { color: var(--rf-accent); }
+.rf-date-card.selected .rf-date-day { color: #1d4ed8; font-weight: 700; }
 .rf-date-num { font-size: 16px; font-weight: 700; color: var(--rf-text-secondary); white-space: nowrap; }
 .rf-date-card:not(.disabled) .rf-date-num { color: var(--rf-text-heading); }
-.rf-date-card.selected .rf-date-num { color: var(--rf-text-heading); }
+.rf-date-card.selected .rf-date-num { color: #1e3a8a; font-size: 18px; font-weight: 800; }
 .rf-date-card small { display: block; font-size: 10px; font-weight: 600; color: var(--rf-text-muted); text-transform: uppercase; margin-top: 3px; line-height: 1; }
 .rf-date-card:not(.disabled) small { color: var(--rf-text-secondary); }
 .rf-date-card.disabled small { color: var(--rf-text-muted); }
-.rf-date-card.selected small { color: var(--rf-accent); }
+.rf-date-card.selected small { color: var(--info, #2563eb); font-weight: 700; }
 
-.rf-today-pill { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); background: var(--rf-today-bg); color: var(--rf-today-text); font-size: 9px; font-weight: 700; letter-spacing: 0.04em; padding: 2px 6px; border-radius: 20px; white-space: nowrap; }
+.rf-today-pill {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--info, #2563eb);
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 20px;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25);
+}
 
 /* ============ TIME SLOT PICKER ============ */
 .rf-time-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
@@ -1223,17 +1282,59 @@ html[data-theme="dark"] .rf-hint-pending {
 .rf-availability-alert { grid-column: 1 / -1; border: 1px solid var(--rf-error-border); border-radius: 8px; padding: 10px 12px; background: var(--rf-error-bg); color: var(--rf-error-text); font-size: 13px; font-weight: 600; }
 .rf-availability-alert { margin-bottom: 14px; }
 
-.rf-time-btn { all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer; }
+.rf-time-btn { all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer; border-radius: 8px; outline: none; }
 .rf-time-btn:disabled { cursor: not-allowed; }
 
-.rf-time-slot { min-height: 62px; padding: 10px 12px; border-radius: 8px; border: 2px solid var(--rf-border-card); background: var(--rf-surface); display: flex; flex-direction: column; justify-content: center; cursor: pointer; text-align: center; font-size: 14px; font-weight: 500; color: var(--rf-text-secondary); transition: all 0.15s ease; }
+.rf-time-slot {
+  min-height: 62px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 2px solid var(--rf-border-card, #e2e8f0);
+  background: var(--rf-surface, #ffffff);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  cursor: pointer;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--rf-text-secondary, #334155);
+  transition: all 0.18s ease;
+  outline: none;
+}
 .rf-time-slot span, .rf-time-slot small { display: block; }
+.rf-time-slot:focus-visible {
+  outline: 2px solid var(--info, #2563eb);
+  outline-offset: 2px;
+}
 .rf-time-slot small { min-height: 14px; margin-top: 3px; font-size: 11px; font-weight: 600; line-height: 1.25; color: var(--rf-success-text-alt); }
 .rf-time-slot.disabled small { color: var(--rf-error-text); }
-.rf-time-slot:hover { background: var(--rf-hover-bg); border-color: var(--rf-text-muted); }
-.rf-time-slot.disabled { background: var(--rf-surface-alt); border-color: var(--rf-border-card); color: var(--rf-text-muted); cursor: not-allowed; opacity: 0.72; }
-.rf-time-slot.disabled:hover { background: var(--rf-surface-alt); border-color: var(--rf-border-card); }
-.rf-time-slot.selected { border-color: var(--rf-selection-border); background: var(--rf-selection-bg); color: var(--rf-accent); font-weight: 600; }
+.rf-time-slot:hover {
+  background: var(--rf-hover-bg, #f8fafc);
+  border-color: #93c5fd;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.08);
+}
+.rf-time-slot.disabled {
+  background: var(--rf-surface-alt, #f8fafc);
+  border-color: var(--rf-border-card, #e2e8f0);
+  color: var(--rf-text-muted, #94a3b8);
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.rf-time-slot.disabled:hover {
+  background: var(--rf-surface-alt, #f8fafc);
+  border-color: var(--rf-border-card, #e2e8f0);
+  transform: none;
+  box-shadow: none;
+}
+.rf-time-slot.selected {
+  border-color: var(--info, #2563eb);
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-weight: 700;
+  box-shadow: 0 0 0 1px var(--info, #2563eb), 0 2px 6px rgba(37, 99, 235, 0.14);
+}
 
 .rf-section-hint { font-size: 13px; color: var(--rf-text-subtle); margin-bottom: 14px; margin-top: -8px; }
 
@@ -2285,28 +2386,28 @@ html[data-theme="dark"] .rf-upload-progress-percent {
 
 /* ── Option cards: consistent single-color styling ── */
 .rf-option-card .rf-option-card__icon {
-  background: color-mix(in srgb, var(--foreground) 12%, transparent);
-  color: var(--info);
+  background: #eff6ff;
+  color: var(--info, #2563eb);
 }
 .rf-option-card:hover .rf-option-card__icon,
 .rf-option-card.selected .rf-option-card__icon {
-  background: color-mix(in srgb, var(--foreground) 12%, transparent);
-  color: var(--info-dark);
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 .rf-option-card.selected {
-  border-color: var(--info);
-  background: color-mix(in srgb, var(--foreground) 12%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--foreground) 12%, transparent);
+  border-color: var(--info, #2563eb);
+  background: #eff6ff;
+  box-shadow: 0 0 0 1px var(--info, #2563eb), 0 2px 8px rgba(37, 99, 235, 0.12);
   transform: translateY(-1px);
 }
-.rf-option-card.selected .rf-option-card__title { color: var(--info-dark); }
-.rf-option-card.selected .rf-option-card__check { background: var(--info); border-color: var(--info); }
+.rf-option-card.selected .rf-option-card__title { color: #1e3a8a; }
+.rf-option-card.selected .rf-option-card__check { background: var(--info, #2563eb); border-color: var(--info, #2563eb); }
 
 /* Dark mode option card overrides */
-html[data-theme="dark"] .rf-option-card .rf-option-card__icon { background: color-mix(in srgb, var(--foreground) 12%, transparent); color: var(--info); }
-html[data-theme="dark"] .rf-option-card.selected { border-color: var(--info); background: color-mix(in srgb, var(--foreground) 12%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--foreground) 12%, transparent); }
-html[data-theme="dark"] .rf-option-card.selected .rf-option-card__title { color: var(--info-dark); }
-html[data-theme="dark"] .rf-option-card.selected .rf-option-card__check { background: var(--info); border-color: var(--info); }
+html[data-theme="dark"] .rf-option-card .rf-option-card__icon { background: rgba(37, 99, 235, 0.15); color: #60a5fa; }
+html[data-theme="dark"] .rf-option-card.selected { border-color: #3b82f6; background: rgba(37, 99, 235, 0.20); box-shadow: 0 0 0 1px #3b82f6; }
+html[data-theme="dark"] .rf-option-card.selected .rf-option-card__title { color: #ffffff; }
+html[data-theme="dark"] .rf-option-card.selected .rf-option-card__check { background: #2563eb; border-color: #3b82f6; }
 
 /* ============ GALLERY COUNT BADGE ============ */
 .rf-gallery-count-badge {
@@ -2587,48 +2688,63 @@ html[data-theme="dark"] .rf-ack-card__checkbox:hover:not(:disabled) {
 
 /* ============ CALENDAR — HOVER / SELECTED POLISH ============ */
 .rf-date-card:not(.disabled):not(.selected):hover {
-  background: color-mix(in srgb, var(--foreground) 12%, transparent) !important;
-  border-color: color-mix(in srgb, var(--foreground) 12%, transparent) !important;
+  background: var(--surface-hover, #f8fafc) !important;
+  border-color: #93c5fd !important;
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--foreground) 12%, transparent);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
   cursor: pointer;
 }
 .rf-date-card.selected {
-  border-color: var(--primary) !important;
-  background: color-mix(in srgb, var(--foreground) 12%, transparent) !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--foreground) 12%, transparent), 0 2px 8px color-mix(in srgb, var(--foreground) 12%, transparent) !important;
+  border-color: var(--info, #2563eb) !important;
+  background: #eff6ff !important;
+  box-shadow: 0 0 0 1px var(--info, #2563eb), 0 2px 8px rgba(37, 99, 235, 0.14) !important;
 }
-.rf-date-card.selected .rf-date-day { color: var(--warning-dark) !important; }
-.rf-date-card.selected .rf-date-num { color: var(--rf-text-heading) !important; font-size: 18px; }
-.rf-date-card.selected small { color: var(--primary) !important; }
-.rf-date-card.selected .rf-today-pill { background: var(--primary) !important; color: var(--text-inverse) !important; font-weight: 700 !important; }
+.rf-date-card.selected .rf-date-day { color: #1d4ed8 !important; font-weight: 700; }
+.rf-date-card.selected .rf-date-num { color: #1e3a8a !important; font-size: 18px; font-weight: 800; }
+.rf-date-card.selected small { color: var(--info, #2563eb) !important; font-weight: 700; }
+.rf-date-card.selected .rf-today-pill { background: var(--info, #2563eb) !important; color: #ffffff !important; font-weight: 700 !important; }
 
 html[data-theme="dark"] .rf-date-card:not(.disabled):not(.selected):hover {
-  background: color-mix(in srgb, var(--foreground) 12%, transparent) !important;
-  border-color: color-mix(in srgb, var(--foreground) 12%, transparent) !important;
+  background: rgba(59, 130, 246, 0.08) !important;
+  border-color: rgba(59, 130, 246, 0.4) !important;
 }
+html[data-theme="dark"] .rf-date-card.selected {
+  background: rgba(37, 99, 235, 0.20) !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 1px #3b82f6, 0 2px 8px rgba(37, 99, 235, 0.25) !important;
+}
+html[data-theme="dark"] .rf-date-card.selected .rf-date-day { color: #93c5fd !important; }
+html[data-theme="dark"] .rf-date-card.selected .rf-date-num { color: #ffffff !important; }
+html[data-theme="dark"] .rf-date-card.selected small { color: #60a5fa !important; }
 
 /* ============ TIME SLOTS — HOVER & SELECTED POLISH ============ */
 .rf-time-slot:not(.disabled):not(.selected):hover {
-  background: color-mix(in srgb, var(--foreground) 12%, transparent) !important;
-  border-color: color-mix(in srgb, var(--foreground) 12%, transparent) !important;
+  background: var(--surface-hover, #f8fafc) !important;
+  border-color: #93c5fd !important;
   transform: translateY(-1px);
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--foreground) 12%, transparent);
-  color: var(--rf-text);
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.08);
+  color: var(--rf-text-heading, #0f172a);
 }
 .rf-time-slot.selected {
-  background: color-mix(in srgb, var(--foreground) 12%, transparent);
-  border-color: var(--primary);
-  color: var(--rf-text-heading);
-  font-weight: 600;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--foreground) 12%, transparent), 0 2px 6px color-mix(in srgb, var(--foreground) 12%, transparent);
+  background: #eff6ff !important;
+  border-color: var(--info, #2563eb) !important;
+  color: #1e3a8a !important;
+  font-weight: 700;
+  box-shadow: 0 0 0 1px var(--info, #2563eb), 0 2px 6px rgba(37, 99, 235, 0.14) !important;
 }
-.rf-time-slot.selected span { color: var(--rf-text-heading); font-weight: 700; }
+.rf-time-slot.selected span { color: #1e3a8a !important; font-weight: 700; }
 
 html[data-theme="dark"] .rf-time-slot:not(.disabled):not(.selected):hover {
-  background: color-mix(in srgb, var(--foreground) 12%, transparent) !important;
-  border-color: color-mix(in srgb, var(--foreground) 12%, transparent) !important;
+  background: rgba(59, 130, 246, 0.08) !important;
+  border-color: rgba(59, 130, 246, 0.4) !important;
 }
+html[data-theme="dark"] .rf-time-slot.selected {
+  background: rgba(37, 99, 235, 0.20) !important;
+  border-color: #3b82f6 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 1px #3b82f6, 0 2px 6px rgba(37, 99, 235, 0.25) !important;
+}
+html[data-theme="dark"] .rf-time-slot.selected span { color: #ffffff !important; }
 
 /* ── Time slot: slot-count badge pill ── */
 .rf-slot-badge {
@@ -2639,12 +2755,26 @@ html[data-theme="dark"] .rf-time-slot:not(.disabled):not(.selected):hover {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  background: color-mix(in srgb, var(--foreground) 12%, transparent);
-  color: var(--rf-success-text-alt);
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
   line-height: 1.4;
 }
-.rf-slot-badge--full { background: color-mix(in srgb, var(--foreground) 12%, transparent); color: var(--rf-error-text); }
-.rf-time-slot.selected .rf-slot-badge { background: color-mix(in srgb, var(--foreground) 12%, transparent); color: var(--warning-dark); }
+.rf-slot-badge--full {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+}
+.rf-time-slot.selected .rf-slot-badge {
+  background: #dbeafe !important;
+  border: 1px solid #bfdbfe !important;
+  color: #1d4ed8 !important;
+}
+html[data-theme="dark"] .rf-time-slot.selected .rf-slot-badge {
+  background: rgba(30, 64, 175, 0.5) !important;
+  border: 1px solid rgba(147, 197, 253, 0.4) !important;
+  color: #bfdbfe !important;
+}
 
 /* ============ EMPTY STATE — CENTERED HERO ============ */
 .rf-empty-state--centered {

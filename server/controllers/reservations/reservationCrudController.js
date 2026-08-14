@@ -19,6 +19,7 @@ import {
   syncReservationUserLifecycle,
 } from "../../utils/reservationHelpers.js";
 import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
+import { emitToAdmins } from "../../utils/socket.js";
 import {
   CURRENT_RESIDENT_STATUS_QUERY,
   normalizeReservationPayload,
@@ -44,6 +45,7 @@ import {
   isActiveBedAssignmentDuplicateError,
   isActiveUserReservationDuplicateError,
   validateSelectedBedForReservation,
+  notifyAdminsOfVisitSchedule,
 } from "./_helpers.js";
 import { releaseOrphanedBeds } from "../../services/occupancy/occupancyManager.js";
 import { buildPricingDisplay } from "../../services/contractPricingResolver.js";
@@ -441,6 +443,37 @@ export const createReservation = async (req, res) => {
       reservation: serializeReservation(reservation),
       pricing: pricing.breakdown,
     });
+
+    try {
+      const socketPayload = {
+        reservationId: String(reservation._id),
+        status: reservation.status,
+        paymentStatus: reservation.paymentStatus,
+        viewingPreference: reservation.viewingPreference,
+        viewingType: reservation.viewingType,
+        visitDate: reservation.visitDate,
+        visitTime: reservation.visitTime,
+        branch: room.branch || null,
+      };
+      emitToAdmins("reservation:updated", socketPayload);
+      if (reservation.viewingPreference || reservation.visitDate) {
+        emitToAdmins("visit:updated", socketPayload);
+      }
+      if (reservation.viewingPreference || reservation.visitDate) {
+        notifyAdminsOfVisitSchedule({
+          reservation,
+          applicantUser: reservation.userId || dbUser,
+          viewingPreference: reservation.viewingPreference,
+          visitDate: reservation.visitDate,
+          visitTime: reservation.visitTime,
+        }).catch(() => {});
+      }
+    } catch (socketErr) {
+      logger.warn(
+        { err: socketErr, requestId: req.id },
+        "Socket emit failed after reservation create (non-fatal)",
+      );
+    }
   } catch (error) {
     if (isActiveBedAssignmentDuplicateError(error)) {
       return res.status(409).json({

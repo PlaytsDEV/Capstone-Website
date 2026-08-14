@@ -358,9 +358,15 @@
 }
 
 .rdm-cancellation-request__actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .rdm-cancellation-request__actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Visit Code Copy Badge ── */
@@ -724,87 +730,181 @@
 /* ── Action Buttons ── */
 .rdm-action {
   width: 100%;
-  padding: 11px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
   border-radius: 8px;
   font-size: 0.86rem;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  user-select: none;
+  box-sizing: border-box;
 }
 
 .rdm-action:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.rdm-action:focus-visible {
+  outline: 2px solid var(--ring, #0284c7);
+  outline-offset: 2px;
 }
 
 .rdm-action-primary {
   background: #059669;
-  border: 1px solid #059669;
+  border-color: #059669;
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.22);
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.22);
 }
 
 .rdm-action-primary:hover:not(:disabled) {
   background: #047857;
   border-color: #047857;
-  box-shadow: 0 6px 16px rgba(5, 150, 105, 0.32);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.32);
+  transform: translateY(-1px);
+}
+
+.rdm-action-primary:active:not(:disabled) {
+  background: #065f46;
+  border-color: #065f46;
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.2);
+  transform: translateY(0);
 }
 
 .rdm-action-dark {
   background: #0a1628;
-  border: 1px solid #0a1628;
+  border-color: #0a1628;
   color: #ffffff;
+  box-shadow: 0 2px 4px rgba(10, 22, 40, 0.18);
 }
 
 .rdm-action-dark:hover:not(:disabled) {
   background: #1e293b;
   border-color: #1e293b;
+  box-shadow: 0 4px 12px rgba(10, 22, 40, 0.28);
+  transform: translateY(-1px);
+}
+
+.rdm-action-dark:active:not(:disabled) {
+  background: #020617;
+  border-color: #020617;
+  box-shadow: 0 1px 2px rgba(10, 22, 40, 0.18);
+  transform: translateY(0);
 }
 
 .rdm-action-outline {
   background: #ffffff;
-  border: 1px solid #cbd5e1;
+  border-color: #cbd5e1;
   color: #334155;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .rdm-action-outline:hover:not(:disabled) {
-  background: #f1f5f9;
+  background: #f8fafc;
   border-color: #94a3b8;
   color: #0f172a;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.rdm-action-outline:active:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.rdm-action-neutral-outline {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.rdm-action-neutral-outline:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.rdm-action-neutral-outline:active:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .rdm-action-danger-outline {
   background: #ffffff;
-  border: 1px solid #fecaca;
+  border-color: #fecaca;
   color: #dc2626;
+  box-shadow: 0 1px 2px rgba(220, 38, 38, 0.04);
 }
 
 .rdm-action-danger-outline:hover:not(:disabled) {
   background: #fef2f2;
   border-color: #fca5a5;
   color: #b91c1c;
+  box-shadow: 0 3px 8px rgba(220, 38, 38, 0.1);
+  transform: translateY(-1px);
+}
+
+.rdm-action-danger-outline:active:not(:disabled) {
+  background: #fee2e2;
+  border-color: #f87171;
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(220, 38, 38, 0.04);
 }
 
 .rdm-action-danger-solid {
   background: #dc2626;
-  border: 1px solid #dc2626;
+  border-color: #dc2626;
   color: #ffffff;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.22);
 }
 
 .rdm-action-danger-solid:hover:not(:disabled) {
   background: #b91c1c;
   border-color: #b91c1c;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.32);
+  transform: translateY(-1px);
+}
+
+.rdm-action-danger-solid:active:not(:disabled) {
+  background: #991b1b;
+  border-color: #991b1b;
+  box-shadow: 0 1px 2px rgba(220, 38, 38, 0.2);
+  transform: translateY(0);
 }
 
 .rdm-action-secondary {
   background: #f1f5f9;
-  border: 1px solid #cbd5e1;
+  border-color: #cbd5e1;
   color: #475569;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .rdm-action-secondary:hover:not(:disabled) {
   background: #e2e8f0;
+  border-color: #94a3b8;
   color: #0f172a;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.rdm-action-secondary:active:not(:disabled) {
+  background: #cbd5e1;
+  transform: translateY(0);
 }
 
 /* ── Inline Move-In Hero Card ── */

@@ -90,6 +90,7 @@ import {
   combineLifecycleDateTime,
   serializeReservation,
   buildActorDisplayName,
+  notifyAdminsOfVisitSchedule,
 } from "./_helpers.js";
 import { cancelReservationByUser } from "./cancellationController.js";
 import { branchHasSubmeter } from "../../config/branches.js";
@@ -2014,6 +2015,31 @@ export const updateReservationByUser = async (req, res, next) => {
       ...(appliedPricing ? { pricing: appliedPricing.breakdown } : {}),
     });
 
+    try {
+      const recipientUserId = updatedReservation.userId?._id;
+      const socketPayload = {
+        reservationId: String(updatedReservation._id),
+        status: updatedReservation.status,
+        paymentStatus: updatedReservation.paymentStatus,
+        viewingPreference: updatedReservation.viewingPreference,
+        viewingType: updatedReservation.viewingType,
+        visitDate: updatedReservation.visitDate,
+        visitTime: updatedReservation.visitTime,
+      };
+      if (recipientUserId) {
+        emitToUser(String(recipientUserId), "reservation:updated", socketPayload);
+      }
+      emitToAdmins("reservation:updated", socketPayload);
+      if (preferenceRelatedUpdate) {
+        emitToAdmins("visit:updated", socketPayload);
+      }
+    } catch (socketErr) {
+      logger.warn(
+        { err: socketErr, requestId: req.id },
+        "Socket emit failed after user reservation update (non-fatal)",
+      );
+    }
+
     if (updatedReservation.userId?._id) {
       if (isApplicationSubmission) {
         try {
@@ -2089,6 +2115,14 @@ export const updateReservationByUser = async (req, res, next) => {
               },
             );
           }
+
+          await notifyAdminsOfVisitSchedule({
+            reservation: updatedReservation,
+            applicantUser: updatedReservation.userId || dbUser,
+            viewingPreference: effectiveViewingPreference,
+            visitDate: updatedReservation.visitDate,
+            visitTime: updatedReservation.visitTime,
+          });
         } catch (notifyErr) {
           logger.warn(
             { err: notifyErr, requestId: req.id },
@@ -2364,8 +2398,8 @@ export const manageReservationVisit = async (req, res, next) => {
       ) {
         reservation.status = "visit_approved";
       }
-      applicantNotificationTitle = "Visit Schedule Approved";
-      applicantNotificationMessage = `Your room visit for ${
+      applicantNotificationTitle = "Visit Schedule Confirmed";
+      applicantNotificationMessage = `Your room visit on ${
         reservation.visitDate
           ? new Date(reservation.visitDate).toLocaleDateString("en-PH", {
               year: "numeric",
@@ -2373,7 +2407,7 @@ export const manageReservationVisit = async (req, res, next) => {
               day: "numeric",
             })
           : "your scheduled date"
-      }${reservation.visitTime ? ` at ${reservation.visitTime}` : ""} has been confirmed. Please be on time.`;
+      }${reservation.visitTime ? ` at ${reservation.visitTime}` : ""} is confirmed. Please arrive on time.`;
       applicantEmailStatus = "approved";
     }
 
@@ -2420,10 +2454,10 @@ export const manageReservationVisit = async (req, res, next) => {
           updatedAt: now,
         });
       }
-      applicantNotificationTitle = "Visit Schedule Rejected";
+      applicantNotificationTitle = "Visit Schedule Update";
       applicantNotificationMessage = note
-        ? `Your scheduled visit was rejected: ${note} Please reschedule.`
-        : "Your scheduled visit was rejected. Please choose a new date and time.";
+        ? `Your visit schedule could not be approved: ${note} Please select a new schedule.`
+        : "Your visit schedule could not be approved. Please select a new date and time.";
       applicantEmailStatus = "rejected";
     }
 
@@ -2498,7 +2532,7 @@ export const manageReservationVisit = async (req, res, next) => {
         updatedAt: now,
       });
       applicantNotificationTitle = "Physical Visit Rescheduled";
-      applicantNotificationMessage = `Your physical visit was rescheduled to ${
+      applicantNotificationMessage = `Your physical visit has been rescheduled to ${
         validation.date
           ? new Date(validation.date).toLocaleDateString("en-PH", {
               year: "numeric",
@@ -2506,7 +2540,7 @@ export const manageReservationVisit = async (req, res, next) => {
               day: "numeric",
             })
           : "a new date"
-      }${nextVisitTime ? ` at ${nextVisitTime}` : ""}. Your tenant application will stay locked until the visit is completed or admin allows you to proceed.`;
+      }${nextVisitTime ? ` at ${nextVisitTime}` : ""}. You may proceed with your application once the visit is completed.`;
       applicantEmailStatus = "rescheduled";
     }
 
@@ -2540,9 +2574,9 @@ export const manageReservationVisit = async (req, res, next) => {
       ) {
         reservation.status = "visit_approved";
       }
-      applicantNotificationTitle = "Physical Visit Completed";
+      applicantNotificationTitle = "Physical Visit Complete";
       applicantNotificationMessage =
-        "Your physical visit has been confirmed and marked as completed. You may now complete and submit your tenant application.";
+        "Your physical visit is complete. You may now proceed with your tenant application.";
       applicantEmailStatus = "visit_completed";
     }
 
@@ -2573,9 +2607,9 @@ export const manageReservationVisit = async (req, res, next) => {
       reservation.cancellationReason = note || "No-show at scheduled visit";
       reservation.reservationFeeRefundable = false;
       reservation.reservationFeeForfeited = true;
-      applicantNotificationTitle = "Reservation Cancellation — Missed Visit";
+      applicantNotificationTitle = "Visit Missed — Reservation Cancelled";
       applicantNotificationMessage =
-        "Your scheduled visit was missed and your room reservation has been automatically cancelled. Please reach out to administration if you believe this was in error.";
+        "Your scheduled visit was marked as missed and your reservation has been cancelled. Please contact administration if you need assistance.";
       applicantEmailStatus = "no_show";
     }
 
@@ -2620,9 +2654,9 @@ export const manageReservationVisit = async (req, res, next) => {
       ) {
         reservation.status = "visit_pending";
       }
-      applicantNotificationTitle = "Physical Visit Cancelled";
+      applicantNotificationTitle = "Visit Schedule Cancelled";
       applicantNotificationMessage =
-        "Your physical visit schedule was cancelled. Your reservation is still active, but your tenant application remains locked unless admin separately allows you to proceed without a visit.";
+        "Your visit schedule has been cancelled. You may select a new schedule or contact administration to continue.";
       applicantEmailStatus = "visit_cancelled";
     }
 
@@ -2655,9 +2689,9 @@ export const manageReservationVisit = async (req, res, next) => {
       ) {
         reservation.status = "visit_approved";
       }
-      applicantNotificationTitle = "You May Continue Your Tenant Application";
+      applicantNotificationTitle = "Application Access Granted";
       applicantNotificationMessage =
-        "Admin has allowed you to continue your tenant application without a completed physical visit. Payment remains locked until your application and required documents are approved.";
+        "You have been granted access to proceed with your tenant application without a physical visit.";
       applicantEmailStatus = "allowed_without_visit";
     }
 

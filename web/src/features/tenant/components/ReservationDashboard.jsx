@@ -334,8 +334,8 @@ function getNextAction(reservation, currentStage) {
           ? fmtShortDate(reservation.visitDate)
           : "";
         return {
-          title: "Physical Visit Confirmed",
-          description: `Your physical visit${fDate ? ` on ${fDate}` : ""} has been completed or cleared by admin. You may now continue to the tenant application.`,
+          title: "Physical Visit Complete",
+          description: `Your visit${fDate ? ` on ${fDate}` : ""} is complete. You may now proceed with your tenant application.`,
           buttonLabel: "Fill Application",
           route: `/applicant/reservation?step=3`,
           isWaiting: false,

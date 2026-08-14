@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Calendar, Camera, CheckCircle, ClipboardList, CreditCard, Eye, Image as ImageIcon, Info, Maximize2 } from "lucide-react";
+import { AlertTriangle, Calendar, Camera, CheckCircle, ClipboardList, CreditCard, Eye, Image as ImageIcon, Info, Maximize2, XCircle } from "lucide-react";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { SUBMETER_BRANCHES } from "../../../shared/utils/constants";
@@ -1044,19 +1044,7 @@ export default function ReservationDetailsModal({
  </div>
  <div className="rdm-cancellation-request__actions">
  <button
- className="rdm-action rdm-action-danger-solid"
- onClick={() =>
- doAction(
- "approveCancellation",
- () => reservationApi.approveCancellationRequest(reservation.id),
- "Cancellation approved. Reservation cancelled and bed released.",
- )
- }
- disabled={isSubmitting}
- >
- Approve Cancellation
- </button>
- <button
+ type="button"
  className="rdm-action rdm-action-neutral-outline"
  onClick={() =>
  doAction(
@@ -1067,7 +1055,23 @@ export default function ReservationDetailsModal({
  }
  disabled={isSubmitting}
  >
- Reject Request
+ <XCircle size={16} />
+ <span>Reject Request</span>
+ </button>
+ <button
+ type="button"
+ className="rdm-action rdm-action-danger-solid"
+ onClick={() =>
+ doAction(
+ "approveCancellation",
+ () => reservationApi.approveCancellationRequest(reservation.id),
+ "Cancellation approved. Reservation cancelled and bed released.",
+ )
+ }
+ disabled={isSubmitting}
+ >
+ <CheckCircle size={16} />
+ <span>Approve Cancellation</span>
  </button>
  </div>
  </div>
@@ -2336,7 +2340,8 @@ function RevisionReasonModal({ onClose, onSubmit }) {
             className="rdm-action rdm-action-outline"
             onClick={onClose}
           >
-            Cancel
+            <XCircle size={16} />
+            <span>Cancel</span>
           </button>
           <button
             type="button"
@@ -2344,7 +2349,8 @@ function RevisionReasonModal({ onClose, onSubmit }) {
             disabled={!canSubmit}
             onClick={() => onSubmit(composedReason)}
           >
-            Send Revision Request
+            <CheckCircle size={16} />
+            <span>Send Revision Request</span>
           </button>
         </div>
       </div>

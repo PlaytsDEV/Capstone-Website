@@ -193,7 +193,10 @@ function ReservationsPage() {
     data: rawReservations = [],
     isLoading: loading,
     error: queryError,
-  } = useReservations({ view: "admin-list", archive: "all" });
+  } = useReservations(
+    { view: "admin-list", archive: "all" },
+    { refetchInterval: 5000, refetchOnWindowFocus: true, refetchOnMount: true },
+  );
   const error = queryError?.message || null;
 
   const reservations = useMemo(

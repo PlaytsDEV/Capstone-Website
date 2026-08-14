@@ -274,14 +274,22 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  />
  )}
 
- {isConfirmed && (
- <DetailRow
- icon={<CreditCard size={15} color="var(--text-secondary, #94A3B8)" />}
- label="Payment"
- value="Verified"
- success
- />
- )}
+  {isConfirmed && (
+    <>
+      <DetailRow
+        icon={<CreditCard size={15} color="var(--text-secondary, #94A3B8)" />}
+        label="Slot Deposit"
+        value="Verified (Paid)"
+        success
+      />
+      <DetailRow
+        icon={<CreditCard size={15} color="var(--text-secondary, #94A3B8)" />}
+        label="Move-In Due"
+        value={`₱${Math.max(0, ((Number(reservation.monthlyRent || reservation.roomId?.price || 0)) * 2) - (Number(reservation.reservationFeeAmount) || 2000)).toLocaleString()}`}
+        highlight
+      />
+    </>
+  )}
           {(reservation.depositPaymentDeadline || reservation.paymentDueDate) && (
             <div style={{ marginTop: 10, width: "100%" }}>
               <DeadlineBadge
