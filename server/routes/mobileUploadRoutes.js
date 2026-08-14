@@ -21,6 +21,21 @@
  * resolved mobile session (req.mobileTenant.user_id) — never from client
  * input — so one tenant's uploads can never collide with or overwrite
  * another's path.
+ *
+ * MAINTENANCE CONTEXT CLAMP (canonical-mobile reconciliation audit): the
+ * mobile-only sibling backend enforces a hard 5MB ceiling specifically for
+ * inquiry/maintenance attachments, separate from this endpoint's generic
+ * 10MB ceiling (legitimately needed for other document uploads). A client
+ * that sets `context: "maintenance"` can only ever get that 5MB ceiling here
+ * — `maxBytes` may still tighten it further, exactly like the generic path,
+ * but can never loosen it back toward 10MB. This is enforced against the
+ * real decoded `buffer.length` (server-computed from the request body, never
+ * client-reported), so the byte count checked here is trustworthy. See
+ * mobile/controllers/maintenance.controller.js for the second, independent
+ * check performed against the actual stored object's Firebase Storage
+ * metadata when a maintenance request/reply references this upload's
+ * storagePath — defense in depth against a client that skips this clamp
+ * entirely by not going through this endpoint at all.
  */
 
 import crypto from "crypto";
@@ -31,6 +46,7 @@ import admin, { resolveFirebaseStorageBucket } from "../config/firebase.js";
 const router = express.Router();
 
 const MAX_FIREBASE_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const MAINTENANCE_MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ALLOWED_FIREBASE_UPLOAD_MIME_TYPES = new Set([
   "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/bmp",
   "image/heic", "image/heif", "application/pdf", "application/msword",
@@ -79,10 +95,15 @@ router.post("/upload/firebase-storage", mobileTenantAuth, async (req, res) => {
     const fileName = safeFileName(req.body?.fileName || req.body?.name, mimeType);
     const buffer = decodeBase64Payload(req.body?.dataBase64);
     const requestedAllowedTypes = requestedMimeTypes(req.body);
+    const context = String(req.body?.context || "").trim().toLowerCase();
+    // Client input may only tighten this ceiling, never loosen it — the
+    // maintenance context ceiling is a server-defined maximum, not a
+    // suggestion the client can override upward.
+    const contextCeiling = context === "maintenance" ? MAINTENANCE_MAX_UPLOAD_BYTES : MAX_FIREBASE_UPLOAD_BYTES;
     const requestedMaxBytes = Number(req.body?.maxBytes);
     const maxBytes = Number.isFinite(requestedMaxBytes)
-      ? Math.min(Math.max(1, requestedMaxBytes), MAX_FIREBASE_UPLOAD_BYTES)
-      : MAX_FIREBASE_UPLOAD_BYTES;
+      ? Math.min(Math.max(1, requestedMaxBytes), contextCeiling)
+      : contextCeiling;
 
     if (!buffer) {
       return res.status(400).json({ detail: "Upload file data is required." });

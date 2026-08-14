@@ -103,6 +103,68 @@ describe("mobile Upload route (HTTP behavior)", () => {
     expect(res.status).toBe(400);
   });
 
+  describe("maintenance context clamp (canonical-mobile reconciliation: 5MB ceiling)", () => {
+    // application/octet-stream isn't in the MIME allow-list, so build a
+    // large-but-valid PNG-labeled payload purely to exercise the byte-size
+    // gate, independent of MIME filtering.
+    function base64OfSize(bytes) {
+      return Buffer.alloc(bytes, 1).toString("base64");
+    }
+
+    test("context: maintenance + a payload just over 5MB is rejected even though it's well under the generic 10MB ceiling", async () => {
+      await startApp();
+      const over5mb = base64OfSize(5 * 1024 * 1024 + 1024);
+      const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mimeType: "image/png", dataBase64: over5mb, context: "maintenance" }),
+      });
+      expect(res.status).toBe(400);
+      expect(saveMock).not.toHaveBeenCalled();
+    });
+
+    test("context: maintenance + a payload under 5MB is accepted", async () => {
+      await startApp();
+      const under5mb = base64OfSize(4 * 1024 * 1024);
+      const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mimeType: "image/png", dataBase64: under5mb, context: "maintenance" }),
+      });
+      expect(res.status).toBe(201);
+      expect(saveMock).toHaveBeenCalledTimes(1);
+    });
+
+    test("context: maintenance + client-requested maxBytes above 5MB cannot loosen the ceiling — still clamped to 5MB", async () => {
+      await startApp();
+      const over5mb = base64OfSize(6 * 1024 * 1024);
+      const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mimeType: "image/png",
+          dataBase64: over5mb,
+          context: "maintenance",
+          maxBytes: 9 * 1024 * 1024, // client tries to loosen it — must be ignored
+        }),
+      });
+      expect(res.status).toBe(400);
+      expect(saveMock).not.toHaveBeenCalled();
+    });
+
+    test("no context (generic upload) retains its legitimate 10MB ceiling — a >5MB, <10MB payload is still accepted", async () => {
+      await startApp();
+      const between5and10mb = base64OfSize(7 * 1024 * 1024);
+      const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mimeType: "image/png", dataBase64: between5and10mb }),
+      });
+      expect(res.status).toBe(201);
+      expect(saveMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   test("no resolvable Firebase bucket → 503, not a crash", async () => {
     await startApp({ bucketName: null });
     const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {
