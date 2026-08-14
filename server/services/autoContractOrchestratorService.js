@@ -61,6 +61,24 @@ export async function autoGenerateMoveInContract({ reservationId, actorId }) {
             { contractId: contract._id, missing: validation.missingFields, errors: validation.errors },
             "[AutoContract] Contract validation incomplete; draft created for administrator review",
           );
+
+          try {
+            const tenant = await User.findById(contract.tenantId).select("firstName lastName email").lean();
+            const tenantName = tenant ? `${tenant.firstName} ${tenant.lastName}`.trim() : contract.tenantLegalName || "Tenant";
+            const missingSummary = validation.missingFields.map((f) => f.label).join(", ")
+              || validation.errors.map((e) => e.message).join(", ")
+              || "additional information";
+            await notifyBranchAdminsSafe(
+              contract.branch,
+              "contract_incomplete",
+              "Contract Needs Information Before It Can Be Generated",
+              `Move-in contract for ${tenantName} (Room ${contract.roomNumber}) could not be auto-generated: missing ${missingSummary}. Complete it in the Contracts workspace.`,
+              { entityType: "contract", entityId: String(contract._id), actionUrl: "/admin/contracts" },
+            );
+          } catch (notifErr) {
+            logger.warn({ err: notifErr }, "[AutoContract] Incomplete-contract notification error (non-fatal)");
+          }
+
           return {
             success: true,
             contractId: String(contract._id),

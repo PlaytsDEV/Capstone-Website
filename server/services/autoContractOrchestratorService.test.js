@@ -12,6 +12,7 @@ describe("autoContractOrchestratorService", () => {
   let mockValidateContractForGeneration;
   let mockTransitionContract;
   let mockGeneratePreparedContractPdf;
+  let mockNotifyBranchAdmins;
 
   beforeEach(async () => {
     jest.resetModules();
@@ -62,6 +63,15 @@ describe("autoContractOrchestratorService", () => {
     jest.unstable_mockModule("../utils/notificationService.js", () => ({
       notify: {},
       notifyBranchAdmins: jest.fn().mockResolvedValue([]),
+    }));
+
+    // notifyBranchAdminsSafe() dynamically imports this exact relative path
+    // (server/services/notifications/notificationService.js) — distinct from
+    // the "../utils/notificationService.js" mock above, which only backs the
+    // unrelated static `notify` import at the top of the module under test.
+    mockNotifyBranchAdmins = jest.fn().mockResolvedValue([]);
+    jest.unstable_mockModule("./notifications/notificationService.js", () => ({
+      notifyBranchAdmins: mockNotifyBranchAdmins,
     }));
 
     const mod = await import("./autoContractOrchestratorService.js");
@@ -143,6 +153,50 @@ describe("autoContractOrchestratorService", () => {
       expect(mockCreateDraftContract).not.toHaveBeenCalled();
       expect(mockGeneratePreparedContractPdf).toHaveBeenCalledWith(
         expect.objectContaining({ contractId }),
+      );
+    });
+
+    test("notifies branch admins with contract_incomplete when auto-validation fails", async () => {
+      const resId = new mongoose.Types.ObjectId();
+      const contractId = new mongoose.Types.ObjectId();
+      const actorId = new mongoose.Types.ObjectId();
+
+      mockReservationFindById.mockReturnValue({
+        lean: jest.fn().mockResolvedValue({ _id: resId }),
+      });
+      const draft = {
+        _id: contractId,
+        contractNumber: "LIL-MNL-2026-00003",
+        status: "draft",
+        branch: "manila",
+        roomNumber: "103",
+        tenantId: "tenant123",
+        save: jest.fn().mockResolvedValue(true),
+      };
+      mockContractFindOne.mockResolvedValueOnce(draft);
+      mockValidateContractForGeneration.mockResolvedValueOnce({
+        valid: false,
+        status: "incomplete",
+        missingFields: [{ field: "tenantBirthDate", label: "Tenant birth date" }],
+        errors: [],
+      });
+      mockUserFindById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({ firstName: "Juan", lastName: "Dela Cruz" }),
+        }),
+      });
+
+      const result = await autoGenerateMoveInContract({ reservationId: resId, actorId });
+
+      expect(result.success).toBe(true);
+      expect(result.incomplete).toBe(true);
+      expect(mockGeneratePreparedContractPdf).not.toHaveBeenCalled();
+      expect(mockNotifyBranchAdmins).toHaveBeenCalledWith(
+        "manila",
+        "contract_incomplete",
+        expect.any(String),
+        expect.stringContaining("Tenant birth date"),
+        expect.objectContaining({ entityType: "contract", entityId: String(contractId) }),
       );
     });
 

@@ -43,6 +43,9 @@ export const ADMIN_NOTIFICATION_TYPES = new Set([
   "payment_proof_submitted",
   "application_submitted",
   "contract_signed",
+  "contract_prepared",
+  "contract_incomplete",
+  "contract_error",
   "visit_requested",
 ]);
 
