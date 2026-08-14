@@ -38,7 +38,7 @@ export const buildPasswordResetEmail = ({ USER_NAME, RESET_URL }) =>
         color: "#6B7280",
         margin: "0 0 6px",
       }) +
-      `<p style="word-break:break-all;font-size:12px;margin:0;"><a href="${escapeHtml(RESET_URL)}" style="color:#c9a227;">${escapeHtml(RESET_URL)}</a></p>`,
+      `<p style="word-break:break-all;font-size:12px;margin:0;"><a href="${escapeHtml(RESET_URL)}" style="color:#D4682A;">${escapeHtml(RESET_URL)}</a></p>`,
   });
 
 export const buildLoginOtpEmail = ({ USER_NAME, OTP_CODE, EXPIRY_MINUTES }) =>
@@ -48,7 +48,7 @@ export const buildLoginOtpEmail = ({ USER_NAME, OTP_CODE, EXPIRY_MINUTES }) =>
     body:
       p(`Hi <strong>${escapeHtml(USER_NAME || "there")}</strong>,`) +
       p("Use this 6-digit code to finish signing in to your Lilycrest account.", { size: "14px" }) +
-      `<div style="letter-spacing:8px;font-size:32px;font-weight:700;color:#1F2937;background:#faf6e8;border:1px solid #e8d9a8;border-radius:10px;padding:18px;text-align:center;margin:0 0 20px;">${escapeHtml(OTP_CODE)}</div>` +
+      `<div style="text-align:center;margin:0 0 20px;"><div style="display:inline-block;background:#1E3A5F;border-radius:16px;padding:24px 40px;"><p style="margin:0 0 6px;color:rgba(255,255,255,0.7);font-size:12px;letter-spacing:1px;text-transform:uppercase;">Verification Code</p><p style="margin:0;color:#FFFFFF;font-size:40px;font-weight:700;letter-spacing:10px;">${escapeHtml(OTP_CODE)}</p></div></div>` +
       p(`This code expires in ${escapeHtml(String(EXPIRY_MINUTES ?? 10))} minutes. If you did not request it, you can ignore this email.`, {
         size: "13px",
         color: "#6B7280",

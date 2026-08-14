@@ -2,8 +2,9 @@
  * Shared Lilycrest email shell — the inline-HTML equivalent of what a
  * Resend Dashboard Template's layout provides. Every builder in
  * services/email/builders/*.js calls `renderLilycrestEmail()` for the outer
- * white-and-gold branded shell and only supplies its own content; none of
- * them duplicate the header/container/typography/footer markup.
+ * navy-and-orange branded shell (the pre-Aug-12 LilyCrest Dormitory identity,
+ * restored here) and only supplies its own content; none of them duplicate
+ * the header/container/typography/footer markup.
  *
  * All user-controlled values passed through here MUST go through
  * `escapeHtml()` (or a caller-controlled trusted structure) before being
@@ -38,15 +39,18 @@ export const formatVisitScheduleLabel = (visitDate, visitTime) => {
 
 export const THEME = Object.freeze({
   fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-  pageBg: "#f5f5f5",
+  pageBg: "#F3F4F6",
   cardBg: "#ffffff",
-  gold: "#c9a227",
-  goldDeep: "#a9841f",
-  goldAccent: "#d4af37",
-  goldTint: "#faf6e8",
-  goldTintBorder: "#e8d9a8",
-  textDark: "#1F2937",
-  textBody: "#555555",
+  navy: "#1E3A5F",
+  navyLight: "#2D5A8E",
+  orange: "#D4682A",
+  warnBg: "#FEF3C7",
+  warnBorder: "#FDE68A",
+  warnText: "#92400E",
+  footerBg: "#F8FAFC",
+  footerBorder: "#E5E7EB",
+  textDark: "#1E3A5F",
+  textBody: "#374151",
   textMuted: "#6B7280",
   textFaint: "#9CA3AF",
 });
@@ -63,43 +67,48 @@ export const renderLilycrestEmail = ({
   branchName = "Lilycrest",
   heading,
   body,
-  footerNote = "This is an automated notification. Please do not reply directly to this email.",
+  footerNote = "",
 }) => `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(title || heading || "Lilycrest Dormitory")}</title>
+  <title>${escapeHtml(title || heading || "LilyCrest Dormitory")}</title>
 </head>
 <body style="margin:0;padding:0;font-family:${THEME.fontFamily};background-color:${THEME.pageBg};">
   <table role="presentation" style="width:100%;border-collapse:collapse;">
     <tr>
-      <td style="padding:40px 20px;">
-        <table role="presentation" style="max-width:600px;margin:0 auto;background-color:${THEME.cardBg};border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+      <td style="padding:32px 16px;">
+        <table role="presentation" style="max-width:560px;margin:0 auto;background-color:${THEME.cardBg};border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
           <tr>
-            <td style="background-color:${THEME.cardBg};padding:30px 40px;text-align:center;border-bottom:3px solid ${THEME.goldAccent};">
-              <img src="${escapeHtml(getLogoUrl())}" alt="Lilycrest Dormitory" width="72" height="72" style="display:block;margin:0 auto 12px;max-width:72px;height:auto;">
-              <h1 style="color:${THEME.gold};margin:0;font-size:28px;font-weight:600;">Lilycrest Dormitory</h1>
-              <p style="color:${THEME.goldDeep};margin:10px 0 0;font-size:14px;">${escapeHtml(branchName)} Branch</p>
+            <td style="background:linear-gradient(135deg,${THEME.navy} 0%,${THEME.navyLight} 100%);padding:32px 40px;text-align:center;">
+              <h1 style="margin:0;color:#FFFFFF;font-size:22px;font-weight:700;letter-spacing:0.5px;">🏠 LilyCrest Dormitory</h1>
+              <p style="margin:6px 0 0;color:rgba(255,255,255,0.7);font-size:13px;">${escapeHtml(branchName)} Branch — Tenant Portal</p>
             </td>
           </tr>
           <tr>
-            <td style="padding:40px 40px 20px;">
-              ${heading ? `<h2 style="color:${THEME.textDark};margin:0;font-size:22px;font-weight:600;text-align:center;">${escapeHtml(heading)}</h2>` : ""}
+            <td style="padding:32px 40px 0;">
+              ${heading ? `<h2 style="color:${THEME.textDark};margin:0 0 16px;font-size:20px;font-weight:700;">${escapeHtml(heading)}</h2>` : ""}
             </td>
           </tr>
           <tr>
-            <td style="padding:0 40px 40px;">
+            <td style="padding:0 40px 32px;">
               ${body}
             </td>
           </tr>
           <tr>
-            <td style="background-color:${THEME.goldTint};padding:25px 40px;text-align:center;border-top:1px solid ${THEME.goldTintBorder};">
-              <p style="color:#888888;font-size:14px;margin:0 0 10px;">Best regards,<br><strong style="color:#b8933f;">Lilycrest Dormitory Team</strong></p>
-              <p style="color:${THEME.textFaint};font-size:12px;margin:15px 0 0;">${escapeHtml(footerNote)}</p>
+            <td style="background-color:${THEME.footerBg};padding:24px 40px;border-top:1px solid ${THEME.footerBorder};">
+              ${footerNote ? `<p style="margin:0 0 12px;color:${THEME.textMuted};font-size:13px;line-height:1.5;">${escapeHtml(footerNote)}</p>` : ""}
+              <p style="margin:0;color:${THEME.textFaint};font-size:12px;">
+                This is an automated message from LilyCrest Dormitory Management System.<br/>
+                Please do not reply to this email.
+              </p>
             </td>
           </tr>
         </table>
+        <p style="margin:24px 0 0;text-align:center;color:${THEME.textFaint};font-size:11px;">
+          © ${new Date().getFullYear()} LilyCrest Dormitory. All rights reserved.
+        </p>
       </td>
     </tr>
   </table>
@@ -108,40 +117,40 @@ export const renderLilycrestEmail = ({
 
 /** Standard paragraph. `html` is inner HTML the caller has already escaped. */
 export const p = (html, opts = {}) =>
-  `<p style="color:${opts.color || THEME.textBody};font-size:${opts.size || "16px"};line-height:1.6;margin:${opts.margin || "0 0 16px"};">${html}</p>`;
+  `<p style="color:${opts.color || THEME.textBody};font-size:${opts.size || "15px"};line-height:1.6;margin:${opts.margin || "0 0 16px"};">${html}</p>`;
 
 /** Primary CTA button. `url` must be a trusted, server-generated URL — never user input. */
 export const button = (label, url) =>
-  `<div style="text-align:center;margin:28px 0;"><a href="${escapeHtml(url)}" style="display:inline-block;background:${THEME.gold};color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;">${escapeHtml(label)}</a></div>`;
+  `<div style="text-align:center;margin:0 0 28px;"><a href="${escapeHtml(url)}" style="display:inline-block;background:${THEME.orange};color:#ffffff;text-decoration:none;padding:16px 40px;border-radius:14px;font-weight:700;font-size:16px;letter-spacing:0.3px;">${escapeHtml(label)}</a></div>`;
 
-/** Gold-tinted callout / quote box (left gold border). */
+/** Amber time-sensitive-notice callout (matches the old expiry-warning boxes). */
 export const callout = (label, contentHtml) => `
-  <div style="background-color:${THEME.goldTint};border:1px solid ${THEME.goldTintBorder};border-left:4px solid ${THEME.goldAccent};padding:18px 20px;margin:0 0 20px;border-radius:0 8px 8px 0;">
-    ${label ? `<p style="color:${THEME.goldDeep};font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">${escapeHtml(label)}</p>` : ""}
-    <p style="color:${THEME.textDark};font-size:14px;margin:0;line-height:1.7;white-space:pre-wrap;">${contentHtml}</p>
+  <div style="background-color:${THEME.warnBg};border:1px solid ${THEME.warnBorder};padding:14px 20px;margin:0 0 20px;border-radius:12px;">
+    ${label ? `<p style="color:${THEME.warnText};font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">${escapeHtml(label)}</p>` : ""}
+    <p style="color:${THEME.warnText};font-size:13px;margin:0;line-height:1.5;white-space:pre-wrap;">${contentHtml}</p>
   </div>`;
 
-/** Gold key/value row. Both `label` and `value` are escaped here. */
+/** Navy-tinted key/value row. Both `label` and `value` are escaped here. */
 export const row = (label, value) => {
   if (value === "" || value === null || value === undefined) return "";
-  return `<tr><td style="padding:6px 0;color:${THEME.goldDeep};font-size:13px;">${escapeHtml(label)}</td><td style="padding:6px 0;color:${THEME.textDark};font-size:13px;font-weight:600;text-align:right;">${escapeHtml(String(value))}</td></tr>`;
+  return `<tr><td style="padding:6px 0;color:${THEME.navy};font-size:13px;">${escapeHtml(label)}</td><td style="padding:6px 0;color:${THEME.textDark};font-size:13px;font-weight:600;text-align:right;">${escapeHtml(String(value))}</td></tr>`;
 };
 
 /** Panel wrapping a set of row() entries. */
 export const detailsPanel = (rowsHtml) =>
-  `<div style="background-color:${THEME.goldTint};border:1px solid ${THEME.goldTintBorder};border-radius:8px;padding:18px 20px;margin:0 0 20px;"><table style="width:100%;border-collapse:collapse;">${rowsHtml}</table></div>`;
+  `<div style="background-color:#EEF3F9;border:1px solid #D9E3EF;border-radius:12px;padding:18px 20px;margin:0 0 20px;"><table style="width:100%;border-collapse:collapse;">${rowsHtml}</table></div>`;
 
 /** Large centered amount/stat highlight. `value` is escaped here. */
 export const stat = (label, value) => `
   <p style="color:${THEME.textMuted};font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px;">${escapeHtml(label)}</p>
-  <p style="color:#B8860B;font-size:28px;font-weight:700;margin:0;">${escapeHtml(String(value))}</p>`;
+  <p style="color:${THEME.navy};font-size:28px;font-weight:700;margin:0;">${escapeHtml(String(value))}</p>`;
 
 /** Centered stat panel container. */
 export const statPanel = (innerHtml) =>
-  `<div style="background-color:${THEME.goldTint};border-radius:8px;padding:20px;margin:20px 0;text-align:center;">${innerHtml}</div>`;
+  `<div style="background-color:#EEF3F9;border-radius:12px;padding:20px;margin:20px 0;text-align:center;">${innerHtml}</div>`;
 
-/** Status badge used across notice-style emails. */
+/** Status badge used across notice-style emails (amber, time-sensitive style). */
 export const badge = (text) => `
-  <div style="background-color:${THEME.goldTint};border-left:4px solid ${THEME.goldAccent};padding:14px 18px;border-radius:8px;margin:0 0 20px;text-align:center;">
-    <p style="margin:0;font-size:14px;color:${THEME.goldDeep};font-weight:600;">${escapeHtml(text)}</p>
+  <div style="background-color:${THEME.warnBg};border:1px solid ${THEME.warnBorder};padding:14px 18px;border-radius:12px;margin:0 0 20px;text-align:center;">
+    <p style="margin:0;font-size:13px;color:${THEME.warnText};font-weight:600;">${escapeHtml(text)}</p>
   </div>`;
