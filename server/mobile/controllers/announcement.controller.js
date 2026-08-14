@@ -28,7 +28,11 @@ async function resolveRequesterBranchCode(db, mongoId) {
   if (!mongoId) return null;
   try {
     const occupancy = await db.collection('roomoccupancyhistories').findOne({ tenantId: mongoId, stayStatus: 'active' });
-    if (occupancy?.branch) return normalizedBranchReference(occupancy.branch);
+    // roomoccupancyhistories is legacy and has no Mongoose schema in this repo;
+    // dashboard.controller.js and maintenance.controller.js both read this
+    // collection's branch under `branchId`, not `branch`. Check both so this
+    // resolver doesn't silently fail to resolve legacy occupancy records.
+    if (occupancy?.branch || occupancy?.branchId) return normalizedBranchReference(occupancy.branch || occupancy.branchId);
 
     const bedHistory = await db.collection('bedhistories').findOne({
       tenantId: mongoId,
@@ -173,4 +177,6 @@ async function createAnnouncement(req, res) {
 module.exports = {
   getAllAnnouncements,
   createAnnouncement,
+  resolveRequesterBranchCode,
+  normalizedBranchReference,
 };

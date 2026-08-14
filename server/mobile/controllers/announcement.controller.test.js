@@ -86,6 +86,20 @@ describe('announcement.controller getAllAnnouncements — branch visibility', ()
     expect(res.body).toEqual([]);
   });
 
+  test('a legacy roomoccupancyhistories record keyed under branchId (not branch) still resolves branch correctly', async () => {
+    mockGetDb.mockReturnValue(makeDb({
+      announcements: [
+        { announcement_id: 'a1', title: 'Guadalupe notice', content: 'x', branch: 'guadalupe' },
+        { announcement_id: 'a2', title: 'Gil Puyat notice', content: 'x', branch: 'gil-puyat' },
+      ],
+      branchSource: { tier: 'occupancy', doc: { branchId: 'guadalupe' } },
+    }));
+    const req = { user: { user_id: 't1', _id: 'mongo1' } };
+    const res = response();
+    await getAllAnnouncements(req, res);
+    expect(res.body.map((a) => a.announcement_id)).toEqual(['a1']);
+  });
+
   test('a private (user-targeted) announcement bypasses branch filtering entirely', async () => {
     mockGetDb.mockReturnValue(makeDb({
       announcements: [{ announcement_id: 'a1', title: 'Just for you', content: 'x', is_private: true, user_id: 't1', branch: 'gil-puyat' }],

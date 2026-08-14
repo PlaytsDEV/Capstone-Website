@@ -1,6 +1,10 @@
 const mockGetDb = jest.fn();
 jest.mock('../config/database.js', () => ({ getDb: (...args) => mockGetDb(...args) }));
 jest.mock('uuid', () => ({ v4: () => 'test-uuid-0000-0000-0000-000000000000' }));
+// dashboard.controller.js -> user.controller.js now transitively requires
+// announcement.controller.js -> pushService.js -> firebase-admin (ESM) —
+// stub it, matching announcement.controller.test.js's own mock.
+jest.mock('../services/pushService.js', () => ({ notifyNewAnnouncement: jest.fn() }));
 
 const { getDashboard } = require('./dashboard.controller.js');
 

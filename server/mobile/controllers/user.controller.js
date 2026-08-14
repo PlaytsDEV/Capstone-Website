@@ -1,6 +1,8 @@
 const { getDb } = require('../config/database');
 const { ObjectId } = require('mongodb');
 const { v4: uuidv4 } = require('uuid');
+const { resolveRequesterBranchCode } = require('./announcement.controller');
+const { MOBILE_BRANCH_LOCATIONS } = require('../config/branchLocations');
 
 function firstNonEmptyString(...values) {
   for (const value of values) {
@@ -127,6 +129,22 @@ function withUsernameCooldownFields(user, now = new Date()) {
   };
 }
 
+// Resolve the authenticated tenant's Branch location object for the mobile
+// Profile/Home screens (branchName/branchAddress/googleMapsUrl/isActive —
+// the exact fields those screens read off `user.branch`). Reuses the same
+// server-authoritative resolver announcement.controller.js already uses for
+// branch-visibility filtering (current stay/room assignment -> reservation,
+// never a client-supplied value) rather than a second redundant lookup.
+// Returns null (never a guessed branch) when it can't be confirmed, e.g. a
+// legacy user record or an applicant with no room-bearing reservation yet —
+// the frontend already renders "Branch location is not available yet." for
+// a null/absent branch.
+async function resolveTenantBranchLocation(db, mongoId) {
+  const branchCode = await resolveRequesterBranchCode(db, mongoId);
+  if (!branchCode) return null;
+  return MOBILE_BRANCH_LOCATIONS[branchCode] || null;
+}
+
 // Get current user profile
 async function getMe(req, res) {
   try {
@@ -140,7 +158,11 @@ async function getMe(req, res) {
       return res.status(404).json({ detail: 'User not found' });
     }
 
-    res.json(sanitizeUserForClient(withUsernameCooldownFields(normalizeUser(user))));
+    const branch = await resolveTenantBranchLocation(db, req.user._id);
+    res.json({
+      ...sanitizeUserForClient(withUsernameCooldownFields(normalizeUser(user))),
+      branch,
+    });
   } catch (error) {
     console.error('getMe error:', error);
     res.status(500).json({ detail: 'Failed to load profile' });
@@ -305,7 +327,11 @@ async function updateMe(req, res) {
 
     if (Object.keys(updateData).length === 0) {
       const currentUser = await db.collection('users').findOne({ user_id: userId }, { projection: { _id: 0 } });
-      return res.json(sanitizeUserForClient(withUsernameCooldownFields(normalizeUser(currentUser), now)));
+      const branch = await resolveTenantBranchLocation(db, req.user._id);
+      return res.json({
+        ...sanitizeUserForClient(withUsernameCooldownFields(normalizeUser(currentUser), now)),
+        branch,
+      });
     }
 
     updateData.updated_at = now;
@@ -320,7 +346,15 @@ async function updateMe(req, res) {
       { projection: { _id: 0 } }
     );
 
-    res.json(sanitizeUserForClient(withUsernameCooldownFields(normalizeUser(updatedUser), now)));
+    // Include `branch` on every profile response (not just getMe) so the
+    // frontend's updateUser() merge (setUser(prev => ({...prev, ...data})))
+    // never overwrites a previously-known branch with undefined after an
+    // unrelated field edit (username/phone/picture).
+    const branch = await resolveTenantBranchLocation(db, req.user._id);
+    res.json({
+      ...sanitizeUserForClient(withUsernameCooldownFields(normalizeUser(updatedUser), now)),
+      branch,
+    });
   } catch (error) {
     console.error('Update user error:', error);
     res.status(500).json({ detail: 'Failed to update user' });
@@ -723,5 +757,6 @@ module.exports = {
   getDocumentFile,
   deleteDocument,
   sanitizeUserForClient,
+  resolveTenantBranchLocation,
   normalizeUser,
 };
