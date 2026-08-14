@@ -22,6 +22,7 @@ import { fileURLToPath } from "url";
 import mongoose from "mongoose";
 import admin from "firebase-admin";
 import { emitToChatAdmins } from "../utils/socket.js";
+import { resolveFirebaseStorageBucket } from "../config/firebase.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -81,6 +82,11 @@ const firebaseShim = {
     return admin.apps[0] || null;
   },
   admin,
+  // Added so vendored controllers (e.g. maintenance.controller.js's
+  // attachment-size re-verification against real Firebase Storage object
+  // metadata) can resolve the same bucket mobileUploadRoutes.js uses,
+  // without duplicating the canonical bucket-resolution logic.
+  resolveFirebaseStorageBucket,
 };
 mobileRequire.cache[firebaseModulePath] = {
   id: firebaseModulePath,

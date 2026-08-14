@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../config/database');
 const { notifyMaintenanceStatusChange } = require('../services/pushService');
+const { admin, resolveFirebaseStorageBucket } = require('../config/firebase');
 
 // Canonical collection used by the website backend (Mongoose model collection).
 const PRIMARY_COLLECTION = 'maintenance_requests';
@@ -23,6 +24,12 @@ const VALID_REQUEST_TYPES = ['maintenance', 'plumbing', 'electrical', 'aircon', 
 const DESCRIPTION_MIN = 10;
 const DESCRIPTION_MAX = 1000;
 const MAX_TENANT_ATTACHMENTS = 4;
+// Canonical-mobile reconciliation audit: this canonical controller never
+// re-checked attachment byte size at all — only a count cap (above) — so a
+// client could reference an upload larger than the mobile app's intended
+// 5MB ceiling (mobileUploadRoutes.js's generic bridge allows up to 10MB for
+// non-maintenance uploads). Applies regardless of attachment MIME type.
+const MAINTENANCE_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
 const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|jpeg|jpg|png|svg|webp)(?:$|[?#])/i;
 const PDF_FILE_PATTERN = /\.pdf(?:$|[?#])/i;
 const PUBLIC_REPLY_TYPES = new Set(['admin_reply', 'admin_update', 'tenant_reply', 'tenant_summary', 'summary']);
@@ -170,6 +177,72 @@ function normalizeAttachmentList(attachments) {
       .map((entry, index) => normalizeAttachmentEntry(entry, index))
       .filter(Boolean)
     : [];
+}
+
+// Re-checks every attachment against MAINTENANCE_ATTACHMENT_MAX_BYTES using
+// a trustworthy byte count wherever one is available — never the bare
+// client-reported `size` field alone, which is spoofable (a client can
+// claim any size for any URI).
+//
+// - When the attachment carries a `storagePath` (i.e. it was uploaded
+//   through mobileUploadRoutes.js's Firebase Storage bridge, the intended
+//   path for maintenance attachments), the ACTUAL stored object size is
+//   fetched from Firebase Storage itself via the Admin SDK — a
+//   provider-confirmed number the client cannot influence — and that is
+//   what gets enforced, not whatever `size` the client echoed back.
+// - Only when no storagePath is present (an attachment referencing some
+//   other externally-hosted URL, not this backend's own upload bridge) does
+//   this fall back to the client-reported `size`. An attachment with
+//   neither a storagePath nor any size claim at all cannot be verified and
+//   is rejected outright (fail closed) rather than silently accepted with
+//   an unknown, unbounded size.
+//
+// Returns { ok: true } or { ok: false, detail } — callers must check this
+// BEFORE any database write, so a request with one oversized attachment
+// never creates/updates a maintenance record at all (not even partially).
+async function assertAttachmentsWithinSizeLimit(attachments) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return { ok: true };
+
+  let bucket = null;
+  const getBucket = () => {
+    if (bucket) return bucket;
+    const bucketName = resolveFirebaseStorageBucket();
+    if (!admin.apps.length || !bucketName) return null;
+    bucket = admin.storage().bucket(bucketName);
+    return bucket;
+  };
+
+  for (const attachment of attachments) {
+    let verifiedBytes = null;
+
+    if (attachment.storagePath) {
+      try {
+        const activeBucket = getBucket();
+        if (activeBucket) {
+          const [metadata] = await activeBucket.file(attachment.storagePath).getMetadata();
+          const bytes = Number(metadata?.size);
+          if (Number.isFinite(bytes)) verifiedBytes = bytes;
+        }
+      } catch (_) {
+        // Object missing/unreadable/storage unavailable — falls through to
+        // the client-reported-size fallback below rather than throwing, so
+        // a transient storage hiccup doesn't turn into a 500 for the tenant.
+      }
+    }
+
+    if (verifiedBytes === null) {
+      verifiedBytes = Number.isFinite(attachment.size) ? attachment.size : null;
+    }
+
+    if (verifiedBytes === null) {
+      return { ok: false, detail: 'One or more attachments could not be verified. Please re-upload and try again.' };
+    }
+    if (verifiedBytes > MAINTENANCE_ATTACHMENT_MAX_BYTES) {
+      return { ok: false, detail: 'Attachments must be 5 MB or smaller.' };
+    }
+  }
+
+  return { ok: true };
 }
 
 function getEntryTimestamp(entry = {}) {
@@ -640,6 +713,10 @@ async function sendTenantReply(req, res) {
     if (Array.isArray(req.body?.attachments) && req.body.attachments.length > MAX_TENANT_ATTACHMENTS) {
       return res.status(400).json({ detail: `A maximum of ${MAX_TENANT_ATTACHMENTS} attachments is allowed.` });
     }
+    const sizeCheck = await assertAttachmentsWithinSizeLimit(attachments);
+    if (!sizeCheck.ok) {
+      return res.status(400).json({ detail: sizeCheck.detail });
+    }
 
     const located = await findRequestForUser(db, requestId, req.user.user_id);
     if (!located) {
@@ -738,6 +815,10 @@ async function createMaintenance(req, res) {
 
     const urgency = VALID_URGENCIES.includes(urgencyRaw) ? urgencyRaw : 'normal';
     const attachments = normalizeAttachmentList(attachmentsRaw);
+    const sizeCheck = await assertAttachmentsWithinSizeLimit(attachments);
+    if (!sizeCheck.ok) {
+      return res.status(400).json({ detail: sizeCheck.detail });
+    }
 
     const tenantContext = await resolveTenantContext(db, req.user);
     const now = new Date();

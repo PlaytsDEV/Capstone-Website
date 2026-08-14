@@ -2,6 +2,14 @@ const mockGetDb = jest.fn();
 jest.mock('../config/database.js', () => ({ getDb: (...args) => mockGetDb(...args) }));
 jest.mock('../services/pushService.js', () => ({ notifyMaintenanceStatusChange: jest.fn() }));
 jest.mock('uuid', () => ({ v4: () => 'test-uuid-0000-0000-0000-000000000000' }));
+// No Firebase Storage app configured in these tests — attachment-size
+// verification (see maintenanceAttachmentSizeLimit.test.js for dedicated
+// coverage) falls back to the client-reported `size` field, which none of
+// the fixtures below set on their attachments, so any attachment payload
+// used here is expected to be rejected by the size check UNLESS the test
+// itself is specifically about something that already 400s first (e.g. the
+// "more than 4 attachments" count check) or carries no attachments at all.
+jest.mock('../config/firebase.js', () => ({ admin: { apps: [] }, resolveFirebaseStorageBucket: () => null }));
 
 const {
   createMaintenance,
