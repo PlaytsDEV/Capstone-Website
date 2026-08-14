@@ -46,6 +46,20 @@ async function resolveRequesterBranchCode(db, mongoId) {
     }, { sort: { createdAt: -1 } });
     if (reservation?.branch) return normalizedBranchReference(reservation.branch);
 
+    // Contract.branch (server/models/Contract.js) is a required, indexed
+    // field set on every contract — the same authoritative value
+    // /api/m/contracts/current already shows the tenant. Checked last so it
+    // never overrides a more specific active-stay match above, but it covers
+    // tenants whose branch is only recorded on their Contract and not yet
+    // mirrored into the legacy occupancy/bed/reservation collections above,
+    // which otherwise left Home/Profile showing "not available yet" while
+    // the Contract screen correctly showed a real branch.
+    const contract = await db.collection('contracts').findOne(
+      { tenantId: mongoId, isCurrent: true },
+      { sort: { createdAt: -1 } },
+    );
+    if (contract?.branch) return normalizedBranchReference(contract.branch);
+
     return null;
   } catch (_) {
     return null;

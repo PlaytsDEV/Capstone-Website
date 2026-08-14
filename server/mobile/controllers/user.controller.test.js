@@ -22,7 +22,7 @@ function response() {
 }
 
 // branchSource optionally simulates resolveRequesterBranchCode()'s tiers:
-// { tier: 'occupancy' | 'bedhistory' | 'reservation', doc }
+// { tier: 'occupancy' | 'bedhistory' | 'reservation' | 'contract', doc }
 function makeDb(users, branchSource = null) {
   return {
     collection(name) {
@@ -34,6 +34,9 @@ function makeDb(users, branchSource = null) {
       }
       if (name === 'reservations') {
         return { findOne: async () => (branchSource?.tier === 'reservation' ? branchSource.doc : null) };
+      }
+      if (name === 'contracts') {
+        return { findOne: async () => (branchSource?.tier === 'contract' ? branchSource.doc : null) };
       }
       if (name !== 'users') throw new Error(`unexpected collection: ${name}`);
       return {
@@ -302,5 +305,17 @@ describe('resolveTenantBranchLocation', () => {
     const db = { collection: () => { throw new Error('should not query db when mongoId is falsy'); } };
     const result = await resolveTenantBranchLocation(db, null);
     expect(result).toBeNull();
+  });
+
+  test('falls back to the current Contract.branch when no occupancy/bedhistory/reservation record resolves a Branch', async () => {
+    const users = { t1: { user_id: 't1' } };
+    const db = makeDb(users, { tier: 'contract', doc: { isCurrent: true, branch: 'gil-puyat' } });
+    mockGetDb.mockReturnValue(db);
+
+    const req = { user: { user_id: 't1', _id: 'mongo1' } };
+    const res = response();
+    await getMe(req, res);
+
+    expect(res.body.branch.branchName).toContain('Gil Puyat');
   });
 });
