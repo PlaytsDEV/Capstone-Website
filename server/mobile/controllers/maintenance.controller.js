@@ -180,26 +180,32 @@ function normalizeAttachmentList(attachments) {
 }
 
 // Re-checks every attachment against MAINTENANCE_ATTACHMENT_MAX_BYTES using
-// a trustworthy byte count wherever one is available — never the bare
-// client-reported `size` field alone, which is spoofable (a client can
-// claim any size for any URI).
+// ONLY a provider-verified byte count — never the client-reported `size`
+// field, which is pure client input and trivially spoofable (a client can
+// claim any size for any URI, including one this backend never touched).
 //
-// - When the attachment carries a `storagePath` (i.e. it was uploaded
-//   through mobileUploadRoutes.js's Firebase Storage bridge, the intended
-//   path for maintenance attachments), the ACTUAL stored object size is
-//   fetched from Firebase Storage itself via the Admin SDK — a
-//   provider-confirmed number the client cannot influence — and that is
-//   what gets enforced, not whatever `size` the client echoed back.
-// - Only when no storagePath is present (an attachment referencing some
-//   other externally-hosted URL, not this backend's own upload bridge) does
-//   this fall back to the client-reported `size`. An attachment with
-//   neither a storagePath nor any size claim at all cannot be verified and
-//   is rejected outright (fail closed) rather than silently accepted with
-//   an unknown, unbounded size.
+// `storagePath` is the trust boundary: it identifies an object this
+// backend's own mobileUploadRoutes.js Firebase Storage bridge actually
+// wrote, so Firebase Storage's own metadata for that exact path is a byte
+// count the client cannot influence. An attachment WITHOUT a storagePath —
+// whether it's missing entirely, or points at some other externally-hosted
+// URL — has no server-controlled way to confirm its real size, so it is
+// rejected outright rather than trusting whatever `size` the client
+// attached to it. The client-reported `size` field may still be stored on
+// the normalized attachment for display purposes (see
+// normalizeAttachmentEntry) — it is simply never treated as authoritative
+// for this security decision.
+//
+// A storage lookup failure (object missing/unreadable/provider outage) is
+// also treated as a rejection, not a fallback to the client's claim —
+// falling back there would let an attacker supply a storagePath that
+// always fails to resolve specifically to force the client size to be
+// trusted, reopening the same gap this function exists to close.
 //
 // Returns { ok: true } or { ok: false, detail } — callers must check this
-// BEFORE any database write, so a request with one oversized attachment
-// never creates/updates a maintenance record at all (not even partially).
+// BEFORE any database write, so a request with one oversized or
+// unverifiable attachment never creates/updates a maintenance record at
+// all (not even partially).
 async function assertAttachmentsWithinSizeLimit(attachments) {
   if (!Array.isArray(attachments) || attachments.length === 0) return { ok: true };
 
@@ -213,25 +219,22 @@ async function assertAttachmentsWithinSizeLimit(attachments) {
   };
 
   for (const attachment of attachments) {
-    let verifiedBytes = null;
-
-    if (attachment.storagePath) {
-      try {
-        const activeBucket = getBucket();
-        if (activeBucket) {
-          const [metadata] = await activeBucket.file(attachment.storagePath).getMetadata();
-          const bytes = Number(metadata?.size);
-          if (Number.isFinite(bytes)) verifiedBytes = bytes;
-        }
-      } catch (_) {
-        // Object missing/unreadable/storage unavailable — falls through to
-        // the client-reported-size fallback below rather than throwing, so
-        // a transient storage hiccup doesn't turn into a 500 for the tenant.
-      }
+    if (!attachment.storagePath) {
+      return { ok: false, detail: 'One or more attachments could not be verified. Please re-upload and try again.' };
     }
 
-    if (verifiedBytes === null) {
-      verifiedBytes = Number.isFinite(attachment.size) ? attachment.size : null;
+    let verifiedBytes = null;
+    try {
+      const activeBucket = getBucket();
+      if (activeBucket) {
+        const [metadata] = await activeBucket.file(attachment.storagePath).getMetadata();
+        const bytes = Number(metadata?.size);
+        if (Number.isFinite(bytes)) verifiedBytes = bytes;
+      }
+    } catch (_) {
+      // Object missing/unreadable/storage unavailable — falls through to
+      // the unverifiable-attachment rejection below. Never falls back to
+      // the client-reported size.
     }
 
     if (verifiedBytes === null) {

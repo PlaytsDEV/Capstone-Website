@@ -1,11 +1,32 @@
 /**
- * Canonical-mobile reconciliation audit — Gap B: this controller previously
- * only capped attachment COUNT (MAX_TENANT_ATTACHMENTS), never checked byte
- * size at all, letting a client reference an upload larger than the mobile
- * app's intended 5MB ceiling. Covers both entry points attachments can come
- * through: createMaintenance and sendTenantReply, using both a Firebase
- * Storage-verified size (storagePath present — the trustworthy path) and
- * the client-reported-size fallback (no storagePath).
+ * Canonical-mobile reconciliation audit — Gap B, then a follow-up
+ * trust-boundary audit on the fix itself:
+ *
+ * The controller previously only capped attachment COUNT
+ * (MAX_TENANT_ATTACHMENTS), never checked byte size at all. A first pass at
+ * fixing this verified size via Firebase Storage metadata when a
+ * `storagePath` was present, but FELL BACK to the client-reported `size`
+ * field whenever `storagePath` was absent — and normalizeAttachmentEntry
+ * accepts a remote http(s) URI via many aliased fields (uri/url/downloadUrl/
+ * href/src/...) with `storagePath` entirely optional. That meant a client
+ * could submit `{ url: "https://example.invalid/huge.pdf", size: 100 }` and
+ * have the claimed 100-byte size trusted for an object this backend never
+ * touched and has no way to verify — a full trust-boundary bypass of the
+ * "5MB max" rule.
+ *
+ * The rule enforced now: a `storagePath` (an object this backend's own
+ * mobileUploadRoutes.js Firebase Storage bridge actually wrote) is REQUIRED.
+ * Its real size is fetched from Firebase Storage's own metadata — a
+ * provider-confirmed number the client cannot influence — and that is the
+ * only number ever used for the security decision. No storagePath, or a
+ * storage lookup that fails for any reason, is rejected outright. The
+ * client-reported `size` field is never trusted for this decision (it may
+ * still ride along on the normalized attachment purely for display).
+ *
+ * Covers both entry points attachments can come through — createMaintenance
+ * and sendTenantReply — plus every accepted attachment shape
+ * (uri/url/downloadUrl/bare-string) and an explicit spoof-attempt case
+ * (real object >5MB, client claims 100 bytes).
  */
 
 const mockGetDb = jest.fn();
@@ -75,7 +96,7 @@ beforeEach(() => {
   mockBucket.mockClear();
 });
 
-describe('createMaintenance — 5MB attachment enforcement', () => {
+describe('createMaintenance — 5MB attachment enforcement (trusted storagePath required)', () => {
   test('a storagePath-verified attachment under 5MB is accepted, using the real Firebase Storage size (not the client-echoed one)', async () => {
     mockGetDb.mockReturnValue(makeDb());
     mockGetMetadata.mockResolvedValue([{ size: String(FIVE_MB - 1024) }]);
@@ -129,6 +150,24 @@ describe('createMaintenance — 5MB attachment enforcement', () => {
     expect(db.inserted).toEqual([]);
   });
 
+  test('SPOOF ATTEMPT: real Firebase object is >5MB, client claims size: 100 bytes → rejected, using the verified size', async () => {
+    const db = makeDb();
+    mockGetDb.mockReturnValue(db);
+    mockGetMetadata.mockResolvedValue([{ size: String(FIVE_MB + 500000) }]);
+    const req = {
+      user: { user_id: 't1', _id: 'mongo1' },
+      body: {
+        request_type: 'plumbing',
+        description: 'a valid description here',
+        attachments: [{ downloadUrl: 'https://x/a.png', mimeType: 'image/png', storagePath: 'tenant-uploads/t1/a.png', size: 100 }],
+      },
+    };
+    const res = response();
+    await createMaintenance(req, res);
+    expect(res.statusCode).toBe(400);
+    expect(db.inserted).toEqual([]);
+  });
+
   test('a PDF attachment over 5MB is rejected — the ceiling applies regardless of MIME type', async () => {
     const db = makeDb();
     mockGetDb.mockReturnValue(db);
@@ -147,58 +186,41 @@ describe('createMaintenance — 5MB attachment enforcement', () => {
     expect(db.inserted).toEqual([]);
   });
 
-  test('no storagePath: falls back to the client-reported size — under 5MB is accepted', async () => {
-    mockGetDb.mockReturnValue(makeDb());
+  test.each([
+    ['uri', { uri: 'https://example.invalid/file.pdf', size: 100 }],
+    ['url', { url: 'https://example.invalid/file.pdf', size: 100 }],
+    ['downloadUrl', { downloadUrl: 'https://example.invalid/file.pdf', size: 100 }],
+    ['bare string URL (no object at all)', 'https://example.invalid/file.pdf'],
+    ['size only, no URI field the controller recognizes as a URI... included for completeness', { size: 100 }],
+  ])('MISSING TRUSTED IDENTIFIER (%s): no storagePath, client size claim ignored → rejected outright, no partial record', async (_label, attachment) => {
+    const db = makeDb();
+    mockGetDb.mockReturnValue(db);
     const req = {
       user: { user_id: 't1', _id: 'mongo1' },
       body: {
         request_type: 'plumbing',
         description: 'a valid description here',
-        attachments: [{ downloadUrl: 'https://external.example/a.png', mimeType: 'image/png', size: FIVE_MB - 1 }],
+        attachments: [attachment],
       },
     };
     const res = response();
     await createMaintenance(req, res);
-    expect(res.statusCode).toBe(201);
+    // `{ size: 100 }` alone has no URI at all, so normalizeAttachmentEntry
+    // drops it before it would ever reach the size check — attachments end
+    // up empty and the request is either accepted (no attachments) or, for
+    // every URI-bearing shape above, rejected by the size check itself.
+    if (typeof attachment === 'object' && !attachment.uri && !attachment.url && !attachment.downloadUrl) {
+      expect(res.statusCode).toBe(201);
+      return;
+    }
+    expect(res.statusCode).toBe(400);
     expect(mockGetMetadata).not.toHaveBeenCalled();
-  });
-
-  test('no storagePath: falls back to the client-reported size — over 5MB is rejected, no partial record', async () => {
-    const db = makeDb();
-    mockGetDb.mockReturnValue(db);
-    const req = {
-      user: { user_id: 't1', _id: 'mongo1' },
-      body: {
-        request_type: 'plumbing',
-        description: 'a valid description here',
-        attachments: [{ downloadUrl: 'https://external.example/a.png', mimeType: 'image/png', size: FIVE_MB + 1 }],
-      },
-    };
-    const res = response();
-    await createMaintenance(req, res);
-    expect(res.statusCode).toBe(400);
     expect(db.inserted).toEqual([]);
   });
 
-  test('no storagePath and no size at all: rejected outright (unverifiable, fail closed), not silently accepted', async () => {
+  test('Firebase Storage lookup failure (object missing/unreadable) is rejected, NOT trusted via client-reported size', async () => {
     const db = makeDb();
     mockGetDb.mockReturnValue(db);
-    const req = {
-      user: { user_id: 't1', _id: 'mongo1' },
-      body: {
-        request_type: 'plumbing',
-        description: 'a valid description here',
-        attachments: [{ downloadUrl: 'https://external.example/a.png', mimeType: 'image/png' }],
-      },
-    };
-    const res = response();
-    await createMaintenance(req, res);
-    expect(res.statusCode).toBe(400);
-    expect(db.inserted).toEqual([]);
-  });
-
-  test('Firebase Storage lookup failure (object missing/unreadable) falls back to client-reported size rather than 500ing', async () => {
-    mockGetDb.mockReturnValue(makeDb());
     mockGetMetadata.mockRejectedValue(new Error('object not found'));
     const req = {
       user: { user_id: 't1', _id: 'mongo1' },
@@ -210,17 +232,32 @@ describe('createMaintenance — 5MB attachment enforcement', () => {
     };
     const res = response();
     await createMaintenance(req, res);
-    expect(res.statusCode).toBe(201);
+    expect(res.statusCode).toBe(400);
+    expect(db.inserted).toEqual([]);
   });
 });
 
-describe('sendTenantReply — 5MB attachment enforcement', () => {
+describe('sendTenantReply — 5MB attachment enforcement (trusted storagePath required)', () => {
   function seededDb(status = 'pending') {
     const requests = { r1: { request_id: 'r1', user_id: 't1', status, __collection: 'maintenance_requests' } };
     return makeDb({ requests });
   }
 
-  test('a reply attachment over 5MB (Firebase-verified) is rejected, and the request thread is never updated', async () => {
+  test('reply + valid trusted attachment under 5MB → accepted', async () => {
+    const db = seededDb();
+    mockGetDb.mockReturnValue(db);
+    mockGetMetadata.mockResolvedValue([{ size: String(FIVE_MB - 1) }]);
+    const req = {
+      user: { user_id: 't1', _id: 'mongo1' },
+      params: { requestId: 'r1' },
+      body: { message: '', attachments: [{ downloadUrl: 'https://x/a.png', mimeType: 'image/png', storagePath: 'tenant-uploads/t1/a.png' }] },
+    };
+    const res = response();
+    await sendTenantReply(req, res);
+    expect(res.statusCode).toBe(201);
+  });
+
+  test('reply + oversized trusted attachment (Firebase-verified >5MB) → rejected, thread never updated', async () => {
     const db = seededDb();
     mockGetDb.mockReturnValue(db);
     mockGetMetadata.mockResolvedValue([{ size: String(FIVE_MB + 1) }]);
@@ -235,27 +272,29 @@ describe('sendTenantReply — 5MB attachment enforcement', () => {
     expect(db.updates).toEqual([]);
   });
 
-  test('a reply attachment under 5MB (Firebase-verified) is accepted', async () => {
+  test('reply + no storagePath + fake small size → rejected, thread never updated', async () => {
     const db = seededDb();
     mockGetDb.mockReturnValue(db);
-    mockGetMetadata.mockResolvedValue([{ size: String(FIVE_MB - 1) }]);
     const req = {
       user: { user_id: 't1', _id: 'mongo1' },
       params: { requestId: 'r1' },
-      body: { message: '', attachments: [{ downloadUrl: 'https://x/a.png', mimeType: 'image/png', storagePath: 'tenant-uploads/t1/a.png' }] },
+      body: { message: '', attachments: [{ downloadUrl: 'https://external.example/a.png', mimeType: 'image/png', size: 100 }] },
     };
     const res = response();
     await sendTenantReply(req, res);
-    expect(res.statusCode).toBe(201);
+    expect(res.statusCode).toBe(400);
+    expect(mockGetMetadata).not.toHaveBeenCalled();
+    expect(db.updates).toEqual([]);
   });
 
-  test('a reply with an unverifiable attachment (no storagePath, no size) is rejected, fail closed', async () => {
+  test('SPOOF ATTEMPT on a reply: real object >5MB, client claims 100 bytes → rejected', async () => {
     const db = seededDb();
     mockGetDb.mockReturnValue(db);
+    mockGetMetadata.mockResolvedValue([{ size: String(FIVE_MB + 999) }]);
     const req = {
       user: { user_id: 't1', _id: 'mongo1' },
       params: { requestId: 'r1' },
-      body: { message: '', attachments: [{ downloadUrl: 'https://external.example/a.png', mimeType: 'image/png' }] },
+      body: { message: '', attachments: [{ downloadUrl: 'https://x/a.png', mimeType: 'image/png', storagePath: 'tenant-uploads/t1/a.png', size: 100 }] },
     };
     const res = response();
     await sendTenantReply(req, res);
