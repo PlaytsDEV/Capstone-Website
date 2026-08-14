@@ -193,7 +193,7 @@ const OTP_MAX_ATTEMPTS = 3;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 let otpIndexPromise;
 function ensureOtpIndexes(db) {
-  otpIndexPromise ||= db.collection('otp_store').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
+  otpIndexPromise ||= db.collection('otp_store').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0, name: 'otp_ttl' });
   return otpIndexPromise;
 }
 function otpSecret() {
