@@ -989,7 +989,12 @@ async function forgotPassword(req, res) {
       });
 
       const backendUrl = passwordResetBaseUrl();
-      const resetLink = `${backendUrl}/api/auth/reset-password?token=${rawToken}`;
+      // This vendored mobile router is mounted at /api/m in Capstone-Website
+      // (server/mobile/mobileRoutes.mjs), NOT at the bare /api/auth prefix
+      // this path used before the code was vendored in from the standalone
+      // LilyCrest-Mobile backend. A leftover /api/auth/reset-password link
+      // here 404s in production — there is no route mounted at that path.
+      const resetLink = `${backendUrl}/api/m/auth/reset-password?token=${rawToken}`;
       const userName = tenantData.name || 'Tenant';
 
       sendPasswordResetEmail(normalizedEmail, userName, resetLink).catch(() => {});
@@ -1161,7 +1166,7 @@ h1{color:#1E3A5F;font-size:20px;margin-bottom:8px}p{color:#6B7280;font-size:14px
     btn.textContent = 'Resetting…';
 
     try {
-      var resp = await fetch('/api/auth/reset-password', {
+      var resp = await fetch('/api/m/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: TOKEN, newPassword: pw })
