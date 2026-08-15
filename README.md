@@ -1,6 +1,6 @@
 # 🏢 Lilycrest Dormitory Management System (Lilycrest DMS)
 
-> An enterprise-grade, full-stack dormitory operations and tenancy management platform engineered for multi-branch residential facilities. Features real-time bed-level occupancy tracking, a guided 4-step tenant lifecycle, automated pro-rata utility billing, PayMongo payment checkout reconciliation, digital lease contracts with verifiable stay proofs, maintenance ticketing with contractor attribution, and WebSocket-driven live notifications.
+> An enterprise-grade, full-stack dormitory management and tenancy operations platform designed for multi-branch residential facilities. Built with React 19, Express.js, MongoDB Atlas, Firebase, and PayMongo.
 
 ---
 
@@ -13,158 +13,292 @@
   <img src="https://img.shields.io/badge/Firebase-Auth%20%26%20Storage-FFCA28?style=for-the-badge&logo=firebase&logoColor=black" alt="Firebase" />
   <img src="https://img.shields.io/badge/PayMongo-Payments-4A154B?style=for-the-badge&logoColor=white" alt="PayMongo" />
   <img src="https://img.shields.io/badge/Socket.io-Realtime-010101?style=for-the-badge&logo=socketdotio&logoColor=white" alt="Socket.io" />
-  <img src="https://img.shields.io/badge/Jest-166%20Suites%20%7C%201600%2B%20Tests-C21325?style=for-the-badge&logo=jest&logoColor=white" alt="Jest Tests" />
+  <img src="https://img.shields.io/badge/Test%20Suite-166%20Suites%20%7C%201600%2B%20Tests-C21325?style=for-the-badge&logo=jest&logoColor=white" alt="Jest Tests" />
 </p>
 
 ---
 
-## 📋 Table of Contents
+## 📖 Table of Contents
 
-- [Core Highlights & Architecture](#-core-highlights--architecture)
-- [System Architecture Flow](#-system-architecture-flow)
-- [Technology Stack](#-technology-stack)
-- [Role-Based Feature Matrix](#-role-based-feature-matrix)
-  - [1. Public Visitor & Discovery](#1-public-visitor--discovery)
-  - [2. Tenant & Applicant Portal](#2-tenant--applicant-portal)
-  - [3. Branch Admin Workspace](#3-branch-admin-workspace)
-  - [4. Super Admin Management](#4-super-admin-management)
-  - [5. Mobile API Parity](#5-mobile-api-parity)
-- [Getting Started](#-getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Environment Configuration](#environment-configuration)
-  - [Running the Application](#running-the-application)
-- [Project Structure](#-project-structure)
-- [API Route Reference](#-api-route-reference)
-- [Testing & Quality Assurance](#-testing--quality-assurance)
-- [Security & Production Hardening](#-security--production-hardening)
-- [Documentation Index](#-documentation-index)
-- [License](#-license)
+1. [System Overview & Purpose](#-1-system-overview--purpose)
+2. [High-Level System Architecture](#-2-high-level-system-architecture)
+3. [User Roles & Access Hierarchy](#-3-user-roles--access-hierarchy)
+4. [Core Operational Workflows & Domain Logic](#-4-core-operational-workflows--domain-logic)
+   - [A. End-to-End Tenancy Lifecycle](#a-end-to-end-tenancy-lifecycle)
+   - [B. Multi-Branch Data Isolation](#b-multi-branch-data-isolation)
+   - [C. Dual Billing Model & Pro-Rata Utility Math](#c-dual-billing-model--pro-rata-utility-math)
+   - [D. Payment Processing & Asynchronous Settlement](#d-payment-processing--asynchronous-settlement)
+   - [E. Digital Contracts & Verified Proof of Stay](#e-digital-contracts--verified-proof-of-stay)
+   - [F. Maintenance Management & Contractor Attribution](#f-maintenance-management--contractor-attribution)
+   - [G. Real-Time Communication & Notifications](#g-real-time-communication--notifications)
+5. [Frontend Architecture & Design System](#-5-frontend-architecture--design-system)
+6. [Backend Architecture & Data Integrity](#-6-backend-architecture--data-integrity)
+7. [Developer Setup & Quick Start](#-7-developer-setup--quick-start)
+8. [Testing & Quality Assurance](#-8-testing--quality-assurance)
+9. [Documentation Directory](#-9-documentation-directory)
+10. [License](#-10-license)
 
 ---
 
-## 🌟 Core Highlights & Architecture
+## 🏢 1. System Overview & Purpose
 
-Lilycrest DMS was built to resolve operational fragmentation in student and young-professional dormitories across Metro Manila branches (e.g., *Guadalupe*, *Gil Puyat*).
+**Lilycrest Dormitory Management System (Lilycrest DMS)** was built to modernize and unify daily dormitory operations across multiple branch facilities (such as *Guadalupe* and *Gil Puyat* in Metro Manila).
 
-- **🛏️ Real-Time Bed-Level Occupancy**: Atomic room-capacity management (`$inc` locks, orphaned bed auto-release jobs) prevents race conditions and overbooking.
-- **🔄 End-to-End Tenancy Lifecycle**: Unified flow encompassing Public Inquiry $\rightarrow$ Application $\rightarrow$ Physical Visit $\rightarrow$ Document OCR Pre-check $\rightarrow$ Security Deposit Settlement $\rightarrow$ Digital Lease Agreement $\rightarrow$ Move-In Balance Checkout $\rightarrow$ Active Tenancy $\rightarrow$ Offboarding Clearance.
-- **⚡ Pro-Rata Utility & Dual Billing**: Dynamic monthly rent generation combined with electricity submeter reading calculation based on tenant occupancy duration and active resident headcounts.
-- **💳 Multi-Tier PayMongo Payment Engine**: Supports reservation fees, move-in balance settlements, and recurring monthly utility bills via PayMongo checkout sessions with HMAC webhook reconciliation.
-- **📜 Digital Contract & Stay Proof System**: Real-time legal lease generation (Chromium/HTML2PDF/JSPDF), signature capture, audit trail timestamps, and cryptographically verified public stay tokens (`/verify-stay/:token`).
-- **🔧 Maintenance Management & Contractor Attribution**: Tenant maintenance ticketing with multi-photo proof inspection, priority tracking, contractor dispatch, and cost attribution.
-- **📱 Full Mobile App Parity**: Dedicated `/api/mobile/*` bridge ensuring React Native / Flutter compatibility with token authentication, document uploads, and push alerts.
+Before digitizing, dormitory administrators faced common operational hurdles:
+- **Manual reservation handling** and double-booked beds during peak enrollment seasons.
+- **Complex utility math**, where electricity consumption had to be divided fairly across roommates with differing move-in dates.
+- **Unstructured cash and deposit collections** without instant receipt tracking.
+- **Physical paper contracts** easily misplaced or delayed during onboarding.
+- **Scattered maintenance requests** leading to missed repairs and unclear contractor expenses.
+
+**Lilycrest DMS solves this** by centralizing all operations into a single platform:
+- Real-time, bed-level room occupancy visualization.
+- Automated 4-step tenant onboarding from reservation to digital key handover.
+- Automated pro-rata utility calculation engine.
+- Instant PayMongo checkout with automatic webhook reconciliation.
+- Browser-based legal lease generation and digital signature capture.
+- Transparent maintenance workspace with photo verification and contractor cost attribution.
 
 ---
 
-## 🏛 System Architecture Flow
+## 🏛 2. High-Level System Architecture
+
+The following diagram illustrates how data flows between users, client applications, server middleware, domain services, and external cloud infrastructure:
 
 ```mermaid
 flowchart TB
-    subgraph Clients["Frontend Clients"]
+    subgraph Clients["1. Client Layer"]
         WEB["React 19 Web App\n(Vite · Zustand · React Query)"]
-        MOB["Mobile Client\n(React Native / Mobile App)"]
+        MOB["Mobile Application Client\n(React Native / Android & iOS)"]
     end
 
-    subgraph Gateway["Security & API Gateway (Express.js)"]
-        SEC["Helmet · CORS · Rate Limiter · CSRF Guard"]
-        AUTH["Firebase Token Verification · RBAC Middleware"]
-        ROUTES["Modular Domain Routes\n(/api/rooms, /api/billing, /api/contracts, etc.)"]
+    subgraph Security["2. Security & Middleware Gateway"]
+        SEC_GUARD["Security Headers (Helmet) · Rate Limiting · CSRF Protection"]
+        AUTH_GUARD["Firebase Token Authentication · Branch Isolation Filter"]
+        RBAC_GUARD["Role-Based Permissions Gate (Super Admin · Admin · Tenant)"]
     end
 
-    subgraph CoreEngine["Backend Engine & Services"]
-        RES_SRV["Reservation & Occupancy Manager"]
-        BILL_SRV["Pro-Rata Utility & Billing Engine"]
-        CONT_SRV["Auto Contract Orchestrator & PDF Service"]
-        CRON_SRV["node-cron Schedulers\n(Grace Periods · Bed Locks · Overdue Checks)"]
-        SOCK_SRV["Socket.io WebSocket Broker"]
+    subgraph DomainServices["3. Core Business Services Layer"]
+        OCC_SVC["Room & Occupancy Manager\n(Atomic Bed Locks & State Sync)"]
+        RES_SVC["Tenancy Lifecycle Orchestrator\n(Application · Verification · Move-In)"]
+        BILL_SVC["Pro-Rata Utility & Dual Billing Engine\n(Submeter Math & Balance Settlement)"]
+        CONT_SVC["Digital Contract & PDF Engine\n(Legal Templates · Digital Signing · Stay Proof)"]
+        MAINT_SVC["Maintenance & Contractor Dispatch\n(Photo Inspection · Cost Attribution)"]
+        CRON_SVC["Background Scheduler\n(Grace Period Enforcement · Overdue Notices)"]
+        SOCK_SVC["WebSocket Event Broker (Socket.io)\n(Live Feeds · Push Notifications)"]
     end
 
-    subgraph DataIntegrations["Data & External Services"]
-        MDB[("MongoDB Atlas\n(18 Schemas · Multi-Branch Isolation)")]
-        FB["Firebase Admin SDK\n(Auth · Cloud Storage Bucket)"]
-        PM["PayMongo API\n(Checkout · Webhook Callbacks)"]
-        MAIL["Nodemailer SMTP\n(Branded Transactional Alerts)"]
+    subgraph Infrastructure["4. Cloud Infrastructure & Databases"]
+        MDB[("MongoDB Atlas Database\n(18 Schemas · Data Persistence)")]
+        FB_AUTH["Firebase Auth & Cloud Storage\n(Identity & Secure File Storage)"]
+        PAYMONGO["PayMongo Payment Gateway\n(Cards · E-Wallets · Webhooks)"]
+        SMTP["Nodemailer Email Service\n(Branded Transactional Emails)"]
     end
 
-    WEB --> SEC
-    MOB --> SEC
-    SEC --> AUTH --> ROUTES
-    ROUTES --> CoreEngine
-    CoreEngine --> MDB
-    CoreEngine --> FB
-    CoreEngine --> PM
-    CoreEngine --> MAIL
-    SOCK_SRV -.-> WEB
-    SOCK_SRV -.-> MOB
+    Clients --> SEC_GUARD
+    SEC_GUARD --> AUTH_GUARD --> RBAC_GUARD
+    RBAC_GUARD --> DomainServices
+    DomainServices --> MDB
+    DomainServices --> FB_AUTH
+    DomainServices --> PAYMONGO
+    DomainServices --> SMTP
+    SOCK_SVC -.-> Clients
 ```
 
 ---
 
-## 💻 Technology Stack
+## 👥 3. User Roles & Access Hierarchy
 
-| Layer | Technologies / Libraries |
-|---|---|
-| **Frontend Framework** | **React 19**, **Vite 5**, React Router 6, Zustand, TanStack React Query |
-| **Styling & UI System** | Solid HSL Custom Design System (Strictly Zero-Gradient, High-Contrast, Minimalist Borders) |
-| **Backend Runtime** | **Node.js 18+**, **Express.js 4.x** |
-| **Database & ODM** | **MongoDB Atlas**, **Mongoose 8+** (18 Models, Schema Indexing, Optimistic Locking) |
-| **Authentication & IAM** | **Firebase Authentication** (Google OAuth & Email/Password), Granular RBAC Middleware |
-| **Payment Gateway** | **PayMongo** (Credit Card, GCash, Maya, Webhook Signature Verification) |
-| **Realtime & Messaging** | **Socket.io** (Room-scoped events, admin live feeds, status push notifications) |
-| **Document Processing** | **PDFKit**, **JSPDF**, **html2canvas**, **tesseract.js** (Document OCR pre-check) |
-| **Scheduled Jobs** | **node-cron** (Bed lock expiry, reservation grace periods, billing cycles) |
-| **Testing & CI** | **Jest**, **Supertest**, **mongodb-memory-server**, ESM Virtual Modules |
+The system enforces a strict 4-tier Role-Based Access Control (RBAC) hierarchy. A user's role dictates the navigation, dashboard views, and data operations available to them:
 
----
+```
+[Public Visitor]
+       ↓ (Registers account)
+  [Applicant]
+       ↓ (Approved, pays reservation fee, signs lease, completes move-in)
+    [Tenant]
+       ↓ (Elevated by Super Admin)
+ [Branch Admin]
+       ↓ (System owner)
+ [Super Admin]
+```
 
-## 👥 Role-Based Feature Matrix
-
-### 1. Public Visitor & Discovery
-- **Live Branch & Room Explorer**: Filter dormitory rooms across branches by gender, room type (Single, Double, Quadruple), amenities, pricing, and live availability.
-- **Vacancy Date Forecasting**: Intelligent availability preview informing applicants when rooms become available.
-- **Public Inquiry Submission**: Inquiry form with automatic email dispatch to branch supervisors.
-- **Physical Visit Booking**: Schedule an on-site branch visit before reserving.
-- **Stay Verification Portal**: Public verification (`/verify-stay/:token`) to authenticate verified tenant stay credentials.
-
-### 2. Tenant & Applicant Portal
-- **Guided 4-Step Reservation Flow**: Seamless room selection $\rightarrow$ demographic and emergency info $\rightarrow$ ID/Proof of Enrollment upload $\rightarrow$ reservation fee checkout.
-- **Move-In Settlement Dashboard**: Clear financial breakdown of Advance Rent and Security Deposit minus the paid reservation fee, payable directly via PayMongo checkout.
-- **Digital Lease Contract Signing**: View prepared lease agreement, sign via in-browser canvas, and download signed PDF copies.
-- **Utility & Billing Monitor**: View real-time electricity and room billing ledgers with downloadable branded payment receipts.
-- **Maintenance Workspace**: File maintenance requests with photos, track resolution timelines, and chat directly with administrators.
-- **Announcements & Acknowledgments**: Branch-specific bulletins with interactive acknowledgment tracking.
-
-### 3. Branch Admin Workspace
-- **Occupancy & Room Grid**: Bed-by-bed visual room layout with live occupancy indicators and rapid status switching.
-- **Reservation Lifecycle Management**: Confirm inquiries, approve visits, review OCR document checks, record move-ins with initial electricity meter readings, and conduct offboarding clearances.
-- **Room-Based Utility Billing Engine**: Record room submeter readings, calculate consumption deltas, and automatically distribute pro-rata utility charges across active tenants.
-- **Maintenance Workspace & Dispatch**: Review incoming tickets, inspect before/after proof photos, assign contractors, and log cost attributions.
-- **Analytics & Operations Reports**: Export financial logs, occupancy rates, and transaction histories in PDF and CSV formats.
-
-### 4. Super Admin Management
-- **Multi-Branch Overview**: Cross-branch metrics, occupancy comparisons, and consolidated revenue tracking.
-- **Branch Configuration**: Register branches, room configurations, pricing matrices, and branch contact parameters.
-- **User & Role Permissions**: Granular permission switches (`manage_billing`, `manage_maintenance`, `manage_users`, etc.).
-- **Live Audit Trail**: Immutable logging capturing actor IDs, timestamps, modified fields, and prior/new state snapshots.
-- **System Backup & Recovery**: Trigger automated or on-demand JSON database backups.
-
-### 5. Mobile API Parity
-- **Full Mobile REST Surface (`/api/mobile/*`)**: Native-optimized endpoints for authentication, profile management, monthly utility payment bridges, maintenance submission with 5MB ceiling enforcement, and announcement feeds.
+| Role | Primary Purpose | Scope & Access Rights |
+|---|---|---|
+| **Public Visitor** | Discovery & Inquiries | Browse room types, check live availability, view branch amenities, submit general inquiries, book on-site visits, and verify stay certificates. |
+| **Applicant** | Onboarding & Reservation | Complete the 4-step reservation flow, upload identification and proof of enrollment, schedule physical visits, pay reservation deposits, and track application approval status. |
+| **Tenant** | Active Tenancy Management | View active room & bed assignment, access monthly rent and utility breakdown, pay bills online, submit maintenance requests with photos, sign digital lease contracts, and acknowledge branch bulletins. |
+| **Branch Admin** | Branch Operations Supervisor | Manage all tenant lifecycles within their assigned branch, record room electricity meter readings, generate pro-rata bills, manage maintenance tickets and contractor dispatch, and export operational reports. |
+| **Super Admin** | System Governance & Ownership | Full cross-branch access, branch registration and configuration, user and permission management, system-wide financial analytics, immutable audit logs, and system backups. |
 
 ---
 
-## 🚀 Getting Started
+## ⚙️ 4. Core Operational Workflows & Domain Logic
+
+### A. End-to-End Tenancy Lifecycle
+
+The transition from a prospective applicant to an offboarded tenant follows a structured, state-driven lifecycle:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Inquiring: Public Browse & Inquiry
+    Inquiring --> Applying: Account Created
+    Applying --> VisitScheduled: Step 1-3 Completed & Visit Booked
+    VisitScheduled --> VisitApproved: Visit Completed / Admin Approval
+    VisitApproved --> DepositPaid: Reservation Fee Settled
+    DepositPaid --> ContractSigned: Digital Lease Contract Signed
+    ContractSigned --> MoveInReady: Advance Rent & Deposit Settled
+    MoveInReady --> ActiveTenant: Move-In Recorded & Meter Reading Logged
+    ActiveTenant --> Offboarding: Notice to Vacate Filed
+    Offboarding --> [*]: Final Clearance & Deposit Refunded
+```
+
+1. **Room & Bed Selection**: The applicant selects a specific branch, room type, and available bed. The system locks the selected bed temporarily to prevent simultaneous bookings.
+2. **Document & Identity Submission**: The applicant uploads required government ID and proof of enrollment/employment. An automated OCR pre-check validates document readability for administrative review.
+3. **Physical Visit & Interview**: Applicants can book an on-site branch visit. Branch admins mark the visit complete or grant permission to proceed.
+4. **Reservation Deposit**: The applicant pays the initial reservation fee via PayMongo. Once paid, the bed is marked as officially reserved.
+5. **Digital Lease Signing**: A formal lease contract is automatically generated. The tenant reviews and signs digitally in their browser.
+6. **Move-In Balance Settlement**: Before move-in, the tenant settles the remaining Move-In balance (Advance Rent + Security Deposit minus the initial reservation fee).
+7. **Move-In & Check-In**: The branch admin records the initial electricity submeter reading, hands over physical keys, and marks the status as **Moved In**, elevating the user account to an active **Tenant**.
+8. **Active Tenancy & Offboarding**: The tenant receives monthly rent and pro-rata utility bills. Upon lease conclusion, offboarding clearance is conducted and security deposit refunds are logged.
+
+---
+
+### B. Multi-Branch Data Isolation
+
+Lilycrest DMS operates with multi-branch tenancy:
+- Every room, tenant, bill, announcement, and maintenance request is associated with a specific branch (e.g., `Guadalupe`, `Gil Puyat`).
+- **Branch Admins** are bound to their assigned branch. Backend middleware automatically scopes all queries and mutations to that branch, preventing cross-branch data leaks.
+- **Super Admins** have global access and can switch branch views or view consolidated, cross-branch performance summaries.
+
+---
+
+### C. Dual Billing Model & Pro-Rata Utility Math
+
+The system uses a **Dual-Module Billing Architecture**:
+
+```
+Monthly Tenant Obligation = Base Room Rent + Pro-Rata Electricity Utility Charge
+```
+
+#### 1. Base Room Rent
+- Set during room creation based on room type (Single, Double, Quadruple-sharing) and lease duration.
+- Billed on a regular monthly cycle.
+
+#### 2. Electricity Utility Pro-Rata Distribution
+Rooms feature dedicated submeters. Rather than charging arbitrary flat utility fees, electricity costs are calculated and split transparently:
+1. **Meter Delta**: The admin inputs the current room meter reading. The consumption is calculated as:
+   $$\text{Consumption (kWh)} = \text{Current Reading} - \text{Previous Reading}$$
+2. **Total Room Cost**:
+   $$\text{Total Cost (PHP)} = \text{Consumption (kWh)} \times \text{Electricity Rate per kWh}$$
+3. **Pro-Rata Tenant Distribution**:
+   Each tenant sharing the room is charged proportional to the number of active days they resided in the room during the billing period:
+   $$\text{Tenant Share} = \text{Total Room Cost} \times \left( \frac{\text{Tenant Active Days in Cycle}}{\sum \text{All Roommate Active Days}} \right)$$
+
+This ensures that tenants who moved in mid-cycle only pay for the exact days they consumed power.
+
+---
+
+### D. Payment Processing & Asynchronous Settlement
+
+Online transactions are powered by PayMongo checkout sessions supporting Credit/Debit Cards, GCash, and Maya:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Tenant as Tenant / Applicant
+    participant Web as Web Frontend
+    participant Server as Backend Server
+    participant PayMongo as PayMongo Gateway
+    participant DB as MongoDB Database
+
+    Tenant->>Web: Clicks "Pay Online" (Deposit / Move-In / Bill)
+    Web->>Server: Request Checkout Session
+    Server->>PayMongo: Create PayMongo Checkout Session
+    PayMongo-->>Server: Return Checkout URL & Session ID
+    Server-->>Web: Redirect Tenant to Hosted Payment Page
+    Tenant->>PayMongo: Enters Payment Details & Authorizes
+    PayMongo->>Server: Asynchronous Webhook (payment.paid)
+    Server->>Server: Verify Cryptographic HMAC Signature
+    Server->>DB: Atomically update Bill / Reservation status to "Paid"
+    Server->>Tenant: Dispatch Transaction Confirmation & Branded PDF Receipt
+    Web->>Server: Polling fallback confirms session completion
+    Web-->>Tenant: Display Instant Success Screen & Receipt Download
+```
+
+---
+
+### E. Digital Contracts & Verified Proof of Stay
+
+- **Automated Lease Generation**: When a reservation is confirmed, the contract service compiles tenant information, room specifications, monthly rates, house rules, and legal terms into a standardized document.
+- **In-Browser Signature Capture**: Tenants review the legal clauses and sign using a digital canvas.
+- **Cryptographic Stay Proof (`/verify-stay/:token`)**: Each active contract produces a secure verification token. External institutions (such as universities or employers) can scan the QR code on a tenant's Certificate of Stay to verify legitimate tenancy without revealing private demographic details.
+
+---
+
+### F. Maintenance Management & Contractor Attribution
+
+1. **Ticket Creation**: Tenants log maintenance issues categorized by discipline (*Electrical*, *Plumbing*, *Carpentry*, *Air Conditioning*, *General*) with priority levels and photo attachments.
+2. **Admin Review & Contractor Dispatch**: Branch admins review incoming tickets, inspect uploaded photos, and assign external contractors or internal staff.
+3. **Cost Attribution & Completion**: Once repairs are completed, administrators log resolution notes, before/after proof photos, and contractor service costs. The cost can be attributed as a building expense or billed directly to a tenant if caused by negligence.
+
+---
+
+### G. Real-Time Communication & Notifications
+
+- **WebSocket Integration (Socket.io)**: Powers real-time admin alert feeds, instant unread notification badge updates, and live reservation status changes without requiring page refreshes.
+- **Transactional Emails (Nodemailer)**: Branded HTML email notifications dispatched for visit approvals, payment receipts, monthly billing statements, password resets, and account verification links.
+
+---
+
+## 🎨 5. Frontend Architecture & Design System
+
+The frontend is a modern React 19 Single Page Application (SPA) built on Vite, designed with an **Enterprise-Grade, Minimalist, High-Contrast Solid HSL Design System**:
+
+- **Strictly Zero Gradients**: Avoids visual clutter with flat, solid HSL color palettes, clean 1px borders, and high contrast for maximum readability.
+- **Modular Feature Architecture**:
+  ```
+  web/src/
+  ├── features/
+  │   ├── admin/           # Admin dashboard, room setups, billing workbench, maintenance
+  │   ├── public/          # Landing page, availability search, registration, legal pages
+  │   ├── super-admin/     # System settings, branch management, audit logs, role editors
+  │   └── tenant/          # Tenant portal, reservation wizard, lease signing, payment desk
+  ├── shared/              # Reusable UI components, API layer, custom hooks, Zustand stores
+  └── App.jsx              # Central router with route-level error boundaries & Suspense skeletons
+  ```
+- **State Management Separation**:
+  - **Server State**: Managed via TanStack React Query for caching, optimistic updates, and background refetching.
+  - **Client UI State**: Lightweight Zustand stores for notification trays, modals, and sidebar toggles.
+- **Per-Route Error Boundaries**: Each route is isolated so an unexpected component crash in one view never crashes the entire application.
+
+---
+
+## 🛡️ 6. Backend Architecture & Data Integrity
+
+The backend is built with Express.js and MongoDB (Mongoose ODM), structured around clean separation of concerns:
+
+- **18 Mongoose Models**: Strictly typed schemas with automated validation, pre-save hooks, and compound indexes for fast queries.
+- **Atomic Concurrency Controls**: Bed reservations and room occupancy adjustments utilize atomic MongoDB operators (`$inc`, `$set`) to eliminate race conditions.
+- **Security & Hardening Pipeline**:
+  - **Helmet**: Secures HTTP response headers.
+  - **Rate Limiting**: Multi-tiered rate limiters protecting authentication routes, public inquiry endpoints, and standard API traffic.
+  - **Input Sanitization**: Cleans incoming payloads to defend against NoSQL injection and Cross-Site Scripting (XSS).
+  - **Immutable Audit Logging**: Captures who did what, when, from which IP, including before-and-after snapshots of modified data.
+
+---
+
+## 💻 7. Developer Setup & Quick Start
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) `>= 18.0.0`
-- [MongoDB](https://www.mongodb.com/atlas) account or local MongoDB instance
-- [Firebase Console](https://console.firebase.google.com/) Project with Authentication & Storage enabled
-- [PayMongo](https://www.paymongo.com/) API Keys (Test / Live)
+- [MongoDB](https://www.mongodb.com/atlas) cluster URI or local instance
+- [Firebase Console](https://console.firebase.google.com/) Project (Auth & Storage enabled)
+- [PayMongo](https://www.paymongo.com/) API keys (Test mode available)
 
 ---
 
-### Installation
+### Step-by-Step Installation
 
 ```bash
 # 1. Clone the repository
@@ -182,190 +316,120 @@ npm install
 
 ---
 
-### Environment Configuration
+### Environment Setup
 
-#### Backend Configuration (`server/.env`)
-Create `server/.env` with the following variables:
+#### 1. Backend Environment (`server/.env`)
+Create a `.env` file inside the `server/` directory:
 
 ```env
-# Server Runtime
+# Server Configuration
 PORT=5000
 NODE_ENV=development
 
-# MongoDB Database Connection
-MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/lilycrest?retryWrites=true&w=majority
+# Database Connection
+MONGODB_URI=your_mongodb_connection_string
 
-# Firebase Admin Service Account Credentials
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk@your-project-id.iam.gserviceaccount.com
+# Firebase Admin Service Account
+FIREBASE_PROJECT_ID=your_firebase_project_id
+FIREBASE_CLIENT_EMAIL=your_firebase_service_account_email
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
+FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket
 
-# Email Service (Nodemailer SMTP)
-EMAIL_USER=your-email@gmail.com
-EMAIL_PASSWORD=your-gmail-app-password
+# Transactional Email (Gmail SMTP)
+EMAIL_USER=your_email@gmail.com
+EMAIL_PASSWORD=your_gmail_app_password
 
-# Application URLs & CORS Whitelist
+# Application URLs & CORS Policy
 FRONTEND_URL=http://localhost:3000
 PUBLIC_FRONTEND_URL=http://localhost:3000
 PUBLIC_API_URL=http://localhost:5000
 ALLOWED_FRONTEND_ORIGINS=http://localhost:3000
 EMAIL_ACTION_URL=http://localhost:3000/auth-action
 RESERVATION_CONTINUATION_URL=http://localhost:3000/applicant/check-availability
-EMAIL_VERIFICATION_SECRET=your-secure-random-secret-key-32-chars
+EMAIL_VERIFICATION_SECRET=your_long_random_secret_string
 
 # PayMongo Payment Gateway
-PAYMONGO_SECRET_KEY=sk_test_...
-PAYMONGO_WEBHOOK_SECRET=whsec_...
+PAYMONGO_SECRET_KEY=your_paymongo_secret_key
+PAYMONGO_WEBHOOK_SECRET=your_paymongo_webhook_signing_secret
 
-# Maintenance Attachments & Storage
+# Storage & Document OCR Settings
 ATTACHMENT_STORAGE_DRIVER=firebase
 RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS=15000
 ```
 
-#### Frontend Configuration (`web/.env`)
-Create `web/.env` with the following variables:
+#### 2. Frontend Environment (`web/.env`)
+Create a `.env` file inside the `web/` directory:
 
 ```env
+# API Endpoint
 VITE_API_URL=http://localhost:5000/api
 VITE_APP_URL=http://localhost:3000
 
-# Firebase Client SDK Configuration
-VITE_FIREBASE_API_KEY=AIzaSy...
-VITE_FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-project-id
-VITE_FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=1234567890
-VITE_FIREBASE_APP_ID=1:1234567890:web:abcdef
+# Firebase Web Client SDK Keys
+VITE_FIREBASE_API_KEY=your_firebase_web_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_firebase_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+VITE_FIREBASE_APP_ID=your_firebase_app_id
 ```
 
 ---
 
-### Running the Application
+### Running the Local Development Servers
 
 ```bash
-# Terminal 1: Run Backend Development Server
+# Terminal 1 — Start the Backend Server
 cd server
 npm run dev
 
-# Terminal 2: Run Frontend Vite Dev Server
+# Terminal 2 — Start the Frontend Client
 cd web
 npm run dev
 ```
 
-| Service | Address |
+| Service | Local Address |
 |---|---|
-| **Frontend Application** | `http://localhost:3000` |
-| **Backend REST API** | `http://localhost:5000/api` |
-| **API Deep Health Check** | `http://localhost:5000/api/health` |
+| **Web Frontend** | `http://localhost:3000` |
+| **Backend REST API** | `http://localhost:5000` |
+| **System Health Check** | `http://localhost:5000/api/health` |
 
 ---
 
-## 📁 Project Structure
+## 🧪 8. Testing & Quality Assurance
 
-```text
-Capstone-Website/
-├── docs/                        # Architectural documentation & test specifications
-│   ├── SYSTEM_ARCHITECTURE.md   # Detailed layer-by-layer architectural guide
-│   ├── API_DOCUMENTATION.md     # API contract specifications and payload schemas
-│   ├── BILLING_SYSTEM_MASTER_GUIDE.md # Pro-rata math & utility calculation logic
-│   └── AUTHENTICATION_AND_SECURITY.md # Firebase/JWT integration & RBAC hierarchy
-│
-├── server/                      # Express.js REST API & WebSocket Server
-│   ├── config/                  # Database, Firebase Admin, PayMongo, and CORS policy
-│   ├── controllers/             # Request handlers (16+ domain controllers)
-│   ├── middleware/              # Auth, permissions, rate limiting, validation, CSRF
-│   ├── mobile/                  # Mobile API controllers, routing & security adapters
-│   ├── models/                  # Mongoose data schemas (18 persistent models)
-│   ├── routes/                  # Express route definitions
-│   ├── services/                # Business services (Billing, Contracts, PDF, Notifications)
-│   ├── utils/                   # Socket broker, audit logger, occupancy math, scheduler
-│   └── server.js                # App entry point with deep health guards
-│
-├── web/                         # React 19 Frontend Application (Vite SPA)
-│   ├── src/
-│   │   ├── features/            # Modular role-based feature workspaces
-│   │   │   ├── admin/           # Admin dashboard, rooms, billing, maintenance, reservations
-│   │   │   ├── public/          # Landing page, availability browse, signup, legal views
-│   │   │   ├── super-admin/     # Branch management, roles/permissions, system logs
-│   │   │   └── tenant/          # Tenant portal, reservation flow, contract signing, bills
-│   │   ├── shared/              # Reusable API clients, UI components, hooks, stores, utils
-│   │   ├── App.jsx              # Main router configuration with per-route error boundaries
-│   │   └── index.css            # Solid HSL theme variables & global styles
-│   └── vite.config.js           # Vite bundle configuration & proxy settings
-```
-
----
-
-## 🔌 API Route Reference
-
-| Domain | Route Prefix | Primary Authorization | Purpose |
-|---|---|---|---|
-| **Authentication** | `/api/auth` | Public / Firebase Token | Registration, login, profile retrieval, password reset |
-| **Rooms & Beds** | `/api/rooms` | Public / Admin Role | Room listings, occupancy configuration, bed assignments |
-| **Reservations** | `/api/reservations` | JWT / Admin Role | Multi-step booking, visit scheduling, status transitions |
-| **Inquiries** | `/api/inquiries` | Public / Admin Role | Public contact requests and administrative replies |
-| **Billing & Rent** | `/api/billing` | JWT / Admin Role | Rent bills, room utility generation, payment marking |
-| **Payments** | `/api/payments` | JWT / Admin Role | PayMongo checkout sessions, payment history, vacancy dates |
-| **Contracts** | `/api/contracts` | JWT / Admin Role | Lease generation, digital signature capture, PDF exports |
-| **Maintenance** | `/api/maintenance` | JWT / Admin Role | Tenant ticket filing, contractor attribution, proof upload |
-| **Announcements** | `/api/announcements`| JWT / Admin Role | Branch bulletins and tenant read acknowledgments |
-| **Notifications** | `/api/notifications`| JWT Token | User in-app notifications and unread badges |
-| **Attachments** | `/api/attachments`  | JWT Token | Branch-scoped document and photo uploads |
-| **Users & Roles** | `/api/users`        | Admin Role | User profile management, role elevation |
-| **Audit Trail** | `/api/audit-logs`   | Super Admin | Immutable administrative operation audit records |
-| **System Backup** | `/api/backup`       | Super Admin | On-demand database export and system backup |
-| **Webhooks** | `/api/webhooks`     | HMAC Signature | PayMongo asynchronous transaction settlement callbacks |
-| **Mobile API** | `/api/mobile/*`     | Mobile JWT | Native mobile client authentication, bills, maintenance |
-| **Health** | `/api/health`       | Public | Server uptime, database latency, memory consumption |
-
----
-
-## 🧪 Testing & Quality Assurance
-
-Lilycrest DMS enforces a strict zero-intervention quality gate with comprehensive integration and unit tests covering controllers, concurrency limits, and financial billing engines.
+Lilycrest DMS maintains automated test coverage across authentication, reservation state machines, and financial calculation logic.
 
 ```bash
-# Run full backend test suite (166 Suites | 1,600+ Tests)
+# Run the complete backend test suite (166 test suites, 1600+ test cases)
 cd server
 npm test
 
-# Run frontend build check & compilation validation
+# Run frontend production build check
 cd web
 npm run build
 ```
 
 ---
 
-## 🛡️ Security & Production Hardening
+## 📚 9. Documentation Directory
 
-- **Cryptographic Webhook Verification**: All PayMongo webhook callbacks require valid HMAC signatures matching `PAYMONGO_WEBHOOK_SECRET`.
-- **Branch-Scoped Data Isolation**: Multi-branch tenancy ensures branch administrators can only view and modify records belonging to their assigned facility.
-- **Per-Route Error Boundaries**: Frontend single-page routes are wrapped in isolated error boundaries to prevent application-wide whiteouts.
-- **Tiered Rate Limiting**: Independent rate limiters for authentication endpoints, public forms, and general API queries to prevent brute-force attacks.
-- **Input Sanitization**: Request payloads undergo sanitization to prevent NoSQL injection, XSS vectors, and malformed object identifiers.
-- **Audit Trails**: Every administrative change is logged to MongoDB `AuditLog` records containing prior/new snapshots, actor IP, and timestamp.
+For deeper architectural specifications, refer to the guides in the [`docs/`](docs/) directory:
 
----
-
-## 📚 Documentation Index
-
-For in-depth technical documentation, refer to the guides in the [`docs/`](docs/) directory:
-
-- 📐 [**System Architecture**](docs/SYSTEM_ARCHITECTURE.md) — Comprehensive technical architecture & model definitions.
-- 📖 [**API Documentation**](docs/API_DOCUMENTATION.md) — REST contracts, payload schemas, and response envelopes.
-- 💳 [**Billing System Master Guide**](docs/BILLING_SYSTEM_MASTER_GUIDE.md) — Pro-rata math algorithms and utility distribution rules.
-- 🔐 [**Authentication & Security Guide**](docs/AUTHENTICATION_AND_SECURITY.md) — Firebase Auth integration, JWT verification, and RBAC hierarchy.
-- 🛌 [**Occupancy & Reservation Guide**](docs/OCCUPANCY_AND_RESERVATION_GUIDE.md) — Bed-level management and lifecycle status state machine.
-- 🛠️ [**Maintenance & Chat Specifications**](docs/MAINTENANCE_AND_SUPPORT_CHAT.md) — Maintenance workflow and contractor attribution.
+- 📐 [**System Architecture**](docs/SYSTEM_ARCHITECTURE.md) — Architectural patterns, database schemas, and service layers.
+- 📖 [**API Documentation**](docs/API_DOCUMENTATION.md) — Payload structures and error response specifications.
+- 💳 [**Billing Master Guide**](docs/BILLING_SYSTEM_MASTER_GUIDE.md) — In-depth guide to pro-rata utility formulas and penalty policies.
+- 🔐 [**Authentication & Security**](docs/AUTHENTICATION_AND_SECURITY.md) — Firebase Auth, token lifecycle, and RBAC implementation.
+- 🛌 [**Occupancy & Reservation Guide**](docs/OCCUPANCY_AND_RESERVATION_GUIDE.md) — Bed-level management and lifecycle state machines.
+- 🛠️ [**Maintenance & Chat Guide**](docs/MAINTENANCE_AND_SUPPORT_CHAT.md) — Ticket lifecycle and contractor cost attribution.
 
 ---
 
-## 📄 License
+## 📄 10. License
 
-This repository and its codebase were developed for the **Lilycrest Dormitory Management System** Capstone Project. All rights reserved.
+Developed as a capstone project for **Lilycrest Dormitory**. All rights reserved.
 
 <p align="center">
   <strong>Lilycrest Dormitory Management System</strong><br>
-  Engineered with React 19 · Node.js · Express · MongoDB · Firebase · PayMongo · Socket.io
+  Built with React 19 · Node.js · Express.js · MongoDB Atlas · Firebase · PayMongo · Socket.io
 </p>
