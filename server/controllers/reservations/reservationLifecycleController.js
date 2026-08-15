@@ -848,17 +848,12 @@ export const updateReservation = async (req, res, next) => {
         const { autoGenerateMoveInContract } = await import(
           "../../services/autoContractOrchestratorService.js"
         );
-        autoGenerateMoveInContract({
+        await autoGenerateMoveInContract({
           reservationId: updatedReservation._id,
           actorId:
             req.adminId ||
             updatedReservation.userId?._id ||
             updatedReservation.userId,
-        }).catch((err) => {
-          logger.warn(
-            { err, requestId: req.id, reservationId: updatedReservation._id },
-            "Background Move-In contract auto-generation encountered an issue (non-fatal)",
-          );
         });
       } catch (contractErr) {
         logger.error(
@@ -2217,10 +2212,27 @@ export const extendReservation = async (req, res, next) => {
     }
 
     const oldData = reservation.toObject();
-    const newMoveIn = new Date(
-      readMoveInDate(reservation) || reservation.finalMoveInDate,
-    );
-    newMoveIn.setDate(newMoveIn.getDate() + extensionDays);
+    let newMoveIn;
+    let logDetail;
+
+    if (req.body.newMoveInDate || req.body.targetMoveInDate) {
+      const parsedDate = new Date(req.body.newMoveInDate || req.body.targetMoveInDate);
+      if (isNaN(parsedDate.getTime())) {
+        return res.status(400).json({
+          error: "Invalid move-in date provided",
+          code: "INVALID_MOVEIN_DATE",
+        });
+      }
+      newMoveIn = parsedDate;
+      const formattedDate = newMoveIn.toISOString().slice(0, 10);
+      logDetail = `Rescheduled move-in date to ${formattedDate}`;
+    } else {
+      newMoveIn = new Date(
+        readMoveInDate(reservation) || reservation.finalMoveInDate || new Date(),
+      );
+      newMoveIn.setDate(newMoveIn.getDate() + extensionDays);
+      logDetail = `Extended move-in date by ${extensionDays} days`;
+    }
 
     reservation.moveInDate = newMoveIn;
     reservation.finalMoveInDate = newMoveIn;
@@ -2239,10 +2251,10 @@ export const extendReservation = async (req, res, next) => {
       reservationId,
       oldData,
       reservation.toObject(),
-      `Extended move-in date by ${extensionDays} days`,
+      logDetail,
     );
     res.json({
-      message: `Reservation extended by ${extensionDays} days`,
+      message: logDetail,
       newMoveInDate: newMoveIn,
       reservation: serializeReservation(reservation),
     });

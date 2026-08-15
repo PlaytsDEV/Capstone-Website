@@ -138,11 +138,12 @@ export default function ActiveFilterTags({
           </span>
         ))}
 
-        {tags.length >= 2 && (
+        {tags.length >= 1 && (
           <button
             type="button"
             className="res-filter-tag--clear-all"
             onClick={onClearAll}
+            title="Reset all active filters and scopes"
           >
             Clear All
           </button>

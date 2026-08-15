@@ -33,6 +33,7 @@ import {
 } from "../utils/physicalVisitFlow";
 import { fmtShortDate, APP_LOCALE } from "../../../shared/utils/dateFormat";
 import CheckoutLockBanner from "./CheckoutLockBanner";
+import MoveInSettlementCard from "./profile/MoveInSettlementCard";
 
 const getReservationStatus = (reservation) =>
   reservation?.reservationStatus || reservation?.status || "pending";
@@ -485,6 +486,7 @@ function getStepDesc(step, status, reservation) {
 
 export default function ReservationDashboard({
   reservation,
+  profileData,
   visits = [],
   feedback = null,
   onDismissFeedback,
@@ -1029,11 +1031,22 @@ export default function ReservationDashboard({
               {daysLeft !== null && (
                 <div style={styles.countdownCard}>
                   <div style={styles.countdownLeft}>
-                    <Calendar
-                      size={18}
-                      color="#6366F1"
-                      style={{ flexShrink: 0 }}
-                    />
+                    <div
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 8,
+                        background: "var(--surface-card, #FFFFFF)",
+                        border: "1px solid var(--border-card, #E2E8F0)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--text-heading, #0A1628)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Calendar size={17} />
+                    </div>
                     <div>
                       <div style={styles.countdownLabel}>Move-in Date</div>
                       <div style={styles.countdownDate}>
@@ -1057,6 +1070,12 @@ export default function ReservationDashboard({
                   </div>
                 </div>
               )}
+
+              {/* Move-In Settlement Hub Card */}
+              <MoveInSettlementCard
+                reservation={reservation}
+                profileData={profileData}
+              />
             </div>
           );
         })()}
@@ -1066,7 +1085,11 @@ export default function ReservationDashboard({
         (reservation.reservationStatus || reservation.status) !== "moveIn" && (
           <div style={styles.footer}>
             <div style={styles.footerLeft}>
-              {!isConfirmed &&
+              {isConfirmed ? (
+                <span style={{ fontSize: 12, color: "var(--text-secondary, #64748B)" }}>
+                  Need to cancel or forfeit this slot?
+                </span>
+              ) : (
                 currentStage <= 2 &&
                 !reservation.viewingPreference &&
                 !reservation.viewingType &&
@@ -1093,7 +1116,8 @@ export default function ReservationDashboard({
                   >
                     ↩ Change Room
                   </button>
-                )}
+                )
+              )}
             </div>
             {isConfirmed ? (
               reservation.cancellationRequested &&
@@ -1101,7 +1125,7 @@ export default function ReservationDashboard({
                 <span
                   style={{
                     ...styles.footerLinkDanger,
-                    opacity: 0.5,
+                    opacity: 0.7,
                     cursor: "default",
                     fontSize: "0.8rem",
                   }}
@@ -1119,27 +1143,19 @@ export default function ReservationDashboard({
                   }}
                   style={styles.footerLinkDanger}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "#FEF2F2";
-                    e.currentTarget.style.borderColor = "#EF4444";
-                    e.currentTarget.style.color = "#B91C1C";
+                    e.currentTarget.style.backgroundColor = "var(--color-danger, #DC2626)";
+                    e.currentTarget.style.borderColor = "var(--color-danger, #DC2626)";
+                    e.currentTarget.style.color = "#FFFFFF";
                     e.currentTarget.style.transform = "translateY(-1px)";
                     e.currentTarget.style.boxShadow =
-                      "0 2px 6px rgba(220, 38, 38, 0.12)";
+                      "0 3px 8px rgba(220, 38, 38, 0.3)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                    e.currentTarget.style.borderColor = "#FCA5A5";
-                    e.currentTarget.style.color = "#DC2626";
+                    e.currentTarget.style.backgroundColor = "var(--color-danger-bg, rgba(220, 38, 38, 0.08))";
+                    e.currentTarget.style.borderColor = "var(--color-danger, #DC2626)";
+                    e.currentTarget.style.color = "var(--color-danger-text, #DC2626)";
                     e.currentTarget.style.transform = "translateY(0)";
                     e.currentTarget.style.boxShadow = "none";
-                  }}
-                  onMouseDown={(e) => {
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.backgroundColor = "#FEE2E2";
-                  }}
-                  onMouseUp={(e) => {
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.backgroundColor = "#FEF2F2";
                   }}
                 >
                   Request Cancellation
@@ -1152,27 +1168,19 @@ export default function ReservationDashboard({
                 }}
                 style={styles.footerLinkDanger}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#FEF2F2";
-                  e.currentTarget.style.borderColor = "#EF4444";
-                  e.currentTarget.style.color = "#B91C1C";
+                  e.currentTarget.style.backgroundColor = "var(--color-danger, #DC2626)";
+                  e.currentTarget.style.borderColor = "var(--color-danger, #DC2626)";
+                  e.currentTarget.style.color = "#FFFFFF";
                   e.currentTarget.style.transform = "translateY(-1px)";
                   e.currentTarget.style.boxShadow =
-                    "0 2px 6px rgba(220, 38, 38, 0.12)";
+                    "0 3px 8px rgba(220, 38, 38, 0.3)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "transparent";
-                  e.currentTarget.style.borderColor = "#FCA5A5";
-                  e.currentTarget.style.color = "#DC2626";
+                  e.currentTarget.style.backgroundColor = "var(--color-danger-bg, rgba(220, 38, 38, 0.08))";
+                  e.currentTarget.style.borderColor = "var(--color-danger, #DC2626)";
+                  e.currentTarget.style.color = "var(--color-danger-text, #DC2626)";
                   e.currentTarget.style.transform = "translateY(0)";
                   e.currentTarget.style.boxShadow = "none";
-                }}
-                onMouseDown={(e) => {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.backgroundColor = "#FEE2E2";
-                }}
-                onMouseUp={(e) => {
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                  e.currentTarget.style.backgroundColor = "#FEF2F2";
                 }}
               >
                 Cancel reservation process
@@ -1703,39 +1711,43 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    background: "rgba(99, 102, 241, 0.06)",
+    background: "var(--surface-card, #FFFFFF)",
     borderRadius: 10,
     padding: "14px 18px",
-    border: "1px solid rgba(99, 102, 241, 0.15)",
+    border: "1px solid var(--border-card, #E2E8F0)",
   },
   countdownLeft: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
   },
   countdownLabel: {
     fontSize: 11,
-    color: "#94A3B8",
-    fontWeight: 500,
-    marginBottom: 1,
+    color: "var(--text-secondary, #64748B)",
+    fontWeight: 600,
+    marginBottom: 2,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
   },
   countdownDate: {
     fontSize: 14,
-    fontWeight: 600,
+    fontWeight: 700,
     color: "var(--text-heading, #0F172A)",
   },
   countdownBadge: {
-    fontSize: 13,
-    color: "#6366F1",
+    fontSize: 12,
+    color: "var(--text-heading, #0F172A)",
     fontWeight: 600,
-    background: "rgba(99, 102, 241, 0.1)",
-    padding: "4px 12px",
+    background: "var(--surface-card, #FFFFFF)",
+    border: "1px solid var(--border-card, #CBD5E1)",
+    padding: "5px 12px",
     borderRadius: 20,
     whiteSpace: "nowrap",
   },
   countdownNumber: {
-    fontSize: 18,
-    fontWeight: 700,
+    fontSize: 15,
+    fontWeight: 800,
+    color: "var(--text-heading, #0A1628)",
     marginRight: 3,
   },
 
@@ -1744,9 +1756,11 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 20,
-    paddingTop: 16,
-    borderTop: "1px solid var(--border-subtle, #F1F5F9)",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 18,
+    paddingTop: 14,
+    borderTop: "1px solid var(--border-divider, var(--border-card, #E2E8F0))",
   },
   footerLeft: {
     display: "flex",
@@ -1765,15 +1779,15 @@ const styles = {
     transition: "background 0.15s, color 0.15s",
   },
   footerLinkDanger: {
-    background: "transparent",
-    border: "1px solid #FCA5A5",
-    color: "#DC2626",
-    fontSize: 13,
+    background: "var(--color-danger-bg, rgba(220, 38, 38, 0.08))",
+    border: "1px solid var(--color-danger, #DC2626)",
+    color: "var(--color-danger-text, #DC2626)",
+    fontSize: 12,
     cursor: "pointer",
-    padding: "6px 12px",
+    padding: "7px 14px",
     borderRadius: 6,
-    fontWeight: 500,
-    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+    fontWeight: 600,
+    transition: "all 0.15s ease",
   },
   cancelLink: {
     background: "none",

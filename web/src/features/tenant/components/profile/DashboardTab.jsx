@@ -118,6 +118,7 @@ const DashboardTab = ({
           />
           <ReservationDashboard
             reservation={selectedReservation}
+            profileData={profileData}
             visits={visits}
             onGoToReservation={onGoToReservation}
           />
@@ -166,10 +167,13 @@ const DashboardTab = ({
           </div>
         </div>
 
- {/* Right col: spans both rows on desktop, below on mobile */}
- <div style={rightColStyle}>
- <ReservationSidePanel reservation={selectedReservation} />
- </div>
+        {/* Right col: spans both rows on desktop, below on mobile */}
+        <div style={rightColStyle}>
+          <ReservationSidePanel
+            reservation={selectedReservation}
+            profileData={profileData}
+          />
+        </div>
 
  </div>
 
@@ -214,7 +218,9 @@ const S = {
     display: "flex",
     flexDirection: "column",
     alignItems: "stretch",
-    alignSelf: "stretch",
+    alignSelf: "start",
+    position: "sticky",
+    top: 16,
   },
 
  /* Mobile — single column */

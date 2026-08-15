@@ -21,10 +21,12 @@ import {
  Users,
  DoorOpen,
  AlertCircle,
+ ChevronDown,
+ ChevronUp,
 } from "lucide-react";
 import dayjs from "dayjs";
 import { useQueryClient } from "@tanstack/react-query";
-import { generateDepositReceipt, viewDepositReceipt } from "../../../../shared/utils/receiptGenerator";
+import { generateDepositReceipt, viewDepositReceipt, generateMoveInStatementPDF } from "../../../../shared/utils/receiptGenerator";
 import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
 import { useCurrentUser } from "../../../../shared/hooks/queries/useUsers";
 import { reservationApi } from "../../../../shared/api/reservationApi";
@@ -97,6 +99,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  const [isRequestingCancellation, setIsRequestingCancellation] = useState(false);
  const [cancellationReason, setCancellationReason] = useState("");
  const [acknowledgedCancellationPolicy, setAcknowledgedCancellationPolicy] = useState(false);
+ const [isMoveInScheduleOpen, setIsMoveInScheduleOpen] = useState(false);
 
  if (!reservation) {
  return (
@@ -144,7 +147,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
       : getRoomImages(room.type, room.branch);
   const amenities = room.amenities || [];
   const heroImage = images[selectedImage] || images[0] || null;
- const code = reservation.reservationCode || "—";
+  const code = reservation.reservationCode || reservation.code || reservation.visitCode || "—";
  const bookedOn = dayjs(reservation.createdAt).format("MMMM D, YYYY [at] h:mm A");
  const moveInDate = readMoveInDate(reservation) || reservation.targetMoveInDate;
  const moveInDateLabel = moveInDate
@@ -581,153 +584,259 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
      <div key={label} style={detailRow}>
        <span style={{ color: "var(--muted-foreground)", fontWeight: 500 }}>{label}</span>
        <span
-         style={{
-           color: highlight ? "var(--primary)" : paid ? "var(--success)" : "var(--foreground)",
-           fontWeight: 600,
-         }}
-       >
-         {value}
-       </span>
-     </div>
-   ));
+          style={{
+            color: highlight ? "var(--primary)" : paid ? "var(--success)" : "var(--foreground)",
+            fontWeight: 600,
+          }}
+        >
+          {value}
+        </span>
+      </div>
+    ));
  })()}
  </div>
 
- {/* Receipt Download Card */}
- <div style={{ ...card, background: "var(--muted)" }}>
- <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
- <FileText size={16} color="var(--muted-foreground)" />
- <h3 style={{ ...sectionTitle, margin: 0 }}>
- {isFullTenantReservation ? "Payment Receipt" : "Reservation Fee Payment"}
- </h3>
- </div>
+ {/* Move-In Financial Schedule Card (Collapsible) */}
+ {(hasReservationStatus(reservationStatus, "reserved", "moveIn", "moveOut") || paymentDate) && (() => {
+   const advanceRent = reservation.moveInCashOut?.monthlyAdvance ?? monthlyRent;
+   const securityDeposit = reservation.moveInCashOut?.securityDeposit ?? monthlyRent;
+   const grossTotal = (advanceRent || 0) + (securityDeposit || 0);
+   const netDue = Math.max(0, grossTotal - reservationFeeAmount);
+   const isSettled = reservation.initialPaymentStatus === "paid" || reservation.paymentStatus === "paid_in_full";
 
- {paymentDate ? (
- <>
- <p style={{ color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
- Your {paymentDescriptor} payment of <strong>{`PHP ${reservationFeeAmount.toLocaleString("en-PH")}`}</strong> was confirmed on{" "}
- <strong>{paymentDate}</strong>.
- </p>
- <div style={{ display: "flex", gap: 10 }}>
- <button
- onClick={() => generateDepositReceipt(reservation, profile)}
- style={{
- flex: 1,
- display: "flex",
- alignItems: "center",
- justifyContent: "center",
- gap: 6,
- padding: "10px 16px",
- background: "var(--success)",
- color: "var(--success-foreground)",
- border: "1px solid var(--success)",
- borderRadius: 8,
- fontSize: 13,
- fontWeight: 600,
- cursor: "pointer",
- transition: "all 0.15s",
- }}
- onMouseEnter={(e) => {
- e.currentTarget.style.background = "var(--success-dark)";
- e.currentTarget.style.transform = "translateY(-1px)";
- }}
- onMouseLeave={(e) => {
- e.currentTarget.style.background = "var(--success)";
- e.currentTarget.style.transform = "translateY(0)";
- }}
- >
- <Download size={14} /> Download PDF
- </button>
- <button
- onClick={() => viewDepositReceipt(reservation, profile)}
- style={{
- flex: 1,
- display: "flex",
- alignItems: "center",
- justifyContent: "center",
- gap: 6,
- padding: "10px 16px",
- background: "var(--card)",
- color: "var(--foreground)",
- border: "1px solid var(--border)",
- borderRadius: 8,
- fontSize: 13,
- fontWeight: 600,
- cursor: "pointer",
- transition: "all 0.15s",
- }}
- onMouseEnter={(e) => {
- e.currentTarget.style.background = "var(--muted)";
- e.currentTarget.style.borderColor = "var(--ring)";
- e.currentTarget.style.color = "var(--foreground)";
- }}
- onMouseLeave={(e) => {
- e.currentTarget.style.background = "var(--card)";
- e.currentTarget.style.borderColor = "var(--border)";
- e.currentTarget.style.color = "var(--foreground)";
- }}
- >
- <Eye size={14} /> View Receipt
- </button>
- </div>
- </>
- ) : (
- <p style={{ color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.6 }}>
- Your receipt will appear here once your Reservation Fee is confirmed.
- </p>
- )}
+   return (
+     <div style={{ ...card, padding: "16px 20px", marginBottom: 12 }}>
+       <div
+         onClick={() => setIsMoveInScheduleOpen((prev) => !prev)}
+         style={{
+           display: "flex",
+           alignItems: "center",
+           justifyContent: "space-between",
+           cursor: "pointer",
+           userSelect: "none",
+         }}
+       >
+         <h3 style={{ ...sectionTitle, margin: 0, fontSize: 14 }}>Move-In Financial Schedule</h3>
+         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+           <span style={{ fontSize: 13, fontWeight: 700, color: isSettled ? "var(--success)" : "var(--text-heading, var(--primary))" }}>
+             {isSettled ? "₱0 (Settled)" : `₱${netDue.toLocaleString()}`}
+           </span>
+           {isMoveInScheduleOpen ? (
+             <ChevronUp size={16} color="var(--muted-foreground)" />
+           ) : (
+             <ChevronDown size={16} color="var(--muted-foreground)" />
+           )}
+         </div>
+       </div>
+
+       {isMoveInScheduleOpen && (
+         <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+           <div style={detailRow}>
+             <span style={{ color: "var(--muted-foreground)" }}>1-Month Advance Rent</span>
+             <span style={{ fontWeight: 600 }}>{advanceRent ? `₱${advanceRent.toLocaleString()}` : "—"}</span>
+           </div>
+           <div style={detailRow}>
+             <span style={{ color: "var(--muted-foreground)" }}>1-Month Security Deposit</span>
+             <span style={{ fontWeight: 600 }}>{securityDeposit ? `₱${securityDeposit.toLocaleString()}` : "—"}</span>
+           </div>
+           <div style={{ ...detailRow, borderTop: "1px dashed var(--border)", paddingTop: 8 }}>
+             <span style={{ fontWeight: 600 }}>Total Move-In Requirements</span>
+             <span style={{ fontWeight: 700 }}>₱{grossTotal.toLocaleString()}</span>
+           </div>
+           <div style={detailRow}>
+             <span style={{ color: "var(--success)" }}>Less: Slot Reservation Fee (Paid)</span>
+             <span style={{ color: "var(--success)", fontWeight: 700 }}>-₱{reservationFeeAmount.toLocaleString()}</span>
+           </div>
+           <div style={{ ...detailRow, borderBottom: "none", paddingTop: 10, marginTop: 4 }}>
+             <span style={{ fontWeight: 700, fontSize: 13 }}>Remaining Move-In Due</span>
+             <span style={{ fontWeight: 800, fontSize: 14, color: isSettled ? "var(--success)" : "var(--text-heading, var(--primary))" }}>
+               {isSettled ? "₱0 (Settled)" : `₱${netDue.toLocaleString()}`}
+             </span>
+           </div>
+           <div style={{ marginTop: 12 }}>
+             <button
+               onClick={() => generateMoveInStatementPDF(reservation, profile)}
+               style={{
+                 width: "100%",
+                 display: "flex",
+                 alignItems: "center",
+                 justifyContent: "center",
+                 gap: 6,
+                 padding: "8px 14px",
+                 background: "transparent",
+                 color: "var(--foreground)",
+                 border: "1px solid var(--border)",
+                 borderRadius: 8,
+                 fontSize: 12,
+                 fontWeight: 600,
+                 cursor: "pointer",
+                 transition: "all 0.15s",
+               }}
+               onMouseEnter={(e) => {
+                 e.currentTarget.style.background = "var(--muted)";
+               }}
+               onMouseLeave={(e) => {
+                 e.currentTarget.style.background = "transparent";
+               }}
+             >
+               <Download size={13} /> Download Move-In Statement
+             </button>
+           </div>
+         </div>
+       )}
+     </div>
+   );
+ })()}
+
+ {/* Receipt Download Card */}
+ <div style={{ ...card, background: "var(--muted)", padding: "16px 20px", marginBottom: 12 }}>
+   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+     <FileText size={15} color="var(--muted-foreground)" />
+     <h3 style={{ ...sectionTitle, margin: 0, fontSize: 14 }}>
+       {isFullTenantReservation ? "Payment Receipt" : "Reservation Fee Payment"}
+     </h3>
+   </div>
+
+   {paymentDate ? (
+     <>
+       <p style={{ color: "var(--muted-foreground)", fontSize: 12, lineHeight: 1.5, marginBottom: 12 }}>
+         Your {paymentDescriptor} payment of <strong>{`PHP ${reservationFeeAmount.toLocaleString("en-PH")}`}</strong> was confirmed on{" "}
+         <strong>{paymentDate}</strong>.
+       </p>
+       <div style={{ display: "flex", gap: 8 }}>
+         <button
+           onClick={() => generateDepositReceipt(reservation, profile)}
+           style={{
+             flex: 1,
+             display: "flex",
+             alignItems: "center",
+             justifyContent: "center",
+             gap: 6,
+             padding: "8px 12px",
+             background: "var(--success)",
+             color: "var(--success-foreground)",
+             border: "1px solid var(--success)",
+             borderRadius: 8,
+             fontSize: 12,
+             fontWeight: 600,
+             cursor: "pointer",
+             transition: "all 0.15s",
+           }}
+           onMouseEnter={(e) => {
+             e.currentTarget.style.background = "var(--success-dark)";
+             e.currentTarget.style.transform = "translateY(-1px)";
+           }}
+           onMouseLeave={(e) => {
+             e.currentTarget.style.background = "var(--success)";
+             e.currentTarget.style.transform = "translateY(0)";
+           }}
+         >
+           <Download size={13} /> Download PDF
+         </button>
+         <button
+           onClick={() => viewDepositReceipt(reservation, profile)}
+           style={{
+             flex: 1,
+             display: "flex",
+             alignItems: "center",
+             justifyContent: "center",
+             gap: 6,
+             padding: "8px 12px",
+             background: "var(--card)",
+             color: "var(--foreground)",
+             border: "1px solid var(--border)",
+             borderRadius: 8,
+             fontSize: 12,
+             fontWeight: 600,
+             cursor: "pointer",
+             transition: "all 0.15s",
+           }}
+           onMouseEnter={(e) => {
+             e.currentTarget.style.background = "var(--muted)";
+             e.currentTarget.style.borderColor = "var(--ring)";
+             e.currentTarget.style.color = "var(--foreground)";
+           }}
+           onMouseLeave={(e) => {
+             e.currentTarget.style.background = "var(--card)";
+             e.currentTarget.style.borderColor = "var(--border)";
+             e.currentTarget.style.color = "var(--foreground)";
+           }}
+         >
+           <Eye size={13} /> View Receipt
+         </button>
+       </div>
+     </>
+   ) : (
+     <p style={{ color: "var(--muted-foreground)", fontSize: 12, lineHeight: 1.5, margin: 0 }}>
+       Your receipt will appear here once your Reservation Fee is confirmed.
+     </p>
+   )}
  </div>
 
  {/* Cancellation Request Card */}
  {cancellationUi.visible && (
- <div style={{ ...card, borderColor: cancellationUi.isPending ? "var(--warning)" : "var(--danger)" }}>
- <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
- <AlertCircle size={18} color={cancellationUi.isPending ? "var(--warning)" : "var(--danger)"} style={{ marginTop: 1 }} />
- <div>
- <h3 style={{ ...sectionTitle, margin: 0 }}>
- {cancellationUi.isPending ? "Cancellation Request Pending" : "Request Reservation Cancellation"}
- </h3>
- <p style={{ color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.6, margin: "8px 0 0" }}>
- {cancellationUi.isPending
- ? "Your cancellation request is waiting for admin review. Your bed remains reserved until admin approves the request."
- : RESERVATION_FEE_NON_REFUNDABLE_NOTICE}
- </p>
- </div>
- </div>
+   <div style={{ ...card, padding: "14px 18px", marginBottom: 12, borderColor: cancellationUi.isPending ? "var(--warning)" : "var(--danger)" }}>
+     <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
+       <AlertCircle size={16} color={cancellationUi.isPending ? "var(--warning)" : "var(--danger)"} style={{ marginTop: 1, flexShrink: 0 }} />
+       <div>
+         <h3 style={{ ...sectionTitle, margin: 0, fontSize: 13 }}>
+           {cancellationUi.isPending ? "Cancellation Request Pending" : "Request Reservation Cancellation"}
+         </h3>
+         <p style={{ color: "var(--muted-foreground)", fontSize: 12, lineHeight: 1.45, margin: "4px 0 0" }}>
+           {cancellationUi.isPending
+             ? "Your cancellation request is waiting for admin review. Your bed remains reserved until admin approves the request."
+             : RESERVATION_FEE_NON_REFUNDABLE_NOTICE}
+         </p>
+       </div>
+     </div>
 
- {cancellationUi.isPending ? (
- <div
- style={{
- borderRadius: 8,
- background: "var(--warning-light)",
- color: "var(--warning-dark)",
- padding: "10px 12px",
- fontSize: 13,
- fontWeight: 600,
- }}
- >
- Pending admin review
- </div>
- ) : (
- <button
- type="button"
- onClick={() => setShowCancellationModal(true)}
- style={{
- width: "100%",
- padding: "11px 16px",
- background: "var(--danger)",
- color: "var(--danger-foreground)",
- border: "none",
- borderRadius: 8,
- fontSize: 13,
- fontWeight: 700,
- cursor: "pointer",
- }}
- >
- Request Cancellation
- </button>
- )}
- </div>
+     {cancellationUi.isPending ? (
+       <div
+         style={{
+           borderRadius: 6,
+           background: "var(--warning-light)",
+           color: "var(--warning-dark)",
+           padding: "8px 10px",
+           fontSize: 12,
+           fontWeight: 600,
+         }}
+       >
+         Pending admin review
+       </div>
+     ) : (
+        <button
+          type="button"
+          onClick={() => setShowCancellationModal(true)}
+          style={{
+            width: "100%",
+            padding: "9px 14px",
+            background: "var(--color-danger, #DC2626)",
+            color: "#FFFFFF",
+            border: "1px solid var(--color-danger, #DC2626)",
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            transition: "background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease",
+            boxShadow: "0 1px 3px rgba(220, 38, 38, 0.2)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "#B91C1C";
+            e.currentTarget.style.borderColor = "#991B1B";
+            e.currentTarget.style.transform = "translateY(-1px)";
+            e.currentTarget.style.boxShadow = "0 3px 8px rgba(220, 38, 38, 0.35)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "var(--color-danger, #DC2626)";
+            e.currentTarget.style.borderColor = "var(--color-danger, #DC2626)";
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.boxShadow = "0 1px 3px rgba(220, 38, 38, 0.2)";
+          }}
+        >
+          Request Cancellation
+        </button>
+     )}
+   </div>
  )}
  </div>
  </div>
@@ -898,6 +1007,17 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
               fontSize: 13,
               fontWeight: 600,
               cursor: isRequestingCancellation ? "default" : "pointer",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              if (!isRequestingCancellation) {
+                e.currentTarget.style.background = "var(--surface-hover, #F8FAFC)";
+                e.currentTarget.style.borderColor = "var(--text-secondary, #94A3B8)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--surface-card, #FFFFFF)";
+              e.currentTarget.style.borderColor = "var(--border-card, #CBD5E1)";
             }}
           >
             Keep Reservation
@@ -911,12 +1031,24 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
               padding: "10px 22px",
               borderRadius: 8,
               border: "none",
-              background: acknowledgedCancellationPolicy ? "#DC2626" : "#E2E8F0",
-              color: acknowledgedCancellationPolicy ? "#FFFFFF" : "#94A3B8",
+              background: acknowledgedCancellationPolicy ? "var(--color-danger, #DC2626)" : "var(--surface-muted, #E2E8F0)",
+              color: acknowledgedCancellationPolicy ? "#FFFFFF" : "var(--text-muted, #94A3B8)",
               fontSize: 13,
               fontWeight: 600,
               cursor: isRequestingCancellation || !acknowledgedCancellationPolicy ? "not-allowed" : "pointer",
               transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              if (acknowledgedCancellationPolicy && !isRequestingCancellation) {
+                e.currentTarget.style.background = "#B91C1C";
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (acknowledgedCancellationPolicy) {
+                e.currentTarget.style.background = "var(--color-danger, #DC2626)";
+                e.currentTarget.style.transform = "translateY(0)";
+              }
             }}
           >
             {isRequestingCancellation ? "Submitting..." : "Submit Request"}
