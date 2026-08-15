@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import {
+  AlertTriangle,
   Archive,
   CheckCircle2,
   ChevronRight,
   Clock,
   Download,
-  Eye,
   Paperclip,
   UserX,
   Wrench,
@@ -16,17 +16,14 @@ import {
   getMaintenanceTypeMeta,
   getMaintenanceUrgencyMeta,
 } from "../../../../../shared/utils/maintenanceConfig";
+import { formatBranch, fmtDate, getRelativeTime } from "../../../../../shared/utils/formatDate";
 import { DataTable } from "../../../components/shared";
-import { BranchTableText } from "./BranchBadge";
 import {
-  fmtDate,
   getAssignedProviderName,
   getAvatarPalette,
   getRequestBranch,
-  getSlaTone,
   getStatusDotClass,
   getStatusTextClass,
-  formatSlaState,
   ITEMS_PER_PAGE,
 } from "../maintenanceUtils";
 
@@ -43,7 +40,6 @@ export function MaintenanceTable({
   onBulkArchive,
   onBulkExport,
   isBulkUpdating = false,
-  onQuickStatusChange,
 }) {
   const allPageIds = useMemo(() => requests.map((r) => r.request_id), [requests]);
   const isAllSelected =
@@ -57,7 +53,7 @@ export function MaintenanceTable({
         ? [
             {
               key: "select",
-              width: "44px",
+              width: "40px",
               label: (
                 <div
                   className="flex items-center justify-center"
@@ -100,47 +96,53 @@ export function MaintenanceTable({
           ]
         : []),
       {
-        key: "tenant",
-        label: "Tenant",
+        key: "resident",
+        label: "Resident & Location",
+        width: "25%",
         render: (row) => {
-          const rawName = row.tenant?.full_name || "";
+          const rawName = row.tenant?.full_name || row.tenantName || "";
           const isDeleted =
             !rawName ||
             rawName.toLowerCase().includes("deleted") ||
             row.tenant?.is_deleted ||
             row.is_deleted;
           const palette = getAvatarPalette(rawName);
+          const branchName = formatBranch(getRequestBranch(row));
+          const roomInfo =
+            row.room_number || row.room?.name || row.roomId?.name
+              ? `Room ${row.room_number || row.room?.name || row.roomId?.name}`
+              : null;
+          const bedSlot = row.bedIdentifier || row.bed?.bedNumber || row.bedNumber || null;
 
           if (isDeleted) {
             return (
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">
                   <UserX size={14} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="text-xs font-semibold text-slate-600 dark:text-slate-400">
                     Deleted Account
                   </div>
-                  <div className="text-[10px] text-slate-400 dark:text-slate-500">
-                    Former Resident
-                  </div>
+                  <div className="text-[10px] text-slate-400">{branchName}</div>
                 </div>
               </div>
             );
           }
 
-          const initials = rawName
-            .split(/\s+/)
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((part) => part[0])
-            .join("")
-            .toUpperCase() || "T";
+          const initials =
+            rawName
+              .split(/\s+/)
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((part) => part[0])
+              .join("")
+              .toUpperCase() || "T";
 
           return (
             <div className="flex items-center gap-2.5">
               <div
-                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${palette.bg} ${palette.text}`}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${palette.bg} ${palette.text}`}
               >
                 {initials}
               </div>
@@ -148,101 +150,146 @@ export function MaintenanceTable({
                 <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                   {rawName}
                 </div>
-                {row.room_number ? (
-                  <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-                    Room {row.room_number}
-                  </div>
-                ) : (
-                  <div className="text-[10px] text-slate-400 dark:text-slate-500">
-                    Tenant
-                  </div>
-                )}
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
+                  <span>{branchName}</span>
+                  {roomInfo && (
+                    <>
+                      <span>•</span>
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        {roomInfo}{bedSlot ? ` (${bedSlot})` : ""}
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           );
         },
       },
       {
-        key: "branch",
-        label: "Branch",
-        render: (row) => <BranchTableText branch={getRequestBranch(row)} />,
-      },
-      {
-        key: "request_type",
-        label: "Type",
+        key: "issue",
+        label: "Issue & Category",
+        width: "31%",
         render: (row) => {
           const typeMeta = getMaintenanceTypeMeta(row.request_type);
           const TypeIcon = typeMeta.icon;
           const attachmentCount = row.attachments?.length || 0;
+          const shortId = row.request_id ? `#${row.request_id.slice(-6).toUpperCase()}` : "";
 
           return (
-            <div className="flex items-center gap-2">
+            <div className="flex items-start gap-2.5">
               <span
-                className="flex h-7 w-7 items-center justify-center rounded-lg border"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border mt-0.5"
                 style={{
                   backgroundColor: `${typeMeta.color}14`,
                   borderColor: `${typeMeta.color}33`,
                   color: typeMeta.color,
                 }}
+                title={typeMeta.label}
               >
-                <TypeIcon size={14} />
+                <TypeIcon size={15} />
               </span>
-              <div>
-                <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                  {typeMeta.label}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                    {typeMeta.label}
+                  </span>
+                  {shortId && (
+                    <span className="font-mono text-[10px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                      {shortId}
+                    </span>
+                  )}
+                  {attachmentCount > 0 && (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                      <Paperclip size={10} className="text-slate-400" />
+                      <span>{attachmentCount}</span>
+                    </span>
+                  )}
                 </div>
-                {attachmentCount > 0 && (
-                  <div className="flex items-center gap-0.5 text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                    <Paperclip size={10} />
-                    <span>{attachmentCount} file{attachmentCount === 1 ? "" : "s"}</span>
-                  </div>
-                )}
+                <p
+                  className="text-xs font-normal text-slate-600 dark:text-slate-300 truncate mt-0.5"
+                  title={row.description}
+                >
+                  {row.description || "No description provided"}
+                </p>
               </div>
             </div>
           );
         },
       },
       {
-        key: "description",
-        label: "Description",
-        render: (row) => {
-          const shortId = row.request_id ? `#${row.request_id.slice(-6).toUpperCase()}` : "";
-          return (
-            <div className="max-w-[260px]">
-              <div className="truncate text-xs font-medium text-slate-700 dark:text-slate-300" title={row.description}>
-                {row.description}
-              </div>
-              {shortId && (
-                <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
-                  {shortId}
-                </span>
-              )}
-            </div>
-          );
-        },
-      },
-      {
-        key: "urgency",
-        label: "Urgency",
+        key: "priority_sla",
+        label: "Priority & Schedule",
+        width: "16%",
         render: (row) => {
           const urgencyMeta = getMaintenanceUrgencyMeta(row.urgency);
+          const rawUrgency = String(row.urgency || "").toLowerCase();
+          const urgencyLabel =
+            rawUrgency === "low"
+              ? "Low"
+              : rawUrgency === "normal" || rawUrgency === "medium"
+              ? "Standard"
+              : "Urgent";
+
+          const rawSla = String(row.slaState || "").toLowerCase();
+          let slaElement = null;
+          if (rawSla.includes("delay") || rawSla.includes("overdue") || rawSla.includes("breach")) {
+            slaElement = (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                <AlertTriangle size={11} className="shrink-0" />
+                <span>Overdue</span>
+              </span>
+            );
+          } else if (rawSla.includes("soon") || rawSla.includes("risk")) {
+            slaElement = (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                <Clock size={11} className="shrink-0" />
+                <span>Due soon</span>
+              </span>
+            );
+          } else if (rawSla.includes("close") || rawSla.includes("cancel")) {
+            slaElement = (
+              <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                Closed
+              </span>
+            );
+          } else if (rawSla.includes("complete") || rawSla.includes("resolve")) {
+            slaElement = (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 size={11} className="shrink-0" />
+                <span>Resolved</span>
+              </span>
+            );
+          } else {
+            slaElement = (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                <CheckCircle2 size={11} className="shrink-0 text-emerald-500" />
+                <span>On schedule</span>
+              </span>
+            );
+          }
+
           return (
-            <span
-              className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold"
-              style={{
-                backgroundColor: `${urgencyMeta.color}14`,
-                borderColor: `${urgencyMeta.color}33`,
-                color: urgencyMeta.color,
-              }}
-            >
-              {urgencyMeta.label}
-            </span>
+            <div className="flex flex-col items-start gap-1">
+              <span
+                className="inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold"
+                style={{
+                  backgroundColor: `${urgencyMeta.color}14`,
+                  borderColor: `${urgencyMeta.color}33`,
+                  color: urgencyMeta.color,
+                }}
+              >
+                {urgencyLabel}
+              </span>
+              {slaElement}
+            </div>
           );
         },
       },
       {
         key: "status",
         label: "Status",
+        width: "14%",
         render: (row) => (
           <div
             className={`inline-flex items-center gap-1.5 text-xs font-semibold ${getStatusTextClass(
@@ -255,86 +302,76 @@ export function MaintenanceTable({
         ),
       },
       {
-        key: "sla",
-        label: "SLA Health",
-        render: (row) => {
-          const tone = getSlaTone(row.slaState);
-          return (
-            <span
-              className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold"
-              style={{
-                background: tone.bg,
-                color: tone.color,
-                borderColor: `${tone.color}33`,
-              }}
-            >
-              {formatSlaState(row.slaState)}
-            </span>
-          );
-        },
-      },
-      {
-        key: "assigned_to",
+        key: "technician",
         label: "Technician",
+        width: "15%",
         render: (row) => {
           const provider = getAssignedProviderName(row);
           if (!provider) {
             return (
-              <span className="inline-flex items-center rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+              <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700/60">
                 Unassigned
               </span>
             );
           }
           return (
-            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-              {provider}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <Wrench size={12} className="text-primary shrink-0" />
+              <span
+                className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate"
+                title={provider}
+              >
+                {provider}
+              </span>
+            </div>
           );
         },
       },
       {
-        key: "created_at",
-        label: "Date",
-        sortable: true,
-        render: (row) => (
-          <span className="text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">
-            {fmtDate(row.created_at)}
-          </span>
-        ),
-      },
-      {
         key: "actions",
-        label: "Action",
+        label: "Reported",
+        width: "14%",
         align: "right",
-        render: (row) => (
-          <div
-            className="flex items-center justify-end gap-1.5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {row.status === "pending" && onQuickStatusChange ? (
+        render: (row) => {
+          const relTime = getRelativeTime(row.created_at);
+          return (
+            <div
+              className="flex items-center justify-end gap-2.5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-right">
+                <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block whitespace-nowrap">
+                  {fmtDate(row.created_at)}
+                </span>
+                {relTime && (
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 block whitespace-nowrap">
+                    {relTime}
+                  </span>
+                )}
+              </div>
               <button
                 type="button"
-                onClick={() => onQuickStatusChange(row.request_id, "viewed")}
-                className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-300 dark:border-emerald-800/80 bg-emerald-50 dark:bg-emerald-950/60 px-2 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 transition hover:bg-emerald-600 hover:text-white"
-                title="Acknowledge request"
+                onClick={() => onRowClick?.(row)}
+                className="inline-flex h-7 items-center gap-0.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white shrink-0 cursor-pointer"
+                title="Open maintenance request"
               >
-                <Eye size={12} />
-                <span>Acknowledge</span>
+                <span>Open</span>
+                <ChevronRight size={12} className="text-slate-400" />
               </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => onRowClick?.(row)}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
-            >
-              <span>Open</span>
-              <ChevronRight size={12} className="text-slate-400" />
-            </button>
-          </div>
-        ),
+            </div>
+          );
+        },
       },
     ],
-    [allPageIds, isAllSelected, isSomeSelected, onQuickStatusChange, onRowClick, onSelectAll, onToggleSelect, selectedRequestIds],
+    [
+      allPageIds,
+      isAllSelected,
+      isSomeSelected,
+      onRowClick,
+      onSelectAll,
+      onToggleSelect,
+      selectedRequestIds,
+    ],
   );
 
   return (
@@ -343,10 +380,8 @@ export function MaintenanceTable({
       {selectedRequestIds.length > 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/90 dark:bg-blue-950/60 p-3 shadow-sm">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
-              {selectedRequestIds.length}
-            </span>
-            <span className="text-xs font-bold text-blue-950 dark:text-blue-200">
+            <CheckCircle2 size={16} className="text-blue-600 dark:text-blue-400" />
+            <span className="text-xs font-bold text-blue-900 dark:text-blue-200">
               {selectedRequestIds.length} request{selectedRequestIds.length === 1 ? "" : "s"} selected
             </span>
           </div>
@@ -356,9 +391,9 @@ export function MaintenanceTable({
               type="button"
               onClick={() => onBulkUpdateStatus?.("viewed")}
               disabled={isBulkUpdating}
-              className="inline-flex h-7.5 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+              className="inline-flex h-7.5 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
             >
-              <Eye size={13} />
+              <CheckCircle2 size={13} />
               <span>Mark as Viewed</span>
             </button>
 
@@ -366,7 +401,7 @@ export function MaintenanceTable({
               type="button"
               onClick={() => onBulkArchive?.()}
               disabled={isBulkUpdating}
-              className="inline-flex h-7.5 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+              className="inline-flex h-7.5 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
             >
               <Archive size={13} />
               <span>Archive</span>
@@ -375,7 +410,7 @@ export function MaintenanceTable({
             <button
               type="button"
               onClick={() => onBulkExport?.()}
-              className="inline-flex h-7.5 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+              className="inline-flex h-7.5 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
             >
               <Download size={13} />
               <span>Export CSV</span>
@@ -384,7 +419,7 @@ export function MaintenanceTable({
             <button
               type="button"
               onClick={() => onSelectAll?.([])}
-              className="inline-flex h-7.5 items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-xs text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+              className="inline-flex h-7.5 items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-xs text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
               title="Clear selection"
             >
               <X size={13} />
@@ -407,130 +442,6 @@ export function MaintenanceTable({
           }}
         />
       </div>
-    </div>
-  );
-}
-
-export function AnalyticsRequestsTable({
-  requests = [],
-  isLoading = false,
-  currentPage = 1,
-  onPageChange,
-  onRowClick,
-  onGenerateReport,
-}) {
-  const analyticsColumns = useMemo(
-    () => [
-      { key: "requestId", label: "Request ID", render: (row) => `#${(row.requestId || "").slice(-6).toUpperCase()}` },
-      { key: "tenantName", label: "Tenant Name" },
-      { key: "branchLabel", label: "Branch" },
-      { key: "room", label: "Room/Unit", render: (row) => row.room || "Not recorded" },
-      { key: "requestTypeLabel", label: "Request Type" },
-      { key: "urgencyLabel", label: "Urgency" },
-      { key: "statusLabel", label: "Status" },
-      { key: "assignedProvider", label: "Assigned Technician", render: (row) => row.assignedProvider || "Unassigned" },
-      { key: "createdAt", label: "Created", render: (row) => fmtDate(row.createdAt) },
-      { key: "resolutionAt", label: "Resolution", render: (row) => row.resolutionAt ? fmtDate(row.resolutionAt) : "Pending" },
-      {
-        key: "sla",
-        label: "SLA",
-        render: (row) => (
-          <span
-            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold border ${
-              row.sla?.key === "overdue"
-                ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300"
-                : row.sla?.key === "due_soon"
-                ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300"
-                : row.sla?.key === "completed"
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300"
-                : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300"
-            }`}
-          >
-            {row.sla?.label || "On Track"}
-          </span>
-        ),
-      },
-      {
-        key: "actions",
-        label: "Actions",
-        align: "right",
-        render: (row) => (
-          <div className="flex items-center justify-end gap-1.5" onClick={(event) => event.stopPropagation()}>
-            <button
-              type="button"
-              className="inline-flex h-7 items-center rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
-              onClick={() => onRowClick?.(row.requestId)}
-            >
-              Details
-            </button>
-            {onGenerateReport && (
-              <button
-                type="button"
-                className="inline-flex h-7 items-center rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
-                onClick={() => {
-                  onRowClick?.(row.requestId);
-                  onGenerateReport?.("admin", row.requestId);
-                }}
-              >
-                Report
-              </button>
-            )}
-          </div>
-        ),
-      },
-    ],
-    [onGenerateReport, onRowClick],
-  );
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-      <DataTable
-        columns={analyticsColumns}
-        data={requests}
-        loading={isLoading}
-        onRowClick={(row) => onRowClick?.(row.requestId)}
-        pagination={{
-          pageSize: ITEMS_PER_PAGE,
-          currentPage,
-          onPageChange,
-        }}
-      />
-    </div>
-  );
-}
-
-export function ProviderPerformanceTable({
-  providers = [],
-  isLoading = false,
-}) {
-  const providerColumns = useMemo(
-    () => [
-      { key: "providerName", label: "Provider Name" },
-      { key: "category", label: "Category" },
-      { key: "totalAssigned", label: "Total Assigned" },
-      { key: "activeJobs", label: "Active Jobs" },
-      { key: "completedJobs", label: "Completed" },
-      { key: "overdueJobs", label: "Overdue" },
-      {
-        key: "completionRate",
-        label: "Completion Rate",
-        render: (row) => (
-          <span className="font-bold text-slate-900 dark:text-slate-100">
-            {row.completionRate ? `${row.completionRate}%` : "—"}
-          </span>
-        ),
-      },
-    ],
-    [],
-  );
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-      <DataTable
-        columns={providerColumns}
-        data={providers}
-        loading={isLoading}
-      />
     </div>
   );
 }

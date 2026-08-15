@@ -190,6 +190,44 @@ const notify = {
       });
   },
 
+  visitScheduledAlert: (
+    adminUserId,
+    {
+      tenantName = "An applicant",
+      roomName = "a room",
+      branch = "",
+      visitDate = "",
+      visitTime = "",
+      reservationId = null,
+      viewingPreference = "physical_visit",
+    } = {},
+  ) => {
+    let title = "New Visit Schedule";
+    let message = `${tenantName} scheduled a visit for ${roomName}`;
+    if (visitDate) {
+      const dateLabel = new Date(visitDate).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      message += ` on ${dateLabel}${visitTime ? ` at ${visitTime}` : ""}`;
+    }
+    if (viewingPreference === "remote_2d_viewing") {
+      title = "2D Remote Viewing Request";
+      message = `${tenantName} requested photo-based remote viewing for ${roomName}`;
+    } else if (viewingPreference === "urgent_move_in_review") {
+      title = "Priority Viewing Review Request";
+      message = `${tenantName} requested priority viewing review for ${roomName}`;
+    }
+    message += ".";
+
+    return createNotification(adminUserId, "visit_scheduled", title, message, {
+      entityType: "reservation",
+      entityId: reservationId ? String(reservationId) : null,
+      actionUrl: "/admin/reservations?tab=visits",
+    });
+  },
+
   visitApproved: (userId, branchName) =>
     createNotification(userId, "visit_approved", "Visit Schedule Confirmed",
       `Your physical visit schedule for ${branchName} has been confirmed for viewing coordination only. Payment will remain locked until your application and documents are approved.`,

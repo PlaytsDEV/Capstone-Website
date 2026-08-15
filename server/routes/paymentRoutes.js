@@ -42,6 +42,12 @@ router.post("/bill/:billId/checkout", verifyToken, paymentController.createBillC
 router.post("/deposit/:resId/checkout", verifyToken, paymentController.createDepositCheckout);
 
 /**
+ * POST /api/payments/reservation/:resId/move-in-checkout
+ * Create a PayMongo checkout session for remaining move-in balance
+ */
+router.post("/reservation/:resId/move-in-checkout", verifyToken, paymentController.createMoveInCheckout);
+
+/**
  * GET /api/payments/session/:sessionId/status
  * Check whether a PayMongo checkout session has been paid
  */

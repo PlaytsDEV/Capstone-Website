@@ -46,81 +46,97 @@ function fmtDateLong(dateStr) {
  });
 }
 
-export default function ReservationSidePanel({ reservation, onClick }) {
- const navigate = useNavigate();
- const { data: profile } = useCurrentUser();
- const [isDark, setIsDark] = React.useState(() => {
- const root = document.documentElement;
- return root.getAttribute("data-theme") === "dark" || root.classList.contains("dark");
- });
+export default function ReservationSidePanel({ reservation, onClick, profileData }) {
+  const navigate = useNavigate();
+  const { data: profile } = useCurrentUser();
+  const activeProfile = profileData || profile;
+  const [isDark, setIsDark] = React.useState(() => {
+    const root = document.documentElement;
+    return root.getAttribute("data-theme") === "dark" || root.classList.contains("dark");
+  });
 
- React.useEffect(() => {
- const root = document.documentElement;
- const syncTheme = () => {
- setIsDark(root.getAttribute("data-theme") === "dark" || root.classList.contains("dark"));
- };
+  React.useEffect(() => {
+    const root = document.documentElement;
+    const syncTheme = () => {
+      setIsDark(root.getAttribute("data-theme") === "dark" || root.classList.contains("dark"));
+    };
 
- const observer = new MutationObserver(syncTheme);
- observer.observe(root, {
- attributes: true,
- attributeFilter: ["data-theme", "class"],
- });
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["data-theme", "class"],
+    });
 
- syncTheme();
- return () => observer.disconnect();
- }, []);
+    syncTheme();
+    return () => observer.disconnect();
+  }, []);
 
- if (!reservation) return <EmptyState />;
+  if (!reservation) return <EmptyState />;
 
- const status = reservation.reservationStatus || reservation.status;
- const isConfirmed =
- hasReservationStatus(status, "reserved", "moveIn", "moveOut");
- const hasVisit = !!(reservation.visitDate && reservation.visitTime);
- const visitApproved = reservation.visitApproved || reservation.scheduleApproved;
+  const status = reservation.reservationStatus || reservation.status;
+  const isConfirmed =
+    hasReservationStatus(status, "reserved", "moveIn", "moveOut");
+  const isMoveInSettled =
+    reservation.initialPaymentStatus === "paid" ||
+    reservation.paymentStatus === "paid_in_full";
+  const hasVisit = !!(reservation.visitDate && reservation.visitTime);
+  const visitApproved = reservation.visitApproved || reservation.scheduleApproved;
   const hasApplication = !!(reservation.firstName && reservation.lastName && reservation.mobileNumber);
- const paymentReady =
- canReservationAccessPayment(status) ||
- hasReservationStatus(status, "payment_pending");
- const pendingReview = hasReservationStatus(status, "pending_application_review");
- const needsRevision = hasReservationStatus(status, "needs_revision");
- const preferenceSelected = Boolean(
- reservation.viewingPreference ||
-  reservation.viewingType ||
-  reservation.isUrgentMoveIn ||
-  hasVisit,
- );
+  const paymentReady =
+    canReservationAccessPayment(status) ||
+    hasReservationStatus(status, "payment_pending");
+  const pendingReview = hasReservationStatus(status, "pending_application_review");
+  const needsRevision = hasReservationStatus(status, "needs_revision");
+  const preferenceSelected = Boolean(
+    reservation.viewingPreference ||
+      reservation.viewingType ||
+      reservation.isUrgentMoveIn ||
+      hasVisit,
+  );
 
- const viewingPreference =
-  reservation.viewingPreference ||
-  (reservation.viewingType === "virtual"
-    ? "remote_2d_viewing"
-    : reservation.viewingType === "inperson"
-    ? "physical_visit"
-    : reservation.isUrgentMoveIn
-    ? "urgent_move_in_review"
-    : null);
+  const viewingPreference =
+    reservation.viewingPreference ||
+    (reservation.viewingType === "virtual"
+      ? "remote_2d_viewing"
+      : reservation.viewingType === "inperson"
+      ? "physical_visit"
+      : reservation.isUrgentMoveIn
+      ? "urgent_move_in_review"
+      : null);
 
- const viewingPrefLabel =
-  viewingPreference === "physical_visit"
-    ? "Physical Visit"
-    : viewingPreference === "remote_2d_viewing"
-    ? "Remote Viewing"
-    : viewingPreference === "urgent_move_in_review"
-    ? "Priority Viewing Review"
-    : null;
+  const viewingPrefLabel =
+    viewingPreference === "physical_visit"
+      ? "Physical Visit"
+      : viewingPreference === "remote_2d_viewing"
+      ? "Remote Viewing"
+      : viewingPreference === "urgent_move_in_review"
+      ? "Priority Viewing Review"
+      : null;
 
- const room = reservation.roomId || {};
- const roomName = room.name || "Room";
- const branch = room.branch || "-";
+  const room = reservation.roomId || reservation.room || {};
+  const roomName = room.name || "Room";
+  const branch = room.branch || "-";
+  const monthlyRent = Number(
+    reservation.monthlyRent ??
+      reservation.pricingSnapshot?.finalMonthlyRate ??
+      room.monthlyPrice ??
+      room.price ??
+      0,
+  );
+  const reservationFeeAmount = Number(reservation.reservationFeeAmount || 2000);
+  const advanceRent = reservation.moveInCashOut?.monthlyAdvance ?? monthlyRent;
+  const securityDeposit = reservation.moveInCashOut?.securityDeposit ?? monthlyRent;
+  const grossTotal = advanceRent + securityDeposit;
+  const moveInRemainingDue = Math.max(0, grossTotal - reservationFeeAmount);
 
- let panelState = "pending";
- if (isConfirmed) panelState = "confirmed";
- else if (paymentReady) panelState = "payment_ready";
- else if (needsRevision) panelState = "needs_revision";
- else if (pendingReview || hasApplication) panelState = "application_review";
- else if (visitApproved) panelState = "approved";
- else if (hasVisit) panelState = "scheduled";
- else if (preferenceSelected) panelState = "preference";
+  let panelState = "pending";
+  if (isConfirmed) panelState = "confirmed";
+  else if (paymentReady) panelState = "payment_ready";
+  else if (needsRevision) panelState = "needs_revision";
+  else if (pendingReview || hasApplication) panelState = "application_review";
+  else if (visitApproved) panelState = "approved";
+  else if (hasVisit) panelState = "scheduled";
+  else if (preferenceSelected) panelState = "preference";
 
  const panelTone =
  panelState === "confirmed"
@@ -139,7 +155,7 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  }
  : panelState === "application_review"
  ? {
- accent: "var(--color-primary, #D4AF37)",
+ accent: "var(--color-accent, #D4AF37)",
  soft: "rgba(212, 175, 55, 0.12)",
  border: "rgba(212, 175, 55, 0.34)",
  label: "Pending Review",
@@ -212,117 +228,142 @@ export default function ReservationSidePanel({ reservation, onClick }) {
         style={{
           ...S.detailsShell,
           background: isDark
-            ? "linear-gradient(180deg, rgba(15,27,45,0.9) 0%, rgba(15,27,45,0.98) 100%)"
+            ? "var(--surface-card, #0F1B2D)"
             : S.detailsShell.background,
         }}
       >
- {hasVisit && (
- <>
- <DetailRow
- icon={<Calendar size={15} color="var(--text-secondary, #94A3B8)" />}
- label="Visit Date"
- value={fmtDate(reservation.visitDate)}
- />
- <DetailRow
- icon={<Clock size={15} color="var(--text-secondary, #94A3B8)" />}
- label="Visit Time"
- value={reservation.visitTime}
- />
- </>
- )}
+        {hasVisit && (
+          <>
+            <DetailRow
+              icon={<Calendar size={15} color="var(--text-secondary, #94A3B8)" />}
+              label="Visit Date"
+              value={fmtDate(reservation.visitDate)}
+            />
+            <DetailRow
+              icon={<Clock size={15} color="var(--text-secondary, #94A3B8)" />}
+              label="Visit Time"
+              value={reservation.visitTime}
+            />
+          </>
+        )}
 
- {panelState === "preference" && viewingPrefLabel && (
- <DetailRow
- icon={<Calendar size={15} color="var(--text-secondary, #94A3B8)" />}
- label="Preference"
- value={viewingPrefLabel}
- />
- )}
+        {panelState === "preference" && viewingPrefLabel && (
+          <DetailRow
+            icon={<Calendar size={15} color="var(--text-secondary, #94A3B8)" />}
+            label="Preference"
+            value={viewingPrefLabel}
+          />
+        )}
 
- {reservation.visitCode && (
- <DetailRow
- icon={<Ticket size={15} color="var(--text-secondary, #94A3B8)" />}
- label="Visit Code"
- value={reservation.visitCode}
- mono
- highlight
- />
- )}
+        {(() => {
+          const codeValue = isConfirmed
+            ? reservation.reservationCode || reservation.code || reservation.visitCode
+            : reservation.reservationCode || reservation.code || reservation.visitCode;
+          const codeLabel =
+            isConfirmed || reservation.reservationCode || reservation.code
+              ? "Reservation Code"
+              : "Visit Code";
 
- {reservation.targetMoveInDate && (
- <DetailRow
- icon={<Calendar size={15} color="var(--text-secondary, #94A3B8)" />}
- label="Move-in"
- value={fmtDateLong(reservation.targetMoveInDate)}
- />
- )}
+          if (!codeValue) return null;
 
- {hasApplication && (
- <DetailRow
- icon={<FileText size={15} color="var(--text-secondary, #94A3B8)" />}
- label="Application"
- value={
- pendingReview
- ? "Pending Review"
- : needsRevision
- ? "Needs Revision"
- : paymentReady
- ? "Approved"
- : "Submitted"
- }
- success={paymentReady}
- />
- )}
+          return (
+            <DetailRow
+              icon={<Ticket size={15} color="var(--text-secondary, #94A3B8)" />}
+              label={codeLabel}
+              value={codeValue}
+              mono
+              highlight
+            />
+          );
+        })()}
 
- {isConfirmed && (
- <DetailRow
- icon={<CreditCard size={15} color="var(--text-secondary, #94A3B8)" />}
- label="Payment"
- value="Verified"
- success
- />
- )}
-          {(reservation.depositPaymentDeadline || reservation.paymentDueDate) && (
-            <div style={{ marginTop: 10, width: "100%" }}>
-              <DeadlineBadge
-                dueDate={reservation.depositPaymentDeadline || reservation.paymentDueDate}
-                status={reservation.status}
-                type="reservation"
-                showConsequenceNote={true}
-              />
-            </div>
-          )}
+        {reservation.targetMoveInDate && (
+          <DetailRow
+            icon={<Calendar size={15} color="var(--text-secondary, #94A3B8)" />}
+            label="Move-in"
+            value={fmtDateLong(reservation.targetMoveInDate)}
+          />
+        )}
+
+        {hasApplication && (
+          <DetailRow
+            icon={<FileText size={15} color="var(--text-secondary, #94A3B8)" />}
+            label="Application"
+            value={
+              pendingReview
+                ? "Pending Review"
+                : needsRevision
+                ? "Needs Revision"
+                : paymentReady
+                ? "Approved"
+                : "Submitted"
+            }
+            success={paymentReady}
+          />
+        )}
+
+        {isConfirmed && (
+          <>
+            <DetailRow
+              icon={<CreditCard size={15} color="var(--text-secondary, #94A3B8)" />}
+              label="Slot Deposit"
+              value="Verified (Paid)"
+              success
+            />
+            <DetailRow
+              icon={<CreditCard size={15} color="var(--text-secondary, #94A3B8)" />}
+              label="Move-In Due"
+              value={
+                isMoveInSettled
+                  ? "Settled (Paid)"
+                  : `₱${moveInRemainingDue.toLocaleString()}`
+              }
+              success={isMoveInSettled}
+              highlight={!isMoveInSettled}
+            />
+          </>
+        )}
+        {(reservation.depositPaymentDeadline || reservation.paymentDueDate) && (
+          <div style={{ marginTop: 10, width: "100%" }}>
+            <DeadlineBadge
+              dueDate={reservation.depositPaymentDeadline || reservation.paymentDueDate}
+              status={reservation.status}
+              type="reservation"
+              showConsequenceNote={true}
+            />
+          </div>
+        )}
+      </div>
+
+      {panelState === "scheduled" && (
+        <div style={S.pendingBanner}>
+          <Clock size={14} color="#7C3AED" />
+          <span style={S.pendingText}>Saved for viewing coordination only</span>
         </div>
+      )}
 
- {panelState === "scheduled" && (
- <div style={S.pendingBanner}>
- <Clock size={14} color="#7C3AED" />
- <span style={S.pendingText}>Saved for viewing coordination only</span>
- </div>
- )}
+      {panelState === "preference" && viewingPreference === "remote_2d_viewing" && (
+        <div style={{ ...S.pendingBanner, background: "rgba(37, 99, 235, 0.08)", border: "1px solid rgba(37, 99, 235, 0.2)" }}>
+          <Clock size={14} color="#2563EB" />
+          <span style={{ ...S.pendingText, color: "#2563EB" }}>Admin will arrange a remote viewing for your room</span>
+        </div>
+      )}
 
- {panelState === "preference" && viewingPreference === "remote_2d_viewing" && (
- <div style={{ ...S.pendingBanner, background: "rgba(37, 99, 235, 0.08)", border: "1px solid rgba(37, 99, 235, 0.2)" }}>
- <Clock size={14} color="#2563EB" />
- <span style={{ ...S.pendingText, color: "#2563EB" }}>Admin will arrange a remote viewing for your room</span>
- </div>
- )}
+      {panelState === "preference" && viewingPreference === "urgent_move_in_review" && (
+        <div style={{ ...S.pendingBanner, background: "rgba(220, 38, 38, 0.08)", border: "1px solid rgba(220, 38, 38, 0.2)" }}>
+          <Clock size={14} color="#DC2626" />
+          <span style={{ ...S.pendingText, color: "#DC2626" }}>Priority review request is under review</span>
+        </div>
+      )}
 
- {panelState === "preference" && viewingPreference === "urgent_move_in_review" && (
- <div style={{ ...S.pendingBanner, background: "rgba(220, 38, 38, 0.08)", border: "1px solid rgba(220, 38, 38, 0.2)" }}>
- <Clock size={14} color="#DC2626" />
- <span style={{ ...S.pendingText, color: "#DC2626" }}>Priority review request is under review</span>
- </div>
- )}
-
- {isConfirmed && (
- <div style={S.footerShell}>
- <button
- onClick={(e) => {
- e.stopPropagation();
- generateDepositReceipt(reservation, profile);
- }}
- style={{
+      {isConfirmed && (
+        <div style={S.footerShell}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              generateDepositReceipt(reservation, activeProfile || profile);
+            }}
+            style={{
  ...S.downloadBtn,
  background: isDark ? "#142944" : "var(--text-heading, #0F172A)",
  color: isDark ? "#E2E8F0" : "#fff",
@@ -348,7 +389,7 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  color: isDark ? "#C8D3E4" : S.subtleLink.color,
  }}
  onMouseEnter={(e) => {
- e.currentTarget.style.color = "var(--color-primary, #D4AF37)";
+ e.currentTarget.style.color = "var(--color-accent, #D4AF37)";
  }}
  onMouseLeave={(e) => {
  e.currentTarget.style.color = "";
@@ -363,24 +404,24 @@ export default function ReservationSidePanel({ reservation, onClick }) {
 }
 
 function DetailRow({ icon, label, value, mono, highlight, success }) {
- return (
- <div style={S.detailRow}>
- <div style={S.detailLeft}>
- {icon}
- <span style={S.detailLabel}>{label}</span>
- </div>
- <span
- style={{
- ...S.detailValue,
- ...(mono ? S.mono : {}),
- ...(highlight ? { color: "var(--color-primary, #D4AF37)", fontWeight: 700 } : {}),
- ...(success ? { color: "#059669", fontWeight: 700 } : {}),
- }}
- >
- {value}
- </span>
- </div>
- );
+  return (
+    <div style={S.detailRow}>
+      <div style={S.detailLeft}>
+        {icon}
+        <span style={S.detailLabel}>{label}</span>
+      </div>
+      <span
+        style={{
+          ...S.detailValue,
+          ...(mono ? S.mono : {}),
+          ...(highlight ? { color: "var(--color-accent, #D4AF37)", fontWeight: 700 } : {}),
+          ...(success ? { color: "#059669", fontWeight: 700 } : {}),
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
 }
 
 function EmptyState() {
@@ -395,19 +436,19 @@ function EmptyState() {
 }
 
 const S = {
- card: {
- background: "var(--surface-card, #FFFFFF)",
- border: "1px solid var(--border-card, #E2E8F0)",
- borderRadius: 16,
- overflow: "hidden",
- display: "flex",
- flexDirection: "column",
- height: "100%",
- boxSizing: "border-box",
- boxShadow: "0 4px 14px rgba(15, 23, 42, 0.04)",
- transition: "border-color 0.2s ease, box-shadow 0.2s ease",
- cursor: "default",
- },
+  card: {
+    background: "var(--surface-card, #FFFFFF)",
+    border: "1px solid var(--border-card, #E2E8F0)",
+    borderRadius: 16,
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    height: "auto",
+    boxSizing: "border-box",
+    boxShadow: "0 4px 14px rgba(15, 23, 42, 0.04)",
+    transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+    cursor: "default",
+  },
 
  headerShell: {
  padding: "20px 20px 18px",
@@ -470,13 +511,12 @@ const S = {
  textTransform: "capitalize",
  },
 
- detailsShell: {
+  detailsShell: {
     display: "flex",
     flexDirection: "column",
     gap: 8,
-    flex: 1,
     padding: "12px 14px",
-    background: "linear-gradient(180deg, rgba(248,250,252,0.8) 0%, rgba(255,255,255,0.98) 100%)",
+    background: "var(--surface-card, #FFFFFF)",
   },
  detailRow: {
  display: "flex",
@@ -561,20 +601,19 @@ const S = {
  width: "100%",
  },
 
- emptyCard: {
- display: "flex",
- flexDirection: "column",
- alignItems: "center",
- justifyContent: "center",
- textAlign: "center",
- border: "1px dashed var(--border-card, #E2E8F0)",
- borderRadius: 20,
- padding: "36px 24px",
- background: "var(--surface-card, #FFFFFF)",
- flex: 1,
- height: "100%",
- boxSizing: "border-box",
- },
+  emptyCard: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    border: "1px dashed var(--border-card, #E2E8F0)",
+    borderRadius: 20,
+    padding: "36px 24px",
+    background: "var(--surface-card, #FFFFFF)",
+    height: "auto",
+    boxSizing: "border-box",
+  },
  emptyIconWrap: {
  width: 50,
  height: 50,

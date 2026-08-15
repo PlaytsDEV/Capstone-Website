@@ -26,14 +26,16 @@ const invalidateReservationSideEffects = (qc, reservationId = null) =>
       : []),
   ]);
 
-/** Fetch all reservations — 30s freshness, mutations trigger instant refresh */
-export function useReservations(params = {}) {
+/** Fetch all reservations — 5s freshness, socket events & mutations trigger instant refresh, 10s fallback interval */
+export function useReservations(params = {}, options = {}) {
   return useQuery({
     queryKey: queryKeys.reservations.all(params),
     queryFn: () => reservationApi.getAll(params),
-    staleTime: 30 * 1000,
-    refetchInterval: 30 * 1000,
+    staleTime: 5 * 1000,
+    refetchInterval: 10 * 1000,
     refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    ...options,
   });
 }
 

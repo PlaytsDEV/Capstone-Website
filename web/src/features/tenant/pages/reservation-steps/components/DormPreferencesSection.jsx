@@ -7,7 +7,7 @@ import {
 } from "../applicationFormConstants";
 
 const errBorder = (show, value) =>
- show && !value ? "1.5px solid var(--danger)" : undefined;
+ show && !value ? "1px solid var(--danger)" : undefined;
 
 const openDatePicker = (event) => {
  event.currentTarget.showPicker?.();
@@ -39,7 +39,7 @@ const DormPreferencesSection = ({
  className="radio-group"
  style={{
  border: fieldErrors.referralSource
- ? "1.5px solid var(--danger)"
+ ? "1px solid var(--danger)"
  : errBorder(showValidationErrors, referralSource),
   borderRadius: "8px",
   padding: showValidationErrors && !referralSource ? "8px" : undefined,
@@ -195,7 +195,7 @@ const DormPreferencesSection = ({
  className="radio-group"
  style={{
  border: fieldErrors.workSchedule
- ? "1.5px solid var(--danger)"
+ ? "1px solid var(--danger)"
  : errBorder(showValidationErrors, workSchedule),
   borderRadius: "8px",
   padding: showValidationErrors && !workSchedule ? "8px" : undefined,

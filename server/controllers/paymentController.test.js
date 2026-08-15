@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 const createCheckoutSession = jest.fn();
 const getCheckoutSession = jest.fn();
 const billFindById = jest.fn();
+const billFindOne = jest.fn();
 const paymentGetPaymentsForBill = jest.fn();
 const reservationFindById = jest.fn();
+const reservationUpdateOne = jest.fn();
 const userFindOne = jest.fn();
 const userFindById = jest.fn();
 const userFind = jest.fn();
@@ -27,9 +29,9 @@ await jest.unstable_mockModule("../config/paymongo.js", () => ({
 }));
 
 await jest.unstable_mockModule("../models/index.js", () => ({
-  Bill: { findById: billFindById },
+  Bill: { findById: billFindById, findOne: billFindOne },
   Payment: { getPaymentsForBill: paymentGetPaymentsForBill },
-  Reservation: { findById: reservationFindById },
+  Reservation: { findById: reservationFindById, updateOne: reservationUpdateOne },
   User: { findOne: userFindOne, findById: userFindById, find: userFind },
 }));
 
@@ -110,8 +112,10 @@ describe("paymentController", () => {
     createCheckoutSession.mockReset();
     getCheckoutSession.mockReset();
     billFindById.mockReset();
+    billFindOne.mockReset();
     paymentGetPaymentsForBill.mockReset();
     reservationFindById.mockReset();
+    reservationUpdateOne.mockReset();
     userFindOne.mockReset();
     userFindById.mockReset();
     userFind.mockReset();

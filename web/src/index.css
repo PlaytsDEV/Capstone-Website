@@ -444,30 +444,61 @@ code {
    ══════════════════════════════════════════════════════════════════ */
 
 html[data-theme="dark"] {
+  /* ── Brand Colors (Dark Mode Adaptations) ───────────────────── */
+  --color-primary:       #f1f5f9;
+  --color-primary-hover: #ffffff;
+  --color-primary-light: #1e293b;
+  --color-accent:        #d4af37;
+  --color-accent-hover:  #e6c86e;
+
+  /* ── Semantic Colors (Dark Mode) ────────────────────────────── */
+  --color-success:      #10b981;
+  --color-success-bg:   rgba(16, 185, 129, 0.14);
+  --color-success-text: #6ee7b7;
+  --color-warning:      #f59e0b;
+  --color-warning-bg:   rgba(245, 158, 11, 0.14);
+  --color-warning-text: #fcd34d;
+  --color-danger:       #ef4444;
+  --color-danger-bg:    rgba(239, 68, 68, 0.14);
+  --color-danger-text:  #fca5a5;
+  --color-info:         #3b82f6;
+  --color-info-bg:      rgba(59, 130, 246, 0.14);
+  --color-info-text:    #93c5fd;
+
   /* ── Surfaces (matched to landing page --lp-* palette) ──────── */
   --surface-page:      #0B1120;   /* deepest base */
   --surface-sidebar:   #0F1A2E;   /* slightly lifted */
   --surface-card:      #131D30;   /* card / panel */
   --surface-elevated:  #1A2840;   /* modals, dropdowns */
-  --surface-muted:     #0F1A2E;   /* inset / subtle */
-  --surface-input:     #0B1120;   /* inputs (sunken) */
-  --surface-hover:     #1A2840;   /* hover state */
+  --surface-muted:     #172338;   /* inset / subtle - distinct from card */
+  --surface-input:     #0F1A2E;   /* inputs (sunken) */
+  --surface-hover:     #1E2E4A;   /* hover state */
 
   /* ── Typography (matched to --lp-text-*) ─────────────────────── */
   --text-heading:   #f1f5f9;
   --text-body:      #e2e8f0;
   --text-secondary: #94a3b8;
   --text-muted:     #64748b;
+  --text-primary:   #f1f5f9;
 
   /* ── Borders (matched to --lp-border) ────────────────────────── */
   --border-card:    #1E293B;
   --border-subtle:  #162032;
   --border-divider: #1E293B;
+  --border-default: #1E293B;
+  --border-strong:  #334155;
 
   /* ── Legacy compat aliases ───────────────────────────────────── */
   --bg-page:  #0B1120;
-  --bg-muted: #0F1A2E;
+  --bg-muted: #172338;
   --bg-white: #131D30;
+  --card:     #131D30;
+  --muted:    #172338;
+  --foreground: #f1f5f9;
+  --muted-foreground: #94a3b8;
+  --border:   #1E293B;
+  --primary:  #f1f5f9;
+  --success:  #10b981;
 
   color-scheme: dark;
 }

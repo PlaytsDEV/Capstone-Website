@@ -676,7 +676,7 @@ const UtilityBillingTab = ({
   const [periodSearch, setPeriodSearch] = useState("");
 
   const rooms = useMemo(() => {
-    const list = roomsData?.rooms || [];
+    const list = (roomsData?.rooms || []).filter((room) => room.branch !== "guadalupe");
     if (utilityType !== "water") return list;
     return list.filter((room) => WATER_BILLABLE_ROOM_TYPES.has(room.type));
   }, [roomsData?.rooms, utilityType]);
@@ -2209,21 +2209,7 @@ const UtilityBillingTab = ({
     effectiveBranch === "guadalupe";
 
   if (isGuadaUtility) {
-    return (
-      <section className="space-y-4" aria-label={`${utilityType} billing workspace`}>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
-          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
-            Utility billing not applicable for Guadalupe
-          </p>
-          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-            Guadalupe uses a fixed-rate billing setup. Separate electricity and
-            water utility billing are not used for this branch. Optional
-            appliance/device fees are handled through reservation recurring fees
-            when applicable.
-          </p>
-        </div>
-      </section>
-    );
+    return null;
   }
 
   return (
@@ -2424,18 +2410,6 @@ const UtilityBillingTab = ({
             </div>
           ) : (
             <>
-              {selectedRoom?.branch === "guadalupe" && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-                  <div className="font-semibold flex items-center gap-1.5">
-                    <Info size={14} className="text-amber-600 shrink-0" />
-                    Fixed-Rate Utility Setup (Guadalupe)
-                  </div>
-                  <div className="mt-1 text-amber-700 dark:text-amber-400">
-                    Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch. Optional appliance/device fees are handled through reservation recurring fees when applicable.
-                  </div>
-                </div>
-              )}
-
               <div className="rounded-[14px] border border-border bg-card px-5 py-4 shadow-[0_1px_0_rgba(15,23,42,0.02)]">
                 <div className="flex items-center gap-3">
                   <span
@@ -2545,30 +2519,16 @@ const UtilityBillingTab = ({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <div className="relative inline-block group">
                   <button
-                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold"
                     style={{
                       background: "var(--primary)",
                       color: "var(--primary-foreground)",
                     }}
                     onClick={() => setIsNewPeriodModalOpen(true)}
-                    disabled={selectedRoom?.branch === "guadalupe"}
                   >
-                    <Plus size={12} /> {selectedRoom?.branch === "guadalupe" ? "Fixed-Rate Branch" : "New Billing Period"}
+                    <Plus size={12} /> New Billing Period
                   </button>
-                  {selectedRoom?.branch === "guadalupe" && (
-                    <div className="pointer-events-none absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 w-64 rounded-lg bg-slate-900 p-2.5 text-xs text-white shadow-xl dark:bg-slate-800 dark:text-slate-100 border border-slate-700">
-                      <div className="font-semibold text-amber-400 flex items-center gap-1.5 mb-1">
-                        <Info size={13} /> Fixed-Rate Utility Branch
-                      </div>
-                      <div>
-                        Guadalupe uses fixed-rate billing. Separate sub-metered utility cycles are not used for this branch.
-                      </div>
-                      <div className="absolute top-full right-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-800" />
-                    </div>
-                  )}
-                </div>
                 <ExportButtons
                   onCsv={handleExportRows}
                   onPdf={handleExportPdf}

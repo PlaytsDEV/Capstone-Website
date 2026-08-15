@@ -669,6 +669,12 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
       request.assignedByRole = actor.actor_role;
       request.assigned_to = nextProvider.name;
       request.assigned_at = eventTimestamp;
+
+      // Automatically transition lifecycle status to in_progress if pending or viewed
+      if (["pending", "viewed", "submitted"].includes(request.status)) {
+        request.status = "in_progress";
+        request.in_progress_at = eventTimestamp;
+      }
     }
 
     appendStatusHistory(request, {

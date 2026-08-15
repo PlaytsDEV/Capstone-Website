@@ -3,8 +3,6 @@ import {
   AlertTriangle,
   Archive,
   ClipboardList,
-  Clock3,
-  FileText,
   MessageSquare,
   Paperclip,
   RotateCcw,
@@ -22,10 +20,7 @@ import {
   useAssignMaintenanceProvider,
   useGenerateMaintenanceReport,
   useGenerateMaintenanceUpdate,
-  useMaintenanceAnalytics,
-  useMaintenanceBranchReport,
   useMaintenanceDuplicates,
-  useMaintenanceProviderReport,
   useMaintenanceRequest,
   useRemoveMaintenanceAttachment,
   useRestoreMaintenanceRequest,
@@ -80,7 +75,6 @@ import {
   isRemoteUri,
   isUploadedWorkLogAttachment,
   ITEMS_PER_PAGE,
-  MAINTENANCE_TABS,
   MANAGEMENT_SUMMARY_CARDS,
   mapMaintenanceApiErrors,
   matchesSlaFilter,
@@ -112,16 +106,9 @@ import { MaintenanceProofInspector } from "./maintenance/components/MaintenanceP
 import { MaintenanceSummaryCards } from "./maintenance/components/MaintenanceSummaryCards";
 import { MaintenanceDetailModal } from "./maintenance/components/MaintenanceDetailModal";
 import { MaintenanceFilters } from "./maintenance/components/MaintenanceFilters";
+import { MaintenanceTable } from "./maintenance/components/MaintenanceTable";
 import {
-  AnalyticsRequestsTable,
-  MaintenanceTable,
-  ProviderPerformanceTable,
-} from "./maintenance/components/MaintenanceTable";
-import {
-  MaintenanceAnalyticsCharts,
   MaintenanceExportDropdown,
-  MaintenanceMetricsGrid,
-  MaintenanceReportFilters,
   ReportPreviewModal,
 } from "./maintenance/components/MaintenanceReportModal";
 import { useMaintenanceData } from "./maintenance/hooks/useMaintenanceData";
@@ -131,8 +118,6 @@ export default function AdminMaintenancePage() {
   const {
     isOwner,
     userBranch,
-    activeTab,
-    handleTabChange,
     statusFilter,
     setStatusFilter,
     archiveView,
@@ -174,26 +159,6 @@ export default function AdminMaintenancePage() {
     isLoadingProviders,
     summaryItems,
     activeSummaryIndex,
-    analyticsData,
-    isAnalyticsLoading,
-    isAnalyticsError,
-    analyticsError,
-    analyticsFilters,
-    setAnalyticsFilters,
-    analyticsRequestPage,
-    setAnalyticsRequestPage,
-    branchReportData,
-    isBranchReportLoading,
-    isBranchReportError,
-    branchReportError,
-    branchReportFilters,
-    setBranchReportFilters,
-    branchReportRequestPage,
-    setBranchReportRequestPage,
-    providerReportData,
-    isProviderReportLoading,
-    isProviderReportError,
-    providerReportError,
     reportPreview,
     setReportPreview,
     archiveDialogMode,
@@ -471,167 +436,67 @@ export default function AdminMaintenancePage() {
       <div className="mb-4">
         <h1 className="mb-1 text-2xl font-semibold text-foreground">Maintenance</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Manage tenant repair requests, reporting, service provider performance, and branch maintenance insights.
+          Manage tenant repair requests, contractor assignments, and resolution workflows.
         </p>
       </div>
 
-      <PageShell
-        tabs={MAINTENANCE_TABS}
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-      >
-        {activeTab === "requests" ? (
-          <PageShell.Summary>
-            <MaintenanceSummaryCards
-              summaryItems={summaryItems}
-              activeSummaryIndex={activeSummaryIndex}
-              onSummaryFilter={handleSummaryFilter}
-            />
-          </PageShell.Summary>
-        ) : null}
+      <PageShell>
+        <PageShell.Summary>
+          <MaintenanceSummaryCards
+            summaryItems={summaryItems}
+            activeSummaryIndex={activeSummaryIndex}
+            onSummaryFilter={handleSummaryFilter}
+          />
+        </PageShell.Summary>
 
         <PageShell.Actions>
-          {activeTab === "requests" ? (
-            <MaintenanceFilters
-              searchQuery={searchQuery}
-              statusFilter={statusFilter}
-              archiveView={archiveView}
-              branchFilter={branchFilter}
-              urgencyFilter={urgencyFilter}
-              slaFilter={slaFilter}
-              requestTypeFilter={requestTypeFilter}
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-              sortMode={sortMode}
-              showAdvancedFilters={showAdvancedFilters}
-              isOwner={isOwner}
-              filteredRequestsCount={filteredRequests.length}
-              summaryRequestsCount={summaryRequests.length}
-              activeFilterChips={activeFilterChips}
-              onSearchQueryChange={setSearchQuery}
-              onStatusFilterChange={setStatusFilter}
-              onArchiveViewChange={setArchiveView}
-              onBranchFilterChange={setBranchFilter}
-              onUrgencyFilterChange={setUrgencyFilter}
-              onSlaFilterChange={setSlaFilter}
-              onRequestTypeFilterChange={setRequestTypeFilter}
-              onDateFromChange={setDateFrom}
-              onDateToChange={setDateTo}
-              onSortModeChange={setSortMode}
-              onToggleAdvancedFilters={() => setShowAdvancedFilters((curr) => !curr)}
-              onExportCsv={handleExportCsv}
-              onExportPdf={handleExportPdf}
-              onResetFilters={handleResetFilters}
-            />
-          ) : null}
+          <MaintenanceFilters
+            searchQuery={searchQuery}
+            statusFilter={statusFilter}
+            archiveView={archiveView}
+            branchFilter={branchFilter}
+            userBranch={userBranch}
+            urgencyFilter={urgencyFilter}
+            slaFilter={slaFilter}
+            requestTypeFilter={requestTypeFilter}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            sortMode={sortMode}
+            showAdvancedFilters={showAdvancedFilters}
+            isOwner={isOwner}
+            filteredRequestsCount={filteredRequests.length}
+            summaryRequestsCount={summaryRequests.length}
+            activeFilterChips={activeFilterChips}
+            onSearchQueryChange={setSearchQuery}
+            onStatusFilterChange={setStatusFilter}
+            onArchiveViewChange={setArchiveView}
+            onBranchFilterChange={setBranchFilter}
+            onUrgencyFilterChange={setUrgencyFilter}
+            onSlaFilterChange={setSlaFilter}
+            onRequestTypeFilterChange={setRequestTypeFilter}
+            onDateFromChange={setDateFrom}
+            onDateToChange={setDateTo}
+            onSortModeChange={setSortMode}
+            onToggleAdvancedFilters={() => setShowAdvancedFilters((curr) => !curr)}
+            onExportCsv={handleExportCsv}
+            onExportPdf={handleExportPdf}
+            onResetFilters={handleResetFilters}
+          />
         </PageShell.Actions>
 
         <PageShell.Content>
-          {activeTab === "requests" ? (
-            <MaintenanceTable
-              requests={filteredRequests}
-              isLoading={isLoading}
-              currentPage={currentPage}
-              onPageChange={setCurrentPage}
-              onRowClick={(row) => setSelectedRequestId(row.request_id)}
-              onQuickStatusChange={handleQuickStatusChange}
-            />
-          ) : null}
-
-          {activeTab === "analytics" ? (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-card-foreground">Maintenance Analytics Dashboard</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Performance insights based on recorded maintenance data.</p>
-                </div>
-              </div>
-              <MaintenanceReportFilters
-                filters={analyticsFilters}
-                isOwner={isOwner}
-                userBranch={userBranch}
-                providerOptions={analyticsData?.providerOptions || []}
-                onChange={(key, val) => setAnalyticsFilters((curr) => ({ ...curr, [key]: val }))}
-                title="Analytics filters"
-              />
-              {isAnalyticsError ? (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">
-                  {analyticsError?.message || "Unable to load maintenance analytics."}
-                </div>
-              ) : isAnalyticsLoading ? (
-                <DrawerSkeleton rows={5} />
-              ) : (
-                <>
-                  <MaintenanceMetricsGrid summary={analyticsData?.summary} isOwner={isOwner} />
-                  <MaintenanceAnalyticsCharts data={analyticsData} isOwner={isOwner} />
-                  <section className="rounded-xl border border-border bg-card p-5">
-                    <h3 className="mb-3 text-sm font-semibold text-card-foreground">Filtered Maintenance Requests</h3>
-                    <AnalyticsRequestsTable
-                      requests={analyticsData?.requests || []}
-                      isLoading={isAnalyticsLoading}
-                      currentPage={analyticsRequestPage}
-                      onPageChange={setAnalyticsRequestPage}
-                      onRowClick={(id) => setSelectedRequestId(id)}
-                    />
-                  </section>
-                </>
-              )}
-            </div>
-          ) : null}
-
-          {activeTab === "branch_reports" ? (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-card-foreground">Branch-Level Maintenance Report</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Generate official branch reports from selected filters.</p>
-                </div>
-              </div>
-              <MaintenanceReportFilters
-                filters={branchReportFilters}
-                isOwner={isOwner}
-                userBranch={userBranch}
-                providerOptions={branchReportData?.providerOptions || []}
-                onChange={(key, val) => setBranchReportFilters((curr) => ({ ...curr, [key]: val }))}
-                title="Report filters"
-              />
-              {isBranchReportError ? (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">
-                  {branchReportError?.message || "Unable to generate branch report."}
-                </div>
-              ) : isBranchReportLoading ? (
-                <DrawerSkeleton rows={5} />
-              ) : (
-                <section className="rounded-xl border border-border bg-card p-5">
-                  <MaintenanceMetricsGrid summary={branchReportData?.summary} isOwner={isOwner} />
-                  <div className="mt-5">
-                    <AnalyticsRequestsTable
-                      requests={branchReportData?.requests || []}
-                      isLoading={isBranchReportLoading}
-                      currentPage={branchReportRequestPage}
-                      onPageChange={setBranchReportRequestPage}
-                      onRowClick={(id) => setSelectedRequestId(id)}
-                    />
-                  </div>
-                </section>
-              )}
-            </div>
-          ) : null}
-
-          {activeTab === "service_providers" ? (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-card-foreground">Service Provider Performance</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Assignment, completion, and overdue performance by provider.</p>
-                </div>
-              </div>
-              <ProviderPerformanceTable
-                providers={providerReportData?.providers || []}
-                isLoading={isProviderReportLoading}
-              />
-            </div>
-          ) : null}
+          <MaintenanceTable
+            requests={filteredRequests}
+            isLoading={isLoading}
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
+            onRowClick={(row) => {
+              setSelectedRequestId(row.request_id);
+              if (row.status === "pending") {
+                handleQuickStatusChange(row.request_id, "viewed");
+              }
+            }}
+          />
 
           <MaintenanceDetailModal
             open={Boolean(selectedRequestId)}

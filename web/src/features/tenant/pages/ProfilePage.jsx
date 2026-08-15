@@ -147,102 +147,110 @@ const ProfilePage = () => {
  }, [activeTab, canViewAnnouncements]);
 
  useEffect(() => {
-  const params = new URLSearchParams(location.search);
-  const paymentStatus = params.get("payment");
-  const rawSessionId = params.get("session_id");
+    const params = new URLSearchParams(location.search);
+    const paymentStatus = params.get("payment");
+    const rawSessionId = params.get("session_id");
 
-  if (!paymentStatus || params.get("tab") === "billing") return;
+    if (!paymentStatus || params.get("tab") === "billing") return;
 
- const alreadyPaid = (Array.isArray(reservationsData) ? reservationsData : []).find(
- (reservation) =>
- reservation.status !== "cancelled" &&
- (reservation.paymentStatus === "paid" || reservation.status === "reserved"),
- );
+    // Clean up query parameters immediately
+    navigate(location.pathname, { replace: true });
 
- if (alreadyPaid) {
- navigate(location.pathname, { replace: true });
- navigate("/applicant/reservation", {
- state: { step: 5, continueFlow: true, reservationId: alreadyPaid._id },
- replace: true,
- });
- return;
- }
+    const urlSessionId =
+      rawSessionId && rawSessionId !== "{id}" && rawSessionId.startsWith("cs_")
+        ? rawSessionId
+        : null;
 
- const urlSessionId =
- rawSessionId && rawSessionId !== "{id}" && rawSessionId.startsWith("cs_")
- ? rawSessionId
- : null;
- if (!urlSessionId && !reservationsData) return;
+    if (paymentStatus === "cancelled") {
+      showNotification(
+        "Move-in checkout was cancelled. You can complete payment anytime before move-in.",
+        "warning",
+        5000,
+      );
+      return;
+    }
 
- navigate(location.pathname, { replace: true });
+    const verifyPayment = async () => {
+      const storedMoveInSessionId =
+        sessionStorage.getItem("lilycrest_movein_session_id") ||
+        localStorage.getItem("lilycrest_movein_session_id");
 
- const verifyPayment = async () => {
- let sessionId = urlSessionId;
- const active = (Array.isArray(reservationsData) ? reservationsData : []).find(
- (reservation) => reservation.paymongoSessionId && reservation.status !== "cancelled",
- );
+      const active = (Array.isArray(reservationsData) ? reservationsData : []).find(
+        (reservation) => reservation.status !== "cancelled",
+      );
 
- if (!sessionId && active?.paymongoSessionId) {
- sessionId = active.paymongoSessionId;
- }
+      // URL session ID is available immediately on redirect — no need for reservationsData.
+      const sessionId =
+        urlSessionId ||
+        storedMoveInSessionId ||
+        active?.initialPaymentSessionId ||
+        active?.paymongoSessionId;
 
- if (sessionId) {
- try {
- const result = await billingApi.checkPaymentStatus(sessionId);
- if (result?.requiresReview) {
- showNotification(
- "Payment was received but needs admin review before your reservation can be secured.",
- "warning",
- 5000,
- );
- queryClient.invalidateQueries({ queryKey: ["reservations"] });
- return;
- }
- if (result?.status === "paid") {
- showNotification(
- "Payment successful! Your reservation is confirmed.",
- "success",
- 5000,
- );
- queryClient.invalidateQueries({ queryKey: ["reservations"] });
- navigate("/applicant/reservation", {
- state: { step: 5, continueFlow: true, reservationId: active?._id },
- replace: true,
- });
- return;
- }
- } catch (error) {
- console.error("Payment verification failed:", error);
- }
- }
+      /**
+       * Flush all reservation/billing caches and force a synchronous refetch
+       * so MoveInSettlementCard sees the new initialPaymentStatus immediately
+       * without waiting for the 10 s background polling interval.
+       */
+      const flushCaches = async (activeReservationId) => {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["reservations"] }),
+          queryClient.invalidateQueries({ queryKey: ["bills"] }),
+          ...(activeReservationId
+            ? [queryClient.invalidateQueries({ queryKey: ["reservations", "detail", activeReservationId] })]
+            : []),
+        ]);
+        // Force an immediate refetch so the UI is updated before the user notices.
+        await refetchReservations();
+      };
 
- queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      if (sessionId) {
+        try {
+          const result = await billingApi.checkPaymentStatus(sessionId);
+          try {
+            sessionStorage.removeItem("lilycrest_movein_session_id");
+            localStorage.removeItem("lilycrest_movein_session_id");
+          } catch {}
 
- if (active && (active.paymentStatus === "paid" || active.status === "reserved")) {
- navigate("/applicant/reservation", {
- state: { step: 5, continueFlow: true, reservationId: active._id },
- replace: true,
- });
- return;
- }
+          if (result?.requiresReview) {
+            showNotification(
+              "Payment was received but needs admin review before your move-in settlement is confirmed.",
+              "warning",
+              5000,
+            );
+            await flushCaches(active?._id);
+            await queryClient.invalidateQueries({ queryKey: ["tenant-contracts"] });
+            return;
+          }
+          if (result?.status === "paid") {
+            showNotification(
+              "Move-in payment received! Your move-in requirements are fully settled.",
+              "success",
+              5000,
+            );
+            await flushCaches(active?._id);
+            await queryClient.invalidateQueries({ queryKey: ["tenant-contracts"] });
+            return;
+          }
+        } catch (error) {
+          console.error("Move-in payment verification failed:", error);
+        }
+      }
 
- if (paymentStatus === "cancelled") {
- showNotification(
- "Payment was cancelled. You can try again from your profile.",
- "warning",
- 5000,
- );
- } else {
- showNotification(
- "Payment is being processed. Please wait a moment.",
- "info",
- 5000,
- );
- }
- };
+      // Fallback: flush caches even if session ID lookup was delayed
+      await flushCaches(active?._id);
 
- verifyPayment();
- }, [location.pathname, location.search, navigate, queryClient, reservationsData]);
+      if (paymentStatus === "success") {
+        showNotification(
+          "Payment completed! Refreshing your reservation status...",
+          "info",
+          4000,
+        );
+      }
+    };
+
+    verifyPayment();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, location.search]);
 
  const reservations = useMemo(() => reservationsData || [], [reservationsData]);
 
@@ -398,17 +406,35 @@ const ProfilePage = () => {
  // reservation, and only when it's on the structured workflow — so the
  // dashboard's "Move-in ready!" label can make an authoritative claim
  // instead of falling back to non-final wording indefinitely.
- const authoritativeReadinessQuery = useReservation(selectedReservation?._id, {
- enabled: Boolean(selectedReservation?._id) && isStructuredWorkflow(selectedReservation),
- });
- const dashboardReservation = useMemo(() => {
- if (!selectedReservation) return selectedReservation;
- const detail = authoritativeReadinessQuery.data;
- if (detail?._id === selectedReservation._id && detail?.moveInReadiness) {
- return { ...selectedReservation, moveInReadiness: detail.moveInReadiness };
- }
- return selectedReservation;
- }, [selectedReservation, authoritativeReadinessQuery.data]);
+  const authoritativeReadinessQuery = useReservation(selectedReservation?._id, {
+    // Always fetch the detail for confirmed (reserved/moveIn/moveOut) reservations so
+    // that initialPaymentStatus and paymentStatus are sourced from the DB-authoritative
+    // detail endpoint, not the potentially-stale list snapshot.
+    enabled:
+      Boolean(selectedReservation?._id) &&
+      (isStructuredWorkflow(selectedReservation) ||
+        hasReservationStatus(
+          selectedReservation?.reservationStatus || selectedReservation?.status,
+          "reserved",
+          "moveIn",
+          "moveOut",
+        )),
+  });
+  const dashboardReservation = useMemo(() => {
+    if (!selectedReservation) return selectedReservation;
+    const detail = authoritativeReadinessQuery.data;
+    // Only inherit moveInReadiness from the detail endpoint — it is the only
+    // field that the list endpoint intentionally omits (to avoid fan-out
+    // queries per row). Payment status fields (initialPaymentStatus,
+    // paymentStatus) are returned by the list endpoint via HEAVY_FIELDS
+    // negative exclusion, so we MUST NOT override them from the detail here —
+    // the detail may still be stale while the list has already been
+    // force-refetched after payment confirmation.
+    if (detail?._id === selectedReservation._id && detail?.moveInReadiness) {
+      return { ...selectedReservation, moveInReadiness: detail.moveInReadiness };
+    }
+    return selectedReservation;
+  }, [selectedReservation, authoritativeReadinessQuery.data]);
 
  const reservationProgress = getReservationProgress(selectedReservation);
  const nextAction = getNextAction(selectedReservation, reservationProgress);

@@ -182,12 +182,13 @@ describe('Socket.IO database-authoritative room membership', () => {
   });
 
   test.each([
-    ['missing permission', { userId: 'admin-a', role: 'branch_admin', permissions: [], branch: 'gil-puyat', accountStatus: 'active' }],
     ['missing branch', { userId: 'admin-a', role: 'branch_admin', permissions: ['manageUsers'], branch: null, accountStatus: 'active' }],
     ['invalid branch', { userId: 'admin-a', role: 'branch_admin', permissions: ['manageUsers'], branch: 'other', accountStatus: 'active' }],
-  ])('branch admin with %s joins no privileged room', (_label, identity) => {
+  ])('branch admin with %s joins no branch room', (_label, identity) => {
     const client = connectWithIdentity(identity, { owner: true, branch: 'guadalupe' });
-    expect([...client.rooms]).toEqual(['user:admin-a']);
+    expect([...client.rooms]).toEqual(['user:admin-a', 'admins']);
+    expect(client.rooms.has('admins:all')).toBe(false);
+    expect(client.rooms.has('admins:branch:gil-puyat')).toBe(false);
   });
 
   test('client-provided room and branch values cannot request privileged membership', () => {

@@ -199,12 +199,12 @@ const ReservationConfirmationStep = ({
             <div className="rf-summary-icon">
               <CreditCard size={22} />
             </div>
-            <div className="rf-summary-label">Payment Confirmed</div>
+            <div className="rf-summary-label">Reservation Slot Secured</div>
             <div className="rf-summary-value rf-summary-value--paid">
-              <CheckCircle size={15} /> ₱{reservationFeeAmount.toLocaleString("en-PH")}
+              <CheckCircle size={15} /> ₱{reservationFeeAmount.toLocaleString("en-PH")} (Paid)
             </div>
             <div className="rf-summary-meta">
-              Paid via {formatPaymentMethod(displayPaymentMethod)}
+              Remaining Move-In Balance: ₱{Math.max(0, (Number(getResolvedMonthlyRate(reservationData?.pricingDisplay) || room?.price || 0) * 2) - reservationFeeAmount).toLocaleString("en-PH")}
             </div>
           </div>
         )}

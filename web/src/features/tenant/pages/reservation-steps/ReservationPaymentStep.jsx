@@ -21,8 +21,6 @@ import {
   ArrowLeft,
 } from "lucide-react";
 
-import { getResolvedMonthlyRate } from "../../utils/pricingDisplayHelpers";
-
 const formatCurrency = (amount) =>
   `PHP ${Number.isFinite(Number(amount)) ? Number(amount).toLocaleString("en-PH") : "0"}`;
 
@@ -72,24 +70,6 @@ const ReservationPaymentStep = ({
   const reservationFeeAmount = Number.isFinite(Number(reservationData?.reservationFeeAmount))
     ? Number(reservationData.reservationFeeAmount)
     : 2000;
-  const resolvedServerRate = getResolvedMonthlyRate(reservationData?.pricingDisplay);
-  const monthlyRent = Number(
-    resolvedServerRate ??
-      reservationData?.pricingSnapshot?.finalMonthlyRate ??
-      reservationData?.approvedMonthlyRate ??
-      reservationData?.monthlyRent ??
-      reservationData?.moveInCashOut?.monthlyAdvance ??
-      room?.monthlyPrice ??
-      room?.price ??
-      0,
-  );
-  const moveInCashOut = reservationData?.moveInCashOut || {
-    monthlyAdvance: monthlyRent,
-    securityDeposit: monthlyRent,
-    grossTotal: monthlyRent * 2,
-    reservationFeeDeductible: reservationFeeAmount,
-    netAmountDue: Math.max(0, monthlyRent * 2 - reservationFeeAmount),
-  };
 
   const selectedBed = reservationData?.selectedBed;
   const roomNumber = toDisplayString(room.roomNumber || room.name || room.title || room.id, "");

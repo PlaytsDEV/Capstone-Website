@@ -2,16 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Archive,
+  ArrowUpDown,
+  Building2,
   Calendar,
   CheckCircle,
   Clock,
   Eye,
   Download,
+  Layers,
+  ListFilter,
   RotateCcw,
+  SlidersHorizontal,
   Trash2,
   User,
   Search,
   ArrowLeft,
+  X,
 } from "lucide-react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -64,7 +70,6 @@ import {
 import ReservationQuickChips from "../components/ReservationQuickChips";
 import ReservationFilterDrawer from "../components/ReservationFilterDrawer";
 import ActiveFilterTags from "../components/ActiveFilterTags";
-import { SlidersHorizontal } from "lucide-react";
 import "../styles/design-tokens.css";
 import "../styles/admin-reservations.css";
 
@@ -193,7 +198,10 @@ function ReservationsPage() {
     data: rawReservations = [],
     isLoading: loading,
     error: queryError,
-  } = useReservations({ view: "admin-list", archive: "all" });
+  } = useReservations(
+    { view: "admin-list", archive: "all" },
+    { refetchInterval: 5000, refetchOnWindowFocus: true, refetchOnMount: true },
+  );
   const error = queryError?.message || null;
 
   const reservations = useMemo(
@@ -311,6 +319,18 @@ function ReservationsPage() {
     if (advancedFilters.paymentStatus !== "any") count++;
     return count;
   }, [advancedFilters]);
+
+  const hasActiveFilters = useMemo(
+    () =>
+      Boolean(
+        searchTerm.trim() ||
+        (isOwner && branchFilter !== "all") ||
+        statusFilter !== "all" ||
+        quickChip !== null ||
+        activeAdvancedFilterCount > 0,
+      ),
+    [activeAdvancedFilterCount, branchFilter, isOwner, quickChip, searchTerm, statusFilter],
+  );
 
   const handleResetAllFilters = useCallback(() => {
     setSearchTerm("");
@@ -437,8 +457,6 @@ function ReservationsPage() {
     ],
     [counts],
   );
-  const activeSummaryIndex = SUMMARY_FILTERS.indexOf(statusFilter);
-
   const tabs = useMemo(
     () => [
       { key: "reservations", label: "Reservations" },
@@ -447,39 +465,6 @@ function ReservationsPage() {
       { key: "inquiries", label: "Inquiries" },
     ],
     [],
-  );
-
-  const filters = useMemo(
-    () => [
-      ...(isOwner
-        ? [
-            {
-              key: "branch",
-              options: OWNER_BRANCH_FILTER_OPTIONS,
-              value: branchFilter,
-              onChange: (value) => {
-                setBranchFilter(value);
-                setCurrentPage(1);
-              },
-            },
-          ]
-        : []),
-      {
-        key: "status",
-        options: [
-          { value: "all", label: "All Statuses" },
-          { value: "reserved", label: "Reserved" },
-          { value: "moveIn", label: "Moved In" },
-          { value: "cancelled", label: "Cancelled" },
-        ],
-        value: statusFilter,
-        onChange: (value) => {
-          setStatusFilter(value);
-          setCurrentPage(1);
-        },
-      },
-    ],
-    [branchFilter, isOwner, statusFilter],
   );
 
   const prefetchReservationDetail = useCallback(
@@ -896,151 +881,56 @@ function ReservationsPage() {
       {activeTab === "reservations" && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            {summaryItems.map((item) => {
-              const isActive =
-                statusFilter === item.key ||
-                (item.key === "pending_review" &&
-                  (statusFilter === "pending_application_review" ||
-                    statusFilter === "needs_revision")) ||
-                (item.key === "reserved" &&
-                  (statusFilter === "approved_for_payment" ||
-                    statusFilter === "reserved"));
-              return (
-                <div
-                  key={item.key}
-                  onClick={() => {
-                    setStatusFilter(item.key);
-                    setCurrentPage(1);
-                  }}
-                  style={{
-                    backgroundColor: "var(--bg-card)",
-                    borderColor: isActive ? "var(--primary)" : "var(--border-light)",
-                    boxShadow: isActive
-                      ? "0 4px 12px rgba(2,6,23,0.06)"
-                      : "0 1px 3px rgba(2,6,23,0.02)",
-                  }}
-                  className={`border rounded-xl p-4 cursor-pointer transition-all hover:border-[color:var(--primary)] ${
-                    isActive ? "ring-1 ring-[color:var(--primary)]" : ""
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      {item.label}
-                    </span>
-                    <div
-                      className={`p-2 rounded-lg ${
-                        item.color === "blue"
-                          ? "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"
-                          : item.color === "orange"
-                          ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400"
-                          : item.color === "teal"
-                          ? "bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400"
-                          : "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
-                      }`}
-                    >
-                      <item.icon className="w-4 h-4" strokeWidth={2} />
-                    </div>
-                  </div>
-
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-2xl font-bold tracking-tight text-foreground">
-                      {item.value}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground font-medium">
-                      {item.subtext}
-                    </span>
+            {summaryItems.map((item) => (
+              <div
+                key={item.key}
+                style={{
+                  backgroundColor: "var(--bg-card)",
+                  borderColor: "var(--border-light)",
+                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.02)",
+                }}
+                className="border rounded-xl p-4 transition-colors"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    {item.label}
+                  </span>
+                  <div
+                    className={`p-2 rounded-lg ${
+                      item.color === "blue"
+                        ? "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"
+                        : item.color === "orange"
+                        ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400"
+                        : item.color === "teal"
+                        ? "bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400"
+                        : "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4" strokeWidth={2} />
                   </div>
                 </div>
-              );
-            })}
+
+                <div className="flex items-baseline justify-between">
+                  <span className="text-2xl font-bold tracking-tight text-foreground">
+                    {item.value}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground font-medium">
+                    {item.subtext}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mr-1">
-              Views:
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setStatusFilter("all");
-                setCurrentPage(1);
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                statusFilter === "all"
-                  ? "bg-[color:var(--primary)] text-primary-foreground font-semibold shadow-sm"
-                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              All Active ({counts.total})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setStatusFilter("cancellation_requested");
-                setCurrentPage(1);
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                statusFilter === "cancellation_requested"
-                  ? "bg-amber-600 text-white font-semibold shadow-sm"
-                  : counts.cancellationRequested > 0
-                  ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-medium"
-                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              Cancellation Requests ({counts.cancellationRequested})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setStatusFilter("cancelled");
-                setCurrentPage(1);
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                statusFilter === "cancelled"
-                  ? "bg-rose-600 text-white font-semibold shadow-sm"
-                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Cancelled ({counts.cancelled})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setStatusFilter("archived");
-                setCurrentPage(1);
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                statusFilter === "archived"
-                  ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 font-semibold shadow-sm"
-                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              <Archive className="w-3.5 h-3.5" />
-              Archived ({counts.archived})
-            </button>
-          </div>
-
-          <ReservationQuickChips
-            reservations={reservations}
-            activeChip={quickChip}
-            onSelectChip={(chip) => {
-              setQuickChip(chip);
-              setCurrentPage(1);
-            }}
-          />
-
+          {/* Unified Table & Filter Workspace Card */}
           <div
             style={{ backgroundColor: "var(--bg-card)", border: `1px solid var(--border-light)` }}
-            className="border rounded-lg p-5 overflow-visible"
+            className="border rounded-xl p-4 sm:p-5 overflow-visible"
           >
-            <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between mb-4">
+            {/* Row 1: Global Search, Branch, Sort, Advanced Filters, Reset, Export */}
+            <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between mb-3.5">
               <div className="relative flex-1 min-w-[240px]">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Search by name, email, code, or room..."
@@ -1050,68 +940,75 @@ function ReservationsPage() {
                     setCurrentPage(1);
                   }}
                   style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                  className="w-full pl-10 pr-4 h-9 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
+                  className="w-full pl-10 pr-9 h-9 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
                 />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded cursor-pointer"
+                    title="Clear search text"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5 sm:justify-start lg:justify-end">
-                <select
-                  value={`${sortState.key}-${sortState.dir}`}
-                  onChange={(e) => {
-                    const [key, dir] = e.target.value.split("-");
-                    setSortState({ key, dir });
-                    setCurrentPage(1);
-                  }}
-                  style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                  className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
-                  title="Sort reservations"
-                >
-                  <option value="createdAt-desc">Recent Transaction</option>
-                  <option value="createdAt-asc">Oldest Transaction</option>
-                  <option value="customer-asc">Alphabetical (A - Z)</option>
-                  <option value="customer-desc">Alphabetical (Z - A)</option>
-                </select>
-
-                {isOwner && (
+                {/* Sort Selector with Explicit Icon Prefix */}
+                <div className="relative inline-flex items-center">
+                  <ArrowUpDown className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
                   <select
-                    value={branchFilter}
+                    value={`${sortState.key}-${sortState.dir}`}
                     onChange={(e) => {
-                      setBranchFilter(e.target.value);
+                      const [key, dir] = e.target.value.split("-");
+                      setSortState({ key, dir });
                       setCurrentPage(1);
                     }}
                     style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                    className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+                    className="h-9 pl-8 pr-7 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+                    title="Sort reservations order"
                   >
-                    {OWNER_BRANCH_FILTER_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
+                    <option value="createdAt-desc">Recent Transaction</option>
+                    <option value="createdAt-asc">Oldest Transaction</option>
+                    <option value="customer-asc">Applicant (A - Z)</option>
+                    <option value="customer-desc">Applicant (Z - A)</option>
                   </select>
+                </div>
+
+                {/* Branch Selector with Explicit Icon Prefix */}
+                {isOwner && (
+                  <div className="relative inline-flex items-center">
+                    <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <select
+                      value={branchFilter}
+                      onChange={(e) => {
+                        setBranchFilter(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
+                      className="h-9 pl-8 pr-7 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+                      title="Filter by dormitory branch"
+                    >
+                      {OWNER_BRANCH_FILTER_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 )}
 
-                <select
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                  className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
-                >
-                  {filters
-                    .find((f) => f.key === "status")
-                    ?.options.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                </select>
-
+                {/* Advanced Filter Drawer Trigger */}
                 <button
                   type="button"
                   onClick={() => setMoreFiltersOpen(true)}
-                  className="h-9 px-3.5 border border-[var(--border-light)] rounded-lg hover:bg-muted transition-colors flex items-center gap-2 text-xs font-medium cursor-pointer"
+                  className={`h-9 px-3.5 border rounded-lg transition-colors flex items-center gap-2 text-xs font-medium cursor-pointer ${
+                    activeAdvancedFilterCount > 0
+                      ? "border-[color:var(--primary)] bg-primary/10 text-primary font-semibold"
+                      : "border-[var(--border-light)] hover:bg-muted"
+                  }`}
+                  title="Open advanced date, room type, and payment filters"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
                   <span>More Filters</span>
@@ -1122,6 +1019,7 @@ function ReservationsPage() {
                   )}
                 </button>
 
+                {/* Export Report Dropdown */}
                 <ExportButtons
                   onCsv={handleExportCSV}
                   onPdf={handleExportPDF}
@@ -1129,6 +1027,116 @@ function ReservationsPage() {
                 />
               </div>
             </div>
+
+            {/* Row 2: Dedicated Status Views & Quick Filters Strip */}
+            <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3 pt-3 border-t border-[var(--border-light)] mb-4">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap">
+                    <Layers size={13} className="text-muted-foreground" aria-hidden="true" />
+                    Status View:
+                  </span>
+                  <div className="res-view-segmented-control" role="tablist" aria-label="Reservation Status Views">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={statusFilter === "all"}
+                      onClick={() => {
+                        setStatusFilter("all");
+                        setCurrentPage(1);
+                      }}
+                      className={`res-view-tab ${
+                        statusFilter === "all" ? "res-view-tab--active res-view-tab--primary" : ""
+                      }`}
+                      title="View all active reservations"
+                    >
+                      <span>All Active</span>
+                      <span className="res-view-tab__count">{counts.total}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={statusFilter === "cancellation_requested"}
+                      onClick={() => {
+                        setStatusFilter("cancellation_requested");
+                        setCurrentPage(1);
+                      }}
+                      className={`res-view-tab ${
+                        statusFilter === "cancellation_requested"
+                          ? "res-view-tab--active res-view-tab--warning"
+                          : counts.cancellationRequested > 0
+                          ? "text-amber-700 dark:text-amber-400 font-medium"
+                          : ""
+                      }`}
+                      title="Review pending cancellation requests"
+                    >
+                      <AlertTriangle
+                        size={13}
+                        className={
+                          counts.cancellationRequested > 0
+                            ? "text-amber-600 dark:text-amber-400"
+                            : "text-muted-foreground"
+                        }
+                        aria-hidden="true"
+                      />
+                      <span>Cancellation Requests</span>
+                      <span className="res-view-tab__count">{counts.cancellationRequested}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={statusFilter === "cancelled"}
+                      onClick={() => {
+                        setStatusFilter("cancelled");
+                        setCurrentPage(1);
+                      }}
+                      className={`res-view-tab ${
+                        statusFilter === "cancelled" ? "res-view-tab--active res-view-tab--danger" : ""
+                      }`}
+                      title="View cancelled reservations"
+                    >
+                      <Trash2 size={13} aria-hidden="true" />
+                      <span>Cancelled</span>
+                      <span className="res-view-tab__count">{counts.cancelled}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={statusFilter === "archived"}
+                      onClick={() => {
+                        setStatusFilter("archived");
+                        setCurrentPage(1);
+                      }}
+                      className={`res-view-tab ${
+                        statusFilter === "archived" ? "res-view-tab--active res-view-tab--muted" : ""
+                      }`}
+                      title="View archived records"
+                    >
+                      <Archive size={13} aria-hidden="true" />
+                      <span>Archived</span>
+                      <span className="res-view-tab__count">{counts.archived}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap">
+                    <ListFilter size={13} className="text-muted-foreground" aria-hidden="true" />
+                    Quick Filters:
+                  </span>
+                  <ReservationQuickChips
+                    reservations={reservations}
+                    activeChip={quickChip}
+                    showTitle={false}
+                    onSelectChip={(chip) => {
+                      setQuickChip(chip);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+              </div>
 
             <ActiveFilterTags
               searchTerm={searchTerm}

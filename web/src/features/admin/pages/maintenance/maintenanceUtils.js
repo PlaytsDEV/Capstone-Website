@@ -272,7 +272,7 @@ export const SUMMARY_STATUSES = [
 export const MANAGEMENT_SUMMARY_CARDS = [
   {
     key: "open_queue",
-    label: "Open Queue",
+    label: "Active Queue",
     icon: ClipboardList,
     color: "blue",
     description: "Pending & viewed",
@@ -282,42 +282,21 @@ export const MANAGEMENT_SUMMARY_CARDS = [
     label: "In Progress",
     icon: RefreshCcw,
     color: "purple",
-    description: "Actively handled",
+    description: "Assigned & servicing",
   },
   {
-    key: "overdue",
-    label: "SLA Overdue",
+    key: "needs_attention",
+    label: "Needs Attention",
     icon: AlertTriangle,
     color: "red",
-    description: "Delayed past SLA",
+    description: "Overdue SLA or urgent",
   },
   {
-    key: "due_soon",
-    label: "SLA Due Soon",
-    icon: Clock3,
-    color: "orange",
-    description: "Priority resolution",
-  },
-  {
-    key: "completed_today",
+    key: "completed",
     label: "Resolved",
     icon: CheckCircle2,
     color: "green",
     description: "Completed in period",
-  },
-  {
-    key: "unassigned_high",
-    label: "Unassigned High",
-    icon: UserRound,
-    color: "orange",
-    description: "High urgency no tech",
-  },
-  {
-    key: "exceptions",
-    label: "Exceptions",
-    icon: XCircle,
-    color: "neutral",
-    description: "Rejected or cancelled",
   },
 ];
 
@@ -375,21 +354,19 @@ export const matchesSummaryCard = ({ request, cardKey, dateFrom, dateTo }) => {
     case "open_queue":
       return request.status === "pending" || request.status === "viewed";
     case "in_progress":
-      return request.status === "in_progress";
-    case "overdue":
-      return request.slaState?.label === "delayed" && isNonTerminal(request.status);
-    case "due_soon":
-      return request.slaState?.label === "priority" && isNonTerminal(request.status);
-    case "completed_today":
-      return isCompletedInWindow({ request, dateFrom, dateTo });
-    case "unassigned_high":
+      return request.status === "in_progress" || request.status === "approved" || request.status === "service_provider_assigned";
+    case "needs_attention": {
+      const rawSla = String(request.slaState?.label || request.slaState || "").toLowerCase();
+      const isOverdue = rawSla.includes("delay") || rawSla.includes("overdue") || rawSla.includes("breach") || rawSla.includes("priority");
+      const isUrgentUnassigned = (request.urgency === "high" || request.urgency === "emergency") && !getAssignedProviderName(request);
+      return (isOverdue || isUrgentUnassigned) && isNonTerminal(request.status);
+    }
+    case "completed":
       return (
-        request.urgency === "high" &&
-        !getAssignedProviderName(request) &&
-        isNonTerminal(request.status)
+        request.status === "resolved" ||
+        request.status === "completed" ||
+        isCompletedInWindow({ request, dateFrom, dateTo })
       );
-    case "exceptions":
-      return request.status === "rejected" || request.status === "cancelled";
     default:
       return true;
   }

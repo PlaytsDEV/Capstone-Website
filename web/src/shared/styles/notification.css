@@ -22,10 +22,10 @@
   position: relative;
   top: auto;
   right: auto;
-  min-width: 300px;
-  max-width: min(500px, calc(100vw - 40px));
-  padding: 16px 20px;
-  border-radius: 12px;
+  min-width: 280px;
+  max-width: min(440px, calc(100vw - 40px));
+  padding: 12px 16px;
+  border-radius: 10px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   display: flex;
   align-items: center;

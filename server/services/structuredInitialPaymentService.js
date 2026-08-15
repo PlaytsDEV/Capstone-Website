@@ -269,19 +269,14 @@ export async function getStructuredMoveInReadinessSummary(reservation) {
 }
 
 export async function syncStructuredReservationAfterBillSettlement(bill) {
-  if (
-    bill?.billType !== "initial_payment" ||
-    bill?.structuredWorkflowVersion !== STRUCTURED_INITIAL_PAYMENT_WORKFLOW
-  ) return;
+  if (bill?.billType !== "initial_payment" || !bill?.reservationId) return;
   const remaining = money(Math.max(Number(bill.totalAmount || 0) - Number(bill.paidAmount || 0), 0));
   await Reservation.updateOne(
-    {
-      _id: bill.reservationId,
-      financialWorkflowVersion: STRUCTURED_INITIAL_PAYMENT_WORKFLOW,
-    },
+    { _id: bill.reservationId },
     {
       $set: {
         initialPaymentStatus: remaining === 0 ? "paid" : "partial",
+        ...(remaining === 0 ? { paymentStatus: "paid_in_full" } : {}),
       },
     },
   );

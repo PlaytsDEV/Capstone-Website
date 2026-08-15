@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import UtilityBillingTab from "../components/billing/UtilityBillingTab";
 import RentBillingTab from "../components/billing/RentBillingTab";
@@ -256,16 +256,27 @@ const normalizeViolationRows = (data) => {
 const AdminBillingPage = () => {
   const { user } = useAuth();
   const isOwner = user?.role === "owner";
-  const [activeTab, setActiveTab] = useState("electricity");
-
-
   const [branchFilter, setBranchFilter] = useState("");
+  const effectiveBranch = isOwner ? branchFilter : (user?.branch || "");
+  const [activeTab, setActiveTab] = useState(() => (user?.branch === "guadalupe" ? "rent" : "electricity"));
+
   const [preset, setPreset] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [isExporting, setIsExporting] = useState(false);
 
-  const effectiveBranch = isOwner ? branchFilter : (user?.branch || "");
+  useEffect(() => {
+    if (effectiveBranch === "guadalupe" && (activeTab === "electricity" || activeTab === "water")) {
+      setActiveTab("rent");
+    }
+  }, [effectiveBranch, activeTab]);
+
+  const handleBranchChange = useCallback((newBranch) => {
+    setBranchFilter(newBranch);
+    if (newBranch === "guadalupe" && (activeTab === "electricity" || activeTab === "water")) {
+      setActiveTab("rent");
+    }
+  }, [activeTab]);
 
   const handlePresetChange = useCallback((newPreset) => {
     setPreset(newPreset);
@@ -472,7 +483,7 @@ const AdminBillingPage = () => {
           activeTab={activeTab}
           onTabChange={setActiveTab}
           branchFilter={isOwner ? branchFilter : undefined}
-          onBranchChange={isOwner ? setBranchFilter : undefined}
+          onBranchChange={isOwner ? handleBranchChange : undefined}
           preset={preset}
           onPresetChange={handlePresetChange}
           isOwner={isOwner}

@@ -214,15 +214,17 @@ export function checkOverdueReservation(reservation, now = new Date()) {
 export function mapVisitScheduleRows(rawReservations = []) {
  const rows = [];
 
- rawReservations
- .filter(
- (reservation) =>
- (reservation.visitDate && reservation.viewingPreference === "physical_visit") ||
- reservation.status === "visit_pending" ||
- (reservation.visitDate && reservation.visitApproved) ||
- reservation.scheduleRejected ||
- (reservation.visitHistory && reservation.visitHistory.length > 0),
- )
+  rawReservations
+    .filter(
+      (reservation) =>
+        (reservation.visitDate &&
+          (reservation.viewingPreference === "physical_visit" ||
+            reservation.viewingType === "physical_visit")) ||
+        reservation.status === "visit_pending" ||
+        (reservation.visitDate && reservation.visitApproved) ||
+        reservation.scheduleRejected ||
+        (reservation.visitHistory && reservation.visitHistory.length > 0),
+    )
  .forEach((reservation) => {
  const baseReservation = mapReservationAdminRow(reservation);
  const base = {

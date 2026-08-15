@@ -60,11 +60,11 @@ export const getReservationConfirmationState = (
         },
         {
           step: "Save your reservation code for move-in day.",
-          detail: "Admin may ask for this code during verification.",
+          detail: "Admin will use this code to quickly verify your slot.",
         },
         {
-          step: "Bring a valid government-issued ID on move-in day.",
-          detail: "Use the same ID details you submitted in your application.",
+          step: "Zero extra paperwork on arrival.",
+          detail: "Your application is complete. Just settle your remaining 1-mo advance & deposit before or on move-in.",
         },
       ],
       hasReservationCode,
@@ -95,8 +95,8 @@ export const getReservationConfirmationState = (
           detail: "Important reservation updates will be sent there.",
         },
         {
-          step: "Prepare your required documents for move-in.",
-          detail: "Admin will provide further instructions when ready.",
+          step: "Zero extra paperwork required.",
+          detail: "Your application forms are complete. Settle remaining advance and deposit upon move-in.",
         },
       ],
       hasReservationCode,

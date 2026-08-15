@@ -62,7 +62,7 @@ test("reserved applicant detail page remains applicant-mode, not tenant-mode", (
     reservationAgreementPage.includes(
       "You remain an applicant until admin completes the tenant conversion.",
     ),
-    true,
+    false,
   );
   assert.equal(
     reservationAgreementPage.includes(

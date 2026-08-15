@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Calendar, Camera, CheckCircle, ClipboardList, CreditCard, Eye, Image as ImageIcon, Info, Maximize2 } from "lucide-react";
+import { AlertTriangle, Building2, Calendar, Camera, CheckCircle, ClipboardList, CreditCard, Eye, FileText, Image as ImageIcon, Info, Maximize2, Receipt, User, XCircle } from "lucide-react";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { SUBMETER_BRANCHES } from "../../../shared/utils/constants";
@@ -17,16 +17,24 @@ import {
  readMoveInDate,
 } from "../../../shared/utils/lifecycleNaming";
 import {
- fmtDate as sharedFmtDate,
- fmtDateTime as sharedFmtDateTime,
+  fmtDate as sharedFmtDate,
+  fmtDateTime as sharedFmtDateTime,
+  fmtTime as sharedFmtTime,
 } from "../../../shared/utils/dateFormat";
 import { showNotification } from "../../../shared/utils/notification";
 import { getVisitManagementAvailability } from "../utils/visitStatusRules";
 import { resolveReservationApprovalPricingGate } from "../utils/reservationPricingGate";
 import { resolveApplicantPhotoUrl } from "../utils/applicantPhotoResolution";
 import { formatSubmittedAddress } from "../utils/reservationAddressFormat";
+import {
+  formatPaymentStatus,
+  getPaymentStatusBadgeConfig,
+  formatRoomType,
+  formatPhpCurrency,
+  resolveReservationFeeStatus,
+  resolveMoveInPaymentStatus,
+} from "../utils/reservationFormatters";
 import ProfileAvatar from "../../../shared/components/ProfileAvatar";
-import { formatPaymentMethod } from "../../../shared/utils/formatPaymentMethod";
 import "../styles/reservation-details-modal.css";
 
  const ACTION_MSGS = {
@@ -158,6 +166,14 @@ const fmt = (value) =>
 
 const fmtDate = sharedFmtDate;
 const fmtDateTime = sharedFmtDateTime;
+const fmtTime = sharedFmtTime;
+
+const safeFmtTime = (value) => {
+  if (!value) return null;
+  if (typeof value === "string" && /AM|PM/i.test(value)) return value;
+  const res = fmtTime(value);
+  return res === "\u2014" || res === "—" ? null : res;
+};
 
 const toDateInputValue = (value) => {
  if (!value) return "";
@@ -465,11 +481,11 @@ const STAGE_GUIDANCE = {
  message:
  "Application needs corrections. Payment stays locked until the tenant resubmits and admin approves it.",
  },
- approved_for_payment: {
- Icon: CreditCard,
- message:
- "Application approved. The applicant can now proceed to reservation payment.",
- },
+  approved_for_payment: {
+    Icon: CreditCard,
+    message:
+      "Application approved. The applicant can now proceed to pay the reservation fee to lock their room.",
+  },
  rejected: {
  Icon: ClipboardList,
  message:
@@ -503,15 +519,20 @@ export default function ReservationDetailsModal({
  const [rescheduleTime, setRescheduleTime] = useState(
  reservation?.visitTime || "",
  );
- const [isSubmitting, setIsSubmitting] = useState(false);
- const [showDocs, setShowDocs] = useState(false);
- const [showPersonal, setShowPersonal] = useState(false);
- const [extendDays, setExtendDays] = useState(3);
- const [showExtendPrompt, setShowExtendPrompt] = useState(false);
- const [meterReadingVal, setMeterReadingVal] = useState("");
- const [actualMoveInDate, setActualMoveInDate] = useState(
- new Date().toISOString().slice(0, 10),
- );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showDocs, setShowDocs] = useState(false);
+  const [showViewingVisit, setShowViewingVisit] = useState(false);
+  const [showPersonal, setShowPersonal] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
+  const todayDateStr = useMemo(() => toDateInputValue(new Date()), []);
+  const [rescheduleMoveInDate, setRescheduleMoveInDate] = useState("");
+  const [showExtendPrompt, setShowExtendPrompt] = useState(false);
+  const [meterReadingVal, setMeterReadingVal] = useState("");
+  const [actualMoveInDate, setActualMoveInDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
+  const isFutureMoveInDate = Boolean(actualMoveInDate && actualMoveInDate > todayDateStr);
  const [houseRulesPrepared, setHouseRulesPrepared] = useState(false);
  const [showMeterPrompt, setShowMeterPrompt] = useState(false);
  const cancellationPanelRef = useRef(null);
@@ -557,10 +578,13 @@ export default function ReservationDetailsModal({
  const visitBranch = reservation?.roomId?.branch || reservation?.branch || "";
  const visitRoomId = reservation?.roomId?._id || reservation?.roomId || "";
  /** True for branches with physical submeters (e.g. Gil Puyat). False for fixed-rate branches (e.g. Guadalupe). */
- const branchUsesSubmeter = SUBMETER_BRANCHES.has(visitBranch);
- const appearance = getReservationStatusAppearance(status);
- const allowedActions = getAllowedReservationActions(status);
- const isMovedOut = status === "moveOut";
+  const branchUsesSubmeter = SUBMETER_BRANCHES.has(visitBranch);
+  const appearance = getReservationStatusAppearance(status);
+  const allowedActions = getAllowedReservationActions(status);
+  const isMoveInPaymentSettled =
+    reservation?.initialPaymentStatus === "paid" ||
+    reservation?.paymentStatus === "paid_in_full";
+  const isMovedOut = status === "moveOut";
  const stageGuide = STAGE_GUIDANCE[status];
  const hasActionButtons =
    allowedActions.includes("moveIn") ||
@@ -645,15 +669,15 @@ export default function ReservationDetailsModal({
  const roomImages = Array.isArray(reservation.roomId?.images)
  ? reservation.roomId.images.filter(Boolean)
  : [];
- const bookingDetails = [
- ["Room", reservation.room ?? "\u2014"],
- ["Room type", reservation.roomType ?? "\u2014"],
- ["Bed / Slot", formatSelectedBed(reservation.selectedBed)],
- ["Branch", reservation.branch ?? "\u2014"],
- ["Viewing Preference", viewingPreferenceLabel],
- ["Move-in", fmtDate(moveInDate)],
- ["Lease term", reservation.leaseDuration ? `${reservation.leaseDuration} months` : "\u2014"],
- ["Contact", reservation.phone ?? reservation.mobileNumber ?? "\u2014"],
+  const bookingDetails = [
+    ["Room", reservation.room ?? "\u2014"],
+    ["Room type", formatRoomType(reservation.roomType)],
+    ["Bed / Slot", formatSelectedBed(reservation.selectedBed)],
+    ["Branch", reservation.branch ?? "\u2014"],
+    ["Viewing Preference", viewingPreferenceLabel],
+    ["Move-in", fmtDate(moveInDate)],
+    ["Lease term", reservation.leaseDuration ? `${reservation.leaseDuration} months` : "\u2014"],
+    ["Contact", reservation.phone ?? reservation.mobileNumber ?? "\u2014"],
  [
  "Application Review",
  reservation.status === "pending_application_review"
@@ -661,7 +685,7 @@ export default function ReservationDetailsModal({
  : reservation.status === "needs_revision"
  ? "Needs Revision"
  : reservation.status === "approved_for_payment"
- ? "Approved for Payment"
+ ? "Approved for Reservation Fee"
  : reservation.status === "rejected"
  ? "Rejected"
  : "\u2014",
@@ -710,51 +734,127 @@ export default function ReservationDetailsModal({
   const activityTimeline = [
     {
       label: "Reservation Created",
-      value: fmtDate(reservation.createdAt),
+      date: fmtDate(reservation.createdAt),
+      time: safeFmtTime(reservation.createdAt),
     },
-    {
-      label: "Target Move-in",
-      value: fmtDate(moveInDate),
-    },
-    reservation.finalMoveInDate
+    (reservation.visitDate || reservation.visitTime)
       ? {
-          label: "Final Move-in",
-          value: fmtDate(reservation.finalMoveInDate),
+          label: "Viewing / Visit Scheduled",
+          date: fmtDate(reservation.visitDate),
+          time: reservation.visitTime ? String(reservation.visitTime) : null,
+        }
+      : null,
+    (reservation.applicationSubmittedAt || reservation.submittedAt)
+      ? {
+          label: "Application Submitted",
+          date: fmtDate(reservation.applicationSubmittedAt || reservation.submittedAt),
+          time: safeFmtTime(reservation.applicationSubmittedAt || reservation.submittedAt),
+        }
+      : null,
+    (reservation.approvedForPaymentAt || reservation.approvedAt)
+      ? {
+          label: "Approved for Reservation Fee",
+          date: fmtDate(reservation.approvedForPaymentAt || reservation.approvedAt),
+          time: safeFmtTime(reservation.approvedForPaymentAt || reservation.approvedAt),
+        }
+      : null,
+    (reservation.paidAt || reservation.reservationFeePaidAt || (reservation.paymentStatus === "paid" && reservation.paymentDate))
+      ? {
+          label: "Reservation Fee Settled",
+          date: fmtDate(reservation.paidAt || reservation.reservationFeePaidAt || reservation.paymentDate),
+          time: safeFmtTime(reservation.paidAt || reservation.reservationFeePaidAt || reservation.paymentDate),
+        }
+      : null,
+    (reservation.initialPaymentSettledAt || reservation.initialPaymentPaidAt || (reservation.initialPaymentStatus === "paid" && (reservation.initialPaymentDate || reservation.updatedAt)))
+      ? {
+          label: "Advance & Deposit Settled",
+          date: fmtDate(reservation.initialPaymentSettledAt || reservation.initialPaymentPaidAt || reservation.initialPaymentDate || reservation.updatedAt),
+          time: safeFmtTime(reservation.initialPaymentSettledAt || reservation.initialPaymentPaidAt || reservation.initialPaymentDate || reservation.updatedAt),
+        }
+      : null,
+    moveInDate
+      ? {
+          label: "Target Move-in",
+          date: fmtDate(moveInDate),
+          time: null,
+        }
+      : null,
+    (reservation.finalMoveInDate || reservation.movedInAt)
+      ? {
+          label: "Move-in Completed",
+          date: fmtDate(reservation.finalMoveInDate || reservation.movedInAt),
+          time: safeFmtTime(reservation.finalMoveInDate || reservation.movedInAt),
         }
       : null,
     cancellationDetail
       ? {
           label: "Cancellation",
-          value: cancellationDetail,
+          date: reservation.cancelledAt ? fmtDate(reservation.cancelledAt) : "Cancelled",
+          time: reservation.cancelledAt ? safeFmtTime(reservation.cancelledAt) : null,
+          meta: cancelledByPerson ? `by ${cancelledByPerson}` : null,
         }
       : null,
     {
       label: "Current Status",
-      value: appearance.label,
+      date: appearance.label,
+      time: reservation.updatedAt ? `Updated ${safeFmtTime(reservation.updatedAt)}` : null,
+      isCurrent: true,
     },
   ].filter(Boolean);
 
- const pricingDisplay = reservation?.pricingDisplay || null;
- const { pricingIsUsable, pricingIsMissing, pricingBlocksApproval } =
- resolveReservationApprovalPricingGate(pricingDisplay);
- const formatPhp = (value) =>
- Number.isFinite(Number(value))
- ? `PHP ${Number(value).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
- : "—";
- const leaseCategoryLabel =
- pricingDisplay?.leaseType === "long_term"
- ? "Long-term"
- : pricingDisplay?.leaseType === "short_term"
- ? "Short-term"
- : "—";
+  const currentTimelineItem =
+    activityTimeline.find((item) => item.isCurrent) ||
+    activityTimeline[activityTimeline.length - 1];
+
+  const pricingDisplay = reservation?.pricingDisplay || null;
+  const { pricingIsUsable, pricingIsMissing, pricingBlocksApproval } =
+    resolveReservationApprovalPricingGate(pricingDisplay);
+  const formatPhp = formatPhpCurrency;
+  const advanceRentAmount =
+    pricingDisplay?.advanceRentAmount ??
+    reservation?.pricingSnapshot?.advanceRentAmount ??
+    reservation?.advanceRent ??
+    null;
+  const securityDepositAmount =
+    pricingDisplay?.securityDepositAmount ??
+    reservation?.pricingSnapshot?.securityDepositAmount ??
+    reservation?.securityDeposit ??
+    null;
+  const initialTotalDue =
+    pricingDisplay?.estimatedInitialPaymentTotal ??
+    (advanceRentAmount !== null && securityDepositAmount !== null
+      ? Math.max(0, advanceRentAmount + securityDepositAmount - reservationFeeAmount)
+      : null);
+  const reservationFeeStatusKey = useMemo(
+    () => resolveReservationFeeStatus(reservation),
+    [reservation],
+  );
+  const moveInPaymentStatusKey = useMemo(
+    () => resolveMoveInPaymentStatus(reservation),
+    [reservation],
+  );
+  const reservationFeeBadge = useMemo(
+    () => getPaymentStatusBadgeConfig(reservationFeeStatusKey),
+    [reservationFeeStatusKey],
+  );
+  const moveInPaymentBadge = useMemo(
+    () => getPaymentStatusBadgeConfig(moveInPaymentStatusKey),
+    [moveInPaymentStatusKey],
+  );
+  const leaseCategoryLabel =
+    pricingDisplay?.leaseType === "long_term"
+      ? "Long-term"
+      : pricingDisplay?.leaseType === "short_term"
+        ? "Short-term"
+        : "—";
 
  const doAction = (key, apiCall, successMsg) => {
  const modalConfig =
  key === "extend"
  ? {
- title: `Extend Move-in by ${extendDays} Day${extendDays > 1 ? "s" : ""}`,
- message: `Push the move-in date forward by ${extendDays} day${extendDays > 1 ? "s" : ""}. Reservation stays reserved.`,
- confirmText: "Extend",
+ title: `Reschedule Move-in`,
+ message: `Update the move-in date for the reservation.`,
+ confirmText: "Save Changes",
  variant: "info",
  }
  : key === "cancel"
@@ -946,6 +1046,30 @@ export default function ReservationDetailsModal({
  }
  };
 
+  const handleViewReservationFeeReceipt = async () => {
+    try {
+      const { viewDepositReceipt } = await import(
+        "../../../shared/utils/receiptGenerator.js"
+      );
+      await viewDepositReceipt(reservation, reservation?.userId);
+    } catch (error) {
+      console.error("Failed to view reservation fee receipt:", error);
+      showNotification("Could not open receipt preview. Please try again.", "error");
+    }
+  };
+
+  const handleViewMoveInReceipt = async () => {
+    try {
+      const { viewMoveInReceipt } = await import(
+        "../../../shared/utils/receiptGenerator.js"
+      );
+      await viewMoveInReceipt(reservation, reservation?.userId);
+    } catch (error) {
+      console.error("Failed to view move-in receipt:", error);
+      showNotification("Could not open receipt preview. Please try again.", "error");
+    }
+  };
+
  return createPortal(
  <>
  <div className="rdm-overlay" onClick={onClose}>
@@ -1044,19 +1168,7 @@ export default function ReservationDetailsModal({
  </div>
  <div className="rdm-cancellation-request__actions">
  <button
- className="rdm-action rdm-action-danger-solid"
- onClick={() =>
- doAction(
- "approveCancellation",
- () => reservationApi.approveCancellationRequest(reservation.id),
- "Cancellation approved. Reservation cancelled and bed released.",
- )
- }
- disabled={isSubmitting}
- >
- Approve Cancellation
- </button>
- <button
+ type="button"
  className="rdm-action rdm-action-neutral-outline"
  onClick={() =>
  doAction(
@@ -1067,1116 +1179,1459 @@ export default function ReservationDetailsModal({
  }
  disabled={isSubmitting}
  >
- Reject Request
- </button>
- </div>
- </div>
- )}
-
- <div className="rdm-section rdm-surface-card">
- <h3 className="rdm-top-section-label">Booking Details</h3>
- <div className="rdm-info-grid">
- {bookingDetails.map(([label, value, opts = {}]) => (
- <div className={`rdm-info-item${opts.wide ? " rdm-info-item--wide" : ""}`} key={label}>
- <span className="rdm-info-label">{label}</span>
- <span
- className={`rdm-info-value ${label === "Move-in" && isOverdue ? "rdm-danger" : ""}`}
- >
- {value}
- </span>
- </div>
- ))}
- </div>
- </div>
-
- <div className="rdm-section rdm-surface-card">
- <h3 className="rdm-top-section-label">Pricing &amp; Initial Payment</h3>
- {pricingIsUsable ? (
- <>
- <div className="rdm-info-grid">
- <div className="rdm-info-item">
- <span className="rdm-info-label">Lease Category</span>
- <span className="rdm-info-value">{leaseCategoryLabel}</span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">Regular Monthly Rate</span>
- <span className="rdm-info-value">{formatPhp(pricingDisplay.regularMonthlyRate)}</span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">Discount</span>
- <span className="rdm-info-value">
- {Number.isFinite(Number(pricingDisplay.discountPercentage))
- ? `${pricingDisplay.discountPercentage}% (${formatPhp(pricingDisplay.discountAmount)})`
- : "—"}
- </span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">Final Monthly Rate</span>
- <span className="rdm-info-value">{formatPhp(pricingDisplay.finalMonthlyRate)}</span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">Advance Rent</span>
- <span className="rdm-info-value">{formatPhp(pricingDisplay.advanceRentAmount)}</span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">Security Deposit</span>
- <span className="rdm-info-value">{formatPhp(pricingDisplay.securityDepositAmount)}</span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">Reservation-Fee Credit</span>
- <span className="rdm-info-value">{formatPhp(pricingDisplay.reservationFeeAmount)}</span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">
- {pricingDisplay.status === "snapshotted" ? "Initial Payment Total" : "Estimated Initial Payment Total"}
- </span>
- <span className="rdm-info-value">{formatPhp(pricingDisplay.estimatedInitialPaymentTotal)}</span>
- </div>
- </div>
- </>
- ) : (
- <p style={{ fontSize: "0.85rem", color: "#B91C1C", fontWeight: 600 }}>
- {pricingIsMissing
- ? "Pricing information unavailable. Refresh and try again."
- : <>
- Pricing configuration is unavailable. This reservation cannot be approved yet.
- {pricingDisplay?.message ? ` (${pricingDisplay.message})` : ""}
- </>}
- </p>
- )}
- </div>
-
-
- <div className="rdm-section rdm-surface-card">
- <h4 className="rdm-section-title">Viewing Preference</h4>
- <div className="rdm-info-grid">
- <div className="rdm-info-item">
- <span className="rdm-info-label">Selected Option</span>
- <span className="rdm-info-value">{viewingPreferenceLabel}</span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">Preferred Visit Date</span>
- <span className="rdm-info-value">{fmtDate(reservation.visitDate)}</span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">Preferred Visit Time</span>
- <span className="rdm-info-value">{fmt(reservation.visitTime)}</span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">Visit Code</span>
- <span className="rdm-info-value">
- {reservation.visitCode ? (
- <button
- type="button"
- className="rdm-visit-code-badge"
- onClick={() => {
- navigator.clipboard.writeText(reservation.visitCode);
- showNotification("Visit Code copied to clipboard!", "success", 2000);
- }}
- title="Click to copy Visit Code"
- >
- <span>{reservation.visitCode}</span>
- <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
- </button>
- ) : (
- "\u2014"
- )}
- </span>
- </div>
- <div className="rdm-info-item rdm-info-item--wide">
- <span className="rdm-info-label">Remote Viewing Acknowledgement</span>
- <span className="rdm-info-value">
- {reservation.remoteViewingAcknowledged ? "Yes" : "No"}
- </span>
- </div>
- <div className="rdm-info-item rdm-info-item--wide">
- <span className="rdm-info-label">Urgent Move-in Review</span>
- <span className="rdm-info-value">
- {reservation.isUrgentMoveIn ? "Requested" : "No"}
- </span>
- </div>
- <div className="rdm-info-item rdm-info-item--wide">
- <span className="rdm-info-label">Applicant Questions / Concerns</span>
- <span className="rdm-info-value">
- {fmt(reservation.remoteViewingQuestions || reservation.applicationReviewReason)}
- </span>
- </div>
- </div>
- {roomImages.length > 0 && (
-  <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(15, 23, 42, 0.08)" }}>
-  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-  <span className="rdm-info-label" style={{ display: "flex", alignItems: "center", gap: 6, margin: 0 }}>
-  <Camera size={13} style={{ color: "#64748B" }} />
-  <span>Assigned Room Photos</span>
-  </span>
-  <span style={{ fontSize: "0.74rem", color: "#64748B", fontWeight: 500 }}>
-  {roomImages.length} photo{roomImages.length > 1 ? "s" : ""}
-  </span>
-  </div>
-  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-  {roomImages.map((imageUrl, index) => (
-  <button
-  key={`${imageUrl}-${index}`}
-  type="button"
-  onClick={() => openImage(imageUrl, `Room Photo ${index + 1}`)}
-  style={{
-  position: "relative",
-  width: 80,
-  height: 60,
-  borderRadius: 8,
-  overflow: "hidden",
-  border: "1px solid rgba(15, 23, 42, 0.12)",
-  background: "#F8FAFC",
-  padding: 0,
-  cursor: "pointer",
-  transition: "all 0.15s ease-in-out",
-  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
-  }}
-  className="hover:border-slate-400 focus:outline-none group"
-  title={`Click to view Room Photo ${index + 1}`}
-  >
-  <img
-  src={imageUrl}
-  alt={`Room photo ${index + 1}`}
-  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-  onError={(event) => {
-  event.target.style.display = "none";
-  if (event.target.nextSibling) event.target.nextSibling.style.display = "flex";
-  }}
-  />
-  <div
-  style={{
-  display: "none",
-  width: "100%",
-  height: "100%",
-  alignItems: "center",
-  justifyContent: "center",
-  flexDirection: "column",
-  gap: 2,
-  background: "#F1F5F9",
-  color: "#64748B",
-  fontSize: "0.68rem",
-  }}
-  >
-  <ImageIcon size={16} />
-  <span>Photo {index + 1}</span>
-  </div>
-  <div
-  style={{
-  position: "absolute",
-  inset: 0,
-  background: "rgba(15, 23, 42, 0.45)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: "#FFFFFF",
-  opacity: 0,
-  transition: "opacity 0.15s ease",
-  }}
-  className="group-hover:opacity-100"
-  >
-  <Maximize2 size={15} />
-  </div>
-  </button>
-  ))}
-  </div>
-  </div>
-  )}
- </div>
-
- {physicalVisitSelected && (
- <div className="rdm-section rdm-surface-card">
- <div className="rdm-visit-management-header">
- <div>
- <h4 className="rdm-section-title" style={{ marginBottom: 6 }}>
- Visit Management
- </h4>
- <p className="rdm-visit-management-copy">
- Visit completion only records attendance. Application review and payment remain separate.
- </p>
- </div>
- {visitStatusAppearance && (
- <div
- className="rdm-status-chip rdm-visit-status-chip"
- style={{
- background: "transparent",
- color: visitStatusAppearance.color,
- padding: "2px 0",
- }}
- >
- <span
- className="rdm-status-dot"
- style={{ background: visitStatusAppearance.dot }}
- />
- {visitStatusAppearance.label}
- </div>
- )}
- </div>
-
- {visitActionAvailability.completed && (
- <div className="rdm-visit-completed-banner">
- {visitActionAvailability.helperMessage}
- </div>
- )}
-
- <div className="rdm-info-grid">
- <div className="rdm-info-item">
- <span className="rdm-info-label">Preferred Visit Date</span>
- <span className="rdm-info-value">{fmtDate(reservation.visitDate)}</span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">Preferred Visit Time</span>
- <span className="rdm-info-value">{fmt(reservation.visitTime)}</span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">Visit Code</span>
- <span className="rdm-info-value">
- {reservation.visitCode ? (
- <button
- type="button"
- className="rdm-visit-code-badge"
- onClick={() => {
- navigator.clipboard.writeText(reservation.visitCode);
- showNotification("Visit Code copied to clipboard!", "success", 2000);
- }}
- title="Click to copy Visit Code"
- >
- <span>{reservation.visitCode}</span>
- <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
- </button>
- ) : (
- "\u2014"
- )}
- </span>
- </div>
- <div className="rdm-info-item">
- <span className="rdm-info-label">Current Visit Status</span>
- <span className="rdm-info-value">
- {visitStatusAppearance?.label || "\u2014"}
- </span>
- </div>
- {reservation.visitOutcomeUpdatedAt && (
- <div className="rdm-info-item">
- <span className="rdm-info-label">Last Updated</span>
- <span className="rdm-info-value">
- {fmtDateTime(reservation.visitOutcomeUpdatedAt)}
- </span>
- </div>
- )}
- {reservation.visitOutcomeUpdatedByName && (
- <div className="rdm-info-item">
- <span className="rdm-info-label">Updated By</span>
- <span className="rdm-info-value">
- {fmt(reservation.visitOutcomeUpdatedByName)}
- </span>
- </div>
- )}
- </div>
-
- {reservation.visitOutcomeNotes && (
- <div className="rdm-visit-management-note">
- <span className="rdm-info-label">Latest Visit Remarks</span>
- <p>{reservation.visitOutcomeNotes}</p>
- </div>
- )}
-
- {visitHistory.length > 0 && (
- <div className="rdm-visit-management-note" style={{ marginTop: 12 }}>
- <span className="rdm-info-label">Visit History</span>
- <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
- {visitHistory.slice(0, 5).map((entry, index) => (
- <div
- key={`${entry.status || "visit"}-${entry.updatedAt || entry.scheduledAt || index}`}
- style={{
- padding: "10px 12px",
- borderRadius: 8,
- background: "transparent",
- border: "1px solid rgba(15, 23, 42, 0.08)",
- }}
- >
- <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
- <strong style={{ fontSize: "0.84rem", color: "#0F172A" }}>
- {getVisitHistoryTitle(entry)}
- </strong>
- <span style={{ fontSize: "0.78rem", color: "#64748B" }}>
- {fmtDateTime(entry.updatedAt || entry.scheduledAt)}
- </span>
- </div>
- {getVisitHistoryScheduleLines(entry).map((line) => (
- <div
- key={`${line.label}-${line.value}`}
- style={{ fontSize: "0.8rem", color: "#334155", marginTop: 6 }}
- >
- <span style={{ fontWeight: 650 }}>{line.label}</span> {line.value}
- </div>
- ))}
- {entry.updatedByName && (
- <div style={{ fontSize: "0.78rem", color: "#64748B", marginTop: 4 }}>
- Updated by {entry.updatedByName}
- </div>
- )}
- {entry.notes && (
- <div style={{ fontSize: "0.8rem", color: "#475569", marginTop: 6 }}>
- {entry.notes}
- </div>
- )}
- </div>
- ))}
- </div>
- </div>
- )}
-
-                 {!visitActionAvailability.completed && (
-                 <div className="rdm-visit-management-panel">
-                 {visitStatusKey === "allowed_without_visit" ? (
-                 <div className="rdm-visit-action-helper rdm-visit-action-helper-info">
-                 Visit requirement has been waived. Applicant may proceed without a physical visit.
-                 </div>
-                 ) : (
-                 <>
-                 <label className="rdm-visit-field">
-                 <span className="rdm-info-label">Visit Remarks</span>
-                 <textarea
-                 className="rdm-notes-input"
-                 placeholder="Add optional visit remarks for the next action..."
-                 value={visitRemarks}
-                 onChange={(event) => setVisitRemarks(event.target.value)}
-                 rows="2"
-                 />
-                 </label>
-
-                  <div className="rdm-visit-actions-grid">
-                  {visitActionAvailability.canApproveSchedule && (
-                  <button type="button" className="rdm-action rdm-action-outline"
-                  disabled={isSubmitting}
-                  onClick={() => runVisitManagementAction({
-                    action: "approve_schedule", successMsg: "Visit schedule approved",
-                    modalTitle: "Approve Visit Schedule",
-                    modalMessage: "Confirm the applicant's selected physical visit schedule. The application will remain locked until the visit is completed or waived.",
-                    confirmText: "Approve Schedule",
-                  })}>
-                  Approve Schedule
-                  </button>
-                  )}
-                  {visitActionAvailability.canRejectSchedule && (
-                  <button type="button" className="rdm-action rdm-action-outline rdm-action-outline-danger"
-                  disabled={isSubmitting}
-                  onClick={() => runVisitManagementAction({
-                    action: "reject_schedule", successMsg: "Visit schedule rejected",
-                    modalTitle: "Reject Visit Schedule",
-                    modalMessage: "Reject the selected visit schedule and ask the applicant to choose another date or time.",
-                    confirmText: "Reject Schedule", variant: "warning",
-                  })}>
-                  Reject Schedule
-                  </button>
-                  )}
-                  {visitActionAvailability.canMarkVisited && (
-                  <button type="button" className="rdm-action rdm-action-outline"
-                  disabled={isSubmitting}
-                 onClick={() => runVisitManagementAction({
-                   action: "mark_visited", successMsg: "Visit marked as completed",
-                   modalTitle: "Mark As Visited",
-                   modalMessage: "Record that the applicant attended the scheduled physical visit. This will not approve the application or unlock payment.",
-                   confirmText: "Mark as Visited",
-                 })}>
-                 Mark as Visited
-                 </button>
-                 )}
-                 {visitActionAvailability.canMarkNoShow && (
-                 <button type="button" className="rdm-action rdm-action-outline"
-                 disabled={isSubmitting}
-                 onClick={() => runVisitManagementAction({
-                   action: "mark_no_show", successMsg: "Visit marked as no-show",
-                   modalTitle: "Mark As No-Show",
-                   modalMessage: "Record that the applicant missed the scheduled physical visit. The reservation and application review will remain separate.",
-                   confirmText: "Mark No-Show", variant: "warning",
-                 })}>
-                 Mark as No-Show
-                 </button>
-                 )}
-                 {visitActionAvailability.canReschedule && (
-                 <button type="button"
-                 className={`rdm-action rdm-action-outline${visitActionMode === "reschedule" ? " rdm-action-outline-active" : ""}`}
-                 disabled={isSubmitting}
-                 onClick={() => setVisitActionMode((p) => p === "reschedule" ? "" : "reschedule")}>
-                 Reschedule Visit
-                 </button>
-                 )}
-                 {visitActionAvailability.canCancelVisit && (
-                 <button type="button" className="rdm-action rdm-action-outline rdm-action-outline-danger"
-                 disabled={isSubmitting}
-                 onClick={() => runVisitManagementAction({
-                   action: "cancel_visit", successMsg: "Visit schedule cancelled",
-                   modalTitle: "Cancel Visit Schedule",
-                   modalMessage: "Cancel only the physical visit schedule. This will not cancel the reservation or unlock payment.",
-                   confirmText: "Cancel Visit", variant: "danger",
-                 })}>
-                 Cancel Visit Schedule
-                 </button>
-                 )}
-                 {visitActionAvailability.canAllowWithoutVisit && (
-                 <button type="button" className="rdm-action rdm-action-outline"
-                 disabled={isSubmitting}
-                 onClick={() => runVisitManagementAction({
-                   action: "allow_without_visit", successMsg: "Applicant may proceed without a completed visit",
-                   modalTitle: "Allow Application Without Visit",
-                   modalMessage: "Allow the applicant to continue to the tenant application without a completed physical visit. This will not approve the application or unlock payment.",
-                   confirmText: "Allow Application",
-                 })}>
-                 Allow Application Without Visit
-                 </button>
-                 )}
-                 </div>
-                 </>
-                 )}
-
- {visitActionMode === "reschedule" && visitActionAvailability.canReschedule && (
- <div className="rdm-visit-reschedule">
- <div className="rdm-visit-reschedule-grid">
- <label className="rdm-visit-field">
- <span className="rdm-info-label">New Visit Date</span>
- <input
- type="date"
- className="rdm-notes-input"
- value={rescheduleDate}
- onChange={(event) => {
- setRescheduleDate(event.target.value);
- if (rescheduleTime) setRescheduleTime("");
- }}
- min={getTomorrowISO()}
- />
- </label>
- <div className="rdm-visit-field">
- <span className="rdm-info-label">New Visit Time</span>
- <div className="rdm-visit-slot-grid">
- {loadingVisitAvailability ? (
- <span className="rdm-visit-slot-empty">Loading available slots...</span>
- ) : rescheduleDate && rescheduleSlots.length > 0 ? (
- rescheduleSlots.map((slot) => (
- <button
- key={slot.label}
- type="button"
- className={`rdm-visit-slot${rescheduleTime === slot.label ? " selected" : ""}`}
- disabled={!slot.available}
- onClick={() => setRescheduleTime(slot.label)}
- >
- <span>{slot.label}</span>
- {!slot.available && slot.disabledReason ? (
- <small>{slot.disabledReason}</small>
- ) : slot.available && slot.remaining != null ? (
- <small>{slot.remaining} left</small>
- ) : null}
- </button>
- ))
- ) : rescheduleDate ? (
- <span className="rdm-visit-slot-empty">
- No available time slots for the selected date.
- </span>
- ) : (
- <span className="rdm-visit-slot-empty">
- Select a new date to load available visit time slots.
- </span>
- )}
- </div>
- </div>
- </div>
- <div className="rdm-visit-reschedule-actions">
- <button
- type="button"
- className="rdm-action rdm-action-outline"
- disabled={isSubmitting}
- onClick={() => setVisitActionMode("")}
- >
- Keep Current Schedule
+ <XCircle size={16} />
+ <span>Reject Request</span>
  </button>
  <button
  type="button"
- className="rdm-action rdm-action-dark"
- disabled={isSubmitting || !rescheduleDate || !rescheduleTime}
- onClick={handleRescheduleVisit}
- >
- Save Reschedule
- </button>
- </div>
- </div>
- )}
- </div>
- )}
- </div>
- )}
-
- <div className="rdm-section rdm-surface-card">
- <h4 className="rdm-section-title">Admin Notes</h4>
- <form onSubmit={saveNotes} className="rdm-notes-form">
- <textarea
- className="rdm-notes-input"
- placeholder="Add internal notes..."
- value={adminNotes}
- onChange={(event) => setAdminNotes(event.target.value)}
- rows="2"
- />
- {adminNotes !== (reservation?.notes || "") && (
- <button
- type="submit"
- className="rdm-action rdm-action-outline"
- disabled={isSubmitting}
- >
- {isSubmitting ? "Saving..." : "Save Notes"}
- </button>
- )}
- </form>
- </div>
-
- <button
- type="button"
- className="rdm-expand-btn"
- onClick={() => setShowPersonal((previous) => !previous)}
- >
- Personal Details
- <svg
- className={`rdm-chevron ${showPersonal ? "open" : ""}`}
- width="14"
- height="14"
- viewBox="0 0 24 24"
- fill="none"
- >
- <path
- d="M6 9l6 6 6-6"
- stroke="currentColor"
- strokeWidth="2"
- strokeLinecap="round"
- strokeLinejoin="round"
- />
- </svg>
- </button>
- {showPersonal && (
- <div className="rdm-expand-content">
- <div className="rdm-info-grid">
- {PERSONAL_FIELDS(reservation).map(([label, value]) => (
- <div className="rdm-info-item" key={label}>
- <span className="rdm-info-label">{label}</span>
- <span className="rdm-info-value">{value}</span>
- </div>
- ))}
- </div>
-
- {reservation.emergencyContact && (
- <div className="rdm-info-grid" style={{ marginTop: 10 }}>
- {[
- [
- "Emergency Contact",
- fmt(reservation.emergencyContact.name),
- ],
- [
- "Relationship",
- fmt(reservation.emergencyContact.relationship),
- ],
- [
- "Contact #",
- fmt(reservation.emergencyContact.contactNumber),
- ],
- ].map(([label, value]) => (
- <div className="rdm-info-item" key={label}>
- <span className="rdm-info-label">{label}</span>
- <span className="rdm-info-value">{value}</span>
- </div>
- ))}
- </div>
- )}
- </div>
- )}
-
- <button
- type="button"
- className="rdm-expand-btn"
- onClick={() => setShowDocs((previous) => !previous)}
- >
- Submitted Documents
- <svg
- className={`rdm-chevron ${showDocs ? "open" : ""}`}
- width="14"
- height="14"
- viewBox="0 0 24 24"
- fill="none"
- >
- <path
- d="M6 9l6 6 6-6"
- stroke="currentColor"
- strokeWidth="2"
- strokeLinecap="round"
- strokeLinejoin="round"
- />
- </svg>
- </button>
- {showDocs && (
- <div className="rdm-expand-content">
- {docs.map((doc, index) => (
- <div key={`${doc.label}-${index}`} className="rdm-doc-row">
- <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
- <span className="rdm-doc-label">{doc.label}</span>
-  {(() => {
-  const appearance = getPrecheckAppearance(doc.precheck);
-  const notes = [
-  doc.precheck?.applicantMessage,
-  doc.precheck?.adminNote,
-  ...(Array.isArray(doc.precheck?.aiCheckWarnings)
-  ? doc.precheck.aiCheckWarnings
-  : []),
-  ]
-  .map((note) => String(note || "").trim())
-  .filter(Boolean);
-
-  if (!appearance && notes.length === 0) return null;
-
-  const tooltipText =
-  notes.length > 0
-  ? notes.join(" • ")
-  : appearance?.label || "Manual admin inspection recommended";
-
-  const isWarningState =
-  appearance &&
-  (appearance.label.includes("Manual") ||
-  appearance.label.includes("Clearer") ||
-  appearance.label.includes("Type"));
-
-  return (
-  <div style={{ display: "inline-flex", alignItems: "center", marginTop: 2 }}>
-  {appearance ? (
-  <span
-  title={`Document Review Note:\n• ${tooltipText}`}
-  style={{
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 5,
-  padding: "3px 10px",
-  borderRadius: 999,
-  fontSize: "0.72rem",
-  fontWeight: 600,
-  background: appearance.bg,
-  color: appearance.color,
-  cursor: "help",
-  border: `1px solid ${appearance.color}30`,
-  }}
-  >
-  {isWarningState ? (
-  <AlertTriangle size={12} style={{ flexShrink: 0 }} />
-  ) : (
-  <CheckCircle size={12} style={{ flexShrink: 0 }} />
-  )}
-  <span>{appearance.label}</span>
-  </span>
-  ) : null}
-  </div>
-  );
-  })()}
- </div>
- {doc.url && isSafeDocumentUrl(doc.url) ? (
- <button
- type="button"
- className="rdm-doc-view"
- onClick={() => openImage(doc.url, doc.label, { requireHttps: true })}
- >
- View
- </button>
- ) : (
- <span className="rdm-doc-na">
- {doc.url
- ? "Invalid file link. Ask applicant to re-upload."
- : doc.reason
-   ? `Skipped: ${doc.reason}`
-   : "Not submitted"}
- </span>
- )}
- </div>
- ))}
- </div>
- )}
- </div>
-
- <aside className="rdm-side-column">
- <div className="rdm-side-card">
- <h4 className="rdm-side-title">Quick Summary</h4>
- <div className="rdm-side-summary-list">
- <div className="rdm-side-summary-item">
- <span>Reservation Fee</span>
- <strong>{reservationFeeLabel}</strong>
- </div>
- <div className="rdm-side-summary-item">
- <span>Payment Status</span>
- <strong>{fmt(reservation.paymentStatus)}</strong>
- </div>
- <div className="rdm-side-summary-item">
- <span>Payment Method</span>
- <strong>{formatPaymentMethod(reservation.paymentMethod)}</strong>
- </div>
- </div>
- </div>
-
- {status !== "cancelled" && !isMovedOut && (
- <div className="rdm-side-card">
- <h4 className="rdm-side-title">
- {showMeterPrompt ? "Move-In Details" : "Quick Actions"}
- </h4>
- <div className="rdm-actions-card">
- {!hasQuickActions ? (
- <div
- className="rdm-empty-actions"
- style={{
- background: emptyStateInfo.bgColor,
- border: `1px solid ${emptyStateInfo.borderColor}`,
- }}
- >
- <div
- className="rdm-empty-actions-icon-wrap"
- style={{ background: "rgba(255, 255, 255, 0.7)" }}
- >
- <emptyStateInfo.Icon
- size={18}
- style={{ color: emptyStateInfo.iconColor }}
- />
- </div>
- <div className="rdm-empty-actions-content">
- <h5 className="rdm-empty-actions-title">
- {emptyStateInfo.title}
- </h5>
- <p className="rdm-empty-actions-desc">
- {emptyStateInfo.desc}
- </p>
- </div>
- </div>
- ) : showMeterPrompt ? (
- <div className="rdm-inline-movein-form">
- <p className="rdm-inline-form-copy">
- {branchUsesSubmeter
-   ? "Confirm actual move-in date and initial meter reading before recording occupancy."
-   : "Confirm actual move-in date before recording occupancy."}
- </p>
-
- <div className="rdm-inline-field">
- <label className="rdm-inline-label">
- Actual Move-In Date <span className="rdm-asterisk">*</span>
- </label>
- <input
- type="date"
- value={actualMoveInDate}
- onChange={(event) => setActualMoveInDate(event.target.value)}
- className="rdm-inline-input"
- />
- </div>
-
- {branchUsesSubmeter && (
- <div className="rdm-inline-field">
-                       <div className="rdm-inline-label-group">
-                         <label className="rdm-inline-label">
-                           Starting Meter Reading <span className="rdm-asterisk">*</span>
-                         </label>
-                         <div
-                           className="rdm-meter-info-badge"
-                           onClick={() => {
-                             if (previousMeterReading != null) {
-                               setMeterReadingVal(String(previousMeterReading));
-                             }
-                           }}
-                           title={previousMeterReading != null ? "Click to auto-fill previous reading baseline" : "No previous reading logged"}
-                         >
-                           <Info size={16} className="rdm-meter-info-icon" />
-                           <div className="rdm-meter-tooltip">
-                             <span>
-                               {previousMeterReading != null ? (
-                                 <>Last Recorded: <strong>{Number(previousMeterReading).toLocaleString("en-PH")} kWh</strong></>
-                               ) : (
-                                 "No previous reading logged yet for this room."
-                               )}
-                             </span>
-                             <span className="rdm-meter-tooltip-hint">
-                               {previousMeterReading != null
-                                 ? "Click to auto-fill starting baseline"
-                                 : "Enter initial room meter reading"}
-                             </span>
-                           </div>
-                         </div>
-                       </div>
- <div className="rdm-inline-addon-group">
- <input
- type="number"
- min="0"
- max="99999"
- step="0.01"
- value={meterReadingVal}
- onChange={(event) => setMeterReadingVal(event.target.value)}
- className="rdm-inline-addon-input"
- placeholder="e.g. 1250"
- autoFocus
- />
- <span className="rdm-inline-addon-label">kWh</span>
- </div>
- </div>
- )}
-
- <div className="rdm-inline-actions">
- <button
- type="button"
- className="rdm-action rdm-action-secondary"
- onClick={() => setShowMeterPrompt(false)}
- disabled={isSubmitting}
- >
- Cancel
- </button>
- <button
- type="button"
- className="rdm-action rdm-action-primary rdm-action-success"
- onClick={() => {
- const reading = branchUsesSubmeter ? Number(meterReadingVal) : null;
- if (branchUsesSubmeter && (!meterReadingVal.trim() || Number.isNaN(reading) || reading < 0)) {
- showNotification(
- "A valid meter reading (kWh) is required.",
- "error",
- 4000,
- );
- return;
- }
- if (!actualMoveInDate) {
- showNotification("The actual move-in date is required.", "error", 4000);
- return;
- }
-
- doAction(
- "moveIn",
- async () => {
- try {
- await reservationApi.update(reservation.id, {
- status: "moveIn",
- ...(branchUsesSubmeter && reading !== null ? { meterReading: reading } : {}),
- actualMoveInDate,
- houseRulesPrepared: true,
- });
- // Invalidate utility caches so the billing timeline auto-updates.
- await queryClient.invalidateQueries({ queryKey: ["utilities"] });
- } catch (apiErr) {
- // Surface backend blocker reasons if available
- const blockers = apiErr?.response?.data?.missing || apiErr?.data?.missing;
- if (blockers && blockers.length > 0) {
- throw new Error(
- "Move-in prerequisites not met:\n• " + blockers.join("\n• "),
- );
- }
- throw apiErr;
- }
- },
- "Tenant moved in successfully",
- );
- }}
- disabled={isSubmitting}
- >
- {isSubmitting ? "Processing..." : "Move In"}
- </button>
- </div>
- </div>
- ) : (
- <>
- {stageGuide && (
- <div className="rdm-stage-guide">
- <div className="rdm-stage-guide-icon-wrap">
- <stageGuide.Icon size={16} strokeWidth={1.75} />
- </div>
- <p className="rdm-stage-guide-msg">{stageGuide.message}</p>
- </div>
- )}
-
- {allowedActions.includes("moveIn") && (
- <button
- className="rdm-action rdm-action-primary"
- onClick={() => {
- setMeterReadingVal("");
- setShowMeterPrompt(true);
- }}
- disabled={isSubmitting}
- title="Mark tenant as moved in and record the initial meter reading"
- >
- Mark as Moved In
- </button>
- )}
-
- {allowedActions.includes("extend") && (
- <button
- className="rdm-action rdm-action-dark"
- onClick={() => setShowExtendPrompt(true)}
- disabled={isSubmitting}
- >
- Reschedule move-in
- </button>
- )}
-
- {allowedActions.includes("approve_for_payment") && (
- <button
- className="rdm-action rdm-action-primary"
- onClick={() => {
- if (pricingBlocksApproval) {
- showNotification(
- pricingIsMissing
- ? "Pricing information unavailable. Refresh and try again."
- : "Pricing configuration is unavailable. This reservation cannot be approved yet.",
- "error",
- );
- return;
- }
- doAction(
- "approveForPayment",
- () =>
- reservationApi.update(reservation.id, {
- status: "approved_for_payment",
- applicationReviewReason: null,
- }),
- "Application approved for payment",
- );
- }}
- disabled={isSubmitting || pricingBlocksApproval}
- title={
- pricingBlocksApproval
- ? (pricingIsMissing
- ? "Pricing information unavailable. Refresh and try again."
- : "Pricing configuration is unavailable. This reservation cannot be approved yet.")
- : undefined
- }
- >
- Approve for Payment
- </button>
- )}
-
- {allowedActions.includes("needs_revision") && (
- <button
- className="rdm-action rdm-action-dark"
- onClick={() => setRevisionModal({ open: true })}
- disabled={isSubmitting}
- >
- Request Revision
- </button>
- )}
-
- {allowedActions.includes("rejected") && (
- <button
- className="rdm-action rdm-action-danger-outline"
- onClick={() => {
- if (!adminNotes.trim()) {
- showNotification("Add a reason in Admin Notes before rejecting.", "warning");
- return;
- }
- doAction(
- "rejectApplication",
- () =>
- reservationApi.update(reservation.id, {
- status: "rejected",
- applicationReviewReason: adminNotes.trim(),
- }),
- "Application rejected",
- );
- }}
- disabled={isSubmitting}
- >
- Reject Application
- </button>
- )}
-
- {allowedActions.includes("cancelled") && !cancellationPending && (
- <button
- className="rdm-action rdm-action-danger-outline"
+ className="rdm-action rdm-action-danger-solid"
  onClick={() =>
  doAction(
- "cancel",
- () =>
- reservationApi.update(reservation.id, {
- status: "cancelled",
- }),
- "Reservation cancelled",
+ "approveCancellation",
+ () => reservationApi.approveCancellationRequest(reservation.id),
+ "Cancellation approved. Reservation cancelled and bed released.",
  )
  }
  disabled={isSubmitting}
  >
- Cancel Reservation
+ <CheckCircle size={16} />
+ <span>Approve Cancellation</span>
  </button>
- )}
- </>
- )}
  </div>
  </div>
  )}
+          {/* Main Column */}
+          {/* Overview Card (Main / Non-collapsible) */}
+          <div className="rdm-section rdm-surface-card rdm-glance-card">
+            <div className="rdm-glance-header">
+              <div className="rdm-glance-title-wrap">
+                <h3 className="rdm-glance-title">Overview</h3>
+              </div>
+              <span className="rdm-glance-code">{reservation.reservationCode || "\u2014"}</span>
+            </div>
 
- <div className="rdm-side-card">
- <h4 className="rdm-side-title">Activity Timeline</h4>
- <div className="rdm-timeline">
- {activityTimeline.map((item, index) => (
- <div className="rdm-timeline-item" key={`${item.label}-${index}`}>
- <span className="rdm-timeline-dot" />
- <div className="rdm-timeline-copy">
- <span className="rdm-timeline-label">{item.label}</span>
- <span className="rdm-timeline-value">{item.value}</span>
- </div>
- </div>
- ))}
- </div>
- </div>
- </aside>
+            <div className="rdm-glance-grid">
+              {/* Block 1: Unit & Room Assignment */}
+              <div className="rdm-glance-block">
+                <div className="rdm-glance-block-header">
+                  <Building2 size={15} className="rdm-glance-icon" />
+                  <span>Unit &amp; Room Assignment</span>
+                </div>
+                <div className="rdm-glance-primary">{reservation.room ?? "\u2014"}</div>
+                <div className="rdm-glance-secondary">
+                  <span>{formatSelectedBed(reservation.selectedBed)}</span>
+                  <span className="rdm-glance-dot-sep">•</span>
+                  <span>{formatRoomType(reservation.roomType)}</span>
+                </div>
+                <div className="rdm-glance-tertiary">
+                  Branch: <strong>{reservation.branch ?? "\u2014"}</strong>
+                </div>
+              </div>
+
+              {/* Block 2: Stay & Lease Timeline */}
+              <div className="rdm-glance-block">
+                <div className="rdm-glance-block-header">
+                  <Calendar size={15} className="rdm-glance-icon" />
+                  <span>Stay &amp; Lease Timeline</span>
+                </div>
+                <div className="rdm-glance-primary">
+                  {fmtDate(moveInDate)}
+                </div>
+                <div className="rdm-glance-secondary">
+                  <span>{reservation.leaseDuration ? `${reservation.leaseDuration} Months` : "\u2014"}</span>
+                  <span className="rdm-glance-dot-sep">•</span>
+                  <span>{leaseCategoryLabel}</span>
+                </div>
+                <div className="rdm-glance-tertiary">
+                  {isOverdue ? (
+                    <span className="rdm-danger" style={{ fontWeight: 700 }}>
+                      {daysOverdue} day{daysOverdue > 1 ? "s" : ""} overdue
+                    </span>
+                  ) : (
+                    <span>Target Move-In Scheduled</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Block 3: Rates & Financial Snapshot */}
+              <div className="rdm-glance-block">
+                <div className="rdm-glance-block-header">
+                  <CreditCard size={15} className="rdm-glance-icon" />
+                  <span>Rates &amp; Settlement</span>
+                </div>
+                <div className="rdm-glance-primary">
+                  {pricingDisplay?.finalMonthlyRate
+                    ? formatPhp(pricingDisplay.finalMonthlyRate)
+                    : formatPhp(reservation?.totalPrice)}
+                  <span className="rdm-glance-unit"> / mo</span>
+                </div>
+                <div className="rdm-glance-secondary">
+                  {Number.isFinite(Number(pricingDisplay?.discountPercentage)) && Number(pricingDisplay.discountPercentage) > 0 ? (
+                    <span>
+                      Regular: <del>{formatPhp(pricingDisplay.regularMonthlyRate)}</del> ({pricingDisplay.discountPercentage}% off)
+                    </span>
+                  ) : (
+                    <span>Standard Monthly Rate</span>
+                  )}
+                </div>
+                <div className="rdm-glance-tertiary">
+                  Initial Due: <strong>{formatPhp(initialTotalDue)}</strong>
+                </div>
+              </div>
+
+              {/* Block 4: Stage Readiness & Verification */}
+              <div className="rdm-glance-block">
+                <div className="rdm-glance-block-header">
+                  <CheckCircle size={15} className="rdm-glance-icon" />
+                  <span>Stage Readiness</span>
+                </div>
+                <div className="rdm-glance-pills">
+                  <div className="rdm-readiness-row">
+                    <span className="rdm-readiness-label">Documents</span>
+                    <span className="rdm-readiness-value">
+                      {docs.filter((d) => Boolean(d.url)).length}/{docs.length} Uploaded
+                    </span>
+                  </div>
+                  <div className="rdm-readiness-row">
+                    <span className="rdm-readiness-label">Visit / Viewing</span>
+                    <span className="rdm-readiness-value">
+                      {visitStatusAppearance?.label || viewingPreferenceLabel}
+                    </span>
+                  </div>
+                  <div className="rdm-readiness-row">
+                    <span className="rdm-readiness-label">Reservation Fee</span>
+                    <span
+                      className="rdm-summary-badge"
+                      style={{
+                        backgroundColor: reservationFeeBadge.bg,
+                        color: reservationFeeBadge.color,
+                        border: `1px solid ${reservationFeeBadge.border}`,
+                      }}
+                    >
+                      <span
+                        className="rdm-summary-badge-dot"
+                        style={{ backgroundColor: reservationFeeBadge.dot }}
+                      />
+                      {reservationFeeBadge.label}
+                    </span>
+                  </div>
+                  <div className="rdm-readiness-row">
+                    <span className="rdm-readiness-label">Advance &amp; Deposit</span>
+                    <span
+                      className="rdm-summary-badge"
+                      style={{
+                        backgroundColor: moveInPaymentBadge.bg,
+                        color: moveInPaymentBadge.color,
+                        border: `1px solid ${moveInPaymentBadge.border}`,
+                      }}
+                    >
+                      <span
+                        className="rdm-summary-badge-dot"
+                        style={{ backgroundColor: moveInPaymentBadge.dot }}
+                      />
+                      {moveInPaymentBadge.label}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Submitted Documents (Collapsible) */}
+          <div className="rdm-collapsible-card">
+            <button
+              type="button"
+              className="rdm-collapsible-header"
+              onClick={() => setShowDocs((previous) => !previous)}
+            >
+              <div className="rdm-collapsible-header-left">
+                <div className="rdm-collapsible-icon-wrap">
+                  <FileText size={16} />
+                </div>
+                <div className="rdm-collapsible-title-wrap">
+                  <h4 className="rdm-collapsible-title">Submitted Documents</h4>
+                  <p className="rdm-collapsible-desc">
+                    Identification proofs, clearances, and verification files
+                  </p>
+                </div>
+              </div>
+              <div className="rdm-collapsible-header-right">
+                <span className="rdm-docs-counter-chip">
+                  {docs.filter((d) => Boolean(d.url)).length} / {docs.length} Uploaded
+                </span>
+                <svg
+                  className={`rdm-collapsible-chevron ${showDocs ? "open" : ""}`}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            </button>
+
+            {showDocs && (
+              <div className="rdm-collapsible-content">
+                <div className="rdm-docs-list">
+                  {docs.map((doc, index) => (
+                    <div key={`${doc.label}-${index}`} className="rdm-doc-row">
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        <span className="rdm-doc-label">{doc.label}</span>
+                        {(() => {
+                          const appearance = getPrecheckAppearance(doc.precheck);
+                          const notes = [
+                            doc.precheck?.applicantMessage,
+                            doc.precheck?.adminNote,
+                            ...(Array.isArray(doc.precheck?.aiCheckWarnings)
+                              ? doc.precheck.aiCheckWarnings
+                              : []),
+                          ]
+                            .map((note) => String(note || "").trim())
+                            .filter(Boolean);
+
+                          if (!appearance && notes.length === 0) return null;
+
+                          const tooltipText =
+                            notes.length > 0
+                              ? notes.join(" • ")
+                              : appearance?.label || "Manual admin inspection recommended";
+
+                          const isWarningState =
+                            appearance &&
+                            (appearance.label.includes("Manual") ||
+                              appearance.label.includes("Clearer") ||
+                              appearance.label.includes("Type"));
+
+                          return (
+                            <div style={{ display: "inline-flex", alignItems: "center", marginTop: 2 }}>
+                              {appearance ? (
+                                <span
+                                  title={`Document Review Note:\n• ${tooltipText}`}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 5,
+                                    padding: "3px 10px",
+                                    borderRadius: 999,
+                                    fontSize: "0.72rem",
+                                    fontWeight: 600,
+                                    background: appearance.bg,
+                                    color: appearance.color,
+                                    cursor: "help",
+                                    border: `1px solid ${appearance.color}30`,
+                                  }}
+                                >
+                                  {isWarningState ? (
+                                    <AlertTriangle size={12} style={{ flexShrink: 0 }} />
+                                  ) : (
+                                    <CheckCircle size={12} style={{ flexShrink: 0 }} />
+                                  )}
+                                  <span>{appearance.label}</span>
+                                </span>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      {doc.url && isSafeDocumentUrl(doc.url) ? (
+                        <button
+                          type="button"
+                          className="rdm-doc-view"
+                          onClick={() => openImage(doc.url, doc.label, { requireHttps: true })}
+                        >
+                          View Document
+                        </button>
+                      ) : (
+                        <span className="rdm-doc-na">
+                          {doc.url
+                            ? "Invalid file link. Ask applicant to re-upload."
+                            : doc.reason
+                              ? `Skipped: ${doc.reason}`
+                              : "Not submitted"}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Section: Viewing & Visit Schedule (Collapsible) */}
+          <div className="rdm-collapsible-card">
+            <button
+              type="button"
+              className="rdm-collapsible-header"
+              onClick={() => setShowViewingVisit((previous) => !previous)}
+            >
+              <div className="rdm-collapsible-header-left">
+                <div className="rdm-collapsible-icon-wrap">
+                  <Calendar size={16} />
+                </div>
+                <div className="rdm-collapsible-title-wrap">
+                  <h4 className="rdm-collapsible-title">Viewing &amp; Visit Schedule</h4>
+                  <p className="rdm-collapsible-desc">
+                    Viewing preference, physical visit appointments, and assigned room photos
+                  </p>
+                </div>
+              </div>
+              <div className="rdm-collapsible-header-right">
+                {visitStatusAppearance && (
+                  <span
+                    className="rdm-status-chip rdm-visit-status-chip"
+                    style={{
+                      background: "transparent",
+                      color: visitStatusAppearance.color,
+                      padding: "2px 0",
+                    }}
+                  >
+                    <span
+                      className="rdm-status-dot"
+                      style={{ background: visitStatusAppearance.dot }}
+                    />
+                    {visitStatusAppearance.label}
+                  </span>
+                )}
+                <svg
+                  className={`rdm-collapsible-chevron ${showViewingVisit ? "open" : ""}`}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            </button>
+
+            {showViewingVisit && (
+              <div className="rdm-collapsible-content">
+                <div className="rdm-info-grid" style={{ paddingTop: 4 }}>
+                  <div className="rdm-info-item">
+                    <span className="rdm-info-label">Selected Option</span>
+                    <span className="rdm-info-value">{viewingPreferenceLabel}</span>
+                  </div>
+                  <div className="rdm-info-item">
+                    <span className="rdm-info-label">Preferred Visit Date</span>
+                    <span className="rdm-info-value">{fmtDate(reservation.visitDate)}</span>
+                  </div>
+                  <div className="rdm-info-item">
+                    <span className="rdm-info-label">Preferred Visit Time</span>
+                    <span className="rdm-info-value">{fmt(reservation.visitTime)}</span>
+                  </div>
+                  <div className="rdm-info-item">
+                    <span className="rdm-info-label">Visit Code</span>
+                    <span className="rdm-info-value">
+                      {reservation.visitCode ? (
+                        <button
+                          type="button"
+                          className="rdm-visit-code-badge"
+                          onClick={() => {
+                            navigator.clipboard.writeText(reservation.visitCode);
+                            showNotification("Visit Code copied to clipboard!", "success", 2000);
+                          }}
+                          title="Click to copy Visit Code"
+                        >
+                          <span>{reservation.visitCode}</span>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        </button>
+                      ) : (
+                        "\u2014"
+                      )}
+                    </span>
+                  </div>
+                  <div className="rdm-info-item rdm-info-item--wide">
+                    <span className="rdm-info-label">Remote Viewing Acknowledgement</span>
+                    <span className="rdm-info-value">
+                      {reservation.remoteViewingAcknowledged ? "Yes" : "No"}
+                    </span>
+                  </div>
+                  <div className="rdm-info-item rdm-info-item--wide">
+                    <span className="rdm-info-label">Urgent Move-in Review</span>
+                    <span className="rdm-info-value">
+                      {reservation.isUrgentMoveIn ? "Requested" : "No"}
+                    </span>
+                  </div>
+                  {Boolean(reservation.remoteViewingQuestions || reservation.applicationReviewReason) && (
+                    <div className="rdm-info-item rdm-info-item--wide">
+                      <span className="rdm-info-label">Applicant Questions / Concerns</span>
+                      <span className="rdm-info-value">
+                        {fmt(reservation.remoteViewingQuestions || reservation.applicationReviewReason)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Room Photo Previews */}
+                {roomImages.length > 0 && (
+                  <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(15, 23, 42, 0.08)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                      <span className="rdm-info-label" style={{ display: "flex", alignItems: "center", gap: 6, margin: 0 }}>
+                        <Camera size={13} style={{ color: "#64748B" }} />
+                        <span>Assigned Room Photos</span>
+                      </span>
+                      <span style={{ fontSize: "0.74rem", color: "#64748B", fontWeight: 500 }}>
+                        {roomImages.length} photo{roomImages.length > 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      {roomImages.map((imageUrl, index) => (
+                        <button
+                          key={`${imageUrl}-${index}`}
+                          type="button"
+                          onClick={() => openImage(imageUrl, `Room Photo ${index + 1}`)}
+                          style={{
+                            position: "relative",
+                            width: 80,
+                            height: 60,
+                            borderRadius: 8,
+                            overflow: "hidden",
+                            border: "1px solid rgba(15, 23, 42, 0.12)",
+                            background: "#F8FAFC",
+                            padding: 0,
+                            cursor: "pointer",
+                            transition: "all 0.15s ease-in-out",
+                            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
+                          }}
+                          className="hover:border-slate-400 focus:outline-none group"
+                          title={`Click to view Room Photo ${index + 1}`}
+                        >
+                          <img
+                            src={imageUrl}
+                            alt={`Room photo ${index + 1}`}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            onError={(event) => {
+                              event.target.style.display = "none";
+                              if (event.target.nextSibling) event.target.nextSibling.style.display = "flex";
+                            }}
+                          />
+                          <div
+                            style={{
+                              display: "none",
+                              width: "100%",
+                              height: "100%",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexDirection: "column",
+                              gap: 2,
+                              background: "#F1F5F9",
+                              color: "#64748B",
+                              fontSize: "0.68rem",
+                            }}
+                          >
+                            <ImageIcon size={16} />
+                            <span>Photo {index + 1}</span>
+                          </div>
+                          <div
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              background: "rgba(15, 23, 42, 0.45)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "#FFFFFF",
+                              opacity: 0,
+                              transition: "opacity 0.15s ease",
+                            }}
+                            className="group-hover:opacity-100"
+                          >
+                            <Maximize2 size={15} />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Visit Management Actions & Reschedule Form */}
+                {physicalVisitSelected && !visitActionAvailability.completed && (
+                  <div className="rdm-visit-management-panel" style={{ marginTop: 14 }}>
+                    {visitStatusKey === "allowed_without_visit" ? (
+                      <div className="rdm-visit-action-helper rdm-visit-action-helper-info">
+                        Visit requirement has been waived. Applicant may proceed without a physical visit.
+                      </div>
+                    ) : (
+                      <>
+                        <label className="rdm-visit-field">
+                          <span className="rdm-info-label">Visit Remarks</span>
+                          <textarea
+                            className="rdm-notes-input"
+                            placeholder="Add optional visit remarks for the next action..."
+                            value={visitRemarks}
+                            onChange={(event) => setVisitRemarks(event.target.value)}
+                            rows="2"
+                          />
+                        </label>
+
+                        <div className="rdm-visit-actions-grid">
+                          {visitActionAvailability.canApproveSchedule && (
+                            <button type="button" className="rdm-action rdm-action-outline"
+                              disabled={isSubmitting}
+                              onClick={() => runVisitManagementAction({
+                                action: "approve_schedule", successMsg: "Visit schedule approved",
+                                modalTitle: "Approve Visit Schedule",
+                                modalMessage: "Confirm the applicant's selected physical visit schedule. The application will remain locked until the visit is completed or waived.",
+                                confirmText: "Approve Schedule",
+                              })}>
+                              Approve Schedule
+                            </button>
+                          )}
+                          {visitActionAvailability.canRejectSchedule && (
+                            <button type="button" className="rdm-action rdm-action-outline rdm-action-outline-danger"
+                              disabled={isSubmitting}
+                              onClick={() => runVisitManagementAction({
+                                action: "reject_schedule", successMsg: "Visit schedule rejected",
+                                modalTitle: "Reject Visit Schedule",
+                                modalMessage: "Reject the selected visit schedule and ask the applicant to choose another date or time.",
+                                confirmText: "Reject Schedule", variant: "warning",
+                              })}>
+                              Reject Schedule
+                            </button>
+                          )}
+                          {visitActionAvailability.canMarkVisited && (
+                            <button type="button" className="rdm-action rdm-action-outline"
+                              disabled={isSubmitting}
+                              onClick={() => runVisitManagementAction({
+                                action: "mark_visited", successMsg: "Visit marked as completed",
+                                modalTitle: "Mark As Visited",
+                                modalMessage: "Record that the applicant attended the scheduled physical visit. This will not approve the application or unlock payment.",
+                                confirmText: "Mark as Visited",
+                              })}>
+                              Mark as Visited
+                            </button>
+                          )}
+                          {visitActionAvailability.canMarkNoShow && (
+                            <button type="button" className="rdm-action rdm-action-outline"
+                              disabled={isSubmitting}
+                              onClick={() => runVisitManagementAction({
+                                action: "mark_no_show", successMsg: "Visit marked as no-show",
+                                modalTitle: "Mark As No-Show",
+                                modalMessage: "Record that the applicant missed the scheduled physical visit. The reservation and application review will remain separate.",
+                                confirmText: "Mark No-Show", variant: "warning",
+                              })}>
+                              Mark as No-Show
+                            </button>
+                          )}
+                          {visitActionAvailability.canReschedule && (
+                            <button type="button"
+                              className={`rdm-action rdm-action-outline${visitActionMode === "reschedule" ? " rdm-action-outline-active" : ""}`}
+                              disabled={isSubmitting}
+                              onClick={() => setVisitActionMode((p) => p === "reschedule" ? "" : "reschedule")}>
+                              Reschedule Visit
+                            </button>
+                          )}
+                          {visitActionAvailability.canCancelVisit && (
+                            <button type="button" className="rdm-action rdm-action-outline rdm-action-outline-danger"
+                              disabled={isSubmitting}
+                              onClick={() => runVisitManagementAction({
+                                action: "cancel_visit", successMsg: "Visit schedule cancelled",
+                                modalTitle: "Cancel Visit Schedule",
+                                modalMessage: "Cancel only the physical visit schedule. This will not cancel the reservation or unlock payment.",
+                                confirmText: "Cancel Visit", variant: "danger",
+                              })}>
+                              Cancel Visit Schedule
+                            </button>
+                          )}
+                          {visitActionAvailability.canAllowWithoutVisit && (
+                            <button type="button" className="rdm-action rdm-action-outline"
+                              disabled={isSubmitting}
+                              onClick={() => runVisitManagementAction({
+                                action: "allow_without_visit", successMsg: "Applicant may proceed without a completed visit",
+                                modalTitle: "Allow Application Without Visit",
+                                modalMessage: "Allow the applicant to continue to the tenant application without a completed physical visit. This will not approve the application or unlock payment.",
+                                confirmText: "Allow Application",
+                              })}>
+                              Allow Application Without Visit
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {visitActionMode === "reschedule" && visitActionAvailability.canReschedule && (
+                      <div className="rdm-visit-reschedule">
+                        <div className="rdm-visit-reschedule-grid">
+                          <label className="rdm-visit-field">
+                            <span className="rdm-info-label">New Visit Date</span>
+                            <input
+                              type="date"
+                              className="rdm-notes-input"
+                              value={rescheduleDate}
+                              onChange={(event) => {
+                                setRescheduleDate(event.target.value);
+                                if (rescheduleTime) setRescheduleTime("");
+                              }}
+                              min={getTomorrowISO()}
+                            />
+                          </label>
+                          <div className="rdm-visit-field">
+                            <span className="rdm-info-label">New Visit Time</span>
+                            <div className="rdm-visit-slot-grid">
+                              {loadingVisitAvailability ? (
+                                <span className="rdm-visit-slot-empty">Loading available slots...</span>
+                              ) : rescheduleDate && rescheduleSlots.length > 0 ? (
+                                rescheduleSlots.map((slot) => (
+                                  <button
+                                    key={slot.label}
+                                    type="button"
+                                    className={`rdm-visit-slot${rescheduleTime === slot.label ? " selected" : ""}`}
+                                    disabled={!slot.available}
+                                    onClick={() => setRescheduleTime(slot.label)}
+                                  >
+                                    <span>{slot.label}</span>
+                                    {!slot.available && slot.disabledReason ? (
+                                      <small>{slot.disabledReason}</small>
+                                    ) : slot.available && slot.remaining != null ? (
+                                      <small>{slot.remaining} left</small>
+                                    ) : null}
+                                  </button>
+                                ))
+                              ) : rescheduleDate ? (
+                                <span className="rdm-visit-slot-empty">
+                                  No available time slots for the selected date.
+                                </span>
+                              ) : (
+                                <span className="rdm-visit-slot-empty">
+                                  Select a new date to load available visit time slots.
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="rdm-visit-reschedule-actions">
+                          <button
+                            type="button"
+                            className="rdm-action rdm-action-outline"
+                            disabled={isSubmitting}
+                            onClick={() => setVisitActionMode("")}
+                          >
+                            Keep Current Schedule
+                          </button>
+                          <button
+                            type="button"
+                            className="rdm-action rdm-action-dark"
+                            disabled={isSubmitting || !rescheduleDate || !rescheduleTime}
+                            onClick={handleRescheduleVisit}
+                          >
+                            Save Reschedule
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Visit History Log */}
+                {visitHistory.length > 0 && (
+                  <div className="rdm-visit-management-note" style={{ marginTop: 14 }}>
+                    <span className="rdm-info-label">Visit History Log</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+                      {visitHistory.slice(0, 5).map((entry, index) => (
+                        <div
+                          key={`${entry.status || "visit"}-${entry.updatedAt || entry.scheduledAt || index}`}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 8,
+                            background: "transparent",
+                            border: "1px solid rgba(15, 23, 42, 0.08)",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                            <strong style={{ fontSize: "0.84rem", color: "#0F172A" }}>
+                              {getVisitHistoryTitle(entry)}
+                            </strong>
+                            <span style={{ fontSize: "0.78rem", color: "#64748B" }}>
+                              {fmtDateTime(entry.updatedAt || entry.scheduledAt)}
+                            </span>
+                          </div>
+                          {getVisitHistoryScheduleLines(entry).map((line) => (
+                            <div
+                              key={`${line.label}-${line.value}`}
+                              style={{ fontSize: "0.8rem", color: "#334155", marginTop: 6 }}
+                            >
+                              <span style={{ fontWeight: 650 }}>{line.label}</span> {line.value}
+                            </div>
+                          ))}
+                          {entry.updatedByName && (
+                            <div style={{ fontSize: "0.78rem", color: "#64748B", marginTop: 4 }}>
+                              Updated by {entry.updatedByName}
+                            </div>
+                          )}
+                          {entry.notes && (
+                            <div style={{ fontSize: "0.8rem", color: "#475569", marginTop: 6 }}>
+                              {entry.notes}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Section: Personal & Contact Details (Collapsible) */}
+          <div className="rdm-collapsible-card">
+            <button
+              type="button"
+              className="rdm-collapsible-header"
+              onClick={() => setShowPersonal((previous) => !previous)}
+            >
+              <div className="rdm-collapsible-header-left">
+                <div className="rdm-collapsible-icon-wrap">
+                  <User size={16} />
+                </div>
+                <div className="rdm-collapsible-title-wrap">
+                  <h4 className="rdm-collapsible-title">Personal &amp; Contact Details</h4>
+                  <p className="rdm-collapsible-desc">
+                    Applicant identity details, contact numbers, and emergency contact
+                  </p>
+                </div>
+              </div>
+              <div className="rdm-collapsible-header-right">
+                <svg
+                  className={`rdm-collapsible-chevron ${showPersonal ? "open" : ""}`}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            </button>
+
+            {showPersonal && (
+              <div className="rdm-collapsible-content">
+                <div className="rdm-info-grid" style={{ paddingTop: 4 }}>
+                  {PERSONAL_FIELDS(reservation).map(([label, value]) => (
+                    <div className="rdm-info-item" key={label}>
+                      <span className="rdm-info-label">{label}</span>
+                      <span className="rdm-info-value">{value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {reservation.emergencyContact && (
+                  <div className="rdm-info-grid" style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #E2E8F0" }}>
+                    {[
+                      ["Emergency Contact", fmt(reservation.emergencyContact.name)],
+                      ["Relationship", fmt(reservation.emergencyContact.relationship)],
+                      ["Contact #", fmt(reservation.emergencyContact.contactNumber)],
+                    ].map(([label, value]) => (
+                      <div className="rdm-info-item" key={label}>
+                        <span className="rdm-info-label">{label}</span>
+                        <span className="rdm-info-value">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Section: Internal Admin Notes (Collapsible) */}
+          <div className="rdm-collapsible-card">
+            <button
+              type="button"
+              className="rdm-collapsible-header"
+              onClick={() => setShowNotes((previous) => !previous)}
+            >
+              <div className="rdm-collapsible-header-left">
+                <div className="rdm-collapsible-icon-wrap">
+                  <ClipboardList size={16} />
+                </div>
+                <div className="rdm-collapsible-title-wrap">
+                  <h4 className="rdm-collapsible-title">Internal Admin Notes</h4>
+                  <p className="rdm-collapsible-desc">
+                    Staff remarks and internal administration logs
+                  </p>
+                </div>
+              </div>
+              <div className="rdm-collapsible-header-right">
+                {Boolean(adminNotes?.trim()) && (
+                  <span className="rdm-docs-counter-chip" style={{ fontSize: "0.72rem" }}>
+                    Note Logged
+                  </span>
+                )}
+                <svg
+                  className={`rdm-collapsible-chevron ${showNotes ? "open" : ""}`}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            </button>
+
+            {showNotes && (
+              <div className="rdm-collapsible-content">
+                <form onSubmit={saveNotes} className="rdm-notes-form" style={{ paddingTop: 4 }}>
+                  <textarea
+                    className="rdm-notes-input"
+                    placeholder="Add internal notes or administrative remarks..."
+                    value={adminNotes}
+                    onChange={(event) => setAdminNotes(event.target.value)}
+                    rows="2"
+                  />
+                  {adminNotes !== (reservation?.notes || "") && (
+                    <button
+                      type="submit"
+                      className="rdm-action rdm-action-outline"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? "Saving..." : "Save Notes"}
+                    </button>
+                  )}
+                </form>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar Column */}
+        <aside className="rdm-side-column">
+          {/* Card 1: Quick Actions (Top Priority for Admin) */}
+          {status !== "cancelled" && !isMovedOut && (
+            <div className="rdm-side-card">
+              <h4 className="rdm-side-title">
+                {showMeterPrompt ? "Move-In Details" : "Quick Actions"}
+              </h4>
+              <div className="rdm-actions-card">
+                {!hasQuickActions ? (
+                  <div
+                    className="rdm-empty-actions"
+                    style={{
+                      background: emptyStateInfo.bgColor,
+                      border: `1px solid ${emptyStateInfo.borderColor}`,
+                    }}
+                  >
+                    <div
+                      className="rdm-empty-actions-icon-wrap"
+                      style={{ background: "rgba(255, 255, 255, 0.7)" }}
+                    >
+                      <emptyStateInfo.Icon
+                        size={18}
+                        style={{ color: emptyStateInfo.iconColor }}
+                      />
+                    </div>
+                    <div className="rdm-empty-actions-content">
+                      <h5 className="rdm-empty-actions-title">
+                        {emptyStateInfo.title}
+                      </h5>
+                      <p className="rdm-empty-actions-desc">
+                        {emptyStateInfo.desc}
+                      </p>
+                    </div>
+                  </div>
+                ) : showMeterPrompt ? (
+                  <div className="rdm-inline-movein-form">
+                    <p className="rdm-inline-form-copy">
+                      {branchUsesSubmeter
+                        ? "Confirm actual move-in date and initial meter reading before recording occupancy."
+                        : "Confirm actual move-in date before recording occupancy."}
+                    </p>
+
+                    {isFutureMoveInDate && (
+                      <div className="rdm-movein-future-notice">
+                        <div className="rdm-movein-future-notice-header">
+                          <AlertTriangle size={15} className="rdm-movein-future-notice-icon" />
+                          <span className="rdm-movein-future-notice-title">
+                            Future Date Selected ({fmtDate(actualMoveInDate)})
+                          </span>
+                        </div>
+                        <p className="rdm-movein-future-notice-text">
+                          Marking as Moved In immediately activates this resident and finalizes advance rent. If the tenant has not yet arrived on-site, please <strong>Cancel</strong> and use <strong>Reschedule move-in</strong> to update their expected arrival date instead.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="rdm-inline-field">
+                      <label className="rdm-inline-label">
+                        Actual Move-In Date <span className="rdm-asterisk">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={actualMoveInDate}
+                        onChange={(event) => setActualMoveInDate(event.target.value)}
+                        className="rdm-inline-input"
+                      />
+                    </div>
+
+                    {branchUsesSubmeter && (
+                      <div className="rdm-inline-field">
+                        <div className="rdm-inline-label-group">
+                          <label className="rdm-inline-label">
+                            Starting Meter Reading <span className="rdm-asterisk">*</span>
+                          </label>
+                          <div
+                            className="rdm-meter-info-badge"
+                            onClick={() => {
+                              if (previousMeterReading != null) {
+                                setMeterReadingVal(String(previousMeterReading));
+                              }
+                            }}
+                            title={previousMeterReading != null ? "Click to auto-fill previous reading baseline" : "No previous reading logged"}
+                          >
+                            <Info size={16} className="rdm-meter-info-icon" />
+                            <div className="rdm-meter-tooltip">
+                              <span>
+                                {previousMeterReading != null ? (
+                                  <>Last Recorded: <strong>{Number(previousMeterReading).toLocaleString("en-PH")} kWh</strong></>
+                                ) : (
+                                  "No previous reading logged yet for this room."
+                                )}
+                              </span>
+                              <span className="rdm-meter-tooltip-hint">
+                                {previousMeterReading != null
+                                  ? "Click to auto-fill starting baseline"
+                                  : "Enter initial room meter reading"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="rdm-inline-addon-group">
+                          <input
+                            type="number"
+                            min="0"
+                            max="99999"
+                            step="0.01"
+                            value={meterReadingVal}
+                            onChange={(event) => setMeterReadingVal(event.target.value)}
+                            className="rdm-inline-addon-input"
+                            placeholder="e.g. 1250"
+                            autoFocus
+                          />
+                          <span className="rdm-inline-addon-label">kWh</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="rdm-inline-actions">
+                      <button
+                        type="button"
+                        className="rdm-action rdm-action-secondary"
+                        onClick={() => setShowMeterPrompt(false)}
+                        disabled={isSubmitting}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="rdm-action rdm-action-primary rdm-action-success"
+                        onClick={() => {
+                          const reading = branchUsesSubmeter ? Number(meterReadingVal) : null;
+                          if (branchUsesSubmeter && (!meterReadingVal.trim() || Number.isNaN(reading) || reading < 0)) {
+                            showNotification(
+                              "A valid meter reading (kWh) is required.",
+                              "error",
+                              4000,
+                            );
+                            return;
+                          }
+                          if (!actualMoveInDate) {
+                            showNotification("The actual move-in date is required.", "error", 4000);
+                            return;
+                          }
+
+                          doAction(
+                            "moveIn",
+                            async () => {
+                              try {
+                                await reservationApi.update(reservation.id, {
+                                  status: "moveIn",
+                                  ...(branchUsesSubmeter && reading !== null ? { meterReading: reading } : {}),
+                                  actualMoveInDate,
+                                  houseRulesPrepared: true,
+                                });
+                                // Invalidate utility caches so the billing timeline auto-updates.
+                                await queryClient.invalidateQueries({ queryKey: ["utilities"] });
+                              } catch (apiErr) {
+                                // Surface backend blocker reasons if available
+                                const blockers = apiErr?.response?.data?.missing || apiErr?.data?.missing;
+                                if (blockers && blockers.length > 0) {
+                                  throw new Error(
+                                    "Move-in prerequisites not met:\n• " + blockers.join("\n• "),
+                                  );
+                                }
+                                throw apiErr;
+                              }
+                            },
+                            "Tenant moved in successfully",
+                          );
+                        }}
+                        disabled={isSubmitting}
+                      >
+                        {isSubmitting ? "Processing..." : "Move In"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {stageGuide && (
+                      <div className="rdm-stage-guide">
+                        <div className="rdm-stage-guide-icon-wrap">
+                          <stageGuide.Icon size={16} strokeWidth={1.75} />
+                        </div>
+                        <p className="rdm-stage-guide-msg">{stageGuide.message}</p>
+                      </div>
+                    )}
+
+                    {allowedActions.includes("moveIn") && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+                        <button
+                          className="rdm-action rdm-action-primary"
+                          onClick={() => {
+                            if (!isMoveInPaymentSettled) return;
+                            setMeterReadingVal("");
+                            setShowMeterPrompt(true);
+                          }}
+                          disabled={isSubmitting || !isMoveInPaymentSettled}
+                          title={
+                            isMoveInPaymentSettled
+                              ? "Mark tenant as moved in and record the initial meter reading"
+                              : "Move-in locked: 1-Month Advance Rent and Security Deposit (1DP + 1Adv) must be settled first."
+                          }
+                        >
+                          Mark as Moved In
+                        </button>
+                        {!isMoveInPaymentSettled && (
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: "8px",
+                              padding: "8px 12px",
+                              borderRadius: "8px",
+                              background: "#FEF2F2",
+                              border: "1px solid #FECACA",
+                              color: "#991B1B",
+                              fontSize: "12px",
+                              lineHeight: "1.45",
+                            }}
+                          >
+                            <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: "2px", color: "#DC2626" }} />
+                            <span>
+                              <strong>Move-In Locked:</strong> 1-Month Advance & Deposit (1DP + 1Adv) settlement is pending.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {allowedActions.includes("extend") && (
+                      <button
+                        className="rdm-action rdm-action-dark"
+                        onClick={() => {
+                          setRescheduleMoveInDate(
+                            toDateInputValue(readMoveInDate(reservation)) || todayDateStr,
+                          );
+                          setShowExtendPrompt(true);
+                        }}
+                        disabled={isSubmitting}
+                      >
+                        Reschedule move-in
+                      </button>
+                    )}
+
+                    {allowedActions.includes("approve_for_payment") && (
+                      <button
+                        className="rdm-action rdm-action-primary"
+                        onClick={() => {
+                          if (pricingBlocksApproval) {
+                            showNotification(
+                              pricingIsMissing
+                                ? "Pricing information unavailable. Refresh and try again."
+                                : "Pricing configuration is unavailable. This reservation cannot be approved yet.",
+                              "error",
+                            );
+                            return;
+                          }
+                          doAction(
+                            "approveForPayment",
+                            () =>
+                              reservationApi.update(reservation.id, {
+                                status: "approved_for_payment",
+                                applicationReviewReason: null,
+                              }),
+                            "Application approved for reservation fee",
+                          );
+                        }}
+                        disabled={isSubmitting || pricingBlocksApproval}
+                        title={
+                          pricingBlocksApproval
+                            ? (pricingIsMissing
+                              ? "Pricing information unavailable. Refresh and try again."
+                              : "Pricing configuration is unavailable. This reservation cannot be approved yet.")
+                            : undefined
+                        }
+                      >
+                        Approve for Reservation Fee
+                      </button>
+                    )}
+
+                    {allowedActions.includes("needs_revision") && (
+                      <button
+                        className="rdm-action rdm-action-dark"
+                        onClick={() => setRevisionModal({ open: true })}
+                        disabled={isSubmitting}
+                      >
+                        Request Revision
+                      </button>
+                    )}
+
+                    {allowedActions.includes("rejected") && (
+                      <button
+                        className="rdm-action rdm-action-danger-outline"
+                        onClick={() => {
+                          if (!adminNotes.trim()) {
+                            showNotification("Add a reason in Admin Notes before rejecting.", "warning");
+                            return;
+                          }
+                          doAction(
+                            "rejectApplication",
+                            () =>
+                              reservationApi.update(reservation.id, {
+                                status: "rejected",
+                                applicationReviewReason: adminNotes.trim(),
+                              }),
+                            "Application rejected",
+                          );
+                        }}
+                        disabled={isSubmitting}
+                      >
+                        Reject Application
+                      </button>
+                    )}
+
+                    {allowedActions.includes("cancelled") && !cancellationPending && (
+                      <button
+                        className="rdm-action rdm-action-danger-outline"
+                        onClick={() =>
+                          doAction(
+                            "cancel",
+                            () =>
+                              reservationApi.update(reservation.id, {
+                                status: "cancelled",
+                              }),
+                            "Reservation cancelled",
+                          )
+                        }
+                        disabled={isSubmitting}
+                      >
+                        Cancel Reservation
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Card 2: Quick Financial Summary */}
+          <div className="rdm-side-card">
+            <h4 className="rdm-side-title">Quick Summary</h4>
+            <div className="rdm-side-summary-list">
+              <div className="rdm-side-summary-item">
+                <span>Reservation Fee</span>
+                <strong>{formatPhpCurrency(pricingDisplay?.reservationFeeAmount ?? reservationFeeAmount)}</strong>
+              </div>
+              <div className="rdm-side-summary-item">
+                <span>One-Month Advance Rent</span>
+                <strong>{formatPhpCurrency(advanceRentAmount)}</strong>
+              </div>
+              <div className="rdm-side-summary-item">
+                <span>One-Month Security Deposit</span>
+                <strong>{formatPhpCurrency(securityDepositAmount)}</strong>
+              </div>
+              {initialTotalDue !== null && (
+                <div className="rdm-side-summary-item rdm-side-summary-total">
+                  <span>Initial Total Due</span>
+                  <strong>{formatPhpCurrency(initialTotalDue)}</strong>
+                </div>
+              )}
+              {/* Reservation Fee Status & View Receipt */}
+              <div className="rdm-side-summary-item rdm-side-summary-item--with-action">
+                <div className="rdm-side-summary-item-main">
+                  <span>Reservation Fee Status</span>
+                  <span
+                    className="rdm-summary-badge"
+                    style={{
+                      backgroundColor: reservationFeeBadge.bg,
+                      color: reservationFeeBadge.color,
+                      border: `1px solid ${reservationFeeBadge.border}`,
+                    }}
+                  >
+                    <span
+                      className="rdm-summary-badge-dot"
+                      style={{ backgroundColor: reservationFeeBadge.dot }}
+                    />
+                    {reservationFeeBadge.label}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="rdm-view-receipt-btn"
+                  onClick={handleViewReservationFeeReceipt}
+                  title="View official Reservation Fee receipt"
+                >
+                  <Receipt size={13} />
+                  <span>View Reservation Fee Receipt</span>
+                </button>
+              </div>
+
+              {/* Advance & Deposit Status & View Receipt */}
+              <div className="rdm-side-summary-item rdm-side-summary-item--with-action">
+                <div className="rdm-side-summary-item-main">
+                  <span>Advance &amp; Deposit Status</span>
+                  <span
+                    className="rdm-summary-badge"
+                    style={{
+                      backgroundColor: moveInPaymentBadge.bg,
+                      color: moveInPaymentBadge.color,
+                      border: `1px solid ${moveInPaymentBadge.border}`,
+                    }}
+                  >
+                    <span
+                      className="rdm-summary-badge-dot"
+                      style={{ backgroundColor: moveInPaymentBadge.dot }}
+                    />
+                    {moveInPaymentBadge.label}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="rdm-view-receipt-btn"
+                  onClick={handleViewMoveInReceipt}
+                  title="View official Advance & Deposit settlement receipt"
+                >
+                  <Receipt size={13} />
+                  <span>View Advance &amp; Deposit Receipt</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Activity Timeline (Collapsible) */}
+          <div className="rdm-side-card rdm-side-collapsible-card">
+            <button
+              type="button"
+              className="rdm-side-collapsible-header"
+              onClick={() => setShowTimeline((prev) => !prev)}
+              aria-expanded={showTimeline}
+            >
+              <div className="rdm-side-collapsible-title-wrap">
+                <h4 className="rdm-side-title" style={{ margin: 0 }}>Activity Timeline</h4>
+                {!showTimeline && (
+                  <span className="rdm-timeline-count-badge">
+                    {activityTimeline.length} events
+                  </span>
+                )}
+              </div>
+              <svg
+                className={`rdm-collapsible-chevron ${showTimeline ? "open" : ""}`}
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+
+            {/* When collapsed: Highlight ONLY the current event */}
+            {!showTimeline && currentTimelineItem && (
+              <div
+                className="rdm-timeline-current-highlight"
+                style={{
+                  backgroundColor: appearance.bg,
+                  border: `1px solid ${appearance.color}35`,
+                }}
+              >
+                <div className="rdm-timeline-current-header">
+                  <span
+                    className="rdm-timeline-dot"
+                    style={{
+                      background: appearance.dot,
+                      boxShadow: `0 0 0 3px ${appearance.dot}30`,
+                      width: 8,
+                      height: 8,
+                    }}
+                  />
+                  <span className="rdm-timeline-current-tag" style={{ color: appearance.color }}>
+                    Current State
+                  </span>
+                </div>
+                <div className="rdm-timeline-current-body">
+                  <strong className="rdm-timeline-current-title" style={{ color: appearance.color }}>
+                    {currentTimelineItem.date || appearance.label}
+                  </strong>
+                  <div className="rdm-timeline-current-meta">
+                    <span>{currentTimelineItem.label}</span>
+                    {currentTimelineItem.time && (
+                      <>
+                        <span className="rdm-timeline-sep">•</span>
+                        <span className="rdm-timeline-time">{currentTimelineItem.time}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* When expanded: Show full connected timeline track */}
+            {showTimeline && (
+              <div className="rdm-timeline">
+                {activityTimeline.map((item, index) => (
+                  <div className="rdm-timeline-item" key={`${item.label}-${index}`}>
+                    <div className="rdm-timeline-track">
+                      <span
+                        className="rdm-timeline-dot"
+                        style={
+                          item.isCurrent
+                            ? { background: appearance.dot, boxShadow: `0 0 0 3px ${appearance.dot}30` }
+                            : undefined
+                        }
+                      />
+                      {index < activityTimeline.length - 1 && <span className="rdm-timeline-line" />}
+                    </div>
+                    <div className="rdm-timeline-copy">
+                      <span className="rdm-timeline-label">{item.label}</span>
+                      <div className="rdm-timeline-value">
+                        <span style={item.isCurrent ? { fontWeight: 700, color: appearance.color } : undefined}>
+                          {item.date}
+                        </span>
+                        {item.time && (
+                          <>
+                            <span className="rdm-timeline-sep">•</span>
+                            <span className="rdm-timeline-time">{item.time}</span>
+                          </>
+                        )}
+                        {item.meta && (
+                          <span className="rdm-timeline-meta">({item.meta})</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </aside>
  </div>
  </div>
  </div>
 
  {showExtendPrompt && (
- <div
- className="rdm-extend-overlay"
- onClick={() => setShowExtendPrompt(false)}
- >
- <div
- className="rdm-extend-dialog"
- onClick={(event) => event.stopPropagation()}
- >
- <div className="rdm-extend-dialog-body">
- <h3 className="rdm-extend-dialog-title">Extend Move-in Date</h3>
- <div className="rdm-extend-dialog-input-row">
- <input
- type="number"
- min="1"
- max="30"
- value={extendDays}
- onChange={(event) =>
- setExtendDays(
- Math.max(1, Math.min(30, Number(event.target.value) || 1)),
- )
- }
- className="rdm-extend-dialog-input"
- autoFocus
- />
- <span className="rdm-extend-dialog-unit">
- day{extendDays > 1 ? "s" : ""}
- </span>
- </div>
- </div>
- <div className="rdm-extend-dialog-actions">
- <button
- className="rdm-extend-dialog-cancel"
- onClick={() => setShowExtendPrompt(false)}
- >
- Cancel
- </button>
- <button
- className="rdm-extend-dialog-confirm"
- onClick={() => {
- setShowExtendPrompt(false);
- doAction(
- "extend",
- () =>
- reservationApi.extend(reservation.id, {
- extensionDays: extendDays,
- }),
- `Move-in extended by ${extendDays} day${extendDays > 1 ? "s" : ""}`,
- );
- }}
- disabled={isSubmitting}
- >
-  Confirm
-  </button>
-  </div>
-  </div>
-  </div>
+    <div
+      className="rdm-extend-overlay"
+      onClick={() => setShowExtendPrompt(false)}
+    >
+      <div
+        className="rdm-reschedule-dialog"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="rdm-reschedule-header">
+          <div className="rdm-reschedule-icon-wrap">
+            <Calendar size={18} className="rdm-reschedule-icon" />
+          </div>
+          <div className="rdm-reschedule-titles">
+            <h3 className="rdm-reschedule-title">Reschedule Move-In Date</h3>
+            <p className="rdm-reschedule-subtitle">
+              Update the expected arrival date while keeping the reservation on standby.
+            </p>
+          </div>
+        </div>
+
+        <div className="rdm-reschedule-body">
+          <div className="rdm-reschedule-current-info">
+            <span className="rdm-reschedule-info-label">Current Scheduled Move-In:</span>
+            <strong className="rdm-reschedule-info-val">
+              {fmtDate(readMoveInDate(reservation)) || "Not set"}
+            </strong>
+          </div>
+
+          <div className="rdm-reschedule-field">
+            <label className="rdm-reschedule-label">
+              New Expected Move-In Date <span className="rdm-asterisk">*</span>
+            </label>
+            <input
+              type="date"
+              value={rescheduleMoveInDate}
+              min={todayDateStr}
+              onChange={(event) => setRescheduleMoveInDate(event.target.value)}
+              className="rdm-reschedule-date-input"
+              autoFocus
+            />
+          </div>
+
+          <div className="rdm-reschedule-presets-group">
+            <span className="rdm-reschedule-presets-label">Quick adjust shortcuts:</span>
+            <div className="rdm-reschedule-presets">
+              {[3, 7, 14, 30].map((days) => {
+                const base = readMoveInDate(reservation)
+                  ? new Date(readMoveInDate(reservation))
+                  : new Date();
+                const target = new Date(base);
+                target.setDate(target.getDate() + days);
+                const targetStr = toDateInputValue(target);
+                const isSelected = rescheduleMoveInDate === targetStr;
+
+                return (
+                  <button
+                    key={days}
+                    type="button"
+                    className={`rdm-reschedule-chip ${isSelected ? "rdm-reschedule-chip--active" : ""}`}
+                    onClick={() => setRescheduleMoveInDate(targetStr)}
+                  >
+                    <span className="rdm-reschedule-chip-title">+{days} Days</span>
+                    <span className="rdm-reschedule-chip-date">{fmtDate(targetStr)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="rdm-reschedule-actions">
+          <button
+            type="button"
+            className="rdm-reschedule-cancel"
+            onClick={() => setShowExtendPrompt(false)}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="rdm-reschedule-confirm"
+            onClick={() => {
+              if (!rescheduleMoveInDate) {
+                showNotification("A valid move-in date is required.", "error");
+                return;
+              }
+              setShowExtendPrompt(false);
+              doAction(
+                "extend",
+                () =>
+                  reservationApi.extend(reservation.id, {
+                    newMoveInDate: rescheduleMoveInDate,
+                  }),
+                `Move-in rescheduled to ${fmtDate(rescheduleMoveInDate)}`,
+              );
+            }}
+            disabled={isSubmitting || !rescheduleMoveInDate}
+          >
+            {isSubmitting ? "Saving..." : "Save Reschedule"}
+          </button>
+        </div>
+      </div>
+    </div>
   )}
 
  <ConfirmModal
@@ -2336,7 +2791,8 @@ function RevisionReasonModal({ onClose, onSubmit }) {
             className="rdm-action rdm-action-outline"
             onClick={onClose}
           >
-            Cancel
+            <XCircle size={16} />
+            <span>Cancel</span>
           </button>
           <button
             type="button"
@@ -2344,7 +2800,8 @@ function RevisionReasonModal({ onClose, onSubmit }) {
             disabled={!canSubmit}
             onClick={() => onSubmit(composedReason)}
           >
-            Send Revision Request
+            <CheckCircle size={16} />
+            <span>Send Revision Request</span>
           </button>
         </div>
       </div>

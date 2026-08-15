@@ -918,6 +918,7 @@ export const serializeMaintenanceRequest = (
     assignedByName: includeInternal ? request.assignedByName ?? null : null,
     assignedByRole: includeInternal ? request.assignedByRole ?? null : null,
     workLog,
+    work_log: workLog,
     conversation: includeInternal && Array.isArray(request.conversation)
       ? request.conversation.map((entry) => ({
           ...entry,

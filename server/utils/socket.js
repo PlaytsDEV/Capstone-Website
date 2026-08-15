@@ -94,22 +94,25 @@ const fingerprint = (value) =>
 export function joinAuthorizedSocketRooms(socket) {
   const authUser = socket.data.authUser;
   const userId = authUser?.userId || "";
-  const role = authUser?.role || "";
+  const role = String(authUser?.role || "").toLowerCase();
 
   if (userId) socket.join(`user:${userId}`);
 
-  if (isOwnerRole(role)) {
+  if (isAdminRole(role)) {
     socket.join("admins");
+  }
+
+  if (isOwnerRole(role)) {
     socket.join("admins:all");
     return;
   }
 
   const canManageChat =
     role === "branch_admin" &&
-    authUser.permissions.includes(CHAT_ADMIN_PERMISSION);
+    authUser?.permissions?.includes(CHAT_ADMIN_PERMISSION);
   if (!canManageChat) return;
 
-  if (!isValidRoomBranch(authUser.branch)) {
+  if (!isValidRoomBranch(authUser?.branch)) {
     logger.warn(
       { socketId: socket.id, userId, role },
       "Socket admin room access rejected invalid database branch",
@@ -117,7 +120,6 @@ export function joinAuthorizedSocketRooms(socket) {
     return;
   }
 
-  socket.join("admins");
   socket.join(adminBranchRoom(authUser.branch));
 }
 
