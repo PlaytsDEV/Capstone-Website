@@ -174,6 +174,12 @@ export const billingApi = {
   createDepositCheckout: (reservationId) =>
     authFetch(`/payments/deposit/${reservationId}/checkout`, { method: "POST" }),
 
+  /**
+   * Create a PayMongo checkout session for remaining Move-In Requirements
+   */
+  createMoveInCheckout: (reservationId) =>
+    authFetch(`/payments/reservation/${reservationId}/move-in-checkout`, { method: "POST" }),
+
   // ── Payment History ──
 
   /**

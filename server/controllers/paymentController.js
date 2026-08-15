@@ -347,6 +347,171 @@ export const createDepositCheckout = async (req, res, next) => {
   }
 };
 
+export const createMoveInCheckout = async (req, res, next) => {
+  try {
+    const { resId } = req.params;
+    const dbUser = await getDbUser(req.user.uid);
+    if (!dbUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
+
+    const reservation = await Reservation.findById(resId).populate(
+      "roomId",
+      "name branch type price rent",
+    );
+    if (!reservation) {
+      throw new AppError(
+        "Reservation not found",
+        404,
+        "RESERVATION_NOT_FOUND",
+      );
+    }
+
+    if (String(reservation.userId) !== String(dbUser._id)) {
+      throw new AppError(
+        "You can only pay for your own reservation",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    if (
+      reservation.initialPaymentStatus === "paid" ||
+      reservation.paymentStatus === "paid_in_full"
+    ) {
+      throw new AppError("Move-in balance is already settled", 400, "ALREADY_PAID");
+    }
+
+    const monthlyRent = Number(
+      reservation.monthlyRent ||
+        reservation.roomId?.rent ||
+        reservation.roomId?.price ||
+        0,
+    );
+    const advanceRent = Number(
+      reservation.moveInCashOut?.monthlyAdvance ?? monthlyRent,
+    );
+    const securityDeposit = Number(
+      reservation.moveInCashOut?.securityDeposit ?? monthlyRent,
+    );
+    const reservationFeeCredit = Number(
+      reservation.reservationFeeAmount || 2000,
+    );
+    const grossTotal = advanceRent + securityDeposit;
+    const remainingDue = Math.max(0, grossTotal - reservationFeeCredit);
+
+    if (remainingDue <= 0) {
+      throw new AppError(
+        "No remaining move-in balance is due",
+        400,
+        "NO_BALANCE_DUE",
+      );
+    }
+
+    let bill = null;
+    if (reservation.initialPaymentBillId) {
+      bill = await Bill.findById(reservation.initialPaymentBillId);
+    }
+    if (!bill) {
+      bill = await Bill.findOne({
+        reservationId: reservation._id,
+        billType: "initial_payment",
+        isArchived: { $ne: true },
+      });
+    }
+
+    if (!bill) {
+      bill = new Bill({
+        reservationId: reservation._id,
+        userId: dbUser._id,
+        roomId: reservation.roomId?._id || reservation.roomId,
+        branch: reservation.roomId?.branch || "main",
+        billingMonth: new Date(),
+        dueDate: null,
+        billType: "initial_payment",
+        grossAmount: grossTotal,
+        reservationCreditApplied: reservationFeeCredit,
+        totalAmount: remainingDue,
+        remainingAmount: remainingDue,
+        status: "pending",
+        charges: {
+          rent: advanceRent,
+          electricity: 0,
+          water: 0,
+          applianceFees: 0,
+          corkageFees: 0,
+          penalty: 0,
+          discount: 0,
+        },
+      });
+      await bill.save();
+      reservation.initialPaymentBillId = bill._id;
+      await reservation.save({ validateModifiedOnly: true });
+    }
+
+    if (bill.paymongoSessionId) {
+      try {
+        const existing = await getCheckoutSession(bill.paymongoSessionId);
+        const existingUrl = existing?.attributes?.checkout_url;
+        const existingPayments = existing?.attributes?.payments || [];
+        if (existingUrl && existingPayments.length === 0) {
+          return sendSuccess(res, {
+            checkoutUrl: existingUrl,
+            sessionId: bill.paymongoSessionId,
+            reused: true,
+          });
+        }
+      } catch {
+        // Expired or invalid session, create fresh one
+      }
+    }
+
+    const roomName = reservation.roomId?.name || "Room";
+    const checkoutIdempotencyKey = `movein:${reservation._id}:bill:${bill._id}:balance:${Math.round(remainingDue * 100)}`;
+    const { checkoutUrl, sessionId } = await createCheckoutSession({
+      amount: remainingDue,
+      description: `Lilycrest Dormitory - Remaining Move-In Balance (${roomName})`,
+      metadata: {
+        type: "bill",
+        purpose: "initial_payment",
+        billId: String(bill._id),
+        reservationId: String(reservation._id),
+        userId: String(dbUser._id),
+        amountDue: String(remainingDue),
+      },
+      successUrl: `${FRONTEND_URL}/applicant/profile?payment=success&session_id={id}`,
+      cancelUrl: `${FRONTEND_URL}/applicant/profile?payment=cancelled&session_id={id}`,
+      idempotencyKey: checkoutIdempotencyKey,
+    });
+
+    bill.paymongoSessionId = sessionId;
+    bill.paymongoCheckoutIdempotencyKey = checkoutIdempotencyKey;
+    await bill.save();
+
+    reservation.initialPaymentBillId = bill._id;
+    reservation.initialPaymentSessionId = sessionId;
+    await reservation.save({ validateModifiedOnly: true });
+
+    await auditLogger.log({
+      req,
+      type: "data_modification",
+      action: "payment.paymongo_movein_checkout_created",
+      severity: "info",
+      entityType: "bill",
+      entityId: bill._id,
+      details: "Created PayMongo checkout for remaining move-in balance.",
+      metadata: {
+        billId: String(bill._id),
+        reservationId: String(reservation._id),
+        amount: remainingDue,
+        currency: "PHP",
+      },
+    });
+
+    sendSuccess(res, { checkoutUrl, sessionId });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const checkSessionStatus = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
@@ -397,43 +562,61 @@ export const checkSessionStatus = async (req, res, next) => {
         "Payment metadata",
       );
 
-      if (metadata.type === "bill" && metadata.billId) {
-        const bill = sessionBill || (await Bill.findById(metadata.billId));
-        if (bill) {
-          const paymentReference = paidPayments[0]?.id || sessionId;
-          const sessionPaidAmount = Number(paidPayments[0]?.attributes?.amount || 0);
-          const settledAmount = Number(metadata.amountDue || 0) > 0
-            ? Number(metadata.amountDue)
-            : sessionPaidAmount > 0
-              ? sessionPaidAmount / 100
-              : null;
-          const settlement = await settlePaymongoBill({
-            bill,
-            paymentReference,
-            settledAmount,
-            source: "paymongo-polling",
-            metadata: {
-              sessionId,
-              sessionType: metadata.type || "bill",
-              currency: String(
-                paidPayments[0]?.attributes?.currency || "PHP",
-              ).toUpperCase(),
-            },
-          });
+      const bill =
+        sessionBill ||
+        (metadata.billId
+          ? await Bill.findById(metadata.billId)
+          : await Bill.findOne({ paymongoSessionId: sessionId }));
 
-          if (!settlement.applied) {
-            logger.info(
-              {
-                billId: metadata.billId,
-                paymentReference,
-                reason: settlement.reason,
+      if (bill) {
+        const paymentReference = paidPayments[0]?.id || sessionId;
+        const sessionPaidAmount = Number(paidPayments[0]?.attributes?.amount || 0);
+        const settledAmount = Number(metadata.amountDue || 0) > 0
+          ? Number(metadata.amountDue)
+          : sessionPaidAmount > 0
+            ? sessionPaidAmount / 100
+            : null;
+        const settlement = await settlePaymongoBill({
+          bill,
+          paymentReference,
+          settledAmount,
+          source: "paymongo-polling",
+          metadata: {
+            sessionId,
+            sessionType: metadata.type || "bill",
+            currency: String(
+              paidPayments[0]?.attributes?.currency || "PHP",
+            ).toUpperCase(),
+          },
+        });
+
+        const isInitialPayment =
+          bill.billType === "initial_payment" ||
+          metadata.purpose === "initial_payment";
+
+        if (isInitialPayment && bill.reservationId) {
+          await Reservation.updateOne(
+            { _id: bill.reservationId },
+            {
+              $set: {
+                initialPaymentStatus: "paid",
+                paymentStatus: "paid_in_full",
               },
-              "Bill payment already applied",
-            );
-          } else {
-            logger.info({ billId: metadata.billId }, "Marking bill as paid");
+            },
+          );
+        }
 
-            const monthStr = dayjs(bill.billingMonth).format("MMMM YYYY");
+        if (!settlement.applied) {
+          logger.info(
+            {
+              billId: bill._id,
+              paymentReference,
+              reason: settlement.reason,
+            },
+            "Bill payment already applied",
+          );
+        } else {
+          const monthStr = dayjs(bill.billingMonth).format("MMMM YYYY");
 
             // Email + in-app notification to tenant
             try {
@@ -443,22 +626,41 @@ export const checkSessionStatus = async (req, res, next) => {
                   `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() ||
                   "Tenant";
 
-                await sendPaymentApprovedEmail({
-                  to: tenant.email,
-                  tenantName,
-                  billingMonth: monthStr,
-                  paidAmount: settlement.appliedAmount,
-                  branchName: bill.branch,
-                });
+                let reservationCode = "";
+                let roomName = "";
+                if (bill.reservationId) {
+                  const resDoc = await Reservation.findById(bill.reservationId)
+                    .populate("roomId", "name branch")
+                    .lean();
+                  if (resDoc) {
+                    reservationCode = resDoc.reservationCode || "";
+                    roomName = resDoc.roomId?.name || "";
+                  }
+                }
+
+                if (!isInitialPayment) {
+                  await sendPaymentApprovedEmail({
+                    to: tenant.email,
+                    tenantName,
+                    billingMonth: monthStr,
+                    paidAmount: settlement.appliedAmount,
+                    branchName: bill.branch,
+                  });
+                }
+
                 await sendPaymentReceiptEmail({
                   to: tenant.email,
                   tenantName,
                   billedTo: tenantName,
                   amount: settlement.appliedAmount,
-                  description: `Monthly Bill - ${monthStr}`,
+                  description: isInitialPayment
+                    ? "Lilycrest Dormitory — Move-In Settlement (Advance Rent & Security Deposit)"
+                    : `Monthly Bill - ${monthStr}`,
                   paymentMethod: paymentMethod || "Online Payment (PayMongo)",
                   paymentDate: dayjs().format("MMMM D, YYYY"),
                   referenceId: paymentReference,
+                  reservationCode,
+                  roomName,
                   branch: bill.branch,
                 });
               }
@@ -499,9 +701,8 @@ export const checkSessionStatus = async (req, res, next) => {
             }
           }
         }
-      }
 
-      if (metadata.type === "deposit" && metadata.reservationId) {
+        if (metadata.type === "deposit" && metadata.reservationId) {
         const reservation =
           sessionReservation ||
           (await Reservation.findById(metadata.reservationId).populate(

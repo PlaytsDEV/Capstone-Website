@@ -719,6 +719,634 @@ export async function viewDepositReceipt(reservation, profile) {
 }
 
 // ==========================================================================
+// MOVE-IN SETTLEMENT OFFICIAL RECEIPT PDF
+// ==========================================================================
+
+async function buildMoveInReceiptDoc(reservation, profile, bill) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = PAGE.margin;
+  const contentW = pageWidth - margin * 2;
+  const gap = PAGE.gap;
+  const leftW = (contentW - gap) / 2;
+  const rightX = margin + leftW + gap;
+  let y = margin;
+
+  // Pure White Document Background
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, pageWidth, pageHeight, "F");
+
+  const logoData = await loadImageAsDataURL(defaultLogo);
+
+  const room = reservation.roomId || reservation.room || {};
+  const resFn = reservation.firstName || profile?.firstName || "";
+  const resLn = reservation.lastName || profile?.lastName || "";
+  const fullName = `${resFn} ${resLn}`.trim() || "—";
+
+  const roomNameRaw = room.name || room.roomNumber || reservation.roomNumber || reservation.roomName || "";
+  const cleanRoomName = roomNameRaw
+    ? (String(roomNameRaw).trim().toLowerCase().startsWith("room")
+        ? String(roomNameRaw).trim()
+        : `Room ${String(roomNameRaw).trim()}`)
+    : "Allocated Room";
+
+  const branch =
+    room.branch === "gil-puyat" ? "Gil Puyat"
+      : room.branch === "guadalupe" ? "Guadalupe"
+      : room.branch || "Lilycrest";
+  const paymentMethod = formatPaymentMethod(bill?.paymentMethod || reservation.paymentMethod || "paymongo");
+  const refId = bill?.paymongoPaymentId
+    || bill?.paymentReference
+    || reservation.paymongoPaymentId
+    || reservation.reservationCode
+    || reservation._id?.slice(-8)?.toUpperCase()
+    || "—";
+
+  const monthlyRent = Number(
+    reservation.monthlyRent ??
+      reservation.pricingSnapshot?.finalMonthlyRate ??
+      room.monthlyPrice ??
+      room.price ??
+      0,
+  );
+  const reservationFeeAmount = Number(reservation.reservationFeeAmount || 2000);
+  const advanceRent = reservation.moveInCashOut?.monthlyAdvance ?? monthlyRent;
+  const securityDeposit = reservation.moveInCashOut?.securityDeposit ?? monthlyRent;
+  const grossTotal = advanceRent + securityDeposit;
+  const remainingDue = Math.max(0, grossTotal - reservationFeeAmount);
+
+  const selectedBedRaw = reservation.selectedBed || reservation.bed || reservation.bedId;
+  let bedText = "";
+  if (typeof selectedBedRaw === "string" && selectedBedRaw.trim()) {
+    bedText = selectedBedRaw.trim();
+  } else if (selectedBedRaw && typeof selectedBedRaw === "object") {
+    bedText = getBedDisplayLabel(selectedBedRaw, 0, room.type);
+  }
+  if (!bedText || bedText === "Bed" || bedText === "—") {
+    if (reservation.bedNumber || reservation.bedLabel || reservation.bedPosition) {
+      bedText = reservation.bedNumber || reservation.bedLabel || reservation.bedPosition;
+    }
+  }
+  const bedDisplay = bedText ? bedText : "Assigned upon check-in";
+
+  const moveInDateRaw =
+    reservation.targetMoveInDate ||
+    reservation.finalMoveInDate ||
+    reservation.moveInDate ||
+    reservation.intendedMoveInDate ||
+    reservation.targetMoveIn ||
+    reservation.moveIn ||
+    profile?.targetMoveInDate ||
+    profile?.moveInDate;
+
+  const formattedMoveIn = formatDate(moveInDateRaw);
+  const moveInDisplay = formattedMoveIn !== "—" ? formattedMoveIn : "Scheduled upon Check-In";
+
+  // 1. BRAND HEADER & RECEIPT METADATA BOX (y = 16 to 40)
+  const logoSize = 16;
+  if (logoData) {
+    try {
+      doc.addImage(logoData, "PNG", margin, y, logoSize, logoSize);
+    } catch (error) {
+      console.error("Logo render failed:", error);
+    }
+  }
+
+  const brandX = margin + logoSize + 5;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(0, 0, 0);
+  doc.text("LILYCREST DORMITORY", brandX, y + 5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(0, 0, 0);
+  doc.text("Official Property Management & Student Housing", brandX, y + 10.5);
+  doc.text(`Branch Location: ${branch} Branch`, brandX, y + 15.5);
+
+  // Right-side Official Metadata Box
+  const metaW = 75;
+  const metaX = pageWidth - margin - metaW;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(0, 0, 0);
+  doc.text("OFFICIAL RECEIPT", metaX, y + 5);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text(`OR NO: OR-SETTLE-${reservation.reservationCode || refId}`, metaX, y + 10.5);
+  doc.setFont("helvetica", "normal");
+  doc.text(`DATE ISSUED: ${formatDateTime(bill?.paymentDate || reservation.paymentDate || new Date())}`, metaX, y + 15.5);
+  doc.setFont("helvetica", "bold");
+  doc.text("PAYMENT STATUS: SETTLED IN FULL", metaX, y + 20.5);
+
+  y += 26;
+
+  // Solid Divider Line
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.6);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 8;
+
+  // 2. PARTIES / TENANT & UNIT ALLOCATION (y = 50 to 90)
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("RECEIVED FROM (TENANT ACCOUNT HOLDER)", margin, y);
+  doc.text("RESERVATION & UNIT ALLOCATION", rightX, y);
+  doc.setLineWidth(0.25);
+  doc.line(margin, y + 1.8, margin + leftW, y + 1.8);
+  doc.line(rightX, y + 1.8, rightX + leftW, y + 1.8);
+  y += 8;
+
+  // Tenant Details
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11.5);
+  doc.text(fullName, margin, y);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(`Account Email: ${profile?.email || reservation.email || "—"}`, margin, y + 5.5);
+  doc.text(`Mobile Contact: ${profile?.mobileNumber || reservation.mobileNumber || "—"}`, margin, y + 11);
+  doc.text(`Emergency Contact: ${reservation.emergencyContactName || "On File"}`, margin, y + 16.5);
+
+  // Unit Details
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11.5);
+  doc.text(cleanRoomName, rightX, y);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(`Bed Space / Slot: ${bedDisplay}`, rightX, y + 5.5);
+  const leaseDurationMonths = Number(reservation.leaseDuration || reservation.applicationForm?.leaseDuration);
+  const leaseTermDisplay = Number.isFinite(leaseDurationMonths) && leaseDurationMonths > 0
+    ? `${leaseDurationMonths}-Month Agreement`
+    : "Standard Agreement";
+  doc.text(`Lease Term: ${leaseTermDisplay}`, rightX, y + 16.5);
+  doc.text(`Scheduled Move-In: ${moveInDisplay}`, rightX, y + 22);
+
+  y += 28;
+
+  // 3. ITEMIZED MOVE-IN SETTLEMENT TABLE
+  const tableTopY = y;
+  doc.setLineWidth(0.5);
+  doc.line(margin, tableTopY, pageWidth - margin, tableTopY);
+
+  const colItemX = margin + 2;
+  const colQtyX = margin + 105;
+  const colUnitPriceX = margin + 142;
+  const colTotalX = pageWidth - margin - 2;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.text("ITEM / DESCRIPTION OF CHARGE", colItemX, tableTopY + 5);
+  doc.text("QTY", colQtyX, tableTopY + 5, { align: "center" });
+  doc.text("UNIT PRICE", colUnitPriceX, tableTopY + 5, { align: "right" });
+  doc.text("AMOUNT (PHP)", colTotalX, tableTopY + 5, { align: "right" });
+
+  doc.line(margin, tableTopY + 7.5, pageWidth - margin, tableTopY + 7.5);
+
+  // Item 1: 1-Month Advance Rent
+  let rowY = tableTopY + 13;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.2);
+  doc.text("1-Month Advance Rent", colItemX, rowY);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(`Prepaid first month rent for ${cleanRoomName}${bedText ? ` (${bedText})` : ""}. Covers Month 1 rental period.`, colItemX, rowY + 4.5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text("1", colQtyX, rowY, { align: "center" });
+  doc.text(`${fmtAmt(advanceRent)}`, colUnitPriceX, rowY, { align: "right" });
+  doc.setFont("helvetica", "bold");
+  doc.text(`${fmtAmt(advanceRent)}`, colTotalX, rowY, { align: "right" });
+
+  // Item 2: 1-Month Security Deposit
+  rowY += 12;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.2);
+  doc.text("1-Month Security Deposit", colItemX, rowY);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(`Refundable security deposit held for room maintenance & final utility clearing.`, colItemX, rowY + 4.5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text("1", colQtyX, rowY, { align: "center" });
+  doc.text(`${fmtAmt(securityDeposit)}`, colUnitPriceX, rowY, { align: "right" });
+  doc.setFont("helvetica", "bold");
+  doc.text(`${fmtAmt(securityDeposit)}`, colTotalX, rowY, { align: "right" });
+
+  // Item 3: Slot Reservation Deposit Credit
+  rowY += 12;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.2);
+  doc.text("Less: Slot Reservation Fee Credit (Paid Online)", colItemX, rowY);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(`Online slot reservation holding fee previously settled — credited against move-in.`, colItemX, rowY + 4.5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text("1", colQtyX, rowY, { align: "center" });
+  doc.text(`-${fmtAmt(reservationFeeAmount)}`, colUnitPriceX, rowY, { align: "right" });
+  doc.setFont("helvetica", "bold");
+  doc.text(`-${fmtAmt(reservationFeeAmount)}`, colTotalX, rowY, { align: "right" });
+
+  rowY += 14;
+  doc.setLineWidth(0.4);
+  doc.line(margin, rowY, pageWidth - margin, rowY);
+  y = rowY + 6;
+
+  // 4. ACCOUNTING TOTALS BOX
+  const totalsW = 90;
+  const totalsX = pageWidth - margin - totalsW;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text("Gross Move-In Total:", totalsX, y);
+  doc.text(`PHP ${fmtAmt(grossTotal)}`, pageWidth - margin - 2, y, { align: "right" });
+
+  doc.text("Reservation Fee Credit Applied:", totalsX, y + 5);
+  doc.text(`-PHP ${fmtAmt(reservationFeeAmount)}`, pageWidth - margin - 2, y + 5, { align: "right" });
+
+  y += 10;
+  doc.setLineWidth(0.4);
+  doc.line(totalsX, y, pageWidth - margin, y);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10.5);
+  doc.text("NET SETTLEMENT PAID:", totalsX, y + 5);
+  doc.text(`PHP ${fmtAmt(remainingDue)}`, pageWidth - margin - 2, y + 5, { align: "right" });
+
+  doc.line(totalsX, y + 7.5, pageWidth - margin, y + 7.5);
+  doc.line(totalsX, y + 8.2, pageWidth - margin, y + 8.2);
+
+  y += 18;
+
+  // 5. PAYMENT METADATA BOX & AUTHORIZED SIGN-OFF
+  const auditBoxW = 90;
+  const auditBoxH = 45;
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.3);
+  doc.rect(margin, y, auditBoxW, auditBoxH);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("PAYMENT AUDIT TRAIL", margin + 4, y + 6);
+  doc.setLineWidth(0.2);
+  doc.line(margin + 4, y + 8, margin + auditBoxW - 4, y + 8);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.text("Payment Method:", margin + 4, y + 14);
+  doc.setFont("helvetica", "normal");
+  doc.text(paymentMethod, margin + 34, y + 14);
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Transaction Ref:", margin + 4, y + 21);
+  doc.setFont("helvetica", "normal");
+  doc.text(refId, margin + 34, y + 21);
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Channel Status:", margin + 4, y + 28);
+  doc.setFont("helvetica", "normal");
+  doc.text("Confirmed & Cleared", margin + 34, y + 28);
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Verification:", margin + 4, y + 35);
+  doc.setFont("helvetica", "normal");
+  doc.text("Electronic Seal Verified", margin + 34, y + 35);
+
+  // Right side Signature Box
+  const sigW = 65;
+  const sigX = pageWidth - margin - sigW;
+  const sigY = y + 24;
+  doc.setLineWidth(0.4);
+  doc.line(sigX, sigY, sigX + sigW, sigY);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("Authorized Representative", sigX + sigW / 2, sigY + 5, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.text("Lilycrest Dormitory Management Office", sigX + sigW / 2, sigY + 9.5, { align: "center" });
+
+  // 6. FOOTER DISCLAIMER
+  const footerY = pageHeight - 14;
+  doc.setLineWidth(0.4);
+  doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.text("Lilycrest Dormitory Management Office", pageWidth / 2, footerY, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.text("This document serves as your official electronic receipt for your move-in financial settlement (advance rent & security deposit).", pageWidth / 2, footerY + 4, { align: "center" });
+
+  return doc;
+}
+
+/** Download the Move-In Settlement receipt PDF directly to the user's device. */
+export async function generateMoveInReceipt(reservation, profile, bill) {
+  const doc = await buildMoveInReceiptDoc(reservation, profile, bill);
+  const filename = `Lilycrest_MoveIn_Receipt_${reservation.reservationCode || "settlement"}.pdf`;
+  doc.save(filename);
+}
+
+/** Open the Move-In Settlement receipt PDF in a new browser tab without downloading. */
+export async function viewMoveInReceipt(reservation, profile, bill) {
+  const doc = await buildMoveInReceiptDoc(reservation, profile, bill);
+  const blobUrl = doc.output("bloburl");
+  window.open(blobUrl, "_blank");
+}
+
+// ==========================================================================
+// MOVE-IN STATEMENT PDF — Itemized Move-In Settlement Breakdown
+// ==========================================================================
+
+async function buildMoveInStatementDoc(reservation, profile) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = PAGE.margin;
+  const contentW = pageWidth - margin * 2;
+  const gap = PAGE.gap;
+  const leftW = (contentW - gap) / 2;
+  const rightX = margin + leftW + gap;
+  let y = margin;
+
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, pageWidth, pageHeight, "F");
+
+  const logoData = await loadImageAsDataURL(defaultLogo);
+  const room = reservation.roomId || reservation.room || {};
+  const resFn = reservation.firstName || profile?.firstName || "";
+  const resLn = reservation.lastName || profile?.lastName || "";
+  const fullName = `${resFn} ${resLn}`.trim() || "Applicant";
+  const userEmail = reservation.email || profile?.email || "—";
+  const userPhone = reservation.contactNumber || reservation.phone || profile?.phone || profile?.contactNumber || "—";
+
+  const roomNameRaw = room.name || room.roomNumber || reservation.roomNumber || reservation.roomName || "";
+  const cleanRoomName = roomNameRaw
+    ? (String(roomNameRaw).trim().toLowerCase().startsWith("room")
+        ? String(roomNameRaw).trim()
+        : `Room ${String(roomNameRaw).trim()}`)
+    : "Allocated Room";
+
+  const branch =
+    room.branch === "gil-puyat" ? "Gil Puyat"
+      : room.branch === "guadalupe" ? "Guadalupe"
+      : room.branch || "Lilycrest";
+
+  const selectedBedRaw = reservation.selectedBed || reservation.bed || reservation.bedId;
+  let bedText = "";
+  if (typeof selectedBedRaw === "string" && selectedBedRaw.trim()) {
+    bedText = selectedBedRaw.trim();
+  } else if (selectedBedRaw && typeof selectedBedRaw === "object") {
+    bedText = getBedDisplayLabel(selectedBedRaw, 0, room.type);
+  }
+  const bedDisplay = bedText || "Assigned Bed";
+
+  const moveInDateRaw =
+    reservation.targetMoveInDate ||
+    reservation.finalMoveInDate ||
+    reservation.moveInDate ||
+    profile?.targetMoveInDate;
+  const moveInDisplay = formatDate(moveInDateRaw);
+
+  const monthlyRent = Number(
+    reservation.monthlyRent ??
+      reservation.pricingSnapshot?.finalMonthlyRate ??
+      room.monthlyPrice ??
+      room.price ??
+      0,
+  );
+  const reservationFeeAmount = Number(reservation.reservationFeeAmount || 2000);
+  const advanceRent = reservation.moveInCashOut?.monthlyAdvance ?? monthlyRent;
+  const securityDeposit = reservation.moveInCashOut?.securityDeposit ?? monthlyRent;
+  const grossTotal = advanceRent + securityDeposit;
+  const netDue = Math.max(0, grossTotal - reservationFeeAmount);
+  const isSettled = reservation.initialPaymentStatus === "paid" || reservation.paymentStatus === "paid_in_full";
+
+  // 1. BRAND HEADER
+  const logoSize = 16;
+  if (logoData) {
+    try {
+      doc.addImage(logoData, "PNG", margin, y, logoSize, logoSize);
+    } catch (error) {
+      console.error("Logo render failed:", error);
+    }
+  }
+
+  const brandX = margin + logoSize + 5;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(17);
+  doc.setTextColor(0, 0, 0);
+  doc.text("LILYCREST DORMITORY", brandX, y + 5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(0, 0, 0);
+  doc.text("Official Property Management & Student Housing", brandX, y + 10.5);
+  doc.text(`Branch Location: ${branch} Branch`, brandX, y + 15.5);
+
+  // Right-side Box
+  const metaW = 78;
+  const metaX = pageWidth - margin - metaW;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(0, 0, 0);
+  doc.text("MOVE-IN STATEMENT", metaX, y + 5);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.text(`STATEMENT NO: STM-${reservation.reservationCode || "MOVEIN"}`, metaX, y + 10.5);
+  doc.setFont("helvetica", "normal");
+  doc.text(`DATE GENERATED: ${formatDateTime(new Date())}`, metaX, y + 15.5);
+  doc.setFont("helvetica", "bold");
+  doc.text(
+    `STATUS: ${isSettled ? "SETTLED / PAID" : "PENDING MOVE-IN SETTLEMENT"}`,
+    metaX,
+    y + 20.5,
+  );
+
+  y += 26;
+
+  // Solid Divider Line
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.6);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 7;
+
+  // 2. TENANT & ALLOCATION INFO
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.5);
+  doc.text("TENANT ACCOUNT INFORMATION", margin, y);
+  doc.text("RESERVED UNIT ALLOCATION", rightX, y);
+  doc.setLineWidth(0.25);
+  doc.line(margin, y + 1.8, margin + leftW, y + 1.8);
+  doc.line(rightX, y + 1.8, rightX + leftW, y + 1.8);
+  y += 7;
+
+  const tenantRows = [
+    { label: "Account Holder:", value: fullName },
+    { label: "Registered Email:", value: userEmail },
+    { label: "Contact Phone:", value: userPhone },
+    { label: "Target Move-In:", value: moveInDisplay },
+  ];
+
+  const unitRows = [
+    { label: "Allocated Unit:", value: `${cleanRoomName} (${branch})` },
+    { label: "Bed Assignment:", value: bedDisplay },
+    { label: "Monthly Base Rent:", value: `PHP ${fmtAmt(monthlyRent)} / month` },
+    { label: "Reservation Code:", value: reservation.reservationCode || "—" },
+  ];
+
+  doc.setFontSize(8.5);
+  for (let i = 0; i < Math.max(tenantRows.length, unitRows.length); i++) {
+    const t = tenantRows[i];
+    const u = unitRows[i];
+    if (t) {
+      doc.setFont("helvetica", "bold");
+      doc.text(t.label, margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(t.value, margin + 32, y);
+    }
+    if (u) {
+      doc.setFont("helvetica", "bold");
+      doc.text(u.label, rightX, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(u.value, rightX + 34, y);
+    }
+    y += 5.5;
+  }
+
+  y += 4;
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.3);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 7;
+
+  // 3. FINANCIAL TERMS & SETTLEMENT BREAKDOWN TABLE
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("MOVE-IN FINANCIAL SCHEDULE & SETTLEMENT BREAKDOWN", margin, y);
+  doc.setLineWidth(0.25);
+  doc.line(margin, y + 1.8, pageWidth - margin, y + 1.8);
+  y += 7;
+
+  // Table Headers
+  doc.setFillColor(245, 245, 245);
+  doc.rect(margin, y, contentW, 6.5, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(0, 0, 0);
+  doc.text("ITEM DESCRIPTION & COVERAGE", margin + 3, y + 4.5);
+  doc.text("AMOUNT (PHP)", pageWidth - margin - 3, y + 4.5, { align: "right" });
+  y += 6.5;
+
+  const finItems = [
+    {
+      desc: "One (1) Month Advance Rent (Covers your first rental month of stay)",
+      amt: `PHP ${fmtAmt(advanceRent)}`,
+    },
+    {
+      desc: "One (1) Month Security Deposit (Refundable upon contract completion & move-out)",
+      amt: `PHP ${fmtAmt(securityDeposit)}`,
+    },
+    {
+      desc: "Gross Total Move-In Requirements",
+      amt: `PHP ${fmtAmt(grossTotal)}`,
+      bold: true,
+    },
+    {
+      desc: "Less: Slot Reservation Fee Credit (Paid online deposit applied to move-in)",
+      amt: `-PHP ${fmtAmt(reservationFeeAmount)}`,
+      credit: true,
+    },
+  ];
+
+  for (const item of finItems) {
+    doc.setFont("helvetica", item.bold ? "bold" : "normal");
+    doc.setFontSize(8.5);
+    doc.text(item.desc, margin + 3, y + 5);
+    doc.text(item.amt, pageWidth - margin - 3, y + 5, { align: "right" });
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.15);
+    doc.line(margin, y + 7, pageWidth - margin, y + 7);
+    y += 7;
+  }
+
+  y += 2;
+
+  // Net Balance Callout Card
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.4);
+  doc.rect(margin, y, contentW, 11, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10.5);
+  doc.text("NET REMAINING BALANCE DUE ON MOVE-IN:", margin + 4, y + 7);
+  doc.text(`PHP ${fmtAmt(netDue)}`, pageWidth - margin - 4, y + 7, { align: "right" });
+  y += 16;
+
+  // 4. SETTLEMENT OPTIONS & INSTRUCTIONS
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("SETTLEMENT OPTIONS & MOVE-IN GUIDELINES", margin, y);
+  doc.setLineWidth(0.25);
+  doc.line(margin, y + 1.8, pageWidth - margin, y + 1.8);
+  y += 6.5;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text("1. ONLINE SETTLEMENT: You may settle the PHP " + fmtAmt(netDue) + " balance online via PayMongo (GCash, Maya, Debit/Credit Card) in your portal.", margin, y);
+  y += 4.5;
+  doc.text("2. FRONT DESK SETTLEMENT: Alternatively, you may pay upon arrival on your move-in day at the Lilycrest Front Desk via Cash or Bank Transfer.", margin, y);
+  y += 4.5;
+  doc.text("3. ADVANCE COVERAGE: Your 1-Month Advance Rent already covers Month 1. Your regular rent billing will start on Month 2.", margin, y);
+  y += 12;
+
+  // 5. SIGNATURE / AUTHORIZATION
+  const sigW = 65;
+  const sigX = pageWidth - margin - sigW;
+  doc.setLineWidth(0.4);
+  doc.line(sigX, y + 10, sigX + sigW, y + 10);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.text("Authorized Representative", sigX + sigW / 2, y + 14, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.text("Lilycrest Dormitory Administration", sigX + sigW / 2, y + 18, { align: "center" });
+
+  // 6. FOOTER
+  const footerY = pageHeight - 12;
+  doc.setLineWidth(0.3);
+  doc.line(margin, footerY - 3, pageWidth - margin, footerY - 3);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.text(
+    "Lilycrest Dormitory Management System \u00b7 Official Move-In Settlement Document \u00b7 Retain a copy for your personal records",
+    pageWidth / 2,
+    footerY,
+    { align: "center" },
+  );
+
+  return doc;
+}
+
+export async function generateMoveInStatementPDF(reservation, profile) {
+  const doc = await buildMoveInStatementDoc(reservation, profile);
+  const filename = `Lilycrest_MoveIn_Statement_${reservation.reservationCode || "statement"}.pdf`;
+  doc.save(filename);
+}
+
+export async function viewMoveInStatementPDF(reservation, profile) {
+  const doc = await buildMoveInStatementDoc(reservation, profile);
+  const blobUrl = doc.output("bloburl");
+  window.open(blobUrl, "_blank");
+}
+
+// ==========================================================================
 // BILLING RECEIPT PDF — matches email receipt template (generatePaymentReceiptHtml)
 // Called from pdfReceipt.js via BillingPage "Download Receipt"
 // ==========================================================================
