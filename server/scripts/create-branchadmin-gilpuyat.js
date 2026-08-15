@@ -1,6 +1,6 @@
 /**
- * One-time script to create a guadalupe branch admin account.
- * Run with: node --env-file=.env scripts/create-branchadmin-guada.js
+ * One-time / idempotent script to create or update the Gil Puyat branch admin account.
+ * Run with: node --env-file=.env scripts/create-branchadmin-gilpuyat.js
  */
 
 import admin from "firebase-admin";
@@ -24,11 +24,13 @@ const serviceAccount = {
   client_x509_cert_url: process.env.FIREBASE_CLIENT_CERT_URL,
 };
 
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+if (!admin.apps.length) {
+  admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+}
 const auth = admin.auth();
 
 // ── Branch Admin Credentials ─────────────────────────────────────────────────
-const EMAIL = "guadalupe_admin@lilycrest.com";
+const EMAIL = "gilpuyat_admin@lilycrest.com";
 const PASSWORD = String(process.env.REGULAR_ADMIN_PASSWORD || process.env.PROVISIONING_ADMIN_PASSWORD || "Lilycrest2026!");
 
 // ── MongoDB User Schema (minimal inline) ──────────────────────────────────
@@ -39,7 +41,7 @@ const userSchema = new mongoose.Schema({
   firstName:   { type: String, required: true },
   lastName:    { type: String, required: true },
   role:        { type: String, default: "branch_admin" },
-  branch:      { type: String, default: "guadalupe" },
+  branch:      { type: String, default: "gil-puyat" },
   accountStatus: { type: String, default: "active" },
   isActive:    { type: Boolean, default: true },
   isEmailVerified: { type: Boolean, default: true },
@@ -51,7 +53,7 @@ const User = mongoose.models.User || mongoose.model("User", userSchema);
 
 // ── Main ───────────────────────────────────────────────────────────────────
 async function run() {
-  if (!PASSWORD) throw new Error("PROVISIONING_ADMIN_PASSWORD is required");
+  if (!PASSWORD) throw new Error("A valid password is required for provisioning");
   await mongoose.connect(process.env.MONGODB_URI);
   const identity = await resolveProvisioningIdentity({
     email: EMAIL,
@@ -61,20 +63,20 @@ async function run() {
   let firebaseUid = identity.firebaseUser?.uid;
   if (firebaseUid) {
     console.log(`Firebase identity verified (non-reversible UID fingerprint: ${uidFingerprint(firebaseUid)})`);
-    await auth.updateUser(firebaseUid, { password: PASSWORD, emailVerified: true });
+    await auth.updateUser(firebaseUid, { password: PASSWORD, displayName: "Gil Puyat Branch Admin", emailVerified: true });
   } else {
-    const created = await auth.createUser({ email: EMAIL, password: PASSWORD, displayName: "Guadalupe Branch Admin", emailVerified: true });
+    const created = await auth.createUser({ email: EMAIL, password: PASSWORD, displayName: "Gil Puyat Branch Admin", emailVerified: true });
     firebaseUid = created.uid;
     console.log(`Firebase identity created (non-reversible UID fingerprint: ${uidFingerprint(firebaseUid)})`);
   }
 
   const existingMongo = identity.mongoUser;
   if (existingMongo) {
-    existingMongo.username = "guadalupe_admin";
-    existingMongo.firstName = "Guadalupe";
+    existingMongo.username = "gilpuyat_admin";
+    existingMongo.firstName = "Gil Puyat";
     existingMongo.lastName = "Branch Admin";
     existingMongo.role = "branch_admin";
-    existingMongo.branch = "guadalupe";
+    existingMongo.branch = "gil-puyat";
     existingMongo.accountStatus = "active";
     existingMongo.isActive = true;
     existingMongo.isArchived = false;
@@ -83,11 +85,11 @@ async function run() {
     await User.create({
       firebaseUid,
       email:     EMAIL,
-      username:  "guadalupe_admin",
-      firstName: "Guadalupe",
+      username:  "gilpuyat_admin",
+      firstName: "Gil Puyat",
       lastName:  "Branch Admin",
       role:      "branch_admin",
-      branch:    "guadalupe",
+      branch:    "gil-puyat",
       accountStatus: "active",
       isActive:  true,
       isEmailVerified: true,
@@ -104,6 +106,7 @@ async function run() {
       ],
     });
   }
+  console.log("✅ Gil Puyat Branch Admin account provisioned/verified successfully.");
   await mongoose.disconnect();
   process.exit(0);
 }
