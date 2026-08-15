@@ -1816,6 +1816,79 @@ html[data-theme="dark"] .visit-avail-badge {
   color: #ffffff;
 }
 
+/* ── Sideways Collapsible Status View & Trigger ── */
+.res-status-view-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  margin: -4px 0;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.res-status-view-trigger:hover {
+  background-color: var(--bg-hover, rgba(0, 0, 0, 0.04));
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+.res-status-view-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.res-status-view-chevron.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.res-view-item {
+  display: inline-flex;
+  align-items: center;
+  max-width: 320px;
+  opacity: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  transform: scaleX(1) translateX(0);
+  transform-origin: left center;
+  transition: max-width 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.24s ease,
+              transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.res-view-segmented-control.is-collapsed {
+  gap: 0;
+}
+
+.res-view-segmented-control.is-collapsed .res-view-item:not(.is-selected-item) {
+  max-width: 0;
+  opacity: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  transform: scaleX(0.9) translateX(-6px);
+}
+
+.res-view-segmented-control.is-collapsed .res-view-item:not(.is-selected-item) .res-view-tab {
+  padding: 0 !important;
+  border-width: 0 !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  opacity: 0 !important;
+}
+
 /* ── Quick Chip Strip & Triage Chips (Clean White/Solid Tokens) ── */
 .res-chip-strip {
   display: flex;
@@ -2173,7 +2246,7 @@ html[data-theme="dark"] .visit-avail-badge {
 .res-drawer__select:focus,
 .res-drawer__input-date:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+  box-shadow: none;
 }
 
 .res-drawer__date-row {

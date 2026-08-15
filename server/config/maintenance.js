@@ -8,15 +8,19 @@ export const MAINTENANCE_REQUEST_TYPES = Object.freeze([
   "plumbing",
   "electrical",
   "aircon",
+  "elevator",
+  "furniture",
+  "internet",
   "cleaning",
   "pest",
-  "furniture",
   "other",
 ]);
 
 export const MAINTENANCE_URGENCY_LEVELS = Object.freeze([
-  "low",
   "normal",
+  "urgent",
+  "emergency",
+  "low",
   "high",
 ]);
 
@@ -24,17 +28,24 @@ export const MIN_MAINTENANCE_DESCRIPTION_LENGTH = 10;
 
 export const MAINTENANCE_STATUSES = Object.freeze([
   "pending",
+  "pending_review",
+  "provider_assigned",
+  "scheduled",
   "viewed",
   "in_progress",
   "waiting_tenant",
   "resolved",
   "completed",
+  "reopened",
   "rejected",
   "cancelled",
   "closed",
 ]);
 
 export const ADMIN_MAINTENANCE_STATUSES = Object.freeze([
+  "pending_review",
+  "provider_assigned",
+  "scheduled",
   "viewed",
   "in_progress",
   "waiting_tenant",
@@ -46,9 +57,13 @@ export const ADMIN_MAINTENANCE_STATUSES = Object.freeze([
 
 export const OPEN_MAINTENANCE_STATUSES = Object.freeze([
   "pending",
+  "pending_review",
+  "provider_assigned",
+  "scheduled",
   "viewed",
   "in_progress",
   "waiting_tenant",
+  "reopened",
 ]);
 
 export const REOPENABLE_MAINTENANCE_STATUSES = Object.freeze([
@@ -61,33 +76,50 @@ export const MAINTENANCE_REQUEST_TYPE_LABELS = Object.freeze({
   plumbing: "Plumbing",
   electrical: "Electrical",
   aircon: "Air Conditioning",
+  elevator: "Elevator",
+  furniture: "Furniture / Fixture",
+  internet: "Internet / Network",
   cleaning: "Cleaning",
   pest: "Pest Control",
-  furniture: "Furniture",
   other: "Other",
 });
 
 export const MAINTENANCE_STATUS_LABELS = Object.freeze({
-  pending: "Pending",
+  pending: "Pending Review",
+  pending_review: "Pending Review",
+  provider_assigned: "Provider Assigned",
+  scheduled: "Scheduled",
   viewed: "Viewed",
   in_progress: "In Progress",
   waiting_tenant: "Waiting for Tenant",
   resolved: "Resolved",
   completed: "Completed",
+  reopened: "Reopened",
   rejected: "Rejected",
   cancelled: "Cancelled",
   closed: "Closed",
 });
 
 export const MAINTENANCE_RESOLUTION_ESTIMATES = Object.freeze({
-  low: "3-5 business days",
   normal: "1-2 business days",
+  urgent: "Within 24 hours",
+  emergency: "Immediate / Priority",
+  low: "3-5 business days",
   high: "Within 24 hours",
 });
 
 export const LEGACY_MAINTENANCE_TYPE_MAP = Object.freeze({
   hardware: "maintenance",
   appliance: "maintenance",
+  air_conditioning: "aircon",
+  "air-conditioning": "aircon",
+  furniture_fixture: "furniture",
+  "furniture/fixture": "furniture",
+  internet_network: "internet",
+  "internet/network": "internet",
+  network: "internet",
+  pest_control: "pest",
+  "pest control": "pest",
 });
 
 export const LEGACY_MAINTENANCE_URGENCY_MAP = Object.freeze({
@@ -97,15 +129,20 @@ export const LEGACY_MAINTENANCE_URGENCY_MAP = Object.freeze({
 export const LEGACY_MAINTENANCE_STATUS_MAP = Object.freeze({
   "in-progress": "in_progress",
   "on-hold": "in_progress",
+  pending_review: "pending_review",
 });
 
 const ADMIN_STATUS_TRANSITIONS = Object.freeze({
-  pending: ["viewed", "in_progress", "rejected", "waiting_tenant"],
-  viewed: ["in_progress", "rejected", "waiting_tenant"],
-  in_progress: ["waiting_tenant", "resolved", "completed", "rejected"],
-  waiting_tenant: ["in_progress", "resolved", "completed", "rejected"],
-  resolved: ["closed"],
-  completed: ["closed"],
+  pending: ["viewed", "provider_assigned", "scheduled", "in_progress", "rejected", "waiting_tenant"],
+  pending_review: ["provider_assigned", "scheduled", "in_progress", "rejected", "waiting_tenant"],
+  provider_assigned: ["scheduled", "in_progress", "waiting_tenant", "completed", "resolved", "rejected"],
+  scheduled: ["in_progress", "waiting_tenant", "completed", "resolved", "rejected"],
+  viewed: ["provider_assigned", "scheduled", "in_progress", "rejected", "waiting_tenant"],
+  in_progress: ["waiting_tenant", "scheduled", "resolved", "completed", "rejected"],
+  waiting_tenant: ["in_progress", "scheduled", "resolved", "completed", "rejected"],
+  reopened: ["provider_assigned", "scheduled", "in_progress", "waiting_tenant", "completed", "resolved", "rejected"],
+  resolved: ["completed", "closed", "reopened"],
+  completed: ["closed", "reopened"],
   rejected: ["closed"],
   cancelled: [],
   closed: [],
@@ -173,3 +210,4 @@ export const buildMaintenanceNotificationTitle = (requestType) =>
 
 export const buildMaintenanceNotificationBody = (requestType, status) =>
   `Your ${formatMaintenanceTypeLabel(requestType).toLowerCase()} request is now ${formatMaintenanceStatusLabel(status)}.`;
+

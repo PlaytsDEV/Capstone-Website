@@ -4,7 +4,7 @@ import { showNotification } from "../../../../../shared/utils/notification";
 import { useUpdateMaintenanceCost } from "../../../../../shared/hooks/queries/useMaintenance";
 import { getMaintenanceApiErrorMessage, sanitizeAmountInput } from "../maintenanceUtils";
 
-export function CostAttributionCard({ request }) {
+export function CostAttributionCard({ request, disabled = false }) {
   const updateCostMutation = useUpdateMaintenanceCost();
 
   const [laborCost, setLaborCost] = useState(
@@ -99,8 +99,9 @@ export function CostAttributionCard({ request }) {
               type="text"
               value={laborCost}
               onChange={(e) => setLaborCost(sanitizeAmountInput(e.target.value))}
+              disabled={disabled || updateCostMutation.isPending}
               placeholder="0.00"
-              className="h-9 w-full rounded-lg bg-transparent pl-6 pr-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none"
+              className="h-9 w-full rounded-lg bg-transparent pl-6 pr-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none disabled:opacity-50"
             />
           </div>
         </div>
@@ -118,8 +119,9 @@ export function CostAttributionCard({ request }) {
               type="text"
               value={materialsCost}
               onChange={(e) => setMaterialsCost(sanitizeAmountInput(e.target.value))}
+              disabled={disabled || updateCostMutation.isPending}
               placeholder="0.00"
-              className="h-9 w-full rounded-lg bg-transparent pl-6 pr-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none"
+              className="h-9 w-full rounded-lg bg-transparent pl-6 pr-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none disabled:opacity-50"
             />
           </div>
         </div>
@@ -141,12 +143,13 @@ export function CostAttributionCard({ request }) {
       {/* Resident Damage Attribution Box */}
       <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/30 p-2.5 space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <label className="flex items-center gap-2 cursor-pointer select-none min-w-0">
+          <label className={`flex items-center gap-2 select-none min-w-0 ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
             <input
               type="checkbox"
               checked={isTenantChargeable}
               onChange={(e) => setIsTenantChargeable(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 dark:border-slate-700 accent-primary cursor-pointer shrink-0"
+              disabled={disabled || updateCostMutation.isPending}
+              className="h-4 w-4 rounded border-slate-300 dark:border-slate-700 accent-primary cursor-pointer shrink-0 disabled:cursor-not-allowed"
             />
             <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
               Charge to resident (Tenant Damage)
@@ -156,7 +159,7 @@ export function CostAttributionCard({ request }) {
           <button
             type="button"
             onClick={handleSaveCost}
-            disabled={!hasChanges || updateCostMutation.isPending}
+            disabled={disabled || !hasChanges || updateCostMutation.isPending}
             className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-40 transition cursor-pointer"
           >
             <Save size={12} />
@@ -173,8 +176,9 @@ export function CostAttributionCard({ request }) {
               type="text"
               value={chargeReason}
               onChange={(e) => setChargeReason(e.target.value)}
+              disabled={disabled || updateCostMutation.isPending}
               placeholder="e.g. Fixture broken due to resident misuse"
-              className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition"
+              className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition disabled:opacity-50"
             />
           </div>
         )}

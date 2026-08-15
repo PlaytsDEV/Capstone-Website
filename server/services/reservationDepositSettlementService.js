@@ -436,6 +436,8 @@ export async function settleReservationDeposit({
       });
 
       reservation.paymentStatus = "paid";
+      reservation.reservationFeePaymentStatus = "verified";
+      reservation.paidAt = reservation.paidAt || new Date(paidAt);
       reservation.paymentDate = new Date(paidAt);
       reservation.paymentMethod = normalizePaymentMethod(source, evidence);
       reservation.paymongoPaymentId =

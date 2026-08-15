@@ -357,6 +357,7 @@ async function handleBillPayment(metadata, eventData, context = {}) {
             $set: {
               initialPaymentStatus: "paid",
               paymentStatus: "paid_in_full",
+              reservationFeePaymentStatus: "verified",
             },
           },
         );

@@ -85,28 +85,29 @@ export const getReservations = async (req, res) => {
         .status(404)
         .json({ error: "User not found in database", code: "USER_NOT_FOUND" });
 
+    const isOwner = isOwnerRole(dbUser.role);
     const archiveQuery =
-      isAdminListView && archiveFilter === "archived"
+      isOwner && isAdminListView && archiveFilter === "archived"
         ? { isArchived: true }
-        : isAdminListView && archiveFilter === "all"
+        : isOwner && isAdminListView && archiveFilter === "all"
           ? {}
           : { isArchived: { $ne: true } };
 
     let query;
-    if (isOwnerRole(dbUser.role)) {
+    if (isOwner) {
       query = { ...archiveQuery };
     } else if (dbUser.role === "branch_admin") {
       const roomIds = (
         await Room.find({ branch: dbUser.branch }).select("_id")
       ).map((r) => r._id);
-      query = { roomId: { $in: roomIds }, ...archiveQuery };
+      query = { roomId: { $in: roomIds }, isArchived: { $ne: true } };
     } else {
       query = { userId: dbUser._id, isArchived: { $ne: true } };
     }
 
     let reservationsQuery = Reservation.find(query)
       .populate(
-        ...(isAdminListView ? ["userId", "firstName lastName email phone"] : POPULATE_USER),
+        ...(isAdminListView ? ["userId", "firstName lastName email phone profileImage"] : POPULATE_USER),
       )
       .populate(
         ...(isAdminListView ? ["roomId", "name branch type"] : POPULATE_ROOM),
@@ -544,6 +545,13 @@ export const deleteReservation = async (req, res) => {
         });
       }
 
+      if (!reservation.isArchived) {
+        return res.status(400).json({
+          error: "Only archived reservations can be permanently deleted. Please archive the reservation first.",
+          code: "ARCHIVED_REQUIRED_FOR_HARD_DELETE",
+        });
+      }
+
       // Release the bed BEFORE deleting the reservation document so we still have
       // the reservation ID to reference in Room.beds[].occupiedBy.reservationId
       await releaseOrphanedBeds([], [reservationId]).catch((err) =>
@@ -567,6 +575,16 @@ export const deleteReservation = async (req, res) => {
         message: "Reservation permanently deleted",
         reservationId,
         hardDeleted: true,
+      });
+    }
+
+    if (
+      hasReservationStatus(reservation.status, "reserved", "approved_for_payment") ||
+      hasReservationStatus(reservation.status, "moveIn")
+    ) {
+      return res.status(400).json({
+        error: "Confirmed reserved bookings cannot be deleted directly. Please process a cancellation or move-out workflow first.",
+        code: "RESERVED_CANNOT_BE_DELETED",
       });
     }
 

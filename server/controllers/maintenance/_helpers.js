@@ -28,7 +28,7 @@ import {
 } from "../../config/maintenance.js";
 import { ROOM_BRANCHES, ROOM_BRANCH_LABELS } from "../../config/branches.js";
 import { AppError } from "../../middleware/errorHandler.js";
-import { MaintenanceRequest, ServiceProvider, User } from "../../models/index.js";
+import { MaintenanceRequest, Reservation, Room, ServiceProvider, User } from "../../models/index.js";
 import { toCategoryKey } from "../../models/ServiceProvider.js";
 import { clean } from "../../utils/sanitize.js";
 import { DELETED_ACCOUNT_LABEL } from "../../utils/userReference.js";
@@ -880,15 +880,145 @@ export const serializeMaintenanceRequest = (
       attachments: sanitizeAttachmentsForOutput(entry?.attachments, { includeInternal: false }),
     }));
 
+  const ticketNumber =
+    request.ticketNumber ||
+    `MNT-${new Date(request.created_at || Date.now()).getFullYear()}-${String(
+      request.request_id || request._id || "0000",
+    )
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .slice(-4)
+      .toUpperCase()}`;
+
+  const tenantActiveRes = tenant?.activeReservation || null;
+  const tenantActiveRoom = tenant?.activeRoom || null;
+
+  const occupancyContext = {
+    unitNumber:
+      request.occupancyContext?.unitNumber ||
+      (request.roomId && typeof request.roomId === "object"
+        ? request.roomId.roomNumber || request.roomId.name
+        : null) ||
+      (request.reservationId && typeof request.reservationId === "object"
+        ? request.reservationId.roomNumber
+        : null) ||
+      tenantActiveRoom?.roomNumber ||
+      tenantActiveRoom?.name ||
+      tenantActiveRes?.roomNumber ||
+      null,
+    bedNumber:
+      request.occupancyContext?.bedNumber ||
+      (request.reservationId && typeof request.reservationId === "object"
+        ? request.reservationId.bedNumber || request.reservationId.bed
+        : null) ||
+      tenantActiveRes?.bedNumber ||
+      tenantActiveRes?.bed ||
+      null,
+    floor:
+      request.occupancyContext?.floor ??
+      (request.roomId && typeof request.roomId === "object"
+        ? request.roomId.floor
+        : null) ??
+      tenantActiveRoom?.floor ??
+      null,
+  };
+
+  const tenantVisibleLabel =
+    request.providerDetails?.tenantVisibleLabel ||
+    (request.providerDetails?.providerType === "IN_HOUSE"
+      ? "LilyCrest Facilities Team"
+      : request.providerDetails?.providerType === "EXTERNAL"
+        ? (request.assignedProviderCategory
+            ? `Authorized ${request.assignedProviderCategory} Specialist`
+            : "Authorized External Specialist")
+        : (request.assigned_to || request.assignedProviderName
+            ? "LilyCrest Facilities Team"
+            : null));
+
+  const providerDetails = includeInternal
+    ? {
+        providerType: request.providerDetails?.providerType || (request.assignedProviderId ? "EXTERNAL" : request.assigned_to ? "IN_HOUSE" : null),
+        tenantVisibleLabel,
+        internalProviderId: request.providerDetails?.internalProviderId || (request.assignedProviderId ? String(request.assignedProviderId) : null),
+        privateContact: request.providerDetails?.privateContact || request.assignedProviderContact || null,
+        quotedCost: Number(request.providerDetails?.quotedCost || 0),
+        currency: request.providerDetails?.currency || "PHP",
+        snapshotJson: request.providerDetails?.snapshotJson || null,
+      }
+    : {
+        providerType: request.providerDetails?.providerType || null,
+        tenantVisibleLabel,
+      };
+
+  const schedule = {
+    scheduledDate: request.schedule?.scheduledDate || request.scheduledDate || null,
+    notes: request.schedule?.notes || null,
+  };
+
+  const completionReport = includeInternal
+    ? (request.completionReport?.summary || request.completionReport?.reportId
+        ? {
+            reportId: request.completionReport?.reportId || null,
+            isDraft: request.completionReport?.isDraft ?? true,
+            summary: request.completionReport?.summary || null,
+            workDone: request.completionReport?.workDone || null,
+            partsReplaced: request.completionReport?.partsReplaced || null,
+            preventiveAdvice: request.completionReport?.preventiveAdvice || null,
+            finalizedBy: request.completionReport?.finalizedBy || null,
+            finalizedByName: request.completionReport?.finalizedByName || null,
+            finalizedAt: request.completionReport?.finalizedAt || null,
+            reportUrl: request.completionReport?.reportUrl || null,
+          }
+        : null)
+    : (!request.completionReport?.isDraft && (request.completionReport?.summary || request.completionReport?.reportId)
+        ? {
+            reportId: request.completionReport?.reportId || null,
+            isDraft: false,
+            summary: request.completionReport?.summary || null,
+            workDone: request.completionReport?.workDone || null,
+            partsReplaced: request.completionReport?.partsReplaced || null,
+            preventiveAdvice: request.completionReport?.preventiveAdvice || null,
+            finalizedByName: request.completionReport?.finalizedByName || "LilyCrest Management",
+            finalizedAt: request.completionReport?.finalizedAt || null,
+            reportUrl: request.completionReport?.reportUrl || null,
+          }
+        : null);
+
+  const reopenCount =
+    typeof request.reopenCount === "number"
+      ? request.reopenCount
+      : Array.isArray(request.reopen_history)
+        ? request.reopen_history.length
+        : 0;
+
+  const resolutionConfirmation = request.resolutionConfirmation?.confirmedAt
+    ? {
+        confirmedAt: request.resolutionConfirmation.confirmedAt,
+        tenantFeedback: request.resolutionConfirmation.tenantFeedback || null,
+      }
+    : null;
+
   return {
     id: request.request_id,
     _id: request._id,
     request_id: request.request_id,
+    ticketNumber,
+    ticket_number: ticketNumber,
     user_id: request.user_id,
+    occupancyContext,
+    occupancy_context: occupancyContext,
     request_type: request.request_type,
     description: request.description,
     urgency: request.urgency,
     status: request.status,
+    providerDetails,
+    provider_details: providerDetails,
+    tenantVisibleProviderLabel: tenantVisibleLabel,
+    schedule,
+    completionReport,
+    completion_report: completionReport,
+    reopenCount,
+    reopen_count: reopenCount,
+    resolutionConfirmation,
     assigned_to: includeInternal ? request.assigned_to ?? null : null,
     notes: includeInternal ? request.notes ?? null : null,
     attachments: sanitizeAttachmentsForOutput(request.attachments, { includeInternal }),
@@ -964,8 +1094,12 @@ export const serializeMaintenanceRequest = (
     },
     tenant,
     branch: request.branch || null,
-    roomId: request.roomId || null,
-    reservationId: request.reservationId || null,
+    room:
+      request.roomId && typeof request.roomId === "object"
+        ? request.roomId
+        : tenantActiveRoom || null,
+    roomId: request.roomId || tenantActiveRoom?._id || null,
+    reservationId: request.reservationId || tenantActiveRes?._id || null,
     isArchived: Boolean(request.isArchived),
     archivedAt: request.archivedAt ?? null,
     archivedBy: request.archivedBy ?? null,
@@ -1496,7 +1630,40 @@ export const loadTenantMap = async (requests) => {
     .select(USER_SELECT_FIELDS)
     .lean();
 
-  return new Map(users.map((user) => [user.user_id, user]));
+  const userObjectIds = users.map((u) => u._id).filter(Boolean);
+  let activeReservations = [];
+  try {
+    activeReservations = await Reservation.find({
+      userId: { $in: userObjectIds },
+      isArchived: { $ne: true },
+    })
+      .sort({ moveInDate: -1, createdAt: -1 })
+      .populate("roomId", "name roomNumber floor branch")
+      .lean();
+  } catch {
+    // non-fatal
+  }
+
+  const resMap = new Map();
+  for (const res of activeReservations) {
+    if (res.userId && !resMap.has(String(res.userId))) {
+      resMap.set(String(res.userId), res);
+    }
+  }
+
+  return new Map(
+    users.map((user) => {
+      const activeRes = resMap.get(String(user._id));
+      return [
+        user.user_id,
+        {
+          ...user,
+          activeReservation: activeRes || null,
+          activeRoom: activeRes?.roomId || null,
+        },
+      ];
+    }),
+  );
 };
 
 export const findAccessibleRequest = async (

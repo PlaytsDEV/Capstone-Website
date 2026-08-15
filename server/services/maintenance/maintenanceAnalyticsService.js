@@ -307,6 +307,31 @@ export const buildMaintenanceAnalytics = ({
     now,
   });
 
+  const avgResponse = average(responseHours);
+  const avgResolution = average(resolutionHours);
+  const reopenedRequestsCount = filteredRequests.filter((r) => (r.reopenCount > 0 || r.reopen_history?.length > 0 || r.status === "reopened")).length;
+  const reopenRatePercent = completedCount > 0 ? Number(((reopenedRequestsCount / completedCount) * 100).toFixed(1)) : 0;
+
+  const inHouseCount = filteredRequests.filter((r) => r.providerDetails?.providerType === "IN_HOUSE" || (!r.assignedProviderId && r.assigned_to)).length;
+  const externalVendorCount = filteredRequests.filter((r) => r.providerDetails?.providerType === "EXTERNAL" || r.assignedProviderId).length;
+  const inHouseVsVendorRatio = externalVendorCount > 0 ? `${(inHouseCount / externalVendorCount).toFixed(1)}:1` : `${inHouseCount}:0`;
+
+  const categoryDistribution = issueTypeRows.map((row) => {
+    const percentage = rows.length > 0 ? Number(((row.value / rows.length) * 100).toFixed(1)) : 0;
+    let preventiveAction = "Routine periodic inspection.";
+    if (row.key === "elevator") preventiveAction = "Schedule quarterly motor overhaul & door sensor checks.";
+    else if (row.key === "plumbing") preventiveAction = "Check main risers, traps, and water pressure valves.";
+    else if (row.key === "electrical") preventiveAction = "Inspect sub-breakers and emergency lighting.";
+    else if (row.key === "aircon") preventiveAction = "Clean filters and flush condensation drain lines.";
+    else if (row.key === "pest") preventiveAction = "Schedule monthly pest treatment cycle.";
+    else if (row.key === "internet") preventiveAction = "Check router health and access point firmware.";
+    return {
+      ...row,
+      percentage,
+      preventiveAction,
+    };
+  });
+
   return {
     scope: {
       generatedAt: now.toISOString(),
@@ -325,10 +350,19 @@ export const buildMaintenanceAnalytics = ({
       completedRequests: completedCount,
       overdueRequests: overdueCount,
       cancelledRejectedRequests: cancelledRejectedCount,
-      averageResponseTimeHours: average(responseHours),
-      averageResponseTimeLabel: formatDuration(average(responseHours)),
-      averageResolutionTimeHours: average(resolutionHours),
-      averageResolutionTimeLabel: formatDuration(average(resolutionHours)),
+      reopenedRequestsCount,
+      reopenRatePercent,
+      inHouseCount,
+      externalVendorCount,
+      inHouseVsVendorRatio,
+      mttfaHours: avgResponse,
+      mttfaLabel: formatDuration(avgResponse),
+      mttrHours: avgResolution,
+      mttrLabel: formatDuration(avgResolution),
+      averageResponseTimeHours: avgResponse,
+      averageResponseTimeLabel: formatDuration(avgResponse),
+      averageResolutionTimeHours: avgResolution,
+      averageResolutionTimeLabel: formatDuration(avgResolution),
       mostCommonIssueType: mostCommonIssue?.label || "Not enough data",
       assignedRequests: rows.filter((request) => request.assignedProvider !== "Unassigned").length,
       unassignedRequests: rows.filter((request) => request.assignedProvider === "Unassigned").length,
@@ -337,6 +371,7 @@ export const buildMaintenanceAnalytics = ({
     charts: {
       requestsByStatus: statusRows,
       requestsByIssueType: issueTypeRows,
+      categoryDistribution,
       requestsByUrgency: urgencyRows,
       monthlyTrend: buildMonthlyTrend(filteredRequests, now),
       overdueOverview: [
@@ -354,11 +389,16 @@ export const buildMaintenanceAnalytics = ({
     breakdowns: {
       status: statusRows,
       issueType: issueTypeRows,
+      categoryDistribution,
       urgency: urgencyRows,
       branch: branchRows,
       assignment: [
         { key: "assigned", label: "Assigned", value: rows.filter((request) => request.assignedProvider !== "Unassigned").length },
         { key: "unassigned", label: "Unassigned", value: rows.filter((request) => request.assignedProvider === "Unassigned").length },
+      ],
+      inHouseVsVendor: [
+        { key: "in_house", label: "In-House Crew", value: inHouseCount },
+        { key: "external", label: "External Contractor", value: externalVendorCount },
       ],
       completedVsUnresolved: [
         { key: "completed", label: "Completed", value: completedCount },

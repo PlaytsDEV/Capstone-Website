@@ -70,9 +70,14 @@ test("resolveReservationFeeStatus: distinguishes holding fee status accurately",
   assert.equal(resolveReservationFeeStatus({ reservationFeePaymentStatus: "verified" }), "verified");
   assert.equal(resolveReservationFeeStatus({ reservationFeePaymentStatus: "pending" }), "pending");
   assert.equal(resolveReservationFeeStatus({ status: "reserved" }), "verified");
+  assert.equal(resolveReservationFeeStatus({ status: "reserved", reservationFeePaymentStatus: "pending" }), "verified");
+  assert.equal(resolveReservationFeeStatus({ initialPaymentStatus: "paid", reservationFeePaymentStatus: "pending" }), "verified");
+  assert.equal(resolveReservationFeeStatus({ paymentStatus: "paid_in_full", reservationFeePaymentStatus: "pending" }), "verified");
   assert.equal(resolveReservationFeeStatus({ status: "moveIn" }), "verified");
   assert.equal(resolveReservationFeeStatus({ paidAt: "2026-08-01" }), "verified");
   assert.equal(resolveReservationFeeStatus({ paymentProof: "url", status: "pending" }), "proof_uploaded");
+  assert.equal(resolveReservationFeeStatus({ reservationFeePaymentStatus: "reconciliation_required", status: "pending" }), "reconciliation_required");
+  assert.equal(resolveReservationFeeStatus({ reservationFeePaymentStatus: "failed", status: "pending" }), "failed");
   assert.equal(resolveReservationFeeStatus(null), "pending");
 });
 

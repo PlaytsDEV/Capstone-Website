@@ -1,22 +1,26 @@
 import {
+    ArrowUpDown,
     BedDouble,
     Bug,
     Droplets,
     MoreHorizontal,
     Snowflake,
     Sparkles,
+    Wifi,
     Wrench,
     Zap,
 } from "lucide-react";
 
 export const MAINTENANCE_REQUEST_TYPE_META = Object.freeze({
-  maintenance: { label: "Maintenance", icon: Wrench, color: "#F59E0B" },
+  maintenance: { label: "General Maintenance", icon: Wrench, color: "#F59E0B" },
   plumbing: { label: "Plumbing", icon: Droplets, color: "#3B82F6" },
   electrical: { label: "Electrical", icon: Zap, color: "#EF4444" },
   aircon: { label: "Air Conditioning", icon: Snowflake, color: "#06B6D4" },
+  elevator: { label: "Elevator", icon: ArrowUpDown, color: "#8B5CF6" },
+  furniture: { label: "Furniture / Fixture", icon: BedDouble, color: "#EC4899" },
+  internet: { label: "Internet / Network", icon: Wifi, color: "#0284C7" },
   cleaning: { label: "Cleaning", icon: Sparkles, color: "#22C55E" },
-  pest: { label: "Pest Control", icon: Bug, color: "#8B5CF6" },
-  furniture: { label: "Furniture", icon: BedDouble, color: "#EC4899" },
+  pest: { label: "Pest Control", icon: Bug, color: "#7C3AED" },
   other: { label: "Other", icon: MoreHorizontal, color: "#6B7280" },
 });
 
@@ -25,17 +29,29 @@ export const MAINTENANCE_REQUEST_TYPES = Object.freeze(
 );
 
 export const MAINTENANCE_URGENCY_META = Object.freeze({
+  normal: {
+    label: "Normal",
+    description: "Standard repair timeline",
+    color: "#F59E0B",
+    estimate: "1-2 business days",
+  },
+  urgent: {
+    label: "Urgent",
+    description: "Needs priority attention",
+    color: "#EA580C",
+    estimate: "Within 24 hours",
+  },
+  emergency: {
+    label: "Emergency",
+    description: "Immediate safety / hazard",
+    color: "#DC2626",
+    estimate: "Immediate dispatch",
+  },
   low: {
     label: "Low",
     description: "Can wait a few days",
     color: "#22C55E",
     estimate: "3-5 business days",
-  },
-  normal: {
-    label: "Normal",
-    description: "Within 1-2 days",
-    color: "#F59E0B",
-    estimate: "1-2 business days",
   },
   high: {
     label: "Urgent",
@@ -45,23 +61,32 @@ export const MAINTENANCE_URGENCY_META = Object.freeze({
   },
 });
 
-export const MAINTENANCE_URGENCY_LEVELS = Object.freeze(
-  Object.keys(MAINTENANCE_URGENCY_META),
-);
+export const MAINTENANCE_URGENCY_LEVELS = Object.freeze([
+  "normal",
+  "urgent",
+  "emergency",
+  "low",
+  "high",
+]);
 
 export const MIN_MAINTENANCE_DESCRIPTION_LENGTH = 10;
 
 export const ACTIVE_MAINTENANCE_STATUSES = Object.freeze([
   "pending",
+  "pending_review",
+  "provider_assigned",
+  "scheduled",
   "viewed",
   "in_progress",
   "waiting_tenant",
+  "reopened",
 ]);
 
 export const RESOLVED_MAINTENANCE_STATUSES = Object.freeze([
   "resolved",
   "completed",
   "rejected",
+  "cancelled",
   "closed",
 ]);
 
@@ -85,10 +110,28 @@ export const LOCKED_ADMIN_MAINTENANCE_STATUSES = Object.freeze([
 
 export const MAINTENANCE_STATUS_META = Object.freeze({
   pending: {
-    label: "Pending",
+    label: "Pending Review",
     bg: "#FEF3C7",
     color: "#F59E0B",
     variant: "warning",
+  },
+  pending_review: {
+    label: "Pending Review",
+    bg: "#FEF3C7",
+    color: "#F59E0B",
+    variant: "warning",
+  },
+  provider_assigned: {
+    label: "Provider Assigned",
+    bg: "#E0E7FF",
+    color: "#4338CA",
+    variant: "info",
+  },
+  scheduled: {
+    label: "Scheduled",
+    bg: "#CFFAFE",
+    color: "#0891B2",
+    variant: "info",
   },
   viewed: {
     label: "Viewed",
@@ -107,6 +150,12 @@ export const MAINTENANCE_STATUS_META = Object.freeze({
     bg: "#E0F2FE",
     color: "#0284C7",
     variant: "info",
+  },
+  reopened: {
+    label: "Reopened",
+    bg: "#FEE2E2",
+    color: "#B91C1C",
+    variant: "error",
   },
   resolved: {
     label: "Resolved",
@@ -141,6 +190,9 @@ export const MAINTENANCE_STATUS_META = Object.freeze({
 });
 
 export const ADMIN_MAINTENANCE_STATUS_OPTIONS = Object.freeze([
+  "pending_review",
+  "provider_assigned",
+  "scheduled",
   "viewed",
   "in_progress",
   "waiting_tenant",
@@ -151,12 +203,16 @@ export const ADMIN_MAINTENANCE_STATUS_OPTIONS = Object.freeze([
 ]);
 
 export const ADMIN_MAINTENANCE_STATUS_TRANSITIONS = Object.freeze({
-  pending: ["viewed", "in_progress", "rejected", "waiting_tenant"],
-  viewed: ["in_progress", "rejected", "waiting_tenant"],
-  in_progress: ["waiting_tenant", "resolved", "completed", "rejected"],
-  waiting_tenant: ["in_progress", "resolved", "completed", "rejected"],
-  resolved: ["closed"],
-  completed: ["closed"],
+  pending: ["viewed", "provider_assigned", "scheduled", "in_progress", "rejected", "waiting_tenant", "completed", "resolved"],
+  pending_review: ["provider_assigned", "scheduled", "in_progress", "rejected", "waiting_tenant", "completed", "resolved"],
+  provider_assigned: ["scheduled", "in_progress", "waiting_tenant", "completed", "resolved", "rejected"],
+  scheduled: ["in_progress", "waiting_tenant", "completed", "resolved", "rejected"],
+  viewed: ["provider_assigned", "scheduled", "in_progress", "rejected", "waiting_tenant"],
+  in_progress: ["waiting_tenant", "scheduled", "resolved", "completed", "rejected"],
+  waiting_tenant: ["in_progress", "scheduled", "resolved", "completed", "rejected"],
+  reopened: ["provider_assigned", "scheduled", "in_progress", "waiting_tenant", "completed", "resolved", "rejected"],
+  resolved: ["completed", "closed", "reopened"],
+  completed: ["closed", "reopened"],
   rejected: ["closed"],
   cancelled: [],
   closed: [],
@@ -197,3 +253,4 @@ export const formatMaintenanceUrgency = (urgency) =>
 
 export const formatMaintenanceStatus = (status) =>
   getMaintenanceStatusMeta(status).label;
+

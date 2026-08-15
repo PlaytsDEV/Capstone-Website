@@ -6,13 +6,15 @@ import {
   Building2,
   Calendar,
   CheckCircle,
+  ChevronDown,
   Clock,
   Eye,
   Download,
+  History,
   Layers,
-  ListFilter,
   RotateCcw,
   SlidersHorizontal,
+  Sparkles,
   Trash2,
   User,
   Search,
@@ -36,6 +38,8 @@ import {
   syncBranchSearchParam,
 } from "../../../shared/utils/branchFilterQuery.mjs";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
+import ProfileAvatar from "../../../shared/components/ProfileAvatar";
+import { showNotification } from "../../../shared/utils/notification";
 import { useReservations } from "../../../shared/hooks/queries/useReservations";
 import {
   RESERVATION_STATUS_LABELS,
@@ -64,10 +68,8 @@ import {
   mapReservationAdminRow,
   applyMoveInFilter,
   applyAppDateFilter,
-  applyQuickChip,
   getReservationDocumentWarnings,
 } from "../utils/reservationRows";
-import ReservationQuickChips from "../components/ReservationQuickChips";
 import ReservationFilterDrawer from "../components/ReservationFilterDrawer";
 import ActiveFilterTags from "../components/ActiveFilterTags";
 import "../styles/design-tokens.css";
@@ -139,13 +141,12 @@ function ReservationsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortState, setSortState] = useState({ key: "createdAt", dir: "desc" });
 
-  const [quickChip, setQuickChip] = useState(null);
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
+  const [isStatusViewExpanded, setIsStatusViewExpanded] = useState(true);
   const [advancedFilters, setAdvancedFilters] = useState({
     moveIn: "any",
     applicationDate: "any",
     roomType: "any",
-    paymentStatus: "any",
     moveInStart: "",
     moveInEnd: "",
     appDateStart: "",
@@ -199,7 +200,7 @@ function ReservationsPage() {
     isLoading: loading,
     error: queryError,
   } = useReservations(
-    { view: "admin-list", archive: "all" },
+    { view: "admin-list", archive: isOwner ? "all" : "active" },
     { refetchInterval: 5000, refetchOnWindowFocus: true, refetchOnMount: true },
   );
   const error = queryError?.message || null;
@@ -214,9 +215,18 @@ function ReservationsPage() {
     [reservations],
   );
 
-  const counts = useMemo(
-    () => ({
+  const counts = useMemo(() => {
+    let overdue = 0;
+    let isNew = 0;
+
+    activeReservations.forEach((r) => {
+      if (checkOverdueReservation(r)) overdue++;
+      if (r.isNew) isNew++;
+    });
+
+    return {
       total: activeReservations.length,
+      isNew,
       pendingApplicationReview: activeReservations.filter((reservation) =>
         reservation.status === "pending_application_review",
       ).length,
@@ -229,6 +239,7 @@ function ReservationsPage() {
       reserved: activeReservations.filter(
         (reservation) => reservation.status === "reserved",
       ).length,
+      overdue,
       cancellationRequested: activeReservations.filter(hasPendingCancellationRequest)
         .length,
       cancelled: activeReservations.filter(
@@ -239,9 +250,8 @@ function ReservationsPage() {
       ).length,
       archived: reservations.filter((reservation) => reservation.isArchived)
         .length,
-    }),
-    [activeReservations, reservations],
-  );
+    };
+  }, [activeReservations, reservations]);
 
   const filteredReservations = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -263,21 +273,21 @@ function ReservationsPage() {
           ? true
           : statusFilter === "archived"
             ? true
+          : statusFilter === "new"
+            ? reservation.isNew
           : statusFilter === "pending_review"
             ? reservation.status === "pending_application_review" ||
               reservation.status === "needs_revision"
           : statusFilter === "reserved"
             ? reservation.status === "reserved" ||
               reservation.status === "approved_for_payment"
-          : statusFilter === "new"
-            ? reservation.isNew
           : statusFilter === "overdue"
             ? checkOverdueReservation(reservation)
-            : statusFilter === "in_progress"
-              ? IN_PROGRESS_STATUSES.includes(reservation.status)
-              : statusFilter === "cancellation_requested"
-                ? hasPendingCancellationRequest(reservation)
-                : hasReservationStatus(reservation.status, statusFilter);
+          : statusFilter === "in_progress"
+            ? IN_PROGRESS_STATUSES.includes(reservation.status)
+          : statusFilter === "cancellation_requested"
+            ? hasPendingCancellationRequest(reservation)
+            : hasReservationStatus(reservation.status, statusFilter);
       const matchBranch =
         branchFilter === "all" || reservation.branchCode === branchFilter;
 
@@ -286,10 +296,6 @@ function ReservationsPage() {
       const matchRoomType =
         advancedFilters.roomType === "any" ||
         reservation.roomType === advancedFilters.roomType;
-      const matchPayment =
-        advancedFilters.paymentStatus === "any" ||
-        reservation.paymentStatus === advancedFilters.paymentStatus;
-      const matchChip = applyQuickChip(reservation, quickChip);
 
       return (
         matchSearch &&
@@ -297,15 +303,12 @@ function ReservationsPage() {
         matchBranch &&
         matchMoveIn &&
         matchAppDate &&
-        matchRoomType &&
-        matchPayment &&
-        matchChip
+        matchRoomType
       );
     });
   }, [
     advancedFilters,
     branchFilter,
-    quickChip,
     reservations,
     searchTerm,
     statusFilter,
@@ -316,7 +319,6 @@ function ReservationsPage() {
     if (advancedFilters.moveIn !== "any") count++;
     if (advancedFilters.applicationDate !== "any") count++;
     if (advancedFilters.roomType !== "any") count++;
-    if (advancedFilters.paymentStatus !== "any") count++;
     return count;
   }, [advancedFilters]);
 
@@ -326,22 +328,19 @@ function ReservationsPage() {
         searchTerm.trim() ||
         (isOwner && branchFilter !== "all") ||
         statusFilter !== "all" ||
-        quickChip !== null ||
         activeAdvancedFilterCount > 0,
       ),
-    [activeAdvancedFilterCount, branchFilter, isOwner, quickChip, searchTerm, statusFilter],
+    [activeAdvancedFilterCount, branchFilter, isOwner, searchTerm, statusFilter],
   );
 
   const handleResetAllFilters = useCallback(() => {
     setSearchTerm("");
     setStatusFilter("all");
     setBranchFilter("all");
-    setQuickChip(null);
     setAdvancedFilters({
       moveIn: "any",
       applicationDate: "any",
       roomType: "any",
-      paymentStatus: "any",
       moveInStart: "",
       moveInEnd: "",
       appDateStart: "",
@@ -420,6 +419,12 @@ function ReservationsPage() {
     setSearchParams(nextParams, { replace: true });
   }, [branchFilter, isOwner, searchParams, setSearchParams, user?.role]);
 
+  useEffect(() => {
+    if (!isOwner && statusFilter === "archived") {
+      setStatusFilter("all");
+    }
+  }, [isOwner, statusFilter]);
+
   const summaryItems = useMemo(
     () => [
       {
@@ -457,6 +462,90 @@ function ReservationsPage() {
     ],
     [counts],
   );
+
+  const statusViewTabs = useMemo(
+    () => [
+      {
+        id: "all",
+        label: "All Active",
+        count: counts.total,
+        icon: null,
+        title: "View all active reservations",
+        activeClass: "res-view-tab--active res-view-tab--primary",
+      },
+      {
+        id: "new",
+        label: "New Applications",
+        count: counts.isNew,
+        icon: Sparkles,
+        iconColor:
+          counts.isNew > 0
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-muted-foreground",
+        title: "Newly submitted applicant reservations",
+        activeClass: "res-view-tab--active res-view-tab--primary",
+      },
+      {
+        id: "reserved",
+        label: "Reserved",
+        count: counts.reserved + counts.approvedForPayment,
+        icon: CheckCircle,
+        iconColor: "text-muted-foreground",
+        title: "Filter confirmed and reserved reservations",
+        activeClass: "res-view-tab--active res-view-tab--primary",
+      },
+      {
+        id: "overdue",
+        label: "Overdue Move-In",
+        count: counts.overdue,
+        icon: AlertTriangle,
+        iconColor:
+          counts.overdue > 0
+            ? "text-red-600 dark:text-red-400"
+            : "text-muted-foreground",
+        title: "Reservations past scheduled move-in date",
+        activeClass: "res-view-tab--active res-view-tab--danger",
+        inactiveClass:
+          counts.overdue > 0 ? "text-red-700 dark:text-red-400 font-medium" : "",
+      },
+      {
+        id: "cancellation_requested",
+        label: "Cancellation Requests",
+        count: counts.cancellationRequested,
+        icon: AlertTriangle,
+        iconColor:
+          counts.cancellationRequested > 0
+            ? "text-amber-600 dark:text-amber-400"
+            : "text-muted-foreground",
+        title: "Review pending cancellation requests",
+        activeClass: "res-view-tab--active res-view-tab--warning",
+        inactiveClass:
+          counts.cancellationRequested > 0
+            ? "text-amber-700 dark:text-amber-400 font-medium"
+            : "",
+      },
+      {
+        id: "cancelled",
+        label: "Cancelled",
+        count: counts.cancelled,
+        icon: Trash2,
+        iconColor: "text-muted-foreground",
+        title: "View cancelled reservations",
+        activeClass: "res-view-tab--active res-view-tab--danger",
+      },
+      isOwner && {
+        id: "archived",
+        label: "Archived",
+        count: counts.archived,
+        icon: Archive,
+        iconColor: "text-muted-foreground",
+        title: "View archived records",
+        activeClass: "res-view-tab--active res-view-tab--muted",
+      },
+    ].filter(Boolean),
+    [counts, isOwner],
+  );
+
   const tabs = useMemo(
     () => [
       { key: "reservations", label: "Reservations" },
@@ -626,11 +715,25 @@ function ReservationsPage() {
 
   const handleDelete = useCallback(
     (reservationId) => {
+      const targetRes = reservations.find((r) => r.id === reservationId);
+      if (
+        targetRes &&
+        (hasReservationStatus(targetRes.status, "reserved", "approved_for_payment") ||
+          hasReservationStatus(targetRes.status, "moveIn"))
+      ) {
+        showNotification(
+          "Confirmed reserved bookings cannot be deleted directly. Please process a cancellation or move-in/move-out workflow first.",
+          "error",
+          5000,
+        );
+        return;
+      }
+
       setConfirmModal({
         open: true,
         title: "Delete Reservation?",
         message:
-          "Remove this reservation from your active list? Billing and record history are safely preserved in the background, and you can restore it anytime.",
+          "Remove this reservation from your active list? Billing and record history are safely preserved in the background, and you can restore it anytime from the Archived tab.",
         variant: "danger",
         confirmText: "Delete Reservation",
         onConfirm: async () => {
@@ -642,8 +745,8 @@ function ReservationsPage() {
             (oldData) => {
               if (!Array.isArray(oldData)) return oldData;
               return oldData.map((res) =>
-                res._id === reservationId || res.id === reservationId
-                  ? { ...res, isArchived: true, status: "archived" }
+                String(res._id || res.id) === String(reservationId)
+                  ? { ...res, isArchived: true, status: "archived", archivedAt: new Date().toISOString() }
                   : res,
               );
             },
@@ -666,6 +769,47 @@ function ReservationsPage() {
         },
       });
     },
+    [queryClient, refetchReservations, reservations],
+  );
+
+  const handleHardDelete = useCallback(
+    (reservationId) => {
+      setConfirmModal({
+        open: true,
+        title: "Permanently Delete Reservation?",
+        message:
+          "This will permanently purge this archived reservation record and its audit history from the database. This action is irreversible and restricted to System Owners.",
+        variant: "danger",
+        confirmText: "Permanently Delete",
+        onConfirm: async () => {
+          setConfirmModal((previous) => ({ ...previous, open: false }));
+
+          // Optimistic UI removal: completely remove from cache
+          queryClient.setQueriesData(
+            { queryKey: ["reservations"] },
+            (oldData) => {
+              if (!Array.isArray(oldData)) return oldData;
+              return oldData.filter(
+                (res) => String(res._id || res.id) !== String(reservationId),
+              );
+            },
+          );
+
+          showNotification("Reservation permanently deleted.", "success", 4000);
+
+          try {
+            await reservationApi.delete(reservationId, { hardDelete: true });
+            refetchReservations();
+          } catch (error) {
+            refetchReservations();
+            showNotification(
+              error?.message || "Failed to permanently delete reservation. Please try again.",
+              "error",
+            );
+          }
+        },
+      });
+    },
     [queryClient, refetchReservations],
   );
 
@@ -680,11 +824,32 @@ function ReservationsPage() {
         confirmText: "Restore",
         onConfirm: async () => {
           setConfirmModal((previous) => ({ ...previous, open: false }));
+
+          // Optimistic UI restoration in cache
+          queryClient.setQueriesData(
+            { queryKey: ["reservations"] },
+            (oldData) => {
+              if (!Array.isArray(oldData)) return oldData;
+              return oldData.map((res) =>
+                String(res._id || res.id) === String(reservationId)
+                  ? {
+                      ...res,
+                      isArchived: false,
+                      status: res.archivedPreviousStatus || "cancelled",
+                      archivedAt: null,
+                    }
+                  : res,
+              );
+            },
+          );
+
+          showNotification("Reservation restored successfully.", "success", 4000);
+
           try {
             await reservationApi.restore(reservationId);
-            showNotification("Reservation restored", "success");
             refetchReservations();
           } catch (error) {
+            refetchReservations();
             showNotification(
               error?.message || "Failed to restore reservation",
               "error",
@@ -693,7 +858,7 @@ function ReservationsPage() {
         },
       });
     },
-    [refetchReservations],
+    [queryClient, refetchReservations],
   );
 
   const handleExportCSV = useCallback(() => {
@@ -731,12 +896,14 @@ function ReservationsPage() {
           const docWarnings = getReservationDocumentWarnings(row);
           return (
             <div className="res-applicant-cell">
-              <div
-                className={`res-avatar ${getAvatarColor(rowInitials)}`}
-                aria-label={row.customer}
-              >
-                {rowInitials}
-              </div>
+              <ProfileAvatar
+                className="res-avatar"
+                user={row.userId}
+                src={row.photoUrl || row.profileImage || row.userId?.profileImage}
+                initials={rowInitials}
+                alt={`${row.customer} profile photo`}
+                size={36}
+              />
               <div className="res-applicant-info">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="res-applicant-name">{row.customer}</span>
@@ -798,49 +965,113 @@ function ReservationsPage() {
       },
       {
         key: "moveInDate",
-        label: isArchivedView ? "Archived" : "Move-In",
+        label: isArchivedView
+          ? "Archived Date"
+          : statusFilter === "cancelled"
+            ? "Cancelled Date"
+            : "Move-In",
         sortable: true,
         width: "14%",
-        render: (row) => formatShortDate(row.moveInDate),
+        render: (row) =>
+          isArchivedView
+            ? formatShortDate(row.archivedAt || row.createdAt)
+            : row.status === "cancelled" && row.cancelledAt
+              ? formatShortDate(row.cancelledAt)
+              : formatShortDate(row.moveInDate),
       },
       {
         key: "createdAt",
-        label: isArchivedView ? "Archived By" : "Date",
+        label: isArchivedView
+          ? "Archived By"
+          : statusFilter === "cancelled"
+            ? "Cancelled By"
+            : "Date",
         sortable: false,
         width: "14%",
-        render: (row) => formatShortDate(row.createdAt),
+        render: (row) =>
+          isArchivedView
+            ? row.archivedByName || "Admin"
+            : row.status === "cancelled"
+              ? row.cancelledByName || "Admin"
+              : formatShortDate(row.createdAt),
       },
       {
         key: "actions",
         label: "",
         width: "80px",
         align: "right",
-        render: (row) => (
-          <div
-            className="res-actions"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              className="res-icon-btn"
-              title="View details"
-              onClick={() => handleView(row.id)}
+        render: (row) => {
+          const isReservedOrActive =
+            hasReservationStatus(row.status, "reserved", "approved_for_payment") ||
+            hasReservationStatus(row.status, "moveIn");
+
+          return (
+            <div
+              className="res-actions"
+              onClick={(event) => event.stopPropagation()}
             >
-              <Eye size={16} />
-            </button>
-            {can("manageReservations") && (
               <button
-                className="res-icon-btn res-icon-btn--danger"
-                title="Delete"
-                onClick={() => handleDelete(row.id)}
+                className="res-icon-btn"
+                title="View details"
+                onClick={() => handleView(row.id)}
               >
-                <Trash2 size={14} />
+                <Eye size={16} />
               </button>
-            )}
-          </div>
-        ),
+              {isArchivedView ? (
+                <>
+                  {can("manageReservations") && (
+                    <button
+                      className="res-icon-btn text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                      title="Restore reservation"
+                      onClick={() => handleRestore(row.id)}
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  )}
+                  {isOwner && (
+                    <button
+                      className="res-icon-btn res-icon-btn--danger"
+                      title="Permanently Delete (Owner Only)"
+                      onClick={() => handleHardDelete(row.id)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </>
+              ) : (
+                can("manageReservations") && (
+                  isReservedOrActive ? (
+                    <span
+                      className="inline-flex cursor-not-allowed opacity-35"
+                      title="Confirmed reserved bookings cannot be deleted directly. Process a cancellation or move-in first."
+                    >
+                      <button
+                        type="button"
+                        className="res-icon-btn"
+                        disabled
+                        tabIndex={-1}
+                        aria-disabled="true"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      className="res-icon-btn res-icon-btn--danger"
+                      title="Delete / Archive"
+                      onClick={() => handleDelete(row.id)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )
+                )
+              )}
+            </div>
+          );
+        },
       },
     ],
-    [can, handleDelete, handleView, isArchivedView],
+    [can, handleDelete, handleHardDelete, handleRestore, handleView, isArchivedView, isOwner],
   );
 
   return (
@@ -940,7 +1171,7 @@ function ReservationsPage() {
                     setCurrentPage(1);
                   }}
                   style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                  className="w-full pl-10 pr-9 h-9 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
+                  className="w-full pl-10 pr-9 h-9 border rounded-lg text-xs focus:outline-none focus:border-[var(--primary)] focus:ring-0 transition-colors"
                 />
                 {searchTerm && (
                   <button
@@ -966,7 +1197,7 @@ function ReservationsPage() {
                       setCurrentPage(1);
                     }}
                     style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                    className="h-9 pl-8 pr-7 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+                    className="h-9 pl-8 pr-7 border rounded-lg text-xs font-medium focus:outline-none focus:border-[var(--primary)] focus:ring-0 cursor-pointer hover:bg-muted transition-colors"
                     title="Sort reservations order"
                   >
                     <option value="createdAt-desc">Recent Transaction</option>
@@ -987,7 +1218,7 @@ function ReservationsPage() {
                         setCurrentPage(1);
                       }}
                       style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                      className="h-9 pl-8 pr-7 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+                      className="h-9 pl-8 pr-7 border rounded-lg text-xs font-medium focus:outline-none focus:border-[var(--primary)] focus:ring-0 cursor-pointer hover:bg-muted transition-colors"
                       title="Filter by dormitory branch"
                     >
                       {OWNER_BRANCH_FILTER_OPTIONS.map((opt) => (
@@ -1028,115 +1259,83 @@ function ReservationsPage() {
               </div>
             </div>
 
-            {/* Row 2: Dedicated Status Views & Quick Filters Strip */}
-            <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3 pt-3 border-t border-[var(--border-light)] mb-4">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap">
-                    <Layers size={13} className="text-muted-foreground" aria-hidden="true" />
-                    Status View:
-                  </span>
-                  <div className="res-view-segmented-control" role="tablist" aria-label="Reservation Status Views">
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={statusFilter === "all"}
-                      onClick={() => {
-                        setStatusFilter("all");
-                        setCurrentPage(1);
-                      }}
-                      className={`res-view-tab ${
-                        statusFilter === "all" ? "res-view-tab--active res-view-tab--primary" : ""
-                      }`}
-                      title="View all active reservations"
-                    >
-                      <span>All Active</span>
-                      <span className="res-view-tab__count">{counts.total}</span>
-                    </button>
+            {/* Row 2: Unified Status & Workflow Pipeline Strip */}
+            <div className="flex items-center gap-2.5 flex-wrap pt-3 border-t border-[var(--border-light)] mb-4">
+              <button
+                type="button"
+                onClick={() => setIsStatusViewExpanded((prev) => !prev)}
+                className="res-status-view-trigger"
+                aria-expanded={isStatusViewExpanded}
+                title={
+                  isStatusViewExpanded
+                    ? "Collapse status filters sideways"
+                    : "Expand all status filters sideways"
+                }
+              >
+                <Layers size={13} className="text-muted-foreground" aria-hidden="true" />
+                <span>Status View:</span>
+                <ChevronDown
+                  size={13}
+                  className={`res-status-view-chevron ${!isStatusViewExpanded ? "is-collapsed" : ""}`}
+                  aria-hidden="true"
+                />
+              </button>
 
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={statusFilter === "cancellation_requested"}
-                      onClick={() => {
-                        setStatusFilter("cancellation_requested");
-                        setCurrentPage(1);
-                      }}
-                      className={`res-view-tab ${
-                        statusFilter === "cancellation_requested"
-                          ? "res-view-tab--active res-view-tab--warning"
-                          : counts.cancellationRequested > 0
-                          ? "text-amber-700 dark:text-amber-400 font-medium"
-                          : ""
-                      }`}
-                      title="Review pending cancellation requests"
+              <div
+                className={`res-view-segmented-control ${!isStatusViewExpanded ? "is-collapsed" : ""}`}
+                role="tablist"
+                aria-label="Reservation Status Views"
+              >
+                {statusViewTabs.map((tab) => {
+                  const isSelected = statusFilter === tab.id;
+                  const Icon = tab.icon;
+                  return (
+                    <div
+                      key={tab.id}
+                      className={`res-view-item ${isSelected ? "is-selected-item" : ""}`}
                     >
-                      <AlertTriangle
-                        size={13}
-                        className={
-                          counts.cancellationRequested > 0
-                            ? "text-amber-600 dark:text-amber-400"
-                            : "text-muted-foreground"
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={isSelected}
+                        onClick={() => {
+                          if (!isStatusViewExpanded && isSelected) {
+                            setIsStatusViewExpanded(true);
+                            return;
+                          }
+                          setStatusFilter(
+                            tab.id === "all"
+                              ? "all"
+                              : statusFilter === tab.id
+                                ? "all"
+                                : tab.id,
+                          );
+                          setCurrentPage(1);
+                        }}
+                        className={`res-view-tab ${
+                          isSelected ? tab.activeClass : tab.inactiveClass || ""
+                        }`}
+                        title={
+                          !isStatusViewExpanded && isSelected
+                            ? `${tab.title} (Click to expand other filters)`
+                            : tab.title
                         }
-                        aria-hidden="true"
-                      />
-                      <span>Cancellation Requests</span>
-                      <span className="res-view-tab__count">{counts.cancellationRequested}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={statusFilter === "cancelled"}
-                      onClick={() => {
-                        setStatusFilter("cancelled");
-                        setCurrentPage(1);
-                      }}
-                      className={`res-view-tab ${
-                        statusFilter === "cancelled" ? "res-view-tab--active res-view-tab--danger" : ""
-                      }`}
-                      title="View cancelled reservations"
-                    >
-                      <Trash2 size={13} aria-hidden="true" />
-                      <span>Cancelled</span>
-                      <span className="res-view-tab__count">{counts.cancelled}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={statusFilter === "archived"}
-                      onClick={() => {
-                        setStatusFilter("archived");
-                        setCurrentPage(1);
-                      }}
-                      className={`res-view-tab ${
-                        statusFilter === "archived" ? "res-view-tab--active res-view-tab--muted" : ""
-                      }`}
-                      title="View archived records"
-                    >
-                      <Archive size={13} aria-hidden="true" />
-                      <span>Archived</span>
-                      <span className="res-view-tab__count">{counts.archived}</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap">
-                    <ListFilter size={13} className="text-muted-foreground" aria-hidden="true" />
-                    Quick Filters:
-                  </span>
-                  <ReservationQuickChips
-                    reservations={reservations}
-                    activeChip={quickChip}
-                    showTitle={false}
-                    onSelectChip={(chip) => {
-                      setQuickChip(chip);
-                      setCurrentPage(1);
-                    }}
-                  />
-                </div>
+                      >
+                        {Icon && (
+                          <Icon
+                            size={13}
+                            className={isSelected ? "text-white" : tab.iconColor}
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span>{tab.label}</span>
+                        <span className="res-view-tab__count">{tab.count}</span>
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
+            </div>
 
             <ActiveFilterTags
               searchTerm={searchTerm}
@@ -1145,8 +1344,6 @@ function ReservationsPage() {
               onClearStatus={() => setStatusFilter("all")}
               branchFilter={branchFilter}
               onClearBranch={() => setBranchFilter("all")}
-              quickChip={quickChip}
-              onClearChip={() => setQuickChip(null)}
               advancedFilters={advancedFilters}
               onClearAdvancedField={(field) =>
                 setAdvancedFilters((prev) => ({ ...prev, [field]: "any" }))
@@ -1167,7 +1364,6 @@ function ReservationsPage() {
                   moveIn: "any",
                   applicationDate: "any",
                   roomType: "any",
-                  paymentStatus: "any",
                   moveInStart: "",
                   moveInEnd: "",
                   appDateStart: "",
@@ -1240,11 +1436,14 @@ function ReservationsPage() {
                       >
                         <td className="py-4 px-4">
                           <div className="flex items-center gap-3">
-                            <div
-                              className={`w-10 h-10 rounded-full flex items-center justify-center font-medium text-sm ${getAvatarColor(initials(row.customer))}`}
-                            >
-                              {initials(row.customer)}
-                            </div>
+                            <ProfileAvatar
+                              className="w-10 h-10 rounded-full flex-shrink-0"
+                              user={row.userId}
+                              src={row.photoUrl || row.profileImage || row.userId?.profileImage}
+                              initials={initials(row.customer)}
+                              alt={`${row.customer} profile photo`}
+                              size={40}
+                            />
                             <div>
                               <div className="flex items-center gap-2 font-medium text-foreground">
                                 <span>{row.customer}</span>

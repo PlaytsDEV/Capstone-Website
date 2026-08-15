@@ -181,35 +181,46 @@ export function formatPhpCurrency(value) {
 export function resolveReservationFeeStatus(reservation) {
   if (!reservation) return "pending";
 
-  const directFeeStatus = String(reservation.reservationFeePaymentStatus || "").trim().toLowerCase();
-  if (directFeeStatus) {
-    if (directFeeStatus === "verified" || directFeeStatus === "paid") return "verified";
-    return directFeeStatus;
-  }
-
-  // Lifecycle inference if reservation fee status field is not explicitly set
   const overallStatus = String(reservation.status || "").trim().toLowerCase();
+  const initialStatus = String(reservation.initialPaymentStatus || "").trim().toLowerCase();
+  const rawPaymentStatus = String(reservation.paymentStatus || "").trim().toLowerCase();
+  const directFeeStatus = String(reservation.reservationFeePaymentStatus || "").trim().toLowerCase();
+
+  // If the downstream Move-In Initial Payment is already settled, or overall lifecycle is reserved / moved in / checked-in,
+  // or a payment timestamp exists, the holding fee has logically and authoritatively been verified.
   if (
+    directFeeStatus === "verified" ||
+    directFeeStatus === "paid" ||
+    initialStatus === "paid" ||
+    initialStatus === "paid_in_full" ||
+    rawPaymentStatus === "paid" ||
+    rawPaymentStatus === "paid_in_full" ||
+    rawPaymentStatus === "verified" ||
     overallStatus === "reserved" ||
     overallStatus === "movein" ||
     overallStatus === "moved_in" ||
-    overallStatus === "moveout"
+    overallStatus === "moveout" ||
+    overallStatus === "checked-in" ||
+    Boolean(reservation.paidAt) ||
+    Boolean(reservation.reservationFeePaidAt) ||
+    Boolean(reservation.paymentDate)
   ) {
     return "verified";
   }
 
-  if (reservation.paidAt) return "verified";
-  if (reservation.paymentProof && overallStatus === "pending") return "proof_uploaded";
+  // Explicit non-pending statuses take precedence if not settled above
+  if (directFeeStatus && directFeeStatus !== "pending") {
+    return directFeeStatus;
+  }
 
-  const rawPaymentStatus = String(reservation.paymentStatus || "").trim().toLowerCase();
-  if (rawPaymentStatus === "paid" || rawPaymentStatus === "paid_in_full" || rawPaymentStatus === "verified") {
-    return "verified";
+  if (reservation.paymentProof && overallStatus === "pending") {
+    return "proof_uploaded";
   }
   if (rawPaymentStatus === "proof_uploaded") {
     return "proof_uploaded";
   }
 
-  return rawPaymentStatus || "pending";
+  return directFeeStatus || rawPaymentStatus || "pending";
 }
 
 /**

@@ -341,11 +341,14 @@ function WarningCard({ warning, isExpanded, toggleWarningDetails, tenant }) {
   );
 }
 
-export default function TenantDetailModal({ tenant, onClose }) {
-  useEscapeClose(!!tenant, onClose);
+import TenantDetailModalSkeleton from "./TenantDetailModalSkeleton";
+import { formatBranch } from "../utils/formatters";
+
+export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
+  useEscapeClose(!!initialTenant, onClose);
 
   const queryClient = useQueryClient();
-const navigate = useNavigate();
+  const navigate = useNavigate();
   const [dialogState, setDialogState] = useState({ type: null, loading: false, error: null });
   const [safeguardsData, setSafeguardsData] = useState(null);
   const [dedicatedContract, setDedicatedContract] = useState(null);
@@ -361,15 +364,74 @@ const navigate = useNavigate();
   const [digitalContractData, setDigitalContractData] = useState(null);
   const [loadingDigitalContract, setLoadingDigitalContract] = useState(false);
 
+  const reservationId =
+    initialTenant?.reservationId ||
+    initialTenant?._id ||
+    initialTenant?.id ||
+    null;
+
+  const {
+    data: fetchedDetail,
+    isLoading: isDetailLoading,
+  } = useTenantWorkspaceDetail(reservationId);
+  const { data: actionContext } = useTenantActionContext(reservationId);
+
+  // Sync dedicatedContract from fetched detail or fallback to query
+  useEffect(() => {
+    if (!fetchedDetail && !initialTenant) return;
+    const contractFromDetail =
+      fetchedDetail?.dedicatedContract || initialTenant?.dedicatedContract;
+    if (contractFromDetail) {
+      setDedicatedContract(contractFromDetail);
+      setContractLookupDone(true);
+      return;
+    }
+    let active = true;
+    setContractLookupDone(false);
+    contractApi
+      .listContracts({ limit: 100 })
+      .then(({ contracts = [] }) => {
+        if (!active) return;
+        const tenantId =
+          fetchedDetail?.tenantId ||
+          initialTenant?.tenantId?._id ||
+          initialTenant?.tenantId ||
+          initialTenant?.userId?._id ||
+          initialTenant?.userId;
+        setDedicatedContract(
+          contracts.find(
+            (item) =>
+              String(item.reservationId) === String(reservationId) ||
+              (tenantId && String(item.tenantId) === String(tenantId)),
+          ) || null,
+        );
+      })
+      .catch(() => {
+        if (active) setDedicatedContract(null);
+      })
+      .finally(() => {
+        if (active) setContractLookupDone(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [fetchedDetail, initialTenant, reservationId]);
+
   const handleDownloadStayProof = async () => {
     setDownloadingProof(true);
     try {
-      const targetId = dedicatedContract?._id || dedicatedContract?.contractNumber || tenant?.reservationId || tenant?.reservationCode || tenant?._id || tenant?.id;
+      const targetId =
+        dedicatedContract?._id ||
+        dedicatedContract?.contractNumber ||
+        reservationId ||
+        initialTenant?.reservationCode ||
+        initialTenant?._id ||
+        initialTenant?.id;
       const blob = await contractApi.getStayProofFile(targetId, true);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Lilycrest-Lease-Contract-${dedicatedContract?.contractNumber || tenant?.reservationCode || "Tenant"}.pdf`;
+      a.download = `Lilycrest-Lease-Contract-${dedicatedContract?.contractNumber || initialTenant?.reservationCode || "Tenant"}.pdf`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
@@ -383,7 +445,13 @@ const navigate = useNavigate();
     setLoadingDigitalContract(true);
     setShowDigitalContractModal(true);
     try {
-      const targetId = dedicatedContract?._id || dedicatedContract?.contractNumber || tenant?.reservationId || tenant?.reservationCode || tenant?._id || tenant?.id;
+      const targetId =
+        dedicatedContract?._id ||
+        dedicatedContract?.contractNumber ||
+        reservationId ||
+        initialTenant?.reservationCode ||
+        initialTenant?._id ||
+        initialTenant?.id;
       const res = await contractApi.getStayProofData(targetId);
       if (res?.stayProof) {
         setDigitalContractData(res.stayProof);
@@ -399,31 +467,22 @@ const navigate = useNavigate();
     setExpandedWarnings((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const reservationId = tenant?.reservationId || tenant?._id || tenant?.id;
-
-  const { data: fetchedDetail } = useTenantWorkspaceDetail(reservationId);
-  const { data: actionContext } = useTenantActionContext(reservationId);
-
   // Derive a stable Tenant ID from the user's _id (not the reservation).
-  // tenantId stays consistent across renewals, transfers, and stays.
   const tenantDisplayCode = useMemo(() => {
     const rawTenantId =
       fetchedDetail?.tenantId ||
-      tenant?.tenantId?._id ||
-      tenant?.tenantId ||
-      tenant?.userId?._id ||
-      tenant?.userId ||
+      initialTenant?.tenantId?._id ||
+      initialTenant?.tenantId ||
+      initialTenant?.userId?._id ||
+      initialTenant?.userId ||
       "";
     const raw = String(rawTenantId);
     if (!raw) return "N/A";
-    // TEN- prefix + last 8 hex chars of the MongoDB ObjectId, uppercased
     return `TEN-${raw.slice(-8).toUpperCase()}`;
-  }, [fetchedDetail, tenant]);
+  }, [fetchedDetail, initialTenant]);
 
   const attachedDocs = useMemo(() => {
-    // Prefer fetchedDetail (which now carries the URL fields from the backend)
-    // Fall back to the tenant list-row prop
-    const source = fetchedDetail || tenant || {};
+    const source = fetchedDetail || initialTenant || {};
     const docs = [];
 
     if (source.validIDFrontUrl) {
@@ -472,62 +531,82 @@ const navigate = useNavigate();
       });
     }
     return docs;
-  }, [fetchedDetail, tenant]);
+  }, [fetchedDetail, initialTenant]);
 
-  useEffect(() => {
-    if (!tenant) return;
-    let active = true;
-    setContractLookupDone(false);
-    contractApi.listContracts({ limit: 100 })
-      .then(({ contracts = [] }) => {
-        if (!active) return;
-        const tenantId = tenant.tenantId?._id || tenant.tenantId || tenant.userId?._id || tenant.userId;
-        setDedicatedContract(contracts.find((item) =>
-          String(item.reservationId) === String(reservationId) ||
-          (tenantId && String(item.tenantId) === String(tenantId)),
-        ) || null);
-      })
-      .catch(() => { if (active) setDedicatedContract(null); })
-      .finally(() => { if (active) setContractLookupDone(true); });
-    return () => { active = false; };
-  }, [tenant, reservationId]);
+  const tenant = useMemo(() => {
+    const detail = fetchedDetail || initialTenant || {};
+    const basicInfo = detail.basicInfo || {};
+    const leaseInfo = detail.leaseInfo || {};
+    const paymentInfo = detail.paymentInfo || {};
+    const personalInfo = detail.personalInformation || {};
 
-  const normalizedTenant = useMemo(() => {
-    if (!tenant) return null;
+    const fullName =
+      basicInfo.name ||
+      detail.name ||
+      detail.tenantName ||
+      "Tenant";
+
     return {
-      ...tenant,
-      tenantName: tenant.name || tenant.tenantName || "Tenant",
-      monthlyRent: tenant.monthlyRate ?? tenant.monthlyRent ?? 0,
-      leaseEndDate: tenant.contractEnd || tenant.moveOut || tenant.leaseEndDate,
-      currentBalance: tenant.balance ?? tenant.currentBalance ?? 0,
-      roomId: tenant.roomId?._id || tenant.roomId || tenant.roomObjId,
-      branch: tenant.branch,
-      room: tenant.room,
-      bed: tenant.bed,
-      reservationId: reservationId,
+      ...detail,
+      reservationId,
+      name: fullName,
+      tenantName: fullName,
+      initials: getInitials(fullName),
+      email: basicInfo.email || detail.email || detail.contact?.email || "N/A",
+      phone: basicInfo.phone || detail.phone || detail.contact?.phone || "N/A",
+      branch: formatBranch(basicInfo.branch || detail.branch || "") || "N/A",
+      room: basicInfo.room || detail.room || "N/A",
+      bed: basicInfo.bed || detail.bed || "",
+      roomType: detail.roomType || "",
+      moveInDate: formatDate(leaseInfo.moveInDate || detail.moveInDate || detail.moveIn),
+      moveIn: formatDate(leaseInfo.moveInDate || detail.moveInDate || detail.moveIn),
+      contractEnd: formatDate(leaseInfo.leaseEndDate || detail.contractEnd || detail.moveOut || detail.leaseEndDate),
+      moveOut: formatDate(leaseInfo.leaseEndDate || detail.moveOut || detail.leaseEndDate),
+      leaseEndDate: leaseInfo.leaseEndDate || detail.leaseEndDate,
+      daysRemaining: leaseInfo.daysUntilLeaseEnd ?? detail.daysUntilLeaseEnd ?? null,
+      balance: paymentInfo.currentBalance ?? detail.currentBalance ?? detail.balance ?? 0,
+      monthlyRate: paymentInfo.monthlyRent ?? detail.monthlyRate ?? detail.monthlyRent ?? 0,
+      paymentStatus: paymentInfo.paymentStatus || detail.paymentStatus || "paid",
+      occupancyStatus: detail.stayStatus || detail.occupancyStatus || "active",
+      stayStatus: detail.stayStatus || detail.occupancyStatus || "active",
+      nextAction: detail.nextAction || "none",
+      emergencyContact: basicInfo.emergencyContactName || personalInfo.emergencyContact?.name || detail.emergencyContact || "Not provided",
+      emergencyPhone: basicInfo.emergencyContactPhone || personalInfo.emergencyContact?.phone || detail.emergencyPhone || "Not provided",
+      emergencyRelationship: basicInfo.emergencyContactRelationship || personalInfo.emergencyContact?.relationship || detail.emergencyRelationship || "Not provided",
+      warnings: (detail.systemWarnings || detail.warnings || detail.warningFlags || []).map((w, index) => ({
+        id: w.code || w.id || `warning-${index}`,
+        type: w.code || w.type || "warning",
+        message: w.message || "Warning",
+        details: w.details || null,
+        impact: w.impact || null,
+        recommendation: w.recommendation || null,
+        date: w.createdAt ? formatDate(w.createdAt) : (w.date ? formatDate(w.date) : null),
+        severity: w.severity === "error" ? "high" : w.severity === "warning" ? "medium" : "low",
+        dueDate: w.dueDate || null,
+      })),
+      roomHistory: (detail.roomHistory || []).map((entry) => ({
+        id: entry.id,
+        branch: formatBranch(entry.branch || basicInfo.branch || detail.branch || "") || "N/A",
+        room: entry.roomName || entry.room || "N/A",
+        bed: entry.bedLabel || entry.bed || "No bed",
+        moveInDate: formatDate(entry.moveInDate),
+        moveOutDate: entry.moveOutDate ? formatDate(entry.moveOutDate) : null,
+        status: entry.moveOutDate ? "past" : "current",
+      })),
+      extensionHistory: (leaseInfo.extensionHistory || detail.extensionHistory || []).map((entry) => ({
+        id: entry.id,
+        duration: entry.addedMonths ? `+${entry.addedMonths} month${entry.addedMonths === 1 ? "" : "s"}` : "+0 months",
+        date: formatDate(entry.extendedAt),
+        previousEnd: `${entry.previousDuration || 0} months`,
+        newEnd: `${entry.newDuration || 0} months`,
+      })),
+      paymentHistory: paymentInfo.recentPayments || detail.paymentHistory || [],
+      tenantId: detail.tenantId || "",
+      userId: detail.userId || detail.tenantId || "",
+      isOwnerViewing: initialTenant?.isOwnerViewing ?? true,
+      reservationCode: detail.reservationCode || initialTenant?.reservationCode || "",
     };
-  }, [tenant, reservationId]);
-
-  const normalizedDetail = useMemo(() => {
-    if (fetchedDetail) return fetchedDetail;
-    if (!tenant) return null;
-    return {
-      basicInfo: {
-        tenantName: tenant.name || tenant.tenantName,
-        branch: tenant.branch,
-        roomName: tenant.room,
-        bedPosition: tenant.bed,
-        monthlyRent: tenant.monthlyRate ?? tenant.monthlyRent ?? 0,
-      },
-      leaseInfo: {
-        leaseEndDate: tenant.contractEnd || tenant.moveOut || tenant.leaseEndDate,
-        extensionHistory: tenant.extensionHistory || [],
-      },
-      paymentInfo: {
-        currentBalance: tenant.balance ?? tenant.currentBalance ?? 0,
-      },
-    };
-  }, [fetchedDetail, tenant]);
+  }, [fetchedDetail, initialTenant, reservationId]);
 
   const closeDialog = () => {
     setDialogState({ type: null, loading: false, error: null });
@@ -539,10 +618,14 @@ const navigate = useNavigate();
       queryClient.invalidateQueries({ queryKey: ["rooms"] }),
     ]);
 
-  const roomHistory = tenant?.roomHistory || [];
+  if (!initialTenant && !reservationId) return null;
 
-  if (!tenant) return null;
+  // Zero-flash guarantee: If full detail is not yet loaded, render high-contrast skeleton
+  if (isDetailLoading || (!fetchedDetail && !initialTenant?.basicInfo)) {
+    return <TenantDetailModalSkeleton onClose={onClose} />;
+  }
 
+  const roomHistory = tenant.roomHistory || [];
   const contractStatus = dedicatedContract?.status || null;
   const paymentStatus = tenant.paymentStatus || "paid";
   const occupancyStatus = tenant.occupancyStatus || "active";

@@ -601,6 +601,7 @@ export const checkSessionStatus = async (req, res, next) => {
               $set: {
                 initialPaymentStatus: "paid",
                 paymentStatus: "paid_in_full",
+                reservationFeePaymentStatus: "verified",
               },
             },
           );
@@ -876,8 +877,13 @@ export const getAdminPaymentLedger = async (req, res, next) => {
     }
 
     const payments = await Payment.find(filter)
-      .populate("tenantId", "firstName lastName email")
+      .populate("tenantId", "firstName lastName email profileImage avatar photoUrl")
       .populate("billId", "billingMonth totalAmount status branch")
+      .populate({
+        path: "reservationId",
+        select: "reservationCode status roomId selectedBed totalPrice amountPaid branch",
+        populate: { path: "roomId", select: "name roomNumber branch" },
+      })
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
@@ -886,6 +892,8 @@ export const getAdminPaymentLedger = async (req, res, next) => {
       ? payments.filter((payment) => {
           const tenantName =
             `${payment.tenantId?.firstName || ""} ${payment.tenantId?.lastName || ""}`.trim();
+          const reservationCode = payment.reservationId?.reservationCode || "";
+          const roomName = payment.reservationId?.roomId?.name || payment.reservationId?.roomId?.roomNumber || "";
           const haystack = [
             payment.paymentId,
             payment.referenceNumber,
@@ -897,6 +905,8 @@ export const getAdminPaymentLedger = async (req, res, next) => {
             payment.tenantId?._id,
             payment.tenantId?.email,
             tenantName,
+            reservationCode,
+            roomName,
           ]
             .filter(Boolean)
             .join(" ")
@@ -908,27 +918,58 @@ export const getAdminPaymentLedger = async (req, res, next) => {
     sendSuccess(res, {
       data: filteredPayments.map((payment) => ({
         id: payment._id,
+        _id: payment._id,
         paymentId: payment.paymentId,
         billId: payment.billId?._id || payment.billId || null,
         billNumber: payment.billId?._id || null,
         billStatus: payment.billId?.status || null,
-        branch: payment.branch || payment.billId?.branch || null,
+        reservationId: payment.reservationId?._id || payment.reservationId || null,
+        reservation: payment.reservationId && typeof payment.reservationId === "object"
+          ? {
+              id: payment.reservationId._id,
+              _id: payment.reservationId._id,
+              reservationCode: payment.reservationId.reservationCode || String(payment.reservationId._id),
+              status: payment.reservationId.status || null,
+              roomId: payment.reservationId.roomId || null,
+              selectedBed: payment.reservationId.selectedBed || null,
+              totalPrice: payment.reservationId.totalPrice || null,
+              branch: payment.reservationId.branch || null,
+            }
+          : null,
+        purpose: payment.purpose || "other",
+        branch: payment.branch || payment.reservationId?.branch || payment.billId?.branch || null,
+        tenantId: payment.tenantId || null,
         tenant: payment.tenantId
           ? {
               id: payment.tenantId._id,
+              _id: payment.tenantId._id,
+              firstName: payment.tenantId.firstName || "",
+              lastName: payment.tenantId.lastName || "",
               name:
                 `${payment.tenantId.firstName || ""} ${payment.tenantId.lastName || ""}`.trim() ||
                 "Tenant",
               email: payment.tenantId.email || "",
+              profileImage:
+                payment.tenantId.profileImage ||
+                payment.tenantId.avatar ||
+                payment.tenantId.photoUrl ||
+                "",
             }
           : null,
         amount: payment.amount || 0,
+        paidAmount: payment.paidAmount ?? payment.amount ?? 0,
+        expectedAmount: payment.expectedAmount ?? payment.amount ?? 0,
         paymentMethod: payment.method || null,
+        method: payment.method || null,
         status: payment.status || null,
         externalPaymentId: payment.externalPaymentId || null,
         referenceNumber: payment.referenceNumber || null,
+        paymentReference: payment.referenceNumber || payment.externalPaymentId || null,
         source: payment.source || null,
+        proofUrl: payment.proofUrl || null,
+        proofImageUrl: payment.proofImageUrl || null,
         createdAt: payment.createdAt || null,
+        submittedAt: payment.submittedAt || payment.createdAt || null,
         processedAt: payment.processedAt || null,
       })),
     });

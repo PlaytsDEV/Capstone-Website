@@ -540,7 +540,10 @@ const AdminBillingPage = () => {
           aria-labelledby="billing-tab-reservation-payments"
           className={activeTab === "reservation-payments" ? "block" : "hidden"}
         >
-          <ReservationPaymentReviewTab isActive={activeTab === "reservation-payments"} />
+          <ReservationPaymentReviewTab
+            isActive={activeTab === "reservation-payments"}
+            branch={effectiveBranch}
+          />
         </section>
 
         <section

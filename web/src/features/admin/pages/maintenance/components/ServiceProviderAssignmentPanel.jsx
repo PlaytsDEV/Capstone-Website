@@ -134,11 +134,15 @@ export function ServiceProviderAssignmentPanel({
         )}
       </div>
 
-      {formMessage && (
+      {disabled ? (
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-800/60 p-2.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
+          This ticket is marked as <span className="font-bold capitalize">{request?.status || "closed"}</span> and cannot be modified.
+        </div>
+      ) : formMessage ? (
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
           {formMessage}
         </div>
-      )}
+      ) : null}
 
       {/* Select Provider */}
       <div className="space-y-1">

@@ -373,8 +373,159 @@ const conversationEntrySchema = new mongoose.Schema(
   { _id: false },
 );
 
+const occupancyContextSchema = new mongoose.Schema(
+  {
+    unitNumber: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    bedNumber: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    floor: {
+      type: Number,
+      default: null,
+    },
+  },
+  { _id: false },
+);
+
+const providerDetailsSchema = new mongoose.Schema(
+  {
+    providerType: {
+      type: String,
+      enum: ["IN_HOUSE", "EXTERNAL", null],
+      default: null,
+      index: true,
+    },
+    tenantVisibleLabel: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    internalProviderId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    privateContact: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    quotedCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    currency: {
+      type: String,
+      default: "PHP",
+    },
+    snapshotJson: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+  },
+  { _id: false },
+);
+
+const scheduleSchema = new mongoose.Schema(
+  {
+    scheduledDate: {
+      type: Date,
+      default: null,
+    },
+    notes: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
+const completionReportSchema = new mongoose.Schema(
+  {
+    reportId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    isDraft: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+    summary: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    workDone: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    partsReplaced: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    preventiveAdvice: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    finalizedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    finalizedByName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    finalizedAt: {
+      type: Date,
+      default: null,
+    },
+    reportUrl: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
+const resolutionConfirmationSchema = new mongoose.Schema(
+  {
+    confirmedAt: {
+      type: Date,
+      default: null,
+    },
+    tenantFeedback: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
 const buildRequestId = () =>
   `maint_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+const buildTicketNumber = () => {
+  const year = new Date().getFullYear();
+  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+  return `MNT-${year}-${randomSuffix}`;
+};
 
 const maintenanceRequestSchema = new mongoose.Schema(
   {
@@ -382,6 +533,11 @@ const maintenanceRequestSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
+      index: true,
+      trim: true,
+    },
+    ticketNumber: {
+      type: String,
       index: true,
       trim: true,
     },
@@ -399,6 +555,10 @@ const maintenanceRequestSchema = new mongoose.Schema(
       type: String,
       default: null,
       trim: true,
+    },
+    occupancyContext: {
+      type: occupancyContextSchema,
+      default: () => ({}),
     },
 
     request_type: {
@@ -423,6 +583,29 @@ const maintenanceRequestSchema = new mongoose.Schema(
       enum: MAINTENANCE_STATUSES,
       default: "pending",
       index: true,
+    },
+
+    providerDetails: {
+      type: providerDetailsSchema,
+      default: () => ({}),
+    },
+    schedule: {
+      type: scheduleSchema,
+      default: () => ({}),
+    },
+    completionReport: {
+      type: completionReportSchema,
+      default: () => ({}),
+    },
+    reopenCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+      index: true,
+    },
+    resolutionConfirmation: {
+      type: resolutionConfirmationSchema,
+      default: () => ({}),
     },
 
     assigned_to: {
@@ -634,14 +817,16 @@ const maintenanceRequestSchema = new mongoose.Schema(
   },
 );
 
-maintenanceRequestSchema.pre("validate", function ensureRequestId(next) {
+maintenanceRequestSchema.pre("validate", function ensureIdentifiers(next) {
   if (!this.request_id) {
     this.request_id = buildRequestId();
+  }
+  if (!this.ticketNumber) {
+    this.ticketNumber = buildTicketNumber();
   }
   next();
 });
 
-// Prevent unbounded array growth — keep the most recent entries.
 const MAINTENANCE_ARRAY_CAPS = {
   work_log: 200,
   statusHistory: 200,
@@ -680,10 +865,11 @@ maintenanceRequestSchema.index(
   { user_id: 1, client_request_id: 1 },
   { name: 'user_client_request_id_unique', unique: true, partialFilterExpression: { client_request_id: { $type: 'string' } } },
 );
+maintenanceRequestSchema.index({ deduplicationHash: 1, created_at: -1 });
 
-const MaintenanceRequest = mongoose.model(
-  "MaintenanceRequest",
-  maintenanceRequestSchema,
-);
+export const MaintenanceRequest =
+  mongoose.models.MaintenanceRequest ||
+  mongoose.model("MaintenanceRequest", maintenanceRequestSchema);
 
 export default MaintenanceRequest;
+

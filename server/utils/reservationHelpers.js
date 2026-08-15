@@ -99,7 +99,13 @@ export const getMoveInBlockers = (reservation) => {
     );
   }
 
-  if (reservation.paymentStatus !== "paid") {
+  const isPaid =
+    reservation.paymentStatus === "paid" ||
+    reservation.paymentStatus === "paid_in_full" ||
+    reservation.initialPaymentStatus === "paid" ||
+    reservation.reservationFeePaymentStatus === "verified";
+
+  if (!isPaid) {
     blockers.push(
       "Payment must be confirmed (status: Paid) before move-in."
     );
