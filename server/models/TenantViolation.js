@@ -48,7 +48,8 @@ const tenantViolationSchema = new mongoose.Schema(
     reservationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Reservation",
-      required: true,
+      default: null,
+      required: false,
     },
     tenantId: {
       type: mongoose.Schema.Types.ObjectId,

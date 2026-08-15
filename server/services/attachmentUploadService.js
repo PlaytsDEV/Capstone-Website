@@ -748,6 +748,12 @@ export const resolveUploadBranch = async (req, options = {}) => {
         source: "owner_profile",
       };
     }
+    return {
+      dbUser,
+      context,
+      branch: ROOM_BRANCHES[0] || "gil-puyat",
+      source: "owner_default_branch",
+    };
   } else {
     const adminBranch = normalizeBranch(dbUser?.branch);
     if (adminBranch) {
