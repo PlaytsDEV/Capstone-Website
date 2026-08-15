@@ -457,10 +457,52 @@ export const reservationApi = {
       body: JSON.stringify(data),
     }),
 
-  // listPaymentProofReviews — REMOVED: manual proof review decommissioned.
-  // submitPaymentProof — REMOVED: manual proof decommissioned.
-  // approvePaymentProof — REMOVED: manual proof decommissioned.
-  // rejectPaymentProof — REMOVED: manual proof decommissioned.
+  /**
+   * List reservation payment ledger records for financial review.
+   */
+  listPaymentProofReviews: async (status = "") => {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    const res = await authFetch(`/payments/admin/ledger${query}`);
+    const list = Array.isArray(res?.data)
+      ? res.data
+      : Array.isArray(res?.payments)
+      ? res.payments
+      : Array.isArray(res)
+      ? res
+      : [];
+    return {
+      success: true,
+      payments: list,
+      data: list,
+    };
+  },
+
+  /**
+   * Submit manual payment proof (legacy compatibility fallback).
+   */
+  submitPaymentProof: (reservationId, data) =>
+    authFetch(`/reservations/${reservationId}/payment-proof`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * Approve payment proof or confirm payment ledger item.
+   */
+  approvePaymentProof: (reservationId, paymentId) =>
+    authFetch(
+      `/reservations/${reservationId}/payment-proof/${paymentId}/approve`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  /**
+   * Reject payment proof or mark rejected in ledger.
+   */
+  rejectPaymentProof: (reservationId, paymentId, data = {}) =>
+    authFetch(
+      `/reservations/${reservationId}/payment-proof/${paymentId}/reject`,
+      { method: "POST", body: JSON.stringify(data) },
+    ),
 
   // ── Checkout Lock (P2-01) ──
   acquireBedLock: (roomId, bedId) =>

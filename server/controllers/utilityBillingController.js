@@ -549,6 +549,13 @@ export const openUtilityPeriod = async (req, res, next) => {
     if (Number(ratePerUnit) < 0) {
       return res.status(400).json({ error: "Utility rate cannot be negative." });
     }
+    const maxRate = utilityType === "electricity" ? 100 : 100000;
+    if (Number(ratePerUnit) > maxRate) {
+      return res.status(400).json({ error: `Utility rate cannot exceed ₱${maxRate.toLocaleString()}.` });
+    }
+    if (requiresMeterReading && Number(startReading) > 999999.99) {
+      return res.status(400).json({ error: "Opening meter reading cannot exceed 999,999.99 kWh." });
+    }
 
     const room = await Room.findById(roomId);
     if (!room) return res.status(404).json({ error: "Room not found" });
@@ -577,11 +584,26 @@ export const openUtilityPeriod = async (req, res, next) => {
         .status(409)
         .json({ error: "Room already has an open period." });
 
+    const parsedStartDate = dayjs(startDate).startOf("day").toDate();
+    const overlappingPeriod = await UtilityPeriod.findOne({
+      utilityType,
+      roomId: room._id,
+      status: { $in: ["closed", "revised"] },
+      isArchived: false,
+      startDate: { $lte: parsedStartDate },
+      endDate: { $gte: parsedStartDate },
+    });
+    if (overlappingPeriod) {
+      return res.status(409).json({
+        error: `Cannot open billing period because the start date falls within an existing cycle (${dayjs(overlappingPeriod.startDate).format("MMM D, YYYY")} – ${dayjs(overlappingPeriod.endDate).format("MMM D, YYYY")}).`,
+      });
+    }
+
     const period = new UtilityPeriod({
       utilityType,
       roomId: room._id,
       branch: room.branch,
-      startDate: dayjs(startDate).startOf("day").toDate(),
+      startDate: parsedStartDate,
       startReading: utilityType === "water" ? 0 : Number(startReading),
       ratePerUnit: Number(ratePerUnit),
       status: "open",
@@ -686,6 +708,10 @@ export const closeUtilityPeriod = async (req, res, next) => {
           "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
         code: "BRANCH_UTILITY_NOT_SUPPORTED",
       });
+    }
+
+    if (utilityType === "electricity" && Number(endReading) > 999999.99) {
+      return res.status(400).json({ error: "Final meter reading cannot exceed 999,999.99 kWh." });
     }
 
     const room = await Room.findById(period.roomId);
@@ -878,14 +904,24 @@ export const updateUtilityPeriod = async (req, res, next) => {
       period.endDate = endDate ? dayjs(endDate).startOf("day").toDate() : null;
     }
     if (startReading !== undefined) {
+      if (Number(startReading) > 999999.99) {
+        return res.status(400).json({ error: "Opening meter reading cannot exceed 999,999.99 kWh." });
+      }
       period.startReading = Number(startReading);
     }
     if (endReading !== undefined) {
+      if (endReading !== null && endReading !== "" && Number(endReading) > 999999.99) {
+        return res.status(400).json({ error: "Final meter reading cannot exceed 999,999.99 kWh." });
+      }
       period.endReading =
         endReading === null || endReading === "" ? null : Number(endReading);
     }
 
     if (ratePerUnit !== undefined) {
+      const maxRate = utilityType === "electricity" ? 100 : 100000;
+      if (Number(ratePerUnit) < 0 || Number(ratePerUnit) > maxRate) {
+        return res.status(400).json({ error: `Rate must be between ₱0.00 and ₱${maxRate.toLocaleString()}.` });
+      }
       period.ratePerUnit = Number(ratePerUnit);
     }
 
@@ -901,6 +937,22 @@ export const updateUtilityPeriod = async (req, res, next) => {
       return res.status(400).json({
         error: "Finalized billing periods must have an end date.",
       });
+    }
+
+    if (period.startDate && period.endDate) {
+      const collidingPeriod = await UtilityPeriod.findOne({
+        _id: { $ne: period._id },
+        roomId: room._id,
+        utilityType,
+        isArchived: false,
+        startDate: { $lt: period.endDate },
+        endDate: { $gt: period.startDate },
+      });
+      if (collidingPeriod) {
+        return res.status(409).json({
+          error: `The updated date range overlaps with an existing cycle (${dayjs(collidingPeriod.startDate).format("MMM D, YYYY")} – ${dayjs(collidingPeriod.endDate).format("MMM D, YYYY")}).`,
+        });
+      }
     }
 
     if (utilityType === "electricity" && period.status !== "open") {
