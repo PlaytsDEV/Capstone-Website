@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ExternalLink } from "lucide-react";
 import { useAuditAnalytics, useOperationsReport } from "../../../shared/hooks/queries/useAnalyticsReports";
+import { useMaintenanceProviderReport } from "../../../shared/hooks/queries/useMaintenance";
 import {
   AnalyticsBarChart,
   AnalyticsDonutChart,
@@ -125,6 +126,34 @@ const MAINTENANCE_COLUMNS = [
   },
 ];
 
+const PROVIDER_COLUMNS = [
+  { key: "providerName", label: "Provider / Technician", sortable: true },
+  { key: "category", label: "Specialty", sortable: true },
+  { key: "totalAssigned", label: "Assigned Jobs", sortable: true },
+  { key: "activeJobs", label: "Active", sortable: true },
+  { key: "completedJobs", label: "Completed", sortable: true },
+  { key: "overdueJobs", label: "Overdue", sortable: true },
+  {
+    key: "completionRate",
+    label: "Completion Rate",
+    sortable: true,
+    render: (row) => (
+      <span
+        style={{
+          padding: "3px 10px",
+          borderRadius: "12px",
+          fontSize: "11px",
+          background: (row.completionRate || 0) >= 80 ? "var(--success-subtle, #dcfce7)" : "var(--warning-subtle, #fef3c7)",
+          color: (row.completionRate || 0) >= 80 ? "var(--success-dark, #166534)" : "var(--warning-dark, #92400e)",
+          fontWeight: 700,
+        }}
+      >
+        {row.completionRate != null ? `${row.completionRate}%` : "—"}
+      </span>
+    ),
+  },
+];
+
 const EVENT_COLUMNS = [
   { key: "action", label: "Event", sortable: true },
   { key: "branch", label: "Branch", render: (row) => formatBranch(row.branch), sortable: true },
@@ -146,6 +175,8 @@ export default function AnalyticsOperationsTab({
   const [urgencyFilter, setUrgencyFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [pageSize, setPageSize] = useState(5);
+  const [providerPage, setProviderPage] = useState(1);
+  const [providerPageSize, setProviderPageSize] = useState(5);
   const [eventPage, setEventPage] = useState(1);
   const [eventsPageSize, setEventsPageSize] = useState(5);
 
@@ -171,6 +202,9 @@ export default function AnalyticsOperationsTab({
   const { data, isLoading, isError } = useOperationsReport(params);
   const { data: resData } = useOperationsReport(resParams);
   const { data: auditData } = useAuditAnalytics(params);
+  const { data: providerRawData, isLoading: isProvidersLoading } = useMaintenanceProviderReport(params);
+  const providerData = providerRawData?.data || providerRawData || {};
+  const providersList = Array.isArray(providerData?.providers) ? providerData.providers : [];
 
   const {
     data: insightData,
@@ -435,6 +469,28 @@ export default function AnalyticsOperationsTab({
             description: isError
               ? "The operations report could not be loaded."
               : "No maintenance issues matched the selected filter.",
+          }}
+        />
+      </ReportChartPanel>
+
+      <ReportChartPanel
+        title="Service provider & contractor performance"
+        subtitle="Technician job assignments, completion rates, and overdue metrics"
+      >
+        <DataTable
+          columns={PROVIDER_COLUMNS}
+          data={providersList}
+          loading={isProvidersLoading}
+          pagination={{
+            page: providerPage,
+            pageSize: providerPageSize,
+            total: providersList.length,
+            onPageChange: setProviderPage,
+            onPageSizeChange: setProviderPageSize,
+          }}
+          emptyState={{
+            title: "No service providers",
+            description: "Service provider performance data will appear as work orders are assigned.",
           }}
         />
       </ReportChartPanel>
