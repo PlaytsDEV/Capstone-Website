@@ -2,9 +2,15 @@
  * Shared Lilycrest email shell — the inline-HTML equivalent of what a
  * Resend Dashboard Template's layout provides. Every builder in
  * services/email/builders/*.js calls `renderLilycrestEmail()` for the outer
- * navy-and-orange branded shell (the pre-Aug-12 LilyCrest Dormitory identity,
- * restored here) and only supplies its own content; none of them duplicate
- * the header/container/typography/footer markup.
+ * navy-and-gold branded shell and only supplies its own content; none of
+ * them duplicate the header/container/typography/footer markup.
+ *
+ * Navy (#1E3A5F) stays the structural color (header band, headings) and gold
+ * (#D4AF37, matching the web app's --color-accent) is the accent (CTA
+ * buttons, dividers, footer tint) — replaces the orange accent from the
+ * pre-Aug-12 identity with the site's actual current brand gold, and adds
+ * the real Lilycrest mark (getLogoUrl()) to the header in place of the
+ * generic house emoji that stood in for it.
  *
  * All user-controlled values passed through here MUST go through
  * `escapeHtml()` (or a caller-controlled trusted structure) before being
@@ -43,12 +49,15 @@ export const THEME = Object.freeze({
   cardBg: "#ffffff",
   navy: "#1E3A5F",
   navyLight: "#2D5A8E",
-  orange: "#D4682A",
+  gold: "#D4AF37",
+  goldDeep: "#B9921F",
+  goldTint: "#FBF7EA",
+  goldTintBorder: "#F3E4B0",
   warnBg: "#FEF3C7",
   warnBorder: "#FDE68A",
   warnText: "#92400E",
-  footerBg: "#F8FAFC",
-  footerBorder: "#E5E7EB",
+  footerBg: "#FBF7EA",
+  footerBorder: "#F3E4B0",
   textDark: "#1E3A5F",
   textBody: "#374151",
   textMuted: "#6B7280",
@@ -81,9 +90,10 @@ export const renderLilycrestEmail = ({
       <td style="padding:32px 16px;">
         <table role="presentation" style="max-width:560px;margin:0 auto;background-color:${THEME.cardBg};border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
           <tr>
-            <td style="background:linear-gradient(135deg,${THEME.navy} 0%,${THEME.navyLight} 100%);padding:32px 40px;text-align:center;">
-              <h1 style="margin:0;color:#FFFFFF;font-size:22px;font-weight:700;letter-spacing:0.5px;">🏠 LilyCrest Dormitory</h1>
-              <p style="margin:6px 0 0;color:rgba(255,255,255,0.7);font-size:13px;">${escapeHtml(branchName)} Branch — Tenant Portal</p>
+            <td style="background:linear-gradient(135deg,${THEME.navy} 0%,${THEME.navyLight} 100%);padding:32px 40px;text-align:center;border-bottom:3px solid ${THEME.gold};">
+              <img src="${escapeHtml(getLogoUrl())}" alt="Lilycrest" width="56" height="56" style="display:block;margin:0 auto 12px;max-width:56px;height:auto;">
+              <h1 style="margin:0;color:#FFFFFF;font-size:22px;font-weight:700;letter-spacing:0.5px;">LilyCrest Dormitory</h1>
+              <p style="margin:6px 0 0;color:${THEME.gold};font-size:13px;">${escapeHtml(branchName)} Branch — Tenant Portal</p>
             </td>
           </tr>
           <tr>
@@ -121,7 +131,7 @@ export const p = (html, opts = {}) =>
 
 /** Primary CTA button. `url` must be a trusted, server-generated URL — never user input. */
 export const button = (label, url) =>
-  `<div style="text-align:center;margin:0 0 28px;"><a href="${escapeHtml(url)}" style="display:inline-block;background:${THEME.orange};color:#ffffff;text-decoration:none;padding:16px 40px;border-radius:14px;font-weight:700;font-size:16px;letter-spacing:0.3px;">${escapeHtml(label)}</a></div>`;
+  `<div style="text-align:center;margin:0 0 28px;"><a href="${escapeHtml(url)}" style="display:inline-block;background:${THEME.gold};color:${THEME.navy};text-decoration:none;padding:16px 40px;border-radius:14px;font-weight:700;font-size:16px;letter-spacing:0.3px;">${escapeHtml(label)}</a></div>`;
 
 /** Amber time-sensitive-notice callout (matches the old expiry-warning boxes). */
 export const callout = (label, contentHtml) => `
@@ -138,7 +148,7 @@ export const row = (label, value) => {
 
 /** Panel wrapping a set of row() entries. */
 export const detailsPanel = (rowsHtml) =>
-  `<div style="background-color:#EEF3F9;border:1px solid #D9E3EF;border-radius:12px;padding:18px 20px;margin:0 0 20px;"><table style="width:100%;border-collapse:collapse;">${rowsHtml}</table></div>`;
+  `<div style="background-color:${THEME.goldTint};border:1px solid ${THEME.goldTintBorder};border-radius:12px;padding:18px 20px;margin:0 0 20px;"><table style="width:100%;border-collapse:collapse;">${rowsHtml}</table></div>`;
 
 /** Large centered amount/stat highlight. `value` is escaped here. */
 export const stat = (label, value) => `
@@ -147,7 +157,7 @@ export const stat = (label, value) => `
 
 /** Centered stat panel container. */
 export const statPanel = (innerHtml) =>
-  `<div style="background-color:#EEF3F9;border-radius:12px;padding:20px;margin:20px 0;text-align:center;">${innerHtml}</div>`;
+  `<div style="background-color:${THEME.goldTint};border-radius:12px;padding:20px;margin:20px 0;text-align:center;">${innerHtml}</div>`;
 
 /** Status badge used across notice-style emails (amber, time-sensitive style). */
 export const badge = (text) => `
