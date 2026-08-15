@@ -74,7 +74,7 @@ describe("first-login controller concurrency", () => {
   afterAll(async () => {
     await mongoose.disconnect();
     await mongo?.stop();
-  });
+  }, 120_000);
 
   beforeEach(async () => {
     jest.clearAllMocks();
