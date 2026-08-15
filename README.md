@@ -75,7 +75,7 @@ flowchart TB
     subgraph Security["2. Security & Middleware Gateway"]
         SEC_GUARD["Security Headers (Helmet) · Rate Limiting · CSRF Protection"]
         AUTH_GUARD["Firebase Token Authentication · Branch Isolation Filter"]
-        RBAC_GUARD["Role-Based Permissions Gate (Super Admin · Admin · Tenant)"]
+        RBAC_GUARD["Role-Based Permissions Gate (Owner · Branch Admin · Tenant)"]
     end
 
     subgraph DomainServices["3. Core Business Services Layer"]
@@ -117,10 +117,10 @@ The system enforces a strict 4-tier Role-Based Access Control (RBAC) hierarchy. 
   [Applicant]
        ↓ (Approved, pays reservation fee, signs lease, completes move-in)
     [Tenant]
-       ↓ (Elevated by Super Admin)
+       ↓ (Elevated by Owner)
  [Branch Admin]
-       ↓ (System owner)
- [Super Admin]
+       ↓ (Multi-branch executive)
+    [Owner]
 ```
 
 | Role | Primary Purpose | Scope & Access Rights |
@@ -129,7 +129,7 @@ The system enforces a strict 4-tier Role-Based Access Control (RBAC) hierarchy. 
 | **Applicant** | Onboarding & Reservation | Complete the 4-step reservation flow, upload identification and proof of enrollment, schedule physical visits, pay reservation deposits, and track application approval status. |
 | **Tenant** | Active Tenancy Management | View active room & bed assignment, access monthly rent and utility breakdown, pay bills online, submit maintenance requests with photos, sign digital lease contracts, and acknowledge branch bulletins. |
 | **Branch Admin** | Branch Operations Supervisor | Manage all tenant lifecycles within their assigned branch, record room electricity meter readings, generate pro-rata bills, manage maintenance tickets and contractor dispatch, and export operational reports. |
-| **Super Admin** | System Governance & Ownership | Full cross-branch access, branch registration and configuration, user and permission management, system-wide financial analytics, immutable audit logs, and system backups. |
+| **Owner** | System Governance & Ownership | Full cross-branch access, branch registration and configuration, user and permission management, system-wide financial analytics, immutable audit logs, and system backups. |
 
 ---
 
@@ -169,7 +169,7 @@ stateDiagram-v2
 Lilycrest DMS operates with multi-branch tenancy:
 - Every room, tenant, bill, announcement, and maintenance request is associated with a specific branch (e.g., `Guadalupe`, `Gil Puyat`).
 - **Branch Admins** are bound to their assigned branch. Backend middleware automatically scopes all queries and mutations to that branch, preventing cross-branch data leaks.
-- **Super Admins** have global access and can switch branch views or view consolidated, cross-branch performance summaries.
+- **Owners** have global access and can switch branch views or view consolidated, cross-branch performance summaries.
 
 ---
 
