@@ -10,7 +10,13 @@ export default function useBillingNotifier() {
  showNotification(getFriendlyError(error, fallback), "error");
  },
  warn(message) {
- showNotification(message, "error");
+ showNotification(message, "warning");
+ },
+ warning(message) {
+ showNotification(message, "warning");
+ },
+ info(message) {
+ showNotification(message, "info");
  },
  };
 }

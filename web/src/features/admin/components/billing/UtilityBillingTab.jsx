@@ -1621,7 +1621,7 @@ const UtilityBillingTab = ({
     } catch (err) {
       notify.error(
         err,
-        `Failed to send ${utilityType === "water" ? "water" : "electricity"} for ${roomName}.`,
+        `Unable to send ${utilityType === "water" ? "water" : "electricity"} charges for ${roomName}. Please try again.`,
       );
       throw err;
     } finally {

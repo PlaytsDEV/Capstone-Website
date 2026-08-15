@@ -19,6 +19,7 @@ import {
   useTenantActionContext,
   useTenantWorkspace,
   useTenantWorkspaceDetail,
+  prefetchTenantWorkspaceDetail,
 } from "../../../shared/hooks/queries/useReservations";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
@@ -350,98 +351,17 @@ export default function TenantsWorkspacePage() {
     const selectedTenantForModal = useMemo(() => {
         if (!selectedReservationId) return null;
 
-        const base = selectedTenantRow || {};
-        const detail = tenantDetail || {};
-        const basicInfo = detail.basicInfo || {};
-        const leaseInfo = detail.leaseInfo || {};
-        const paymentInfo = detail.paymentInfo || {};
-
-        const extensionHistory = (leaseInfo.extensionHistory || []).map(
-        (entry) => ({
-            id: entry.id,
-            duration: `+${entry.addedMonths || 0} month${entry.addedMonths === 1 ? "" : "s"}`,
-            date: fmtDate(entry.extendedAt),
-            previousEnd: `${entry.previousDuration || 0} months`,
-            newEnd: `${entry.newDuration || 0} months`,
-        }),
-        );
-
-        const roomHistory = (detail.roomHistory || []).map((entry) => ({
-        id: entry.id,
-        branch:
-            formatBranch(entry.branch || basicInfo.branch || base.branch || "") ||
-            "N/A",
-        room: entry.roomName || "N/A",
-        bed: entry.bedLabel || "No bed",
-        moveInDate: fmtDate(entry.moveInDate),
-        status: entry.moveOutDate ? "past" : "current",
-        }));
-
-        const warnings = (detail.systemWarnings || []).map((warning, index) => ({
-          id: warning.code || `${warning.message || "warning"}-${index}`,
-          type: warning.code || "warning",
-          message: warning.message || "Warning",
-          details: warning.details || null,
-          impact: warning.impact || null,
-          recommendation: warning.recommendation || null,
-          date: warning.createdAt ? fmtDate(warning.createdAt) : null,
-          severity:
-            warning.severity === "error"
-              ? "high"
-              : warning.severity === "warning"
-                ? "medium"
-                : "low",
-        }));
-
         return {
-        reservationId: selectedReservationId,
-        initials:
-            (base.tenantName || basicInfo.name || "")
-            .split(/\s+/)
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((part) => part[0])
-            .join("")
-            .toUpperCase() || "?",
-        name:
-            basicInfo.name ||
-            base.tenantName ||
-            (tenantDetailLoading ? "Loading..." : "Tenant"),
-        email: basicInfo.email || base.contact?.email || "",
-        phone: basicInfo.phone || base.contact?.phone || "",
-        emergencyContact: basicInfo.emergencyContactName || "",
-        emergencyPhone: basicInfo.emergencyContactPhone || "",
-        emergencyRelationship: basicInfo.emergencyContactRelationship || "",
-        branch: formatBranch(basicInfo.branch || base.branch || "") || "N/A",
-        room: basicInfo.room || base.room || "N/A",
-        bed: basicInfo.bed || base.bed || "",
-        moveIn: fmtDate(leaseInfo.moveInDate || base.moveInDate),
-        moveOut: fmtDate(leaseInfo.leaseEndDate || base.leaseEndDate),
-        contractEnd: fmtDate(leaseInfo.leaseEndDate || base.leaseEndDate),
-        daysRemaining:
-            leaseInfo.daysUntilLeaseEnd ?? base.daysUntilLeaseEnd ?? null,
-        contractStatus: detail.leaseStatus || base.leaseStatus || "unknown",
-        paymentStatus: detail.paymentStatus || base.paymentStatus || "unknown",
-        occupancyStatus: detail.stayStatus || base.stayStatus || "unknown",
-        nextAction: detail.nextAction || base.nextAction || "none",
-        monthlyRate: paymentInfo.monthlyRent ?? base.monthlyRent,
-        advanceRent: paymentInfo.advanceRent,
-        securityDeposit: paymentInfo.securityDeposit,
-        reservationFee: paymentInfo.reservationFee,
-        balance: paymentInfo.currentBalance,
-        paymentHistory: paymentInfo.recentPayments || [],
-        extensionHistory,
-        roomHistory,
-        warnings,
-        tenantId: detail.tenantId || base.tenantId || "",
-        userId: detail.userId || base.userId || detail.tenantId || base.tenantId || "",
-        isOwnerViewing: isOwner,
+            reservationId: selectedReservationId,
+            ...(selectedTenantRow || {}),
+            ...(tenantDetail || {}),
+            isOwnerViewing: isOwner,
         };
     }, [
         selectedReservationId,
         selectedTenantRow,
         tenantDetail,
-        tenantDetailLoading,
+        isOwner,
     ]);
 
     useEffect(() => {
@@ -804,6 +724,7 @@ export default function TenantsWorkspacePage() {
                   <tr
                     key={tenant.reservationId || tenant.tenantName}
                     className="border-b border-[var(--border-light)] hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                    onMouseEnter={() => prefetchTenantWorkspaceDetail(queryClient, tenant.reservationId)}
                   >
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
@@ -869,6 +790,8 @@ export default function TenantsWorkspacePage() {
                         type="button"
                         className="tenant-view-btn"
                         title="View tenant details"
+                        onMouseEnter={() => prefetchTenantWorkspaceDetail(queryClient, tenant.reservationId)}
+                        onFocus={() => prefetchTenantWorkspaceDetail(queryClient, tenant.reservationId)}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedReservationId(tenant.reservationId);

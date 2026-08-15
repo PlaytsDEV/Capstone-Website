@@ -60,7 +60,15 @@ export function getFriendlyError(error, fallback = "Something went wrong. Please
   const serverMsg = error?.response?.data?.error || error?.response?.data?.message;
   const rawMsg = typeof error === "string" ? error : (serverMsg || error?.message || "");
 
-  const isCodeError = /TypeError|ReferenceError|SyntaxError|MongoError|CastError|ValidationError:\s*path|at\s+\w|Internal\s*Server\s*Error/i.test(rawMsg);
+  const isCodeError =
+    error instanceof TypeError ||
+    error instanceof ReferenceError ||
+    error instanceof SyntaxError ||
+    error instanceof RangeError ||
+    error instanceof EvalError ||
+    error instanceof URIError ||
+    (error && typeof error === "object" && ["TypeError", "ReferenceError", "SyntaxError", "RangeError"].includes(error?.name)) ||
+    /TypeError|ReferenceError|SyntaxError|RangeError|MongoError|CastError|ValidationError:\s*path|at\s+\w|Internal\s*Server\s*Error|is not a function|cannot read propert|is not defined|undefined is not|null is not|objects are not valid as a react child|maximum call stack|chunkloaderror/i.test(rawMsg);
 
   // If the server sent a clean domain message (no stack trace or internal code errors), use it directly
   if (serverMsg && typeof serverMsg === "string" && !isCodeError) {

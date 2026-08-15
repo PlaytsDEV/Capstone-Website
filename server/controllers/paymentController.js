@@ -601,6 +601,7 @@ export const checkSessionStatus = async (req, res, next) => {
               $set: {
                 initialPaymentStatus: "paid",
                 paymentStatus: "paid_in_full",
+                reservationFeePaymentStatus: "verified",
               },
             },
           );
