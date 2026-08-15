@@ -28,6 +28,14 @@ const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 // other on the absent field.
 let clientRequestIdIndexPromise = null;
 function ensureClientRequestIdIndex(db) {
+  // Tolerant of "an equivalent index already exists" (MongoDB error codes 85
+  // IndexOptionsConflict / 86 IndexKeySpecsConflict): the Mongoose model
+  // (models/MaintenanceRequest.js) declares this same { user_id,
+  // client_request_id } partial-unique index and may have already built it
+  // under its own auto-generated name via autoIndex before this lazy call
+  // ever runs. Either name enforces the same constraint, so a conflict here
+  // just means the guarantee this function exists for is already in place —
+  // it must not fail the request that triggered it.
   clientRequestIdIndexPromise ||= db.collection(PRIMARY_COLLECTION).createIndex(
     { user_id: 1, client_request_id: 1 },
     {
@@ -35,7 +43,10 @@ function ensureClientRequestIdIndex(db) {
       unique: true,
       partialFilterExpression: { client_request_id: { $type: 'string' } },
     },
-  );
+  ).catch((error) => {
+    if (error?.code === 85 || error?.code === 86) return null;
+    throw error;
+  });
   return clientRequestIdIndexPromise;
 }
 

@@ -671,9 +671,14 @@ maintenanceRequestSchema.index({ status: 1, urgency: 1, created_at: -1, slaBreac
 // never collide with each other. Also lazily created via the native driver
 // in mobile/controllers/maintenance.controller.js, since that controller
 // writes through getDb().collection(...) rather than this Mongoose model.
+// MUST use the same explicit name as that lazy createIndex() call — Mongoose
+// autoIndex builds this one first at boot, and a same-keys-different-name
+// index create is a hard MongoDB error (IndexOptionsConflict), which took
+// down every mobile maintenance submission in the Phase 4A live smoke test
+// until this name was aligned.
 maintenanceRequestSchema.index(
   { user_id: 1, client_request_id: 1 },
-  { unique: true, partialFilterExpression: { client_request_id: { $type: 'string' } } },
+  { name: 'user_client_request_id_unique', unique: true, partialFilterExpression: { client_request_id: { $type: 'string' } } },
 );
 
 const MaintenanceRequest = mongoose.model(

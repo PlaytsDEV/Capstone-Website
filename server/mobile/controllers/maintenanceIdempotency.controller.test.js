@@ -11,7 +11,7 @@ function response() {
 // well enough to exercise the controller's race-handling path: insertOne
 // throws a duplicate-key error (code 11000) when a doc with the same
 // (user_id, client_request_id) pair already exists.
-function makeDb() {
+function makeDb({ indexConflictCode = null } = {}) {
   const requests = [];
   let indexCreateCalls = 0;
   return {
@@ -26,7 +26,20 @@ function makeDb() {
       }
       if (name === 'maintenance_requests') {
         return {
-          async createIndex() { indexCreateCalls += 1; return 'user_client_request_id_unique'; },
+          async createIndex() {
+            indexCreateCalls += 1;
+            if (indexConflictCode) {
+              // Simulates Mongoose's autoIndex having already built the same
+              // { user_id, client_request_id } partial-unique index under a
+              // different auto-generated name before this lazy call runs —
+              // a real, observed production failure mode (Phase 4A live
+              // smoke test).
+              const err = new Error('An equivalent index already exists with a different name');
+              err.code = indexConflictCode;
+              throw err;
+            }
+            return 'user_client_request_id_unique';
+          },
           async findOne(query) {
             if (query.client_request_id !== undefined) {
               return requests.find((r) => r.user_id === query.user_id && r.client_request_id === query.client_request_id) || null;
@@ -173,6 +186,25 @@ describe('maintenance.controller createMaintenance — idempotency', () => {
     expect(res.statusCode).toBe(400);
     expect(res.body.errors.client_request_id).toBeTruthy();
     expect(currentDb.requests).toHaveLength(0);
+  });
+
+  test.each([85, 86])('an "equivalent index already exists" conflict (code %d) on createIndex does not fail the submission', async (code) => {
+    currentDb = makeDb({ indexConflictCode: code });
+
+    const res = response();
+    await createMaintenance(baseReq({ client_request_id: 'k1' }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(currentDb.requests).toHaveLength(1);
+  });
+
+  test('an unrelated createIndex failure still surfaces as a 500, not silently swallowed', async () => {
+    currentDb = makeDb({ indexConflictCode: 13 }); // Unauthorized, e.g.
+
+    const res = response();
+    await createMaintenance(baseReq({ client_request_id: 'k1' }), res);
+
+    expect(res.statusCode).toBe(500);
   });
 
   test('the unique index is created lazily — not at all until a key is actually used', async () => {
