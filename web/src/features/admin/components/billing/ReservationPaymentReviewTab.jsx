@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   RefreshCw,
@@ -15,6 +16,14 @@ import {
   BedDouble,
   Hash,
   CheckCircle2,
+  ArrowUpRight,
+  Download,
+  Copy,
+  Check,
+  Loader2,
+  Coins,
+  TrendingUp,
+  Clock,
 } from "lucide-react";
 import { reservationApi } from "../../../../shared/api/reservationApi";
 import ProfileAvatar, { getProfileInitials } from "../../../../shared/components/ProfileAvatar";
@@ -52,13 +61,6 @@ const errorMessage = (error) => {
   return "We were unable to load reservation payment records. Please refresh the page or try again in a moment.";
 };
 
-const getInitials = (name) => {
-  if (!name) return "AP";
-  const parts = name.trim().split(" ");
-  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-};
-
 const formatBranch = (slug) => {
   if (!slug) return "All Branches";
   if (slug === "gil-puyat") return "Gil Puyat";
@@ -67,12 +69,19 @@ const formatBranch = (slug) => {
 };
 
 export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
+  const navigate = useNavigate();
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterTab, setFilterTab] = useState("all");
+  const [sortBy, setSortBy] = useState("newest"); // newest, oldest, amount_desc, amount_asc, name_asc
+
+  // Interactive Action States
+  const [copiedKey, setCopiedKey] = useState(null);
+  const [generatingReceipt, setGeneratingReceipt] = useState(false);
+  const [actionSuccess, setActionSuccess] = useState("");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -105,7 +114,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
   // Reset pagination on filter or search changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterTab, branch]);
+  }, [searchQuery, filterTab, branch, sortBy]);
 
   const normalizedPayments = useMemo(() => {
     return payments.map((p) => {
@@ -183,42 +192,51 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
   }, [payments]);
 
   const branchFilteredPayments = useMemo(() => {
-    if (!branch) return normalizedPayments;
+    if (!branch || branch === "all") return normalizedPayments;
     return normalizedPayments.filter(
       (p) => String(p.branch).toLowerCase() === String(branch).toLowerCase(),
     );
   }, [normalizedPayments, branch]);
 
-  const confirmedCount = useMemo(
-    () =>
-      branchFilteredPayments.filter(
-        (payment) =>
-          payment.status === "confirmed" ||
-          payment.status === "approved" ||
-          payment.status === "paid" ||
-          payment.status === "completed",
-      ).length,
-    [branchFilteredPayments],
-  );
+  // Financial KPI Metrics
+  const summaryStats = useMemo(() => {
+    let totalCollected = 0;
+    let confirmedCount = 0;
+    let pendingCount = 0;
+    let failedCount = 0;
 
-  const pendingCount = useMemo(
-    () =>
-      branchFilteredPayments.filter(
-        (payment) => payment.status === "pending" || payment.status === "under_review",
-      ).length,
-    [branchFilteredPayments],
-  );
+    for (const p of branchFilteredPayments) {
+      const isConfirmed =
+        p.status === "confirmed" ||
+        p.status === "approved" ||
+        p.status === "paid" ||
+        p.status === "completed";
 
-  const failedCount = useMemo(
-    () =>
-      branchFilteredPayments.filter(
-        (payment) =>
-          payment.status === "failed" ||
-          payment.status === "rejected" ||
-          payment.status === "cancelled",
-      ).length,
-    [branchFilteredPayments],
-  );
+      const isPending = p.status === "pending" || p.status === "under_review";
+      const isFailed =
+        p.status === "failed" || p.status === "rejected" || p.status === "cancelled";
+
+      if (isConfirmed) {
+        confirmedCount++;
+        totalCollected += Number(p.amount || 0);
+      } else if (isPending) {
+        pendingCount++;
+      } else if (isFailed) {
+        failedCount++;
+      }
+    }
+
+    const averageDeposit = confirmedCount > 0 ? totalCollected / confirmedCount : 0;
+
+    return {
+      totalCollected,
+      confirmedCount,
+      pendingCount,
+      failedCount,
+      averageDeposit,
+      totalCount: branchFilteredPayments.length,
+    };
+  }, [branchFilteredPayments]);
 
   const filteredPayments = useMemo(() => {
     let list = branchFilteredPayments;
@@ -242,7 +260,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
     }
 
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+      const q = searchQuery.trim().toLowerCase();
       list = list.filter((p) => {
         const name = String(p.tenantFullName || "").toLowerCase();
         const code = String(p.reservationCode || "").toLowerCase();
@@ -260,8 +278,23 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         );
       });
     }
-    return list;
-  }, [branchFilteredPayments, filterTab, searchQuery]);
+
+    // Sort list
+    const sorted = [...list];
+    if (sortBy === "newest") {
+      sorted.sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0));
+    } else if (sortBy === "oldest") {
+      sorted.sort((a, b) => new Date(a.submittedAt || 0) - new Date(b.submittedAt || 0));
+    } else if (sortBy === "amount_desc") {
+      sorted.sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+    } else if (sortBy === "amount_asc") {
+      sorted.sort((a, b) => Number(a.amount || 0) - Number(b.amount || 0));
+    } else if (sortBy === "name_asc") {
+      sorted.sort((a, b) => String(a.tenantFullName || "").localeCompare(String(b.tenantFullName || "")));
+    }
+
+    return sorted;
+  }, [branchFilteredPayments, filterTab, searchQuery, sortBy]);
 
   // Total pages and sliced page items
   const totalPages = Math.max(1, Math.ceil(filteredPayments.length / itemsPerPage));
@@ -279,22 +312,82 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       case "approved":
       case "paid":
       case "completed":
-        return "bg-emerald-50 text-emerald-800 border-emerald-200";
+        return "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800";
       case "pending":
       case "under_review":
-        return "bg-amber-50 text-amber-900 border-amber-200";
+        return "bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800";
       case "rejected":
       case "failed":
       case "cancelled":
-        return "bg-red-50 text-red-800 border-red-200";
+        return "bg-red-50 text-red-800 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800";
       default:
         return "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300";
     }
   };
 
+  const handleCopyToClipboard = (text, key) => {
+    if (!text || text === "—") return;
+    navigator.clipboard?.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => {
+      setCopiedKey(null);
+    }, 1500);
+  };
+
+  const handleNavigateToReservation = (reservationCode) => {
+    if (!reservationCode || reservationCode === "RES-PENDING") {
+      navigate("/admin/reservations");
+    } else {
+      navigate(`/admin/reservations?search=${encodeURIComponent(reservationCode)}`);
+    }
+  };
+
+  const handleDownloadReceipt = async (payment) => {
+    if (!payment) return;
+    try {
+      setGeneratingReceipt(true);
+      setActionSuccess("");
+      const { generateDepositReceipt } = await import(
+        "../../../../shared/utils/receiptGenerator.js"
+      );
+
+      const reservationPayload = {
+        _id: payment.reservationId?._id || payment.reservationId || payment._id,
+        reservationCode: payment.reservationCode,
+        roomName: payment.roomName,
+        roomId: { name: payment.roomName },
+        selectedBed: { label: payment.bedLabel },
+        branch: payment.branch,
+        totalPrice: payment.amount || payment.paidAmount,
+        amount: payment.amount || payment.paidAmount,
+        paymentDetails: {
+          referenceNumber: payment.referenceNumber,
+          paymentMethod: payment.paymentMethod,
+          paidAt: payment.submittedAt || new Date(),
+        },
+      };
+
+      const userPayload = {
+        firstName: payment.tenantFullName?.split(" ")[0] || "Applicant",
+        lastName: payment.tenantFullName?.split(" ").slice(1).join(" ") || "",
+        name: payment.tenantFullName,
+        email: payment.tenantEmail,
+      };
+
+      await generateDepositReceipt(reservationPayload, userPayload);
+      setActionSuccess("Receipt generated and downloaded successfully.");
+      setTimeout(() => setActionSuccess(""), 3000);
+    } catch (err) {
+      console.error("Failed to generate deposit receipt:", err);
+      setError("Could not generate PDF receipt. Please try again.");
+    } finally {
+      setGeneratingReceipt(false);
+    }
+  };
+
   return (
-    <div className="space-y-4">
-      {/* Header & KPI Bar */}
+    <div className="space-y-4 text-card-foreground">
+      {/* Header & Title */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4 shadow-xs">
         <div>
           <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground">
@@ -306,14 +399,11 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-900 text-xs font-bold border border-emerald-200">
-            <CheckCircle2 size={13} className="text-emerald-700" /> {confirmedCount} Confirmed Payments
-          </span>
           <button
             type="button"
             onClick={load}
             disabled={loading}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+            className="inline-flex h-8.5 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50 cursor-pointer"
             title="Refresh reservation payment transactions"
           >
             <RefreshCw
@@ -325,10 +415,62 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         </div>
       </div>
 
+      {/* Top Financial KPI Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div className="rounded-xl border border-border bg-card p-3.5 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Total Deposits Collected
+            </span>
+            <Coins size={15} className="text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <p className="text-base font-bold text-card-foreground mt-1">
+            {money(summaryStats.totalCollected)}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-3.5 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Confirmed Settlements
+            </span>
+            <CheckCircle2 size={15} className="text-blue-600 dark:text-blue-400" />
+          </div>
+          <p className="text-base font-bold text-card-foreground mt-1">
+            {summaryStats.confirmedCount} Paid
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-3.5 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Pending / In Review
+            </span>
+            <Clock size={15} className="text-amber-600 dark:text-amber-400" />
+          </div>
+          <p className="text-base font-bold text-card-foreground mt-1">
+            {summaryStats.pendingCount} Pending
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-3.5 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Average Deposit Fee
+            </span>
+            <TrendingUp size={15} className="text-slate-600 dark:text-slate-400" />
+          </div>
+          <p className="text-base font-bold text-card-foreground mt-1">
+            {money(summaryStats.averageDeposit)}
+          </p>
+        </div>
+      </div>
+
+
       {error ? (
         <div
           role="alert"
-          className="flex items-center justify-between rounded-xl border border-red-300 bg-red-50 p-3 text-xs font-semibold text-red-800 shadow-xs"
+          className="flex items-center justify-between rounded-xl border border-red-300 bg-red-50 p-3 text-xs font-semibold text-red-800 shadow-xs dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300"
         >
           <div className="flex items-center gap-2">
             <AlertTriangle size={15} className="shrink-0 text-red-600" />
@@ -337,8 +479,28 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
           <button
             type="button"
             onClick={() => setError("")}
-            className="text-red-700 hover:text-red-900 transition cursor-pointer"
+            className="text-red-700 hover:text-red-900 transition cursor-pointer dark:text-red-300 dark:hover:text-red-100"
             aria-label="Dismiss error notice"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      ) : null}
+
+      {actionSuccess ? (
+        <div
+          role="status"
+          className="flex items-center justify-between rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 shadow-xs dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300"
+        >
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
+            <span>{actionSuccess}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionSuccess("")}
+            className="text-emerald-700 hover:text-emerald-900 transition cursor-pointer dark:text-emerald-300"
+            aria-label="Dismiss notice"
           >
             <X size={14} />
           </button>
@@ -349,36 +511,56 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       <div className="flex min-h-[580px] overflow-hidden rounded-xl border border-border bg-card shadow-xs">
         {/* LEFT — Master list (42%) */}
         <div className="w-full md:w-[42%] shrink-0 overflow-hidden border-r border-border flex flex-col bg-card">
-          {/* Search & Filter Toolbar */}
+          {/* Search, Sort & Filter Toolbar */}
           <div className="border-b border-border bg-muted/20 p-3 space-y-2.5">
-            <div className="relative flex items-center w-full">
-              <Search size={14} className="absolute left-3 text-muted-foreground pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search code, applicant, or reference..."
-                className="w-full h-8.5 rounded-lg border border-border bg-card pl-9 pr-7 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2.5 p-0.5 rounded-full text-muted-foreground hover:text-card-foreground transition cursor-pointer"
-                  aria-label="Clear search query"
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 flex items-center">
+                <Search size={14} className="absolute left-3 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  maxLength={100}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search code, applicant, or reference..."
+                  className="w-full h-9 rounded-lg border border-border bg-card pl-8.5 pr-7 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2.5 p-0.5 rounded-full text-muted-foreground hover:text-card-foreground transition cursor-pointer"
+                    aria-label="Clear search query"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+
+              {/* Sort Dropdown */}
+              <div className="relative shrink-0">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="h-9 rounded-lg border border-border bg-card px-2.5 text-xs font-semibold text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none cursor-pointer"
+                  title="Sort payment transactions"
+                  aria-label="Sort payment transactions"
                 >
-                  <X size={12} />
-                </button>
-              )}
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="amount_desc">Highest Amount</option>
+                  <option value="amount_asc">Lowest Amount</option>
+                  <option value="name_asc">Name (A–Z)</option>
+                </select>
+              </div>
             </div>
 
-            {/* Filter Buttons: Solid standalone cards with visible borders and backgrounds */}
+            {/* Filter Buttons */}
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
               {[
-                { id: "all", label: "All", count: branchFilteredPayments.length },
-                { id: "confirmed", label: "Confirmed", count: confirmedCount },
-                { id: "pending", label: "Pending", count: pendingCount },
-                { id: "failed", label: "Failed", count: failedCount },
+                { id: "all", label: "All", count: summaryStats.totalCount },
+                { id: "confirmed", label: "Confirmed", count: summaryStats.confirmedCount },
+                { id: "pending", label: "Pending", count: summaryStats.pendingCount },
+                { id: "failed", label: "Failed", count: summaryStats.failedCount },
               ].map((t) => {
                 const isActiveTab = filterTab === t.id;
                 return (
@@ -386,7 +568,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                     key={t.id}
                     type="button"
                     onClick={() => setFilterTab(t.id)}
-                    className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 border shadow-xs cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 border shadow-xs cursor-pointer ${
                       isActiveTab
                         ? "bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-950 dark:border-slate-100 font-bold"
                         : "bg-card text-card-foreground border-border hover:bg-muted/80 hover:border-slate-300 dark:hover:border-slate-700"
@@ -394,7 +576,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                   >
                     <span>{t.label}</span>
                     <span
-                      className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${
+                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
                         isActiveTab
                           ? "bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900"
                           : "bg-muted text-muted-foreground border border-border/50"
@@ -505,7 +687,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                   setItemsPerPage(Number(e.target.value));
                   setCurrentPage(1);
                 }}
-                className="h-6.5 rounded-md border border-border bg-card px-1.5 text-[10px] font-medium text-card-foreground focus:outline-none cursor-pointer"
+                className="h-7 rounded-md border border-border bg-card px-1.5 text-[11px] font-medium text-card-foreground focus:outline-none cursor-pointer"
                 title="Number of records per page"
                 aria-label="Rows per page"
               >
@@ -522,14 +704,14 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                 type="button"
                 disabled={currentPage <= 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition hover:bg-muted hover:text-card-foreground disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                className="inline-flex h-7.5 w-7.5 items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition hover:bg-muted hover:text-card-foreground disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 title="Previous page"
                 aria-label="Previous page"
               >
                 <ChevronLeft size={13} />
               </button>
 
-              <span className="px-2 text-[11px] font-semibold text-card-foreground">
+              <span className="px-2 text-xs font-semibold text-card-foreground">
                 {currentPage} / {totalPages}
               </span>
 
@@ -537,7 +719,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                 type="button"
                 disabled={currentPage >= totalPages}
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition hover:bg-muted hover:text-card-foreground disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                className="inline-flex h-7.5 w-7.5 items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition hover:bg-muted hover:text-card-foreground disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 title="Next page"
                 aria-label="Next page"
               >
@@ -568,7 +750,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                     <ShieldCheck size={18} className="text-emerald-700 dark:text-emerald-400" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-card-foreground">Automated Gateway Verification</p>
+                    <p className="text-xs font-bold text-card-foreground">Gateway Verification</p>
                     <p className="text-[11px] text-muted-foreground">All reservation deposits are reconciled via PayMongo</p>
                   </div>
                 </div>
@@ -580,8 +762,9 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                   </div>
                   <div className="flex items-center gap-1.5 text-card-foreground font-medium">
                     <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                    <span>Automated Bed Lock</span>
+                    <span>Direct Bed Allocation</span>
                   </div>
+
                   <div className="flex items-center gap-1.5 text-card-foreground font-medium">
                     <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
                     <span>Reference Tracking</span>
@@ -603,7 +786,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                     user={selectedPayment.tenantUser || { name: selectedPayment.tenantFullName }}
                     initials={getProfileInitials({ name: selectedPayment.tenantFullName })}
                     alt={`${selectedPayment.tenantFullName} profile photo`}
-                    size={42}
+                    size={40}
                   />
                   <div>
                     <div className="flex items-center gap-2">
@@ -618,13 +801,21 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                         {selectedPayment.status?.replace(/_/g, " ")}
                       </span>
                     </div>
-                    <p className="text-[11px] font-medium text-muted-foreground mt-0.5">
-                      {selectedPayment.tenantEmail ? `${selectedPayment.tenantEmail} \u00B7 ` : ""}
-                      Reservation:{" "}
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mt-0.5">
+                      {selectedPayment.tenantEmail ? <span>{selectedPayment.tenantEmail} ·</span> : null}
+                      <span>Reservation:</span>
                       <strong className="text-card-foreground font-mono">
                         {selectedPayment.reservationCode}
                       </strong>
-                    </p>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyToClipboard(selectedPayment.reservationCode, "resCode")}
+                        className="inline-flex items-center text-muted-foreground hover:text-card-foreground transition cursor-pointer"
+                        title="Copy Reservation Code"
+                      >
+                        {copiedKey === "resCode" ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <button
@@ -635,6 +826,34 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                   title="Close payment detail panel"
                 >
                   <X size={14} />
+                </button>
+              </div>
+
+              {/* Action Toolbar */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleNavigateToReservation(selectedPayment.reservationCode)}
+                  className="inline-flex h-8.5 items-center gap-1.5 rounded-lg border border-border bg-card px-3.5 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] cursor-pointer"
+                >
+                  <ArrowUpRight size={13} /> View Reservation
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDownloadReceipt(selectedPayment)}
+                  disabled={generatingReceipt}
+                  className="inline-flex h-8.5 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 text-xs font-bold text-white shadow-xs transition hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 cursor-pointer dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                >
+                  {generatingReceipt ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" /> Generating Receipt...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={13} /> Download Deposit Receipt
+                    </>
+                  )}
                 </button>
               </div>
 
@@ -717,10 +936,18 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
 
                   <div className="flex items-start gap-2">
                     <Hash size={14} className="text-muted-foreground mt-0.5 shrink-0" />
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <dt className="text-[10px] font-semibold text-muted-foreground">Reference Number</dt>
-                      <dd className="font-mono text-xs font-semibold text-card-foreground mt-0.5">
-                        {selectedPayment.referenceNumber}
+                      <dd className="font-mono text-xs font-semibold text-card-foreground mt-0.5 flex items-center gap-1.5">
+                        <span className="truncate">{selectedPayment.referenceNumber}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyToClipboard(selectedPayment.referenceNumber, "refNum")}
+                          className="inline-flex items-center text-muted-foreground hover:text-card-foreground transition cursor-pointer shrink-0"
+                          title="Copy reference number"
+                        >
+                          {copiedKey === "refNum" ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                        </button>
                       </dd>
                     </div>
                   </div>
@@ -750,12 +977,13 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
               </div>
 
               {/* Status Verification Banner */}
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-900 flex items-center gap-2.5">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300 flex items-center gap-2.5">
                 <ShieldCheck size={18} className="shrink-0 text-emerald-700 dark:text-emerald-500" />
                 <span className="font-medium leading-relaxed">
-                  Verified via PayMongo Automated Gateway — this reservation payment was automatically processed and reconciled with the dormitory reservation.
+                  Verified via PayMongo Gateway — this reservation payment was processed and reconciled with the dormitory reservation.
                 </span>
               </div>
+
             </div>
           )}
         </div>

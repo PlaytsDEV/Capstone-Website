@@ -237,17 +237,17 @@ const normalizeOverdueRows = (data) => {
 };
 
 const normalizeViolationRows = (data) => {
-  const violations = data?.violations || data?.data || [];
+  const violations = Array.isArray(data) ? data : data?.violations || data?.data || [];
   return violations.map((v) => ({
-    rawStartDate: v.createdAt,
-    tenantName:  v.tenantName || `${v.tenant?.firstName || ""} ${v.tenant?.lastName || ""}`.trim() || "-",
-    roomName:    extractRoomLabel(v),
+    rawStartDate: v.dateOfIncident || v.createdAt,
+    tenantName:  v.tenantName || `${v.tenantId?.firstName || ""} ${v.tenantId?.lastName || ""}`.trim() || "-",
+    roomName:    v.roomName || extractRoomLabel(v),
     branch:      v.branch || v.room?.branch || v.roomId?.branch || "-",
-    type:        v.type || v.violationType || "-",
-    severity:    v.severity || "-",
-    description: v.description || "-",
+    type:        v.violationType || v.type || "-",
+    severity:    v.warningNumber ? `Warning #${v.warningNumber}` : "-",
+    description: v.evidenceNotes || v.customViolationDescription || v.description || "-",
     status:      v.status || "-",
-    createdAt:   v.createdAt,
+    createdAt:   v.dateOfIncident || v.createdAt,
   }));
 };
 
@@ -552,9 +552,10 @@ const AdminBillingPage = () => {
           aria-labelledby="billing-tab-overdue-notices"
           className={activeTab === "overdue-notices" ? "block space-y-6" : "hidden"}
         >
-          <OverdueNoticeTracker />
-          <TerminationReviewBoard />
+          <OverdueNoticeTracker branch={effectiveBranch} />
+          <TerminationReviewBoard branch={effectiveBranch} />
         </section>
+
 
         <section
           role="tabpanel"
@@ -562,7 +563,7 @@ const AdminBillingPage = () => {
           aria-labelledby="billing-tab-violations"
           className={activeTab === "violations" ? "block" : "hidden"}
         >
-          <TenantViolationManager />
+          <TenantViolationManager branch={effectiveBranch} />
         </section>
       </div>
     </div>
