@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Archive,
@@ -231,6 +231,57 @@ export default function AdminMaintenancePage() {
     [selectedRequest],
   );
 
+  useEffect(() => {
+    if (!selectedRequest) return;
+    const assignedId =
+      selectedRequest.assignedProviderId ||
+      selectedRequest.assignedProvider?.id ||
+      selectedRequest.assignedProvider?._id ||
+      selectedRequest.providerDetails?.internalProviderId ||
+      "";
+    const assignedName =
+      selectedRequest.assignedProviderName ||
+      selectedRequest.assigned_to ||
+      selectedRequest.assignedProvider?.providerName ||
+      "";
+
+    if (assignedId) {
+      setProviderChoice(String(assignedId));
+    } else if (assignedName) {
+      setProviderChoice(PROVIDER_MANUAL_CHOICE);
+      setManualProvider({
+        providerName: assignedName,
+        contactNumber:
+          selectedRequest.assignedProviderContact ||
+          selectedRequest.assignedProvider?.contactNumber ||
+          "",
+        serviceType:
+          selectedRequest.assignedProviderCategory ||
+          selectedRequest.assignedProvider?.serviceType ||
+          "",
+        notes:
+          selectedRequest.assignedProviderNotes ||
+          selectedRequest.notes ||
+          "",
+      });
+    } else {
+      setProviderChoice(PROVIDER_NONE_CHOICE);
+      setManualProvider({
+        providerName: "",
+        contactNumber: "",
+        serviceType: "",
+        notes: "",
+      });
+    }
+    setProviderFieldErrors({});
+    setProviderFormMessage("");
+  }, [
+    selectedRequest?.request_id,
+    selectedRequest?.assignedProviderId,
+    selectedRequest?.assignedProviderName,
+    selectedRequest?.assigned_to,
+  ]);
+
   const { data: duplicateData } = useMaintenanceDuplicates(selectedRequest?.request_id);
 
   const activeFilterChips = useMemo(() => {
@@ -362,13 +413,15 @@ export default function AdminMaintenancePage() {
     if (!selectedRequest) return;
     try {
       let payload;
-      if (providerChoice === PROVIDER_NONE_CHOICE) {
+      if (providerChoice === PROVIDER_NONE_CHOICE || !providerChoice) {
         payload = {
+          providerSource: "none",
           providerId: null,
           notes: manualProvider.notes?.trim() || "",
         };
       } else if (providerChoice === PROVIDER_MANUAL_CHOICE) {
         payload = {
+          providerSource: "manual",
           providerName: manualProvider.providerName.trim(),
           contactNumber: manualProvider.contactNumber.trim(),
           serviceType: manualProvider.serviceType.trim() || undefined,
@@ -377,6 +430,7 @@ export default function AdminMaintenancePage() {
         };
       } else {
         payload = {
+          providerSource: "directory",
           providerId: providerChoice,
           notes: manualProvider.notes?.trim() || "",
         };

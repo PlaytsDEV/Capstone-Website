@@ -351,6 +351,8 @@ export const getAdminAll = async (req, res, next) => {
     }
 
     const requests = await MaintenanceRequest.find(query)
+      .populate("roomId", "name roomNumber floor branch")
+      .populate("reservationId", "roomNumber bedNumber bed status")
       .sort({ created_at: -1 })
       .limit(limit)
       .lean();
@@ -390,6 +392,13 @@ export const getRequestById = async (req, res, next) => {
       if (request.user_id !== dbUser.user_id) {
         throw new AppError("Access denied", 403, "FORBIDDEN");
       }
+    }
+
+    if (request.roomId && typeof request.populate === "function") {
+      await request.populate("roomId", "name roomNumber floor branch");
+    }
+    if (request.reservationId && typeof request.populate === "function") {
+      await request.populate("reservationId", "roomNumber bedNumber bed status");
     }
 
     const tenantUser =
@@ -515,9 +524,17 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
 
     const adminUser = await getDbUser(req.user.uid);
     const actor = buildActorSnapshot(adminUser);
-    const providerSource = normalizeProviderSource(
-      req.body?.providerSource || req.body?.source,
-    );
+    let rawSource = req.body?.providerSource || req.body?.source;
+    if (!rawSource) {
+      if (req.body?.providerId === null || req.body?.providerId === "none" || req.body?.providerId === "") {
+        rawSource = "none";
+      } else if (req.body?.providerId) {
+        rawSource = "directory";
+      } else if (req.body?.providerName) {
+        rawSource = "manual";
+      }
+    }
+    const providerSource = normalizeProviderSource(rawSource);
     if (!providerSource) {
       throw new AppError(
         "Please choose a service provider assignment option.",
@@ -670,9 +687,27 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
       request.assigned_to = nextProvider.name;
       request.assigned_at = eventTimestamp;
 
-      // Automatically transition lifecycle status to in_progress if pending or viewed
-      if (["pending", "viewed", "submitted"].includes(request.status)) {
-        request.status = "in_progress";
+      const providerType = req.body?.providerType === "IN_HOUSE" ? "IN_HOUSE" : "EXTERNAL";
+      const tenantVisibleLabel =
+        toOptionalText(req.body?.tenantVisibleLabel) ||
+        (providerType === "IN_HOUSE"
+          ? "LilyCrest Facilities Team"
+          : (nextProvider.category ? `Authorized ${nextProvider.category} Specialist` : "Authorized External Specialist"));
+      const quotedCost = parseOptionalAmount(req.body?.quotedCost) || 0;
+
+      request.providerDetails = {
+        providerType,
+        tenantVisibleLabel,
+        internalProviderId: nextProvider.id ? String(nextProvider.id) : null,
+        privateContact: nextProvider.contact,
+        quotedCost,
+        currency: "PHP",
+        snapshotJson: nextProvider,
+      };
+
+      // Automatically transition lifecycle status to provider_assigned / in_progress if pending
+      if (["pending", "pending_review", "viewed", "submitted"].includes(request.status)) {
+        request.status = "provider_assigned";
         request.in_progress_at = eventTimestamp;
       }
     }
@@ -1240,6 +1275,145 @@ export const getAdminMaintenanceDuplicates = async (req, res, next) => {
   }
 };
 
+/**
+ * PATCH /api/maintenance/admin/:requestId/schedule
+ * POST /api/v1/admin/maintenance/:id/schedule
+ */
+export const scheduleAdminMaintenance = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    const adminUser = await getDbUser(req.user.uid);
+    const scheduledDate = req.body?.scheduledDate ? new Date(req.body.scheduledDate) : null;
+    const notes = toOptionalText(req.body?.notes || req.body?.scheduleNotes);
+
+    if (!scheduledDate || Number.isNaN(scheduledDate.getTime())) {
+      throw new AppError("A valid scheduled date/time is required.", 400, "INVALID_SCHEDULE_DATE");
+    }
+
+    request.schedule = {
+      scheduledDate,
+      notes,
+    };
+
+    if (["pending", "pending_review", "provider_assigned", "viewed"].includes(request.status)) {
+      request.status = "scheduled";
+    }
+
+    appendStatusHistory(request, {
+      event: "work_scheduled",
+      status: request.status,
+      ...buildActorSnapshot(adminUser),
+      note: notes || `Work scheduled for ${scheduledDate.toISOString()}`,
+      timestamp: new Date(),
+    });
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    try {
+      if (request.userId) {
+        notify.maintenanceScheduled(request.userId, request.request_type, scheduledDate, notes, request.request_id);
+      }
+    } catch {
+      // non-fatal
+    }
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      message: "Maintenance visit scheduled successfully.",
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/maintenance/admin/:requestId/finalize
+ * POST /api/v1/admin/maintenance/:id/finalize
+ */
+export const finalizeAdminMaintenanceReport = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    const adminUser = await getDbUser(req.user.uid);
+    const summary = toOptionalText(req.body?.summary || req.body?.reportSummary);
+    const workDone = toOptionalText(req.body?.workDone || req.body?.work_done || req.body?.technicalWork);
+    const partsReplaced = toOptionalText(req.body?.partsReplaced || req.body?.parts_replaced);
+    const preventiveAdvice = toOptionalText(req.body?.preventiveAdvice || req.body?.preventive_advice);
+    const reportUrl = toOptionalText(req.body?.reportUrl || req.body?.report_url);
+
+    if (!summary && !workDone) {
+      throw new AppError("Completion report summary or work details are required to finalize.", 400, "MISSING_REPORT_CONTENT");
+    }
+
+    const finalizedAt = new Date();
+    const reportId = request.completionReport?.reportId || `rep_${Date.now()}`;
+    const finalizedByName = `${adminUser.firstName || ""} ${adminUser.lastName || ""}`.trim() || adminUser.email;
+
+    request.completionReport = {
+      reportId,
+      isDraft: false,
+      summary: summary || request.completionReport?.summary || "Maintenance work completed.",
+      workDone: workDone || request.completionReport?.workDone || "",
+      partsReplaced: partsReplaced || request.completionReport?.partsReplaced || "None",
+      preventiveAdvice: preventiveAdvice || request.completionReport?.preventiveAdvice || "",
+      finalizedBy: adminUser.user_id || String(adminUser._id || ""),
+      finalizedByName,
+      finalizedAt,
+      reportUrl: reportUrl || request.completionReport?.reportUrl || null,
+    };
+
+    if (request.status !== "completed") {
+      request.status = "completed";
+      request.resolved_at = finalizedAt;
+    }
+
+    appendStatusHistory(request, {
+      event: "report_finalized",
+      status: "completed",
+      ...buildActorSnapshot(adminUser),
+      note: "Completion report finalized and published to tenant.",
+      timestamp: finalizedAt,
+    });
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    try {
+      if (request.userId) {
+        notify.maintenanceReportFinalized(request.userId, request.request_type, request.request_id);
+      }
+    } catch {
+      // non-fatal
+    }
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      message: "Completion report finalized and signed successfully.",
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getByBranch = getAdminAll;
 export const getRequest = getRequestById;
 export const updateRequest = updateAdminRequestStatusCompat;
+

@@ -249,13 +249,26 @@ export function MaintenanceDetailModal({
     (request?.tenant?.firstName ? `${request.tenant.firstName} ${request.tenant.lastName || ""}`.trim() : "") ||
     "Resident";
   const roomName =
-    request?.room?.name ||
-    request?.roomId?.name ||
-    request?.room_number ||
-    request?.roomNumber ||
-    (request?.room?.roomNumber ? `Room ${request.room.roomNumber}` : "") ||
-    "Unit Unassigned";
-  const bedSlot = request?.bedIdentifier || request?.bed?.bedNumber || request?.bedNumber || null;
+    request?.occupancyContext?.unitNumber
+      ? `Unit ${request.occupancyContext.unitNumber}`
+      : request?.occupancy_context?.unitNumber
+        ? `Unit ${request.occupancy_context.unitNumber}`
+        : request?.room?.name ||
+          (request?.room?.roomNumber ? `Room ${request.room.roomNumber}` : "") ||
+          (request?.roomId?.name ? request.roomId.name : "") ||
+          (request?.roomId?.roomNumber ? `Room ${request.roomId.roomNumber}` : "") ||
+          request?.room_number ||
+          request?.roomNumber ||
+          "Unit Unassigned";
+  const bedSlot =
+    request?.occupancyContext?.bedNumber
+      ? `Bed ${request.occupancyContext.bedNumber}`
+      : request?.occupancy_context?.bedNumber
+        ? `Bed ${request.occupancy_context.bedNumber}`
+        : request?.bedIdentifier ||
+          request?.bed?.bedNumber ||
+          request?.bedNumber ||
+          null;
 
   const allowedStatuses = getAllowedAdminMaintenanceStatuses(request?.status);
   const isLocked = LOCKED_ADMIN_MAINTENANCE_STATUSES.includes(request?.status || "");
@@ -537,7 +550,7 @@ export function MaintenanceDetailModal({
                     </div>
 
                     {/* Cost & Damage Attribution */}
-                    <CostAttributionCard request={request} />
+                    <CostAttributionCard request={request} disabled={isLocked} />
                   </div>
 
                   {/* Right Column: Service Provider Assignment */}
@@ -554,6 +567,8 @@ export function MaintenanceDetailModal({
                       suggestion={providerSuggestion}
                       isAssigning={isAssigningProvider}
                       isSuggesting={isSuggestingProvider}
+                      disabled={isLocked}
+                      assignmentDisabled={isLocked}
                       onChoiceChange={onProviderChoiceChange}
                       onManualChange={onManualProviderChange}
                       onSaveForFutureChange={onSaveManualProviderForFutureChange}

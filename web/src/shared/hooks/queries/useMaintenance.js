@@ -359,6 +359,57 @@ export function useBulkMaintenanceUpdate() {
   });
 }
 
+/** Confirm resolution or reopen (tenant) */
+export function useConfirmMaintenanceResolution() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.confirmResolution(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+/** Schedule maintenance appointment window (admin) */
+export function useScheduleAdminMaintenance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.scheduleAdminMaintenance(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+/** Finalize and sign official completion report (admin) */
+export function useFinalizeAdminMaintenanceReport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.finalizeAdminReport(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
 /** Backward-compatible alias for previous admin callers */
 export const useMaintenanceByBranch = useAdminMaintenanceRequests;
 
@@ -375,3 +426,4 @@ export function useIssueFrequency(limit, months) {
     queryFn: () => maintenanceApi.getIssueFrequency(limit, months),
   });
 }
+

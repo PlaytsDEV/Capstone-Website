@@ -304,21 +304,55 @@ const resolveMaintenanceTenantBranch = async (request) => {
     tenant?.branchName,
   );
 
-  if (profileBranch) {
-    return {
-      branch: profileBranch,
-      source: "maintenance_tenant_profile",
-      reservationId: request?.reservationId || null,
-      roomId: request?.roomId || null,
-    };
-  }
-
   const tenantId =
     tenant?._id ||
     request?.userId ||
     request?.tenantId ||
     request?.tenant?._id ||
     null;
+
+  let resolvedReservationId = request?.reservationId || null;
+  let resolvedRoomId = request?.roomId || null;
+
+  if (canQueryObjectId(tenantId) && (!resolvedReservationId || !resolvedRoomId)) {
+    const tenantLike = {
+      ...(tenant || {}),
+      _id: tenantId,
+      user_id: tenant?.user_id || request?.user_id || request?.tenant?.user_id || null,
+      branch: profileBranch || "",
+    };
+
+    const activeStay = await Stay.findOne({
+      tenantId: tenantLike._id,
+      status: { $in: ["active", "ending_soon"] },
+    })
+      .sort({ leaseStartDate: -1, createdAt: -1 })
+      .select("branch roomId reservationId")
+      .lean()
+      .catch(() => null);
+
+    if (activeStay) {
+      resolvedReservationId = resolvedReservationId || activeStay.reservationId || null;
+      resolvedRoomId = resolvedRoomId || activeStay.roomId || null;
+    }
+
+    if (!resolvedReservationId || !resolvedRoomId) {
+      const activeReservation = await loadActiveTenantReservation(tenantLike).catch(() => null);
+      if (activeReservation) {
+        resolvedReservationId = resolvedReservationId || activeReservation._id || null;
+        resolvedRoomId = resolvedRoomId || activeReservation.roomId?._id || activeReservation.roomId || null;
+      }
+    }
+  }
+
+  if (profileBranch) {
+    return {
+      branch: profileBranch,
+      source: "maintenance_tenant_profile",
+      reservationId: resolvedReservationId,
+      roomId: resolvedRoomId,
+    };
+  }
 
   if (!canQueryObjectId(tenantId)) {
     return {
@@ -352,8 +386,8 @@ const resolveMaintenanceTenantBranch = async (request) => {
     return {
       branch: stayBranch,
       source: "maintenance_active_stay",
-      reservationId: activeStay?.reservationId || request?.reservationId || null,
-      roomId: activeStay?.roomId || request?.roomId || null,
+      reservationId: activeStay?.reservationId || resolvedReservationId || null,
+      roomId: activeStay?.roomId || resolvedRoomId || null,
     };
   }
 
@@ -363,8 +397,8 @@ const resolveMaintenanceTenantBranch = async (request) => {
     return {
       branch: activeReservationBranch,
       source: "maintenance_active_reservation",
-      reservationId: activeReservation?._id || request?.reservationId || null,
-      roomId: activeReservation?.roomId?._id || activeReservation?.roomId || request?.roomId || null,
+      reservationId: activeReservation?._id || resolvedReservationId || null,
+      roomId: activeReservation?.roomId?._id || activeReservation?.roomId || resolvedRoomId || null,
     };
   }
 
@@ -384,37 +418,43 @@ const resolveMaintenanceTenantBranch = async (request) => {
     return {
       branch: bedHistoryBranch,
       source: "maintenance_bed_history",
-      reservationId: bedHistory?.reservationId || request?.reservationId || null,
-      roomId: bedHistory?.roomId || request?.roomId || null,
+      reservationId: bedHistory?.reservationId || resolvedReservationId || null,
+      roomId: bedHistory?.roomId || resolvedRoomId || null,
     };
   }
 
   return {
     branch: "",
     source: "unresolved",
-    reservationId: request?.reservationId || null,
-    roomId: request?.roomId || null,
+    reservationId: resolvedReservationId,
+    roomId: resolvedRoomId,
   };
 };
 
 const loadActiveTenantReservation = async (dbUser) =>
   Reservation.findOne({
-    userId: dbUser._id,
+    $or: [
+      { userId: dbUser._id },
+      ...(dbUser.user_id ? [{ user_id: dbUser.user_id }] : []),
+    ],
     status: { $in: CURRENT_RESIDENT_STATUS_QUERY },
     isArchived: { $ne: true },
   })
     .sort({ moveInDate: -1, createdAt: -1 })
-    .populate("roomId", "branch")
+    .populate("roomId", "name roomNumber floor branch")
     .select("_id branch branchId roomId")
     .lean();
 
 const loadLatestTenantReservation = async (dbUser) =>
   Reservation.findOne({
-    userId: dbUser._id,
+    $or: [
+      { userId: dbUser._id },
+      ...(dbUser.user_id ? [{ user_id: dbUser.user_id }] : []),
+    ],
     isArchived: { $ne: true },
   })
     .sort({ moveInDate: -1, createdAt: -1 })
-    .populate("roomId", "branch")
+    .populate("roomId", "name roomNumber floor branch")
     .select("_id branch branchId roomId")
     .lean();
 
