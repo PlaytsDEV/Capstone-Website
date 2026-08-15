@@ -243,13 +243,20 @@ export const saveAdminMaintenanceProof = async (req, res, next) => {
 
     const eventTimestamp = new Date();
     appendWorkLogEntry(request, {
-      note: note || "Admin-only proof uploaded.",
+      note: note || "Resolution proof uploaded and signed off.",
       attachments,
       ...buildActorSnapshot(adminUser),
       logged_at: eventTimestamp,
       entry_type: "admin_proof",
       visibility: "admin_only",
     });
+
+    // Automatically transition lifecycle status to completed if in-progress or pending
+    if (["pending", "viewed", "in_progress", "submitted", "waiting_for_tenant"].includes(request.status)) {
+      request.status = "completed";
+      request.completed_at = eventTimestamp;
+    }
+
     appendStatusHistory(request, {
       event: "admin_proof_uploaded",
       status: request.status,

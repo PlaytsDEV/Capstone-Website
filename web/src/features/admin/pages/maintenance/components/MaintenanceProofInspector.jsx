@@ -9,8 +9,8 @@ export function MaintenanceProofInspector({ request }) {
     ? request.attachments.filter((att) => !att?.isRemoved)
     : [];
 
-  const workLogAttachments = Array.isArray(request?.work_log)
-    ? request.work_log.flatMap((log) =>
+  const workLogAttachments = Array.isArray(request?.workLog || request?.work_log)
+    ? (request.workLog || request.work_log).flatMap((log) =>
         Array.isArray(log?.attachments)
           ? log.attachments.filter((att) => !att?.isRemoved)
           : [],
