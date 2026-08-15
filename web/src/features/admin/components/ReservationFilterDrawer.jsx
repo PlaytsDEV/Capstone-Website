@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { X, RotateCcw, Calendar, CreditCard, Home, Clock } from "lucide-react";
+import { X, RotateCcw, Calendar, Home, Clock } from "lucide-react";
 
 export default function ReservationFilterDrawer({
   isOpen,
@@ -150,25 +150,6 @@ export default function ReservationFilterDrawer({
                   {type}
                 </option>
               ))}
-            </select>
-          </div>
-
-          {/* Payment Verification Status */}
-          <div className="res-drawer__section">
-            <label className="res-drawer__label">
-              <CreditCard size={14} className="text-muted-foreground" />
-              <span>Payment Verification Status</span>
-            </label>
-            <select
-              value={filters.paymentStatus || "any"}
-              onChange={(e) => handleFieldChange("paymentStatus", e.target.value)}
-              className="res-drawer__select"
-            >
-              <option value="any">All Payment Statuses</option>
-              <option value="pending">Awaiting Payment</option>
-              <option value="proof_uploaded">Proof Uploaded (Pending Review)</option>
-              <option value="verified">Verified / Downpayment Paid</option>
-              <option value="refunded">Refunded / Cancelled</option>
             </select>
           </div>
         </div>

@@ -288,12 +288,35 @@ export const reservationApi = {
     ),
 
   /**
-   * Delete reservation
+   * Archive reservation (soft delete)
    */
-  delete: (reservationId) =>
-    authFetch(`/reservations/${reservationId}`, {
+  archive: (reservationId, data = {}) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/archive`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    ),
+
+  /**
+   * Restore archived reservation
+   */
+  restore: (reservationId) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/restore`, {
+        method: "PATCH",
+      }),
+    ),
+
+  /**
+   * Delete reservation (soft delete by default, hard delete for owner on archived records)
+   */
+  delete: (reservationId, options = {}) => {
+    const isHardDelete = Boolean(options.hardDelete);
+    return authFetch(`/reservations/${reservationId}${isHardDelete ? "?hardDelete=true" : ""}`, {
       method: "DELETE",
-    }),
+    });
+  },
 
   /**
    * Extend reservation move-in date (admin only)
@@ -314,27 +337,6 @@ export const reservationApi = {
       authFetch(`/reservations/${reservationId}/release`, {
       method: "PUT",
       body: JSON.stringify(data),
-      }),
-    ),
-
-  /**
-   * Archive (soft delete) reservation (admin only)
-   */
-  archive: (reservationId, data) =>
-    withLifecycleNormalization(
-      authFetch(`/reservations/${reservationId}/archive`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-      }),
-    ),
-
-  /**
-   * Restore an archived reservation (admin only)
-   */
-  restore: (reservationId) =>
-    withLifecycleNormalization(
-      authFetch(`/reservations/${reservationId}/restore`, {
-        method: "PATCH",
       }),
     ),
 

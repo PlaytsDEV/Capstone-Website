@@ -64,6 +64,16 @@ export const archiveReservation = async (req, res, next) => {
     );
     if (denied) return;
 
+    if (
+      hasReservationStatus(reservation.status, "reserved", "approved_for_payment") ||
+      hasReservationStatus(reservation.status, "moveIn")
+    ) {
+      return res.status(400).json({
+        error: "Confirmed reserved bookings cannot be archived directly. Please process a cancellation or move-out workflow first.",
+        code: "RESERVED_CANNOT_BE_DELETED",
+      });
+    }
+
     const oldData = reservation.toObject();
     const dbUser = await findDbUser(req.user.uid);
 

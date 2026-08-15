@@ -127,6 +127,8 @@ export const HEAVY_FIELDS =
   "-selfiePhotoUrl -validIDFrontUrl -validIDBackUrl -nbiClearanceUrl -companyIDUrl -__v";
 export const ADMIN_LIST_FIELDS = [
   "_id",
+  "userId",
+  "roomId",
   "reservationCode",
   "status",
   "paymentStatus",

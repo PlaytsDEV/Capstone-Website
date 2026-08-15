@@ -66,8 +66,19 @@ export function useTenantWorkspaceDetail(reservationId, options = {}) {
   return useQuery({
     queryKey: queryKeys.reservations.tenantWorkspaceDetail(reservationId),
     queryFn: () => reservationApi.getTenantWorkspaceById(reservationId),
+    staleTime: 30 * 1000,
     enabled: !!reservationId,
     ...options,
+  });
+}
+
+/** Pre-fetch tenancy workspace detail into TanStack Query cache (e.g., on row hover) */
+export function prefetchTenantWorkspaceDetail(queryClient, reservationId) {
+  if (!queryClient || !reservationId) return Promise.resolve(null);
+  return queryClient.prefetchQuery({
+    queryKey: queryKeys.reservations.tenantWorkspaceDetail(reservationId),
+    queryFn: () => reservationApi.getTenantWorkspaceById(reservationId),
+    staleTime: 30 * 1000,
   });
 }
 

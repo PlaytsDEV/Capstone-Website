@@ -797,7 +797,24 @@ export default function ReservationDetailsModal({
     {
       label: "Current Status",
       date: appearance.label,
-      time: reservation.updatedAt ? `Updated ${safeFmtTime(reservation.updatedAt)}` : null,
+      time:
+        reservation.status === "cancelled"
+          ? reservation.cancelledAt
+            ? `Cancelled ${fmtDate(reservation.cancelledAt)} • ${safeFmtTime(reservation.cancelledAt)}`
+            : reservation.updatedAt
+              ? `Updated ${fmtDate(reservation.updatedAt)} • ${safeFmtTime(reservation.updatedAt)}`
+              : null
+          : reservation.status === "archived"
+            ? reservation.archivedAt
+              ? `Archived ${fmtDate(reservation.archivedAt)} • ${safeFmtTime(reservation.archivedAt)}`
+              : reservation.updatedAt
+                ? `Updated ${fmtDate(reservation.updatedAt)} • ${safeFmtTime(reservation.updatedAt)}`
+                : null
+            : reservation.updatedAt
+              ? `Updated ${fmtDate(reservation.updatedAt)} • ${safeFmtTime(reservation.updatedAt)}`
+              : reservation.createdAt
+                ? `Created ${fmtDate(reservation.createdAt)}`
+                : null,
       isCurrent: true,
     },
   ].filter(Boolean);

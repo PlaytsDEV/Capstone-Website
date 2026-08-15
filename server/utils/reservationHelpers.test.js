@@ -34,6 +34,7 @@ const {
   getForbiddenTenantUpdateFields,
   syncReservationUserLifecycle,
   reconcileTenantUsersForScope,
+  getMoveInBlockers,
 } = await import("./reservationHelpers.js");
 
 const createUser = (overrides = {}) => ({
@@ -352,5 +353,65 @@ describe("reconcileTenantUsersForScope", () => {
     expect(user.role).toBe("tenant");
     expect(user.tenantStatus).toBe("active");
     expect(user.branch).toBe("guadalupe");
+  });
+});
+
+describe("getMoveInBlockers", () => {
+  test("returns empty blockers when reservation is reserved and paid", () => {
+    expect(
+      getMoveInBlockers({
+        status: "reserved",
+        paymentStatus: "paid",
+      }),
+    ).toEqual([]);
+  });
+
+  test("allows move-in when paymentStatus is paid_in_full", () => {
+    expect(
+      getMoveInBlockers({
+        status: "reserved",
+        paymentStatus: "paid_in_full",
+      }),
+    ).toEqual([]);
+  });
+
+  test("allows move-in when initialPaymentStatus is paid", () => {
+    expect(
+      getMoveInBlockers({
+        status: "reserved",
+        initialPaymentStatus: "paid",
+        paymentStatus: "pending",
+      }),
+    ).toEqual([]);
+  });
+
+  test("allows move-in when reservationFeePaymentStatus is verified", () => {
+    expect(
+      getMoveInBlockers({
+        status: "reserved",
+        reservationFeePaymentStatus: "verified",
+        paymentStatus: "pending",
+      }),
+    ).toEqual([]);
+  });
+
+  test("flags blocker when reservation is not in reserved state", () => {
+    const blockers = getMoveInBlockers({
+      status: "pending",
+      paymentStatus: "paid",
+    });
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toMatch(/Reservation must be in "Reserved" state/);
+  });
+
+  test("flags blocker when reservation is unpaid", () => {
+    const blockers = getMoveInBlockers({
+      status: "reserved",
+      paymentStatus: "pending",
+    });
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toBe(
+      "Payment must be confirmed (status: Paid) before move-in.",
+    );
   });
 });

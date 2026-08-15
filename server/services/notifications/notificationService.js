@@ -558,6 +558,59 @@ const notify = {
     });
   },
 
+  maintenanceScheduled: (userId, requestType, scheduledDate, notes, requestId) => {
+    const formattedDate = scheduledDate instanceof Date ? scheduledDate.toLocaleString() : String(scheduledDate || "");
+    const title = "Maintenance Visit Scheduled";
+    const message = `Service visit for your ${requestType || "maintenance"} request has been scheduled for ${formattedDate}.${notes ? ` Note: ${notes}` : ""}`;
+    return createNotificationWithPush(
+      userId,
+      "maintenance_update",
+      title,
+      message,
+      {
+        entityType: "maintenance",
+        entityId: requestId ? String(requestId) : null,
+        actionUrl: "/applicant/maintenance",
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "maintenance_status",
+            request_id: requestId ? String(requestId) : "",
+            screen: "maintenance",
+          },
+        }),
+    );
+  },
+
+  maintenanceReportFinalized: (userId, requestType, requestId) => {
+    const title = "Official Completion Report Ready";
+    const message = `The official completion report for your ${requestType || "maintenance"} request is now ready for your review.`;
+    return createNotificationWithPush(
+      userId,
+      "maintenance_update",
+      title,
+      message,
+      {
+        entityType: "maintenance",
+        entityId: requestId ? String(requestId) : null,
+        actionUrl: "/applicant/maintenance",
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "maintenance_status",
+            request_id: requestId ? String(requestId) : "",
+            screen: "maintenance",
+          },
+        }),
+    );
+  },
+
   maintenanceTenantReply: (branch, tenantName, requestId) =>
     notifyBranchAdmins(branch, "maintenance_new", "Maintenance Reply Received",
       `${tenantName} replied to maintenance request.`,

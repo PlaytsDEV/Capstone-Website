@@ -24,9 +24,9 @@
 const isUsableUrl = (value) => typeof value === "string" && value.trim().length > 0;
 
 export const resolveApplicantPhotoUrl = (reservation) => {
-  const liveProfileImage = reservation?.userId?.profileImage;
-  if (isUsableUrl(liveProfileImage)) return liveProfileImage.trim();
   const submittedPhoto = reservation?.selfiePhotoUrl;
   if (isUsableUrl(submittedPhoto)) return submittedPhoto.trim();
+  const liveProfileImage = reservation?.userId?.profileImage;
+  if (isUsableUrl(liveProfileImage)) return liveProfileImage.trim();
   return null;
 };
