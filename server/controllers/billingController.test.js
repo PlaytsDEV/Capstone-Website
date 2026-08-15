@@ -65,7 +65,11 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   UtilityPeriod: {
     findOne: utilityPeriodFindOne,
   },
+  TenantViolation: {},
+  TerminationReview: {},
+  OverdueNotice: {},
 }));
+
 
 await jest.unstable_mockModule("../middleware/logger.js", () => ({
   default: {

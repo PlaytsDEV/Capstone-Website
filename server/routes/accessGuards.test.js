@@ -167,7 +167,18 @@ await jest.unstable_mockModule("../controllers/billingController.js", () => ({
   createMilestoneArrangementAction: noop,
   runLatePenaltyJobAction: noop,
   getConsolidatedBillingMonitorAction: noop,
+  getViolations: noop,
+  getActiveTenantsForViolations: noop,
+  getViolationById: noop,
+  createViolation: noop,
+  updateViolationDecision: noop,
+  getTerminationCases: noop,
+  createTerminationCase: noop,
+  getOverdueNoticesAction: noop,
+  sendOverdueNoticeAction: noop,
+  updateTerminationDecisionAction: noop,
 }));
+
 await jest.unstable_mockModule("../controllers/announcementsController.js", () => ({
   getAnnouncements: noop,
   getAdminAnnouncements: noop,

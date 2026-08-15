@@ -388,8 +388,14 @@ const notify = {
       { entityType: "user" }),
 
   billDueReminder: (userId, billingMonth, totalAmount, daysUntilDue, options = {}) => {
-    const title = "Payment Reminder";
-    const message = `Your bill of ₱${totalAmount.toLocaleString()} for ${billingMonth} is due in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}.`;
+    const isDueToday = Number(daysUntilDue) === 0;
+    const isDueTomorrow = Number(daysUntilDue) === 1;
+    const title = isDueToday ? "Bill Due Today" : "Payment Reminder";
+    const message = isDueToday
+      ? `Your bill of ₱${totalAmount.toLocaleString()} for ${billingMonth} is due today. Please settle promptly.`
+      : isDueTomorrow
+        ? `Your bill of ₱${totalAmount.toLocaleString()} for ${billingMonth} is due tomorrow.`
+        : `Your bill of ₱${totalAmount.toLocaleString()} for ${billingMonth} is due in ${daysUntilDue} days.`;
     const billId = options.billId || null;
 
     return createNotificationWithPush(

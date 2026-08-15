@@ -12,7 +12,7 @@ import { getManilaDayjs, toManilaStartOfDay } from "../../utils/dateUtils.js";
 export const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 export const UTILITY_CYCLE_DAY = 15;
 export const UTILITY_CHARGE_FIELDS = ["electricity", "water"];
-const RENT_GENERATION_LEAD_DAYS = 5;
+const RENT_GENERATION_LEAD_DAYS = 7;
 
 function normalizeBillingDate(dateLike) {
   const normalized = toManilaStartOfDay(dateLike);

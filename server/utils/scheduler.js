@@ -250,7 +250,7 @@ async function computeOverduePenalties() {
 async function sendPaymentReminders() {
   try {
     const now = dayjs();
-    const reminderDays = [5, 3, 1];
+    const reminderDays = [3, 2, 1, 0];
     let sent = 0;
 
     for (const daysAhead of reminderDays) {
@@ -264,13 +264,6 @@ async function sendPaymentReminders() {
       }).lean();
 
       for (const bill of bills) {
-        // Skip the 5-day reminder if the bill was literally just generated in the last 24 hours 
-        // to avoid duplicate spam with the "New Bill Generated" email.
-        const ageInDays = now.diff(dayjs(bill.createdAt || new Date()), "day", true);
-        if (daysAhead === 5 && ageInDays < 1) {
-           continue; 
-        }
-
         const month = dayjs(bill.billingMonth).format("MMMM YYYY");
         await notify.billDueReminder(bill.userId, month, bill.totalAmount, daysAhead, { billId: bill._id });
         sent++;

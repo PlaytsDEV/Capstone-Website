@@ -141,7 +141,7 @@ describe("services/billing/rentGenerator", () => {
 
     const result = await ensureCurrentCycleRentBill({
       reservation,
-      referenceDate: new Date("2026-02-28T00:00:00.000Z"),
+      referenceDate: new Date("2026-02-26T00:00:00.000Z"),
       dryRun: false,
       notifyTenant: true,
       requireGenerationDateMatch: true,
@@ -190,7 +190,7 @@ describe("services/billing/rentGenerator", () => {
 
     const result = await ensureCurrentCycleRentBill({
       reservation,
-      referenceDate: new Date("2026-04-18T00:00:00.000Z"),
+      referenceDate: new Date("2026-04-16T00:00:00.000Z"),
       notifyTenant: false,
       requireGenerationDateMatch: true,
     });

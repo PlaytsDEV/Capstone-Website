@@ -54,7 +54,7 @@ describe("buildRentBillingCycle", () => {
     expect(localYmd(cycle.billingCycleStart)).toBe("2026-5-5");
     expect(localYmd(cycle.billingCycleEnd)).toBe("2026-6-5");
     expect(localYmd(cycle.dueDate)).toBe("2026-5-5");
-    expect(localYmd(cycle.generationDate)).toBe("2026-4-30");
+    expect(localYmd(cycle.generationDate)).toBe("2026-4-28");
   });
 
   test("keeps the move-in-day due date regardless of weekday", () => {
@@ -63,7 +63,7 @@ describe("buildRentBillingCycle", () => {
     expect(localYmd(cycle.billingCycleStart)).toBe("2026-1-23");
     expect(localYmd(cycle.billingCycleEnd)).toBe("2026-2-23");
     expect(localYmd(cycle.dueDate)).toBe("2026-1-23");
-    expect(localYmd(cycle.generationDate)).toBe("2026-1-18");
+    expect(localYmd(cycle.generationDate)).toBe("2026-1-16");
   });
 });
 
@@ -113,7 +113,7 @@ describe("resolveCurrentRentBillingCycle", () => {
     expect(localYmd(cycle.billingCycleStart)).toBe("2026-3-5");
     expect(localYmd(cycle.billingCycleEnd)).toBe("2026-4-5");
     expect(localYmd(cycle.dueDate)).toBe("2026-3-5");
-    expect(localYmd(cycle.generationDate)).toBe("2026-2-28");
+    expect(localYmd(cycle.generationDate)).toBe("2026-2-26");
     expect(cycle.cycleIndex).toBe(2);
   });
 });
