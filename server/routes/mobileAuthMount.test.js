@@ -46,6 +46,7 @@ jest.unstable_mockModule("../utils/billSettlement.js", () => ({ settlePaymongoBi
 jest.unstable_mockModule("../utils/paymongoPaymentMethod.js", () => ({
   readPaidPayments: jest.fn(() => []),
   readPaymentMethod: jest.fn(() => ({ rawPaymentType: "online" })),
+  normalizeCheckoutStatusForClient: jest.fn(() => "pending"),
   PAYMENT_METHOD_LABELS: {},
 }));
 jest.unstable_mockModule("../config/publicUrls.js", () => ({ getPublicUrlConfig: jest.fn(() => ({ publicApiUrl: "https://api.lilycrest.space" })) }));

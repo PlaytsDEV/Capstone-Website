@@ -57,4 +57,12 @@ describe("mobile PayMongo route safety", () => {
   test("uses the shared canonical settlement function rather than a second implementation of payment truth", () => {
     expect(routes).toContain('import { settlePaymongoBill } from "../utils/billSettlement.js"');
   });
+
+  test("checkout status is reported through the shared paid/pending/failed/cancelled/unknown normalizer, not a bare paid/pending literal", () => {
+    expect(routes).toContain("normalizeCheckoutStatusForClient");
+    expect(routes).not.toMatch(/status:\s*isPaid\s*\?\s*"paid"\s*:\s*"pending"/);
+    // The unreachable-session-fetch fallback must stay inside the same
+    // stable enum instead of leaking a one-off "unpaid" string.
+    expect(routes).not.toMatch(/status:\s*"unpaid"/);
+  });
 });

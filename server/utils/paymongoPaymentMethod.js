@@ -32,6 +32,45 @@ export const readPaidPayments = (session) => {
   });
 };
 
+/**
+ * Collapses a PayMongo checkout session into the stable, mobile-facing
+ * status enum: paid | pending | failed | cancelled | unknown.
+ *
+ * Grounded in what this backend already treats as meaningful PayMongo state
+ * (see webhookController.js, which acts on payment.paid / payment.failed /
+ * checkout_session.payment.paid) and in the session-status semantics already
+ * documented against this same API by the vendored mobile controller
+ * (mobile/controllers/paymongo.controller.js): a checkout session's
+ * `status` is "active" while still open and "inactive" once closed, either
+ * by a successful payment or by expiry — "inactive" is not itself proof of
+ * payment, only readPaidPayments() is.
+ */
+export const normalizeCheckoutStatusForClient = (session, paidPayments = []) => {
+  if (Array.isArray(paidPayments) && paidPayments.length > 0) return "paid";
+
+  const payments = [
+    ...(session?.attributes?.payments || []),
+    ...(session?.attributes?.payment_intent?.payments || []),
+  ];
+  const hasFailedPayment = payments.some((payment) => {
+    const status = payment?.attributes?.status || payment?.status;
+    return status === "failed";
+  });
+
+  const sessionStatus = session?.attributes?.status;
+  if (sessionStatus === "inactive") {
+    // Closed without a paid payment: either every attempt on it failed, or
+    // it simply expired/was abandoned with no attempt at all.
+    return hasFailedPayment ? "failed" : "cancelled";
+  }
+  if (sessionStatus === "active") {
+    // Still open — a failed attempt on an active session just means the
+    // tenant can pick another payment method, not that the checkout is done.
+    return "pending";
+  }
+  return "unknown";
+};
+
 export const readPaymentMethod = (session, paidPayments = []) => {
   if (!paidPayments || paidPayments.length === 0) {
     const defaultType = session?.attributes?.payment_method_used;

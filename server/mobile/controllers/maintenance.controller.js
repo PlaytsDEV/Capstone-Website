@@ -13,6 +13,32 @@ const LEGACY_COLLECTION = 'maintenancerequests';
 // Read from both so old records still appear while new records land in primary.
 const COLLECTIONS = [...new Set([PRIMARY_COLLECTION, LEGACY_COLLECTION])];
 
+// Optional client-supplied retry key (Phase 4A reconciliation): lets the app
+// safely retry a maintenance submission (e.g. after a dropped response) with
+// a guarantee that only one ticket is ever created for that (tenant, key)
+// pair. Absent on older app builds, which keep working exactly as before —
+// nothing below this file requires the field.
+const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+// Lazily create the uniqueness constraint the first time it's needed, the
+// same way auth.controller.js does for its otp_store TTL index — avoids a
+// separate migration step while still guaranteeing the index exists before
+// any insert that depends on it for concurrency safety. Partial so historic
+// rows (and any future submission without a key) never collide with each
+// other on the absent field.
+let clientRequestIdIndexPromise = null;
+function ensureClientRequestIdIndex(db) {
+  clientRequestIdIndexPromise ||= db.collection(PRIMARY_COLLECTION).createIndex(
+    { user_id: 1, client_request_id: 1 },
+    {
+      name: 'user_client_request_id_unique',
+      unique: true,
+      partialFilterExpression: { client_request_id: { $type: 'string' } },
+    },
+  );
+  return clientRequestIdIndexPromise;
+}
+
 const ACTIVE_RESERVATION_STATUSES = ['moveIn', 'active', 'completed', 'confirmed'];
 const VALID_URGENCIES = ['low', 'normal', 'high'];
 const VALID_STATUSES = ['pending', 'viewed', 'in_progress', 'resolved', 'completed', 'rejected', 'cancelled'];
@@ -816,11 +842,33 @@ async function createMaintenance(req, res) {
       return res.status(400).json({ detail: `A maximum of ${MAX_TENANT_ATTACHMENTS} attachments is allowed.` });
     }
 
+    const clientRequestIdRaw = typeof req.body?.client_request_id === 'string'
+      ? req.body.client_request_id.trim()
+      : '';
+    if (clientRequestIdRaw && !CLIENT_REQUEST_ID_PATTERN.test(clientRequestIdRaw)) {
+      return res.status(400).json({
+        detail: 'Validation failed.',
+        errors: { client_request_id: 'client_request_id must be 1-128 characters of letters, numbers, "_" or "-".' },
+      });
+    }
+    const clientRequestId = clientRequestIdRaw || null;
+
     const urgency = VALID_URGENCIES.includes(urgencyRaw) ? urgencyRaw : 'normal';
     const attachments = normalizeAttachmentList(attachmentsRaw);
     const sizeCheck = await assertAttachmentsWithinSizeLimit(attachments);
     if (!sizeCheck.ok) {
       return res.status(400).json({ detail: sizeCheck.detail });
+    }
+
+    if (clientRequestId) {
+      await ensureClientRequestIdIndex(db);
+      const existing = await db.collection(PRIMARY_COLLECTION).findOne({
+        user_id: req.user.user_id,
+        client_request_id: clientRequestId,
+      });
+      if (existing) {
+        return res.status(200).json(stripTenantRequestFields(existing));
+      }
     }
 
     const tenantContext = await resolveTenantContext(db, req.user);
@@ -831,6 +879,7 @@ async function createMaintenance(req, res) {
         request_id: `maint_${uuidv4().replace(/-/g, '').substring(0, 12)}`,
         user_id: req.user.user_id,
         ...(req.user._id ? { userId: asObjectId(req.user._id) || req.user._id } : {}),
+        client_request_id: clientRequestId,
         request_type: requestType,
         description,
         urgency,
@@ -863,7 +912,25 @@ async function createMaintenance(req, res) {
       req.user,
     );
 
-    await db.collection(PRIMARY_COLLECTION).insertOne(newRequest);
+    try {
+      await db.collection(PRIMARY_COLLECTION).insertOne(newRequest);
+    } catch (error) {
+      // Two concurrent submissions of the same (tenant, key) can both pass
+      // the findOne check above before either insert lands — the unique
+      // partial index is what actually prevents the duplicate ticket; on
+      // that race, return the ticket the other request created instead of
+      // erroring.
+      if (clientRequestId && error?.code === 11000) {
+        const winner = await db.collection(PRIMARY_COLLECTION).findOne({
+          user_id: req.user.user_id,
+          client_request_id: clientRequestId,
+        });
+        if (winner) {
+          return res.status(200).json(stripTenantRequestFields(winner));
+        }
+      }
+      throw error;
+    }
     res.status(201).json(stripTenantRequestFields(newRequest));
   } catch (error) {
     console.error('Create maintenance error:', error);

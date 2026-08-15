@@ -34,7 +34,7 @@ import { createCheckoutSession, getCheckoutSession } from "../config/paymongo.js
 import { Bill } from "../models/index.js";
 import { getVisibleBillSnapshot } from "../utils/billingPolicy.js";
 import { settlePaymongoBill } from "../utils/billSettlement.js";
-import { readPaidPayments, readPaymentMethod } from "../utils/paymongoPaymentMethod.js";
+import { readPaidPayments, readPaymentMethod, normalizeCheckoutStatusForClient } from "../utils/paymongoPaymentMethod.js";
 import { getPublicUrlConfig } from "../config/publicUrls.js";
 import { mobileTenantAuth } from "../middleware/mobileTenantAuth.js";
 import { toMobileBill } from "../services/mobileBillingBridge.js";
@@ -148,7 +148,7 @@ router.get("/paymongo/checkout/:checkoutId/status", mobileTenantAuth, asyncRoute
   try {
     session = await getCheckoutSession(checkoutId);
   } catch (err) {
-    return res.json({ status: "unpaid", paid: false, message: err.message || "Could not retrieve checkout session" });
+    return res.json({ status: "unknown", paid: false, message: err.message || "Could not retrieve checkout session" });
   }
 
   const metadata = session.attributes?.metadata || {};
@@ -187,7 +187,7 @@ router.get("/paymongo/checkout/:checkoutId/status", mobileTenantAuth, asyncRoute
   const refreshedBill = isPaid ? await Bill.findById(bill._id) : bill;
 
   res.json({
-    status: isPaid ? "paid" : "pending",
+    status: normalizeCheckoutStatusForClient(session, paidPayments),
     paid: isPaid,
     payments_count: paidPayments.length,
     checkout_url: session?.attributes?.checkout_url,

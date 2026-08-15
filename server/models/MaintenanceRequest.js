@@ -391,6 +391,15 @@ const maintenanceRequestSchema = new mongoose.Schema(
       index: true,
       trim: true,
     },
+    // Optional client-supplied retry key for mobile submission idempotency
+    // (Phase 4A reconciliation). See the { user_id, client_request_id }
+    // partial unique index below — null/absent values never collide with
+    // each other, so historic rows and older app builds are unaffected.
+    client_request_id: {
+      type: String,
+      default: null,
+      trim: true,
+    },
 
     request_type: {
       type: String,
@@ -657,6 +666,15 @@ maintenanceRequestSchema.index({ user_id: 1, created_at: -1 });
 maintenanceRequestSchema.index({ roomId: 1, status: 1, created_at: -1 });
 // Covers the SLA breach detection query in slaAlertJob.js
 maintenanceRequestSchema.index({ status: 1, urgency: 1, created_at: -1, slaBreachNotified: 1 });
+// Mobile submission idempotency (Phase 4A): partial so rows without a
+// client_request_id (all historic data, and any future no-key submission)
+// never collide with each other. Also lazily created via the native driver
+// in mobile/controllers/maintenance.controller.js, since that controller
+// writes through getDb().collection(...) rather than this Mongoose model.
+maintenanceRequestSchema.index(
+  { user_id: 1, client_request_id: 1 },
+  { unique: true, partialFilterExpression: { client_request_id: { $type: 'string' } } },
+);
 
 const MaintenanceRequest = mongoose.model(
   "MaintenanceRequest",
