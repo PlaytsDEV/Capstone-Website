@@ -1,4 +1,4 @@
-import { BRANCH_DISPLAY_NAMES } from "./constants";
+import { BRANCH_DISPLAY_NAMES } from "./constants.js";
 
 export const ANNOUNCEMENT_CATEGORIES = Object.freeze([
   "general",

@@ -607,6 +607,20 @@ export const createAnnouncement = async (req, res, next) => {
         "MISSING_REQUIRED_FIELDS",
       );
     }
+    if (title.length < 3 || title.length > 120) {
+      throw new AppError(
+        "Announcement title must be between 3 and 120 characters.",
+        400,
+        "INVALID_TITLE_LENGTH",
+      );
+    }
+    if (content.length < 5 || content.length > 2000) {
+      throw new AppError(
+        "Announcement content must be between 5 and 2000 characters.",
+        400,
+        "INVALID_CONTENT_LENGTH",
+      );
+    }
     if (endsAt && startsAt && endsAt <= startsAt) {
       throw new AppError(
         "Announcement end date must be after start date.",
@@ -749,10 +763,26 @@ export const updateAnnouncement = async (req, res, next) => {
     assertAdminAnnouncementScope(dbUser, announcement);
 
     if (req.body.title !== undefined) {
-      announcement.title = toOptionalText(req.body.title) || announcement.title;
+      const parsedTitle = toOptionalText(req.body.title);
+      if (!parsedTitle || parsedTitle.length < 3 || parsedTitle.length > 120) {
+        throw new AppError(
+          "Announcement title must be between 3 and 120 characters.",
+          400,
+          "INVALID_TITLE_LENGTH",
+        );
+      }
+      announcement.title = parsedTitle;
     }
     if (req.body.content !== undefined) {
-      announcement.content = toOptionalText(req.body.content) || announcement.content;
+      const parsedContent = toOptionalText(req.body.content);
+      if (!parsedContent || parsedContent.length < 5 || parsedContent.length > 2000) {
+        throw new AppError(
+          "Announcement content must be between 5 and 2000 characters.",
+          400,
+          "INVALID_CONTENT_LENGTH",
+        );
+      }
+      announcement.content = parsedContent;
     }
     if (req.body.category) announcement.category = req.body.category;
     if (req.body.contentType !== undefined) {

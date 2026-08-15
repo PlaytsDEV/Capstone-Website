@@ -82,6 +82,8 @@ export const createAnnouncementSchema = {
   endsAt: { type: "string" },
   effectiveDate: { type: "string" },
   policyKey: { type: "string" },
+  version: { type: "number" },
+  isPinned: { type: "boolean" },
 };
 
 /**
@@ -113,6 +115,8 @@ export const updateAnnouncementSchema = {
   endsAt: { type: "string" },
   effectiveDate: { type: "string" },
   policyKey: { type: "string" },
+  version: { type: "number" },
+  isPinned: { type: "boolean" },
 };
 
 /**
