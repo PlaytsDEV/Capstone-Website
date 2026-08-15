@@ -340,7 +340,7 @@ Middleware chain: verifyToken → verifyAdmin → filterByBranch → handler
 - **CSRF Protection** — Cryptographic token validation (`middleware/csrf.js`)
 - **Branch Isolation** — Automatic branch filtering, users only access their branch data
 - **Rate Limiting** — Tiered protection: global (1000/15min), auth (strict), public (`middleware/rateLimiter.js`)
-- **Role-Based Access Control** — `applicant` → `tenant` → `admin` → `superAdmin`
+- **Role-Based Access Control** — `applicant` → `tenant` → `branch_admin` → `owner`
 - **Granular Permissions** — Fine-grained permission checks (`middleware/permissions.js`)
 - **Webhook Security** — HMAC signature verification on PayMongo callbacks
 - **Graceful Shutdown** — Clean database and socket disconnection on SIGTERM/SIGINT

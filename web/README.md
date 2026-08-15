@@ -143,12 +143,12 @@ Outputs to `build/` directory.
 - User management
 - Audit logs
 
-### Super Admin Panel
+### Owner Workspace (System Settings & Governance)
 
-- System-wide dashboard with cross-branch comparisons
-- Branch management
+- Cross-branch comparisons & financial analytics
+- Branch management & room configuration
 - Role & permissions management
-- System settings
+- Immutable audit logs & system backups
 
 ---
 
@@ -231,8 +231,8 @@ Old `/super-admin/*`, `/tenant/*`, and `/admin/login` paths automatically redire
 | Guard                   | Purpose                                    |
 | ----------------------- | ------------------------------------------ |
 | `RequireAuth.jsx`       | Require authenticated user                 |
-| `RequireAdmin.jsx`      | Require admin or superAdmin role           |
-| `RequireSuperAdmin.jsx` | Require super admin role                   |
+| `RequireAdmin.jsx`      | Require branch_admin or owner role         |
+| `RequireOwner.jsx`      | Require owner role specifically            |
 | `RequireNonAdmin.jsx`   | Block admins from auth pages (redirect)    |
 | `ProtectedRoute`        | Role-based route protection component      |
 
