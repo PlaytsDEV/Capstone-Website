@@ -43,6 +43,7 @@ import {
 import { BRANCH_OPTIONS } from "../../../shared/utils/constants";
 import { DataTable, DetailDrawer, PageShell } from "../components/shared";
 import { DrawerSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { AdminCardGridSkeleton } from "../components/AdminContentSkeletons";
 
 import {
   ARCHIVE_FILTER_OPTIONS,
@@ -484,6 +485,10 @@ export default function AdminMaintenancePage() {
       setProviderChoice(providerId);
     }
   };
+
+  if (isLoading && (!requests || requests.length === 0)) {
+    return <AdminCardGridSkeleton />;
+  }
 
   return (
     <div>

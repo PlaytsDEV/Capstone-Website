@@ -43,7 +43,48 @@ function sanitizePayload(data = {}) {
   return payload;
 }
 
-function sanitizeStoredNotification(doc = {}) {
+function isHexObjectId(val) {
+  return typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val.trim());
+}
+
+function resolveAuthorName(doc = {}, authorNameMap = new Map(), defaultFallback = "LilyCrest Admin") {
+  const candidates = [
+    doc.author_name,
+    doc.authorName,
+    doc.publishedByName,
+    doc.publishedBy,
+    doc.postedBy,
+    doc.source_label,
+    doc.createdBy,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (typeof candidate === "object") {
+      if (candidate._bsontype === "ObjectID" || candidate.constructor?.name === "ObjectId") {
+        const idStr = candidate.toString();
+        if (authorNameMap.has(idStr)) return authorNameMap.get(idStr);
+      } else {
+        const name = `${candidate.firstName || ""} ${candidate.lastName || ""}`.trim()
+          || candidate.name || candidate.fullName || candidate.username || candidate.email;
+        if (name && !isHexObjectId(name)) return name;
+      }
+    } else if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (!trimmed) continue;
+      if (isHexObjectId(trimmed)) {
+        if (authorNameMap.has(trimmed)) return authorNameMap.get(trimmed);
+      } else {
+        return trimmed;
+      }
+    }
+  }
+
+  return defaultFallback;
+}
+
+function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
+  const authorName = resolveAuthorName(doc, authorNameMap, "LilyCrest System");
   return {
     notification_id: doc.notification_id || doc._id?.toString?.() || "",
     title: normalizeString(doc.title) || "Notification",
@@ -52,8 +93,8 @@ function sanitizeStoredNotification(doc = {}) {
     category: normalizeString(doc.category) || "General",
     priority: normalizePriority(doc.priority),
     is_urgent: doc.is_urgent === true || normalizePriority(doc.priority) === "high",
-    author_name: normalizeString(doc.author_name || doc.source_label || "LilyCrest System") || "LilyCrest System",
-    source_label: normalizeString(doc.source_label || doc.author_name || "LilyCrest System") || "LilyCrest System",
+    author_name: authorName,
+    source_label: authorName,
     created_at: doc.created_at || doc.createdAt || doc.updated_at || doc.updatedAt || new Date(),
     updated_at: doc.updated_at || doc.updatedAt || doc.created_at || doc.createdAt || new Date(),
     type: normalizeString(doc.type || "notification") || "notification",
@@ -81,13 +122,13 @@ function normalizeAnnouncementPriority(doc = {}) {
   return "normal";
 }
 
-function normalizeAnnouncementNotification(doc = {}) {
+function normalizeAnnouncementNotification(doc = {}, authorNameMap = new Map()) {
   const announcementId = normalizeString(doc.announcement_id || doc._id?.toString?.());
   const createdAt = getAnnouncementDateValue(doc) || new Date();
   const priority = normalizeAnnouncementPriority(doc);
   const category = normalizeString(doc.category || doc.type || "Announcement") || "Announcement";
   const body = normalizeString(doc.content || doc.message || doc.body || doc.description || "");
-  const authorName = normalizeString(doc.author_name || doc.authorName || doc.publishedBy || doc.postedBy || "LilyCrest Admin") || "LilyCrest Admin";
+  const authorName = resolveAuthorName(doc, authorNameMap, "LilyCrest Admin");
 
   return {
     notification_id: announcementId || `announcement:${createdAt instanceof Date ? createdAt.getTime() : String(createdAt)}`,
@@ -186,6 +227,51 @@ async function listUserNotifications(db, userId) {
     .toArray()
     .catch(() => []);
 
+  // Collect all author/publishedBy/createdBy ObjectId references to resolve admin names
+  const authorIds = new Set();
+  [...storedNotifications, ...announcements].forEach((doc) => {
+    [doc.author_name, doc.authorName, doc.publishedBy, doc.postedBy, doc.createdBy, doc.source_label].forEach((val) => {
+      if (!val) return;
+      if (typeof val === "object" && (val._bsontype === "ObjectID" || val.constructor?.name === "ObjectId")) {
+        authorIds.add(val.toString());
+      } else if (typeof val === "string" && isHexObjectId(val)) {
+        authorIds.add(val.trim());
+      }
+    });
+  });
+
+  const authorNameMap = new Map();
+  if (authorIds.size > 0 && typeof db.collection === "function") {
+    try {
+      const { ObjectId } = await import("mongodb");
+      const mongoIds = Array.from(authorIds).map((id) => {
+        try { return new ObjectId(id); } catch (_) { return null; }
+      }).filter(Boolean);
+
+      const users = await db.collection("users").find({
+        $or: [
+          { _id: { $in: mongoIds } },
+          { user_id: { $in: Array.from(authorIds) } },
+        ],
+      }).toArray();
+
+      users.forEach((u) => {
+        const fullName = `${u.firstName || ""} ${u.lastName || ""}`.trim()
+          || u.name || u.fullName || u.username;
+        let displayName = fullName;
+        if (u.role === "admin" || u.role === "superadmin" || u.role === "branch_admin") {
+          displayName = fullName ? `${fullName} (Admin)` : "LilyCrest Admin";
+        }
+        if (!displayName) displayName = "LilyCrest Admin";
+
+        if (u._id) authorNameMap.set(u._id.toString(), displayName);
+        if (u.user_id) authorNameMap.set(String(u.user_id), displayName);
+      });
+    } catch (_) {
+      // Fallback gracefully
+    }
+  }
+
   const [readReceipts, readState] = await Promise.all([
     db.collection("notification_reads").find({ user_id: userId }).project({ notification_key: 1 }).toArray().catch(() => []),
     db.collection("notification_read_state").findOne({ user_id: userId }).catch(() => null),
@@ -195,8 +281,8 @@ async function listUserNotifications(db, userId) {
 
   const mergedByKey = new Map();
   sortNotifications([
-    ...storedNotifications.map((doc) => sanitizeStoredNotification(doc)),
-    ...announcements.map((doc) => normalizeAnnouncementNotification(doc)),
+    ...storedNotifications.map((doc) => sanitizeStoredNotification(doc, authorNameMap)),
+    ...announcements.map((doc) => normalizeAnnouncementNotification(doc, authorNameMap)),
   ]).forEach((notification) => {
     const key = buildNotificationKey(notification);
     const normalizedNotification = {

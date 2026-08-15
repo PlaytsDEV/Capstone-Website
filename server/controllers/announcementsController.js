@@ -628,6 +628,9 @@ export const createAnnouncement = async (req, res, next) => {
       );
     }
 
+    const authorFullName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email || "LilyCrest Admin";
+    const authorDisplayName = authorFullName;
+
     const announcement = new Announcement({
       title,
       content,
@@ -635,6 +638,8 @@ export const createAnnouncement = async (req, res, next) => {
       contentType,
       targetBranch,
       publishedBy: dbUser._id,
+      authorName: authorDisplayName,
+      author_name: authorDisplayName,
       requiresAcknowledgment,
       visibility: "tenants-only",
       publicationStatus,

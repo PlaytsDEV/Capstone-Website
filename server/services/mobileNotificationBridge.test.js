@@ -6,7 +6,7 @@ import {
   buildNotificationKey,
 } from "./mobileNotificationBridge.js";
 
-function fakeDb({ notifications = [], announcements = [], reads = [], readState = null } = {}) {
+function fakeDb({ notifications = [], announcements = [], reads = [], readState = null, users = [] } = {}) {
   const updates = { notification_reads: [], notification_read_state: [], notificationsUpdateMany: [] };
   return {
     updates,
@@ -25,6 +25,13 @@ function fakeDb({ notifications = [], announcements = [], reads = [], readState 
           find: () => ({
             sort: () => ({ limit: () => ({ toArray: async () => announcements, catch: () => announcements }) }),
             limit: () => ({ toArray: async () => announcements }),
+          }),
+        };
+      }
+      if (name === "users") {
+        return {
+          find: () => ({
+            toArray: async () => users,
           }),
         };
       }
@@ -55,6 +62,55 @@ describe("mobileNotificationBridge", () => {
     expect(result.length).toBe(2);
     expect(result[0].title).toBe("Maintenance notice");
     expect(result[1].title).toBe("Bill ready");
+  });
+
+  test("resolves admin author name from user ID and never exposes raw hex ObjectId in notifications feed", async () => {
+    const adminObjectId = "69bb9249dcab8f0bf467a0f4";
+    const db = fakeDb({
+      announcements: [
+        {
+          _id: "a1",
+          title: "System maintenance",
+          content: "Elevator servicing on Saturday",
+          publishedBy: adminObjectId,
+          created_at: new Date("2026-08-14"),
+          is_active: true,
+        },
+      ],
+      users: [
+        {
+          _id: adminObjectId,
+          firstName: "Maria",
+          lastName: "Santos",
+          role: "admin",
+        },
+      ],
+    });
+    const result = await listUserNotifications(db, "tenant-a");
+    expect(result.length).toBe(1);
+    expect(result[0].author_name).toBe("Maria Santos (Admin)");
+    expect(result[0].author_name).not.toContain(adminObjectId);
+  });
+
+  test("falls back to LilyCrest Admin if author ID cannot be resolved, never exposing raw hex in bridge", async () => {
+    const unknownAdminId = "69bb9249dcab8f0bf467a0f4";
+    const db = fakeDb({
+      announcements: [
+        {
+          _id: "a1",
+          title: "General note",
+          content: "Quiet hours starting 10pm",
+          publishedBy: unknownAdminId,
+          created_at: new Date("2026-08-14"),
+          is_active: true,
+        },
+      ],
+      users: [],
+    });
+    const result = await listUserNotifications(db, "tenant-a");
+    expect(result.length).toBe(1);
+    expect(result[0].author_name).toBe("LilyCrest Admin");
+    expect(result[0].author_name).not.toBe(unknownAdminId);
   });
 
   test("a notification is marked read when its key is in notification_reads", async () => {

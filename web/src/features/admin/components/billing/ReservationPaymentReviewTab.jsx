@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { reservationApi } from "../../../../shared/api/reservationApi";
 import ProfileAvatar, { getProfileInitials } from "../../../../shared/components/ProfileAvatar";
+import { AdminTablePageSkeleton } from "../AdminContentSkeletons";
 
 const money = (value) =>
   new Intl.NumberFormat("en-PH", {
@@ -384,6 +385,10 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       setGeneratingReceipt(false);
     }
   };
+
+  if (loading && payments.length === 0) {
+    return <AdminTablePageSkeleton />;
+  }
 
   return (
     <div className="space-y-4 text-card-foreground">

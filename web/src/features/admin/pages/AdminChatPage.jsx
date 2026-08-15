@@ -22,6 +22,7 @@ import useChatSocket from "../../../shared/hooks/useChatSocket.js";
 import { showConfirmation, showNotification } from "../../../shared/utils/notification";
 import { BRANCH_DISPLAY_NAMES, BRANCH_OPTIONS } from "../../../shared/utils/constants";
 import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { AdminChatSkeleton } from "../components/AdminContentSkeletons";
 import "../styles/design-tokens.css";
 import "../styles/admin-common.css";
 import "../styles/admin-chat.css";
@@ -565,6 +566,10 @@ export default function AdminChatPage() {
     selectedConversation?.assignedAdminId &&
     accessInfo?.adminId &&
     selectedConversation.assignedAdminId !== accessInfo.adminId;
+
+  if (listLoading && !conversations.length) {
+    return <AdminChatSkeleton />;
+  }
 
   return (
     <section className="admin-chat-page">

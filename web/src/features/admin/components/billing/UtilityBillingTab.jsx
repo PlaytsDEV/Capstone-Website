@@ -62,6 +62,7 @@ import {
 import { getRoomLabel } from "../../../../shared/utils/roomLabel.js";
 import { fmtDate } from "../../utils/formatters";
 import { ExportButtons } from "../../pages/analyticsTabShared";
+import { AdminTablePageSkeleton } from "../AdminContentSkeletons";
 import useBillingNotifier from "./shared/useBillingNotifier";
 import "./shared/BillingDelta.css";
 import BillingCycleDetailModal from "./BillingCycleDetailModal";
@@ -2229,6 +2230,10 @@ const UtilityBillingTab = ({
 
   if (isGuadaUtility) {
     return null;
+  }
+
+  if (roomsLoading && !roomsData) {
+    return <AdminTablePageSkeleton />;
   }
 
   return (

@@ -52,6 +52,7 @@ import VisitSchedulesTab from "../components/VisitSchedulesTab";
 import VisitAvailabilityTab from "../components/VisitAvailabilityTab";
 import InquiriesPage from "./InquiriesPage";
 import Pagination from "../../../shared/components/Pagination";
+import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import {
   ActionBar,
   DataTable,
@@ -1073,6 +1074,10 @@ function ReservationsPage() {
     ],
     [can, handleDelete, handleHardDelete, handleRestore, handleView, isArchivedView, isOwner],
   );
+
+  if (loading && (!rawReservations || rawReservations.length === 0)) {
+    return <AdminTablePageSkeleton />;
+  }
 
   return (
     <div className="space-y-6">

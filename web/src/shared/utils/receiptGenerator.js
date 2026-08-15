@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import defaultLogo from "../../assets/images/LOGO.png";
 import { formatPaymentMethod } from "./formatPaymentMethod.js";
 import { getBedDisplayLabel } from "./bedIdentifier.js";
+import { resolveReservationFinancials } from "./depositUtils.js";
 
 /**
  * Safe number formatter — avoids toLocaleString locale issues in jsPDF context.
@@ -763,18 +764,14 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
     || reservation._id?.slice(-8)?.toUpperCase()
     || "—";
 
-  const monthlyRent = Number(
-    reservation.monthlyRent ??
-      reservation.pricingSnapshot?.finalMonthlyRate ??
-      room.monthlyPrice ??
-      room.price ??
-      0,
-  );
-  const reservationFeeAmount = Number(reservation.reservationFeeAmount || 2000);
-  const advanceRent = reservation.moveInCashOut?.monthlyAdvance ?? monthlyRent;
-  const securityDeposit = reservation.moveInCashOut?.securityDeposit ?? monthlyRent;
-  const grossTotal = advanceRent + securityDeposit;
-  const remainingDue = Math.max(0, grossTotal - reservationFeeAmount);
+  const {
+    monthlyRent,
+    advanceRent,
+    securityDeposit,
+    grossTotal,
+    reservationFeeAmount,
+    remainingDue,
+  } = resolveReservationFinancials(reservation, profile);
 
   const selectedBedRaw = reservation.selectedBed || reservation.bed || reservation.bedId;
   let bedText = "";
@@ -1112,19 +1109,15 @@ async function buildMoveInStatementDoc(reservation, profile) {
     profile?.targetMoveInDate;
   const moveInDisplay = formatDate(moveInDateRaw);
 
-  const monthlyRent = Number(
-    reservation.monthlyRent ??
-      reservation.pricingSnapshot?.finalMonthlyRate ??
-      room.monthlyPrice ??
-      room.price ??
-      0,
-  );
-  const reservationFeeAmount = Number(reservation.reservationFeeAmount || 2000);
-  const advanceRent = reservation.moveInCashOut?.monthlyAdvance ?? monthlyRent;
-  const securityDeposit = reservation.moveInCashOut?.securityDeposit ?? monthlyRent;
-  const grossTotal = advanceRent + securityDeposit;
-  const netDue = Math.max(0, grossTotal - reservationFeeAmount);
-  const isSettled = reservation.initialPaymentStatus === "paid" || reservation.paymentStatus === "paid_in_full";
+  const {
+    monthlyRent,
+    advanceRent,
+    securityDeposit,
+    grossTotal,
+    reservationFeeAmount,
+    remainingDue: netDue,
+    isSettled,
+  } = resolveReservationFinancials(reservation, profile);
 
   // 1. BRAND HEADER
   const logoSize = 16;

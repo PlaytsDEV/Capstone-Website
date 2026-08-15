@@ -14,11 +14,14 @@ function response() {
   };
 }
 
-function makeDb({ announcements = [], branchSource = null } = {}) {
+function makeDb({ announcements = [], branchSource = null, users = [] } = {}) {
   return {
     collection(name) {
       if (name === 'announcements') {
         return { find: () => ({ sort: () => ({ toArray: async () => announcements }) }) };
+      }
+      if (name === 'users') {
+        return { find: () => ({ toArray: async () => users }) };
       }
       if (name === 'roomoccupancyhistories') {
         return { findOne: async () => (branchSource?.tier === 'occupancy' ? branchSource.doc : null) };
@@ -109,5 +112,54 @@ describe('announcement.controller getAllAnnouncements — branch visibility', ()
     const res = response();
     await getAllAnnouncements(req, res);
     expect(res.body.length).toBe(1);
+  });
+
+  test('resolves admin author name from user ID and never exposes raw hex ObjectId', async () => {
+    const adminObjectId = '69bb9249dcab8f0bf467a0f4';
+    mockGetDb.mockReturnValue(makeDb({
+      announcements: [
+        {
+          announcement_id: 'a1',
+          title: 'Renovation update',
+          content: 'x',
+          publishedBy: adminObjectId,
+        },
+      ],
+      users: [
+        {
+          _id: adminObjectId,
+          firstName: 'Joanne',
+          lastName: 'Ong',
+          role: 'admin',
+        },
+      ],
+    }));
+    const req = { user: { user_id: 't1', _id: 'mongo1' } };
+    const res = response();
+    await getAllAnnouncements(req, res);
+    expect(res.body.length).toBe(1);
+    expect(res.body[0].author_name).toBe('Joanne Ong (Admin)');
+    expect(res.body[0].author_name).not.toContain(adminObjectId);
+  });
+
+  test('falls back to LilyCrest Admin if author ID cannot be resolved, never exposing raw hex', async () => {
+    const unknownAdminId = '69bb9249dcab8f0bf467a0f4';
+    mockGetDb.mockReturnValue(makeDb({
+      announcements: [
+        {
+          announcement_id: 'a1',
+          title: 'General announcement',
+          content: 'x',
+          publishedBy: unknownAdminId,
+        },
+      ],
+      users: [],
+    }));
+    const req = { user: { user_id: 't1', _id: 'mongo1' } };
+    const res = response();
+    await getAllAnnouncements(req, res);
+    expect(res.body.length).toBe(1);
+    expect(res.body[0].author_name).toBe('LilyCrest Admin');
+    expect(res.body[0].author_name).not.toBe(unknownAdminId);
   });
 });

@@ -20,6 +20,7 @@ import {
   useUnreadCount,
 } from "../../../shared/hooks/queries/useNotifications";
 import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import { cleanNotificationMessage } from "../../../shared/utils/notification";
 import "../styles/design-tokens.css";
 import "../styles/admin-notifications.css";
@@ -185,6 +186,10 @@ export default function AdminNotificationsPage() {
   const handleMarkAllRead = () => {
     markAllMutation.mutate();
   };
+
+  if (isLoading && !data) {
+    return <AdminTablePageSkeleton />;
+  }
 
   return (
     <div className="admin-notif-page">

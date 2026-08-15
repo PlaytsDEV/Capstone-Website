@@ -20,6 +20,7 @@ import {
  CardSkeleton,
  StatGridSkeleton,
 } from "../../../shared/components/LoadingSkeletons";
+import { AdminFormPageSkeleton } from "../../admin/components/AdminContentSkeletons";
 
 const BRANCH_LABELS = {
  "gil-puyat": "Gil Puyat",
@@ -362,6 +363,10 @@ export default function SystemSettingsPage() {
  setSavingBranch("");
  }
  };
+
+ if (loading) {
+  return <AdminFormPageSkeleton />;
+ }
 
  return (
  <div className="sa2">

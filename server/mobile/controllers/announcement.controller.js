@@ -81,9 +81,49 @@ function isAnnouncementVisibleForBranch(doc, requesterBranchCode) {
   return normalizedBranchReference(branchRef) === requesterBranchCode;
 }
 
+function isHexObjectId(val) {
+  return typeof val === 'string' && /^[0-9a-fA-F]{24}$/.test(val.trim());
+}
+
+function resolveAuthorName(doc, authorNameMap = new Map()) {
+  const candidates = [
+    doc.author_name,
+    doc.authorName,
+    doc.publishedByName,
+    doc.publishedBy,
+    doc.postedBy,
+    doc.source_label,
+    doc.createdBy,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (typeof candidate === 'object' && candidate !== null) {
+      if (candidate._bsontype === 'ObjectID' || candidate.constructor?.name === 'ObjectId') {
+        const idStr = candidate.toString();
+        if (authorNameMap.has(idStr)) return authorNameMap.get(idStr);
+      } else {
+        const name = `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim()
+          || candidate.name || candidate.fullName || candidate.username || candidate.email;
+        if (name && !isHexObjectId(name)) return name;
+      }
+    } else if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (!trimmed) continue;
+      if (isHexObjectId(trimmed)) {
+        if (authorNameMap.has(trimmed)) return authorNameMap.get(trimmed);
+      } else {
+        return trimmed;
+      }
+    }
+  }
+
+  return 'LilyCrest Admin';
+}
+
 // Normalize a raw announcement document to the shape the mobile app expects.
 // Admin-panel documents may use camelCase or different field names.
-function normalizeAnnouncement(doc) {
+function normalizeAnnouncement(doc, authorNameMap = new Map()) {
   const id = doc.announcement_id || doc._id?.toString();
   const createdAt = doc.created_at || doc.createdAt || doc.publishedAt || null;
 
@@ -101,7 +141,7 @@ function normalizeAnnouncement(doc) {
     announcement_id: id,
     title: doc.title || doc.subject || 'Announcement',
     content: doc.content || doc.message || doc.body || doc.description || '',
-    author_name: doc.author_name || doc.authorName || doc.publishedBy || doc.postedBy || 'LilyCrest Admin',
+    author_name: resolveAuthorName(doc, authorNameMap),
     priority,
     category: doc.category || doc.type || 'General',
     is_urgent: doc.is_urgent || doc.isUrgent || priority === 'high',
@@ -139,10 +179,55 @@ async function getAllAnnouncements(req, res) {
       .sort({ created_at: -1, createdAt: -1 })
       .toArray();
 
+    // Resolve author names for any author/publishedBy/createdBy ObjectId references
+    const authorIds = new Set();
+    announcements.forEach((doc) => {
+      [doc.author_name, doc.authorName, doc.publishedBy, doc.postedBy, doc.createdBy, doc.source_label].forEach((val) => {
+        if (!val) return;
+        if (typeof val === 'object' && (val._bsontype === 'ObjectID' || val.constructor?.name === 'ObjectId')) {
+          authorIds.add(val.toString());
+        } else if (typeof val === 'string' && isHexObjectId(val)) {
+          authorIds.add(val.trim());
+        }
+      });
+    });
+
+    const authorNameMap = new Map();
+    if (authorIds.size > 0 && typeof db.collection === 'function') {
+      try {
+        const { ObjectId } = require('mongodb');
+        const mongoIds = Array.from(authorIds).map((id) => {
+          try { return new ObjectId(id); } catch (_) { return null; }
+        }).filter(Boolean);
+
+        const users = await db.collection('users').find({
+          $or: [
+            { _id: { $in: mongoIds } },
+            { user_id: { $in: Array.from(authorIds) } },
+          ],
+        }).toArray();
+
+        users.forEach((u) => {
+          const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim()
+            || u.name || u.fullName || u.username;
+          let displayName = fullName;
+          if (u.role === 'admin' || u.role === 'superadmin' || u.role === 'branch_admin') {
+            displayName = fullName ? `${fullName} (Admin)` : 'LilyCrest Admin';
+          }
+          if (!displayName) displayName = 'LilyCrest Admin';
+
+          if (u._id) authorNameMap.set(u._id.toString(), displayName);
+          if (u.user_id) authorNameMap.set(String(u.user_id), displayName);
+        });
+      } catch (_) {
+        // Fallback gracefully
+      }
+    }
+
     const requesterBranchCode = await resolveRequesterBranchCode(db, req.user?._id || null);
     const visible = announcements.filter((doc) => isAnnouncementVisibleForBranch(doc, requesterBranchCode));
 
-    res.json(visible.map(normalizeAnnouncement));
+    res.json(visible.map((doc) => normalizeAnnouncement(doc, authorNameMap)));
   } catch (error) {
     console.error('getAllAnnouncements error:', error);
     res.status(500).json({ detail: 'Failed to fetch announcements' });

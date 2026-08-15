@@ -44,6 +44,7 @@ import {
 } from "./reservationCancellationUi";
 import { getRoomImages } from "../../pages/check-availability/checkAvailabilityConstants";
 import { getResolvedMonthlyRate } from "../../utils/pricingDisplayHelpers";
+import { resolveReservationFinancials } from "../../../../shared/utils/depositUtils";
 import "../../../admin/styles/design-tokens.css";
 
 /* ── Ordinal suffix helper ────────────────────────── */
@@ -598,11 +599,15 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
 
  {/* Move-In Financial Schedule Card (Collapsible) */}
  {(hasReservationStatus(reservationStatus, "reserved", "moveIn", "moveOut") || paymentDate) && (() => {
-   const advanceRent = reservation.moveInCashOut?.monthlyAdvance ?? monthlyRent;
-   const securityDeposit = reservation.moveInCashOut?.securityDeposit ?? monthlyRent;
-   const grossTotal = (advanceRent || 0) + (securityDeposit || 0);
-   const netDue = Math.max(0, grossTotal - reservationFeeAmount);
-   const isSettled = reservation.initialPaymentStatus === "paid" || reservation.paymentStatus === "paid_in_full";
+   const {
+     monthlyRent: resolvedRent,
+     advanceRent,
+     securityDeposit,
+     grossTotal,
+     reservationFeeAmount: resolvedFee,
+     remainingDue: netDue,
+     isSettled,
+   } = resolveReservationFinancials(reservation);
 
    return (
      <div style={{ ...card, padding: "16px 20px", marginBottom: 12 }}>

@@ -70,7 +70,15 @@ const roundMoney = (value) => Math.round(value * 100) / 100;
  * roomsController.js should call this instead of duplicating the formula.
  */
 export const resolveRoomDiscountPricing = (roomType, settings = {}, room = {}) => {
-  const normType = String(roomType || "").toLowerCase();
+  let normType = String(roomType || room?.type || "").toLowerCase();
+  if (normType.includes("private") || room?.capacity === 1 || String(room?.name).toLowerCase().includes("private")) {
+    normType = "private";
+  } else if (normType.includes("double") || room?.capacity === 2 || String(room?.name).toLowerCase().includes("double")) {
+    normType = "double-sharing";
+  } else if (normType.includes("quad") || room?.capacity === 4 || String(room?.name).toLowerCase().includes("quad")) {
+    normType = "quadruple-sharing";
+  }
+
   const defaults = DEFAULT_REGULAR_RATES[normType] || DEFAULT_REGULAR_RATES["quadruple-sharing"];
 
   const isDiscountEnabled =
@@ -145,7 +153,17 @@ export const resolveAuthoritativeLeasePricing = ({
   leaseDurationMonths,
   settings = {},
 }) => {
-  const normType = String(roomType || room?.type || "").toLowerCase();
+  let normType = String(roomType || room?.type || "").toLowerCase();
+  if (!SUPPORTED_ROOM_TYPES.includes(normType)) {
+    if (normType.includes("private") || room?.capacity === 1 || String(room?.name).toLowerCase().includes("private")) {
+      normType = "private";
+    } else if (normType.includes("double") || room?.capacity === 2 || String(room?.name).toLowerCase().includes("double")) {
+      normType = "double-sharing";
+    } else if (normType.includes("quad") || room?.capacity === 4 || String(room?.name).toLowerCase().includes("quad")) {
+      normType = "quadruple-sharing";
+    }
+  }
+
   if (!SUPPORTED_ROOM_TYPES.includes(normType)) {
     const error = new Error(
       `No configured rate for room type "${roomType || room?.type || "(none)"}".`,

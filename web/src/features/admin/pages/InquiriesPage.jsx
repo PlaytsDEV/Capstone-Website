@@ -21,6 +21,7 @@ import { showNotification } from "../../../shared/utils/notification";
 import { useInquiries } from "../../../shared/hooks/queries/useInquiries";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import Pagination from "../../../shared/components/Pagination";
 import InquiryDetailsModal from "../components/InquiryDetailsModal";
 import { ExportButtons } from "./analyticsTabShared";
@@ -130,6 +131,10 @@ function InquiriesPage({ isEmbedded = false }) {
       navigate("/admin/dashboard");
     }
   };
+
+  if (!isEmbedded && loading && (!inquiries || inquiries.length === 0)) {
+    return <AdminTablePageSkeleton />;
+  }
 
   return (
     <PageShell>

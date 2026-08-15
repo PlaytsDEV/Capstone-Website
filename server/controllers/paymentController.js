@@ -39,6 +39,7 @@ import { settleReservationDeposit } from "../services/reservationDepositSettleme
 import auditLogger from "../utils/auditLogger.js";
 import { getPublicUrlConfig } from "../config/publicUrls.js";
 import { readPaidPayments, readPaymentMethod } from "../utils/paymongoPaymentMethod.js";
+import { resolveReservationFinancials } from "../utils/depositUtils.js";
 
 const FRONTEND_URL = getPublicUrlConfig().publicFrontendUrl;
 const TENANT_BILLING_PATH = "/applicant/billing";
@@ -380,23 +381,14 @@ export const createMoveInCheckout = async (req, res, next) => {
       throw new AppError("Move-in balance is already settled", 400, "ALREADY_PAID");
     }
 
-    const monthlyRent = Number(
-      reservation.monthlyRent ||
-        reservation.roomId?.rent ||
-        reservation.roomId?.price ||
-        0,
-    );
-    const advanceRent = Number(
-      reservation.moveInCashOut?.monthlyAdvance ?? monthlyRent,
-    );
-    const securityDeposit = Number(
-      reservation.moveInCashOut?.securityDeposit ?? monthlyRent,
-    );
-    const reservationFeeCredit = Number(
-      reservation.reservationFeeAmount || 2000,
-    );
-    const grossTotal = advanceRent + securityDeposit;
-    const remainingDue = Math.max(0, grossTotal - reservationFeeCredit);
+    const {
+      monthlyRent,
+      advanceRent,
+      securityDeposit,
+      reservationFeeAmount: reservationFeeCredit,
+      grossTotal,
+      remainingDue,
+    } = resolveReservationFinancials(reservation);
 
     if (remainingDue <= 0) {
       throw new AppError(

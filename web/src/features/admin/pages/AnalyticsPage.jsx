@@ -31,6 +31,7 @@ import {
   AnalyticsBarChart,
   AnalyticsLineChart,
 } from "../components/shared";
+import { AdminDashboardSkeleton } from "../components/AdminContentSkeletons";
 import {
   ANALYTICS_DETAILS_PATH,
   buildAnalyticsDetailsHref,
@@ -654,6 +655,15 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     }),
     [branch, activeTab, range, isOwner],
   );
+
+  const isInitialLoading =
+    (occupancyQuery.isLoading && !occupancyData) ||
+    (billingQuery.isLoading && !billingData) ||
+    (operationsQuery.isLoading && !operationsData);
+
+  if (isInitialLoading) {
+    return <AdminDashboardSkeleton />;
+  }
 
   return (
     <div className="analytics-container">

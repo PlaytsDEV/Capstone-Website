@@ -18,6 +18,7 @@ import {
  canReservationAccessPayment,
  hasReservationStatus,
 } from "../../../../shared/utils/lifecycleNaming";
+import { resolveReservationFinancials } from "../../../../shared/utils/depositUtils";
 
 function parseSafeDate(dateStr) {
  if (!dateStr) return null;
@@ -113,21 +114,20 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
       ? "Priority Viewing Review"
       : null;
 
-  const room = reservation.roomId || reservation.room || {};
-  const roomName = room.name || "Room";
-  const branch = room.branch || "-";
-  const monthlyRent = Number(
-    reservation.monthlyRent ??
-      reservation.pricingSnapshot?.finalMonthlyRate ??
-      room.monthlyPrice ??
-      room.price ??
-      0,
-  );
-  const reservationFeeAmount = Number(reservation.reservationFeeAmount || 2000);
-  const advanceRent = reservation.moveInCashOut?.monthlyAdvance ?? monthlyRent;
-  const securityDeposit = reservation.moveInCashOut?.securityDeposit ?? monthlyRent;
-  const grossTotal = advanceRent + securityDeposit;
-  const moveInRemainingDue = Math.max(0, grossTotal - reservationFeeAmount);
+  const room = (typeof reservation.roomId === "object" && reservation.roomId !== null)
+    ? reservation.roomId
+    : (typeof reservation.room === "object" && reservation.room !== null ? reservation.room : {});
+  const roomName = room.name || reservation.roomName || "Room";
+  const branch = room.branch || reservation.branch || "-";
+
+  const {
+    monthlyRent,
+    advanceRent,
+    securityDeposit,
+    grossTotal,
+    reservationFeeAmount,
+    remainingDue: moveInRemainingDue,
+  } = resolveReservationFinancials(reservation);
 
   let panelState = "pending";
   if (isConfirmed) panelState = "confirmed";

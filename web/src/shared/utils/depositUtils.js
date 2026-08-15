@@ -15,30 +15,135 @@
 export const DEFAULT_RESERVATION_FEE = 2000;
 
 /**
- * Resolves the security deposit for a reservation object received from the API.
+ * Authoritative client-side financial resolver for any reservation.
+ * Calculates monthlyRent, advanceRent, securityDeposit, grossTotal, and remainingDue
+ * strictly based on the chosen room and room type, self-healing any stale defaults.
  *
- * Priority:
- *   1. reservation.moveInCashOut.securityDeposit  ← locked at booking time
- *   2. reservation.finalSettlementSummary.securityDeposit
- *   3. Formula fallback: reservation.monthlyRent × 1
- *   4. reservation.totalPrice (legacy field)
- *   5. 0
+ * @param {object} reservation
+ * @param {object} [profileData]
+ * @returns {{ monthlyRent: number, advanceRent: number, securityDeposit: number, grossTotal: number, reservationFeeAmount: number, remainingDue: number, isSettled: boolean }}
+ */
+export function resolveReservationFinancials(reservation = {}, profileData = null) {
+  if (!reservation) {
+    return {
+      monthlyRent: 0,
+      advanceRent: 0,
+      securityDeposit: 0,
+      grossTotal: 0,
+      reservationFeeAmount: DEFAULT_RESERVATION_FEE,
+      remainingDue: 0,
+      isSettled: false,
+    };
+  }
+
+  const room =
+    typeof reservation.roomId === "object" && reservation.roomId !== null
+      ? reservation.roomId
+      : typeof reservation.room === "object" && reservation.room !== null
+        ? reservation.room
+        : {};
+
+  const rawRoomType = String(
+    room.type ||
+      reservation.roomType ||
+      reservation.preferredRoomType ||
+      reservation.selectedBed?.roomType ||
+      room.name ||
+      reservation.roomName ||
+      "",
+  ).toLowerCase();
+
+  const isPrivate = rawRoomType.includes("private") || room.capacity === 1;
+  const isDouble = rawRoomType.includes("double") || room.capacity === 2;
+
+  // 1. Determine authoritative monthly rent based on chosen room & snapshots
+  let monthlyRent = 0;
+  const candidates = [
+    reservation.pricingSnapshot?.finalMonthlyRate,
+    reservation.contract?.approvedMonthlyRate,
+    reservation.pricingDisplay?.finalMonthlyRate,
+    profileData?.financialSummary?.monthlyRate,
+    room.monthlyPrice,
+    room.price,
+    room.rent,
+    reservation.monthlyRent,
+    reservation.totalPrice,
+  ];
+
+  for (const candidate of candidates) {
+    const num = Number(candidate);
+    if (Number.isFinite(num) && num > 0) {
+      monthlyRent = num;
+      break;
+    }
+  }
+
+  // Self-heal room-type rate anomalies (e.g. private room having stale 5400/quadruple default):
+  if (isPrivate) {
+    if (monthlyRent <= 0 || monthlyRent < 10000) {
+      monthlyRent = Number(room.monthlyPrice || room.price || 13500);
+      if (monthlyRent < 10000) monthlyRent = 13500;
+    }
+  } else if (isDouble) {
+    if (monthlyRent <= 0 || monthlyRent < 7000) {
+      monthlyRent = Number(room.monthlyPrice || room.price || 8000);
+      if (monthlyRent < 7000) monthlyRent = 8000;
+    }
+  } else {
+    // Quadruple or general sharing
+    if (monthlyRent <= 0) {
+      monthlyRent = Number(room.monthlyPrice || room.price || 5400);
+    }
+  }
+
+  const reservationFeeAmount = Number(
+    reservation.reservationFeeAmount ||
+      reservation.pricingSnapshot?.reservationFeeAmount ||
+      DEFAULT_RESERVATION_FEE,
+  );
+
+  // Advance Rent is 1 month rent
+  let advanceRent = monthlyRent;
+  const rawAdvance = Number(reservation.moveInCashOut?.monthlyAdvance);
+  if (Number.isFinite(rawAdvance) && rawAdvance > 0 && Math.abs(rawAdvance - monthlyRent) < 1) {
+    advanceRent = rawAdvance;
+  }
+
+  // Security Deposit is 1 month rent
+  let securityDeposit = monthlyRent;
+  const rawDeposit = Number(
+    reservation.moveInCashOut?.securityDeposit ?? reservation.securityDeposit,
+  );
+  if (Number.isFinite(rawDeposit) && rawDeposit > 0 && Math.abs(rawDeposit - monthlyRent) < 1) {
+    securityDeposit = rawDeposit;
+  }
+
+  const grossTotal = advanceRent + securityDeposit;
+  const remainingDue = Math.max(0, grossTotal - reservationFeeAmount);
+  const isSettled =
+    reservation.initialPaymentStatus === "paid" ||
+    reservation.paymentStatus === "paid_in_full";
+
+  return {
+    monthlyRent,
+    advanceRent,
+    securityDeposit,
+    grossTotal,
+    reservationFeeAmount,
+    remainingDue: isSettled ? 0 : remainingDue,
+    isSettled,
+  };
+}
+
+/**
+ * Resolves the security deposit for a reservation object received from the API.
  *
  * @param {object} reservation — reservation or paymentInfo object from API
  * @returns {number}
  */
 export function resolveSecurityDeposit(reservation = {}) {
-  const stored =
-    reservation?.moveInCashOut?.securityDeposit ??
-    reservation?.finalSettlementSummary?.securityDeposit;
-
-  if (Number.isFinite(Number(stored)) && Number(stored) > 0) {
-    return Number(stored);
-  }
-
-  // Formula fallback for legacy records
-  const monthlyRent = reservation?.monthlyRent ?? reservation?.totalPrice ?? 0;
-  return Number(monthlyRent) || 0;
+  const financials = resolveReservationFinancials(reservation);
+  return financials.securityDeposit;
 }
 
 /**

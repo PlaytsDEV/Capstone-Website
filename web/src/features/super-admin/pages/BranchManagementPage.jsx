@@ -19,6 +19,7 @@ import {
   CardSkeleton,
   StatGridSkeleton,
 } from "../../../shared/components/LoadingSkeletons";
+import { AdminCardGridSkeleton } from "../../admin/components/AdminContentSkeletons";
 import "../styles/superadmin-dashboard.css";
 import "../styles/superadmin-branches.css";
 
@@ -139,6 +140,10 @@ export default function BranchManagementPage() {
           100
         ).toFixed(1)
       : "0.0";
+
+  if (isLoading && !data) {
+    return <AdminCardGridSkeleton />;
+  }
 
   return (
     <div className="sa2">

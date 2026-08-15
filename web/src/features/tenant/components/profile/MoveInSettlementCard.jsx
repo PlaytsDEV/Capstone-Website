@@ -17,6 +17,7 @@ import {
   generateMoveInReceipt,
   viewMoveInReceipt,
 } from "../../../../shared/utils/receiptGenerator";
+import { resolveReservationFinancials } from "../../../../shared/utils/depositUtils";
 
 const fmt = (val) =>
   `PHP ${Number.isFinite(Number(val)) ? Number(val).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}`;
@@ -29,22 +30,15 @@ export default function MoveInSettlementCard({ reservation, profileData }) {
 
   if (!reservation) return null;
 
-  const room = reservation.roomId || reservation.room || {};
-  const monthlyRent = Number(
-    reservation.monthlyRent ??
-      reservation.pricingSnapshot?.finalMonthlyRate ??
-      room.monthlyPrice ??
-      room.price ??
-      0,
-  );
-  const reservationFeeAmount = Number(reservation.reservationFeeAmount || 2000);
-  const advanceRent = reservation.moveInCashOut?.monthlyAdvance ?? monthlyRent;
-  const securityDeposit = reservation.moveInCashOut?.securityDeposit ?? monthlyRent;
-  const grossTotal = advanceRent + securityDeposit;
-  const remainingDue = Math.max(0, grossTotal - reservationFeeAmount);
-  const isSettled =
-    reservation.initialPaymentStatus === "paid" ||
-    reservation.paymentStatus === "paid_in_full";
+  const {
+    monthlyRent,
+    advanceRent,
+    securityDeposit,
+    grossTotal,
+    reservationFeeAmount,
+    remainingDue,
+    isSettled,
+  } = resolveReservationFinancials(reservation, profileData);
 
   // Default to collapsed when settled, expanded when pending balance
   const [isExpanded, setIsExpanded] = useState(!isSettled);

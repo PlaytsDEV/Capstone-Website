@@ -76,6 +76,16 @@ const announcementSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    authorName: {
+      type: String,
+      default: "LilyCrest Admin",
+      trim: true,
+    },
+    author_name: {
+      type: String,
+      default: "LilyCrest Admin",
+      trim: true,
+    },
     publishedAt: {
       type: Date,
       default: null,

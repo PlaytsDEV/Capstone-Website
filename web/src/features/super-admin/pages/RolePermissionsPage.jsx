@@ -7,6 +7,7 @@ import {
   useUpdatePermissions,
 } from "../../../shared/hooks/queries/useUsers";
 import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { AdminFormPageSkeleton } from "../../admin/components/AdminContentSkeletons";
 import "../styles/superadmin-dashboard.css";
 import "../styles/superadmin-permissions.css";
 
@@ -82,6 +83,10 @@ export default function RolePermissionsPage() {
     (u) => (u.permissions || []).length >= 8
   ).length;
   const customAccessAdmins = totalAdmins - fullAccessAdmins;
+
+  if (isLoading && !usersResponse) {
+    return <AdminFormPageSkeleton />;
+  }
 
   return (
     <div className="sa2">

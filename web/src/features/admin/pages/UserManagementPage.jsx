@@ -40,6 +40,7 @@ import {
   DataTable,
   StatusBadge,
 } from "../components/shared";
+import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import {
   normalizeBranchFilterValue,
   syncBranchSearchParam,
@@ -1165,6 +1166,10 @@ function getAvatarColor(user) {
         },
       ]
     : [];
+
+  if (loading && !usersData) {
+    return <AdminTablePageSkeleton />;
+  }
 
   return (
     <div className="space-y-6">

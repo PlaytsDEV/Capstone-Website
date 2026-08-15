@@ -38,6 +38,7 @@ import {
 } from "../../../shared/hooks/queries/useAnnouncements";
 import AdminAnnouncementModal from "../components/AdminAnnouncementModal";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
+import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 
 const INITIAL_FORM = {
   title: "",
@@ -463,6 +464,10 @@ export default function AdminAnnouncementsPage() {
       showNotification(error.message || "Failed to delete announcement.", "error", 4000);
     }
   };
+
+  if (isLoading && !data) {
+    return <AdminTablePageSkeleton />;
+  }
 
   return (
     <div>

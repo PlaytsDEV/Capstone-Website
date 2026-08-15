@@ -28,6 +28,7 @@ import { useAdminPayments } from "../../../../shared/hooks/queries/useBilling";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { showConfirmation, showNotification } from "../../../../shared/utils/notification";
 import { fmtCurrency, fmtDate, fmtMonth, formatBranch } from "../../utils/formatters";
+import { AdminTablePageSkeleton } from "../AdminContentSkeletons";
 import {
   buildPaymentLedgerByBillId as buildSharedPaymentLedgerByBillId,
   formatAdminPaymentMode,
@@ -562,6 +563,10 @@ export default function RentBillingTab({ isActive }) {
     if (errorCount > 0) showNotification(`${errorCount} bill${errorCount !== 1 ? 's' : ''} failed to send.`, 'error');
     await loadData();
   };
+
+  if (loading && tenants.length === 0) {
+    return <AdminTablePageSkeleton />;
+  }
 
   return (
     <section className="space-y-6" aria-label="Rent Billing Observability">

@@ -29,6 +29,7 @@ import RoomFormModal from "../components/rooms/RoomFormModal";
 import DeleteRoomModal from "../components/rooms/DeleteRoomModal";
 import DoubleDeckRoomCard from "../components/rooms/DoubleDeckRoomCard";
 import RoomBedHistoryDrawer from "../components/rooms/RoomBedHistoryDrawer";
+import { AdminCardGridSkeleton } from "../components/AdminContentSkeletons";
 
 // Hooks & API
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
@@ -630,6 +631,10 @@ function RoomAvailabilityPage() {
     });
     return acc;
   }, [paginatedRooms]);
+
+  if (loading && !roomsData) {
+    return <AdminCardGridSkeleton />;
+  }
 
   return (
     <div className="space-y-6">

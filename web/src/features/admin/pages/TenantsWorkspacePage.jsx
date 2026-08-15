@@ -40,6 +40,7 @@ import {
   hasEnabledTenantAction,
   openTenantAction,
 } from "./tenantWorkspaceActions.mjs";
+import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import "../styles/design-tokens.css";
 import "../styles/admin-tenants.css";
 
@@ -576,6 +577,10 @@ export default function TenantsWorkspacePage() {
         (row) => row.stayStatus === "expired_occupancy_continuing" || row.isExpiredOccupancy
       );
     }, [tenants]);
+
+    if (loading && !workspaceData) {
+      return <AdminTablePageSkeleton />;
+    }
 
     return (
       <div className="space-y-6">
