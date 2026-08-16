@@ -1,4 +1,4 @@
-﻿import { useMemo } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
  Building2,
@@ -26,7 +26,7 @@ import {
  ReportChartPanel,
  ReportFilterBar,
 } from "../../admin/components/shared";
-import "../styles/superadmin-dashboard.css";
+import "../styles/owner-dashboard.css";
 
 const STAT_ACCENTS = [
  { color: "#2563eb", bg: "#eff6ff" },
@@ -42,7 +42,7 @@ const STAT_ACCENTS = [
 
 const BRANCH_COLORS = ["#2563eb", "#059669"];
 
-export default function SuperAdminDashboard() {
+export default function OwnerDashboard() {
  const { data, isLoading, isError } = useDashboardData();
  const { data: auditData } = useAuditAnalytics({ range: "30d" });
  const { data: forecastData } = useOccupancyForecast({ months: 3, branch: "all" });

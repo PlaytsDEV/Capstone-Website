@@ -21,8 +21,8 @@ import {
   ShieldCheck,
   Zap,
 } from "lucide-react";
-import "../styles/superadmin-dashboard.css";
-import "../styles/superadmin-settings.css";
+import "../styles/owner-dashboard.css";
+import "../styles/owner-settings.css";
 import { settingsApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import { AdminPoliciesSettingsSkeleton } from "../../admin/components/AdminContentSkeletons";

@@ -17,10 +17,11 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../hooks/useAuth";
 import { useAppNavigation } from "../hooks/useAppNavigation";
 import { useUnreadCount } from "../hooks/queries/useNotifications";
+import { tenantContractApi } from "../../features/tenant/api/tenantContractApi";
 import { prefetchRoute } from "../lib/routePrefetch";
 import useBodyScrollLock from "../hooks/useBodyScrollLock";
 import { USER_ROLES } from "../utils/constants";
@@ -32,7 +33,7 @@ import logo from "../../assets/images/LOGO.svg";
 
 const MOBILE_BP = 768;
 
-const buildNavSections = (isTenant) => [
+const buildNavSections = (isTenant, hasContract = false) => [
   {
     label: "Main",
     items: [
@@ -70,7 +71,7 @@ const buildNavSections = (isTenant) => [
         path: "/applicant/profile",
         tab: "reservation",
       },
-      ...(isTenant
+      ...(isTenant || hasContract
         ? [
             {
               id: "contract",
@@ -78,6 +79,10 @@ const buildNavSections = (isTenant) => [
               icon: FileText,
               path: "/applicant/contracts",
             },
+          ]
+        : []),
+      ...(isTenant
+        ? [
             {
               id: "maintenance",
               label: "Maintenance",
@@ -148,7 +153,21 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= MOBILE_BP);
 
   const isTenant = user?.role === USER_ROLES.TENANT;
-  const navSections = useMemo(() => buildNavSections(isTenant), [isTenant]);
+  const { data: contractData } = useQuery({
+    queryKey: ["contracts", "myCurrentContract"],
+    queryFn: async () => {
+      try {
+        const res = await tenantContractApi.getMyCurrentContract();
+        return res?.contract || null;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 60 * 1000,
+    enabled: !!user,
+  });
+  const hasContract = Boolean(contractData);
+  const navSections = useMemo(() => buildNavSections(isTenant, hasContract), [isTenant, hasContract]);
   const { data: unreadData } = useUnreadCount();
   const sidebarUnreadCount = unreadData?.unreadCount ?? 0;
 
