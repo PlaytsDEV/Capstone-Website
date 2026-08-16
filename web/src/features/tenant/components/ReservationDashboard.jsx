@@ -510,6 +510,16 @@ export default function ReservationDashboard({
   const [showRequestCancelModal, setShowRequestCancelModal] = React.useState(false);
   const [isRequesting, setIsRequesting] = React.useState(false);
 
+  const [isMobile, setIsMobile] = React.useState(
+    () => typeof window !== "undefined" && window.innerWidth <= 768
+  );
+
+  React.useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   React.useEffect(() => {
     if (!showCancelModal) return undefined;
 
@@ -742,8 +752,24 @@ export default function ReservationDashboard({
 
 
       {/* ── Step Indicator ────────────────────────────────────────────────── */}
-      <div style={styles.stepperWrapper}>
-        <div style={styles.stepperProgressRail}>
+      <div
+        style={{
+          ...styles.stepperWrapper,
+          ...(isMobile ? { width: "100%", margin: "0 0 16px", padding: "8px 0" } : {}),
+        }}
+      >
+        <div
+          style={{
+            ...styles.stepperProgressRail,
+            ...(isMobile
+              ? {
+                  top: 18,
+                  left: "calc(10% + 2px)",
+                  right: "calc(10% + 2px)",
+                }
+              : {}),
+          }}
+        >
           <div
             style={{
               ...styles.stepperTrackProgress,
@@ -751,7 +777,12 @@ export default function ReservationDashboard({
             }}
           />
         </div>
-        <div style={styles.stepperInner}>
+        <div
+          style={{
+            ...styles.stepperInner,
+            ...(isMobile ? { padding: 0 } : {}),
+          }}
+        >
           {STEPS.map((step, i) => {
             const status = getStepStatus(step.stage, currentStage, reservation);
             const Icon = step.icon;
@@ -762,8 +793,18 @@ export default function ReservationDashboard({
                 key={step.key}
                 style={{
                   ...styles.stepItem,
-                  ...(isFirst ? styles.stepItemFirst : {}),
-                  ...(isLast ? styles.stepItemLast : {}),
+                  ...(isFirst && !isMobile ? styles.stepItemFirst : {}),
+                  ...(isLast && !isMobile ? styles.stepItemLast : {}),
+                  ...(isMobile
+                    ? {
+                        flex: "1 1 0%",
+                        width: "20%",
+                        maxWidth: "20%",
+                        padding: "2px 1px",
+                        gap: 4,
+                        transform: "none",
+                      }
+                    : {}),
                   cursor:
                     status === "complete" ||
                     status === "current" ||
@@ -772,12 +813,11 @@ export default function ReservationDashboard({
                       ? "pointer"
                       : "default",
                   opacity: status === "locked" ? 0.4 : 1,
-                  padding: "6px 8px",
                   borderRadius: 8,
                   transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
                 }}
                 onMouseEnter={(e) => {
-                  if (status !== "locked") {
+                  if (!isMobile && status !== "locked") {
                     e.currentTarget.style.backgroundColor =
                       "rgba(255, 255, 255, 0.08)";
                     e.currentTarget.style.transform = isFirst
@@ -788,7 +828,7 @@ export default function ReservationDashboard({
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (status !== "locked") {
+                  if (!isMobile && status !== "locked") {
                     e.currentTarget.style.backgroundColor = "transparent";
                     e.currentTarget.style.transform = isFirst
                       ? "translateX(-18px)"
@@ -820,6 +860,7 @@ export default function ReservationDashboard({
                 <div
                   style={{
                     ...styles.stepCircle,
+                    ...(isMobile ? { width: 36, height: 36 } : {}),
                     ...(status === "complete"
                       ? styles.stepComplete
                       : status === "current"
@@ -832,14 +873,14 @@ export default function ReservationDashboard({
                   }}
                 >
                   {status === "complete" ? (
-                    <CheckCircle size={20} color="#fff" />
+                    <CheckCircle size={isMobile ? 16 : 20} color="#fff" />
                   ) : status === "waiting" ? (
-                    <Clock size={20} color="#fff" />
+                    <Clock size={isMobile ? 16 : 20} color="#fff" />
                   ) : status === "rejected" ? (
-                    <AlertCircle size={20} color="#fff" />
+                    <AlertCircle size={isMobile ? 16 : 20} color="#fff" />
                   ) : (
                     <Icon
-                      size={20}
+                      size={isMobile ? 16 : 20}
                       color={status === "current" ? "#fff" : "#94A3B8"}
                     />
                   )}
@@ -847,6 +888,20 @@ export default function ReservationDashboard({
                 <span
                   style={{
                     ...styles.stepLabel,
+                    ...(isMobile
+                      ? {
+                          fontSize: 11,
+                          lineHeight: 1.15,
+                          width: "100%",
+                          maxWidth: "100%",
+                          wordBreak: "break-word",
+                          overflowWrap: "anywhere",
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }
+                      : {}),
                     color:
                       status === "complete"
                         ? "#059669"
@@ -862,7 +917,7 @@ export default function ReservationDashboard({
                       status === "waiting" ||
                       status === "rejected"
                         ? 600
-                        : 400,
+                        : 500,
                   }}
                 >
                   {step.label}
@@ -870,14 +925,29 @@ export default function ReservationDashboard({
                 <span
                   style={{
                     ...styles.stepDesc,
+                    ...(isMobile
+                      ? {
+                          fontSize: 9.5,
+                          lineHeight: 1.1,
+                          width: "100%",
+                          maxWidth: "100%",
+                          wordBreak: "break-word",
+                          overflowWrap: "anywhere",
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                          marginTop: 2,
+                        }
+                      : {}),
                     color:
                       status === "complete"
-                        ? "#6EE7B7"
+                        ? "#059669"
                         : status === "current"
-                          ? "#E7CF87"
+                          ? "#D97706"
                           : status === "rejected"
-                            ? "#FCA5A5"
-                            : "#CBD5E1",
+                            ? "#DC2626"
+                            : "#94A3B8",
                   }}
                 >
                   {getStepDesc(step, status, reservation)}

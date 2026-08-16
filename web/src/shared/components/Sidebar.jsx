@@ -307,18 +307,6 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
 
   return (
     <>
-      {isMobile && (
-        <div className="sidebar-topbar">
-          <button type="button" className="sidebar-topbar-menu" onClick={toggleSidebar} aria-label="Open menu"><Menu size={20} /></button>
-          <Link to="/" className="sidebar-topbar-brand">
-            <div className="sidebar-brand-mark" style={{ width: 28, height: 28, borderRadius: 6, overflow: "hidden" }}>
-              <img src={logo} alt="Lilycrest logo" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
-            </div>
-            <span>Lilycrest</span>
-          </Link>
-        </div>
-      )}
-
       {isMobile && isOpen && <div className="sidebar-overlay" onClick={toggleSidebar} aria-hidden="true" />}
 
       <aside className={sidebarClasses}>{renderSidebarContent()}</aside>
