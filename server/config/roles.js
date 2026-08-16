@@ -3,7 +3,7 @@
  * ROLE CONSTANTS — Single source of truth for user roles
  * ============================================================================
  *
- * The highest-level role (Super Admin) is canonicalized as "owner".
+ * The highest-level role is canonicalized as "owner".
  * ============================================================================
  */
 
@@ -15,7 +15,7 @@ export const ROLES = Object.freeze({
 });
 
 /**
- * Returns true if the role has owner-level (full cross-branch Super Admin) privileges.
+ * Returns true if the role has owner-level (full cross-branch) privileges.
  *
  * @param {string|undefined} role
  * @returns {boolean}
@@ -40,7 +40,7 @@ export const ADMIN_ROLE_VALUES = Object.freeze([
 ]);
 
 /**
- * Role values with owner-level (cross-branch Super Admin) access.
+ * Role values with owner-level (cross-branch) access.
  */
 export const OWNER_ROLE_VALUES = Object.freeze([
   ROLES.OWNER,

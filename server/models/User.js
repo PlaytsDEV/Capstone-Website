@@ -208,7 +208,7 @@ const userSchema = new mongoose.Schema(
       // - "applicant" (registered, browsing, reserving — web only)
       // - "tenant" (signed contract, active resident — web + mobile)
       // - "branch_admin" (branch operations staff — web only)
-      // - "owner" (system owner / super admin, multi-branch — web only)
+      // - "owner" (system owner, multi-branch — web only)
     },
 
     tenantStatus: {

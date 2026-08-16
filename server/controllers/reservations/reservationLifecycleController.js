@@ -850,6 +850,13 @@ export const updateReservation = async (req, res, next) => {
         );
         await autoGenerateMoveInContract({
           reservationId: updatedReservation._id,
+          actualMoveInDate:
+            req.body.actualMoveInDate ||
+            req.body.confirmedMoveInDate ||
+            req.body.moveInDate ||
+            updatedReservation.confirmedMoveInDate ||
+            updatedReservation.moveInDate ||
+            new Date(),
           actorId:
             req.adminId ||
             updatedReservation.userId?._id ||

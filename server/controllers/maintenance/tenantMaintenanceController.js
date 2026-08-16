@@ -630,6 +630,15 @@ export const sendTenantReply = async (req, res, next) => {
       );
     }
 
+    if (message && message.length > 1000) {
+      throw new AppError(
+        "Reply message cannot exceed 1000 characters.",
+        400,
+        "MESSAGE_TOO_LONG",
+        [{ field: "message", message: "Reply message cannot exceed 1000 characters." }],
+      );
+    }
+
     const replyEntry = {
       message,
       attachments,

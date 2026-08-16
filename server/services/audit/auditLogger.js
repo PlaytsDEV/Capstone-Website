@@ -241,6 +241,28 @@ class AuditLogger {
   }
 
   /**
+   * Compatibility alias for logging an update
+   */
+  async logUpdate(
+    req,
+    entityType,
+    entityId,
+    newData = null,
+    action = null,
+    customDetails = null,
+  ) {
+    return this.logModification(
+      req,
+      entityType,
+      entityId,
+      null,
+      newData,
+      action,
+      customDetails,
+    );
+  }
+
+  /**
    * Log a data deletion
    */
   async logDeletion(

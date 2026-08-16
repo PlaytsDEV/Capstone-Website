@@ -150,9 +150,10 @@ export function calculateBranchOccupancyKPIs({
 export function validateCrossBranchAccessGuard({
   userBranch = "",
   targetBranch = "",
+  isOwner = false,
   isSuperAdmin = false,
 } = {}) {
-  if (isSuperAdmin) {
+  if (isOwner || isSuperAdmin) {
     return { allowed: true };
   }
 

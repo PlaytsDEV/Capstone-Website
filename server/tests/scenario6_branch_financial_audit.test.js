@@ -70,7 +70,14 @@ describe("Scenario 6: Multi-Branch Financial Reconciliation & Audit Log Integrit
     });
     expect(sameBranchGuard.allowed).toBe(true);
 
-    // Super Admin access -> Allowed unconditionally
+    // Owner / Super Admin access -> Allowed unconditionally
+    const ownerGuard = validateCrossBranchAccessGuard({
+      userBranch: "Main",
+      targetBranch: "Annex",
+      isOwner: true,
+    });
+    expect(ownerGuard.allowed).toBe(true);
+
     const superAdminGuard = validateCrossBranchAccessGuard({
       userBranch: "Main",
       targetBranch: "Annex",

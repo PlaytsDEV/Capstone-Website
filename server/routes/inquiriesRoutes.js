@@ -38,6 +38,7 @@ import {
   scheduleViewing,
   createInquiry,
   updateInquiry,
+  retryInquiryEmail,
   deleteInquiry,
 } from "../controllers/inquiriesController.js";
 
@@ -169,6 +170,15 @@ router.post("/", inquiryLimiter, optionalAuth, validate(createInquirySchema), cr
  * Access: Admin (must be from their branch) | Owner (any inquiry)
  */
 router.put("/:id", verifyToken, verifyAdmin, filterByBranch, updateInquiry);
+
+/**
+ * POST /api/inquiries/:id/retry-email
+ *
+ * Re-attempt dispatching the automated response email to customer.
+ *
+ * Access: Admin (must be from their branch) | Owner (any inquiry)
+ */
+router.post("/:id/retry-email", verifyToken, verifyAdmin, filterByBranch, retryInquiryEmail);
 
 // ============================================================================
 // DELETE INQUIRY
