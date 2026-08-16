@@ -34,7 +34,7 @@ describe("mobile Billing route safety", () => {
   });
 
   test("reads canonical billing status/amounts through billingPolicy — never re-derives its own status math", () => {
-    expect(routes).toContain('import { toMobileBill, isMobileEffectivelyPaid } from "../services/mobileBillingBridge.js"');
+    expect(routes).toContain('import { toMobileBill, isMobileEffectivelyPaid, toMobilePaymentMethodLabel } from "../services/mobileBillingBridge.js"');
     expect(routes).not.toMatch(/function\s+(normalizeBillStatus|getEffectiveBillStatus)/);
   });
 
@@ -66,8 +66,27 @@ describe("mobile Billing route safety", () => {
         "GET /billing/history/paid",
         "GET /billing/:billingId",
         "GET /billing/:billingId/pdf",
+        "GET /billing/:billingId/receipt",
         "POST /billing/:billingId/payment-proof",
       ]),
     );
+  });
+
+  // Phase: distinct Payment Receipt endpoint, separate from the Billing
+  // Statement PDF above — matches the LilyCrest-Mobile Phase 2 reference
+  // implementation this reconciliation phase ported: 404 for an unpaid
+  // bill (never a fabricated receipt), no charges table / TOTAL DUE /
+  // payment instructions in its content (see generateBillReceiptPdf).
+  test("the receipt route checks isMobileEffectivelyPaid before generating anything", () => {
+    const receiptHandler = routes.split('router.get("/billing/:billingId/receipt"')[1]?.split("router.")[0] || "";
+    expect(receiptHandler.length).toBeGreaterThan(0);
+    expect(receiptHandler).toMatch(/if\s*\(!isMobileEffectivelyPaid\(bill\)\)/);
+    expect(receiptHandler).toMatch(/status\(404\)/);
+  });
+
+  test("the receipt route generates a distinct PDF from the statement route (generateBillReceiptPdf, not generateRentBillPdf)", () => {
+    const receiptHandler = routes.split('router.get("/billing/:billingId/receipt"')[1]?.split("router.")[0] || "";
+    expect(receiptHandler).toContain("generateBillReceiptPdf");
+    expect(receiptHandler).not.toContain("generateRentBillPdf");
   });
 });

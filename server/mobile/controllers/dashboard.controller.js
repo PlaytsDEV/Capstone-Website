@@ -2,30 +2,25 @@ const { getDb } = require('../config/database');
 const { ObjectId } = require('mongodb');
 const { sanitizeUserForClient, normalizeUser } = require('./user.controller');
 
-// Round to 2 decimal places, matching services/billing/billingPolicy.js
-// roundMoney() — kept local (not imported) since this file is CommonJS and
-// billingPolicy.js is ESM.
-function roundMoney(value) {
-  const amount = Number(value || 0);
-  return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0;
-}
-
-// Compute the SAME effective status/remaining-amount truth the canonical
-// billing bridge uses (services/billing/billingPolicy.js getVisibleBillSnapshot:
-// remainingAmount = max(totalAmount - paidAmount, 0), status derived from
-// that, never from the raw stored status/remainingAmount fields). Phase 4.5
-// cutover audit found this dashboard previously trusted the RAW stored
-// `b.status`/`b.remainingAmount` fields directly — exactly the "stale
-// stored field" risk the Phase 3.6 billing-reconciliation review flagged
-// for the `bills` collection. This keeps the dashboard's "current bill"
-// card consistent with what /billing/me/latest (mobileBillingRoutes.js)
-// already shows for the same bill.
-function effectiveBillingFields(b) {
-  const totalAmount = roundMoney(b.totalAmount);
-  const paidAmount = roundMoney(b.paidAmount);
-  const remainingAmount = roundMoney(Math.max(totalAmount - paidAmount, 0));
-  const status = b.status === 'draft' ? 'draft' : remainingAmount <= 0 ? 'paid' : (paidAmount > 0 ? 'partially_paid' : (b.status || 'unpaid'));
-  return { totalAmount, paidAmount, remainingAmount, status };
+// Dashboard billing must show the exact same status/amount/utility-release
+// truth as /billing/me/latest (mobileBillingRoutes.js) for the same bill —
+// otherwise a bill can show "Paid" on Billing History and something else on
+// Home, which is the exact contradiction class this reconciliation phase
+// exists to eliminate. This file is CommonJS; services/mobileBillingBridge.js
+// is ESM, so it is loaded via dynamic import() (natively supported by Node
+// from CJS) rather than reimplemented locally. This previously WAS
+// reimplemented locally here (a hand-rolled `effectiveBillingFields()`) —
+// that copy was missing the voided/waived/payment-proof precedence rules
+// mobileBillingBridge.js's resolveMobileBillStatus() already handles
+// correctly, so a voided or waived-with-balance bill could show its raw,
+// unmapped status string on Home while showing the correct mapped status
+// everywhere else.
+let mobileBillingBridgePromise = null;
+function loadMobileBillingBridge() {
+  if (!mobileBillingBridgePromise) {
+    mobileBillingBridgePromise = import('../../services/mobileBillingBridge.js');
+  }
+  return mobileBillingBridgePromise;
 }
 
 // Convert slug like 'quadruple-sharing' → 'Quadruple Sharing'
@@ -214,29 +209,15 @@ async function getDashboard(req, res) {
         .limit(10)
         .toArray();
 
-      billing = bills.map((b) => {
-        const effective = effectiveBillingFields(b);
-        return {
-          billing_id: b._id?.toString(),
-          user_id: userId,
-          description: b.billingMonth || b.description || 'Bill',
-          billing_type: 'consolidated',
-          due_date: b.dueDate,
-          release_date: b.billingCycleStart,
-          billing_period: b.billingMonth,
-          status: effective.status,
-          amount: effective.totalAmount,
-          total: effective.totalAmount,
-          gross_amount: b.grossAmount,
-          remaining_amount: effective.remainingAmount,
-          payment_method: b.paymentMethod,
-          payment_date: b.paidAt,
-          charges: b.charges,
-          additional_charges: b.additionalCharges,
-          reservation_id: b.reservationId?.toString(),
-          created_at: b.createdAt,
-        };
-      });
+      const { toMobileBill } = await loadMobileBillingBridge();
+      billing = bills.map((b) => ({
+        ...toMobileBill(b),
+        // toMobileBill() doesn't carry these — dashboard-specific extras,
+        // additive only, never overriding any status/amount/date field.
+        user_id: userId,
+        charges: b.charges,
+        reservation_id: b.reservationId?.toString(),
+      }));
     }
 
     // Fallback: old 'billing' collection (keyed by string user_id)

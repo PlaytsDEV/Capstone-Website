@@ -192,6 +192,55 @@ describe("toMobileBill", () => {
   });
 });
 
+describe("toMobileBill utility_deadlines", () => {
+  // Regression for the exact bug this bridge reconciliation phase was
+  // built to close: a bill with an electricity/water charge but no
+  // utility_deadlines entry renders as permanently "not released" on the
+  // mobile app (billingStatus.js getUtilityReleaseSchedule), independent of
+  // paid status — so a fully paid bill could show "Paid" AND "Your utility
+  // bill has not been released yet." at the same time. utility_deadlines
+  // must be populated whenever the canonical utility dispatch state is
+  // genuinely "sent", using the SAME signal isUtilityChargeVisible() uses.
+  test("a bill with a dispatched (sent) electricity charge carries a populated utility_deadlines entry", () => {
+    const issuedAt = new Date("2026-05-10");
+    const dueDate = new Date("2026-05-20");
+    const mobileBill = toMobileBill(makeBill({
+      utilityDispatch: { electricity: { state: "sent", issuedAt, dueDate, publishedAt: issuedAt } },
+    }));
+    expect(mobileBill.utility_deadlines.electricity).toEqual({
+      billReleaseDate: issuedAt,
+      finalDueDate: dueDate,
+      meterReadingDate: issuedAt,
+    });
+  });
+
+  test("a bill with a still-draft (undispatched) electricity charge carries no utility_deadlines entry for it — not a fabricated null-dated one", () => {
+    const mobileBill = toMobileBill(makeBill({
+      utilityDispatch: { electricity: { state: "draft" } },
+    }));
+    expect(mobileBill.utility_deadlines.electricity).toBeUndefined();
+  });
+
+  test("a bill with no electricity/water charge carries no utility_deadlines entries at all", () => {
+    const mobileBill = toMobileBill(makeBill({ charges: { rent: 5000 }, totalAmount: 5000, remainingAmount: 5000 }));
+    expect(mobileBill.utility_deadlines).toEqual({});
+  });
+
+  test("a paid bill with a dispatched electricity charge is simultaneously 'paid' and has a released utility schedule — never a contradiction", () => {
+    const issuedAt = new Date("2026-05-10");
+    const dueDate = new Date("2026-05-20");
+    const mobileBill = toMobileBill(makeBill({
+      status: "paid",
+      remainingAmount: 0,
+      paidAmount: 5400,
+      utilityDispatch: { electricity: { state: "sent", issuedAt, dueDate } },
+    }));
+    expect(mobileBill.status).toBe("paid");
+    expect(mobileBill.utility_deadlines.electricity.billReleaseDate).toEqual(issuedAt);
+    expect(mobileBill.utility_deadlines.electricity.finalDueDate).toEqual(dueDate);
+  });
+});
+
 describe("isMobileEffectivelyPaid", () => {
   test("true only when the resolved mobile status is paid", () => {
     expect(isMobileEffectivelyPaid(makeBill({ remainingAmount: 0, paidAmount: 5400 }))).toBe(true);

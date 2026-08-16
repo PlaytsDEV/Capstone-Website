@@ -58,6 +58,7 @@ jest.unstable_mockModule("../utils/auditLogger.js", () => ({
 jest.unstable_mockModule("../services/mobileBillingBridge.js", () => ({
   toMobileBill: jest.fn((b) => b),
   isMobileEffectivelyPaid: jest.fn(() => false),
+  toMobilePaymentMethodLabel: jest.fn(() => null),
 }));
 
 const { default: mobileBillingRoutes } = await import("./mobileBillingRoutes.js");

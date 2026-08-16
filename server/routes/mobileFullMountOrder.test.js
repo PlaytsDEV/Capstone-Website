@@ -47,7 +47,7 @@ jest.unstable_mockModule("../utils/paymongoPaymentMethod.js", () => ({
   PAYMENT_METHOD_LABELS: {},
 }));
 jest.unstable_mockModule("../config/publicUrls.js", () => ({ getPublicUrlConfig: jest.fn(() => ({ publicApiUrl: "https://api.lilycrest.space" })) }));
-jest.unstable_mockModule("../services/mobileBillingBridge.js", () => ({ toMobileBill: jest.fn((b) => b), isMobileEffectivelyPaid: jest.fn(() => false) }));
+jest.unstable_mockModule("../services/mobileBillingBridge.js", () => ({ toMobileBill: jest.fn((b) => b), isMobileEffectivelyPaid: jest.fn(() => false), toMobilePaymentMethodLabel: jest.fn(() => null) }));
 jest.unstable_mockModule("../services/mobileDocumentBridge.js", () => ({ buildPolicyDocumentPdf: jest.fn(() => null), POLICY_DOCUMENT_IDS: [] }));
 jest.unstable_mockModule("../services/mobileUserDocumentService.js", () => ({
   listUserDocuments: jest.fn(), uploadUserDocument: jest.fn(), getUserDocumentContent: jest.fn(), deleteUserDocument: jest.fn(),

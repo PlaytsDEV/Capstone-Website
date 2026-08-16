@@ -27,7 +27,9 @@ import fs from "fs";
 import path from "path";
 import { Bill, Reservation } from "../models/index.js";
 import { mobileTenantAuth } from "../middleware/mobileTenantAuth.js";
-import { toMobileBill, isMobileEffectivelyPaid } from "../services/mobileBillingBridge.js";
+import { toMobileBill, isMobileEffectivelyPaid, toMobilePaymentMethodLabel } from "../services/mobileBillingBridge.js";
+import { getVisibleBillSnapshot } from "../utils/billingPolicy.js";
+import { generateBillReceiptPdf } from "../utils/pdfGenerator.js";
 import {
   generateRentBillPdf,
   formatBillReference,
@@ -125,6 +127,45 @@ router.get("/billing/:billingId/pdf", mobileTenantAuth, asyncRoute(async (req, r
   }
 
   res.download(absolutePdfPath, `${formatBillReference(bill)}.pdf`);
+}));
+
+// Payment Receipt — a distinct document from the Billing Statement above.
+// Only ever generated for a bill with confirmed payment evidence (the same
+// isMobileEffectivelyPaid() check /history/paid uses); an unpaid/partially
+// paid bill gets 404, never a fabricated receipt. Content is deliberately
+// narrower than the statement — payment evidence only, no charges table,
+// no TOTAL DUE, no payment instructions (see generateBillReceiptPdf).
+router.get("/billing/:billingId/receipt", mobileTenantAuth, asyncRoute(async (req, res) => {
+  const { billingId } = req.params;
+  if (!/^[0-9a-fA-F]{24}$/.test(billingId)) {
+    return res.status(404).json({ detail: "Bill not found" });
+  }
+  const bill = await Bill.findOne({ _id: billingId, userId: req.mobileTenant._id, isArchived: false })
+    .populate("userId", "firstName lastName email");
+  if (!bill) return res.status(404).json({ detail: "Bill not found" });
+
+  if (!isMobileEffectivelyPaid(bill)) {
+    return res.status(404).json({ detail: "No payment receipt is available for this bill yet." });
+  }
+
+  const visible = getVisibleBillSnapshot(bill);
+  const billReference = `RCPT-${formatBillReference(bill)}`;
+  const receiptPath = await generateBillReceiptPdf({
+    bill,
+    tenant: bill.userId,
+    billReference,
+    amountPaid: visible.totalAmount,
+    remainingAmount: visible.remainingAmount,
+    paymentMethodLabel: toMobilePaymentMethodLabel(bill.paymentMethod),
+  });
+
+  const absoluteReceiptPath = path.resolve(SERVER_ROOT, receiptPath);
+  const safePdfRoot = path.resolve(BILL_PDF_ROOT);
+  if (!absoluteReceiptPath.startsWith(safePdfRoot) || !fs.existsSync(absoluteReceiptPath)) {
+    return res.status(404).json({ detail: "Receipt not found" });
+  }
+
+  res.download(absoluteReceiptPath, `${billReference}.pdf`);
 }));
 
 // Payment-proof submission: bridged to the SAME canonical workflow the web

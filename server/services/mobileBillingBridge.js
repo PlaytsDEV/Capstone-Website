@@ -14,7 +14,7 @@
  * Bill document (plus the shared billingPolicy snapshot for that bill).
  */
 
-import { getVisibleBillSnapshot } from "../utils/billingPolicy.js";
+import { getVisibleBillSnapshot, getUtilityDispatchEntry } from "../utils/billingPolicy.js";
 import { PAYMENT_METHOD_LABELS } from "../utils/paymongoPaymentMethod.js";
 
 /**
@@ -109,6 +109,39 @@ export function toMobilePaymentMethodLabel(rawMethod) {
 }
 
 /**
+ * Map a bill's per-utility dispatch state (billingPolicy.js
+ * getUtilityDispatchEntry — the SAME authoritative "is this utility charge
+ * actually released to the tenant yet" signal the canonical web app already
+ * uses via isUtilityChargeVisible/getVisibleBillCharges) into the
+ * { billReleaseDate, finalDueDate, meterReadingDate } shape the mobile
+ * frontend's billingStatus.js already expects.
+ *
+ * Only includes a utility once its dispatch state is genuinely "sent" — a
+ * still-draft utility charge correctly produces no entry here, which is
+ * what makes the mobile "Your utility bill has not been released yet."
+ * copy accurate instead of a permanent false contradiction against a
+ * bill that already shows "Paid" (the bug this bridge exists to prevent).
+ *
+ * @param {Object} bill - canonical Bill (Mongoose document or plain object)
+ * @param {{electricity: number, water: number}} charges - visible charges
+ * @returns {Object} keyed by utility type, only for genuinely-dispatched charges
+ */
+function mobileUtilityDeadlines(bill, charges = {}) {
+  const deadlines = {};
+  for (const utilityType of ["electricity", "water"]) {
+    if (Number(charges[utilityType] || 0) <= 0) continue;
+    const entry = getUtilityDispatchEntry(bill, utilityType);
+    if (entry.state !== "sent") continue;
+    deadlines[utilityType] = {
+      billReleaseDate: entry.issuedAt || null,
+      finalDueDate: entry.dueDate || null,
+      meterReadingDate: entry.publishedAt || null,
+    };
+  }
+  return deadlines;
+}
+
+/**
  * Map a canonical Bill (Mongoose document or .lean() object) to the flat,
  * legacy-mobile-shaped JSON the current mobile frontend already expects
  * (see server/mobile/controllers/billing.controller.js `mapRealBill()`,
@@ -166,6 +199,7 @@ export function toMobileBill(bill) {
     additional_charges: bill.additionalCharges || [],
     payment_proof_status: bill.paymentProof?.verificationStatus || "none",
     created_at: bill.createdAt || null,
+    utility_deadlines: mobileUtilityDeadlines(bill, charges),
   };
 }
 
