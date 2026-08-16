@@ -181,10 +181,11 @@ class AuditLogger {
     oldData = null,
     newData = null,
     action = null,
+    customDetails = null,
   ) {
     try {
       const userInfo = getUserInfo(req);
-      const isCreate = !oldData;
+      const isCreate = !oldData && Boolean(newData);
 
       let changedFields = [];
       if (oldData && newData) {
@@ -192,6 +193,21 @@ class AuditLogger {
           (key) =>
             JSON.stringify(oldData[key]) !== JSON.stringify(newData[key]),
         );
+      }
+
+      let details = customDetails;
+      if (!details) {
+        if (isCreate) {
+          details = action
+            ? `${action}`
+            : `Created new ${entityType} record`;
+        } else if (changedFields.length > 0) {
+          details = `Modified fields: ${changedFields.join(", ")}`;
+        } else if (action) {
+          details = action;
+        } else {
+          details = `Updated ${entityType} record`;
+        }
       }
 
       await AuditLog.log({
@@ -210,10 +226,8 @@ class AuditLogger {
         userAgent: getUserAgent(req),
         branch: userInfo.branch,
         entityType,
-        entityId: String(entityId),
-        details: isCreate
-          ? `Created new ${entityType} record`
-          : `Modified fields: ${changedFields.join(", ") || "unknown"}`,
+        entityId: entityId ? String(entityId) : undefined,
+        details,
         metadata: {
           isCreate,
           changedFields,

@@ -33,6 +33,7 @@ const {
   exportAuditLogs,
   getAuditLogById,
   getAuditLogs,
+  getFailedLogins,
 } = await import("./auditController.js");
 
 describe("auditController", () => {
@@ -163,6 +164,51 @@ describe("auditController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("exportAuditLogs supports CSV format output", async () => {
+    auditLogModel.getLogs.mockResolvedValue({
+      logs: [
+        {
+          logId: "LOG-CSV-1",
+          timestamp: new Date("2026-08-16T12:00:00.000Z"),
+          type: "data_modification",
+          action: "Updated room rate",
+          severity: "info",
+          user: "owner@lilycrest.com",
+          userRole: "owner",
+          branch: "gil-puyat",
+          ip: "127.0.0.1",
+          entityType: "room",
+          entityId: "ROOM-101",
+          details: "Changed rate from 5000 to 5500",
+        },
+      ],
+      pagination: { total: 1, limit: 10000, offset: 0, hasMore: false },
+    });
+
+    const send = jest.fn();
+    const res = {
+      setHeader: jest.fn(),
+      status: jest.fn().mockReturnValue({ send }),
+    };
+    const next = jest.fn();
+
+    await exportAuditLogs(
+      {
+        body: { format: "csv" },
+        branchFilter: undefined,
+        user: { email: "owner@lilycrest.com" },
+      },
+      res,
+      next,
+    );
+
+    expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "text/csv; charset=utf-8");
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(send).toHaveBeenCalledWith(expect.stringContaining("LOG-CSV-1"));
+    expect(send).toHaveBeenCalledWith(expect.stringContaining("Updated room rate"));
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("cleanupAuditLogs rejects retention windows below 30 days", async () => {
     const next = jest.fn();
 
@@ -182,4 +228,45 @@ describe("auditController", () => {
       }),
     );
   });
+
+  test("getFailedLogins returns security signals with targeted accounts", async () => {
+    const mockSecurityData = {
+      totalFailedLogins: 15,
+      suspiciousIPs: [
+        {
+          ip: "127.0.0.1",
+          attemptCount: 7,
+          lastAttempt: new Date(),
+          targetedUsers: ["admin@example.com"],
+        },
+      ],
+      targetedAccounts: [
+        {
+          user: "admin@example.com",
+          attemptCount: 7,
+          lastAttempt: new Date(),
+          sourceIps: ["127.0.0.1"],
+          latestFailureReason: "Invalid password",
+          userRole: "admin",
+        },
+      ],
+      recentAttempts: [{ logId: "LOG-FAIL-1" }],
+      uniqueTargetedAccountsCount: 1,
+      uniqueTargetedAccounts: ["admin@example.com"],
+    };
+
+    auditLogModel.getFailedLogins.mockResolvedValue(mockSecurityData);
+
+    const req = { query: { hours: "48" } };
+    const res = {};
+    const next = jest.fn();
+
+    await getFailedLogins(req, res, next);
+
+    expect(auditLogModel.getFailedLogins).toHaveBeenCalledWith(48);
+    expect(sendSuccess).toHaveBeenCalledWith(res, mockSecurityData);
+    expect(next).not.toHaveBeenCalled();
+  });
 });
+
+
