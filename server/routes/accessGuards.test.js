@@ -224,6 +224,7 @@ await jest.unstable_mockModule("../controllers/maintenanceController.js", () => 
   generateAdminMaintenanceReport: noop,
   sendAdminTenantSummary: noop,
   suggestAdminMaintenanceProvider: noop,
+  rateAdminMaintenanceProvider: noop,
   uploadAdminMaintenanceAttachment: noop,
   saveAdminMaintenanceProof: noop,
   removeAdminMaintenanceAttachment: noop,

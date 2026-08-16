@@ -124,6 +124,14 @@ router.post(
   maintenanceController.suggestAdminMaintenanceProvider,
 );
 
+router.post(
+  "/admin/:requestId/rate-provider",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.rateAdminMaintenanceProvider,
+);
+
 router.patch(
   "/admin/:requestId/cost",
   verifyAdmin,

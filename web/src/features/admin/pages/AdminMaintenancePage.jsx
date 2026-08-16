@@ -43,7 +43,7 @@ import {
 import { BRANCH_OPTIONS } from "../../../shared/utils/constants";
 import { DataTable, DetailDrawer, PageShell } from "../components/shared";
 import { DrawerSkeleton } from "../../../shared/components/LoadingSkeletons";
-import { AdminCardGridSkeleton } from "../components/AdminContentSkeletons";
+import { AdminMaintenanceSkeleton } from "../components/AdminContentSkeletons";
 
 import {
   ARCHIVE_FILTER_OPTIONS,
@@ -182,6 +182,7 @@ export default function AdminMaintenancePage() {
     generateReportMutation,
     sendTenantSummaryMutation,
     suggestProviderMutation,
+    rateProviderMutation,
   } = data;
 
   const [draftStatus, setDraftStatus] = useState("viewed");
@@ -486,8 +487,29 @@ export default function AdminMaintenancePage() {
     }
   };
 
+  const handleRateProvider = async (payload) => {
+    if (!selectedRequest) return;
+    try {
+      await rateProviderMutation.mutateAsync({
+        requestId: selectedRequest.request_id,
+        ...payload,
+      });
+      showNotification({
+        title: "Rating Submitted",
+        message: "Contractor rating recorded. This helps prioritize top-rated contractors in future AI suggestions.",
+        type: "success",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Rating Failed",
+        message: getMaintenanceApiErrorMessage(err, "Unable to record provider rating."),
+        type: "error",
+      });
+    }
+  };
+
   if (isLoading && (!requests || requests.length === 0)) {
-    return <AdminCardGridSkeleton />;
+    return <AdminMaintenanceSkeleton />;
   }
 
   return (
@@ -578,8 +600,10 @@ export default function AdminMaintenancePage() {
             onAssignProvider={handleAssignProvider}
             onSuggestProvider={handleSuggestProvider}
             onUseProviderSuggestion={handleUseProviderSuggestion}
+            onRateProvider={handleRateProvider}
             isAssigningProvider={assignProviderMutation.isPending}
             isSuggestingProvider={suggestProviderMutation.isPending}
+            isRatingProvider={rateProviderMutation.isPending}
             onQuickStatusChange={handleQuickStatusChange}
             onRemoveAttachment={(target) => {
               if (target) {

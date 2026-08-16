@@ -518,6 +518,46 @@ const resolutionConfirmationSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const providerRatingSchema = new mongoose.Schema(
+  {
+    rating: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: null,
+    },
+    feedback: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    tags: {
+      type: [String],
+      default: [],
+    },
+    ratedAt: {
+      type: Date,
+      default: null,
+    },
+    ratedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    ratedByName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    ratedByRole: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
 const buildRequestId = () =>
   `maint_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
@@ -659,6 +699,10 @@ const maintenanceRequestSchema = new mongoose.Schema(
       type: String,
       default: null,
       trim: true,
+    },
+    providerRating: {
+      type: providerRatingSchema,
+      default: () => ({}),
     },
     notes: {
       type: String,

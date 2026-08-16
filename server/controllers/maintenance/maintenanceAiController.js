@@ -136,14 +136,6 @@ export const suggestAdminMaintenanceProvider = async (req, res, next) => {
         .lean();
     }
 
-    if (providers.length === 0) {
-      sendSuccess(res, {
-        message: "No matching saved providers found for this branch and request type.",
-        recommendation: null,
-      });
-      return;
-    }
-
     const suggestion = await suggestMaintenanceProviderFromDirectory({
       request: {
         ...request.toObject(),

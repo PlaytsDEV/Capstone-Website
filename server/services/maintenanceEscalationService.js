@@ -160,6 +160,18 @@ export function validateMaintenanceStateTransition(
   targetStatus,
   { verificationWindowHours = 72, resolvedAt = null } = {}
 ) {
+  const STATUS_ALIAS = {
+    pending: "submitted",
+    completed: "tenant_verified",
+    closed: "tenant_verified",
+  };
+
+  const rawCurrent = String(currentStatus || "submitted").toLowerCase();
+  const rawTarget = String(targetStatus || "").toLowerCase();
+
+  const current = STATUS_ALIAS[rawCurrent] || rawCurrent;
+  const target = STATUS_ALIAS[rawTarget] || rawTarget;
+
   const VALID_TRANSITIONS = {
     submitted: ["in_progress", "cancelled", "resolved"],
     in_progress: ["resolved", "submitted", "cancelled"],
@@ -169,14 +181,12 @@ export function validateMaintenanceStateTransition(
     cancelled: [],
   };
 
-  const current = String(currentStatus).toLowerCase();
-  const target = String(targetStatus).toLowerCase();
   const allowed = VALID_TRANSITIONS[current] || [];
 
   if (!allowed.includes(target)) {
     return {
       valid: false,
-      error: `Cannot transition maintenance ticket status from '${current}' to '${target}'. Allowed target statuses: [${allowed.join(", ")}]`,
+      error: `Cannot transition maintenance ticket status from '${rawCurrent}' to '${rawTarget}'. Allowed target statuses: [${allowed.map((s) => (s === "tenant_verified" ? "completed / tenant_verified" : s)).join(", ")}]`,
     };
   }
 
@@ -186,12 +196,52 @@ export function validateMaintenanceStateTransition(
     if (elapsedHours > verificationWindowHours) {
       return {
         valid: false,
-        error: `Cannot reopen resolved ticket: the 72-hour verification window has expired (${Math.round(elapsedHours)}h elapsed).`,
+        error: `Cannot reopen resolved ticket: the ${verificationWindowHours}-hour verification window has expired (${Math.round(elapsedHours)}h elapsed).`,
       };
     }
   }
 
   return { valid: true };
+}
+
+/**
+ * Evaluates whether a resolved maintenance ticket has exceeded the tenant verification window
+ * and qualifies for automatic resolution closure (72h timeout fallback).
+ */
+export function evaluateAutoResolution(
+  ticket = {},
+  referenceDate = new Date(),
+  timeoutHours = 72
+) {
+  const status = String(ticket.status || "").toLowerCase();
+  if (status !== "resolved") {
+    return { shouldAutoResolve: false, hoursElapsed: 0, hoursRemaining: 0 };
+  }
+
+  const resolvedAt = ticket.resolvedAt || ticket.updatedAt || ticket.createdAt;
+  if (!resolvedAt) {
+    return { shouldAutoResolve: false, hoursElapsed: 0, hoursRemaining: 0 };
+  }
+
+  const elapsedHours = dayjs(referenceDate).diff(dayjs(resolvedAt), "hour", true);
+  const hoursRemaining = Math.max(0, Math.round((timeoutHours - elapsedHours) * 10) / 10);
+
+  if (elapsedHours >= timeoutHours) {
+    return {
+      shouldAutoResolve: true,
+      hoursElapsed: Math.round(elapsedHours * 10) / 10,
+      hoursRemaining: 0,
+      reason: `Auto-resolved after exceeding the ${timeoutHours}-hour tenant verification window.`,
+      targetStatus: "completed",
+    };
+  }
+
+  return {
+    shouldAutoResolve: false,
+    hoursElapsed: Math.round(elapsedHours * 10) / 10,
+    hoursRemaining,
+    reason: `Pending tenant verification (${hoursRemaining}h remaining in auto-close window).`,
+  };
 }
 
 /**

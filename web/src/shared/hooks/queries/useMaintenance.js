@@ -289,6 +289,23 @@ export function useSuggestMaintenanceProvider() {
   });
 }
 
+export function useRateMaintenanceProvider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, ...payload }) =>
+      maintenanceApi.rateAdminProvider(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+      qc.invalidateQueries({ queryKey: ["serviceProviders"] });
+    },
+  });
+}
+
 export function useArchiveMaintenanceRequest() {
   const qc = useQueryClient();
   return useMutation({

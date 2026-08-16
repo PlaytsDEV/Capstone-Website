@@ -133,12 +133,21 @@ export const TEXT_MIN_LENGTHS = {
   serviceType: 3,
 };
 
+export const MAX_MAINTENANCE_ITEM_COST = 500000;
+
 export const sanitizeDigitsOnly = (value) => String(value || "").replace(/\D/g, "");
-export const sanitizeAmountInput = (value) => {
+export const sanitizeAmountInput = (value, maxAmount = MAX_MAINTENANCE_ITEM_COST) => {
+  if (value === "" || value === null || value === undefined) return "";
   const cleaned = String(value || "").replace(/[^\d.]/g, "");
   const [whole = "", ...decimalParts] = cleaned.split(".");
+  const boundedInt = whole.slice(0, 6);
   const decimal = decimalParts.join("").slice(0, 2);
-  return decimalParts.length ? `${whole}.${decimal}` : whole;
+  const result = decimalParts.length ? `${boundedInt}.${decimal}` : boundedInt;
+  const numVal = Number(result);
+  if (!Number.isNaN(numVal) && numVal > maxAmount) {
+    return String(maxAmount);
+  }
+  return result;
 };
 
 export const formatPeso = (min, max = null) => {
@@ -1294,6 +1303,3 @@ Issue Description:
 Special Notes / Instructions:
 ${request.notes || request.assignedProviderNotes || "Please coordinate with branch management upon arrival."}`;
 };
-
-
-

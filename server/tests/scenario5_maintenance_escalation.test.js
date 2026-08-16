@@ -18,6 +18,7 @@ import {
   processMaintenanceDamageBilling,
   validateMaintenanceStateTransition,
   evaluateEmergencyKeywords,
+  evaluateAutoResolution,
 } from "../services/maintenanceEscalationService.js";
 import dayjs from "dayjs";
 
@@ -134,5 +135,39 @@ describe("Scenario 5: Maintenance Ticket Escalation & Vendor Expense Allocation"
     expect(evalResult.isEscalated).toBe(false);
     expect(evalResult.slaStatus).toBe("healthy");
     expect(evalResult.hoursRemaining).toBe(19); // 24 - 5 = 19h remaining
+  });
+
+  it("7. should support canonical status transitions between pending, in_progress, resolved, and completed", () => {
+    expect(validateMaintenanceStateTransition("pending", "in_progress").valid).toBe(true);
+    expect(validateMaintenanceStateTransition("in_progress", "resolved").valid).toBe(true);
+    expect(validateMaintenanceStateTransition("resolved", "completed").valid).toBe(true);
+    expect(validateMaintenanceStateTransition("resolved", "reopened").valid).toBe(true);
+    expect(validateMaintenanceStateTransition("reopened", "in_progress").valid).toBe(true);
+  });
+
+  it("8. should auto-resolve tickets in resolved status after 72-hour tenant confirmation window", () => {
+    // Within 72h window
+    const recentResolvedTicket = {
+      _id: "maint-401",
+      status: "resolved",
+      resolvedAt: dayjs().subtract(36, "hour").toDate(),
+    };
+    const recentResult = evaluateAutoResolution(recentResolvedTicket);
+    expect(recentResult.shouldAutoResolve).toBe(false);
+    expect(recentResult.hoursElapsed).toBe(36);
+    expect(recentResult.hoursRemaining).toBe(36);
+
+    // Past 72h window (e.g. 75 hours ago)
+    const expiredResolvedTicket = {
+      _id: "maint-402",
+      status: "resolved",
+      resolvedAt: dayjs().subtract(75, "hour").toDate(),
+    };
+    const expiredResult = evaluateAutoResolution(expiredResolvedTicket);
+    expect(expiredResult.shouldAutoResolve).toBe(true);
+    expect(expiredResult.targetStatus).toBe("completed");
+    expect(expiredResult.hoursElapsed).toBe(75);
+    expect(expiredResult.hoursRemaining).toBe(0);
+    expect(expiredResult.reason).toContain("72-hour tenant verification window");
   });
 });
