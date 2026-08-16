@@ -201,16 +201,7 @@ export const reservationApi = {
       }),
     ),
 
-  /**
-   * Upload proof of payment for reservation fee (tenant only)
-   */
-  uploadPaymentProof: (reservationId, data) =>
-    withLifecycleNormalization(
-      authFetch(`/reservations/${reservationId}/payment-proof`, {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
-    ),
+  // uploadPaymentProof — REMOVED: manual proof upload decommissioned.
 
   /**
    * Validate applicant valid ID using backend OCR/manual review fallback.
@@ -297,12 +288,35 @@ export const reservationApi = {
     ),
 
   /**
-   * Delete reservation
+   * Archive reservation (soft delete)
    */
-  delete: (reservationId) =>
-    authFetch(`/reservations/${reservationId}`, {
+  archive: (reservationId, data = {}) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/archive`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    ),
+
+  /**
+   * Restore archived reservation
+   */
+  restore: (reservationId) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/restore`, {
+        method: "PATCH",
+      }),
+    ),
+
+  /**
+   * Delete reservation (soft delete by default, hard delete for owner on archived records)
+   */
+  delete: (reservationId, options = {}) => {
+    const isHardDelete = Boolean(options.hardDelete);
+    return authFetch(`/reservations/${reservationId}${isHardDelete ? "?hardDelete=true" : ""}`, {
       method: "DELETE",
-    }),
+    });
+  },
 
   /**
    * Extend reservation move-in date (admin only)
@@ -323,27 +337,6 @@ export const reservationApi = {
       authFetch(`/reservations/${reservationId}/release`, {
       method: "PUT",
       body: JSON.stringify(data),
-      }),
-    ),
-
-  /**
-   * Archive (soft delete) reservation (admin only)
-   */
-  archive: (reservationId, data) =>
-    withLifecycleNormalization(
-      authFetch(`/reservations/${reservationId}/archive`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-      }),
-    ),
-
-  /**
-   * Restore an archived reservation (admin only)
-   */
-  restore: (reservationId) =>
-    withLifecycleNormalization(
-      authFetch(`/reservations/${reservationId}/restore`, {
-        method: "PATCH",
       }),
     ),
 
@@ -464,26 +457,48 @@ export const reservationApi = {
       body: JSON.stringify(data),
     }),
 
-  listPaymentProofReviews: (status = "") =>
-    authFetch(
-      `/reservations/payment-proofs/review${
-        status ? `?status=${encodeURIComponent(status)}` : ""
-      }`,
-    ),
+  /**
+   * List reservation payment ledger records for financial review.
+   */
+  listPaymentProofReviews: async (status = "") => {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    const res = await authFetch(`/payments/admin/ledger${query}`);
+    const list = Array.isArray(res?.data)
+      ? res.data
+      : Array.isArray(res?.payments)
+      ? res.payments
+      : Array.isArray(res)
+      ? res
+      : [];
+    return {
+      success: true,
+      payments: list,
+      data: list,
+    };
+  },
 
+  /**
+   * Submit manual payment proof (legacy compatibility fallback).
+   */
   submitPaymentProof: (reservationId, data) =>
     authFetch(`/reservations/${reservationId}/payment-proof`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
+  /**
+   * Approve payment proof or confirm payment ledger item.
+   */
   approvePaymentProof: (reservationId, paymentId) =>
     authFetch(
       `/reservations/${reservationId}/payment-proof/${paymentId}/approve`,
       { method: "POST", body: JSON.stringify({}) },
     ),
 
-  rejectPaymentProof: (reservationId, paymentId, data) =>
+  /**
+   * Reject payment proof or mark rejected in ledger.
+   */
+  rejectPaymentProof: (reservationId, paymentId, data = {}) =>
     authFetch(
       `/reservations/${reservationId}/payment-proof/${paymentId}/reject`,
       { method: "POST", body: JSON.stringify(data) },

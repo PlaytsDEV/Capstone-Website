@@ -28,6 +28,7 @@ import {
   StatusBadge,
   SummaryBar,
 } from "../components/shared";
+import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import {
   AUDIT_BRANCH_OPTIONS,
   AUDIT_ROLE_OPTIONS,
@@ -378,6 +379,10 @@ const AuditLogsPage = () => {
       onChange: (value) => handleFilterChange("type", value),
     },
   ];
+
+  if (auditLoading && !logsEnvelope) {
+    return <AdminTablePageSkeleton />;
+  }
 
   return (
     <PageShell

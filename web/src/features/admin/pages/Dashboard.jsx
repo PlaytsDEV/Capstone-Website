@@ -26,7 +26,7 @@ import {
   StatGridSkeleton,
   TableSkeleton,
 } from "../../../shared/components/LoadingSkeletons";
-import GlobalLoading from "../../../shared/components/GlobalLoading";
+import { AdminDashboardSkeleton } from "../components/AdminContentSkeletons";
 import { PageShell } from "../components/shared";
 import OccupancyTrendCard from "../components/dashboard/OccupancyTrendCard";
 import RevenueTrendCard from "../components/dashboard/RevenueTrendCard";
@@ -274,7 +274,7 @@ export default function Dashboard() {
   );
 
   if (isLoading && !data) {
-    return <GlobalLoading />;
+    return <AdminDashboardSkeleton />;
   }
 
   const reservationTotal =

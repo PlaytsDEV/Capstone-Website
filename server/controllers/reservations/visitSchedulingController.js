@@ -20,6 +20,7 @@ import {
 import { notify } from "../../utils/notificationService.js";
 import { sendPhysicalVisitStatusEmail } from "../../config/email.js";
 import { validateVisitSelection } from "../../utils/visitAvailability.js";
+import { emitToUser, emitToAdmins } from "../../utils/socket.js";
 import {
   LEGACY_VISIT_STATUSES,
   MAX_REMOTE_VIEWING_QUESTION_LENGTH,
@@ -383,6 +384,28 @@ export const updateVisitPreferenceAndSchedule = async (req, res, next) => {
       reservation: serializeReservation(updatedReservation),
     });
 
+    try {
+      const socketPayload = {
+        reservationId: String(updatedReservation._id),
+        status: updatedReservation.status,
+        viewingPreference: updatedReservation.viewingPreference,
+        viewingType: updatedReservation.viewingType,
+        visitDate: updatedReservation.visitDate,
+        visitTime: updatedReservation.visitTime,
+        branch: updatedReservation.roomId?.branch || dbUser.branch || null,
+      };
+      emitToAdmins("reservation:updated", socketPayload);
+      emitToAdmins("visit:updated", socketPayload);
+      if (updatedReservation.userId?._id) {
+        emitToUser(String(updatedReservation.userId._id), "reservation:updated", socketPayload);
+      }
+    } catch (socketErr) {
+      logger.warn(
+        { err: socketErr, requestId: req.id },
+        "Socket emit failed after visit preference update (non-fatal)",
+      );
+    }
+
     if (updatedReservation.userId?._id) {
       try {
         if (effectiveViewingPreference === "physical_visit") {
@@ -438,6 +461,26 @@ export const updateVisitPreferenceAndSchedule = async (req, res, next) => {
               actionUrl: "/applicant/reservation",
             },
           );
+        }
+
+        try {
+          const applicantName = `${updatedReservation.userId.firstName || ""} ${updatedReservation.userId.lastName || ""}`.trim() || updatedReservation.userId.email;
+          const roomName = updatedReservation.roomId?.name || "";
+          const branchName = updatedReservation.roomId?.branch || dbUser.branch || "";
+          const visitDateLabel = updatedReservation.visitDate
+            ? new Date(updatedReservation.visitDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })
+            : "";
+          notify
+            .newVisitRequested(
+              branchName,
+              applicantName,
+              roomName,
+              visitDateLabel || "TBD",
+              updatedReservation.visitTime || "",
+            )
+            .catch((e) => logger.warn({ err: e }, "Admin visit request notification failed (non-fatal)"));
+        } catch (adminVisitErr) {
+          // non-fatal
         }
       } catch (notifyErr) {
         logger.warn(

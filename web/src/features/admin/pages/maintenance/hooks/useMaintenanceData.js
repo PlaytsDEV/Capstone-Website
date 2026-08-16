@@ -20,6 +20,7 @@ import {
   useSendMaintenanceTenantSummary,
   useServiceProviders,
   useSuggestMaintenanceProvider,
+  useRateMaintenanceProvider,
   useUpdateMaintenanceRequest,
 } from "../../../../../shared/hooks/queries/useMaintenance";
 import { maintenanceApi } from "../../../../../shared/api/maintenanceApi";
@@ -59,7 +60,7 @@ import {
 
 export function useMaintenanceData() {
   const { user } = useAuth();
-  const isOwner = user?.role === "owner";
+  const isOwner = user?.role === "owner" || user?.role === "super_admin";
   const userBranch = normalizeMaintenanceBranch(user?.branch);
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
@@ -68,6 +69,20 @@ export function useMaintenanceData() {
       ? requestedTab
       : "requests",
   );
+
+  const handleTabChange = (nextTab) => {
+    setActiveTab(nextTab);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (nextTab === "requests") {
+        next.delete("tab");
+      } else {
+        next.set("tab", nextTab);
+      }
+      return next;
+    });
+  };
+
   const defaultReportRange = useMemo(() => getDefaultMaintenanceReportRange(), []);
 
   const [statusFilter, setStatusFilter] = useState("all");
@@ -79,7 +94,7 @@ export function useMaintenanceData() {
   const [dateTo, setDateTo] = useState("");
   const requestedBranch = searchParams.get("branch");
   const [branchFilter, setBranchFilter] = useState(() =>
-    requestedBranch && isOwner ? requestedBranch : "all",
+    isOwner ? (requestedBranch || "all") : (userBranch || "all"),
   );
   const [sortMode, setSortMode] = useState("newest");
   const [searchQuery, setSearchQuery] = useState("");
@@ -88,7 +103,7 @@ export function useMaintenanceData() {
   const [currentPage, setCurrentPage] = useState(1);
 
   const [analyticsFilters, setAnalyticsFilters] = useState({
-    branch: isOwner ? "all" : userBranch,
+    branch: isOwner ? "all" : (userBranch || "all"),
     dateFrom: defaultReportRange.dateFrom,
     dateTo: defaultReportRange.dateTo,
     status: "all",
@@ -101,7 +116,7 @@ export function useMaintenanceData() {
   });
 
   const [branchReportFilters, setBranchReportFilters] = useState({
-    branch: isOwner ? "all" : userBranch,
+    branch: isOwner ? "all" : (userBranch || "all"),
     dateFrom: defaultReportRange.dateFrom,
     dateTo: defaultReportRange.dateTo,
     status: "all",
@@ -169,6 +184,12 @@ export function useMaintenanceData() {
     error: "",
   });
 
+  const effectiveBranchFilter = isOwner
+    ? branchFilter === "all"
+      ? null
+      : branchFilter
+    : userBranch || null;
+
   const listFilters = useMemo(
     () =>
       createFilterPayload({
@@ -177,15 +198,14 @@ export function useMaintenanceData() {
         urgency: urgencyFilter,
         dateFrom,
         dateTo,
-        branch: isOwner ? branchFilter : null,
+        branch: effectiveBranchFilter,
         archiveView,
       }),
     [
       archiveView,
-      branchFilter,
+      effectiveBranchFilter,
       dateFrom,
       dateTo,
-      isOwner,
       requestTypeFilter,
       statusFilter,
       urgencyFilter,
@@ -199,10 +219,10 @@ export function useMaintenanceData() {
         urgency: urgencyFilter,
         dateFrom,
         dateTo,
-        branch: isOwner ? branchFilter : null,
+        branch: effectiveBranchFilter,
         archiveView,
       }),
-    [archiveView, branchFilter, dateFrom, dateTo, isOwner, requestTypeFilter, urgencyFilter],
+    [archiveView, effectiveBranchFilter, dateFrom, dateTo, requestTypeFilter, urgencyFilter],
   );
 
   const analyticsQueryFilters = useMemo(
@@ -262,10 +282,36 @@ export function useMaintenanceData() {
   const generateReportMutation = useGenerateMaintenanceReport();
   const sendTenantSummaryMutation = useSendMaintenanceTenantSummary();
   const suggestProviderMutation = useSuggestMaintenanceProvider();
+  const rateProviderMutation = useRateMaintenanceProvider();
 
   const requests = requestsData?.requests || [];
   const summaryRequests = summaryData?.requests || requests;
-  const selectedRequest = requestDetailData?.request || null;
+
+  const baseSelectedRequest = useMemo(() => {
+    if (!selectedRequestId) return null;
+    return (
+      requests.find(
+        (r) =>
+          String(r.request_id || r.id || r._id) === String(selectedRequestId),
+      ) || null
+    );
+  }, [requests, selectedRequestId]);
+
+  const selectedRequest = useMemo(() => {
+    const detail =
+      requestDetailData?.data?.request ||
+      requestDetailData?.request ||
+      requestDetailData?.data ||
+      null;
+
+    if (detail && typeof detail === "object" && Object.keys(detail).length > 0) {
+      return {
+        ...(baseSelectedRequest || {}),
+        ...detail,
+      };
+    }
+    return baseSelectedRequest;
+  }, [baseSelectedRequest, requestDetailData]);
 
   const providerFilters = useMemo(() => {
     if (!selectedRequest) return {};
@@ -355,11 +401,6 @@ export function useMaintenanceData() {
       ),
     [dateFrom, dateTo, searchedRequests, slaFilter, summaryCardKey],
   );
-
-  const handleTabChange = (tabKey) => {
-    setActiveTab(tabKey);
-    setSearchParams({ tab: tabKey });
-  };
 
   const handleResetFilters = () => {
     setStatusFilter("all");
@@ -481,5 +522,6 @@ export function useMaintenanceData() {
     generateReportMutation,
     sendTenantSummaryMutation,
     suggestProviderMutation,
+    rateProviderMutation,
   };
 }

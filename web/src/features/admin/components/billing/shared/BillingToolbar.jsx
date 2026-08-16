@@ -28,8 +28,16 @@ export default function BillingToolbar({
   onExportPdf,
   isExporting,
 }) {
+  const effectiveBranch = isOwner ? branchFilter : (user?.branch || "");
   const branchLabel =
     UTILITY_BRANCHES.find((b) => b.value === user?.branch)?.label ?? user?.branch;
+
+  const visibleTabs = TABS.filter((tab) => {
+    if (effectiveBranch === "guadalupe" && (tab.id === "electricity" || tab.id === "water")) {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3.5 shadow-xs sm:gap-3.5">
@@ -108,7 +116,7 @@ export default function BillingToolbar({
           className="inline-flex w-full min-w-max items-center gap-1.5 rounded-lg border border-border bg-muted/40 p-1"
           aria-label="Billing category"
         >
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (

@@ -6,7 +6,7 @@ import dayjs from "dayjs";
 import { Inquiry, User } from "../models/index.js";
 import { sendInquiryResponseEmail } from "../config/email.js";
 import auditLogger from "../utils/auditLogger.js";
-import { createNotification } from "../services/notifications/notificationService.js";
+import { createNotification, notifyBranchAdmins } from "../services/notifications/notificationService.js";
 import {
   sendSuccess,
   sendError,
@@ -15,9 +15,13 @@ import {
 
 export const getInquiryStats = async (req, res, next) => {
   try {
-    const matchQuery = req.branchFilter
-      ? { branch: req.branchFilter, isArchived: { $ne: true } }
-      : { isArchived: { $ne: true } };
+    const matchQuery = { isArchived: { $ne: true } };
+    if (req.branchFilter) {
+      matchQuery.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
+    }
 
     // Get counts by status
     const statusCounts = await Inquiry.aggregate([
@@ -30,7 +34,12 @@ export const getInquiryStats = async (req, res, next) => {
     if (req.isOwner) {
       branchCounts = await Inquiry.aggregate([
         { $match: { isArchived: { $ne: true } } },
-        { $group: { _id: "$branch", count: { $sum: 1 } } },
+        {
+          $group: {
+            _id: { $ifNull: ["$preferredBranch", "$branch"] },
+            count: { $sum: 1 },
+          },
+        },
       ]);
     }
 
@@ -75,7 +84,9 @@ export const getInquiriesByBranch = async (req, res, next) => {
       });
     }
 
-    const inquiries = await Inquiry.find({ branch })
+    const inquiries = await Inquiry.find({
+      $or: [{ preferredBranch: branch }, { branch }],
+    })
       .sort({ createdAt: -1 })
       .populate("respondedBy", "firstName lastName email")
       .select("-__v");
@@ -108,28 +119,41 @@ export const getInquiries = async (req, res, next) => {
     } = req.query;
 
     // Build query with branch filter
-    const query = { isArchived: { $ne: true } }; // Exclude archived inquiries
+    const queryConditions = [{ isArchived: { $ne: true } }];
 
-    if (req.branchFilter) {
-      query.branch = req.branchFilter;
-    } else if (branch) {
-      query.branch = branch;
+    const targetBranch = req.branchFilter || branch;
+    if (targetBranch) {
+      queryConditions.push({
+        $or: [
+          { preferredBranch: targetBranch },
+          { branch: targetBranch },
+        ],
+      });
     }
 
     if (status) {
       // Map frontend "responded" to backend "resolved"
-      query.status = status === "responded" ? "resolved" : status;
+      queryConditions.push({
+        status: status === "responded" ? "resolved" : status,
+      });
     }
 
     if (search && search.trim()) {
       const regex = new RegExp(search.trim(), "i");
-      query.$or = [
-        { name: regex },
-        { fullName: regex },
-        { email: regex },
-        { subject: regex },
-      ];
+      queryConditions.push({
+        $or: [
+          { name: regex },
+          { fullName: regex },
+          { email: regex },
+          { subject: regex },
+        ],
+      });
     }
+
+    const query =
+      queryConditions.length === 1
+        ? queryConditions[0]
+        : { $and: queryConditions };
 
     // Pagination
     const pageNum = parseInt(page, 10);
@@ -175,20 +199,289 @@ export const getInquiries = async (req, res, next) => {
   }
 };
 
-export const getInquiryById = async (req, res, next) => {
+const formatChannelLabel = (value) => {
+  if (!value) return "Direct";
+  return String(value)
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+export const getKanbanBoard = async (req, res, next) => {
+  try {
+    const matchQuery = { isArchived: { $ne: true } };
+    if (req.branchFilter) {
+      matchQuery.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
+    }
+
+    const inquiries = await Inquiry.find(matchQuery)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const board = {
+      new: [],
+      viewing: [],
+      converted: [],
+    };
+
+    inquiries.forEach((inq) => {
+      const formatted = {
+        _id: String(inq._id),
+        name:
+          inq.name ||
+          inq.fullName ||
+          `${inq.firstName || ""} ${inq.lastName || ""}`.trim() ||
+          "Guest",
+        fullName: inq.fullName || inq.name,
+        email: inq.email || "",
+        phone: inq.phone || inq.contactNumber || "N/A",
+        contactNumber: inq.contactNumber || inq.phone,
+        channel: formatChannelLabel(inq.source || "website"),
+        source: inq.source || "website",
+        message: inq.message || inq.notes || "",
+        status: inq.status || "pending",
+        viewingStatus: inq.viewingStatus || "new",
+        branch: inq.branch || inq.preferredBranch || "general",
+        preferredBranch: inq.preferredBranch || inq.branch,
+        preferredRoomType: inq.preferredRoomType,
+        createdAt: inq.createdAt,
+      };
+
+      const viewingStatus = inq.viewingStatus || "new";
+      const status = inq.status || "pending";
+
+      if (
+        viewingStatus === "converted_to_application" ||
+        status === "resolved" ||
+        status === "closed"
+      ) {
+        board.converted.push(formatted);
+      } else if (
+        viewingStatus === "viewing_scheduled" ||
+        viewingStatus === "viewing_completed" ||
+        viewingStatus === "viewing_waived" ||
+        status === "in-progress"
+      ) {
+        board.viewing.push(formatted);
+      } else {
+        board.new.push(formatted);
+      }
+    });
+
+    res.json({
+      success: true,
+      data: board,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMarketingRoi = async (req, res, next) => {
+  try {
+    const matchQuery = { isArchived: { $ne: true } };
+    if (req.branchFilter) {
+      matchQuery.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
+    }
+
+    const inquiries = await Inquiry.find(matchQuery).lean();
+
+    const channelMap = new Map();
+    const standardChannels = [
+      "website",
+      "facebook",
+      "tiktok",
+      "instagram",
+      "text_message",
+      "walk_in",
+      "building_signage",
+      "referral",
+      "other",
+    ];
+
+    standardChannels.forEach((ch) => {
+      channelMap.set(ch, {
+        channel: formatChannelLabel(ch),
+        source: ch,
+        totalLeads: 0,
+        viewingsScheduled: 0,
+        convertedCount: 0,
+      });
+    });
+
+    inquiries.forEach((inq) => {
+      const sourceKey = (inq.source || "website").toLowerCase();
+      if (!channelMap.has(sourceKey)) {
+        channelMap.set(sourceKey, {
+          channel: formatChannelLabel(sourceKey),
+          source: sourceKey,
+          totalLeads: 0,
+          viewingsScheduled: 0,
+          convertedCount: 0,
+        });
+      }
+      const ch = channelMap.get(sourceKey);
+      ch.totalLeads += 1;
+
+      const vStatus = inq.viewingStatus || "";
+      if (
+        vStatus === "viewing_scheduled" ||
+        vStatus === "viewing_completed" ||
+        inq.viewingDate
+      ) {
+        ch.viewingsScheduled += 1;
+      }
+      if (
+        vStatus === "converted_to_application" ||
+        inq.status === "resolved"
+      ) {
+        ch.convertedCount += 1;
+      }
+    });
+
+    const report = Array.from(channelMap.values())
+      .map((item) => {
+        const conversionRate =
+          item.totalLeads > 0
+            ? Math.round((item.convertedCount / item.totalLeads) * 100)
+            : 0;
+        return {
+          ...item,
+          conversionRate,
+        };
+      })
+      .filter((item) => item.totalLeads > 0 || standardChannels.slice(0, 5).includes(item.source))
+      .sort((a, b) => b.totalLeads - a.totalLeads);
+
+    res.json({
+      success: true,
+      data: report,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const convertToApplication = async (req, res, next) => {
   try {
     const { id } = req.params;
 
     if (!id.match(/^[0-9a-fA-F]{24}$/)) {
       return res.status(400).json({
-        error: "Invalid inquiry ID format",
+        error: "The specified inquiry identifier is invalid.",
         code: "INVALID_INQUIRY_ID",
       });
     }
 
     const query = { _id: id };
     if (req.branchFilter) {
-      query.branch = req.branchFilter;
+      query.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
+    }
+
+    const inquiry = await Inquiry.findOne(query);
+    if (!inquiry) {
+      return res.status(404).json({
+        error: "The requested inquiry record could not be found or you do not have permission to access it.",
+        code: "INQUIRY_NOT_FOUND",
+      });
+    }
+
+    const adminUser = await User.findOne({ firebaseUid: req.user.uid });
+
+    inquiry.viewingStatus = "converted_to_application";
+    inquiry.status = "resolved";
+    inquiry.convertedToApplicationAt = new Date();
+    inquiry.convertedBy = adminUser?._id || null;
+    await inquiry.save();
+
+    await auditLogger.logUpdate(
+      req,
+      "inquiry",
+      id,
+      { viewingStatus: "converted_to_application", status: "resolved" },
+      "Inquiry converted to application",
+    );
+
+    res.json({
+      success: true,
+      message: "Inquiry successfully converted to tenant application.",
+      inquiry,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const scheduleViewing = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { viewingDate, viewingTime, notes } = req.body;
+
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        error: "The specified inquiry identifier is invalid.",
+        code: "INVALID_INQUIRY_ID",
+      });
+    }
+
+    const query = { _id: id };
+    if (req.branchFilter) {
+      query.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
+    }
+
+    const inquiry = await Inquiry.findOne(query);
+    if (!inquiry) {
+      return res.status(404).json({
+        error: "The requested inquiry record could not be found or you do not have permission to access it.",
+        code: "INQUIRY_NOT_FOUND",
+      });
+    }
+
+    inquiry.viewingStatus = "viewing_scheduled";
+    inquiry.status = "in-progress";
+    if (viewingDate) inquiry.viewingDate = new Date(viewingDate);
+    if (viewingTime) inquiry.viewingTime = viewingTime;
+    if (notes) inquiry.notes = notes;
+    await inquiry.save();
+
+    res.json({
+      success: true,
+      message: "Viewing schedule successfully recorded.",
+      inquiry,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getInquiryById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        error: "The specified inquiry identifier is invalid.",
+        code: "INVALID_INQUIRY_ID",
+      });
+    }
+
+    const query = { _id: id };
+    if (req.branchFilter) {
+      query.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
     }
 
     const inquiry = await Inquiry.findOne(query)
@@ -197,7 +490,7 @@ export const getInquiryById = async (req, res, next) => {
 
     if (!inquiry) {
       return res.status(404).json({
-        error: "Inquiry not found or access denied",
+        error: "The requested inquiry record could not be found or you do not have permission to access it.",
         code: "INQUIRY_NOT_FOUND",
       });
     }
@@ -267,31 +560,17 @@ export const createInquiry = async (req, res, next) => {
 
     // Create automated notification for admin users
     try {
-      const adminUsers = await User.find({
-        role: { $in: ["admin", "super-admin"] },
-        isActive: { $ne: false },
-      }).select("_id branch role");
-
-      for (const admin of adminUsers) {
-        if (
-          admin.role === "super-admin" ||
-          !admin.branch ||
-          admin.branch === branch ||
-          branch === "general"
-        ) {
-          await createNotification(
-            admin._id,
-            "inquiry_new",
-            "New Customer Inquiry Received",
-            `New inquiry from ${name.trim()} (${email.toLowerCase().trim()}) regarding "${subject.trim()}".`,
-            {
-              actionUrl: "/admin/reservations?tab=inquiries",
-              entityType: "Inquiry",
-              entityId: inquiry._id,
-            }
-          );
+      await notifyBranchAdmins(
+        branch,
+        "inquiry_new",
+        "New Customer Inquiry Received",
+        `New inquiry from ${name.trim()} (${email.toLowerCase().trim()}) regarding "${subject.trim()}".`,
+        {
+          actionUrl: "/admin/reservations?tab=inquiries",
+          entityType: "Inquiry",
+          entityId: inquiry._id,
         }
-      }
+      );
     } catch (notifErr) {
       console.error("⚠️ Failed to create admin inquiry notification:", notifErr);
     }
@@ -318,20 +597,23 @@ export const updateInquiry = async (req, res, next) => {
 
     if (!id.match(/^[0-9a-fA-F]{24}$/)) {
       return res.status(400).json({
-        error: "Invalid inquiry ID format",
+        error: "The specified inquiry identifier is invalid.",
         code: "INVALID_INQUIRY_ID",
       });
     }
 
     const query = { _id: id };
     if (req.branchFilter) {
-      query.branch = req.branchFilter;
+      query.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
     }
 
     const existingInquiry = await Inquiry.findOne(query);
     if (!existingInquiry) {
       return res.status(404).json({
-        error: "Inquiry not found or access denied",
+        error: "The requested inquiry record could not be found or you do not have permission to access it.",
         code: "INQUIRY_NOT_FOUND",
       });
     }
@@ -404,7 +686,7 @@ export const updateInquiry = async (req, res, next) => {
         if (!validStatuses.includes(updateData.status)) {
           return res.status(400).json({
             error:
-              "Invalid status. Must be: pending, in-progress, resolved, or closed",
+              "The specified status is invalid. Please select from: pending, in-progress, resolved, or closed.",
             code: "INVALID_STATUS",
           });
         }
@@ -448,20 +730,23 @@ export const deleteInquiry = async (req, res, next) => {
 
     if (!id.match(/^[0-9a-fA-F]{24}$/)) {
       return res.status(400).json({
-        error: "Invalid inquiry ID format",
+        error: "The specified inquiry identifier is invalid.",
         code: "INVALID_INQUIRY_ID",
       });
     }
 
     const query = { _id: id };
     if (req.branchFilter) {
-      query.branch = req.branchFilter;
+      query.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
     }
 
     const inquiry = await Inquiry.findOne(query);
     if (!inquiry) {
       return res.status(404).json({
-        error: "Inquiry not found or access denied",
+        error: "The requested inquiry record could not be found or you do not have permission to access it.",
         code: "INQUIRY_NOT_FOUND",
       });
     }

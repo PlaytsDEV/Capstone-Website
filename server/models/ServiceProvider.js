@@ -87,6 +87,33 @@ const serviceProviderSchema = new mongoose.Schema(
       min: 1,
       max: 5,
     },
+    ratingCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    totalRatingPoints: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    usageCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+      index: true,
+    },
+    externalRating: {
+      type: Number,
+      default: null,
+      min: 1,
+      max: 5,
+    },
+    externalReviewCount: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
     internalFeedback: {
       type: [String],
       default: [],

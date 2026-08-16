@@ -5,6 +5,7 @@ const { verifyFirebaseIdToken, verifyTenantInFirebase, admin } = require('../con
 const { sendPasswordResetEmail, sendPasswordChangedEmail } = require('../services/emailService');
 const { invalidateUserSessionsCore } = require('../../security/sessionInvalidationCore.cjs');
 const { createSession } = require('../security/mobileSession');
+const { hashResetToken, resetTokenEligibilityFilter } = require('../security/resetTokenEligibility');
 const authTestDependencies = {
   getDb,
   sendLoginOtpEmail: (...args) => require('../services/emailService').sendLoginOtpEmail(...args),
@@ -27,6 +28,17 @@ function cookieOptions() {
 
 function firebaseApiKey() {
   return process.env.FIREBASE_API_KEY || process.env.FIREBASE_WEB_API_KEY || null;
+}
+
+// Mirrors config/publicUrls.js's PUBLIC_LOGO_URL default — this file is
+// vendored CommonJS and can't import that ESM module, so the same fallback
+// (frontend origin + the stable, non-build-hashed /lilycrest-logo.png asset)
+// is reproduced here directly.
+function logoUrl() {
+  const configured = String(process.env.PUBLIC_LOGO_URL || '').trim();
+  if (configured) return configured;
+  const frontendUrl = String(process.env.PUBLIC_FRONTEND_URL || 'https://www.lilycrest.space').trim().replace(/\/+$/, '');
+  return `${frontendUrl}/lilycrest-logo.png`;
 }
 
 function passwordResetBaseUrl() {
@@ -192,7 +204,7 @@ const OTP_MAX_ATTEMPTS = 3;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 let otpIndexPromise;
 function ensureOtpIndexes(db) {
-  otpIndexPromise ||= db.collection('otp_store').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
+  otpIndexPromise ||= db.collection('otp_store').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0, name: 'otp_ttl' });
   return otpIndexPromise;
 }
 function otpSecret() {
@@ -574,6 +586,15 @@ async function resendOtp(req, res) {
 // ─── GOOGLE SIGN-IN ─────────────────────────────────────────────────────────
 
 async function googleSignIn(req, res) {
+  // Stage timing — diagnostic only, no tokens/PII. Added to correlate
+  // intermittent client-observed timeouts against backend-side stage
+  // durations (see Phase 5.7 investigation notes).
+  const stageStart = process.hrtime.bigint();
+  const stageLog = { start: 0 };
+  const markStage = (name) => {
+    stageLog[name] = Number(process.hrtime.bigint() - stageStart) / 1e6;
+  };
+
   try {
     const { idToken } = req.body;
     if (!idToken) {
@@ -586,6 +607,7 @@ async function googleSignIn(req, res) {
     } catch {
       return res.status(401).json({ detail: 'Invalid Firebase ID token' });
     }
+    markStage('firebase_verify_ms');
 
     const { email, uid: fbUid } = decoded;
     if (!email) {
@@ -623,6 +645,8 @@ async function googleSignIn(req, res) {
       if (tenant) console.log('[GoogleSignIn] Found by Firebase identity', { user_fingerprint: shortFingerprint(tenant.user_id) });
     }
 
+    markStage('mongo_user_lookup_ms');
+
     // Not found → not a registered tenant
     if (!tenant) {
       console.log('[GoogleSignIn] Tenant lookup failed', { email_fingerprint: shortFingerprint(email) });
@@ -647,6 +671,7 @@ async function googleSignIn(req, res) {
       await invalidateMobileIdentity(db, tenant, 'identity_conflict', req);
       return res.status(401).json({ detail: 'Authentication failed. Please contact the administrator if the problem continues.', code: 'AUTHENTICATION_FAILED' });
     }
+    markStage('identity_conflict_check_ms');
 
     // Build update — only set email if it won't conflict with another user
     const updateFields = {
@@ -681,16 +706,39 @@ async function googleSignIn(req, res) {
         throw updateErr;
       }
     }
+    markStage('user_update_ms');
 
-    // Create session
-    const session = await createSession(db, tenant.user_id);
+    // Idempotency guard: if this exact user already has a session minted in
+    // the last few seconds, reuse it instead of unconditionally rotating.
+    // This exists so that a client-side connection-timeout retry (the
+    // mobile client retries this endpoint once on a connect failure — see
+    // AuthContext.signInWithGoogle) can never invalidate a session whose
+    // success response the client simply never received, or race-create a
+    // second one. Outside this narrow window, behavior is unchanged: a
+    // fresh login always rotates the session as before.
+    const RECENT_SESSION_WINDOW_MS = 10_000;
+    const recentSession = await db.collection('user_sessions').findOne(
+      { user_id: tenant.user_id, created_at: { $gt: new Date(Date.now() - RECENT_SESSION_WINDOW_MS) } },
+      { sort: { created_at: -1 } },
+    );
+    const session = recentSession
+      ? { session_token: recentSession.session_token, expires_at: recentSession.expires_at }
+      : await createSession(db, tenant.user_id);
     res.cookie('session_token', session.session_token, cookieOptions());
+    markStage('session_create_ms');
 
-    const user = await getCleanUser(db, tenant.user_id);
+    // Build the response user from the already-fetched `tenant` doc plus the
+    // exact fields we just wrote, instead of a redundant findOne — we know
+    // precisely what changed, so there is nothing a fresh fetch would add.
+    const { _id, ...tenantWithoutId } = tenant;
+    const user = normalizeUser({ ...tenantWithoutId, ...updateFields });
+    markStage('response_ready_ms');
+
     console.log('[GoogleSignIn] Success', {
       user_fingerprint: shortFingerprint(tenant.user_id),
       success: true,
     });
+    console.log('mobile_google_auth_stage', stageLog);
     res.json({ user, session_token: session.session_token });
   } catch (error) {
     console.error('Google auth error:', error);
@@ -750,6 +798,9 @@ function validateNewPassword(password) {
 
   if (!password || typeof password !== 'string') {
     return ['New password is required'];
+  }
+  if (/\s/.test(password)) {
+    errors.push('Password must not contain spaces');
   }
   if (password.length < 8) {
     errors.push('Password must be at least 8 characters');
@@ -952,7 +1003,12 @@ async function forgotPassword(req, res) {
       });
 
       const backendUrl = passwordResetBaseUrl();
-      const resetLink = `${backendUrl}/api/auth/reset-password?token=${rawToken}`;
+      // This vendored mobile router is mounted at /api/m in Capstone-Website
+      // (server/mobile/mobileRoutes.mjs), NOT at the bare /api/auth prefix
+      // this path used before the code was vendored in from the standalone
+      // LilyCrest-Mobile backend. A leftover /api/auth/reset-password link
+      // here 404s in production — there is no route mounted at that path.
+      const resetLink = `${backendUrl}/api/m/auth/reset-password?token=${rawToken}`;
       const userName = tenantData.name || 'Tenant';
 
       sendPasswordResetEmail(normalizedEmail, userName, resetLink).catch(() => {});
@@ -986,12 +1042,19 @@ async function forgotPassword(req, res) {
 function getResetPasswordPage(req, res) {
   const { token } = req.query;
   if (!token) {
-    return res.status(400).send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invalid Link</title>
-<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#F3F4F6;padding:24px}
-.card{background:#fff;border-radius:20px;padding:40px 32px;max-width:420px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.1)}
-h1{color:#1E3A5F;font-size:20px;margin-bottom:8px}p{color:#6B7280;font-size:14px}</style></head>
-<body><div class="card"><div style="font-size:48px;margin-bottom:16px">⚠️</div>
-<h1>Invalid Reset Link</h1><p>This link is missing a reset token. Please request a new password reset from the app.</p></div></body></html>`);
+    return res.status(400).send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invalid Link — LilyCrest</title>
+<style>*{box-sizing:border-box}body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#F3F4F6;padding:24px;margin:0}
+.card{background:#fff;border-radius:20px;max-width:420px;width:100%;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.1);overflow:hidden}
+.head{background:linear-gradient(135deg,#1E3A5F 0%,#2D5A8E 100%);border-bottom:3px solid #D4AF37;padding:28px 24px 20px}
+.head img{display:block;margin:0 auto 10px;width:44px;height:44px}
+.head span{color:#D4AF37;font-size:13px;font-weight:600;letter-spacing:.5px}
+.body{padding:32px}
+h1{color:#1E3A5F;font-size:20px;margin-bottom:8px}p{color:#6B7280;font-size:14px;margin:0}</style></head>
+<body><div class="card">
+<div class="head"><img src="${logoUrl()}" alt="LilyCrest"><span>LILYCREST DORMITORY</span></div>
+<div class="body"><div style="font-size:48px;margin-bottom:16px">⚠️</div>
+<h1>Invalid Reset Link</h1><p>This link is missing a reset token. Please request a new password reset from the app.</p></div>
+</div></body></html>`);
   }
 
   const safeToken = encodeURIComponent(token);
@@ -1006,56 +1069,91 @@ h1{color:#1E3A5F;font-size:20px;margin-bottom:8px}p{color:#6B7280;font-size:14px
   <title>Reset Password — LilyCrest</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:-apple-system,Roboto,"Segoe UI",sans-serif;background:#F3F4F6;
-         display:flex;flex-direction:column;align-items:center;justify-content:center;
-         min-height:100vh;padding:24px}
-    .card{background:#fff;border-radius:20px;padding:40px 32px;max-width:440px;width:100%;
-          box-shadow:0 4px 24px rgba(0,0,0,.10);text-align:center}
-    .icon{font-size:48px;margin-bottom:16px}
-    h1{font-size:22px;font-weight:700;color:#1E3A5F;margin-bottom:8px}
-    .sub{font-size:14px;color:#6B7280;line-height:1.6;margin-bottom:28px}
+    body{font-family:-apple-system,Roboto,"Segoe UI",sans-serif;background:#F4F6FA;
+         display:flex;flex-direction:column;align-items:center;
+         min-height:100vh}
+    .screen{background:#fff;max-width:440px;width:100%;min-height:100vh}
+    @media (min-width:480px){
+      body{padding:24px}
+      .screen{min-height:0;border-radius:20px;box-shadow:0 4px 24px rgba(0,0,0,.10);overflow:hidden;margin-top:24px}
+    }
 
-    /* ── mobile section ── */
+    /* ── header bar ── */
+    .topbar{display:flex;align-items:center;justify-content:center;padding:16px 20px;
+            background:#fff;border-bottom:3px solid #D4AF37}
+    .topbar h1{font-size:18px;font-weight:600;color:#1a2744;letter-spacing:.2px}
+
+    .content{padding:32px 24px 40px;text-align:center}
+    .icon-badge{width:80px;height:80px;border-radius:24px;background:#FDF6EC;
+                border:2px solid #D4AF37;
+                display:flex;align-items:center;justify-content:center;margin:0 auto 24px}
+    .icon-badge svg{width:36px;height:36px}
+    h2{font-size:24px;font-weight:700;color:#1a2744;margin-bottom:8px}
+    .sub{font-size:14px;color:#4a5568;line-height:1.5;margin-bottom:32px}
+
+    /* ── mobile deep-link section ── */
     .mobile-section{margin-bottom:28px}
     .divider{display:flex;align-items:center;gap:12px;margin-bottom:24px}
-    .divider hr{flex:1;border:none;border-top:1px solid #E5E7EB}
-    .divider span{font-size:12px;color:#9CA3AF;white-space:nowrap}
+    .divider hr{flex:1;border:none;border-top:1px solid #D8E2F0}
+    .divider span{font-size:12px;color:#8a97aa;white-space:nowrap}
 
     /* ── form ── */
-    .form-label{display:block;font-size:12px;font-weight:600;color:#1E3A5F;
-                letter-spacing:.5px;text-align:left;margin-bottom:6px}
-    .input-wrap{position:relative;margin-bottom:16px}
-    .input-wrap input{width:100%;padding:13px 56px 13px 14px;font-size:15px;color:#1F2937;
-                      border:1.5px solid #E5E7EB;border-radius:12px;background:#F8FAFC;outline:none}
-    .input-wrap input:focus{border-color:#1E3A5F}
-    .eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:44px;height:44px;
-         background:none;border:none;cursor:pointer;font-size:18px;line-height:1}
-    .eye svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+    .field{margin-bottom:20px;text-align:left}
+    .form-label{display:block;font-size:13px;font-weight:600;color:#1a2744;
+                letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px}
+    .input-wrap{position:relative;display:flex;align-items:center;gap:12px;
+                border:1.5px solid #D8E2F0;border-radius:12px;background:#F0F4FA;padding:0 14px;
+                transition:border-color .15s}
+    .input-wrap:focus-within{border-color:#1a2744}
+    .input-wrap.has-error{border-color:#EF4444}
+    .input-wrap svg.lock{width:20px;height:20px;flex-shrink:0;color:#8a97aa}
+    .input-wrap input{flex:1;min-width:0;padding:13px 0;font-size:15px;color:#1a2744;
+                      border:none;background:transparent;outline:none}
+    .eye{flex-shrink:0;background:none;border:none;cursor:pointer;padding:8px;margin:0 -8px 0 0;line-height:1;color:#8a97aa}
+    .eye svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;display:block}
+    .eye svg[hidden]{display:none}
+    .field-err{font-size:12px;color:#EF4444;margin-top:6px}
+
+    /* ── requirements checklist ── */
+    .reqs{margin-top:12px;padding:12px 14px;background:#FBF7EA;border:1px solid #F3E4B0;
+          border-radius:10px;display:flex;flex-direction:column;gap:6px}
+    .req-row{display:flex;align-items:center;gap:8px}
+    .req-row svg{width:16px;height:16px;flex-shrink:0;color:#8a97aa}
+    .req-row.met svg{color:#22C55E}
+    .req-row span{font-size:13px;color:#8a97aa}
+    .req-row.met span{color:#22C55E}
+    .match-ok{display:flex;align-items:center;gap:6px;margin-top:8px}
+    .match-ok svg{width:16px;height:16px;color:#22C55E}
+    .match-ok span{font-size:13px;color:#22C55E}
+
     .err{background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;
          padding:10px 14px;font-size:13px;color:#B91C1C;margin-bottom:14px;text-align:left}
     .ok{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;
         padding:10px 14px;font-size:13px;color:#15803D;margin-bottom:14px;text-align:left}
 
     /* ── buttons ── */
-    .btn{display:block;width:100%;padding:15px;border-radius:13px;font-size:15px;
+    .btn{display:block;width:100%;padding:16px;border-radius:12px;font-size:16px;
          font-weight:700;text-decoration:none;border:none;cursor:pointer;text-align:center}
     .btn+.btn{margin-top:10px}
-    .btn-orange{background:#D4682A;color:#fff}
-    .btn-navy{background:#1E3A5F;color:#fff}
-    .btn-submit{background:#1E3A5F;color:#fff;margin-top:4px}
-    .btn-submit:disabled{opacity:.55;cursor:not-allowed}
-    .note{font-size:12px;color:#9CA3AF;margin-top:10px;line-height:1.5}
+    .btn-gold{background:#D4AF37;color:#1a2744}
+    .btn-navy{background:#1a2744;color:#fff}
+    .btn-submit{background:#c0cad8;color:#fff;margin-top:16px;transition:background .15s}
+    .btn-submit.enabled{background:#D4AF37;color:#1a2744;cursor:pointer}
+    .btn-submit:disabled{cursor:not-allowed}
+    .note{font-size:12px;color:#8a97aa;margin-top:10px;line-height:1.5}
   </style>
 </head>
 <body>
-<div class="card">
-  <div class="icon">🔑</div>
-  <h1>Reset Your Password</h1>
+<div class="screen">
+  <div class="topbar"><h1>Reset Password</h1></div>
+  <div class="content">
+  <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="#204b7e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+  <h2>Reset Your Password</h2>
   <p class="sub">This link expires in <strong>15 minutes</strong> and can only be used once.</p>
 
   <!-- ─── Mobile: open in app ─── -->
   <div class="mobile-section" id="mobileSection" style="display:none">
-    <a class="btn btn-orange" href="${prodLink}" id="openApp">Open LilyCrest App</a>
+    <a class="btn btn-gold" href="${prodLink}" id="openApp">Open LilyCrest App</a>
     <a class="btn btn-navy" href="${devLink}" style="margin-top:10px">Open Dev Build</a>
     <p class="note">On your phone? Tap above to set your password inside the app.</p>
   </div>
@@ -1067,22 +1165,41 @@ h1{color:#1E3A5F;font-size:20px;margin-bottom:8px}p{color:#6B7280;font-size:14px
   <!-- ─── Web form (works on all devices) ─── -->
   <div id="formSection">
     <div id="msg"></div>
-    <label class="form-label" for="pw">NEW PASSWORD</label>
-    <div class="input-wrap">
-      <input id="pw" type="password" placeholder="At least 8 characters" autocomplete="new-password">
-      <button class="eye" type="button" onclick="toggleEye('pw','eye1')" id="eye1" aria-label="Show password" title="Show password" aria-pressed="false"><svg class="eye-open" aria-hidden="true" hidden viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" aria-hidden="true" viewBox="0 0 24 24"><path d="m2 2 20 20"/><path d="M6.7 6.7C3.9 8.5 2 12 2 12s3.5 7 10 7c1.6 0 3-.4 4.2-1.1"/><path d="M10.7 5.1C11.1 5 11.5 5 12 5c6.5 0 10 7 10 7s-.8 1.6-2.3 3.3"/></svg></button>
+
+    <div class="field">
+      <label class="form-label" for="pw">New Password</label>
+      <div class="input-wrap" id="pwWrap">
+        <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v1"/></svg>
+        <input id="pw" type="password" placeholder="Enter new password" autocomplete="new-password">
+        <button class="eye" type="button" onclick="toggleEye('pw','eye1')" id="eye1" aria-label="Show password" title="Show password" aria-pressed="false"><svg class="eye-open" aria-hidden="true" hidden viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" aria-hidden="true" viewBox="0 0 24 24"><path d="m2 2 20 20"/><path d="M6.7 6.7C3.9 8.5 2 12 2 12s3.5 7 10 7c1.6 0 3-.4 4.2-1.1"/><path d="M10.7 5.1C11.1 5 11.5 5 12 5c6.5 0 10 7 10 7s-.8 1.6-2.3 3.3"/></svg></button>
+      </div>
+      <div class="reqs" id="reqs">
+        <div class="req-row" data-req="noSpace"><svg class="ring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg class="check" hidden viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.6-4.2-4.2 1.4-1.4 2.8 2.8 5.8-5.8 1.4 1.4-7.2 7.2Z"/></svg><span>No spaces</span></div>
+        <div class="req-row" data-req="length"><svg class="ring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg class="check" hidden viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.6-4.2-4.2 1.4-1.4 2.8 2.8 5.8-5.8 1.4 1.4-7.2 7.2Z"/></svg><span>At least 8 characters</span></div>
+        <div class="req-row" data-req="upper"><svg class="ring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg class="check" hidden viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.6-4.2-4.2 1.4-1.4 2.8 2.8 5.8-5.8 1.4 1.4-7.2 7.2Z"/></svg><span>One uppercase letter</span></div>
+        <div class="req-row" data-req="lower"><svg class="ring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg class="check" hidden viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.6-4.2-4.2 1.4-1.4 2.8 2.8 5.8-5.8 1.4 1.4-7.2 7.2Z"/></svg><span>One lowercase letter</span></div>
+        <div class="req-row" data-req="num"><svg class="ring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg class="check" hidden viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.6-4.2-4.2 1.4-1.4 2.8 2.8 5.8-5.8 1.4 1.4-7.2 7.2Z"/></svg><span>One number</span></div>
+        <div class="req-row" data-req="special"><svg class="ring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg class="check" hidden viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.6-4.2-4.2 1.4-1.4 2.8 2.8 5.8-5.8 1.4 1.4-7.2 7.2Z"/></svg><span>One special character (!@#$%^&amp;*...)</span></div>
+      </div>
     </div>
-    <label class="form-label" for="pw2">CONFIRM PASSWORD</label>
-    <div class="input-wrap">
-      <input id="pw2" type="password" placeholder="Repeat your password" autocomplete="new-password">
-      <button class="eye" type="button" onclick="toggleEye('pw2','eye2')" id="eye2" aria-label="Show password" title="Show password" aria-pressed="false"><svg class="eye-open" aria-hidden="true" hidden viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" aria-hidden="true" viewBox="0 0 24 24"><path d="m2 2 20 20"/><path d="M6.7 6.7C3.9 8.5 2 12 2 12s3.5 7 10 7c1.6 0 3-.4 4.2-1.1"/><path d="M10.7 5.1C11.1 5 11.5 5 12 5c6.5 0 10 7 10 7s-.8 1.6-2.3 3.3"/></svg></button>
+
+    <div class="field">
+      <label class="form-label" for="pw2">Confirm New Password</label>
+      <div class="input-wrap" id="pw2Wrap">
+        <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 12 2 2 4-4"/><path d="M12 3a9 9 0 0 0-9 9c0 6 9 9 9 9s9-3 9-9a9 9 0 0 0-9-9Z"/></svg>
+        <input id="pw2" type="password" placeholder="Repeat your password" autocomplete="new-password">
+        <button class="eye" type="button" onclick="toggleEye('pw2','eye2')" id="eye2" aria-label="Show password" title="Show password" aria-pressed="false"><svg class="eye-open" aria-hidden="true" hidden viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" aria-hidden="true" viewBox="0 0 24 24"><path d="m2 2 20 20"/><path d="M6.7 6.7C3.9 8.5 2 12 2 12s3.5 7 10 7c1.6 0 3-.4 4.2-1.1"/><path d="M10.7 5.1C11.1 5 11.5 5 12 5c6.5 0 10 7 10 7s-.8 1.6-2.3 3.3"/></svg></button>
+      </div>
+      <div class="match-ok" id="matchOk" hidden><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.6-4.2-4.2 1.4-1.4 2.8 2.8 5.8-5.8 1.4 1.4-7.2 7.2Z"/></svg><span>Passwords match</span></div>
     </div>
-    <button class="btn btn-submit" id="submitBtn" onclick="doReset()">Reset Password</button>
+
+    <button class="btn btn-submit" id="submitBtn" onclick="doReset()" disabled>Reset Password</button>
   </div>
 
   <div id="successSection" style="display:none">
     <div class="ok" style="text-align:center;font-size:15px">✅ Password reset successfully!<br>You can now log in with your new password.</div>
     <p style="font-size:13px;color:#6B7280;margin-top:12px">You may close this tab.</p>
+  </div>
   </div>
 </div>
 
@@ -1109,22 +1226,76 @@ h1{color:#1E3A5F;font-size:20px;margin-bottom:8px}p{color:#6B7280;font-size:14px
     btn.setAttribute('aria-pressed', visible ? 'true' : 'false');
   }
 
+  // Mirrors frontend/src/utils/passwordValidation.js's getStrongPasswordChecks
+  // exactly, so a password accepted here is accepted by the mobile app too.
+  var SPECIAL_RE = /[!@#$%^&*()\-_=+\[\]{};:'",.<>?/\\|\`~]/;
+  function getChecks(pw) {
+    return {
+      noSpace: !/\s/.test(pw),
+      length: pw.length >= 8,
+      upper: /[A-Z]/.test(pw),
+      lower: /[a-z]/.test(pw),
+      num: /[0-9]/.test(pw),
+      special: SPECIAL_RE.test(pw),
+    };
+  }
+
+  function allChecksPass(checks) {
+    return checks.noSpace && checks.length && checks.upper && checks.lower && checks.num && checks.special;
+  }
+
+  function updateReqs() {
+    var pw = document.getElementById('pw').value;
+    var checks = getChecks(pw);
+    Object.keys(checks).forEach(function(key) {
+      var row = document.querySelector('.req-row[data-req="' + key + '"]');
+      var met = checks[key];
+      row.classList.toggle('met', met);
+      row.querySelector('.ring').hidden = met;
+      row.querySelector('.check').hidden = !met;
+    });
+    return allChecksPass(checks);
+  }
+
+  function updateMatch(pwValid) {
+    var pw = document.getElementById('pw').value;
+    var pw2 = document.getElementById('pw2').value;
+    var wrap = document.getElementById('pw2Wrap');
+    var matchOk = document.getElementById('matchOk');
+    var matches = Boolean(pw2) && pw === pw2;
+    wrap.classList.toggle('has-error', Boolean(pw2) && !matches);
+    matchOk.hidden = !matches;
+    return matches;
+  }
+
+  function refreshForm() {
+    var pwValid = updateReqs();
+    var matches = updateMatch(pwValid);
+    var btn = document.getElementById('submitBtn');
+    var canSubmit = pwValid && matches;
+    btn.disabled = !canSubmit;
+    btn.classList.toggle('enabled', canSubmit);
+  }
+
+  document.getElementById('pw').addEventListener('input', refreshForm);
+  document.getElementById('pw2').addEventListener('input', refreshForm);
+  refreshForm();
+
   async function doReset() {
     var pw  = document.getElementById('pw').value;
     var pw2 = document.getElementById('pw2').value;
     var msg = document.getElementById('msg');
     msg.innerHTML = '';
 
-    if (!pw || !pw2) { return showErr('Please fill in both fields.'); }
-    if (pw !== pw2)  { return showErr('Passwords do not match.'); }
-    if (pw.length < 8) { return showErr('Password must be at least 8 characters.'); }
+    if (!allChecksPass(getChecks(pw))) { return showErr('Please meet all password requirements.'); }
+    if (pw !== pw2) { return showErr('Passwords do not match.'); }
 
     var btn = document.getElementById('submitBtn');
     btn.disabled = true;
     btn.textContent = 'Resetting…';
 
     try {
-      var resp = await fetch('/api/auth/reset-password', {
+      var resp = await fetch('/api/m/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: TOKEN, newPassword: pw })
@@ -1167,13 +1338,11 @@ async function resetPassword(req, res) {
       return res.status(400).json({ detail: passwordErrors[0] });
     }
 
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+    const hashedToken = hashResetToken(token);
     const db = getDb();
-    const record = await db.collection('password_reset_tokens').findOne({
-      hashedToken,
-      used: false,
-      expiresAt: { $gt: new Date() },
-    });
+    const record = await db.collection('password_reset_tokens').findOne(
+      resetTokenEligibilityFilter(hashedToken),
+    );
 
     if (!record) {
       return res.status(400).json({ detail: 'This reset link is invalid or has expired. Please request a new one.' });
@@ -1214,6 +1383,8 @@ module.exports = {
   forgotPassword,
   getResetPasswordPage,
   resetPassword,
+  hashResetToken,
+  resetTokenEligibilityFilter,
   __test: {
     hashOtp,
     otpMatches,
@@ -1221,5 +1392,6 @@ module.exports = {
     resendOtp,
     setDependencies(overrides) { Object.assign(authTestDependencies, overrides); },
     createSession,
+    validateNewPassword,
   },
 };

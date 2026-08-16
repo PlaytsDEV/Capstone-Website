@@ -21,6 +21,7 @@ import { showNotification } from "../../../shared/utils/notification";
 import { useInquiries } from "../../../shared/hooks/queries/useInquiries";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import Pagination from "../../../shared/components/Pagination";
 import InquiryDetailsModal from "../components/InquiryDetailsModal";
 import { ExportButtons } from "./analyticsTabShared";
@@ -75,6 +76,7 @@ function InquiriesPage({ isEmbedded = false }) {
   const [statusFilter, setStatusFilter] = useState("");
   // Branch admins are scoped to their branch — owners can filter across all branches
   const [branchFilter, setBranchFilter] = useState(isOwner ? "" : (user?.branch || ""));
+  const activeBranchDisplay = isOwner ? branchFilter : null;
   const [sortBy, setSortBy] = useState("recent");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -129,6 +131,10 @@ function InquiriesPage({ isEmbedded = false }) {
       navigate("/admin/dashboard");
     }
   };
+
+  if (!isEmbedded && loading && (!inquiries || inquiries.length === 0)) {
+    return <AdminTablePageSkeleton />;
+  }
 
   return (
     <PageShell>
@@ -245,12 +251,12 @@ function InquiriesPage({ isEmbedded = false }) {
             </div>
           </div>
 
-          {(branchFilter || statusFilter) && (
+          {(activeBranchDisplay || statusFilter || searchTerm) && (
             <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-[var(--border-light)] text-xs">
               <span className="text-muted-foreground font-medium">Active Filters:</span>
-              {branchFilter && (
+              {activeBranchDisplay && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                  Branch: {branchFilter === "gil-puyat" ? "Gil Puyat" : branchFilter === "guadalupe" ? "Guadalupe" : branchFilter}
+                  Branch: {activeBranchDisplay === "gil-puyat" ? "Gil Puyat" : activeBranchDisplay === "guadalupe" ? "Guadalupe" : activeBranchDisplay}
                   <button
                     type="button"
                     onClick={() => {
@@ -280,11 +286,30 @@ function InquiriesPage({ isEmbedded = false }) {
                   </button>
                 </span>
               )}
+              {searchTerm && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                  Search: "{searchTerm}"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm("");
+                      setPage(1);
+                    }}
+                    className="hover:opacity-75 focus:outline-none"
+                    aria-label="Clear search query"
+                  >
+                    <XIcon className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => {
-                  setBranchFilter("");
+                  if (isOwner) {
+                    setBranchFilter("");
+                  }
                   setStatusFilter("");
+                  setSearchTerm("");
                   setPage(1);
                 }}
                 className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 ml-1 cursor-pointer"

@@ -316,7 +316,9 @@ export async function sendDraftUtilityBills({ bills, period, result }) {
     bill.sentAt = sentAt;
     bill.status = "pending";
     bill.publicationState = "published"; // Phase 3: mark as published (tenant-visible)
-    syncBillAmounts(bill);
+    // releasing: true — this is the actual draft->published transition for
+    // this bill (see the releasedAt guard in services/billing/billingPolicy.js).
+    syncBillAmounts(bill, { releasing: true });
     await bill.save();
 
     if (billingContext?.reservation && reservationCreditApplied > 0) {
@@ -470,7 +472,11 @@ export async function sendUtilityPeriodBills({
       bill.issuedAt = issuedAt;
       bill.dueDate = dueDate;
       bill.paymongoSessionId = null;
-      syncBillAmounts(bill);
+      // releasing: true — this per-utility-type send is what actually makes
+      // this bill's charge tenant-visible; see the releasedAt guard in
+      // services/billing/billingPolicy.js. A no-op if the bill already has
+      // releasedAt (e.g. a rent+utility bill first released at creation).
+      syncBillAmounts(bill, { releasing: true });
       await bill.save();
 
       const tenant =
@@ -515,6 +521,7 @@ export async function sendUtilityPeriodBills({
               utilityAmount,
               visibleTotalAmount,
               dueDateLabel,
+              { billId: bill._id },
             )
           : Promise.reject(new Error("No tenant user assigned to bill")),
       ]);

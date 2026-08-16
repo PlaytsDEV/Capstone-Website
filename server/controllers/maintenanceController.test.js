@@ -5,6 +5,7 @@ const maintenanceFindOne = jest.fn();
 const maintenanceSave = jest.fn();
 const userFind = jest.fn();
 const userFindOne = jest.fn();
+const reservationFind = jest.fn();
 const reservationFindOne = jest.fn();
 const roomFindById = jest.fn();
 const stayFindOne = jest.fn();
@@ -41,6 +42,7 @@ class MockMaintenanceRequest {
 await jest.unstable_mockModule("../models/index.js", () => ({
   MaintenanceRequest: MockMaintenanceRequest,
   Reservation: {
+    find: reservationFind,
     findOne: reservationFindOne,
   },
   Room: {
@@ -121,16 +123,15 @@ const buildLeanQuery = (result) => ({
   lean: jest.fn().mockResolvedValue(result),
 });
 
-const buildListQuery = (result) => ({
-  select: jest.fn(() => ({
-    lean: jest.fn().mockResolvedValue(result),
-  })),
-  sort: jest.fn(() => ({
-    limit: jest.fn(() => ({
-      lean: jest.fn().mockResolvedValue(result),
-    })),
-  })),
-});
+const buildListQuery = (result) => {
+  const query = {};
+  query.populate = jest.fn(() => query);
+  query.select = jest.fn(() => query);
+  query.sort = jest.fn(() => query);
+  query.limit = jest.fn(() => query);
+  query.lean = jest.fn().mockResolvedValue(result);
+  return query;
+};
 
 const buildSortedLeanQuery = (result) => ({
   sort: jest.fn(() => ({
@@ -287,6 +288,8 @@ describe("maintenanceController", () => {
     maintenanceSave.mockResolvedValue(undefined);
     userFind.mockReset();
     userFindOne.mockReset();
+    reservationFind.mockReset();
+    reservationFind.mockReturnValue(buildListQuery([]));
     reservationFindOne.mockReset();
     roomFindById.mockReset();
     stayFindOne.mockReset();

@@ -3,14 +3,17 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock3,
+  FileText,
   RefreshCcw,
   UserRound,
+  Wrench,
   XCircle,
 } from "lucide-react";
 import {
   BRANCH_OPTIONS,
   BRANCH_DISPLAY_NAMES,
 } from "../../../../shared/utils/constants";
+import { exportReportPdf } from "../../../../shared/utils/reportPdf";
 import {
   formatMaintenanceStatus,
   getMaintenanceTypeMeta,
@@ -95,6 +98,9 @@ export const REPORT_EXPORT_COLUMNS = [
 ];
 export const MAINTENANCE_TABS = [
   { key: "requests", label: "Requests", icon: ClipboardList },
+  { key: "service_providers", label: "Service Providers", icon: Wrench },
+  { key: "analytics", label: "Analytics & SLA", icon: Clock3 },
+  { key: "branch_reports", label: "Branch Reports", icon: FileText },
 ];
 export const ASSIGNMENT_FILTER_OPTIONS = [
   { key: "all", label: "All assignments" },
@@ -127,12 +133,21 @@ export const TEXT_MIN_LENGTHS = {
   serviceType: 3,
 };
 
+export const MAX_MAINTENANCE_ITEM_COST = 500000;
+
 export const sanitizeDigitsOnly = (value) => String(value || "").replace(/\D/g, "");
-export const sanitizeAmountInput = (value) => {
+export const sanitizeAmountInput = (value, maxAmount = MAX_MAINTENANCE_ITEM_COST) => {
+  if (value === "" || value === null || value === undefined) return "";
   const cleaned = String(value || "").replace(/[^\d.]/g, "");
   const [whole = "", ...decimalParts] = cleaned.split(".");
+  const boundedInt = whole.slice(0, 6);
   const decimal = decimalParts.join("").slice(0, 2);
-  return decimalParts.length ? `${whole}.${decimal}` : whole;
+  const result = decimalParts.length ? `${boundedInt}.${decimal}` : boundedInt;
+  const numVal = Number(result);
+  if (!Number.isNaN(numVal) && numVal > maxAmount) {
+    return String(maxAmount);
+  }
+  return result;
 };
 
 export const formatPeso = (min, max = null) => {
@@ -266,52 +281,31 @@ export const SUMMARY_STATUSES = [
 export const MANAGEMENT_SUMMARY_CARDS = [
   {
     key: "open_queue",
-    label: "Open Queue",
+    label: "Active Queue",
     icon: ClipboardList,
-    color: "orange",
-    description: "Pending and viewed requests",
+    color: "blue",
+    description: "Pending & viewed",
   },
   {
     key: "in_progress",
     label: "In Progress",
     icon: RefreshCcw,
-    color: "blue",
-    description: "Requests actively handled",
+    color: "purple",
+    description: "Assigned & servicing",
   },
   {
-    key: "overdue",
-    label: "SLA Overdue",
+    key: "needs_attention",
+    label: "Needs Attention",
     icon: AlertTriangle,
     color: "red",
-    description: "SLA delayed and not terminal",
+    description: "Overdue SLA or urgent",
   },
   {
-    key: "due_soon",
-    label: "SLA Due Soon",
-    icon: Clock3,
-    color: "purple",
-    description: "SLA priority and non-terminal",
-  },
-  {
-    key: "completed_today",
-    label: "Resolved in Period",
+    key: "completed",
+    label: "Resolved",
     icon: CheckCircle2,
     color: "green",
-    description: "Resolved or completed in date range",
-  },
-  {
-    key: "unassigned_high",
-    label: "Unassigned High",
-    icon: UserRound,
-    color: "orange",
-    description: "High urgency with no assignee",
-  },
-  {
-    key: "exceptions",
-    label: "Exceptions",
-    icon: XCircle,
-    color: "red",
-    description: "Rejected or cancelled requests",
+    description: "Completed in period",
   },
 ];
 
@@ -369,21 +363,19 @@ export const matchesSummaryCard = ({ request, cardKey, dateFrom, dateTo }) => {
     case "open_queue":
       return request.status === "pending" || request.status === "viewed";
     case "in_progress":
-      return request.status === "in_progress";
-    case "overdue":
-      return request.slaState?.label === "delayed" && isNonTerminal(request.status);
-    case "due_soon":
-      return request.slaState?.label === "priority" && isNonTerminal(request.status);
-    case "completed_today":
-      return isCompletedInWindow({ request, dateFrom, dateTo });
-    case "unassigned_high":
+      return request.status === "in_progress" || request.status === "approved" || request.status === "service_provider_assigned";
+    case "needs_attention": {
+      const rawSla = String(request.slaState?.label || request.slaState || "").toLowerCase();
+      const isOverdue = rawSla.includes("delay") || rawSla.includes("overdue") || rawSla.includes("breach") || rawSla.includes("priority");
+      const isUrgentUnassigned = (request.urgency === "high" || request.urgency === "emergency") && !getAssignedProviderName(request);
+      return (isOverdue || isUrgentUnassigned) && isNonTerminal(request.status);
+    }
+    case "completed":
       return (
-        request.urgency === "high" &&
-        !getAssignedProviderName(request) &&
-        isNonTerminal(request.status)
+        request.status === "resolved" ||
+        request.status === "completed" ||
+        isCompletedInWindow({ request, dateFrom, dateTo })
       );
-    case "exceptions":
-      return request.status === "rejected" || request.status === "cancelled";
     default:
       return true;
   }
@@ -1231,3 +1223,83 @@ export const exportCsvFile = (rows, filename = "download") => {
   document.body.removeChild(link);
 };
 
+export const exportMaintenanceRequestsPdf = async ({
+  requests = [],
+  summaryItems = [],
+  branchFilter = "all",
+  statusFilter = "all",
+  searchQuery = "",
+}) => {
+  const d = new Date();
+  const dateSlug = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const filename = `Lilycrest_Maintenance_Requests_${dateSlug}.pdf`;
+
+  const kpis = summaryItems.map((item) => ({
+    label: item.label.toUpperCase(),
+    value: String(item.value || 0),
+    format: "number",
+  }));
+
+  const tableRows = requests.map((req) => ({
+    ID: `#${(req.request_id || req.requestId || "").slice(-6).toUpperCase()}`,
+    Tenant: req.tenant?.full_name || req.tenantName || "Deleted Account",
+    Branch: req.branch || "Unassigned",
+    Type: getMaintenanceTypeMeta(req.request_type || req.requestType).label,
+    Urgency: getMaintenanceUrgencyMeta(req.urgency).label,
+    Status: formatMaintenanceStatus(req.status),
+    Submitted: fmtDate(req.created_at || req.createdAt),
+  }));
+
+  const filterDesc = [
+    `Branch: ${branchFilter === "all" ? "All Branches" : branchFilter}`,
+    `Status: ${statusFilter === "all" ? "All Statuses" : formatMaintenanceStatus(statusFilter)}`,
+    searchQuery ? `Search: "${searchQuery}"` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
+  await exportReportPdf({
+    title: "Maintenance Requests Report",
+    subtitle: `Filter Context: ${filterDesc}`,
+    filename,
+    period: `Generated on ${d.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`,
+    reportType: "Maintenance",
+    kpis: kpis.slice(0, 6),
+    sections: [
+      {
+        type: "table",
+        title: "Filtered Maintenance Requests List",
+        description: `Export containing ${requests.length} maintenance records matching the active filter criteria.`,
+        headers: ["ID", "Tenant", "Branch", "Type", "Urgency", "Status", "Submitted"],
+        colWidths: [22, 38, 26, 28, 22, 22, 16],
+        rows: tableRows,
+      },
+    ],
+  });
+};
+
+export const formatContractorDispatchTicket = (request) => {
+  if (!request) return "";
+  const typeMeta = getMaintenanceTypeMeta(request.request_type || request.requestType);
+  const urgencyMeta = getMaintenanceUrgencyMeta(request.urgency);
+  const branchName = BRANCH_DISPLAY_NAMES[request.branch] || request.branch || "Branch";
+  const roomName = request.room?.name || request.roomId?.name || "Assigned Unit";
+  const tenantName = request.tenant?.full_name || request.tenant?.name || "Resident";
+  const tenantPhone = request.tenant?.phone || request.tenant?.contact || "N/A";
+  const dateStr = fmtDateTime(request.created_at || new Date());
+
+  return `[LILYCREST MAINTENANCE DISPATCH]
+Ticket ID: #${request.request_id || request.id}
+Branch: ${branchName}
+Unit / Room: ${roomName}
+Category: ${typeMeta.label}
+Priority: ${urgencyMeta.label}
+Date Logged: ${dateStr}
+
+Resident: ${tenantName} (Contact: ${tenantPhone})
+Issue Description:
+"${request.description || "N/A"}"
+
+Special Notes / Instructions:
+${request.notes || request.assignedProviderNotes || "Please coordinate with branch management upon arrival."}`;
+};

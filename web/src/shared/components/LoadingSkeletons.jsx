@@ -193,3 +193,101 @@ export function DisputeModalSkeleton() {
     </div>
   );
 }
+
+/* ─── Announcement list skeleton ─────────────────────────────────────── */
+export function AnnouncementListSkeleton({ count = 3, className = "", style }) {
+  return (
+    <div
+      className={`sk-announcements ${className}`}
+      style={style}
+      aria-busy="true"
+      aria-label="Loading announcements"
+    >
+      {/* Filter chips placeholder row */}
+      <div className="sk-announcements__filters">
+        {["52px", "68px", "76px", "98px", "64px", "58px"].map((width, i) => (
+          <Shimmer
+            key={i}
+            className="sk-announcements__chip"
+            style={{ width, height: "30px", borderRadius: "20px" }}
+          />
+        ))}
+      </div>
+
+      {/* Cards list */}
+      <div className="sk-announcements__list">
+        {Array.from({ length: count }).map((_, i) => (
+          <div key={i} className="sk-announcement-card">
+            {/* Card top row */}
+            <div className="sk-announcement-card__top">
+              <div className="sk-announcement-card__title-wrap">
+                <Shimmer
+                  style={{
+                    width: i === 0 ? "55%" : i === 1 ? "42%" : "64%",
+                    height: "15px",
+                    borderRadius: "4px",
+                  }}
+                />
+              </div>
+              <div className="sk-announcement-card__meta">
+                <Shimmer
+                  style={{
+                    width: "82px",
+                    height: "22px",
+                    borderRadius: "20px",
+                  }}
+                />
+                <Shimmer
+                  style={{
+                    width: "74px",
+                    height: "12px",
+                    borderRadius: "4px",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Card body text lines */}
+            <div className="sk-announcement-card__body">
+              <Shimmer
+                style={{
+                  width: "100%",
+                  height: "11px",
+                  borderRadius: "4px",
+                }}
+              />
+              <Shimmer
+                style={{
+                  width: i % 2 === 0 ? "88%" : "94%",
+                  height: "11px",
+                  borderRadius: "4px",
+                }}
+              />
+              <Shimmer
+                style={{
+                  width: i % 2 === 0 ? "46%" : "68%",
+                  height: "11px",
+                  borderRadius: "4px",
+                }}
+              />
+            </div>
+
+            {/* Optional action row */}
+            {i === 0 && (
+              <div className="sk-announcement-card__action">
+                <Shimmer
+                  style={{
+                    width: "115px",
+                    height: "28px",
+                    borderRadius: "6px",
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+

@@ -64,9 +64,12 @@ import backupRoutes from "./routes/backupRoutes.js";
 import serviceProviderRoutes from "./routes/serviceProviderRoutes.js";
 import contractRoutes from "./routes/contractRoutes.js";
 import mobileContractRoutes from "./routes/mobileContractRoutes.js";
-import mobileSurveyRoutes from "./routes/mobileSurveyRoutes.js";
-import surveyRoutes from "./routes/surveyRoutes.js";
-import tenantSurveyRoutes from "./routes/tenantSurveyRoutes.js";
+import mobileBillingRoutes from "./routes/mobileBillingRoutes.js";
+import mobilePaymongoRoutes from "./routes/mobilePaymongoRoutes.js";
+import mobileDocumentRoutes from "./routes/mobileDocumentRoutes.js";
+import mobileAuthRoutes from "./routes/mobileAuthRoutes.js";
+import mobileNotificationRoutes from "./routes/mobileNotificationRoutes.js";
+import mobileUploadRoutes from "./routes/mobileUploadRoutes.js";
 import { initSocket } from "./utils/socket.js";
 import mobileRoutes from "./mobile/mobileRoutes.mjs";
 
@@ -274,7 +277,30 @@ app.use("/api/announcements", announcementRoutes);
 // by the web Firebase-token middleware. Web/admin maintenance routes still
 // fall through to the contract router below.
 app.use("/api/m", mobileContractRoutes);
-app.use("/api/m", mobileSurveyRoutes);
+// Billing/PayMongo bridge to canonical Bill data — must be mounted before
+// mobileRoutes (the vendored mobile backend copy) so /api/m/billing/* and
+// /api/m/paymongo/checkout* are answered from the authoritative Bill model
+// instead of the vendored legacy-collection billing controller.
+app.use("/api/m", mobileBillingRoutes);
+app.use("/api/m", mobilePaymongoRoutes);
+// Document bridge to canonical/shared document storage — must be mounted
+// before mobileRoutes (the vendored mobile backend copy) so
+// /api/m/documents/* and /api/m/users/documents/* are answered from real
+// content and the shared uploaded_documents store instead of the vendored
+// fabricated-PDF controller and inline-base64-only document store.
+app.use("/api/m", mobileDocumentRoutes);
+// Session-teardown bridge — must be mounted before mobileRoutes (the
+// vendored mobile backend copy, which never defined this path) so
+// POST /api/m/auth/session-teardown is answered instead of 404ing. Every
+// other /api/m/auth/* path is untouched and still falls through below.
+app.use("/api/m", mobileAuthRoutes);
+// Notification + Firebase-storage-upload bridges — Phase 4 cutover audit
+// found neither path was defined anywhere under /api/m (bridge or vendored),
+// so both 404'd against this backend despite being ACTIVE mobile features.
+// Must be mounted before mobileRoutes for the same reason as every bridge
+// above.
+app.use("/api/m", mobileNotificationRoutes);
+app.use("/api/m", mobileUploadRoutes);
 app.use("/api/m", mobileRoutes);
 app.use("/api/m/maintenance", maintenanceRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
@@ -287,8 +313,6 @@ app.use("/api/utilities", utilityBillingRoutes);
 app.use("/api/financial", financialRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/analytics", analyticsRoutes);
-app.use("/api/surveys", surveyRoutes);
-app.use("/api/tenant/surveys", tenantSurveyRoutes);
 app.use("/api/branches", branchSummaryRoutes);
 app.use("/api/backups", backupRoutes);
 

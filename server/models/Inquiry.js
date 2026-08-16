@@ -160,6 +160,12 @@ const inquirySchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    branch: {
+      type: String,
+      enum: [...INQUIRY_BRANCHES, null],
+      default: null,
+      index: true,
+    },
     preferredRoomType: {
       type: String,
       enum: [...INQUIRY_ROOM_TYPES, null],
@@ -395,6 +401,14 @@ inquirySchema.index({ isArchived: 1, viewingStatus: 1 });
 // ============================================================================
 
 inquirySchema.pre("save", function computeLeaseType(next) {
+  // 0. Sync branch and preferredBranch
+  if (!this.preferredBranch && this.branch) {
+    this.preferredBranch = this.branch;
+  }
+  if (!this.branch && this.preferredBranch) {
+    this.branch = this.preferredBranch;
+  }
+
   // 1. Compute derivedLeaseType from expectedLengthOfStay
   if (this.expectedLengthOfStay !== null && this.expectedLengthOfStay !== undefined) {
     this.derivedLeaseType =

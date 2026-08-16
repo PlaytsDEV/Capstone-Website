@@ -15,12 +15,13 @@ import {
   Settings,
   User,
   Wrench,
-  MessageSquareText,
   X,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../hooks/useAuth";
 import { useAppNavigation } from "../hooks/useAppNavigation";
 import { useUnreadCount } from "../hooks/queries/useNotifications";
+import { prefetchRoute } from "../lib/routePrefetch";
 import useBodyScrollLock from "../hooks/useBodyScrollLock";
 import { USER_ROLES } from "../utils/constants";
 import ConfirmModal from "./ConfirmModal";
@@ -54,12 +55,6 @@ const buildNavSections = (isTenant) => [
               label: "Announcements",
               icon: Megaphone,
               path: "/applicant/announcements",
-            },
-            {
-              id: "surveys",
-              label: "Feedback & Surveys",
-              icon: MessageSquareText,
-              path: "/applicant/surveys",
             },
           ],
         },
@@ -145,6 +140,7 @@ const buildNavSections = (isTenant) => [
 
 export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
   const { user, logout } = useAuth();
+  const queryClient = useQueryClient();
   const appNavigate = useAppNavigation();
   const location = useLocation();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -234,6 +230,8 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
         type="button"
         className="sidebar-identity"
         onClick={() => handleItemClick({ path: "/applicant/profile", tab: "personal" })}
+        onMouseEnter={() => prefetchRoute("/applicant/profile", queryClient, user)}
+        onFocus={() => prefetchRoute("/applicant/profile", queryClient, user)}
         title="View My Profile"
         aria-label="View My Profile"
       >
@@ -251,7 +249,14 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
       </button>
 
       <div className="sidebar-cta-wrap">
-        <button type="button" className="sidebar-cta" onClick={() => handleItemClick({ path: "/applicant/check-availability" })} title="Browse Rooms">
+        <button
+          type="button"
+          className="sidebar-cta"
+          onClick={() => handleItemClick({ path: "/applicant/check-availability" })}
+          onMouseEnter={() => prefetchRoute("/applicant/check-availability", queryClient, user)}
+          onFocus={() => prefetchRoute("/applicant/check-availability", queryClient, user)}
+          title="Browse Rooms"
+        >
           <Search size={15} style={{ flexShrink: 0 }} />
           <span>Browse Rooms</span>
         </button>
@@ -267,7 +272,15 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
                 const Icon = item.icon;
                 const badge = item.id === "notifications" && sidebarUnreadCount > 0 ? sidebarUnreadCount : null;
                 return (
-                  <button key={item.id} type="button" onClick={() => handleItemClick(item)} title={isCollapsed && !isMobile ? item.label : undefined} className={`sidebar-nav-item${active ? " active" : ""}`}>
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleItemClick(item)}
+                    onMouseEnter={() => prefetchRoute(item.path, queryClient, user)}
+                    onFocus={() => prefetchRoute(item.path, queryClient, user)}
+                    title={isCollapsed && !isMobile ? item.label : undefined}
+                    className={`sidebar-nav-item${active ? " active" : ""}`}
+                  >
                     <Icon size={17} className="sidebar-nav-icon" />
                     <span className="sidebar-nav-label">{item.label}</span>
                     {badge && (

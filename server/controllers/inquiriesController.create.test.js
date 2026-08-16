@@ -25,6 +25,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
 
 await jest.unstable_mockModule("../services/notifications/notificationService.js", () => ({
   createNotification: jest.fn().mockResolvedValue(true),
+  notifyBranchAdmins: jest.fn().mockResolvedValue([]),
 }));
 
 const { createInquiry } = await import("./inquiriesController.js");

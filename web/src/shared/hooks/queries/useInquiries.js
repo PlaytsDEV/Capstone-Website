@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import { inquiryApi } from "../../api/apiClient";
 import { queryKeys } from "../../lib/queryKeys";
 
@@ -7,7 +12,10 @@ export function useInquiries(params, options = {}) {
   return useQuery({
     queryKey: queryKeys.inquiries.all(params),
     queryFn: () => inquiryApi.getAll(params),
-    refetchInterval: 8000,
+    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
+    placeholderData: keepPreviousData,
+    refetchOnWindowFocus: false,
     ...options,
   });
 }
@@ -17,6 +25,8 @@ export function useInquiryStats(options = {}) {
   return useQuery({
     queryKey: queryKeys.inquiries.stats,
     queryFn: () => inquiryApi.getStats(),
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
     ...options,
   });
 }

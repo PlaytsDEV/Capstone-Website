@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { NavLink } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
 import { usePermissions } from "../../../shared/hooks/usePermissions";
+import { prefetchRoute } from "../../../shared/lib/routePrefetch";
 import LilycrestLogo from "../../../shared/components/LilycrestLogo";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { showNotification } from "../../../shared/utils/notification";
@@ -25,6 +27,7 @@ export default function AdminSidebar({
   onToggleCollapse,
 }) {
   const { user, logout } = useAuth();
+  const queryClient = useQueryClient();
   const appNavigate = useAppNavigation();
   const { can } = usePermissions();
   const isOwner = user?.role === "owner";
@@ -169,9 +172,13 @@ export default function AdminSidebar({
                         title={collapsed ? item.text : undefined}
                         aria-label={item.text}
                         onClick={onClose}
-                        onMouseEnter={() =>
-                          collapsed && setHoveredItem(item.to)
-                        }
+                        onMouseEnter={() => {
+                          if (collapsed) setHoveredItem(item.to);
+                          prefetchRoute(item.to, queryClient, user);
+                        }}
+                        onFocus={() => {
+                          prefetchRoute(item.to, queryClient, user);
+                        }}
                         onMouseLeave={() => setHoveredItem(null)}
                       >
                         {({ isActive }) => (

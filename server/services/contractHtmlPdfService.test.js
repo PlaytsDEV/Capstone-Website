@@ -37,7 +37,7 @@ const fixture = (overrides = {}) => ({
 describe("flow-based Contract HTML", () => {
   test("uses exact long-bond margins and the full printable width", () => {
     const html = buildContractHtml(fixture());
-    expect(html).toContain("@page{size:8.5in 13in;margin:.30in .35in}");
+    expect(html).toContain("@page{size:8.5in 13in;margin:.25in .35in}");
     expect(html).toContain(".contract-page{width:100%;max-width:none;margin:0;padding:0");
   });
 
@@ -47,6 +47,27 @@ describe("flow-based Contract HTML", () => {
     }));
     expect(html).toContain("QUADRUPLE SHARING");
     expect(html).not.toContain("undefined");
+  });
+
+  test("renders private room amenities with private toilet & bath and kitchenette", () => {
+    const html = buildContractHtml(fixture({
+      template: { roomType: "private", leaseType: "short-term" },
+      fields: { leaseDurationNumber: 3, leaseDurationWords: "Three" },
+    }));
+    expect(html).toContain("PRIVATE ROOM — SHORT TERM LEASE");
+    expect(html).toContain("lease of the private room shall run for a period");
+    expect(html).toContain("room’s own private toilet and bath and kitchenette");
+  });
+
+  test("renders sharing room amenities with common floor facilities", () => {
+    const html = buildContractHtml(fixture({
+      template: { roomType: "double-sharing", leaseType: "long-term" },
+      fields: { leaseDurationNumber: 6, leaseDurationWords: "Six" },
+    }));
+    expect(html).toContain("DOUBLE SHARING — LONG TERM LEASE");
+    expect(html).toContain("lease of the bed space shall run for a period");
+    expect(html).toContain("common facilities provided on the same floor of the unit");
+    expect(html).toContain("not less than six (6) months");
   });
 
   test("rejects a three-month lease paired with the long-term template", () => {

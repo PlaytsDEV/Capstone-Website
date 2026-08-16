@@ -38,6 +38,15 @@ export const ADMIN_NOTIFICATION_TYPES = new Set([
   "announcement",
   "account_suspended",
   "account_reactivated",
+  "inquiry_new",
+  "maintenance_new",
+  "payment_proof_submitted",
+  "application_submitted",
+  "contract_signed",
+  "contract_prepared",
+  "contract_incomplete",
+  "contract_error",
+  "visit_requested",
 ]);
 
 const APPLICANT_GENERAL_TITLES = new Set([

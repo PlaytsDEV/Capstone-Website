@@ -368,6 +368,18 @@ roomSchema.methods.getAvailableBeds = function () {
  * @param {number} lockMinutes - Lock duration in minutes (default 10)
  * @returns {boolean} - true if successful
  */
+/**
+ * @deprecated FCFS Model — Reservation-driven bed locking is no longer used.
+ * Beds are now only locked when a tenant submits payment proof (payment_pending).
+ * This is now handled via paymentExpiresAt timer + getDisplayStatusForReservation.
+ * Method kept for unit test compatibility and maintenance use only.
+ *
+ * Lock a bed for a specific user
+ * @param {string} bedId - The bed ID
+ * @param {ObjectId} userId - User to lock for
+ * @param {number} lockMinutes - Lock duration (default 10)
+ * @returns {boolean} - true if successful
+ */
 roomSchema.methods.lockBed = function (bedId, userId, lockMinutes = 10) {
   const bed = this.beds.find((b) => b.id === bedId);
   if (!bed || bed.status !== "available") return false;
@@ -378,6 +390,7 @@ roomSchema.methods.lockBed = function (bedId, userId, lockMinutes = 10) {
 };
 
 /**
+ * @deprecated FCFS Model — Use paymentExpiresAt timer instead.
  * Extend an existing bed lock for a user (called during active draft autosaves)
  * @param {string} bedId - The bed ID
  * @param {ObjectId} userId - User holding the lock
@@ -404,6 +417,7 @@ roomSchema.methods.extendBedLock = function (bedId, userId, extensionMinutes = 1
 };
 
 /**
+ * @deprecated FCFS Model — Bed confirmation now happens via settleReservationDeposit.
  * Confirm a locked bed (lock → reserved)
  * @param {string} bedId - The bed ID
  * @param {ObjectId} userId - User who locked it

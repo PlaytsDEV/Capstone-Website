@@ -289,6 +289,23 @@ export function useSuggestMaintenanceProvider() {
   });
 }
 
+export function useRateMaintenanceProvider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, ...payload }) =>
+      maintenanceApi.rateAdminProvider(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+      qc.invalidateQueries({ queryKey: ["serviceProviders"] });
+    },
+  });
+}
+
 export function useArchiveMaintenanceRequest() {
   const qc = useQueryClient();
   return useMutation({
@@ -321,6 +338,33 @@ export function useRestoreMaintenanceRequest() {
   });
 }
 
+/** Update maintenance request cost attribution (admin) */
+export function useUpdateMaintenanceCost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.updateAdminCost(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+/** Fetch potential duplicate requests for the same room */
+export function useMaintenanceDuplicates(requestId) {
+  return useQuery({
+    queryKey: ["maintenance", "duplicates", requestId],
+    queryFn: () => maintenanceApi.getAdminDuplicates(requestId),
+    enabled: Boolean(requestId),
+    staleTime: 30_000,
+  });
+}
+
 /** Bulk update maintenance requests (admin) */
 export function useBulkMaintenanceUpdate() {
   const qc = useQueryClient();
@@ -328,6 +372,57 @@ export function useBulkMaintenanceUpdate() {
     mutationFn: (payload) => maintenanceApi.bulkUpdateAdminRequests(payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+    },
+  });
+}
+
+/** Confirm resolution or reopen (tenant) */
+export function useConfirmMaintenanceResolution() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.confirmResolution(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+/** Schedule maintenance appointment window (admin) */
+export function useScheduleAdminMaintenance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.scheduleAdminMaintenance(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+/** Finalize and sign official completion report (admin) */
+export function useFinalizeAdminMaintenanceReport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.finalizeAdminReport(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
     },
   });
 }
@@ -348,3 +443,4 @@ export function useIssueFrequency(limit, months) {
     queryFn: () => maintenanceApi.getIssueFrequency(limit, months),
   });
 }
+

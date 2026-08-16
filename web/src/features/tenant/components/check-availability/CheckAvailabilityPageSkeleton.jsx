@@ -63,7 +63,7 @@ export default function CheckAvailabilityPageSkeleton() {
 
         {/* Room card grid */}
         <div className="ca-grid">
-          <CheckAvailabilitySkeleton count={6} />
+          <CheckAvailabilitySkeleton count={15} />
         </div>
       </main>
     </div>

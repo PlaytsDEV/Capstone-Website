@@ -20,6 +20,7 @@ import {
   useUnreadCount,
 } from "../../../shared/hooks/queries/useNotifications";
 import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import { cleanNotificationMessage } from "../../../shared/utils/notification";
 import "../styles/design-tokens.css";
 import "../styles/admin-notifications.css";
@@ -31,11 +32,19 @@ const TYPE_META = {
   account_suspended:   { label: "Account",          icon: ShieldAlert,      priority: "critical" },
   grace_period_warning:{ label: "Grace Period",      icon: AlertTriangle,    priority: "high"     },
   maintenance_update:  { label: "Maintenance",       icon: Wrench,           priority: "high"     },
+  maintenance_new:     { label: "Maintenance",       icon: Wrench,           priority: "high"     },
   penalty_applied:     { label: "Penalty",           icon: Receipt,          priority: "high"     },
   chat_unresponded:    { label: "Chat",              icon: MessageSquareText, priority: "high"    },
+  inquiry_new:         { label: "Inquiry",           icon: MessageSquareText, priority: "high"    },
   bill_due_reminder:   { label: "Bill Reminder",     icon: Receipt,          priority: "medium"   },
   bill_generated:      { label: "Bill",              icon: Receipt,          priority: "medium"   },
+  payment_proof_submitted: { label: "Payment Proof", icon: Receipt,          priority: "high"     },
+  application_submitted:  { label: "Application",   icon: CalendarCheck,    priority: "high"     },
+  contract_signed:     { label: "Contract Signed",   icon: CalendarCheck,    priority: "medium"   },
   contract_expiring:   { label: "Contract",          icon: CalendarCheck,    priority: "medium"   },
+  contract_prepared:   { label: "Contract",          icon: CalendarCheck,    priority: "medium"   },
+  contract_incomplete: { label: "Contract",          icon: AlertTriangle,    priority: "high"     },
+  contract_error:      { label: "Contract",          icon: AlertTriangle,    priority: "high"     },
   payment_approved:    { label: "Payment",           icon: Receipt,          priority: "low"      },
   payment_rejected:    { label: "Payment",           icon: Receipt,          priority: "high"     },
   reservation_confirmed:{ label: "Reservation",     icon: CalendarCheck,    priority: "low"      },
@@ -44,6 +53,7 @@ const TYPE_META = {
   reservation_cancellation_rejected:{ label: "Cancellation", icon: CalendarCheck, priority: "medium" },
   reservation_expired: { label: "Reservation",      icon: CalendarCheck,    priority: "medium"   },
   reservation_noshow:  { label: "No-Show",           icon: CalendarCheck,    priority: "high"     },
+  visit_requested:     { label: "Visit Request",     icon: CalendarCheck,    priority: "medium"   },
   visit_approved:      { label: "Visit",             icon: CalendarCheck,    priority: "low"      },
   visit_rejected:      { label: "Visit",             icon: CalendarCheck,    priority: "medium"   },
   account_reactivated: { label: "Account",           icon: ShieldAlert,      priority: "low"      },
@@ -63,12 +73,18 @@ const FILTER_TYPES = [
 const ACTION_URLS = {
   sla_breach:          "/admin/maintenance?quickFilter=delayed",
   maintenance_update:  "/admin/maintenance",
+  maintenance_new:     "/admin/maintenance",
   chat_unresponded:    "/admin/chat",
+  inquiry_new:         "/admin/reservations?tab=inquiries",
   bill_generated:      "/admin/billing",
   bill_due_reminder:   "/admin/billing",
   penalty_applied:     "/admin/billing",
   payment_approved:    "/admin/billing",
   payment_rejected:    "/admin/billing",
+  payment_proof_submitted: "/admin/billing",
+  application_submitted:  "/admin/reservations",
+  contract_signed:     "/admin/contracts",
+  visit_requested:     "/admin/reservations?tab=visits",
   reservation_confirmed:"/admin/reservations",
   reservation_cancelled:"/admin/reservations",
   reservation_cancellation_requested:"/admin/reservations",
@@ -134,7 +150,10 @@ export default function AdminNotificationsPage() {
       : notifications.filter((n) => {
           if (typeFilter === "bill_generated") {
             return ["bill_generated", "bill_due_reminder", "penalty_applied",
-                    "payment_approved", "payment_rejected"].includes(n.type);
+                    "payment_approved", "payment_rejected", "payment_proof_submitted"].includes(n.type);
+          }
+          if (typeFilter === "maintenance_update") {
+            return ["maintenance_update", "maintenance_new", "sla_breach"].includes(n.type);
           }
           if (typeFilter === "reservation") {
             return [
@@ -144,9 +163,13 @@ export default function AdminNotificationsPage() {
               "reservation_cancellation_rejected",
               "reservation_expired",
               "reservation_noshow",
+              "application_submitted",
+              "contract_signed",
+              "visit_requested",
               "visit_approved",
               "visit_rejected",
               "grace_period_warning",
+              "inquiry_new",
             ].includes(n.type);
           }
           return n.type === typeFilter;
@@ -163,6 +186,10 @@ export default function AdminNotificationsPage() {
   const handleMarkAllRead = () => {
     markAllMutation.mutate();
   };
+
+  if (isLoading && !data) {
+    return <AdminTablePageSkeleton />;
+  }
 
   return (
     <div className="admin-notif-page">

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Calendar,
+  Check,
   CheckCircle2,
   Clock,
   ClipboardList,
+  FileCheck,
   FileText,
   Image as ImageIcon,
   LoaderCircle,
@@ -11,18 +14,22 @@ import {
   Paperclip,
   Pencil,
   Plus,
+  Printer,
   RefreshCcw,
   Trash2,
+  User,
   X,
 } from "lucide-react";
 import {
   useCancelMaintenanceRequest,
+  useConfirmMaintenanceResolution,
   useCreateMaintenanceRequest,
   useMyMaintenanceRequests,
   useReopenMaintenanceRequest,
   useSendTenantMaintenanceReply,
   useUpdateMyMaintenanceRequest,
 } from "../../../../shared/hooks/queries/useMaintenance";
+import { useAuth } from "../../../../shared/hooks/useAuth";
 import { showNotification } from "../../../../shared/utils/notification";
 import {
   ACTIVE_MAINTENANCE_STATUSES,
@@ -31,6 +38,7 @@ import {
   MIN_MAINTENANCE_DESCRIPTION_LENGTH,
   REOPENABLE_MAINTENANCE_STATUSES,
   formatMaintenanceStatus,
+  formatMaintenanceType,
   getMaintenanceStatusMeta,
   getMaintenanceTypeMeta,
   getMaintenanceUrgencyMeta,
@@ -52,7 +60,7 @@ import "../../styles/tenant-common.css";
 import "../../../admin/styles/design-tokens.css";
 
 const EMPTY_FORM_DATA = Object.freeze({
-  request_type: "other",
+  request_type: "maintenance",
   urgency: "normal",
   description: "",
   attachments: [],
@@ -63,9 +71,9 @@ const RESOLVED_STATUS_SET = new Set(["resolved", "completed", "closed"]);
 const REJECTED_STATUS_SET = new Set(["rejected", "cancelled", "canceled"]);
 
 const STATUS_FILTERS = [
-  { key: "active", label: "Active" },
-  { key: "resolved", label: "Resolved" },
-  { key: "all", label: "All" },
+  { key: "active", label: "Active Requests" },
+  { key: "resolved", label: "Completed / History" },
+  { key: "all", label: "All Tickets" },
 ];
 
 const DETAIL_TABS = [
@@ -74,13 +82,166 @@ const DETAIL_TABS = [
   { key: "reopen", label: "Reopen" },
 ];
 
-const createAttachmentClientId = () =>
-  `maintenance-attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const CANONICAL_STEPS = [
+  { key: "pending_review", label: "Pending Review" },
+  { key: "provider_assigned", label: "Provider Assigned" },
+  { key: "scheduled", label: "Scheduled" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "completed", label: "Completed" },
+];
 
-const isLocalPendingAttachment = (attachment) =>
-  attachment?.uploadStatus === "pending" &&
-  typeof File !== "undefined" &&
-  attachment?.file instanceof File;
+const getStepIndex = (st) => {
+  const s = String(st || "").toLowerCase();
+  if (["pending", "pending_review", "submitted", "viewed"].includes(s)) return 0;
+  if (s === "provider_assigned") return 1;
+  if (s === "scheduled") return 2;
+  if (["in_progress", "waiting_tenant"].includes(s)) return 3;
+  if (["completed", "resolved", "closed"].includes(s)) return 4;
+  return 0;
+};
+
+function MaintenanceStepTracker({ status, reopenCount }) {
+  const isReopened = status === "reopened";
+  const currentIndex = isReopened ? 0 : getStepIndex(status);
+
+  return (
+    <div className="maintenance-step-tracker">
+      {isReopened ? (
+        <div className="step-tracker-reopened-badge">
+          <AlertTriangle size={14} />
+          <span>Reopened Ticket (Iteration #{reopenCount || 1}) - Under Active Review</span>
+        </div>
+      ) : null}
+      <div className="step-tracker-track">
+        {CANONICAL_STEPS.map((step, idx) => {
+          const isCompleted = idx < currentIndex || (idx === 4 && currentIndex === 4);
+          const isCurrent = idx === currentIndex && currentIndex !== 4 && !isReopened;
+          return (
+            <div
+              key={step.key}
+              className={`step-item ${isCompleted ? "completed" : ""} ${isCurrent ? "active" : ""}`}
+            >
+              <div className="step-dot">
+                {isCompleted ? <Check size={12} strokeWidth={3} /> : <span>{idx + 1}</span>}
+              </div>
+              <span className="step-label">{step.label}</span>
+              {idx < CANONICAL_STEPS.length - 1 && <div className="step-line" />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CompletionReportModal({ request, onClose }) {
+  const report = request.completionReport || {};
+  const occupancy = request.occupancyContext || {};
+  const roomLabel = occupancy.unitNumber
+    ? `Unit ${occupancy.unitNumber}${occupancy.bedNumber ? ` - Bed ${occupancy.bedNumber}` : ""}${occupancy.floor ? ` (Floor ${occupancy.floor})` : ""}`
+    : request.roomName || "Assigned Room";
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  return (
+    <div className="maintenance-modal-backdrop" onClick={onClose}>
+      <div className="completion-report-modal printable-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="report-modal-header no-print">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <FileCheck size={18} color="#059669" />
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Official Maintenance Completion Report</h3>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button type="button" className="btn btn-secondary" style={{ fontSize: 13, padding: "6px 12px" }} onClick={handlePrint}>
+              <Printer size={14} /> Print / Save PDF
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: 6, display: "grid", placeItems: "center" }}
+              onClick={onClose}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="report-sheet">
+          <div className="report-sheet-header">
+            <div className="report-brand">
+              <span className="brand-name">LilyCrest Residences</span>
+              <span className="brand-sub">Facilities & Dormitory Maintenance Management</span>
+            </div>
+            <div className="report-id-box">
+              <span className="id-label">TICKET NUMBER</span>
+              <strong className="id-value">{request.ticketNumber || request.request_id || "MNT-2026-####"}</strong>
+            </div>
+          </div>
+
+          <div className="report-meta-grid">
+            <div>
+              <span className="meta-label">Location / Room</span>
+              <strong className="meta-value">{roomLabel}</strong>
+            </div>
+            <div>
+              <span className="meta-label">Service Category</span>
+              <strong className="meta-value">{formatMaintenanceType(request.request_type)}</strong>
+            </div>
+            <div>
+              <span className="meta-label">Assigned Technician</span>
+              <strong className="meta-value">
+                {request.tenantVisibleProviderLabel || request.providerDetails?.tenantVisibleLabel || "LilyCrest Facilities Team"}
+              </strong>
+            </div>
+            <div>
+              <span className="meta-label">Completion Date</span>
+              <strong className="meta-value">{fmtDateTime(report.finalizedAt || request.resolved_at || new Date())}</strong>
+            </div>
+          </div>
+
+          <div className="report-body-section">
+            <h4>1. Issue Summary</h4>
+            <p>{report.summary || request.description || "Maintenance request completed and verified."}</p>
+          </div>
+
+          {report.workDone ? (
+            <div className="report-body-section">
+              <h4>2. Technical Work Performed</h4>
+              <p>{report.workDone}</p>
+            </div>
+          ) : null}
+
+          {report.partsReplaced && report.partsReplaced !== "None" ? (
+            <div className="report-body-section">
+              <h4>3. Parts & Materials Replaced</h4>
+              <p>{report.partsReplaced}</p>
+            </div>
+          ) : null}
+
+          {report.preventiveAdvice ? (
+            <div className="report-body-section">
+              <h4>4. Resident Preventive Care Advice</h4>
+              <p>{report.preventiveAdvice}</p>
+            </div>
+          ) : null}
+
+          <div className="report-sign-footer">
+            <div className="sign-block">
+              <div className="sign-line" />
+              <span className="sign-name">{report.finalizedByName || "Operations & Facilities Supervisor"}</span>
+              <span className="sign-title">Authorized Facilities Signature</span>
+            </div>
+            <div className="verified-stamp">
+              <span>✓ VERIFIED & SIGNED</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const getAttachmentKey = (attachment, index = 0) =>
   attachment?.clientId ||
@@ -111,10 +272,6 @@ const buildUploadedAttachment = (file, uploadResult = {}) => {
   };
 };
 
-// Runs validateFile() across a FileList/array and returns { validFiles, rejected }.
-// Any rejected file surfaces a notification immediately so failures are caught
-// before an upload call is ever made (previously only new-request attachments
-// got this check; reply + edit-mode uploads went straight to the network).
 const filterValidFiles = (files) => {
   const validFiles = [];
   const rejected = [];
@@ -165,8 +322,6 @@ const formatSlaLabel = (slaState) => {
   return "On Track";
 };
 
-// Small non-color cue alongside each status badge so status isn't communicated
-// by background/text color alone.
 const getStatusIcon = (status) => {
   if (RESOLVED_STATUS_SET.has(status)) return CheckCircle2;
   if (REJECTED_STATUS_SET.has(status)) return X;
@@ -174,15 +329,16 @@ const getStatusIcon = (status) => {
   return RefreshCcw;
 };
 
-const cloneAttachments = (attachments) => normalizeMaintenanceAttachments(attachments);
 const getTenantVisibleAttachments = (attachments = []) =>
   Array.isArray(attachments)
     ? attachments.filter((attachment) => !attachment?.isRemoved)
     : [];
+
 const getLatestTenantReply = (request) => {
   const conversation = Array.isArray(request?.conversation) ? request.conversation : [];
   return conversation.length ? conversation[conversation.length - 1] : null;
 };
+
 const getReplySummary = (entry) => {
   if (!entry) return "";
   const message = typeof entry.message === "string" ? entry.message.trim() : "";
@@ -208,25 +364,17 @@ function AttachmentLink({ attachment, index, onPreview }) {
 
   if (kind === "image" && isViewable) {
     return (
-      <div
-        style={{
-          display: "grid",
-          gap: 8,
-          minWidth: 160,
-          maxWidth: 220,
-        }}
-      >
+      <div style={{ display: "grid", gap: 8, minWidth: 160, maxWidth: 220 }}>
         <button
           type="button"
           onClick={() => onPreview?.({ uri, name })}
           style={{
             border: "1px solid var(--border)",
-            borderRadius: 16,
+            borderRadius: 12,
             overflow: "hidden",
             padding: 0,
             background: "var(--muted)",
             cursor: "pointer",
-            boxShadow: "0 8px 24px color-mix(in srgb, var(--foreground) 12%, transparent)",
           }}
         >
           <img
@@ -235,73 +383,34 @@ function AttachmentLink({ attachment, index, onPreview }) {
             style={{
               display: "block",
               width: "100%",
-              height: 148,
+              height: 120,
               objectFit: "cover",
-              background: "var(--border)",
             }}
           />
         </button>
-
         <div style={{ display: "grid", gap: 4 }}>
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--foreground)",
-              wordBreak: "break-word",
-            }}
-          >
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--foreground)", wordBreak: "break-word" }}>
             {name}
           </span>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11 }}>
             <button
               type="button"
               onClick={() => onPreview?.({ uri, name })}
               style={{
                 border: "none",
                 background: "none",
-                color: "var(--info)",
+                color: "#2563EB",
                 padding: 0,
                 cursor: "pointer",
                 fontWeight: 600,
               }}
             >
-              Preview Photo
+              Preview
             </button>
-            <a
-              href={uri}
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: "var(--muted-foreground)", fontWeight: 500 }}
-            >
-              Open Original
+            <a href={uri} target="_blank" rel="noreferrer" style={{ color: "var(--muted-foreground)", fontWeight: 500 }}>
+              Open
             </a>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isViewable) {
-    return (
-      <div
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 10,
-          color: "var(--muted-foreground)",
-          fontSize: 13,
-          width: "fit-content",
-          padding: "10px 12px",
-          borderRadius: 12,
-          border: "1px solid var(--border)",
-          background: "var(--muted)",
-        }}
-      >
-        <Icon size={14} />
-        <div style={{ display: "grid", gap: 2 }}>
-          <span style={{ fontWeight: 600 }}>{name}</span>
-          <span style={{ color: "var(--neutral)" }}>Attachment unavailable</span>
         </div>
       </div>
     );
@@ -315,34 +424,24 @@ function AttachmentLink({ attachment, index, onPreview }) {
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 10,
-        color: "var(--info)",
-        fontSize: 13,
-        width: "fit-content",
-        padding: "10px 12px",
-        borderRadius: 12,
+        gap: 8,
+        color: "#2563EB",
+        fontSize: 12,
+        padding: "8px 12px",
+        borderRadius: 8,
         border: "1px solid var(--border)",
         background: "var(--muted)",
       }}
     >
       <Icon size={14} />
-      <div style={{ display: "grid", gap: 2 }}>
-        <span style={{ fontWeight: 600 }}>{name}</span>
-        <span style={{ color: "var(--muted-foreground)" }}>{label}</span>
-      </div>
+      <span>{name} ({label})</span>
     </a>
   );
 }
 
-// Lightweight in-app confirm dialog, styled to match the maintenance modal
-// rather than falling back to the browser's window.confirm().
 function ConfirmDialog({ title, message, confirmLabel = "Confirm", danger, onConfirm, onCancel }) {
   return (
-    <div
-      className="maintenance-modal-backdrop"
-      onClick={onCancel}
-      style={{ zIndex: 10000 }}
-    >
+    <div className="maintenance-modal-backdrop" onClick={onCancel} style={{ zIndex: 10000 }}>
       <div
         onClick={(event) => event.stopPropagation()}
         style={{
@@ -351,7 +450,7 @@ function ConfirmDialog({ title, message, confirmLabel = "Confirm", danger, onCon
           padding: 24,
           maxWidth: 380,
           width: "90%",
-          boxShadow: "0 24px 64px color-mix(in srgb, var(--foreground) 20%, transparent)",
+          boxShadow: "0 24px 64px rgba(0, 0, 0, 0.2)",
         }}
       >
         <h3 style={{ margin: "0 0 8px" }}>{title}</h3>
@@ -374,12 +473,14 @@ function ConfirmDialog({ title, message, confirmLabel = "Confirm", danger, onCon
 }
 
 export default function TenantMaintenanceWorkspace({ embedded = false }) {
+  const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [editingRequestId, setEditingRequestId] = useState(null);
   const [selectedRequestId, setSelectedRequestId] = useState(null);
   const [detailTab, setDetailTab] = useState("details");
   const [previewAttachment, setPreviewAttachment] = useState(null);
+  const [viewingReportRequest, setViewingReportRequest] = useState(null);
   const [reopenNote, setReopenNote] = useState("");
   const [replyMessage, setReplyMessage] = useState("");
   const [replyAttachments, setReplyAttachments] = useState([]);
@@ -395,6 +496,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const updateMutation = useUpdateMyMaintenanceRequest();
   const cancelMutation = useCancelMaintenanceRequest();
   const reopenMutation = useReopenMaintenanceRequest();
+  const confirmResolutionMutation = useConfirmMaintenanceResolution();
   const sendReplyMutation = useSendTenantMaintenanceReply();
 
   const requests = data?.requests || [];
@@ -419,8 +521,6 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     setDetailTab("details");
   }, [selectedRequestId]);
 
-  // Jump the composer into view whenever it opens for editing, since the
-  // "Edit" button lives inside a card further down the page.
   useEffect(() => {
     if (showForm && formSectionRef.current) {
       formSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -448,9 +548,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   );
 
   const resetComposer = () => {
-    setFormData({ ...EMPTY_FORM_DATA });
     setShowForm(false);
     setEditingRequestId(null);
+    setFormData({ ...EMPTY_FORM_DATA });
   };
 
   const openCreateForm = () => {
@@ -460,43 +560,23 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   };
 
   const openEditForm = (request) => {
-    setSelectedRequestId(null);
     setEditingRequestId(request.request_id);
     setFormData({
-      request_type: request.request_type || "other",
+      request_type: request.request_type || "maintenance",
       urgency: request.urgency || "normal",
       description: request.description || "",
-      attachments: cloneAttachments(request.attachments),
+      attachments: normalizeMaintenanceAttachments(request.attachments),
     });
     setShowForm(true);
+    setSelectedRequestId(null);
   };
 
   const handleAttachmentUpload = async (event) => {
     const files = Array.from(event.target.files || []).filter(Boolean);
     if (files.length === 0) return;
 
-    if (!isEditing) {
-      const validFiles = filterValidFiles(files);
-      const staged = validFiles.map((file) => ({
-        clientId: createAttachmentClientId(),
-        name: file.name,
-        type: file.type || "application/octet-stream",
-        size: file.size,
-        file,
-        uploadStatus: "pending",
-      }));
-
-      if (staged.length > 0) {
-        setFormData((current) => ({
-          ...current,
-          attachments: [...(current.attachments || []), ...staged],
-        }));
-        showNotification(
-          `${staged.length} attachment${staged.length === 1 ? "" : "s"} ready to upload when you submit.`,
-          "success",
-        );
-      }
-
+    if ((formData.attachments?.length || 0) + files.length > 5) {
+      showNotification("You can upload a maximum of 5 attachments per request.", "error");
       event.target.value = "";
       return;
     }
@@ -511,7 +591,6 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
 
     try {
       const uploaded = [];
-
       for (const file of validFiles) {
         const uploadResult = await uploadMaintenanceAttachment(file, {
           documentType: "maintenance-attachment",
@@ -528,12 +607,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         ...current,
         attachments: [...(current.attachments || []), ...uploaded],
       }));
-      showNotification("Attachment uploaded.", "success");
+      showNotification("Attachment uploaded successfully.", "success");
     } catch (error) {
-      showNotification(
-        error.message || "Failed to upload attachment.",
-        "error",
-      );
+      showNotification(error.message || "Failed to upload attachment.", "error");
     } finally {
       setUploadingAttachment(false);
       event.target.value = "";
@@ -563,7 +639,6 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
 
     try {
       const uploaded = [];
-
       for (const file of validFiles) {
         const uploadResult = await uploadMaintenanceAttachment(file, {
           documentType: "maintenance-reply-attachment",
@@ -576,12 +651,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       }
 
       setReplyAttachments((current) => [...current, ...uploaded]);
-      showNotification("Attachment uploaded.", "success");
+      showNotification("Attachment uploaded successfully.", "success");
     } catch (error) {
-      showNotification(
-        error.message || "Failed to upload attachment.",
-        "error",
-      );
+      showNotification(error.message || "Failed to upload attachment.", "error");
     } finally {
       setUploadingReplyAttachment(false);
       event.target.value = "";
@@ -614,7 +686,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       });
       setReplyMessage("");
       setReplyAttachments([]);
-      showNotification("Reply sent.", "success");
+      showNotification("Reply sent to admin.", "success");
     } catch (error) {
       showNotification(error.message || "Failed to send reply.", "error");
     }
@@ -631,8 +703,6 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       return;
     }
 
-    let createdRequestId = "";
-
     try {
       const existingAttachments = normalizeMaintenanceAttachments(formData.attachments);
 
@@ -646,73 +716,17 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         });
         showNotification("Maintenance request updated.", "success");
       } else {
-        const created = await createMutation.mutateAsync({
+        await createMutation.mutateAsync({
           ...formData,
           attachments: existingAttachments,
         });
-        const createdRequest = created?.request || created;
-        const requestId = createdRequest?.request_id || createdRequest?._id;
-        createdRequestId = requestId || "";
-        const pendingAttachments = (formData.attachments || []).filter(isLocalPendingAttachment);
-
-        if (pendingAttachments.length > 0) {
-          if (!requestId) {
-            throw new Error("Request was created, but attachment upload could not continue. Please reopen the request and try again.");
-          }
-
-          setUploadingAttachment(true);
-          const uploadedAttachments = [];
-
-          try {
-            for (const pendingAttachment of pendingAttachments) {
-              const uploadResult = await uploadMaintenanceAttachment(pendingAttachment.file, {
-                documentType: "maintenance-attachment",
-                context: "maintenance_request",
-                visibility: "tenant_admin",
-                maintenanceRequestId: requestId,
-                requestId,
-                relatedId: requestId,
-              });
-              uploadedAttachments.push(buildUploadedAttachment(pendingAttachment.file, uploadResult));
-            }
-          } finally {
-            setUploadingAttachment(false);
-          }
-
-          await updateMutation.mutateAsync({
-            requestId,
-            data: {
-              request_type: createdRequest?.request_type || formData.request_type,
-              urgency: createdRequest?.urgency || formData.urgency,
-              description: createdRequest?.description || formData.description,
-              attachments: [
-                ...normalizeMaintenanceAttachments(createdRequest?.attachments || existingAttachments),
-                ...normalizeMaintenanceAttachments(uploadedAttachments),
-              ],
-            },
-          });
-        }
-
-        showNotification("Maintenance request submitted.", "success");
+        showNotification("Maintenance request submitted successfully.", "success");
       }
 
       resetComposer();
     } catch (error) {
-      setUploadingAttachment(false);
-      if (!isEditing && createdRequestId) {
-        resetComposer();
-        setSelectedRequestId(createdRequestId);
-        showNotification(
-          error.message ||
-            "Request submitted, but one or more attachments failed to upload. Open the pending request to retry.",
-          "error",
-        );
-        return;
-      }
-
       showNotification(
-        error.message ||
-          `Failed to ${isEditing ? "update" : "submit"} maintenance request.`,
+        error.message || `Failed to ${isEditing ? "update" : "submit"} maintenance request.`,
         "error",
       );
     }
@@ -740,6 +754,23 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     }
   };
 
+  const handleConfirmResolution = async (request, isResolved) => {
+    try {
+      if (isResolved) {
+        await confirmResolutionMutation.mutateAsync({
+          requestId: request.request_id,
+          payload: { action: "confirm", confirmed: true },
+        });
+        showNotification("Thank you! Issue resolution confirmed.", "success");
+      } else {
+        setSelectedRequestId(request.request_id);
+        setDetailTab("reopen");
+      }
+    } catch (error) {
+      showNotification(error.message || "Failed to submit resolution confirmation.", "error");
+    }
+  };
+
   const handleReopenRequest = async () => {
     if (!selectedRequest) return;
 
@@ -750,7 +781,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       });
       setReopenNote("");
       setSelectedRequestId(null);
-      showNotification("Maintenance request reopened.", "success");
+      showNotification("Maintenance request reopened and sent to admin queue.", "success");
     } catch (error) {
       showNotification(
         error.message || "Failed to reopen maintenance request.",
@@ -759,16 +790,19 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     }
   };
 
+  const roomContextLabel = user?.roomNumber
+    ? `Unit ${user.roomNumber}${user.bedNumber ? ` - Bed ${user.bedNumber}` : ""}`
+    : user?.room
+    ? `Room ${user.room}`
+    : "Assigned Room";
+
   return (
     <div className={embedded ? "" : "tenant-page"}>
       <div className="page-header maintenance-page-header">
         <div>
-          <h1>
-            Maintenance Requests
-          </h1>
+          <h1>Maintenance Requests</h1>
           <p>
-            Report repair, room, or bed concerns, check request progress, and
-            review admin responses from one place.
+            Report repair, room, or facilities concerns, track real-time resolution progress, and review completion reports.
           </p>
         </div>
         <button
@@ -783,38 +817,44 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
           }}
         >
           <Plus size={16} />
-          {showForm ? "Close Form" : "New Request"}
+          {showForm ? "Close Form" : "Report an Issue"}
         </button>
       </div>
 
       {showForm ? (
         <div className="section-card" ref={formSectionRef}>
           <h2>{isEditing ? "Edit Maintenance Request" : "Submit Maintenance Request"}</h2>
+
+          <div className="room-context-pill">
+            <User size={14} />
+            <span>Reporting for: <strong>{roomContextLabel}</strong></span>
+          </div>
+
           <form className="maintenance-form" onSubmit={handleSubmitRequest}>
             <div className="form-group">
-              <label htmlFor="maintenance-type">Request Type</label>
-              <select
-                id="maintenance-type"
-                className="form-control"
-                value={formData.request_type}
-                onChange={(event) =>
-                  setFormData((current) => ({
-                    ...current,
-                    request_type: event.target.value,
-                  }))
-                }
-                required
-              >
-                {MAINTENANCE_REQUEST_TYPES.map((requestType) => (
-                  <option key={requestType} value={requestType}>
-                    {getMaintenanceTypeMeta(requestType).label}
-                  </option>
-                ))}
-              </select>
+              <label>Select Category</label>
+              <div className="category-picker-grid">
+                {MAINTENANCE_REQUEST_TYPES.map((catKey) => {
+                  const meta = getMaintenanceTypeMeta(catKey);
+                  const Icon = meta.icon;
+                  const isSelected = formData.request_type === catKey;
+                  return (
+                    <button
+                      key={catKey}
+                      type="button"
+                      className={`category-picker-btn ${isSelected ? "selected" : ""}`}
+                      onClick={() => setFormData((c) => ({ ...c, request_type: catKey }))}
+                    >
+                      <Icon size={20} color={isSelected ? "#2563EB" : meta.color} />
+                      <span>{meta.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="form-group">
-              <label htmlFor="maintenance-urgency">Urgency</label>
+            <div className="form-group" style={{ marginTop: 16 }}>
+              <label htmlFor="maintenance-urgency">Urgency Level</label>
               <select
                 id="maintenance-urgency"
                 className="form-control"
@@ -831,20 +871,20 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                   const meta = getMaintenanceUrgencyMeta(urgency);
                   return (
                     <option key={urgency} value={urgency}>
-                      {meta.label} - {meta.description}
+                      {meta.label} - {meta.description} (ETA: {meta.estimate})
                     </option>
                   );
                 })}
               </select>
             </div>
 
-            <div className={`form-group${descriptionTooShort ? " has-error" : ""}`}>
-              <label htmlFor="maintenance-description">Description</label>
+            <div className={`form-group${descriptionTooShort ? " has-error" : ""}`} style={{ marginTop: 16 }}>
+              <label htmlFor="maintenance-description">Issue Description</label>
               <textarea
                 id="maintenance-description"
                 className="form-control"
-                rows="5"
-                placeholder="Describe the problem in detail."
+                rows="4"
+                placeholder="Describe the issue in detail (symptoms, location, when it started)..."
                 value={formData.description}
                 onChange={(event) =>
                   setFormData((current) => ({
@@ -855,7 +895,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 required
               />
               <p className="maintenance-help-text">
-                Include location, symptoms, and when the issue started.
+                Minimum {MIN_MAINTENANCE_DESCRIPTION_LENGTH} characters. Clear descriptions help technicians arrive with the correct tools.
               </p>
               {descriptionTooShort ? (
                 <p className="maintenance-field-error">
@@ -864,8 +904,8 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               ) : null}
             </div>
 
-            <div className="form-group">
-              <label htmlFor="maintenance-attachments">Attachments</label>
+            <div className="form-group" style={{ marginTop: 16 }}>
+              <label htmlFor="maintenance-attachments">Photo / Proof Attachments (Max 5)</label>
               <label
                 htmlFor="maintenance-attachments"
                 className="btn btn-secondary"
@@ -881,11 +921,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 ) : (
                   <Paperclip size={16} />
                 )}
-                {uploadingAttachment
-                  ? "Uploading..."
-                  : isEditing
-                    ? "Upload photo or file"
-                    : "Attach photo or file"}
+                {uploadingAttachment ? "Uploading..." : "Attach Photos or Files"}
               </label>
               <input
                 id="maintenance-attachments"
@@ -898,48 +934,29 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               />
 
               {formData.attachments?.length ? (
-                <div className="maintenance-attachment-list">
+                <div className="maintenance-attachment-list" style={{ marginTop: 10 }}>
                   {formData.attachments.map((attachment, index) => {
                     const attachmentKey = getAttachmentKey(attachment, index);
-                    const isPending = attachment.uploadStatus === "pending";
-
                     return (
-                    <div
-                      key={attachmentKey}
-                      className="maintenance-attachment-row"
-                    >
-                      <span>
-                        {getMaintenanceAttachmentName(attachment, index)}
-                        {isPending ? " - uploads on submit" : ""}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() =>
-                          handleRemoveAttachment(attachmentKey)
-                        }
-                        style={{ padding: "6px 10px" }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
+                      <div key={attachmentKey} className="maintenance-attachment-row">
+                        <span>{getMaintenanceAttachmentName(attachment, index)}</span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => handleRemoveAttachment(attachmentKey)}
+                          style={{ padding: "6px 10px" }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
-              ) : (
-                <p className="maintenance-help-text">
-                  Attach JPEG, PNG, WebP, HEIC, HEIF, or PDF files for clearer troubleshooting.
-                  New request files upload after the request is created.
-                </p>
-              )}
+              ) : null}
             </div>
 
-            <div className="form-actions">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={resetComposer}
-              >
+            <div className="form-actions" style={{ marginTop: 20 }}>
+              <button type="button" className="btn btn-secondary" onClick={resetComposer}>
                 Cancel
               </button>
               <button
@@ -948,14 +965,14 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 disabled={isSavingForm || descriptionTooShort}
               >
                 {uploadingAttachment
-                  ? "Uploading files..."
+                  ? "Uploading..."
                   : isSavingForm
                   ? isEditing
                     ? "Saving..."
                     : "Submitting..."
                   : isEditing
-                    ? "Save Changes"
-                    : "Submit Request"}
+                  ? "Save Changes"
+                  : "Submit Request"}
               </button>
             </div>
           </form>
@@ -972,14 +989,14 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
           }}
         >
           {[
-            { label: "Total Requests", value: summary.total },
-            { label: "Active", value: summary.active },
-            { label: "Resolved", value: summary.resolved },
+            { label: "Active Requests", value: summary.active },
+            { label: "Completed / History", value: summary.resolved },
+            { label: "Total Filed", value: summary.total },
           ].map((item) => (
             <div
               key={item.label}
               style={{
-                border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
+                border: "1px solid var(--border)",
                 borderRadius: 12,
                 padding: "14px 16px",
                 background: "var(--card)",
@@ -1012,10 +1029,10 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             justifyContent: "space-between",
             flexWrap: "wrap",
             gap: 12,
-            marginBottom: 4,
+            marginBottom: 16,
           }}
         >
-          <h2 style={{ margin: 0 }}>Request History</h2>
+          <h2 style={{ margin: 0 }}>Request Records</h2>
           {requests.length > 0 ? (
             <div style={{ display: "inline-flex", gap: 6 }}>
               {STATUS_FILTERS.map((filter) => (
@@ -1031,11 +1048,11 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     cursor: "pointer",
                     border:
                       statusFilter === filter.key
-                        ? "1px solid var(--info)"
+                        ? "1px solid #2563EB"
                         : "1px solid var(--border)",
                     background:
-                      statusFilter === filter.key ? "var(--info-light)" : "transparent",
-                    color: statusFilter === filter.key ? "var(--info-dark)" : "var(--muted-foreground)",
+                      statusFilter === filter.key ? "#EFF6FF" : "transparent",
+                    color: statusFilter === filter.key ? "#1D4ED8" : "var(--muted-foreground)",
                   }}
                 >
                   {filter.label}
@@ -1053,8 +1070,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             <div>
               <strong>No maintenance requests yet</strong>
               <p>
-                Use the new request button when you need help with repairs,
-                utilities, or room concerns.
+                Use the "Report an Issue" button whenever you need assistance with room facilities, plumbing, AC, or utilities.
               </p>
             </div>
           </div>
@@ -1062,8 +1078,8 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
           <div className="maintenance-empty-state">
             <ClipboardList size={30} />
             <div>
-              <strong>No {statusFilter === "resolved" ? "resolved" : "active"} requests</strong>
-              <p>Switch filters above to see the rest of your request history.</p>
+              <strong>No {statusFilter === "resolved" ? "completed" : "active"} requests</strong>
+              <p>Switch filter tabs above to view other tickets in your history.</p>
             </div>
           </div>
         ) : (
@@ -1074,8 +1090,13 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               const statusMeta = getMaintenanceStatusMeta(request.status);
               const TypeIcon = typeMeta.icon;
               const StatusIcon = getStatusIcon(request.status);
-              const isPending = request.status === "pending";
+              const isPending = request.status === "pending" || request.status === "pending_review";
               const isReopenable = REOPENABLE_MAINTENANCE_STATUSES.includes(request.status);
+              const isCompleted = ["completed", "resolved"].includes(request.status);
+              const isConfirmed = Boolean(request.resolutionConfirmation?.confirmedAt);
+              const hasReport = Boolean(request.completionReport && !request.completionReport.isDraft);
+              const providerLabel = request.tenantVisibleProviderLabel || request.providerDetails?.tenantVisibleLabel || request.assigned_to;
+              const scheduledDate = request.schedule?.scheduledDate ? new Date(request.schedule.scheduledDate) : null;
               const visibleRequestAttachments = getTenantVisibleAttachments(request.attachments);
               const latestReply = getLatestTenantReply(request);
               const latestReplyAttachments = getTenantVisibleAttachments(latestReply?.attachments);
@@ -1083,7 +1104,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
 
               return (
                 <article
-                  key={request.request_id}
+                  key={request.request_id || request._id}
                   className="maintenance-item"
                   style={{ flexDirection: "column", alignItems: "stretch" }}
                 >
@@ -1111,9 +1132,14 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         <TypeIcon size={18} />
                       </div>
                       <div>
-                        <h3 style={{ margin: "0 0 4px" }}>{typeMeta.label}</h3>
-                        <p style={{ margin: 0, color: "var(--muted-foreground)" }}>
-                          {fmtDate(request.created_at)} - {urgencyMeta.label}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <h3 style={{ margin: 0 }}>{typeMeta.label}</h3>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#2563EB", background: "#EFF6FF", padding: "2px 8px", borderRadius: 4 }}>
+                            {request.ticketNumber || `#${request.request_id?.slice(0, 8)}`}
+                          </span>
+                        </div>
+                        <p style={{ margin: "4px 0 0", color: "var(--muted-foreground)" }}>
+                          {fmtDate(request.created_at)} • {urgencyMeta.label} Priority
                         </p>
                       </div>
                     </div>
@@ -1140,21 +1166,97 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     {request.description}
                   </p>
 
-                  <div
-                    style={{
-                      marginTop: 12,
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 10,
-                      color: "var(--muted-foreground)",
-                      fontSize: 13,
-                    }}
-                  >
-                    <span>ETA: {urgencyMeta.estimate}</span>
-                    <span>SLA: {formatSlaLabel(request.slaState)}</span>
-                    <span>Attachments: {visibleRequestAttachments.length}</span>
-                    {request.reopen_note ? <span>Reopen note saved</span> : null}
+                  {/* Step Tracker */}
+                  <div style={{ marginTop: 14 }}>
+                    <MaintenanceStepTracker status={request.status} reopenCount={request.reopenCount} />
                   </div>
+
+                  {/* Provider & Schedule Badges */}
+                  {(providerLabel || scheduledDate) ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
+                      {providerLabel ? (
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, background: "#EFF6FF", color: "#1E40AF", fontSize: 12, fontWeight: 600 }}>
+                          <User size={13} />
+                          <span>Assigned: {providerLabel}</span>
+                        </div>
+                      ) : null}
+                      {scheduledDate ? (
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, background: "#CFFAFE", color: "#0E7490", fontSize: 12, fontWeight: 600 }}>
+                          <Calendar size={13} />
+                          <span>Scheduled: {fmtDateTime(scheduledDate)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {/* Official Completion Report CTA */}
+                  {hasReport ? (
+                    <div
+                      style={{
+                        marginTop: 14,
+                        borderRadius: 12,
+                        padding: "12px 14px",
+                        background: "#F0FDF4",
+                        border: "1px solid #BBF7D0",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <FileCheck size={16} color="#16A34A" />
+                        <div>
+                          <strong style={{ color: "#166534", fontSize: 13, display: "block" }}>Official Completion Report Available</strong>
+                          <span style={{ color: "#15803D", fontSize: 12 }}>Signed & verified by Facilities Supervisor</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: 12, padding: "6px 12px" }}
+                        onClick={() => setViewingReportRequest(request)}
+                      >
+                        View Official Report
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {/* Resolution Prompt */}
+                  {isCompleted ? (
+                    isConfirmed ? (
+                      <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6, color: "#15803D", fontSize: 12, fontWeight: 600 }}>
+                        <CheckCircle2 size={14} />
+                        <span>Resolution verified by resident on {fmtDate(request.resolutionConfirmation?.confirmedAt)}</span>
+                      </div>
+                    ) : (
+                      <div className="resolution-confirmation-banner">
+                        <div>
+                          <h4>Was your maintenance issue resolved?</h4>
+                          <p>Please verify that the technician completed the repair satisfactorily.</p>
+                        </div>
+                        <div className="resolution-banner-actions">
+                          <button
+                            type="button"
+                            className="btn-success"
+                            disabled={confirmResolutionMutation.isPending}
+                            onClick={() => handleConfirmResolution(request, true)}
+                          >
+                            <Check size={14} /> Yes, Resolved
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-outline-danger"
+                            disabled={confirmResolutionMutation.isPending}
+                            onClick={() => handleConfirmResolution(request, false)}
+                          >
+                            <X size={14} /> No, Issue Remains
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  ) : null}
 
                   {request.notes ? (
                     <div
@@ -1288,10 +1390,14 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
           >
             <div className="maintenance-modal__header">
               <div className="maintenance-info">
-                <h3>{getMaintenanceTypeMeta(selectedRequest.request_type).label}</h3>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <h3 style={{ margin: 0 }}>{getMaintenanceTypeMeta(selectedRequest.request_type).label}</h3>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#2563EB", background: "#EFF6FF", padding: "2px 8px", borderRadius: 4 }}>
+                    {selectedRequest.ticketNumber || `#${selectedRequest.request_id?.slice(0, 8)}`}
+                  </span>
+                </div>
                 <p>
-                  Request ID: {selectedRequest.request_id} - Submitted on{" "}
-                  {fmtDateTime(selectedRequest.created_at)}
+                  Submitted on {fmtDateTime(selectedRequest.created_at)}
                 </p>
               </div>
               <button
@@ -1306,9 +1412,6 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               </button>
             </div>
 
-            {/* Tab bar: keeps the modal from becoming one long scroll of
-                overview + description + attachments + conversation + status
-                history + reopen form all stacked together. */}
             <div
               style={{
                 display: "flex",
@@ -1333,8 +1436,8 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     cursor: "pointer",
                     fontSize: 14,
                     fontWeight: 600,
-                    color: detailTab === tab.key ? "var(--info)" : "var(--muted-foreground)",
-                    borderBottom: detailTab === tab.key ? "2px solid var(--info)" : "2px solid transparent",
+                    color: detailTab === tab.key ? "#2563EB" : "var(--muted-foreground)",
+                    borderBottom: detailTab === tab.key ? "2px solid #2563EB" : "2px solid transparent",
                   }}
                 >
                   {tab.label}
@@ -1344,6 +1447,11 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
 
             {detailTab === "details" ? (
               <>
+                <MaintenanceStepTracker
+                  status={selectedRequest.status}
+                  reopenCount={selectedRequest.reopenCount}
+                />
+
                 <div className="maintenance-detail-grid">
                   <div>
                     <span>Status</span>
@@ -1362,14 +1470,78 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     <strong>{getMaintenanceUrgencyMeta(selectedRequest.urgency).estimate}</strong>
                   </div>
                   <div>
+                    <span>Assigned Provider</span>
+                    <strong>
+                      {selectedRequest.tenantVisibleProviderLabel ||
+                        selectedRequest.providerDetails?.tenantVisibleLabel ||
+                        selectedRequest.assigned_to ||
+                        "Pending Assignment"}
+                    </strong>
+                  </div>
+                  <div>
                     <span>Last Updated</span>
                     <strong>{fmtDateTime(selectedRequest.updated_at)}</strong>
                   </div>
-                  <div>
-                    <span>Attachments</span>
-                    <strong>{getTenantVisibleAttachments(selectedRequest.attachments).length}</strong>
-                  </div>
                 </div>
+
+                {selectedRequest.schedule?.scheduledDate ? (
+                  <div
+                    style={{
+                      borderRadius: 12,
+                      padding: "12px 14px",
+                      background: "#CFFAFE",
+                      border: "1px solid #A5F3FC",
+                      color: "#0E7490",
+                      marginBottom: 16,
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Calendar size={18} />
+                    <div>
+                      <strong style={{ display: "block", fontSize: 13 }}>
+                        Scheduled Service Appointment
+                      </strong>
+                      <span style={{ fontSize: 12 }}>
+                        {fmtDateTime(selectedRequest.schedule.scheduledDate)}
+                        {selectedRequest.schedule.notes ? ` • Note: ${selectedRequest.schedule.notes}` : ""}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+
+                {selectedRequest.completionReport && !selectedRequest.completionReport.isDraft ? (
+                  <div
+                    style={{
+                      borderRadius: 12,
+                      padding: "12px 14px",
+                      background: "#F0FDF4",
+                      border: "1px solid #BBF7D0",
+                      marginBottom: 16,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <strong style={{ display: "block", color: "#166534", fontSize: 13 }}>
+                        Official Completion Report Ready
+                      </strong>
+                      <span style={{ color: "#15803D", fontSize: 12 }}>
+                        Verified by {selectedRequest.completionReport.finalizedByName || "Facilities Team"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ fontSize: 12, padding: "6px 12px" }}
+                      onClick={() => setViewingReportRequest(selectedRequest)}
+                    >
+                      View Report
+                    </button>
+                  </div>
+                ) : null}
 
                 <section className="maintenance-detail-section">
                   <h3>Description</h3>
@@ -1402,26 +1574,8 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                   </div>
                 ) : null}
 
-                {selectedRequest.statusHistory?.length ? (
-                  <section className="maintenance-detail-section">
-                    <h3>Status Timeline</h3>
-                    <div className="maintenance-timeline">
-                      {selectedRequest.statusHistory.map((entry, index) => (
-                        <article key={`${entry.timestamp}-${index}`}>
-                          <strong>{fmtDateTime(entry.timestamp)}</strong>
-                          <span>
-                            {formatMaintenanceStatus(entry.status)}
-                            {entry.actor_name ? ` - ${entry.actor_name}` : ""}
-                          </span>
-                          <p>{entry.note || entry.event || "Status updated."}</p>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-                ) : null}
-
                 <div className="form-actions maintenance-detail-actions">
-                  {selectedRequest.status === "pending" ? (
+                  {(selectedRequest.status === "pending" || selectedRequest.status === "pending_review") ? (
                     <button
                       type="button"
                       className="btn btn-secondary"
@@ -1432,7 +1586,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     </button>
                   ) : null}
 
-                  {selectedRequest.status === "pending" ? (
+                  {(selectedRequest.status === "pending" || selectedRequest.status === "pending_review") ? (
                     <button
                       type="button"
                       className="btn btn-secondary maintenance-danger-button"
@@ -1492,7 +1646,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         value={replyMessage}
                         onChange={(event) => setReplyMessage(event.target.value)}
                       />
-                      <div className="form-actions" style={{ justifyContent: "space-between" }}>
+                      <div className="form-actions" style={{ justifyContent: "space-between", marginTop: 10 }}>
                         <label
                           htmlFor="maintenance-reply-attachments"
                           className="btn btn-secondary"
@@ -1520,7 +1674,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         </button>
                       </div>
                       {replyAttachments.length ? (
-                        <div className="maintenance-attachment-list">
+                        <div className="maintenance-attachment-list" style={{ marginTop: 10 }}>
                           {replyAttachments.map((attachment, index) => {
                             const uri = getMaintenanceAttachmentUri(attachment);
                             return (
@@ -1551,18 +1705,17 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               <section className="maintenance-detail-section">
                 <h3>Reopen Request</h3>
                 <p>
-                  If the issue is still unresolved, add a short note and send it
-                  back to the queue.
+                  If the issue remains unresolved or has reoccurred, specify what is missing and send it back to the active queue.
                 </p>
                 <textarea
                   className="form-control"
                   rows="3"
                   style={{ marginTop: 12 }}
-                  placeholder="Optional note for the admin team"
+                  placeholder="Explain why the issue remains or what still needs repair..."
                   value={reopenNote}
                   onChange={(event) => setReopenNote(event.target.value)}
                 />
-                <div className="form-actions maintenance-detail-actions">
+                <div className="form-actions maintenance-detail-actions" style={{ marginTop: 12 }}>
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -1579,6 +1732,13 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         </div>
       ) : null}
 
+      {viewingReportRequest ? (
+        <CompletionReportModal
+          request={viewingReportRequest}
+          onClose={() => setViewingReportRequest(null)}
+        />
+      ) : null}
+
       {previewAttachment ? (
         <div
           onClick={() => setPreviewAttachment(null)}
@@ -1586,7 +1746,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             position: "fixed",
             inset: 0,
             zIndex: 9999,
-            background: "color-mix(in srgb, var(--foreground) 12%, transparent)",
+            background: "rgba(0, 0, 0, 0.8)",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -1602,7 +1762,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               position: "absolute",
               top: 20,
               right: 20,
-              background: "color-mix(in srgb, var(--foreground) 12%, transparent)",
+              background: "rgba(255, 255, 255, 0.2)",
               border: "none",
               borderRadius: "50%",
               width: 40,
@@ -1610,7 +1770,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               display: "grid",
               placeItems: "center",
               cursor: "pointer",
-              color: "var(--card)",
+              color: "#FFFFFF",
             }}
           >
             <X size={20} />
@@ -1623,11 +1783,11 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               maxWidth: "90vw",
               maxHeight: "80vh",
               borderRadius: 12,
-              boxShadow: "0 24px 64px color-mix(in srgb, var(--foreground) 12%, transparent)",
+              boxShadow: "0 24px 64px rgba(0, 0, 0, 0.5)",
               objectFit: "contain",
             }}
           />
-          <span style={{ color: "var(--border)", fontSize: 13 }}>{previewAttachment.name}</span>
+          <span style={{ color: "#CBD5E1", fontSize: 13 }}>{previewAttachment.name}</span>
         </div>
       ) : null}
 

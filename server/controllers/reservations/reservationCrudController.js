@@ -19,6 +19,7 @@ import {
   syncReservationUserLifecycle,
 } from "../../utils/reservationHelpers.js";
 import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
+import { emitToAdmins } from "../../utils/socket.js";
 import {
   CURRENT_RESIDENT_STATUS_QUERY,
   normalizeReservationPayload,
@@ -44,6 +45,7 @@ import {
   isActiveBedAssignmentDuplicateError,
   isActiveUserReservationDuplicateError,
   validateSelectedBedForReservation,
+  notifyAdminsOfVisitSchedule,
 } from "./_helpers.js";
 import { releaseOrphanedBeds } from "../../services/occupancy/occupancyManager.js";
 import { buildPricingDisplay } from "../../services/contractPricingResolver.js";
@@ -83,28 +85,29 @@ export const getReservations = async (req, res) => {
         .status(404)
         .json({ error: "User not found in database", code: "USER_NOT_FOUND" });
 
+    const isOwner = isOwnerRole(dbUser.role);
     const archiveQuery =
-      isAdminListView && archiveFilter === "archived"
+      isOwner && isAdminListView && archiveFilter === "archived"
         ? { isArchived: true }
-        : isAdminListView && archiveFilter === "all"
+        : isOwner && isAdminListView && archiveFilter === "all"
           ? {}
           : { isArchived: { $ne: true } };
 
     let query;
-    if (isOwnerRole(dbUser.role)) {
+    if (isOwner) {
       query = { ...archiveQuery };
     } else if (dbUser.role === "branch_admin") {
       const roomIds = (
         await Room.find({ branch: dbUser.branch }).select("_id")
       ).map((r) => r._id);
-      query = { roomId: { $in: roomIds }, ...archiveQuery };
+      query = { roomId: { $in: roomIds }, isArchived: { $ne: true } };
     } else {
       query = { userId: dbUser._id, isArchived: { $ne: true } };
     }
 
     let reservationsQuery = Reservation.find(query)
       .populate(
-        ...(isAdminListView ? ["userId", "firstName lastName email phone"] : POPULATE_USER),
+        ...(isAdminListView ? ["userId", "firstName lastName email phone profileImage"] : POPULATE_USER),
       )
       .populate(
         ...(isAdminListView ? ["roomId", "name branch type"] : POPULATE_ROOM),
@@ -441,6 +444,37 @@ export const createReservation = async (req, res) => {
       reservation: serializeReservation(reservation),
       pricing: pricing.breakdown,
     });
+
+    try {
+      const socketPayload = {
+        reservationId: String(reservation._id),
+        status: reservation.status,
+        paymentStatus: reservation.paymentStatus,
+        viewingPreference: reservation.viewingPreference,
+        viewingType: reservation.viewingType,
+        visitDate: reservation.visitDate,
+        visitTime: reservation.visitTime,
+        branch: room.branch || null,
+      };
+      emitToAdmins("reservation:updated", socketPayload);
+      if (reservation.viewingPreference || reservation.visitDate) {
+        emitToAdmins("visit:updated", socketPayload);
+      }
+      if (reservation.viewingPreference || reservation.visitDate) {
+        notifyAdminsOfVisitSchedule({
+          reservation,
+          applicantUser: reservation.userId || dbUser,
+          viewingPreference: reservation.viewingPreference,
+          visitDate: reservation.visitDate,
+          visitTime: reservation.visitTime,
+        }).catch(() => {});
+      }
+    } catch (socketErr) {
+      logger.warn(
+        { err: socketErr, requestId: req.id },
+        "Socket emit failed after reservation create (non-fatal)",
+      );
+    }
   } catch (error) {
     if (isActiveBedAssignmentDuplicateError(error)) {
       return res.status(409).json({
@@ -511,6 +545,13 @@ export const deleteReservation = async (req, res) => {
         });
       }
 
+      if (!reservation.isArchived) {
+        return res.status(400).json({
+          error: "Only archived reservations can be permanently deleted. Please archive the reservation first.",
+          code: "ARCHIVED_REQUIRED_FOR_HARD_DELETE",
+        });
+      }
+
       // Release the bed BEFORE deleting the reservation document so we still have
       // the reservation ID to reference in Room.beds[].occupiedBy.reservationId
       await releaseOrphanedBeds([], [reservationId]).catch((err) =>
@@ -534,6 +575,16 @@ export const deleteReservation = async (req, res) => {
         message: "Reservation permanently deleted",
         reservationId,
         hardDeleted: true,
+      });
+    }
+
+    if (
+      hasReservationStatus(reservation.status, "reserved", "approved_for_payment") ||
+      hasReservationStatus(reservation.status, "moveIn")
+    ) {
+      return res.status(400).json({
+        error: "Confirmed reserved bookings cannot be deleted directly. Please process a cancellation or move-out workflow first.",
+        code: "RESERVED_CANNOT_BE_DELETED",
       });
     }
 

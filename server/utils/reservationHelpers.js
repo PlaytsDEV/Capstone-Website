@@ -99,7 +99,13 @@ export const getMoveInBlockers = (reservation) => {
     );
   }
 
-  if (reservation.paymentStatus !== "paid") {
+  const isPaid =
+    reservation.paymentStatus === "paid" ||
+    reservation.paymentStatus === "paid_in_full" ||
+    reservation.initialPaymentStatus === "paid" ||
+    reservation.reservationFeePaymentStatus === "verified";
+
+  if (!isPaid) {
     blockers.push(
       "Payment must be confirmed (status: Paid) before move-in."
     );
@@ -354,11 +360,51 @@ export const reconcileTenantUsersForScope = async ({ branch = null } = {}) => {
     .select("_id role tenantStatus branch")
     .lean();
 
+  if (!tenantUsers || tenantUsers.length === 0) return;
+
+  const tenantUserIds = tenantUsers.map((u) => u._id);
+  const now = new Date();
+
+  const moveInStatuses = reservationStatusesForQuery("moveIn");
+  const reservedStatuses = reservationStatusesForQuery("reserved");
+  const candidateStatuses = [
+    ...new Set([...moveInStatuses, ...reservedStatuses]),
+  ];
+
+  const reservations = await Reservation.find({
+    userId: { $in: tenantUserIds },
+    status: { $in: candidateStatuses },
+    isArchived: { $ne: true },
+  })
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .populate("roomId", "branch moveOutDate")
+    .lean();
+
+  const activeStaysByUserId = new Map();
+  const reservedStaysByUserId = new Map();
+
+  for (const res of reservations) {
+    const rawUserId = res.userId?._id || res.userId;
+    if (!rawUserId) continue;
+    const userIdStr = String(rawUserId);
+
+    const isMoveInStatus = moveInStatuses.includes(res.status);
+    const isMoveOutValid = !res.moveOutDate || new Date(res.moveOutDate) > now;
+
+    if (isMoveInStatus && isMoveOutValid) {
+      if (!activeStaysByUserId.has(userIdStr)) {
+        activeStaysByUserId.set(userIdStr, res);
+      }
+    } else if (reservedStatuses.includes(res.status)) {
+      if (!reservedStaysByUserId.has(userIdStr)) {
+        reservedStaysByUserId.set(userIdStr, res);
+      }
+    }
+  }
+
   for (const tenantUser of tenantUsers) {
-    const activeStay = await findLatestLifecycleReservation({
-      userId: tenantUser._id,
-      includeOnlyTenantEligibleStay: true,
-    });
+    const userIdStr = String(tenantUser._id);
+    const activeStay = activeStaysByUserId.get(userIdStr);
 
     if (activeStay) {
       const activeBranch = activeStay.roomId?.branch || null;
@@ -379,11 +425,7 @@ export const reconcileTenantUsersForScope = async ({ branch = null } = {}) => {
       continue;
     }
 
-    const reservedFallback = await findLatestLifecycleReservation({
-      userId: tenantUser._id,
-      statuses: "reserved",
-    });
-
+    const reservedFallback = reservedStaysByUserId.get(userIdStr);
     if (reservedFallback) {
       await syncReservationUserLifecycle({
         status: "reserved",

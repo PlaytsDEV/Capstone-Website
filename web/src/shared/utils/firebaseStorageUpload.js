@@ -341,7 +341,11 @@ async function uploadRoomPhotoViaServer(file, roomId) {
     let message = `Photo upload failed (HTTP ${response.status}).`;
     try {
       const json = await response.json();
-      message = json?.message || json?.error || message;
+      message =
+        json?.error?.message ||
+        json?.message ||
+        (typeof json?.error === "string" ? json.error : null) ||
+        message;
     } catch {
       // ignore parse errors
     }

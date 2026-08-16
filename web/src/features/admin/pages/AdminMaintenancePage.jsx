@@ -1,10 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Archive,
   ClipboardList,
-  Clock3,
-  FileText,
   MessageSquare,
   Paperclip,
   RotateCcw,
@@ -22,9 +20,7 @@ import {
   useAssignMaintenanceProvider,
   useGenerateMaintenanceReport,
   useGenerateMaintenanceUpdate,
-  useMaintenanceAnalytics,
-  useMaintenanceBranchReport,
-  useMaintenanceProviderReport,
+  useMaintenanceDuplicates,
   useMaintenanceRequest,
   useRemoveMaintenanceAttachment,
   useRestoreMaintenanceRequest,
@@ -33,6 +29,7 @@ import {
   useSendMaintenanceTenantSummary,
   useServiceProviders,
   useSuggestMaintenanceProvider,
+  useUpdateMaintenanceCost,
   useUpdateMaintenanceRequest,
 } from "../../../shared/hooks/queries/useMaintenance";
 import { maintenanceApi } from "../../../shared/api/maintenanceApi";
@@ -43,8 +40,10 @@ import {
   getMaintenanceUrgencyMeta,
   formatMaintenanceStatus,
 } from "../../../shared/utils/maintenanceConfig";
+import { BRANCH_OPTIONS } from "../../../shared/utils/constants";
 import { DataTable, DetailDrawer, PageShell } from "../components/shared";
 import { DrawerSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { AdminMaintenanceSkeleton } from "../components/AdminContentSkeletons";
 
 import {
   ARCHIVE_FILTER_OPTIONS,
@@ -54,6 +53,7 @@ import {
   createFilterPayload,
   createReportFilterPayload,
   exportCsvFile,
+  exportMaintenanceRequestsPdf,
   fmtDate,
   fmtDateTime,
   formatMaintenanceCsvRows,
@@ -76,7 +76,6 @@ import {
   isRemoteUri,
   isUploadedWorkLogAttachment,
   ITEMS_PER_PAGE,
-  MAINTENANCE_TABS,
   MANAGEMENT_SUMMARY_CARDS,
   mapMaintenanceApiErrors,
   matchesSlaFilter,
@@ -103,18 +102,14 @@ import { ConfirmationModal } from "./maintenance/components/ConfirmationModal";
 import { AssignBranchModal } from "./maintenance/components/AssignBranchModal";
 import { AttachmentRemovalModal } from "./maintenance/components/AttachmentRemovalModal";
 import { ServiceProviderAssignmentPanel } from "./maintenance/components/ServiceProviderAssignmentPanel";
+import { CostAttributionCard } from "./maintenance/components/CostAttributionCard";
+import { MaintenanceProofInspector } from "./maintenance/components/MaintenanceProofInspector";
 import { MaintenanceSummaryCards } from "./maintenance/components/MaintenanceSummaryCards";
+import { MaintenanceDetailModal } from "./maintenance/components/MaintenanceDetailModal";
 import { MaintenanceFilters } from "./maintenance/components/MaintenanceFilters";
+import { MaintenanceTable } from "./maintenance/components/MaintenanceTable";
 import {
-  AnalyticsRequestsTable,
-  MaintenanceTable,
-  ProviderPerformanceTable,
-} from "./maintenance/components/MaintenanceTable";
-import {
-  MaintenanceAnalyticsCharts,
   MaintenanceExportDropdown,
-  MaintenanceMetricsGrid,
-  MaintenanceReportFilters,
   ReportPreviewModal,
 } from "./maintenance/components/MaintenanceReportModal";
 import { useMaintenanceData } from "./maintenance/hooks/useMaintenanceData";
@@ -124,8 +119,6 @@ export default function AdminMaintenancePage() {
   const {
     isOwner,
     userBranch,
-    activeTab,
-    handleTabChange,
     statusFilter,
     setStatusFilter,
     archiveView,
@@ -167,26 +160,6 @@ export default function AdminMaintenancePage() {
     isLoadingProviders,
     summaryItems,
     activeSummaryIndex,
-    analyticsData,
-    isAnalyticsLoading,
-    isAnalyticsError,
-    analyticsError,
-    analyticsFilters,
-    setAnalyticsFilters,
-    analyticsRequestPage,
-    setAnalyticsRequestPage,
-    branchReportData,
-    isBranchReportLoading,
-    isBranchReportError,
-    branchReportError,
-    branchReportFilters,
-    setBranchReportFilters,
-    branchReportRequestPage,
-    setBranchReportRequestPage,
-    providerReportData,
-    isProviderReportLoading,
-    isProviderReportError,
-    providerReportError,
     reportPreview,
     setReportPreview,
     archiveDialogMode,
@@ -209,6 +182,7 @@ export default function AdminMaintenancePage() {
     generateReportMutation,
     sendTenantSummaryMutation,
     suggestProviderMutation,
+    rateProviderMutation,
   } = data;
 
   const [draftStatus, setDraftStatus] = useState("viewed");
@@ -259,32 +233,156 @@ export default function AdminMaintenancePage() {
     [selectedRequest],
   );
 
+  useEffect(() => {
+    if (!selectedRequest) return;
+    const assignedId =
+      selectedRequest.assignedProviderId ||
+      selectedRequest.assignedProvider?.id ||
+      selectedRequest.assignedProvider?._id ||
+      selectedRequest.providerDetails?.internalProviderId ||
+      "";
+    const assignedName =
+      selectedRequest.assignedProviderName ||
+      selectedRequest.assigned_to ||
+      selectedRequest.assignedProvider?.providerName ||
+      "";
+
+    if (assignedId) {
+      setProviderChoice(String(assignedId));
+    } else if (assignedName) {
+      setProviderChoice(PROVIDER_MANUAL_CHOICE);
+      setManualProvider({
+        providerName: assignedName,
+        contactNumber:
+          selectedRequest.assignedProviderContact ||
+          selectedRequest.assignedProvider?.contactNumber ||
+          "",
+        serviceType:
+          selectedRequest.assignedProviderCategory ||
+          selectedRequest.assignedProvider?.serviceType ||
+          "",
+        notes:
+          selectedRequest.assignedProviderNotes ||
+          selectedRequest.notes ||
+          "",
+      });
+    } else {
+      setProviderChoice(PROVIDER_NONE_CHOICE);
+      setManualProvider({
+        providerName: "",
+        contactNumber: "",
+        serviceType: "",
+        notes: "",
+      });
+    }
+    setProviderFieldErrors({});
+    setProviderFormMessage("");
+  }, [
+    selectedRequest?.request_id,
+    selectedRequest?.assignedProviderId,
+    selectedRequest?.assignedProviderName,
+    selectedRequest?.assigned_to,
+  ]);
+
+  const { data: duplicateData } = useMaintenanceDuplicates(selectedRequest?.request_id);
+
   const activeFilterChips = useMemo(() => {
     const chips = [];
+    if (summaryCardKey) {
+      const summaryCard = MANAGEMENT_SUMMARY_CARDS.find((c) => c.key === summaryCardKey);
+      if (summaryCard) {
+        chips.push({
+          key: `card-${summaryCardKey}`,
+          label: `Metric: ${summaryCard.label}`,
+          onRemove: () => setSummaryCardKey(null),
+        });
+      }
+    }
     if (statusFilter !== "all") {
-      chips.push({ key: `status-${statusFilter}`, label: `Status: ${formatMaintenanceStatus(statusFilter)}` });
+      chips.push({
+        key: `status-${statusFilter}`,
+        label: `Status: ${formatMaintenanceStatus(statusFilter)}`,
+        onRemove: () => setStatusFilter("all"),
+      });
+    }
+    if (isOwner && branchFilter !== "all") {
+      const branchOpt = BRANCH_OPTIONS.find((b) => b.value === branchFilter);
+      chips.push({
+        key: `branch-${branchFilter}`,
+        label: `Branch: ${branchOpt?.label || branchFilter}`,
+        onRemove: () => setBranchFilter("all"),
+      });
     }
     if (archiveView !== "active") {
       const archiveLabel = ARCHIVE_FILTER_OPTIONS.find((item) => item.key === archiveView)?.label || archiveView;
-      chips.push({ key: `archive-${archiveView}`, label: `View: ${archiveLabel}` });
+      chips.push({
+        key: `archive-${archiveView}`,
+        label: `View: ${archiveLabel}`,
+        onRemove: () => setArchiveView("active"),
+      });
     }
     if (requestTypeFilter !== "all") {
-      chips.push({ key: `type-${requestTypeFilter}`, label: `Type: ${getMaintenanceTypeMeta(requestTypeFilter).label}` });
+      chips.push({
+        key: `type-${requestTypeFilter}`,
+        label: `Type: ${getMaintenanceTypeMeta(requestTypeFilter).label}`,
+        onRemove: () => setRequestTypeFilter("all"),
+      });
     }
     if (urgencyFilter !== "all") {
-      chips.push({ key: `urgency-${urgencyFilter}`, label: `Urgency: ${getMaintenanceUrgencyMeta(urgencyFilter).label}` });
+      chips.push({
+        key: `urgency-${urgencyFilter}`,
+        label: `Urgency: ${getMaintenanceUrgencyMeta(urgencyFilter).label}`,
+        onRemove: () => setUrgencyFilter("all"),
+      });
     }
     if (slaFilter !== "all") {
       const slaLabel = SLA_FILTER_OPTIONS.find((item) => item.key === slaFilter)?.label || slaFilter;
-      chips.push({ key: `sla-${slaFilter}`, label: `SLA Health: ${slaLabel}` });
+      chips.push({
+        key: `sla-${slaFilter}`,
+        label: `SLA: ${slaLabel}`,
+        onRemove: () => setSlaFilter("all"),
+      });
     }
-    if (dateFrom) chips.push({ key: `from-${dateFrom}`, label: `From: ${fmtDate(dateFrom)}` });
-    if (dateTo) chips.push({ key: `to-${dateTo}`, label: `To: ${fmtDate(dateTo)}` });
+    if (dateFrom) {
+      chips.push({
+        key: `from-${dateFrom}`,
+        label: `From: ${fmtDate(dateFrom)}`,
+        onRemove: () => setDateFrom(""),
+      });
+    }
+    if (dateTo) {
+      chips.push({
+        key: `to-${dateTo}`,
+        label: `To: ${fmtDate(dateTo)}`,
+        onRemove: () => setDateTo(""),
+      });
+    }
     return chips;
-  }, [archiveView, dateFrom, dateTo, requestTypeFilter, slaFilter, statusFilter, urgencyFilter]);
+  }, [
+    archiveView,
+    branchFilter,
+    dateFrom,
+    dateTo,
+    isOwner,
+    requestTypeFilter,
+    slaFilter,
+    statusFilter,
+    summaryCardKey,
+    urgencyFilter,
+  ]);
 
-  const handleExport = () => {
+  const handleExportCsv = () => {
     exportCsvFile(formatMaintenanceCsvRows(filteredRequests), "maintenance-requests-list");
+  };
+
+  const handleExportPdf = () => {
+    exportMaintenanceRequestsPdf({
+      requests: filteredRequests,
+      summaryItems,
+      branchFilter,
+      statusFilter,
+      searchQuery,
+    });
   };
 
   const handleSummaryFilter = (index) => {
@@ -293,212 +391,233 @@ export default function AdminMaintenancePage() {
     setSummaryCardKey((current) => (current === cardKey ? null : cardKey));
   };
 
+  const handleQuickStatusChange = async (requestId, nextStatus) => {
+    try {
+      await updateRequestMutation.mutateAsync({
+        requestId,
+        payload: { status: nextStatus },
+      });
+      showNotification({
+        title: "Request Updated",
+        message: `Request #${requestId} is now ${formatMaintenanceStatus(nextStatus)}.`,
+        type: "success",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Update Failed",
+        message: getMaintenanceApiErrorMessage(err, "Failed to update request status"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleAssignProvider = async () => {
+    if (!selectedRequest) return;
+    try {
+      let payload;
+      if (providerChoice === PROVIDER_NONE_CHOICE || !providerChoice) {
+        payload = {
+          providerSource: "none",
+          providerId: null,
+          notes: manualProvider.notes?.trim() || "",
+        };
+      } else if (providerChoice === PROVIDER_MANUAL_CHOICE) {
+        payload = {
+          providerSource: "manual",
+          providerName: manualProvider.providerName.trim(),
+          contactNumber: manualProvider.contactNumber.trim(),
+          serviceType: manualProvider.serviceType.trim() || undefined,
+          notes: manualProvider.notes?.trim() || "",
+          saveForFuture: Boolean(saveManualProviderForFuture),
+        };
+      } else {
+        payload = {
+          providerSource: "directory",
+          providerId: providerChoice,
+          notes: manualProvider.notes?.trim() || "",
+        };
+      }
+
+      await assignProviderMutation.mutateAsync({
+        requestId: selectedRequest.request_id,
+        payload,
+      });
+
+      showNotification({
+        title: "Provider Assigned",
+        message: `Contractor details updated for ticket #${selectedRequest.request_id}.`,
+        type: "success",
+      });
+      setProviderFieldErrors({});
+      setProviderFormMessage("");
+    } catch (err) {
+      setProviderFormMessage(getMaintenanceApiErrorMessage(err, "Failed to assign provider."));
+      showNotification({
+        title: "Assignment Failed",
+        message: getMaintenanceApiErrorMessage(err, "Failed to assign provider."),
+        type: "error",
+      });
+    }
+  };
+
+  const handleSuggestProvider = async () => {
+    if (!selectedRequest) return;
+    try {
+      const result = await suggestProviderMutation.mutateAsync({
+        requestId: selectedRequest.request_id,
+      });
+      setProviderSuggestion(result?.data || result);
+      showNotification({
+        title: "Recommendation Ready",
+        message: "AI suggested service providers based on branch coverage and history.",
+        type: "info",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Suggestion Failed",
+        message: getMaintenanceApiErrorMessage(err, "Unable to generate provider suggestion."),
+        type: "error",
+      });
+    }
+  };
+
+  const handleUseProviderSuggestion = (providerId) => {
+    if (providerId) {
+      setProviderChoice(providerId);
+    }
+  };
+
+  const handleRateProvider = async (payload) => {
+    if (!selectedRequest) return;
+    try {
+      await rateProviderMutation.mutateAsync({
+        requestId: selectedRequest.request_id,
+        ...payload,
+      });
+      showNotification({
+        title: "Rating Submitted",
+        message: "Contractor rating recorded. This helps prioritize top-rated contractors in future AI suggestions.",
+        type: "success",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Rating Failed",
+        message: getMaintenanceApiErrorMessage(err, "Unable to record provider rating."),
+        type: "error",
+      });
+    }
+  };
+
+  if (isLoading && (!requests || requests.length === 0)) {
+    return <AdminMaintenanceSkeleton />;
+  }
+
   return (
     <div>
       <div className="mb-4">
         <h1 className="mb-1 text-2xl font-semibold text-foreground">Maintenance</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Manage tenant repair requests, reporting, service provider performance, and branch maintenance insights.
+          Manage tenant repair requests, contractor assignments, and resolution workflows.
         </p>
       </div>
 
       <PageShell>
-        <MaintenanceSummaryCards
-          summaryItems={summaryItems}
-          activeSummaryIndex={activeSummaryIndex}
-          onSummaryFilter={handleSummaryFilter}
-        />
+        <PageShell.Summary>
+          <MaintenanceSummaryCards
+            summaryItems={summaryItems}
+            activeSummaryIndex={activeSummaryIndex}
+            onSummaryFilter={handleSummaryFilter}
+          />
+        </PageShell.Summary>
 
         <PageShell.Actions>
-          {activeTab === "requests" ? (
-            <MaintenanceFilters
-              searchQuery={searchQuery}
-              statusFilter={statusFilter}
-              archiveView={archiveView}
-              branchFilter={branchFilter}
-              urgencyFilter={urgencyFilter}
-              slaFilter={slaFilter}
-              requestTypeFilter={requestTypeFilter}
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-              sortMode={sortMode}
-              showAdvancedFilters={showAdvancedFilters}
-              isOwner={isOwner}
-              filteredRequestsCount={filteredRequests.length}
-              summaryRequestsCount={summaryRequests.length}
-              activeFilterChips={activeFilterChips}
-              onSearchQueryChange={setSearchQuery}
-              onStatusFilterChange={setStatusFilter}
-              onArchiveViewChange={setArchiveView}
-              onBranchFilterChange={setBranchFilter}
-              onUrgencyFilterChange={setUrgencyFilter}
-              onSlaFilterChange={setSlaFilter}
-              onRequestTypeFilterChange={setRequestTypeFilter}
-              onDateFromChange={setDateFrom}
-              onDateToChange={setDateTo}
-              onSortModeChange={setSortMode}
-              onToggleAdvancedFilters={() => setShowAdvancedFilters((curr) => !curr)}
-              onExport={handleExport}
-              onResetFilters={handleResetFilters}
-            />
-          ) : null}
+          <MaintenanceFilters
+            searchQuery={searchQuery}
+            statusFilter={statusFilter}
+            archiveView={archiveView}
+            branchFilter={branchFilter}
+            userBranch={userBranch}
+            urgencyFilter={urgencyFilter}
+            slaFilter={slaFilter}
+            requestTypeFilter={requestTypeFilter}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            sortMode={sortMode}
+            showAdvancedFilters={showAdvancedFilters}
+            isOwner={isOwner}
+            filteredRequestsCount={filteredRequests.length}
+            summaryRequestsCount={summaryRequests.length}
+            activeFilterChips={activeFilterChips}
+            onSearchQueryChange={setSearchQuery}
+            onStatusFilterChange={setStatusFilter}
+            onArchiveViewChange={setArchiveView}
+            onBranchFilterChange={setBranchFilter}
+            onUrgencyFilterChange={setUrgencyFilter}
+            onSlaFilterChange={setSlaFilter}
+            onRequestTypeFilterChange={setRequestTypeFilter}
+            onDateFromChange={setDateFrom}
+            onDateToChange={setDateTo}
+            onSortModeChange={setSortMode}
+            onToggleAdvancedFilters={() => setShowAdvancedFilters((curr) => !curr)}
+            onExportCsv={handleExportCsv}
+            onExportPdf={handleExportPdf}
+            onResetFilters={handleResetFilters}
+          />
         </PageShell.Actions>
 
         <PageShell.Content>
-          {activeTab === "requests" ? (
-            <MaintenanceTable
-              requests={filteredRequests}
-              isLoading={isLoading}
-              currentPage={currentPage}
-              onPageChange={setCurrentPage}
-              onRowClick={(row) => setSelectedRequestId(row.request_id)}
-            />
-          ) : null}
+          <MaintenanceTable
+            requests={filteredRequests}
+            isLoading={isLoading}
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
+            onRowClick={(row) => {
+              setSelectedRequestId(row.request_id);
+              if (row.status === "pending") {
+                handleQuickStatusChange(row.request_id, "viewed");
+              }
+            }}
+          />
 
-          {activeTab === "analytics" ? (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-card-foreground">Maintenance Analytics Dashboard</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Performance insights based on recorded maintenance data.</p>
-                </div>
-              </div>
-              <MaintenanceReportFilters
-                filters={analyticsFilters}
-                isOwner={isOwner}
-                userBranch={userBranch}
-                providerOptions={analyticsData?.providerOptions || []}
-                onChange={(key, val) => setAnalyticsFilters((curr) => ({ ...curr, [key]: val }))}
-                title="Analytics filters"
-              />
-              {isAnalyticsError ? (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">
-                  {analyticsError?.message || "Unable to load maintenance analytics."}
-                </div>
-              ) : isAnalyticsLoading ? (
-                <DrawerSkeleton rows={5} />
-              ) : (
-                <>
-                  <MaintenanceMetricsGrid summary={analyticsData?.summary} isOwner={isOwner} />
-                  <MaintenanceAnalyticsCharts data={analyticsData} isOwner={isOwner} />
-                  <section className="rounded-xl border border-border bg-card p-5">
-                    <h3 className="mb-3 text-sm font-semibold text-card-foreground">Filtered Maintenance Requests</h3>
-                    <AnalyticsRequestsTable
-                      requests={analyticsData?.requests || []}
-                      isLoading={isAnalyticsLoading}
-                      currentPage={analyticsRequestPage}
-                      onPageChange={setAnalyticsRequestPage}
-                      onRowClick={(id) => setSelectedRequestId(id)}
-                    />
-                  </section>
-                </>
-              )}
-            </div>
-          ) : null}
-
-          {activeTab === "branch_reports" ? (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-card-foreground">Branch-Level Maintenance Report</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Generate official branch reports from selected filters.</p>
-                </div>
-              </div>
-              <MaintenanceReportFilters
-                filters={branchReportFilters}
-                isOwner={isOwner}
-                userBranch={userBranch}
-                providerOptions={branchReportData?.providerOptions || []}
-                onChange={(key, val) => setBranchReportFilters((curr) => ({ ...curr, [key]: val }))}
-                title="Report filters"
-              />
-              {isBranchReportError ? (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">
-                  {branchReportError?.message || "Unable to generate branch report."}
-                </div>
-              ) : isBranchReportLoading ? (
-                <DrawerSkeleton rows={5} />
-              ) : (
-                <section className="rounded-xl border border-border bg-card p-5">
-                  <MaintenanceMetricsGrid summary={branchReportData?.summary} isOwner={isOwner} />
-                  <div className="mt-5">
-                    <AnalyticsRequestsTable
-                      requests={branchReportData?.requests || []}
-                      isLoading={isBranchReportLoading}
-                      currentPage={branchReportRequestPage}
-                      onPageChange={setBranchReportRequestPage}
-                      onRowClick={(id) => setSelectedRequestId(id)}
-                    />
-                  </div>
-                </section>
-              )}
-            </div>
-          ) : null}
-
-          {activeTab === "service_providers" ? (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-card-foreground">Service Provider Performance</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Assignment, completion, and overdue performance by provider.</p>
-                </div>
-              </div>
-              <ProviderPerformanceTable
-                providers={providerReportData?.providers || []}
-                isLoading={isProviderReportLoading}
-              />
-            </div>
-          ) : null}
-
-          {selectedRequestId ? (
-            <DetailDrawer
-              width={1200}
-              open={Boolean(selectedRequestId)}
-              onClose={() => setSelectedRequestId(null)}
-              title="Maintenance Request"
-              subtitle={selectedRequest ? `Request #${selectedRequest.request_id}` : ""}
-            >
-              {isDetailLoading || !selectedRequest ? (
-                <div className="px-6 py-6">
-                  <DrawerSkeleton rows={4} />
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-xl border border-border bg-card p-5">
-                      <DetailDrawer.Section label="Request Details">
-                        <DetailDrawer.Row label="Tenant" value={selectedRequest.tenant?.full_name || "Unknown"} />
-                        <DetailDrawer.Row label="Branch" value={getRequestBranch(selectedRequest)} />
-                        <DetailDrawer.Row label="Type" value={getMaintenanceTypeMeta(selectedRequest.request_type).label} />
-                        <DetailDrawer.Row label="Urgency" value={getMaintenanceUrgencyMeta(selectedRequest.urgency).label} />
-                        <DetailDrawer.Row label="Status" value={formatMaintenanceStatus(selectedRequest.status)} />
-                        <DetailDrawer.Row label="Submitted" value={fmtDateTime(selectedRequest.created_at)} />
-                      </DetailDrawer.Section>
-                    </div>
-
-                    <ServiceProviderAssignmentPanel
-                      request={selectedRequest}
-                      providers={serviceProviders}
-                      isLoadingProviders={isLoadingProviders}
-                      selectedChoice={providerChoice}
-                      manualProvider={manualProvider}
-                      saveForFuture={saveManualProviderForFuture}
-                      fieldErrors={providerFieldErrors}
-                      formMessage={providerFormMessage}
-                      suggestion={providerSuggestion}
-                      onChoiceChange={setProviderChoice}
-                      onManualChange={(k, v) => setManualProvider((curr) => ({ ...curr, [k]: v }))}
-                      onSaveForFutureChange={setSaveManualProviderForFuture}
-                    />
-                  </div>
-
-                  <div className="rounded-xl border border-border bg-card p-5">
-                    <MaintenanceTimeline items={timelineItems} />
-                  </div>
-                </div>
-              )}
-            </DetailDrawer>
-          ) : null}
+          <MaintenanceDetailModal
+            open={Boolean(selectedRequestId)}
+            onClose={() => setSelectedRequestId(null)}
+            request={selectedRequest}
+            isLoading={isDetailLoading}
+            duplicateData={duplicateData}
+            timelineItems={timelineItems}
+            serviceProviders={serviceProviders}
+            isLoadingProviders={isLoadingProviders}
+            providerChoice={providerChoice}
+            onProviderChoiceChange={setProviderChoice}
+            manualProvider={manualProvider}
+            onManualProviderChange={(k, v) => setManualProvider((curr) => ({ ...curr, [k]: v }))}
+            saveManualProviderForFuture={saveManualProviderForFuture}
+            onSaveManualProviderForFutureChange={setSaveManualProviderForFuture}
+            providerFieldErrors={providerFieldErrors}
+            providerFormMessage={providerFormMessage}
+            providerSuggestion={providerSuggestion}
+            onAssignProvider={handleAssignProvider}
+            onSuggestProvider={handleSuggestProvider}
+            onUseProviderSuggestion={handleUseProviderSuggestion}
+            onRateProvider={handleRateProvider}
+            isAssigningProvider={assignProviderMutation.isPending}
+            isSuggestingProvider={suggestProviderMutation.isPending}
+            isRatingProvider={rateProviderMutation.isPending}
+            onQuickStatusChange={handleQuickStatusChange}
+            onRemoveAttachment={(target) => {
+              if (target) {
+                setAttachmentRemovalDialog({
+                  open: true,
+                  scope: target.scope,
+                  reason: "duplicate_or_invalid",
+                  customReason: "",
+                  error: null,
+                });
+              }
+            }}
+            canRemoveAttachments={true}
+          />
 
           <ReportPreviewModal
             open={Boolean(reportPreview)}

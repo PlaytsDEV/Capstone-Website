@@ -48,7 +48,8 @@ export default function useSocketClient() {
   }, [user?.id, user?._id, user?.role, clearNotifications]);
 
   useEffect(() => {
-    if (!user?.id || !user?.role) return undefined;
+    const currentUserId = user?.id || user?._id;
+    if (!currentUserId || !user?.role) return undefined;
     if (socketRef.current?.connected) return undefined;
 
     let cancelled = false;
@@ -104,7 +105,18 @@ export default function useSocketClient() {
         }
         addNotification(notification);
         if (!notification?.isRead) {
-          showNotification(notification.title || "New notification", "info", 4500);
+          const typeLower = `${notification.type || ""} ${notification.title || ""}`.toLowerCase();
+          const toastType =
+            /completed|approved|verified|success|paid|confirmed/i.test(typeLower)
+              ? "success"
+              : /rejected|cancelled|failed|error|no_show|missed/i.test(typeLower)
+              ? "error"
+              : /warning|overdue|deadline|expired/i.test(typeLower)
+              ? "warning"
+              : "info";
+
+          const toastMessage = notification.message || notification.title || "New notification";
+          showNotification(toastMessage, toastType, 3000);
           const scope = getNotificationQueryScope(user);
           qc.setQueryData(notificationQueryKeys.unread(scope), (current) => ({
             unreadCount: (current?.unreadCount ?? 0) + 1,
@@ -123,6 +135,7 @@ export default function useSocketClient() {
           /^(reservation_|visit_|grace_period_|contract_|move_out)/i.test(notificationType)
         ) {
           qc.invalidateQueries({ queryKey: ["reservations"] });
+          qc.refetchQueries({ queryKey: ["reservations"], type: "active" });
           qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
           qc.invalidateQueries({ queryKey: ["rooms"] });
           qc.invalidateQueries({ queryKey: ["users"] });
@@ -185,7 +198,17 @@ export default function useSocketClient() {
           qc.invalidateQueries({ queryKey: ["reservations", data.reservationId] });
         }
         qc.invalidateQueries({ queryKey: ["reservations"] });
+        qc.refetchQueries({ queryKey: ["reservations"], type: "active" });
         qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+      });
+
+      socket.on("visit:updated", (data) => {
+        if (data?.reservationId) {
+          qc.invalidateQueries({ queryKey: ["reservations", data.reservationId] });
+        }
+        qc.invalidateQueries({ queryKey: ["reservations"] });
+        qc.refetchQueries({ queryKey: ["reservations"], type: "active" });
         qc.invalidateQueries({ queryKey: ["dashboard"] });
       });
 
@@ -225,7 +248,7 @@ export default function useSocketClient() {
       socketRef.current = null;
       setConnected(false);
     };
-  }, [user?.id, user?.role, addNotification, qc, setConnected]);
+  }, [user?.id, user?._id, user?.role, addNotification, qc, setConnected]);
 
   return socketRef.current;
 }

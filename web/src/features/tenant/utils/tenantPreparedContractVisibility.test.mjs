@@ -23,12 +23,12 @@ test("prepared missing-file response has a distinct tenant-safe message", () => 
   }), "The prepared document is temporarily unavailable. Please contact the administrator.");
 });
 
-test("tenant web uses distinct prepared view and download actions", () => {
+test("tenant web provides signed and digital contract viewing and download capabilities", () => {
   const page = fs.readFileSync(
     new URL("../pages/ContractsPage.jsx", import.meta.url),
     "utf8",
   );
-  assert.match(page, /View Prepared Copy/);
-  assert.match(page, /Download Prepared Copy/);
-  assert.match(page, /mode === "download"/);
+  assert.match(page, /DigitalContractPaper/);
+  assert.match(page, /handleViewSignedCopy/);
+  assert.match(page, /handleDownloadSignedCopy/);
 });

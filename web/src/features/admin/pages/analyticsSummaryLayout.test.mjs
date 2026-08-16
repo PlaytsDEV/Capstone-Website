@@ -46,14 +46,7 @@ test("analytics summary opts into topbar and layout controls", async () => {
   assert.match(source, /analytics-tabs/);
 });
 
-test("analytics exposes permission-aware Feedback & Surveys navigation tab", async () => {
-  const source = await readSource("AnalyticsPage.jsx");
 
-  assert.match(source, /can\("viewSurveyAnalytics"\)/);
-  assert.match(source, /handleTabChange\("surveys"\)/);
-  assert.match(source, /<SurveyAnalyticsTab \/>/);
-  assert.match(source, /Feedback &amp; Surveys/g);
-});
 
 test("analytics summary uses default page scrolling instead of an inner chart scroller", async () => {
   const styles = await readSource(path.join("..", "styles", "admin-reports.css"));

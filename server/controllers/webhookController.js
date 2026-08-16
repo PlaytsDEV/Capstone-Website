@@ -345,6 +345,38 @@ async function handleBillPayment(metadata, eventData, context = {}) {
   try {
     const tenant = await User.findById(bill.userId).lean();
     if (tenant?.email) {
+      const isInitialPayment =
+        bill.billType === "initial_payment" ||
+        eventData?.attributes?.data?.attributes?.metadata?.purpose === "initial_payment" ||
+        eventData?.attributes?.data?.attributes?.metadata?.type === "initial_payment";
+
+      if (isInitialPayment && bill.reservationId) {
+        await Reservation.updateOne(
+          { _id: bill.reservationId },
+          {
+            $set: {
+              initialPaymentStatus: "paid",
+              paymentStatus: "paid_in_full",
+              reservationFeePaymentStatus: "verified",
+            },
+          },
+        );
+      }
+
+      let reservationCode = "";
+      let roomName = "";
+      let branchName = bill.branch || "";
+      if (bill.reservationId) {
+        const resDoc = await Reservation.findById(bill.reservationId)
+          .populate("roomId", "name branch")
+          .lean();
+        if (resDoc) {
+          reservationCode = resDoc.reservationCode || "";
+          roomName = resDoc.roomId?.name || "";
+          branchName = resDoc.roomId?.branch || branchName;
+        }
+      }
+
       const rawBillSourceType =
         eventData?.attributes?.data?.attributes?.source?.type ||
         eventData?.attributes?.data?.attributes?.payment_method_type ||
@@ -369,11 +401,16 @@ async function handleBillPayment(metadata, eventData, context = {}) {
         to: tenant.email,
         tenantName: `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim(),
         amount: settlement.appliedAmount,
-        description: `Lilycrest Dormitory — Monthly Bill (${monthStr})`,
+        description: isInitialPayment
+          ? "Lilycrest Dormitory — Move-In Settlement (Advance Rent & Security Deposit)"
+          : `Lilycrest Dormitory — Monthly Bill (${monthStr})`,
         billedTo: `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim(),
         paymentMethod: formattedBillChannel,
         paymentDate,
         referenceId: paymentId,
+        reservationCode,
+        roomName,
+        branch: branchName,
       });
     }
   } catch (emailErr) {

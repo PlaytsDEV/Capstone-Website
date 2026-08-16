@@ -92,10 +92,6 @@ async function retryJobOperation(fn, { label, branch = null } = {}) {
 import { generateAutomatedRentBills } from "./rentGenerator.js";
 import { dispatchDueScheduledAnnouncements } from "./announcementDispatch.js";
 import { detectSlaBreaches } from "./slaAlertJob.js";
-async function runSurveySchedulerJob() {
-  const { runSurveyScheduler } = await import("../services/surveyAutomationService.js");
-  return runSurveyScheduler();
-}
 
 // ─── Job 1: Overdue Move-In Detection (daily at 08:30) ──────────────────────────
 
@@ -254,7 +250,7 @@ async function computeOverduePenalties() {
 async function sendPaymentReminders() {
   try {
     const now = dayjs();
-    const reminderDays = [5, 3, 1];
+    const reminderDays = [3, 2, 1, 0];
     let sent = 0;
 
     for (const daysAhead of reminderDays) {
@@ -268,13 +264,6 @@ async function sendPaymentReminders() {
       }).lean();
 
       for (const bill of bills) {
-        // Skip the 5-day reminder if the bill was literally just generated in the last 24 hours 
-        // to avoid duplicate spam with the "New Bill Generated" email.
-        const ageInDays = now.diff(dayjs(bill.createdAt || new Date()), "day", true);
-        if (daysAhead === 5 && ageInDays < 1) {
-           continue; 
-        }
-
         const month = dayjs(bill.billingMonth).format("MMMM YYYY");
         await notify.billDueReminder(bill.userId, month, bill.totalAmount, daysAhead, { billId: bill._id });
         sent++;
@@ -1176,13 +1165,7 @@ export function startScheduler(options = {}) {
     }),
   );
 
-  scheduledJobs.push(
-    cron.schedule("15 7 * * *", runSurveySchedulerJob, {
-      scheduled: true,
-      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
-      name: "survey-lifecycle-and-reminders",
-    }),
-  );
+
 
   // Job 15: Nightly occupancy integrity reconciliation — daily at 04:00
   // Safety-net that runs AFTER the Firebase sync job (03:00) to catch any
@@ -1223,7 +1206,6 @@ export {
   dispatchScheduledAnnouncements,
   detectSlaBreaches,
   detectConsecutiveOverdueMonths,
-  runSurveySchedulerJob,
   reconcileOccupancyIntegrity,
 };
 

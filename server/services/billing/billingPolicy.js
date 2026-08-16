@@ -12,7 +12,7 @@ import { getManilaDayjs, toManilaStartOfDay } from "../../utils/dateUtils.js";
 export const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 export const UTILITY_CYCLE_DAY = 15;
 export const UTILITY_CHARGE_FIELDS = ["electricity", "water"];
-const RENT_GENERATION_LEAD_DAYS = 5;
+const RENT_GENERATION_LEAD_DAYS = 7;
 
 function normalizeBillingDate(dateLike) {
   const normalized = toManilaStartOfDay(dateLike);
@@ -261,7 +261,13 @@ export function resolveDueState(billLike, now = new Date()) {
   return "current";
 }
 
-export function syncBillAmounts(bill, { preserveStatus = false, now = new Date() } = {}) {
+export function syncBillAmounts(bill, { preserveStatus = false, now = new Date(), releasing = false } = {}) {
+  // bill.isNew is Mongoose's own "not yet saved" flag — true only for a
+  // document built via `new Bill(...)` and not yet persisted. Plain objects
+  // (as used by this file's own unit tests, or any legacy-shaped record)
+  // simply have it undefined/falsy, which is the correct, safe default.
+  const isFreshlyConstructedDocument = bill.isNew === true;
+
   const snapshot = getVisibleBillSnapshot(bill, now);
 
   bill.grossAmount = snapshot.grossAmount;
@@ -281,6 +287,46 @@ export function syncBillAmounts(bill, { preserveStatus = false, now = new Date()
 
   if (!preserveStatus) {
     bill.status = snapshot.status;
+  }
+
+  // releasedAt: the immutable, first-ever tenant-visible timestamp for this
+  // bill (see the field doc comment in models/Bill.js). syncBillAmounts()
+  // is the one shared choke point every bill writer and every "send"/
+  // "publish" action already calls, so this is where the write lives —
+  // but it only actually fires under two provable conditions:
+  //
+  //   1. isFreshlyConstructedDocument (bill.isNew) — a brand-new document's
+  //      very first sync. Rent bills are created directly as "pending",
+  //      never "draft" (proven in Phase 1 of the release-lifecycle
+  //      investigation), so for them creation IS the release event.
+  //
+  //   2. releasing: true — an explicit signal passed ONLY by the two
+  //      functions that perform the actual draft -> published transition
+  //      for utility bills (sendDraftUtilityBills, sendUtilityPeriodBills
+  //      in utils/utilityBillFlow.js). This can't be inferred from
+  //      `bill.status` here: those callers already flip bill.status (or
+  //      just the per-utility utilityDispatch state) to non-draft BEFORE
+  //      calling syncBillAmounts, so by the time this function runs, the
+  //      "was it draft a moment ago" evidence is already gone from
+  //      bill.status alone — and resolveBillStatus() never moves a bill
+  //      *out* of "draft" on its own (it's a hard early-exit guard), so
+  //      inferring the transition from the resolved snapshot doesn't work
+  //      either. An explicit flag from the actual publish action is the
+  //      only reliable signal.
+  //
+  // Deliberately EXCLUDES the case where an older bill that was already
+  // non-draft before this feature existed gets re-synced by something
+  // unrelated (a payment update, the daily overdue cron, an admin edit)
+  // years later — that must NOT silently backfill releasedAt = today, which
+  // would fabricate a release date. Those bills correctly stay
+  // releasedAt: null until real historical evidence is provided (Phase 7 —
+  // no createdAt/billingCycleStart/dueDate/meter-date backfill, ever).
+  if (
+    !bill.releasedAt &&
+    bill.status !== "draft" &&
+    (isFreshlyConstructedDocument || releasing)
+  ) {
+    bill.releasedAt = now;
   }
 
   if (bill.status === "paid" && !bill.paymentDate) {

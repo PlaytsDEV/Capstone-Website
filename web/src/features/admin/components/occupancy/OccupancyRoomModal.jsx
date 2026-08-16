@@ -2,15 +2,18 @@ import { useState } from "react";
 import { BedDouble, Lock, Settings, Unlock, X, User } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatRoomType } from "../../utils/formatters";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 import { DrawerSkeleton } from "../../../../shared/components/LoadingSkeletons";
 import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
 import BedOccupantDetailModal from "../rooms/BedOccupantDetailModal";
+import { roomApi } from "../../../../shared/api/roomApi";
 
 export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  useEscapeClose(true, onClose);
  const navigate = useNavigate();
+ const queryClient = useQueryClient();
  const [selectedOccupantBed, setSelectedOccupantBed] = useState(null);
 
  const roomInfo = room.room || room;
@@ -341,6 +344,15 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
       room={roomInfo}
       onClose={() => setSelectedOccupantBed(null)}
       onNavigateToTenants={handleNavigateToTenants}
+      onReleaseBed={async (bed) => {
+        try {
+          await roomApi.releaseBed(roomInfo._id, bed.id);
+          queryClient.invalidateQueries({ queryKey: ["rooms"] });
+          queryClient.invalidateQueries({ queryKey: ["room", String(roomInfo._id)] });
+        } catch (err) {
+          console.error("Failed to release bed:", err);
+        }
+      }}
     />
  )}
  </div>

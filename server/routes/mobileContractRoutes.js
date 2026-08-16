@@ -9,38 +9,16 @@ import {
   resolveCurrentPreparedDocument,
   selectCurrentPreparedDocument,
 } from "../services/preparedContractDocumentService.js";
+import { mobileTenantAuth as mobileTenant } from "../middleware/mobileTenantAuth.js";
 
 const router = express.Router();
 const asyncRoute = (handler) => (req, res, next) =>
   Promise.resolve(handler(req, res, next)).catch(next);
 
-const mobileTenant = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.startsWith("Bearer ")
-      ? req.headers.authorization.slice(7)
-      : req.cookies?.session_token;
-    if (!token) return res.status(401).json({ detail: "Not authenticated" });
-    const session = await mongoose.connection.db.collection("user_sessions").findOne({
-      session_token: token,
-      expires_at: { $gt: new Date() },
-    });
-    if (!session?.user_id) return res.status(401).json({ detail: "Invalid or expired session" });
-    const user = await mongoose.connection.db.collection("users").findOne({ user_id: session.user_id });
-    if (!user || !["tenant", "applicant"].includes(user.role)) {
-      return res.status(403).json({ detail: "Tenant Contract access denied" });
-    }
-    req.mobileTenant = user;
-    req.user = {
-      mongoId: user._id,
-      email: user.email,
-      role: user.role,
-      branch: user.branch || "",
-    };
-    return next();
-  } catch {
-    return res.status(401).json({ detail: "Authentication error" });
-  }
-};
+// Session validation (expiry, account-restriction, securityVersion
+// revocation) now lives in one place — middleware/mobileTenantAuth.js —
+// instead of being duplicated inline here. See that file's header comment
+// for why. Local alias keeps every `mobileTenant` call site below unchanged.
 
 // Mobile must show the tenant's authoritative Contract starting from draft,
 // not only once it reaches "generated"/signed/published — unlike the Web "My
@@ -116,10 +94,29 @@ router.get("/contracts/:contractId/documents/final", mobileTenant, asyncRoute(as
 router.get("/documents/contract", mobileTenant, asyncRoute(async (req, res) => {
   const contract = await ownedCurrentContract(req.mobileTenant._id);
   if (!contract) return res.status(404).json({ detail: "Contract is being prepared." });
+
+  // If finalDocument is available and verified, stream the final notarized PDF
+  if (contract.finalDocument && Boolean(contract.notarizationVerifiedAt)) {
+    try {
+      const resolved = await resolvePublishedFinalDocument(contract);
+      const download = req.query.download === "1";
+      res.setHeader("Content-Type", resolved.finalDocument.mimeType || "application/pdf");
+      res.setHeader("Content-Length", resolved.finalDocument.fileSize);
+      res.setHeader("Content-Disposition", `${download ? "attachment" : "inline"}; filename="${resolved.finalDocument.fileName.replaceAll('"', "")}"`);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("Pragma", "no-cache");
+      return fs.createReadStream(resolved.absolutePath).pipe(res);
+    } catch (_) {
+      // Fall through to prepared document if final fails to resolve
+    }
+  }
+
+  // Otherwise stream the current prepared draft
   const { document, size, createReadStream } = await resolveCurrentPreparedDocument(contract);
+  const disposition = req.query.download === "1" ? "attachment" : "inline";
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Length", size);
-  res.setHeader("Content-Disposition", `attachment; filename="${document.fileName.replaceAll('"', "")}"`);
+  res.setHeader("Content-Disposition", `${disposition}; filename="${document.fileName.replaceAll('"', "")}"`);
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("Pragma", "no-cache");
   return createReadStream().pipe(res);

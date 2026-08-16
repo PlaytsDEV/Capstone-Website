@@ -39,6 +39,26 @@ import {
   buildTenantWorkspaceEntry,
 } from "./_helpers.js";
 
+// In-memory throttle for tenant scope reconciliation (prevents redundant MongoDB write scans on repeated GET reads)
+const lastScopeReconcileTime = new Map();
+const RECONCILE_THROTTLE_MS = 60 * 1000; // 60 seconds
+
+export const throttledReconcileTenantUsersForScope = async ({ branch = null } = {}) => {
+  const key = branch || "all";
+  const now = Date.now();
+  const lastTime = lastScopeReconcileTime.get(key) || 0;
+  if (now - lastTime < RECONCILE_THROTTLE_MS) {
+    return;
+  }
+  lastScopeReconcileTime.set(key, now);
+  try {
+    await reconcileTenantUsersForScope({ branch });
+  } catch (err) {
+    lastScopeReconcileTime.delete(key);
+    throw err;
+  }
+};
+
 export const getCurrentResidents = async (req, res) => {
   try {
     const dbUser = await findDbUser(req.user.uid);
@@ -74,7 +94,7 @@ export const getCurrentResidents = async (req, res) => {
       roomQuery.branch = requestedBranch;
     }
 
-    await reconcileTenantUsersForScope({
+    await throttledReconcileTenantUsersForScope({
       branch: roomQuery.branch || null,
     });
 
@@ -129,7 +149,7 @@ export const getTenantWorkspace = async (req, res) => {
       requestedBranch: req.query.branch,
     });
 
-    await reconcileTenantUsersForScope({
+    await throttledReconcileTenantUsersForScope({
       branch: roomQuery.branch || null,
     });
 
@@ -199,8 +219,8 @@ export const getTenantWorkspaceById = async (req, res) => {
       });
     }
 
-    const { Bill, BedHistory, Stay } = await import("../../models/index.js");
-    const [bills, bedHistoryRecords, stayHistory, branchRooms] = await Promise.all([
+    const { Bill, BedHistory, Stay, Contract } = await import("../../models/index.js");
+    const [bills, bedHistoryRecords, stayHistory, branchRooms, contracts] = await Promise.all([
       Bill.find({
         reservationId: reservation._id,
         isArchived: { $ne: true },
@@ -222,6 +242,14 @@ export const getTenantWorkspaceById = async (req, res) => {
         isArchived: { $ne: true },
       })
         .select("_id beds")
+        .lean(),
+      Contract.find({
+        $or: [
+          { reservationId: reservation._id },
+          { tenantId: reservation.userId?._id || reservation.userId },
+        ],
+      })
+        .sort({ version: -1, createdAt: -1 })
         .lean(),
     ]);
     const currentStay =
@@ -245,6 +273,7 @@ export const getTenantWorkspaceById = async (req, res) => {
       stayHistory,
       bills,
       bedHistoryRecords,
+      contracts,
       tenantStatus: reservation.userId?.tenantStatus || "applicant",
       hasAvailableBedsInBranch,
       now: new Date(),

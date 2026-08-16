@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../config/database');
 const { notifyMaintenanceStatusChange } = require('../services/pushService');
+const { admin, resolveFirebaseStorageBucket } = require('../config/firebase');
 
 // Canonical collection used by the website backend (Mongoose model collection).
 const PRIMARY_COLLECTION = 'maintenance_requests';
@@ -12,9 +13,60 @@ const LEGACY_COLLECTION = 'maintenancerequests';
 // Read from both so old records still appear while new records land in primary.
 const COLLECTIONS = [...new Set([PRIMARY_COLLECTION, LEGACY_COLLECTION])];
 
+// Optional client-supplied retry key (Phase 4A reconciliation): lets the app
+// safely retry a maintenance submission (e.g. after a dropped response) with
+// a guarantee that only one ticket is ever created for that (tenant, key)
+// pair. Absent on older app builds, which keep working exactly as before —
+// nothing below this file requires the field.
+const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+// Lazily create the uniqueness constraint the first time it's needed, the
+// same way auth.controller.js does for its otp_store TTL index — avoids a
+// separate migration step while still guaranteeing the index exists before
+// any insert that depends on it for concurrency safety. Partial so historic
+// rows (and any future submission without a key) never collide with each
+// other on the absent field.
+let clientRequestIdIndexPromise = null;
+function ensureClientRequestIdIndex(db) {
+  // Tolerant of "an equivalent index already exists" (MongoDB error codes 85
+  // IndexOptionsConflict / 86 IndexKeySpecsConflict): the Mongoose model
+  // (models/MaintenanceRequest.js) declares this same { user_id,
+  // client_request_id } partial-unique index and may have already built it
+  // under its own auto-generated name via autoIndex before this lazy call
+  // ever runs. Either name enforces the same constraint, so a conflict here
+  // just means the guarantee this function exists for is already in place —
+  // it must not fail the request that triggered it.
+  clientRequestIdIndexPromise ||= db.collection(PRIMARY_COLLECTION).createIndex(
+    { user_id: 1, client_request_id: 1 },
+    {
+      name: 'user_client_request_id_unique',
+      unique: true,
+      partialFilterExpression: { client_request_id: { $type: 'string' } },
+    },
+  ).catch((error) => {
+    if (error?.code === 85 || error?.code === 86) return null;
+    throw error;
+  });
+  return clientRequestIdIndexPromise;
+}
+
 const ACTIVE_RESERVATION_STATUSES = ['moveIn', 'active', 'completed', 'confirmed'];
 const VALID_URGENCIES = ['low', 'normal', 'high'];
 const VALID_STATUSES = ['pending', 'viewed', 'in_progress', 'resolved', 'completed', 'rejected', 'cancelled'];
+// Matches the current mobile frontend's fixed request-type list
+// (app/(tabs)/services.jsx REQUEST_TYPES) and the currently-live standalone
+// mobile backend's VALID_REQUEST_TYPES. Phase 4.5 cutover audit found this
+// canonical controller previously accepted any string as a category.
+const VALID_REQUEST_TYPES = ['maintenance', 'plumbing', 'electrical', 'aircon', 'cleaning', 'pest', 'furniture', 'other'];
+const DESCRIPTION_MIN = 10;
+const DESCRIPTION_MAX = 1000;
+const MAX_TENANT_ATTACHMENTS = 4;
+// Canonical-mobile reconciliation audit: this canonical controller never
+// re-checked attachment byte size at all — only a count cap (above) — so a
+// client could reference an upload larger than the mobile app's intended
+// 5MB ceiling (mobileUploadRoutes.js's generic bridge allows up to 10MB for
+// non-maintenance uploads). Applies regardless of attachment MIME type.
+const MAINTENANCE_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
 const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|jpeg|jpg|png|svg|webp)(?:$|[?#])/i;
 const PDF_FILE_PATTERN = /\.pdf(?:$|[?#])/i;
 const PUBLIC_REPLY_TYPES = new Set(['admin_reply', 'admin_update', 'tenant_reply', 'tenant_summary', 'summary']);
@@ -162,6 +214,75 @@ function normalizeAttachmentList(attachments) {
       .map((entry, index) => normalizeAttachmentEntry(entry, index))
       .filter(Boolean)
     : [];
+}
+
+// Re-checks every attachment against MAINTENANCE_ATTACHMENT_MAX_BYTES using
+// ONLY a provider-verified byte count — never the client-reported `size`
+// field, which is pure client input and trivially spoofable (a client can
+// claim any size for any URI, including one this backend never touched).
+//
+// `storagePath` is the trust boundary: it identifies an object this
+// backend's own mobileUploadRoutes.js Firebase Storage bridge actually
+// wrote, so Firebase Storage's own metadata for that exact path is a byte
+// count the client cannot influence. An attachment WITHOUT a storagePath —
+// whether it's missing entirely, or points at some other externally-hosted
+// URL — has no server-controlled way to confirm its real size, so it is
+// rejected outright rather than trusting whatever `size` the client
+// attached to it. The client-reported `size` field may still be stored on
+// the normalized attachment for display purposes (see
+// normalizeAttachmentEntry) — it is simply never treated as authoritative
+// for this security decision.
+//
+// A storage lookup failure (object missing/unreadable/provider outage) is
+// also treated as a rejection, not a fallback to the client's claim —
+// falling back there would let an attacker supply a storagePath that
+// always fails to resolve specifically to force the client size to be
+// trusted, reopening the same gap this function exists to close.
+//
+// Returns { ok: true } or { ok: false, detail } — callers must check this
+// BEFORE any database write, so a request with one oversized or
+// unverifiable attachment never creates/updates a maintenance record at
+// all (not even partially).
+async function assertAttachmentsWithinSizeLimit(attachments) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return { ok: true };
+
+  let bucket = null;
+  const getBucket = () => {
+    if (bucket) return bucket;
+    const bucketName = resolveFirebaseStorageBucket();
+    if (!admin.apps.length || !bucketName) return null;
+    bucket = admin.storage().bucket(bucketName);
+    return bucket;
+  };
+
+  for (const attachment of attachments) {
+    if (!attachment.storagePath) {
+      return { ok: false, detail: 'One or more attachments could not be verified. Please re-upload and try again.' };
+    }
+
+    let verifiedBytes = null;
+    try {
+      const activeBucket = getBucket();
+      if (activeBucket) {
+        const [metadata] = await activeBucket.file(attachment.storagePath).getMetadata();
+        const bytes = Number(metadata?.size);
+        if (Number.isFinite(bytes)) verifiedBytes = bytes;
+      }
+    } catch (_) {
+      // Object missing/unreadable/storage unavailable — falls through to
+      // the unverifiable-attachment rejection below. Never falls back to
+      // the client-reported size.
+    }
+
+    if (verifiedBytes === null) {
+      return { ok: false, detail: 'One or more attachments could not be verified. Please re-upload and try again.' };
+    }
+    if (verifiedBytes > MAINTENANCE_ATTACHMENT_MAX_BYTES) {
+      return { ok: false, detail: 'Attachments must be 5 MB or smaller.' };
+    }
+  }
+
+  return { ok: true };
 }
 
 function getEntryTimestamp(entry = {}) {
@@ -629,13 +750,27 @@ async function sendTenantReply(req, res) {
     if (!message && attachments.length === 0) {
       return res.status(400).json({ detail: 'Message or attachment is required' });
     }
+    if (Array.isArray(req.body?.attachments) && req.body.attachments.length > MAX_TENANT_ATTACHMENTS) {
+      return res.status(400).json({ detail: `A maximum of ${MAX_TENANT_ATTACHMENTS} attachments is allowed.` });
+    }
+    const sizeCheck = await assertAttachmentsWithinSizeLimit(attachments);
+    if (!sizeCheck.ok) {
+      return res.status(400).json({ detail: sizeCheck.detail });
+    }
 
     const located = await findRequestForUser(db, requestId, req.user.user_id);
     if (!located) {
       return res.status(404).json({ detail: 'Request not found' });
     }
 
-    const closedStatuses = ['cancelled', 'closed', 'rejected'];
+    // Blocks replies on already-closed-out requests, matching the currently-
+    // live standalone mobile backend (and the frontend's own
+    // canReplyToRequest gate in app/(tabs)/services.jsx, which already hides
+    // the reply box for resolved/completed/cancelled/rejected). Phase 4.5
+    // cutover audit found this canonical guard previously only blocked
+    // cancelled/closed/rejected, silently allowing replies to pile up on an
+    // already-resolved/completed request.
+    const closedStatuses = ['cancelled', 'closed', 'rejected', 'resolved', 'completed'];
     if (closedStatuses.includes(String(located.request.status || '').toLowerCase())) {
       return res.status(400).json({ detail: 'This request is closed.' });
     }
@@ -705,12 +840,47 @@ async function createMaintenance(req, res) {
     if (!requestType) {
       return res.status(400).json({ detail: 'request_type is required' });
     }
+    if (!VALID_REQUEST_TYPES.includes(requestType)) {
+      return res.status(400).json({ detail: 'Validation failed.', errors: { request_type: `request_type must be one of: ${VALID_REQUEST_TYPES.join(', ')}` } });
+    }
     if (!description) {
       return res.status(400).json({ detail: 'description is required' });
     }
+    if (description.length < DESCRIPTION_MIN || description.length > DESCRIPTION_MAX) {
+      return res.status(400).json({ detail: 'Validation failed.', errors: { description: `description must be between ${DESCRIPTION_MIN} and ${DESCRIPTION_MAX} characters.` } });
+    }
+    if (Array.isArray(attachmentsRaw) && attachmentsRaw.length > MAX_TENANT_ATTACHMENTS) {
+      return res.status(400).json({ detail: `A maximum of ${MAX_TENANT_ATTACHMENTS} attachments is allowed.` });
+    }
+
+    const clientRequestIdRaw = typeof req.body?.client_request_id === 'string'
+      ? req.body.client_request_id.trim()
+      : '';
+    if (clientRequestIdRaw && !CLIENT_REQUEST_ID_PATTERN.test(clientRequestIdRaw)) {
+      return res.status(400).json({
+        detail: 'Validation failed.',
+        errors: { client_request_id: 'client_request_id must be 1-128 characters of letters, numbers, "_" or "-".' },
+      });
+    }
+    const clientRequestId = clientRequestIdRaw || null;
 
     const urgency = VALID_URGENCIES.includes(urgencyRaw) ? urgencyRaw : 'normal';
     const attachments = normalizeAttachmentList(attachmentsRaw);
+    const sizeCheck = await assertAttachmentsWithinSizeLimit(attachments);
+    if (!sizeCheck.ok) {
+      return res.status(400).json({ detail: sizeCheck.detail });
+    }
+
+    if (clientRequestId) {
+      await ensureClientRequestIdIndex(db);
+      const existing = await db.collection(PRIMARY_COLLECTION).findOne({
+        user_id: req.user.user_id,
+        client_request_id: clientRequestId,
+      });
+      if (existing) {
+        return res.status(200).json(stripTenantRequestFields(existing));
+      }
+    }
 
     const tenantContext = await resolveTenantContext(db, req.user);
     const now = new Date();
@@ -720,6 +890,7 @@ async function createMaintenance(req, res) {
         request_id: `maint_${uuidv4().replace(/-/g, '').substring(0, 12)}`,
         user_id: req.user.user_id,
         ...(req.user._id ? { userId: asObjectId(req.user._id) || req.user._id } : {}),
+        client_request_id: clientRequestId,
         request_type: requestType,
         description,
         urgency,
@@ -752,7 +923,25 @@ async function createMaintenance(req, res) {
       req.user,
     );
 
-    await db.collection(PRIMARY_COLLECTION).insertOne(newRequest);
+    try {
+      await db.collection(PRIMARY_COLLECTION).insertOne(newRequest);
+    } catch (error) {
+      // Two concurrent submissions of the same (tenant, key) can both pass
+      // the findOne check above before either insert lands — the unique
+      // partial index is what actually prevents the duplicate ticket; on
+      // that race, return the ticket the other request created instead of
+      // erroring.
+      if (clientRequestId && error?.code === 11000) {
+        const winner = await db.collection(PRIMARY_COLLECTION).findOne({
+          user_id: req.user.user_id,
+          client_request_id: clientRequestId,
+        });
+        if (winner) {
+          return res.status(200).json(stripTenantRequestFields(winner));
+        }
+      }
+      throw error;
+    }
     res.status(201).json(stripTenantRequestFields(newRequest));
   } catch (error) {
     console.error('Create maintenance error:', error);
@@ -922,6 +1111,65 @@ async function reopenMaintenance(req, res) {
   }
 }
 
+// Tenant confirms a resolved request is actually fixed (resolved -> completed).
+// Phase 4.5 cutover audit found this handler/route was entirely missing from
+// canonical — the app's "Confirm Resolved" button had no backing endpoint
+// and would 404. Matches the currently-live standalone mobile backend's
+// resolved-only transition rule (never completed->completed, never from any
+// other status) and sets tenant_confirmed_resolved so the frontend's own
+// button-gating condition (`!detailRequest.tenant_confirmed_resolved`) hides
+// both this button and "Still an Issue" afterward.
+async function confirmMaintenanceResolved(req, res) {
+  try {
+    const { requestId } = req.params;
+    const db = getDb();
+
+    const located = await findRequestForUser(db, requestId, req.user.user_id);
+    if (!located) {
+      return res.status(404).json({ detail: 'Request not found' });
+    }
+    if ((located.request.status || '').toLowerCase() !== 'resolved') {
+      return res.status(400).json({ detail: 'Only resolved requests can be confirmed.' });
+    }
+
+    const now = new Date();
+    const statusHistory = Array.isArray(located.request.statusHistory)
+      ? [...located.request.statusHistory]
+      : [];
+    statusHistory.push({
+      event: 'tenant_confirmed_resolved',
+      status: 'completed',
+      actor_id: req.user.user_id || null,
+      actor_name: actorNameFromUser(req.user),
+      actor_role: req.user.role || null,
+      note: null,
+      timestamp: now,
+    });
+
+    await db.collection(located.collectionName).updateOne(
+      { request_id: requestId },
+      {
+        $set: {
+          status: 'completed',
+          tenant_confirmed_resolved: true,
+          resolved_at: located.request.resolved_at || now,
+          statusHistory,
+          updated_at: now,
+          updatedAt: now,
+        },
+      }
+    );
+
+    const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });
+    const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
+      .catch(() => updatedSource);
+    res.json(stripTenantRequestFields(updated));
+  } catch (error) {
+    console.error('Confirm maintenance resolved error:', error);
+    res.status(500).json({ detail: 'Failed to confirm maintenance request as resolved' });
+  }
+}
+
 // Admin: update maintenance request status and notify tenant
 async function adminUpdateStatus(req, res) {
   try {
@@ -1022,6 +1270,7 @@ module.exports = {
   updateMaintenance,
   cancelMaintenance,
   reopenMaintenance,
+  confirmMaintenanceResolved,
   adminUpdateStatus,
   adminGetAll,
 };

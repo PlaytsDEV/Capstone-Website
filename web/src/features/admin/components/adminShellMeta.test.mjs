@@ -87,17 +87,7 @@ test("system topbar copy uses the phase 1 labels", () => {
   });
 });
 
-test("feedback surveys uses nested Analytics metadata without a duplicate sidebar item", () => {
-  const meta = getPageMeta("/admin/analytics/feedback-surveys");
-  const items = getVisibleNavItems({ isOwner: true, can: () => true });
 
-  assert.equal(meta.title, "Feedback & Surveys");
-  assert.equal(items.some((item) => item.to === "/admin/analytics"), true);
-  assert.equal(
-    items.some((item) => item.to === "/admin/analytics/feedback-surveys"),
-    false,
-  );
-});
 
 test("contract list and detail routes share Contract workspace metadata", () => {
   assert.equal(getPageMeta("/admin/contracts").title, "Contracts");

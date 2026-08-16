@@ -202,7 +202,144 @@ export function AdminTablePageSkeleton() {
   );
 }
 
-// ─── Card-grid skeleton (Room Availability, Maintenance, Branches) ───────────
+// ─── Maintenance skeleton (Dashboard KPI summary cards + Filter bar + Data Table) ──
+export function AdminMaintenanceSkeleton() {
+  return (
+    <div aria-live="polite" aria-busy="true" style={{ padding: "24px 28px" }}>
+      {/* Page header */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "20px" }}>
+        <SkeletonPulse variant="text" width="160px" height="24px" />
+        <SkeletonPulse variant="text" width="340px" height="13px" />
+      </div>
+
+      {/* 6 KPI summary stat cards */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+          gap: "12px",
+          marginBottom: "20px",
+        }}
+      >
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div
+            key={i}
+            style={{
+              borderRadius: "12px",
+              border: "1px solid var(--border-light, #e5e7eb)",
+              background: "var(--bg-card, #fff)",
+              padding: "16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <SkeletonPulse variant="text" width="55%" height="11px" />
+              <SkeletonPulse width="28px" height="28px" borderRadius="8px" />
+            </div>
+            <SkeletonPulse width="45%" height="24px" borderRadius="6px" />
+            <SkeletonPulse variant="text" width="75%" height="10px" />
+          </div>
+        ))}
+      </div>
+
+      {/* Filter toolbar */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: "10px",
+          marginBottom: "16px",
+        }}
+      >
+        <SkeletonPulse width="240px" height="36px" borderRadius="8px" />
+        <SkeletonPulse width="130px" height="36px" borderRadius="8px" />
+        <SkeletonPulse width="120px" height="36px" borderRadius="8px" />
+        <SkeletonPulse width="110px" height="36px" borderRadius="8px" />
+        <SkeletonPulse width="100px" height="36px" borderRadius="8px" style={{ marginLeft: "auto" }} />
+      </div>
+
+      {/* Table card */}
+      <div
+        style={{
+          borderRadius: "12px",
+          border: "1px solid var(--border-light, #e5e7eb)",
+          background: "var(--bg-card, #fff)",
+          overflow: "hidden",
+        }}
+      >
+        {/* Table header */}
+        <div
+          style={{
+            padding: "12px 18px",
+            borderBottom: "1px solid var(--border-light, #e5e7eb)",
+            display: "flex",
+            alignItems: "center",
+            gap: "16px",
+          }}
+        >
+          <SkeletonPulse width="16px" height="16px" borderRadius="4px" />
+          <SkeletonPulse variant="text" width="22%" height="11px" />
+          <SkeletonPulse variant="text" width="26%" height="11px" />
+          <SkeletonPulse variant="text" width="14%" height="11px" />
+          <SkeletonPulse variant="text" width="12%" height="11px" />
+          <SkeletonPulse variant="text" width="10%" height="11px" />
+          <SkeletonPulse variant="text" width="8%" height="11px" style={{ marginLeft: "auto" }} />
+        </div>
+
+        {/* Table rows */}
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div
+            key={i}
+            style={{
+              padding: "14px 18px",
+              borderBottom: "1px solid var(--border-light, #e5e7eb)",
+              display: "flex",
+              alignItems: "center",
+              gap: "16px",
+            }}
+          >
+            <SkeletonPulse width="16px" height="16px" borderRadius="4px" />
+            {/* Resident & Room */}
+            <div style={{ width: "22%", display: "flex", alignItems: "center", gap: "10px" }}>
+              <SkeletonPulse variant="circle" width="32px" />
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+                <SkeletonPulse variant="text" width="70%" height="12px" />
+                <SkeletonPulse variant="text" width="45%" height="10px" />
+              </div>
+            </div>
+            {/* Issue details */}
+            <div style={{ width: "26%", display: "flex", flexDirection: "column", gap: "4px" }}>
+              <SkeletonPulse variant="text" width="80%" height="12px" />
+              <SkeletonPulse variant="text" width="55%" height="10px" />
+            </div>
+            {/* Urgency & SLA */}
+            <div style={{ width: "14%", display: "flex", flexDirection: "column", gap: "4px" }}>
+              <SkeletonPulse width="60px" height="18px" borderRadius="4px" />
+              <SkeletonPulse variant="text" width="70%" height="10px" />
+            </div>
+            {/* Status */}
+            <div style={{ width: "12%" }}>
+              <SkeletonPulse width="72px" height="22px" borderRadius="6px" />
+            </div>
+            {/* Branch */}
+            <div style={{ width: "10%" }}>
+              <SkeletonPulse variant="text" width="60px" height="11px" />
+            </div>
+            {/* Action */}
+            <div style={{ width: "8%", marginLeft: "auto", display: "flex", justifyContent: "flex-end" }}>
+              <SkeletonPulse width="28px" height="28px" borderRadius="6px" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Card-grid skeleton (Room Availability, Branches) ────────────────────────
 export function AdminCardGridSkeleton() {
   return (
     <div aria-live="polite" aria-busy="true" style={{ padding: "24px 28px" }}>

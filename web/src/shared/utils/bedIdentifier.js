@@ -7,6 +7,10 @@
  * Gets the Bunk Block letter ('A', 'B', etc.) for a bed based on its index or bunkBlock field.
  */
 export const getBunkBlockLetter = (bed, index = 0) => {
+  if (typeof index === "number" && index >= 0) {
+    const blockIndex = Math.floor(index / 2);
+    return String.fromCharCode(65 + blockIndex);
+  }
   if (bed?.bunkBlock && bed.bunkBlock !== "none") {
     return bed.bunkBlock;
   }
@@ -17,10 +21,7 @@ export const getBunkBlockLetter = (bed, index = 0) => {
     return match[1].toUpperCase();
   }
 
-  // Numerical fallback based on index in room beds array
-  // Index 0 & 1 -> Bunk A, Index 2 & 3 -> Bunk B, Index 4 & 5 -> Bunk C
-  const blockIndex = Math.floor(index / 2);
-  return String.fromCharCode(65 + blockIndex); // 65 = 'A'
+  return "A";
 };
 
 /**
@@ -91,6 +92,7 @@ export const formatBedPosition = (bedOrPos) => {
     return getBedDisplayLabel(bedOrPos);
   }
   const pos = String(bedOrPos).toLowerCase();
+  if (pos === "private room" || pos === "private" || pos === "entire room") return "Private Room";
   if (pos === "upper") return "Bunk Bed — Upper";
   if (pos === "lower") return "Bunk Bed — Lower";
   if (pos === "single") return "Single Bed";
@@ -99,14 +101,17 @@ export const formatBedPosition = (bedOrPos) => {
 
 /**
  * Formats a complete coded room and bed identifier string for display across the system
- * Example: "Gil Puyat — Room 305 (Bunk Bed — Upper)"
+ * Example: "Gil Puyat — Room 305 (Bunk Bed — Upper)" or "Gil Puyat — GP - Room 803" for private rooms.
  */
 export const formatCodedRoomAndBed = (roomNumberOrObj, bedOrPos, branchName = "") => {
   const roomNum = typeof roomNumberOrObj === "object" ? (roomNumberOrObj?.roomNumber || roomNumberOrObj?.name || "") : (roomNumberOrObj || "");
-  const bedLabel = formatBedPosition(bedOrPos);
+  const roomType = typeof roomNumberOrObj === "object" ? String(roomNumberOrObj?.type || "").toLowerCase() : "";
+  const bedPosStr = String(bedOrPos || "").toLowerCase();
+  const isPrivate = roomType.includes("private") || String(roomNum).toLowerCase().includes("private") || bedPosStr.includes("private");
+  const bedLabel = isPrivate ? "" : formatBedPosition(bedOrPos);
 
   const roomStr = roomNum ? (roomNum.toString().toLowerCase().startsWith("room") ? roomNum : `Room ${roomNum}`) : "";
-  const bedStr = bedLabel && bedLabel !== "No Bed Assigned" ? `(${bedLabel})` : "";
+  const bedStr = bedLabel && bedLabel !== "No Bed Assigned" && bedLabel !== "Private Room" ? `(${bedLabel})` : "";
   
   const parts = [];
   if (branchName) parts.push(branchName);

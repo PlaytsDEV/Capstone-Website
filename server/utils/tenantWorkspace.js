@@ -279,33 +279,72 @@ export function buildAllowedActions({
   };
 }
 
-function buildRoomHistoryEntries({ reservation, bedHistoryRecords = [] }) {
+function buildRoomHistoryEntries({ reservation, bedHistoryRecords = [], contracts = [] }) {
   if (bedHistoryRecords.length > 0) {
-    return bedHistoryRecords.map((record) => ({
-      id: String(record._id),
-      roomName: record.roomId?.name || reservation.roomId?.name || "Unknown room",
-      branch: record.roomId?.branch || reservation.roomId?.branch || "",
-      bedId: record.bedId || "",
-      bedLabel: record.bedId || record.bedId === 0 ? String(record.bedId) : "",
-      moveInDate: record.moveInDate || null,
-      moveOutDate: record.moveOutDate || null,
-      source: "history",
-    }));
+    return bedHistoryRecords.map((record) => {
+      const recordRoomId = String(record.roomId?._id || record.roomId || "");
+      const recordBedId = String(record.bedId || "");
+      const matchedContract =
+        contracts.find((c) => (
+          (record.stayId && String(c.stayId) === String(record.stayId)) ||
+          (recordRoomId && String(c.roomId) === recordRoomId && recordBedId && String(c.bedId) === recordBedId)
+        )) ||
+        contracts.find((c) => recordRoomId && String(c.roomId) === recordRoomId) ||
+        contracts[0] ||
+        null;
+
+      return {
+        id: String(record._id),
+        room: record.roomId?.name || record.roomId?.roomNumber || reservation.roomId?.name || "Unknown room",
+        roomName: record.roomId?.name || reservation.roomId?.name || "Unknown room",
+        branch: record.roomId?.branch || reservation.roomId?.branch || "",
+        bedId: record.bedId || "",
+        bed: record.bedId || record.bedId === 0 ? String(record.bedId) : "",
+        bedLabel: record.bedId || record.bedId === 0 ? String(record.bedId) : "",
+        moveInDate: record.moveInDate || null,
+        moveOutDate: record.moveOutDate || null,
+        source: "history",
+        contract: matchedContract ? {
+          id: String(matchedContract._id),
+          contractNumber: matchedContract.contractNumber || "Pending",
+          status: matchedContract.status,
+          purpose: matchedContract.contractPurpose || "initial",
+          isCurrent: matchedContract.isCurrent,
+          leaseStartDate: matchedContract.leaseStartDate || null,
+          leaseEndDate: matchedContract.leaseEndDate || null,
+          approvedMonthlyRate: matchedContract.approvedMonthlyRate || null,
+        } : null,
+      };
+    });
   }
 
   const moveInDate = readMoveInDate(reservation);
   if (!moveInDate) return [];
 
+  const matchedContract = contracts[0] || null;
+
   return [
     {
       id: `fallback:${reservation?._id || reservation?.id || "stay"}`,
+      room: reservation.roomId?.name || reservation.roomId?.roomNumber || "Unknown room",
       roomName: reservation.roomId?.name || "Unknown room",
       branch: reservation.roomId?.branch || "",
       bedId: reservation.selectedBed?.id || "",
+      bed: reservation.selectedBed?.position || reservation.selectedBed?.id || "",
       bedLabel: reservation.selectedBed?.position || reservation.selectedBed?.id || "",
       moveInDate,
       moveOutDate: readMoveOutDate(reservation),
       source: "reservation_fallback",
+      contract: matchedContract ? {
+        id: String(matchedContract._id),
+        contractNumber: matchedContract.contractNumber || "Pending",
+        status: matchedContract.status,
+        purpose: matchedContract.contractPurpose || "initial",
+        isCurrent: matchedContract.isCurrent,
+        leaseStartDate: matchedContract.leaseStartDate || null,
+        leaseEndDate: matchedContract.leaseEndDate || null,
+        approvedMonthlyRate: matchedContract.approvedMonthlyRate || null,
+      } : null,
     },
   ];
 }
@@ -316,6 +355,7 @@ export function buildTenantWorkspaceEntry({
   stayHistory = [],
   bills = [],
   bedHistoryRecords = [],
+  contracts = [],
   tenantStatus = "",
   hasAvailableBedsInBranch = true,
   now = new Date(),
@@ -328,7 +368,7 @@ export function buildTenantWorkspaceEntry({
       ? "moved_out"
       : buildStayStatus(reservation, now);
   const leaseStatus = buildLeaseStatus(daysUntilLeaseEnd);
-  const roomHistory = buildRoomHistoryEntries({ reservation, bedHistoryRecords });
+  const roomHistory = buildRoomHistoryEntries({ reservation, bedHistoryRecords, contracts });
   const warningFlags = buildWarningFlags({
     leaseStatus,
     billingSummary,
@@ -377,15 +417,48 @@ export function buildTenantWorkspaceEntry({
       email: tenantUser.email || reservation.email || "",
       phone: tenantUser.phone || reservation.mobileNumber || "",
     },
+    // ── Flattened personal detail fields (consumed by admin modal form) ──────
+    name: fullName,
+    email: personalInformation.email || tenantUser.email || reservation.email || "",
+    phone: personalInformation.phone || tenantUser.phone || reservation.mobileNumber || "",
+    birthday: personalInformation.birthDate || reservation.birthday || tenantUser.dateOfBirth || null,
+    gender: personalInformation.gender || reservation.gender || tenantUser.gender || null,
+    nationality: personalInformation.nationality || reservation.nationality || tenantUser.nationality || null,
+    civilStatus: personalInformation.civilStatus || reservation.maritalStatus || tenantUser.civilStatus || null,
+    occupation: personalInformation.occupation || reservation.employment?.occupation || tenantUser.occupation || null,
+    address: {
+      street: reservation.address?.street || reservation.address?.unitHouseNo || tenantUser.address?.street || null,
+      barangay: reservation.address?.barangay || tenantUser.address?.barangay || null,
+      city: reservation.address?.city || personalInformation.city || tenantUser.city || null,
+      province: reservation.address?.province || personalInformation.province || tenantUser.province || null,
+    },
+    emergencyContact: personalInformation.emergencyContact.name || tenantUser.emergencyContact || null,
+    emergencyPhone: personalInformation.emergencyContact.phone || tenantUser.emergencyPhone || null,
+    emergencyRelationship: personalInformation.emergencyContact.relationship || tenantUser.emergencyRelationship || null,
+    notes: reservation.notes || reservation.personalNotes || null,
+    intendedMoveInDate: readMoveInDate(reservation) || null,
+    // ── Verification document URL fields ─────────────────────────────────────
+    validIDFrontUrl: reservation.validIDFrontUrl || null,
+    validIDBackUrl: reservation.validIDBackUrl || null,
+    validIDType: reservation.validIDType || reservation.idType || null,
+    idType: reservation.idType || reservation.validIDType || null,
+    selfiePhotoUrl: reservation.selfiePhotoUrl || null,
+    nbiClearanceUrl: reservation.nbiClearanceUrl || null,
+    companyIDUrl: reservation.companyIDUrl || null,
     branch: reservation.roomId?.branch || "",
     room: reservation.roomId?.name || reservation.roomId?.roomNumber || "",
     roomId: currentStay?.roomId ? String(currentStay.roomId) : reservation.roomId?._id ? String(reservation.roomId._id) : "",
-    bed: reservation.selectedBed?.position || reservation.selectedBed?.id || "",
-    bedId: currentStay?.bedId || reservation.selectedBed?.id || "",
+    bed: (String(reservation.roomId?.type || "").toLowerCase().includes("private") || reservation.roomId?.capacity === 1)
+      ? "Private Room"
+      : (reservation.selectedBed?.position || reservation.selectedBed?.id || ""),
+    bedId: (String(reservation.roomId?.type || "").toLowerCase().includes("private") || reservation.roomId?.capacity === 1)
+      ? ""
+      : (currentStay?.bedId || reservation.selectedBed?.id || ""),
     moveInDate: currentStay?.leaseStartDate || readMoveInDate(reservation),
     moveOutDate: readMoveOutDate(reservation),
     leaseEndDate,
     daysUntilLeaseEnd,
+    monthlyRate: financialSummary.monthlyRate,
     currentBalance: billingSummary.currentBalance,
     currentStayId: currentStay?._id ? String(currentStay._id) : String(reservation.currentStayId || ""),
     tenantStatus: normalizeTenantStatus(tenantStatus),
@@ -455,6 +528,36 @@ export function buildTenantWorkspaceEntry({
     financialSummary,
     roomHistory,
     systemWarnings: warningFlags,
+    contracts: (contracts || []).map((c) => ({
+      _id: String(c._id || c.id),
+      id: String(c._id || c.id),
+      contractNumber: c.contractNumber || "",
+      status: c.status,
+      contractPurpose: c.contractPurpose || "initial",
+      isCurrent: c.isCurrent,
+      version: c.version,
+      leaseStartDate: c.leaseStartDate || null,
+      leaseEndDate: c.leaseEndDate || null,
+      approvedMonthlyRate: c.approvedMonthlyRate || null,
+      signedContractUrl: c.signedContractUrl || null,
+      contractPdfUrl: c.contractPdfUrl || null,
+      stayProof: c.stayProof || null,
+    })),
+    dedicatedContract: contracts.length > 0 ? {
+      _id: String((contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0])._id || (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).id),
+      id: String((contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0])._id || (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).id),
+      contractNumber: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).contractNumber || "",
+      status: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).status,
+      contractPurpose: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).contractPurpose || "initial",
+      isCurrent: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).isCurrent,
+      version: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).version,
+      leaseStartDate: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).leaseStartDate || null,
+      leaseEndDate: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).leaseEndDate || null,
+      approvedMonthlyRate: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).approvedMonthlyRate || null,
+      signedContractUrl: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).signedContractUrl || null,
+      contractPdfUrl: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).contractPdfUrl || null,
+      stayProof: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).stayProof || null,
+    } : null,
   };
 }
 

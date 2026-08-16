@@ -15,5 +15,6 @@ router.post('/:requestId/reply', authMiddleware, activeTenantMiddleware, mainten
 router.put('/:requestId', authMiddleware, activeTenantMiddleware, maintenanceController.updateMaintenance);
 router.patch('/:requestId/cancel', authMiddleware, activeTenantMiddleware, maintenanceController.cancelMaintenance);
 router.patch('/:requestId/reopen', authMiddleware, activeTenantMiddleware, maintenanceController.reopenMaintenance);
+router.patch('/:requestId/confirm-resolved', authMiddleware, activeTenantMiddleware, maintenanceController.confirmMaintenanceResolved);
 
 module.exports = router;

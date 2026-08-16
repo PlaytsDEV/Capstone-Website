@@ -876,7 +876,30 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         },
       ).catch(() => {});
     }
+
+    // ── Automated Contract Lineage & Replacement Generation ─────────────
+    try {
+      const { autoGenerateTransferContract } = await import("../services/autoContractOrchestratorService.js");
+      const targetRoomDoc = await Room.findById(payload.targetRoomId || payload.newRoomId).lean();
+      if (targetRoomDoc) {
+        autoGenerateTransferContract({
+          reservationId,
+          activeStay: result.stay,
+          targetRoom: targetRoomDoc,
+          targetBed: { id: payload.targetBedId || payload.newBedId, label: result.toRoomDetails?.assignedBedId },
+          effectiveTransferDate: payload.effectiveTransferDate || new Date(),
+          actorId,
+        }).catch((err) => {
+          logger.warn({ err, reservationId }, "[TransferWorkflow] Background replacement contract auto-generation failed (non-fatal)");
+        });
+      }
+    } catch (contractImportErr) {
+      logger.warn({ err: contractImportErr }, "[TransferWorkflow] Auto contract orchestrator invocation error");
+    }
+
+    return result;
   }
+  return result;
 }
 
 export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {

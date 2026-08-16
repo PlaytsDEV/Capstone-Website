@@ -82,11 +82,8 @@ router.get("/:billId/pdf", billingController.downloadBillPdf);
 
 router.get("/:billId/utility-breakdown/:utilityType", billingController.getMyUtilityBreakdownByBillId);
 
-/**
- * POST /api/billing/:billId/submit-proof
- * Legacy compatibility route. New monthly bill payments must use online checkout.
- */
-router.post("/:billId/submit-proof", billingController.submitPaymentProof);
+// POST /:billId/submit-proof — REMOVED: manual billing proof decommissioned.
+// All billing payments are handled via automated PayMongo checkout.
 
 // ============================================================================
 // ADMIN ROUTES
@@ -141,17 +138,7 @@ router.get(
   billingController.getRoomsWithTenants,
 );
 
-/**
- * GET /api/billing/pending-verifications
- * Get bills with pending payment proof verifications (Admin only)
- */
-router.get(
-  "/pending-verifications",
-  verifyAdmin,
-  requirePermission("manageBilling"),
-  filterByBranch,
-  billingController.getPendingVerifications,
-);
+// GET /pending-verifications — REMOVED: manual billing proof review decommissioned.
 
 /**
  * GET /api/billing/report
@@ -249,17 +236,7 @@ router.post(
   billingController.sendBillReminder,
 );
 
-/**
- * POST /api/billing/:billId/verify
- * Admin approves or rejects payment proof
- */
-router.post(
-  "/:billId/verify",
-  verifyAdmin,
-  requirePermission("manageBilling"),
-  filterByBranch,
-  billingController.verifyPayment,
-);
+// POST /:billId/verify — REMOVED: manual billing proof review decommissioned.
 
 /**
  * POST /api/billing/:billId/mark-paid
@@ -434,7 +411,140 @@ router.get(
 );
 
 // ============================================================================
+// TENANT VIOLATIONS & WARNINGS (Spec §23)
+// ============================================================================
+
+/**
+ * GET /api/billing/violations
+ * List tenant violation records with filtering, search, and summary stats.
+ */
+router.get(
+  "/violations",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.getViolations,
+);
+
+/**
+ * GET /api/billing/violations/active-tenants
+ * List checked-in tenants in branch with active room and cumulative warning count.
+ */
+router.get(
+  "/violations/active-tenants",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.getActiveTenantsForViolations,
+);
+
+/**
+ * GET /api/billing/violations/:id
+ * Retrieve a single violation record with full details and audit trail.
+ */
+router.get(
+  "/violations/:id",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.getViolationById,
+);
+
+/**
+ * POST /api/billing/violations
+ * Record a new rule infraction with validation and warning computation.
+ */
+router.post(
+  "/violations",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.createViolation,
+);
+
+/**
+ * PATCH /api/billing/violations/:id/decision
+ * Adjudicate a violation (confirm/dismiss, issue warning/penalty, or escalate).
+ */
+router.patch(
+  "/violations/:id/decision",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.updateViolationDecision,
+);
+
+// ============================================================================
+// OVERDUE NOTICE ESCALATION TRACKER (Spec §21)
+// ============================================================================
+
+/**
+ * GET /api/billing/overdue-notices
+ * List overdue billing accounts, 3-notice escalation chains, and summary metrics.
+ */
+router.get(
+  "/overdue-notices",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.getOverdueNoticesAction,
+);
+
+/**
+ * POST /api/billing/:billId/send-overdue-notice
+ * Issue formal Overdue Notice (Stage 1, 2, or 3 Final), snapshot debt, dispatch multi-channel receipts.
+ */
+router.post(
+  "/:billId/send-overdue-notice",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.sendOverdueNoticeAction,
+);
+
+// ============================================================================
+// TERMINATION REVIEW BOARD (Spec §22)
+// ============================================================================
+
+/**
+ * GET /api/billing/termination-reviews
+ * Retrieve administrative termination review cases.
+ */
+router.get(
+  "/termination-reviews",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.getTerminationCases,
+);
+
+/**
+ * POST /api/billing/termination-reviews
+ * Manually open an administrative termination review case.
+ */
+router.post(
+  "/termination-reviews",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.createTerminationCase,
+);
+
+/**
+ * PATCH /api/billing/termination-reviews/:id/decision
+ * Adjudicate a termination review case (payment plan, extension, pre-termination, termination, dismissal).
+ */
+router.patch(
+  "/termination-reviews/:id/decision",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.updateTerminationDecisionAction,
+);
+
+// ============================================================================
 // EXPORT
 // ============================================================================
 
 export default router;
+

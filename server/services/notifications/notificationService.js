@@ -7,6 +7,7 @@
  */
 
 import Notification from "../../models/Notification.js";
+import User from "../../models/User.js";
 import {
   buildMaintenanceNotificationBody,
   buildMaintenanceNotificationTitle,
@@ -189,6 +190,44 @@ const notify = {
       });
   },
 
+  visitScheduledAlert: (
+    adminUserId,
+    {
+      tenantName = "An applicant",
+      roomName = "a room",
+      branch = "",
+      visitDate = "",
+      visitTime = "",
+      reservationId = null,
+      viewingPreference = "physical_visit",
+    } = {},
+  ) => {
+    let title = "New Visit Schedule";
+    let message = `${tenantName} scheduled a visit for ${roomName}`;
+    if (visitDate) {
+      const dateLabel = new Date(visitDate).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      message += ` on ${dateLabel}${visitTime ? ` at ${visitTime}` : ""}`;
+    }
+    if (viewingPreference === "remote_2d_viewing") {
+      title = "2D Remote Viewing Request";
+      message = `${tenantName} requested photo-based remote viewing for ${roomName}`;
+    } else if (viewingPreference === "urgent_move_in_review") {
+      title = "Priority Viewing Review Request";
+      message = `${tenantName} requested priority viewing review for ${roomName}`;
+    }
+    message += ".";
+
+    return createNotification(adminUserId, "visit_scheduled", title, message, {
+      entityType: "reservation",
+      entityId: reservationId ? String(reservationId) : null,
+      actionUrl: "/admin/reservations?tab=visits",
+    });
+  },
+
   visitApproved: (userId, branchName) =>
     createNotification(userId, "visit_approved", "Visit Schedule Confirmed",
       `Your physical visit schedule for ${branchName} has been confirmed for viewing coordination only. Payment will remain locked until your application and documents are approved.`,
@@ -314,6 +353,12 @@ const notify = {
       }),
     ),
 
+  // NOTE: previously used createNotification() (DB record + realtime socket
+  // event only, no push) and never attached entityId/billId at all. Every
+  // electricity/water bill release silently produced no OS push notification
+  // and no deep-linkable reference to the specific bill — the root cause of
+  // "tenant does not receive a notification" for utility bills specifically.
+  // Now mirrors billGenerated()'s createNotificationWithPush + billId pattern.
   utilityChargeAvailable: (
     userId,
     utilityType,
@@ -321,14 +366,35 @@ const notify = {
     utilityAmount,
     totalAmount,
     dueDate,
-  ) =>
-    createNotification(
+    options = {},
+  ) => {
+    const billId = options.billId || null;
+    const title = `${utilityType === "water" ? "Water" : "Electricity"} Charge Available`;
+    const message = `Your ${utilityType} charge for ${billingMonth} is ₱${utilityAmount}. Current bill total: ₱${totalAmount}. Due by ${dueDate}.`;
+
+    return createNotificationWithPush(
       userId,
       "bill_generated",
-      `${utilityType === "water" ? "Water" : "Electricity"} Charge Available`,
-      `Your ${utilityType} charge for ${billingMonth} is ₱${utilityAmount}. Current bill total: ₱${totalAmount}. Due by ${dueDate}.`,
-      { entityType: "bill", actionUrl: "/tenant/account?tab=billing" },
-    ),
+      title,
+      message,
+      {
+        entityType: "bill",
+        entityId: billId ? String(billId) : null,
+        actionUrl: billId ? `/bill-details?billId=${String(billId)}` : "/tenant/account?tab=billing",
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "bill_generated",
+            billing_id: billId ? String(billId) : "",
+            screen: "billing",
+            url: billId ? `/bill-details?billId=${String(billId)}` : "/(tabs)/billing",
+          },
+        }),
+    );
+  },
 
   overdueMoveIn: (userId, reservationCode, roomName, tenantName, daysOverdue) => {
     const code = formatCode(reservationCode);
@@ -349,8 +415,14 @@ const notify = {
       { entityType: "user" }),
 
   billDueReminder: (userId, billingMonth, totalAmount, daysUntilDue, options = {}) => {
-    const title = "Payment Reminder";
-    const message = `Your bill of ₱${totalAmount.toLocaleString()} for ${billingMonth} is due in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}.`;
+    const isDueToday = Number(daysUntilDue) === 0;
+    const isDueTomorrow = Number(daysUntilDue) === 1;
+    const title = isDueToday ? "Bill Due Today" : "Payment Reminder";
+    const message = isDueToday
+      ? `Your bill of ₱${totalAmount.toLocaleString()} for ${billingMonth} is due today. Please settle promptly.`
+      : isDueTomorrow
+        ? `Your bill of ₱${totalAmount.toLocaleString()} for ${billingMonth} is due tomorrow.`
+        : `Your bill of ₱${totalAmount.toLocaleString()} for ${billingMonth} is due in ${daysUntilDue} days.`;
     const billId = options.billId || null;
 
     return createNotificationWithPush(
@@ -505,7 +577,162 @@ const notify = {
 
     return notification;
   },
+
+  newMaintenanceTicket: (branch, tenantName, roomName, urgency, category, requestId) => {
+    const isEmergency = urgency === "emergency" || urgency === "high";
+    const title = isEmergency
+      ? `CRITICAL: Emergency Maintenance Request`
+      : `New Maintenance Request`;
+    const message = `${tenantName} in ${roomName || "assigned room"} filed a ${urgency ? urgency.toUpperCase() : "NORMAL"} maintenance request (${category || "General"}).`;
+    return notifyBranchAdmins(branch, "maintenance_new", title, message, {
+      entityType: "maintenance",
+      entityId: requestId ? String(requestId) : null,
+      actionUrl: requestId ? `/admin/maintenance?requestId=${String(requestId)}` : "/admin/maintenance",
+    });
+  },
+
+  maintenanceScheduled: (userId, requestType, scheduledDate, notes, requestId) => {
+    const formattedDate = scheduledDate instanceof Date ? scheduledDate.toLocaleString() : String(scheduledDate || "");
+    const title = "Maintenance Visit Scheduled";
+    const message = `Service visit for your ${requestType || "maintenance"} request has been scheduled for ${formattedDate}.${notes ? ` Note: ${notes}` : ""}`;
+    return createNotificationWithPush(
+      userId,
+      "maintenance_update",
+      title,
+      message,
+      {
+        entityType: "maintenance",
+        entityId: requestId ? String(requestId) : null,
+        actionUrl: "/applicant/maintenance",
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "maintenance_status",
+            request_id: requestId ? String(requestId) : "",
+            screen: "maintenance",
+          },
+        }),
+    );
+  },
+
+  maintenanceReportFinalized: (userId, requestType, requestId) => {
+    const title = "Official Completion Report Ready";
+    const message = `The official completion report for your ${requestType || "maintenance"} request is now ready for your review.`;
+    return createNotificationWithPush(
+      userId,
+      "maintenance_update",
+      title,
+      message,
+      {
+        entityType: "maintenance",
+        entityId: requestId ? String(requestId) : null,
+        actionUrl: "/applicant/maintenance",
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "maintenance_status",
+            request_id: requestId ? String(requestId) : "",
+            screen: "maintenance",
+          },
+        }),
+    );
+  },
+
+  maintenanceTenantReply: (branch, tenantName, requestId) =>
+    notifyBranchAdmins(branch, "maintenance_new", "Maintenance Reply Received",
+      `${tenantName} replied to maintenance request.`,
+      {
+        entityType: "maintenance",
+        entityId: requestId ? String(requestId) : null,
+        actionUrl: requestId ? `/admin/maintenance?requestId=${String(requestId)}` : "/admin/maintenance",
+      }),
+
+  maintenanceReopened: (branch, tenantName, requestId) =>
+    notifyBranchAdmins(branch, "maintenance_new", "Maintenance Ticket Re-opened",
+      `${tenantName} re-opened maintenance request. Action required.`,
+      {
+        entityType: "maintenance",
+        entityId: requestId ? String(requestId) : null,
+        actionUrl: requestId ? `/admin/maintenance?requestId=${String(requestId)}` : "/admin/maintenance",
+      }),
+
+  newApplicationSubmitted: (branch, applicantName, roomName, reservationId) =>
+    notifyBranchAdmins(branch, "application_submitted", "New Application Received",
+      `New application submitted by ${applicantName} for ${roomName || "room"}. Document review required.`,
+      {
+        entityType: "reservation",
+        entityId: reservationId ? String(reservationId) : null,
+        actionUrl: reservationId ? `/admin/reservations?reservationId=${String(reservationId)}` : "/admin/reservations",
+      }),
+
+  contractSignedByTenant: (branch, tenantName, roomName, contractId) =>
+    notifyBranchAdmins(branch, "contract_signed", "Lease Contract Signed",
+      `${tenantName} has signed the lease contract for ${roomName || "room"}. Ready for admin verification.`,
+      {
+        entityType: "contract",
+        entityId: contractId ? String(contractId) : null,
+        actionUrl: "/admin/contracts",
+      }),
+
+  paymentProofSubmitted: (branch, tenantName, billingMonth, amount, billId) => {
+    const formattedAmount = typeof amount === "number" ? amount.toLocaleString() : amount;
+    return notifyBranchAdmins(branch, "payment_proof_submitted", "Payment Verification Pending",
+      `${tenantName} submitted payment proof of ₱${formattedAmount} for ${billingMonth}. Verification required.`,
+      {
+        entityType: "bill",
+        entityId: billId ? String(billId) : null,
+        actionUrl: billId ? `/admin/billing?billId=${String(billId)}` : "/admin/billing",
+      });
+  },
+
+  newVisitRequested: (branch, applicantName, roomName, visitDate, visitTime) =>
+    notifyBranchAdmins(branch, "visit_requested", "New Visit Scheduled",
+      `${applicantName} scheduled a viewing visit for ${roomName || "room"} on ${visitDate}${visitTime ? ` at ${visitTime}` : ""}.`,
+      {
+        entityType: "reservation",
+        actionUrl: "/admin/reservations?tab=visits",
+      }),
 };
+
+export async function notifyBranchAdmins(branch, type, title, message, options = {}) {
+  try {
+    const adminRecipients = branch
+      ? [
+          { role: "branch_admin", branch },
+          { role: "owner" },
+        ]
+      : [
+          { role: "branch_admin" },
+          { role: "owner" },
+        ];
+
+    const adminUsers = await User.find({
+      $or: adminRecipients,
+      accountStatus: "active",
+      isArchived: { $ne: true },
+    }).select("_id branch role").lean();
+
+    const notifications = await Promise.all(
+      adminUsers.map((admin) =>
+        createNotification(admin._id, type, title, message, options)
+      )
+    );
+
+    return notifications.filter(Boolean);
+  } catch (error) {
+    logger.warn(
+      { err: error, branch, type },
+      "[Notification] Failed to notify branch admins",
+    );
+    return [];
+  }
+}
 
 export { createNotification, notify };
 export default notify;

@@ -83,14 +83,7 @@ export function isPendingAdminApproval(reservation) {
     return true;
   }
 
-  // 2. Proof of payment uploaded (requiring admin verification)
-  if (
-    reservation.paymentStatus === "proof_uploaded" ||
-    status === "payment_uploaded" ||
-    status === "awaiting_verification"
-  ) {
-    return true;
-  }
+  // Proof uploaded check removed — manual proof decommissioned (PayMongo only)
 
   // 3. Pending cancellation request
   if (hasPendingCancellationRequest(reservation)) {
@@ -204,6 +197,10 @@ export function mapReservationAdminRow(reservation) {
     archivedByName: getArchivedByName(reservation.archivedBy),
     archivedPreviousStatus: reservation.archivedPreviousStatus || reservation.status || null,
     archiveReason: reservation.archiveReason || "",
+    photoUrl: reservation.userId?.profileImage || reservation.userId?.photoUrl || null,
+    profileImage: reservation.userId?.profileImage || null,
+    selfiePhotoUrl: reservation.selfiePhotoUrl || null,
+    userId: reservation.userId || null,
     createdAt: reservation.createdAt,
     documentPrechecks: reservation.documentPrechecks || {},
     _raw: reservation,
@@ -221,15 +218,17 @@ export function checkOverdueReservation(reservation, now = new Date()) {
 export function mapVisitScheduleRows(rawReservations = []) {
  const rows = [];
 
- rawReservations
- .filter(
- (reservation) =>
- (reservation.visitDate && reservation.viewingPreference === "physical_visit") ||
- reservation.status === "visit_pending" ||
- (reservation.visitDate && reservation.visitApproved) ||
- reservation.scheduleRejected ||
- (reservation.visitHistory && reservation.visitHistory.length > 0),
- )
+  rawReservations
+    .filter(
+      (reservation) =>
+        (reservation.visitDate &&
+          (reservation.viewingPreference === "physical_visit" ||
+            reservation.viewingType === "physical_visit")) ||
+        reservation.status === "visit_pending" ||
+        (reservation.visitDate && reservation.visitApproved) ||
+        reservation.scheduleRejected ||
+        (reservation.visitHistory && reservation.visitHistory.length > 0),
+    )
  .forEach((reservation) => {
  const baseReservation = mapReservationAdminRow(reservation);
  const base = {

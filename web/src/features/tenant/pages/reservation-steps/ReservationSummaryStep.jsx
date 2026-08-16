@@ -305,6 +305,16 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
               {capacityLabel} Beds total
             </span>
           </div>
+          {(reservationData?.leaseDuration || room?.leaseDuration) && (
+            <div className="summary-row">
+              <span className="summary-label">Selected Lease Term</span>
+              <span className="summary-value font-semibold text-slate-800 dark:text-slate-200">
+                {Number(reservationData?.leaseDuration || room?.leaseDuration) === 12
+                  ? "12 Months (1 Year)"
+                  : `${reservationData?.leaseDuration || room?.leaseDuration} ${Number(reservationData?.leaseDuration || room?.leaseDuration) === 1 ? "Month" : "Months"}`}
+              </span>
+            </div>
+          )}
         </div>
       </section>
 
@@ -371,6 +381,47 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
                 Credited toward 1st month rent
               </span>
             </span>
+          </div>
+
+          {/* Move-In Cash Out Requirement Box */}
+          <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/80">
+            <div className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-2 flex items-center justify-between">
+              <span>Move-In Requirement Summary</span>
+              <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">Due before or on move-in</span>
+            </div>
+            
+            <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
+              <div className="flex justify-between">
+                <span>1 Month Advance Rent:</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  {hasResolvedMonthlyRate ? formatCurrency(monthlyRent) : "TBD"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>1 Month Security Deposit:</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  {hasResolvedMonthlyRate ? formatCurrency(monthlyRent) : "TBD"}
+                </span>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-slate-200/70 dark:border-slate-700/60 font-semibold text-slate-800 dark:text-slate-200">
+                <span>Total Move-In Requirements:</span>
+                <span>
+                  {hasResolvedMonthlyRate ? formatCurrency(monthlyRent * 2) : "TBD"}
+                </span>
+              </div>
+              <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                <span>Less Reservation Fee (Paid Now):</span>
+                <span className="font-semibold">-{formatCurrency(reservationFeeAmount)}</span>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-dashed border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-slate-100">
+                <span>Remaining Balance on Move-In:</span>
+                <span className="text-amber-700 dark:text-amber-400">
+                  {hasResolvedMonthlyRate
+                    ? formatCurrency(Math.max(0, monthlyRent * 2 - reservationFeeAmount))
+                    : "Calculated upon review"}
+                </span>
+              </div>
+            </div>
           </div>
 
           <div className="total-section mt-4 rounded-xl p-4 flex items-center justify-between shadow-sm">

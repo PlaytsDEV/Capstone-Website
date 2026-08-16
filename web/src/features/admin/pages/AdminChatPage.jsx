@@ -1,19 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
+  ChevronDown,
   CircleAlert,
+  Clock,
   FileDown,
   Filter,
   Inbox,
   LoaderCircle,
   Lock,
+  MessageSquare,
   MessageSquareText,
   RefreshCw,
   Search,
   Send,
+  ShieldAlert,
+  SlidersHorizontal,
   Tag,
+  User,
   UserCheck,
+  X,
   XCircle,
 } from "lucide-react";
 import { chatApi } from "../../../shared/api/chatApi.js";
@@ -22,6 +31,7 @@ import useChatSocket from "../../../shared/hooks/useChatSocket.js";
 import { showConfirmation, showNotification } from "../../../shared/utils/notification";
 import { BRANCH_DISPLAY_NAMES, BRANCH_OPTIONS } from "../../../shared/utils/constants";
 import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { AdminChatSkeleton } from "../components/AdminContentSkeletons";
 import "../styles/design-tokens.css";
 import "../styles/admin-common.css";
 import "../styles/admin-chat.css";
@@ -34,6 +44,20 @@ const STATUS_OPTIONS = [
   { value: "resolved", label: "Resolved" },
   { value: "closed", label: "Closed" },
 ];
+
+const STATUS_DESCRIPTIONS = {
+  open: "Conversation is active and awaiting staff response or triage.",
+  in_review: "Staff is currently investigating and working on the tenant's concern.",
+  waiting_tenant: "Staff replied; awaiting response or documents from the tenant.",
+  resolved: "Tenant concern has been addressed and settled successfully.",
+  closed: "Permanently closes and archives the conversation thread with an audit note.",
+};
+
+const PRIORITY_DESCRIPTIONS = {
+  normal: "Standard priority ticket with normal SLA response timeline.",
+  high: "High priority ticket requiring prioritized administrative attention.",
+  urgent: "Critical urgent issue requiring immediate response and handling.",
+};
 
 const STATUS_SECTION_ORDER = [
   "open",
@@ -79,6 +103,51 @@ const fmtDateTime = (value) => {
     hour: "numeric",
     minute: "2-digit",
   });
+};
+
+const fmtRelativeTime = (dateValue) => {
+  if (!dateValue) return "";
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHrs = Math.floor(diffMin / 60);
+  const diffDays = Math.floor(diffHrs / 24);
+
+  if (diffSec < 45) return "Just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHrs < 24) return `${diffHrs}h ago`;
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+};
+
+const AVATAR_BG_COLORS = [
+  "bg-slate-700 text-white",
+  "bg-blue-700 text-white",
+  "bg-amber-700 text-white",
+  "bg-emerald-700 text-white",
+  "bg-indigo-700 text-white",
+  "bg-teal-700 text-white",
+];
+
+const getAvatarBg = (name = "") => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % AVATAR_BG_COLORS.length;
+  return AVATAR_BG_COLORS[index];
+};
+
+const getInitials = (name = "T") => {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  }
+  return (parts[0]?.[0] || "T").toUpperCase();
 };
 
 const getBranchLabel = (branch) => BRANCH_DISPLAY_NAMES[branch] || branch || "Unassigned";
@@ -133,18 +202,29 @@ export default function AdminChatPage() {
   const { user } = useAuth();
   const isOwner = user?.role === "owner";
   const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState("all"); // "all" | "unread" | "urgent" | "me"
   const [statusFilter, setStatusFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [unreadOnly, setUnreadOnly] = useState(false);
-  const [assignedToMeOnly, setAssignedToMeOnly] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
   const [conversations, setConversations] = useState([]);
   const [accessInfo, setAccessInfo] = useState(null);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [replyText, setReplyText] = useState("");
+
+  const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [closeNote, setCloseNote] = useState("");
+  const [closeNoteError, setCloseNoteError] = useState("");
+
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState("open");
+
+  const [priorityModalOpen, setPriorityModalOpen] = useState(false);
+  const [pendingPriority, setPendingPriority] = useState("normal");
+
   const [listLoading, setListLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -156,30 +236,39 @@ export default function AdminChatPage() {
   const [listError, setListError] = useState("");
   const [messagesError, setMessagesError] = useState("");
   const [replyError, setReplyError] = useState("");
-  // Typing indicator state — cleared automatically after 4s of inactivity
-  const [tenantTyping, setTenantTyping] = useState(null); // { name, conversationId }
+
+  const [tenantTyping, setTenantTyping] = useState(null);
   const typingClearRef = useRef(null);
   const typingSendRef = useRef(null);
+  const messageEndRef = useRef(null);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (statusFilter !== "all") count += 1;
+    if (priorityFilter !== "all") count += 1;
+    if (categoryFilter !== "all") count += 1;
+    if (isOwner && branchFilter !== "all") count += 1;
+    return count;
+  }, [statusFilter, priorityFilter, categoryFilter, branchFilter, isOwner]);
 
   const filters = useMemo(
     () => ({
       status: statusFilter,
       branch: isOwner ? branchFilter : "all",
-      unread: unreadOnly ? "true" : "",
-      assigned: assignedToMeOnly ? "me" : "",
-      priority: priorityFilter,
+      unread: activeTab === "unread" ? "true" : "",
+      assigned: activeTab === "me" ? "me" : "",
+      priority: activeTab === "urgent" ? "urgent" : priorityFilter,
       category: categoryFilter,
       search: search.trim(),
     }),
     [
-      assignedToMeOnly,
+      activeTab,
       branchFilter,
       categoryFilter,
       isOwner,
       priorityFilter,
       search,
       statusFilter,
-      unreadOnly,
     ],
   );
 
@@ -237,86 +326,65 @@ export default function AdminChatPage() {
     return () => window.clearTimeout(timeoutId);
   }, [loadConversations]);
 
-  // Socket.IO — primary real-time update path.
-  // Polling below is the fallback at a reduced 30s interval.
+  useEffect(() => {
+    if (messageEndRef.current) {
+      messageEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, tenantTyping]);
+
   const { isConnected: socketConnected } = useChatSocket({
     onTyping: ({ conversationId, senderRole, senderName } = {}) => {
-      // Only surface tenant typing; admins seeing other admins type is noise.
       if (senderRole === "tenant" && selectedConversation?.id === conversationId) {
         setTenantTyping({ name: senderName, conversationId });
         window.clearTimeout(typingClearRef.current);
         typingClearRef.current = window.setTimeout(() => setTenantTyping(null), 4000);
       }
     },
-    onMessageNew: (message, conversationId) => {
-      if (!message) return;
-      if (selectedConversation?.id !== conversationId) {
-        loadConversations({ silent: true });
-        return;
+    onNewMessage: ({ message, conversationId } = {}) => {
+      if (!conversationId || !message) return;
+      if (selectedConversation?.id === conversationId) {
+        setMessages((current) => {
+          if (current.some((item) => item.id === message.id)) return current;
+          return [...current, message];
+        });
+        chatApi.markAsRead(conversationId).catch(() => {});
       }
-      // Append to feed only if this conversation is open
-      setMessages((current) => {
-        const alreadyExists = current.some((m) => m.id === message.id);
-        return alreadyExists ? current : [...current, message];
-      });
-      // Always refresh conversation list to update unread counts
       loadConversations({ silent: true });
     },
     onConversationUpdated: (updatedConversation) => {
-      if (!updatedConversation) return;
-      setConversations((current) =>
-        current.map((c) => (c.id === updatedConversation.id ? updatedConversation : c)),
-      );
-      setSelectedConversation((current) => {
-        if (!current || current.id !== updatedConversation.id) return current;
-        return updatedConversation;
+      if (!updatedConversation?.id) return;
+      setConversations((current) => {
+        const exists = current.some((item) => item.id === updatedConversation.id);
+        if (!exists) return [updatedConversation, ...current];
+        return current.map((item) =>
+          item.id === updatedConversation.id ? { ...item, ...updatedConversation } : item,
+        );
       });
+      setSelectedConversation((current) =>
+        current?.id === updatedConversation.id
+          ? { ...current, ...updatedConversation }
+          : current,
+      );
     },
   });
 
-  // Polling fallback — 30s when socket is connected, 10s when disconnected.
   useEffect(() => {
-    const interval = socketConnected ? 30000 : 10000;
-    const intervalId = window.setInterval(() => {
+    const interval = window.setInterval(() => {
       loadConversations({ silent: true });
-    }, interval);
-    return () => window.clearInterval(intervalId);
-  }, [loadConversations, socketConnected]);
-
-  // Message polling fallback — only active when socket is disconnected.
-  useEffect(() => {
-    if (!selectedConversation?.id || socketConnected) return undefined;
-    const intervalId = window.setInterval(() => {
-      loadMessages(selectedConversation.id, { silent: true });
-    }, 10000);
-    return () => window.clearInterval(intervalId);
-  }, [loadMessages, selectedConversation?.id, socketConnected]);
-
-  const groupedConversations = useMemo(() => {
-    const sorted = [...conversations].sort((left, right) => {
-      const priorityDiff =
-        (PRIORITY_RANK[left.priority || "normal"] ?? 2) -
-        (PRIORITY_RANK[right.priority || "normal"] ?? 2);
-      if (priorityDiff !== 0) return priorityDiff;
-      const unreadDiff = (right.unreadAdminCount || 0) - (left.unreadAdminCount || 0);
-      if (unreadDiff !== 0) return unreadDiff;
-      const leftDate = new Date(left.lastMessageAt || left.updatedAt || 0).getTime();
-      const rightDate = new Date(right.lastMessageAt || right.updatedAt || 0).getTime();
-      return rightDate - leftDate;
-    });
-
-    return STATUS_SECTION_ORDER.map((status) => ({
-      status,
-      label: getStatusLabel(status),
-      items: sorted.filter((conversation) => (conversation.status || "open") === status),
-    })).filter((group) => group.items.length > 0);
-  }, [conversations]);
+      if (selectedConversation?.id) {
+        chatApi.getAdminMessages(selectedConversation.id).then((data) => {
+          if (data?.messages) setMessages(data.messages);
+        }).catch(() => {});
+      }
+    }, 30000);
+    return () => window.clearInterval(interval);
+  }, [loadConversations, selectedConversation?.id]);
 
   const handleSelectConversation = async (conversation) => {
     setSelectedConversation(conversation);
-    setReplyText("");
     setReplyError("");
-    setCloseNote(conversation.closingNote || "");
+    setReplyText("");
+    setTenantTyping(null);
     await loadMessages(conversation.id);
   };
 
@@ -325,22 +393,44 @@ export default function AdminChatPage() {
     if (selectedConversation?.id) {
       await loadMessages(selectedConversation.id);
     }
-    showNotification("Support chat refreshed.", "success");
   };
 
+  const handleResetFilters = () => {
+    setSearch("");
+    setActiveTab("all");
+    setStatusFilter("all");
+    setPriorityFilter("all");
+    setCategoryFilter("all");
+    setBranchFilter("all");
+    setShowAdvancedFilters(false);
+  };
+
+  const groupedConversations = useMemo(() => {
+    const groups = STATUS_SECTION_ORDER.map((status) => ({
+      status,
+      label: getStatusLabel(status),
+      items: [],
+    }));
+
+    conversations.forEach((item) => {
+      const targetGroup =
+        groups.find((group) => group.status === item.status) || groups[0];
+      targetGroup.items.push(item);
+    });
+
+    return groups.filter((group) => group.items.length > 0);
+  }, [conversations]);
+
   const handleSendReply = async () => {
-    const message = replyText.trim();
     if (!selectedConversation || sending) return;
+    const message = replyText.trim();
     if (!message) {
-      setReplyError("Message cannot be empty.");
+      setReplyError("Please enter a reply message.");
       return;
     }
+
     if (message.length > 1000) {
-      setReplyError("Message must be 1000 characters or fewer.");
-      return;
-    }
-    if (selectedConversation.status === "closed") {
-      setReplyError("This conversation is closed.");
+      setReplyError("Reply exceeds maximum length of 1000 characters.");
       return;
     }
 
@@ -352,13 +442,19 @@ export default function AdminChatPage() {
       setMessages((current) => [...current, data.message].filter(Boolean));
       setSelectedConversation(data.conversation);
       await loadConversations({ silent: true });
-      showNotification("Reply sent successfully.", "success");
     } catch (error) {
       const messageText = getErrorMessage(error, "Failed to send reply.");
       setReplyError(messageText);
       showNotification(messageText, "error");
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleKeyDownReply = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendReply();
     }
   };
 
@@ -380,20 +476,34 @@ export default function AdminChatPage() {
     }
   };
 
-  const handleStatusChange = async (status) => {
+  const handleOpenStatusModal = () => {
+    if (!selectedConversation || selectedConversation.status === "closed") return;
+    setPendingStatus(selectedConversation.status || "open");
+    setStatusModalOpen(true);
+  };
+
+  const handleConfirmStatusChange = async () => {
     if (!selectedConversation || updatingStatus) return;
-    if (status === selectedConversation.status) return;
-    if (status === "closed") {
-      setReplyError("Use the close action and enter a closing note.");
+    if (pendingStatus === selectedConversation.status) {
+      setStatusModalOpen(false);
+      return;
+    }
+    if (pendingStatus === "closed") {
+      setStatusModalOpen(false);
+      handleOpenCloseModal();
       return;
     }
 
     setUpdatingStatus(true);
     try {
-      const data = await chatApi.updateStatus(selectedConversation.id, status);
+      const data = await chatApi.updateStatus(selectedConversation.id, pendingStatus);
       setSelectedConversation(data.conversation);
       await loadConversations({ silent: true });
-      showNotification("Conversation status updated.", "success");
+      setStatusModalOpen(false);
+      showNotification(
+        `Conversation status changed to ${getStatusLabel(pendingStatus)}.`,
+        "success",
+      );
     } catch (error) {
       showNotification(
         getErrorMessage(error, "Failed to update conversation status."),
@@ -404,16 +514,29 @@ export default function AdminChatPage() {
     }
   };
 
-  const handlePriorityChange = async (priority) => {
+  const handleOpenPriorityModal = () => {
+    if (!selectedConversation || selectedConversation.status === "closed") return;
+    setPendingPriority(selectedConversation.priority || "normal");
+    setPriorityModalOpen(true);
+  };
+
+  const handleConfirmPriorityChange = async () => {
     if (!selectedConversation || updatingPriority) return;
-    if (priority === selectedConversation.priority) return;
+    if (pendingPriority === selectedConversation.priority) {
+      setPriorityModalOpen(false);
+      return;
+    }
 
     setUpdatingPriority(true);
     try {
-      const data = await chatApi.updatePriority(selectedConversation.id, priority);
+      const data = await chatApi.updatePriority(selectedConversation.id, pendingPriority);
       setSelectedConversation(data.conversation);
       await loadConversations({ silent: true });
-      showNotification("Conversation priority updated.", "success");
+      setPriorityModalOpen(false);
+      showNotification(
+        `Conversation priority changed to ${getPriorityLabel(pendingPriority)}.`,
+        "success",
+      );
     } catch (error) {
       showNotification(
         getErrorMessage(error, "Failed to update conversation priority."),
@@ -424,33 +547,34 @@ export default function AdminChatPage() {
     }
   };
 
-  const handleCloseConversation = async () => {
-    if (!selectedConversation || closing) return;
+  const handleOpenCloseModal = () => {
+    setCloseNote("");
+    setCloseNoteError("");
+    setCloseModalOpen(true);
+  };
+
+  const handleConfirmClose = async () => {
     const note = closeNote.trim();
     if (!note) {
-      setReplyError("Please enter a closing note.");
-      showNotification("Please enter a closing note.", "warning");
+      setCloseNoteError("A closing / resolution note is required.");
       return;
     }
-
-    const confirmed = await showConfirmation(
-      `Close this conversation with ${escapeHtml(selectedConversation.tenantName)}? Closing note: ${escapeHtml(note)}. Messages will stay visible, but replies will be locked.`,
-      "Close Conversation",
-      "Cancel",
-    );
-    if (!confirmed) return;
+    if (note.length < 5) {
+      setCloseNoteError("Closing note must be at least 5 characters long.");
+      return;
+    }
 
     setClosing(true);
     try {
       const data = await chatApi.closeConversation(selectedConversation.id, note);
       setSelectedConversation(data.conversation);
       await loadConversations({ silent: true });
-      showNotification("Conversation closed.", "success");
+      setCloseModalOpen(false);
+      showNotification("Conversation resolved and closed successfully.", "success");
     } catch (error) {
-      showNotification(
-        getErrorMessage(error, "Failed to close conversation."),
-        "error",
-      );
+      const msg = getErrorMessage(error, "Failed to close conversation.");
+      setCloseNoteError(msg);
+      showNotification(msg, "error");
     } finally {
       setClosing(false);
     }
@@ -566,463 +690,960 @@ export default function AdminChatPage() {
     accessInfo?.adminId &&
     selectedConversation.assignedAdminId !== accessInfo.adminId;
 
+  if (listLoading && !conversations.length) {
+    return <AdminChatSkeleton />;
+  }
+
   return (
-    <section className="admin-chat-page">
-      <div className="chat-summary-row">
-        <div className="chat-summary-card">
-          <MessageSquareText size={18} />
-          <div>
-            <span className="chat-summary-value">{conversations.length}</span>
-            <span className="chat-summary-label">Conversations</span>
-          </div>
+    <section className="admin-chat-page space-y-4">
+      {/* ── Page Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Support Chat</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Real-time tenant messaging, concern resolution, and communication workflows.
+          </p>
         </div>
-        <div className="chat-summary-card">
-          <CircleAlert size={18} />
-          <div>
-            <span className="chat-summary-value">{unreadTotal}</span>
-            <span className="chat-summary-label">Unread</span>
-          </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted cursor-pointer"
+            onClick={handleRefresh}
+            disabled={listLoading || messagesLoading}
+            title="Refresh conversations"
+          >
+            <RefreshCw size={14} className={listLoading ? "animate-spin" : ""} />
+            <span>Refresh</span>
+          </button>
+
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wider border ${
+              socketConnected
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800"
+                : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
+            }`}
+            title={socketConnected ? "Real-time socket active" : "Polling fallback active"}
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                socketConnected ? "bg-emerald-600 animate-pulse" : "bg-amber-600"
+              }`}
+            />
+            {socketConnected ? "Live" : "Polling"}
+          </span>
         </div>
-        <div className="chat-summary-card chat-summary-card--urgent">
-          <AlertTriangle size={18} />
-          <div>
-            <span className="chat-summary-value">{urgentTotal}</span>
-            <span className="chat-summary-label">Urgent</span>
-          </div>
-        </div>
-        <div className="chat-summary-card">
-          <UserCheck size={18} />
-          <div>
-            <span className="chat-summary-value">{assignedToMeTotal}</span>
-            <span className="chat-summary-label">Assigned to me</span>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="chat-refresh-btn"
-          onClick={handleRefresh}
-          disabled={listLoading || messagesLoading}
-        >
-          <RefreshCw size={16} />
-          Refresh
-        </button>
-        <span
-          className={`chat-socket-status ${socketConnected ? "chat-socket-status--live" : "chat-socket-status--polling"}`}
-          title={socketConnected ? "Real-time active" : "Polling fallback active"}
-        >
-          <span className="chat-socket-status__dot" />
-          {socketConnected ? "Live" : "Polling"}
-        </span>
       </div>
 
-      <div className="chat-workspace">
-        <aside className="chat-list-panel">
-          <div className="chat-filters">
-            <label className="chat-search">
-              <Search size={15} />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search tenant or message"
-              />
-            </label>
-
-            <label className="chat-filter-field">
-              <span>Status</span>
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
-                {STATUS_OPTIONS.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="chat-filter-2col">
-              <label className="chat-filter-field">
-                <span>Priority</span>
-                <select
-                  value={priorityFilter}
-                  onChange={(event) => setPriorityFilter(event.target.value)}
-                >
-                  {PRIORITY_OPTIONS.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="chat-filter-field">
-                <span>Category</span>
-                <select
-                  value={categoryFilter}
-                  onChange={(event) => setCategoryFilter(event.target.value)}
-                >
-                  {CATEGORY_OPTIONS.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            {isOwner ? (
-              <label className="chat-filter-field">
-                <span>Branch</span>
-                <select
-                  value={branchFilter}
-                  onChange={(event) => setBranchFilter(event.target.value)}
-                >
-                  <option value="all">All branches</option>
-                  {BRANCH_OPTIONS.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-
-            <div className="chat-toggle-row">
-              <button
-                type="button"
-                className={`chat-quick-toggle ${unreadOnly ? "is-active" : ""}`}
-                onClick={() => setUnreadOnly((v) => !v)}
-              >
-                Unread only
-              </button>
-              <button
-                type="button"
-                className={`chat-quick-toggle ${assignedToMeOnly ? "is-active" : ""}`}
-                onClick={() => setAssignedToMeOnly((v) => !v)}
-              >
-                Assigned to me
-              </button>
+      {/* ── Full-Width 4-Metric Summary Grid (Static Overview) ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="p-3.5 rounded-xl border border-border bg-card shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Total Threads
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <MessageSquareText size={16} />
             </div>
           </div>
+          <div className="text-2xl font-bold text-foreground mt-2">
+            {conversations.length}
+          </div>
+        </div>
 
-          {listLoading ? (
-            <ListSkeleton rows={8} avatar style={{ padding: 12 }} />
-          ) : listError ? (
-            <div className="chat-panel-state chat-panel-state--error">
-              <XCircle size={22} />
-              <span>{listError}</span>
+        <div className="p-3.5 rounded-xl border border-border bg-card shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Unread
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400">
+              <CircleAlert size={16} />
             </div>
-          ) : conversations.length === 0 ? (
-            <div className="chat-panel-state">
-              <Inbox size={24} />
-              <strong>No conversations yet.</strong>
-              <span>Tenant messages will appear here.</span>
+          </div>
+          <div className="text-2xl font-bold text-foreground mt-2">
+            {unreadTotal}
+          </div>
+        </div>
+
+        <div className="p-3.5 rounded-xl border border-border bg-card shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Urgent Priority
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-400">
+              <AlertTriangle size={16} />
             </div>
-          ) : (
-            <div className="chat-conversation-list">
-              {groupedConversations.map((group) => (
-                <div className="chat-status-group" key={group.status}>
-                  <div className="chat-status-group-title">
-                    {group.label}
-                    <span>{group.items.length}</span>
-                  </div>
-                  {group.items.map((conversation) => (
-                    <button
-                      type="button"
-                      key={conversation.id}
-                      className={`chat-conversation-item ${
-                        selectedConversation?.id === conversation.id ? "active" : ""
-                      } ${
-                        conversation.unreadAdminCount > 0
-                          ? "chat-conversation-item--unread"
-                          : ""
-                      } ${
-                        conversation.priority === "urgent"
-                          ? "chat-conversation-item--urgent"
-                          : ""
-                      }`}
-                      onClick={() => handleSelectConversation(conversation)}
-                    >
-                      <span className="chat-avatar">
-                        {(conversation.tenantName || "T").slice(0, 1).toUpperCase()}
-                      </span>
-                      <span className="chat-conversation-copy">
-                        <span className="chat-conversation-top">
-                          <strong>{conversation.tenantName}</strong>
-                          <time>{fmtDateTime(conversation.lastMessageAt)}</time>
-                        </span>
-                        <span className="chat-conversation-meta">
-                          {getBranchLabel(conversation.branch)} · {getRoomLabel(conversation)}
-                        </span>
-                        <span className="chat-conversation-preview">
-                          {conversation.lastMessage || "No messages yet"}
-                        </span>
-                      </span>
-                      <span className="chat-conversation-side">
-                        {conversation.unreadAdminCount > 0 ? (
-                          <span className="chat-unread-badge">
-                            {conversation.unreadAdminCount}
-                          </span>
-                        ) : null}
-                        {conversation.priority !== "normal" && (
-                          <span className={`chat-priority chat-priority--${conversation.priority}`}>
-                            {getPriorityLabel(conversation.priority)}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                  ))}
+          </div>
+          <div className="text-2xl font-bold text-foreground mt-2">
+            {urgentTotal}
+          </div>
+        </div>
+
+        <div className="p-3.5 rounded-xl border border-border bg-card shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Assigned to Me
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+              <UserCheck size={16} />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-foreground mt-2">
+            {assignedToMeTotal}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Main Chat Workspace ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[380px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)] gap-4 items-start min-h-[640px]">
+        {/* Left Sidebar: Conversations & Filters */}
+        <aside className="rounded-xl border border-border bg-card shadow-xs flex flex-col h-[700px] overflow-hidden">
+          {/* Search & Filter Bar */}
+          <div className="p-3 border-b border-border space-y-2.5 bg-card/60">
+            <div className="relative flex items-center">
+              <Search
+                size={15}
+                className="absolute left-3 text-muted-foreground pointer-events-none"
+              />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search tenant, room, or message..."
+                className="w-full h-9 pl-9 pr-8 rounded-lg border border-border bg-input-background text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-border transition-colors"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="absolute right-2.5 text-muted-foreground hover:text-foreground p-0.5 rounded cursor-pointer"
+                  title="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Segmented Tabs inside Sidebar */}
+            <div className="grid grid-cols-4 gap-1 p-0.5 rounded-lg bg-muted border border-border text-[11px] font-semibold">
+              <button
+                type="button"
+                className={`py-1 rounded text-center transition-colors cursor-pointer ${
+                  activeTab === "all"
+                    ? "bg-card text-foreground shadow-2xs font-bold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setActiveTab("all")}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                className={`py-1 rounded text-center transition-colors cursor-pointer ${
+                  activeTab === "unread"
+                    ? "bg-card text-foreground shadow-2xs font-bold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setActiveTab("unread")}
+              >
+                Unread
+              </button>
+              <button
+                type="button"
+                className={`py-1 rounded text-center transition-colors cursor-pointer ${
+                  activeTab === "urgent"
+                    ? "bg-card text-foreground shadow-2xs font-bold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setActiveTab("urgent")}
+              >
+                Urgent
+              </button>
+              <button
+                type="button"
+                className={`py-1 rounded text-center transition-colors cursor-pointer ${
+                  activeTab === "me"
+                    ? "bg-card text-foreground shadow-2xs font-bold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setActiveTab("me")}
+              >
+                Assigned
+              </button>
+            </div>
+
+            {/* Filter Toggle & Reset */}
+            <div className="flex items-center justify-between pt-0.5">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedFilters((prev) => !prev)}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium border transition-colors cursor-pointer ${
+                  showAdvancedFilters || activeFiltersCount > 0
+                    ? "bg-muted border-border text-foreground font-semibold"
+                    : "bg-card border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <SlidersHorizontal size={13} />
+                <span>Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}</span>
+              </button>
+
+              {(activeFiltersCount > 0 || search || activeTab !== "all") && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="text-xs text-muted-foreground hover:text-foreground underline cursor-pointer"
+                >
+                  Reset all
+                </button>
+              )}
+            </div>
+
+            {showAdvancedFilters && (
+              <div className="pt-2 border-t border-border/70 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">
+                    Status
+                  </label>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="w-full h-8 px-2 rounded-md border border-border bg-card text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    {STATUS_OPTIONS.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              ))}
-            </div>
-          )}
+
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">
+                    Category
+                  </label>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="w-full h-8 px-2 rounded-md border border-border bg-card text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    {CATEGORY_OPTIONS.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {isOwner && (
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">
+                      Branch
+                    </label>
+                    <select
+                      value={branchFilter}
+                      onChange={(e) => setBranchFilter(e.target.value)}
+                      className="w-full h-8 px-2 rounded-md border border-border bg-card text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="all">All branches</option>
+                      {BRANCH_OPTIONS.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Conversation List */}
+          <div className="flex-1 overflow-y-auto p-2 space-y-2">
+            {listLoading ? (
+              <ListSkeleton rows={7} avatar style={{ padding: 8 }} />
+            ) : listError ? (
+              <div className="p-6 text-center text-xs text-destructive space-y-2">
+                <XCircle size={22} className="mx-auto" />
+                <span>{listError}</span>
+              </div>
+            ) : conversations.length === 0 ? (
+              <div className="p-8 text-center text-xs text-muted-foreground space-y-2">
+                <Inbox size={26} className="mx-auto text-muted-foreground/60" />
+                <div className="font-semibold text-foreground">No conversations found</div>
+                <div>Tenant messages matching your filters will appear here.</div>
+              </div>
+            ) : (
+              groupedConversations.map((group) => (
+                <div key={group.status} className="space-y-1">
+                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                    <span>{group.label}</span>
+                    <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold">
+                      {group.items.length}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    {group.items.map((conversation) => {
+                      const isSelected = selectedConversation?.id === conversation.id;
+                      const isUnread = conversation.unreadAdminCount > 0;
+                      const isUrgent = conversation.priority === "urgent";
+
+                      return (
+                        <button
+                          type="button"
+                          key={conversation.id}
+                          onClick={() => handleSelectConversation(conversation)}
+                          className={`w-full text-left p-2.5 rounded-lg flex items-start gap-2.5 transition-colors cursor-pointer border ${
+                            isSelected
+                              ? "bg-muted/90 border-border shadow-2xs font-medium text-foreground"
+                              : "border-transparent hover:bg-muted/40 text-card-foreground"
+                          } ${isUnread && !isSelected ? "bg-blue-50/40 dark:bg-blue-950/20" : ""}`}
+                        >
+                          {/* Circular Avatar */}
+                          <div
+                            className={`h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 shadow-2xs ${getAvatarBg(
+                              conversation.tenantName,
+                            )}`}
+                          >
+                            {getInitials(conversation.tenantName)}
+                          </div>
+
+                          {/* Middle Info */}
+                          <div className="flex-1 min-w-0 space-y-0.5">
+                            <div className="flex items-baseline justify-between gap-1">
+                              <span
+                                className={`text-xs truncate ${
+                                  isUnread
+                                    ? "font-bold text-foreground"
+                                    : "font-semibold text-foreground/90"
+                                }`}
+                              >
+                                {conversation.tenantName}
+                              </span>
+                              <time className="text-[10px] text-muted-foreground shrink-0 font-normal">
+                                {fmtRelativeTime(conversation.lastMessageAt)}
+                              </time>
+                            </div>
+
+                            <div className="text-[11px] text-muted-foreground truncate font-normal">
+                              {getBranchLabel(conversation.branch)} · {getRoomLabel(conversation)}
+                            </div>
+
+                            <p className="text-[11px] text-muted-foreground truncate line-clamp-1 leading-tight font-normal">
+                              {conversation.lastMessage || "No messages yet"}
+                            </p>
+                          </div>
+
+                          {/* Badges Column */}
+                          <div className="flex flex-col items-end gap-1 shrink-0 pt-0.5">
+                            {isUnread && (
+                              <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">
+                                {conversation.unreadAdminCount}
+                              </span>
+                            )}
+                            {isUrgent && (
+                              <span className="rounded bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+                                Urgent
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </aside>
 
-        <section className="chat-detail-panel">
+        {/* Right Pane: Conversation Details & Message Feed */}
+        <section className="rounded-xl border border-border bg-card shadow-xs flex flex-col h-[720px] overflow-hidden">
           {selectedConversation ? (
             <>
-              <header className="chat-detail-header">
-                <div>
-                  <h2>{selectedConversation.tenantName}</h2>
-                  <p>
-                    {getBranchLabel(selectedConversation.branch)} -{" "}
-                    {getRoomLabel(selectedConversation)}
-                  </p>
-                  <div className="chat-detail-badges">
-                    <span className="chat-category-badge">
-                      {getCategoryLabel(selectedConversation.category)}
-                    </span>
-                    <span className={`chat-priority chat-priority--${selectedConversation.priority || "normal"}`}>
-                      {getPriorityLabel(selectedConversation.priority)}
-                    </span>
-                    <span className={`chat-status chat-status--${selectedConversation.status || "open"}`}>
-                      {getStatusLabel(selectedConversation.status)}
+              {/* Thread Header */}
+              <header className="p-3.5 border-b border-border bg-card/80 flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1.5 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-base font-bold text-foreground truncate">
+                      {selectedConversation.tenantName}
+                    </h2>
+                    <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                      {getBranchLabel(selectedConversation.branch)} - {getRoomLabel(selectedConversation)}
                     </span>
                   </div>
+
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 px-2.5 py-0.5 font-medium border border-border">
+                      {getCategoryLabel(selectedConversation.category)}
+                    </span>
+
+                    {/* Interactive Status Badge Button */}
+                    <button
+                      type="button"
+                      onClick={handleOpenStatusModal}
+                      disabled={selectedConversation.status === "closed"}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold border transition-all ${
+                        selectedConversation.status === "closed"
+                          ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-border cursor-default"
+                          : selectedConversation.status === "resolved"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800 cursor-pointer"
+                          : selectedConversation.status === "waiting_tenant"
+                          ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800 cursor-pointer"
+                          : selectedConversation.status === "in_review"
+                          ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800 cursor-pointer"
+                          : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800 cursor-pointer"
+                      }`}
+                      title="Click to update status with confirmation"
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                      <span>{getStatusLabel(selectedConversation.status)}</span>
+                      {selectedConversation.status !== "closed" && (
+                        <ChevronDown size={12} className="opacity-70" />
+                      )}
+                    </button>
+
+                    {/* Interactive Priority Badge Button */}
+                    <button
+                      type="button"
+                      onClick={handleOpenPriorityModal}
+                      disabled={selectedConversation.status === "closed"}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold border transition-all ${
+                        selectedConversation.status === "closed"
+                          ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-border cursor-default"
+                          : selectedConversation.priority === "urgent"
+                          ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800 cursor-pointer"
+                          : selectedConversation.priority === "high"
+                          ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800 cursor-pointer"
+                          : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 cursor-pointer"
+                      }`}
+                      title="Click to update priority"
+                    >
+                      <span>Priority: {getPriorityLabel(selectedConversation.priority)}</span>
+                      {selectedConversation.status !== "closed" && (
+                        <ChevronDown size={12} className="opacity-70" />
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <div className="chat-header-actions">
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Assigned Admin Indicator */}
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/60 border border-border text-xs">
+                    <span className="text-muted-foreground">Assigned:</span>
+                    <span className="font-semibold text-foreground">
+                      {selectedConversation.assignedAdminName || "Unassigned"}
+                    </span>
+                    {!selectedConversation.assignedAdminName && selectedConversation.status !== "closed" && (
+                      <button
+                        type="button"
+                        onClick={handleAssignToMe}
+                        disabled={assigning}
+                        className="ml-1 inline-flex items-center gap-1 rounded bg-card border border-border px-2 py-0.5 text-[11px] font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                      >
+                        {assigning ? (
+                          <LoaderCircle size={11} className="animate-spin" />
+                        ) : (
+                          <UserCheck size={11} />
+                        )}
+                        <span>Assign to me</span>
+                      </button>
+                    )}
+                  </div>
+
                   <button
                     type="button"
-                    className="chat-secondary-btn"
                     onClick={handleDownloadTranscript}
                     disabled={downloading}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
                   >
                     {downloading ? (
-                      <LoaderCircle className="spin" size={15} />
+                      <LoaderCircle size={14} className="animate-spin" />
                     ) : (
-                      <FileDown size={15} />
+                      <FileDown size={14} />
                     )}
-                    Transcript
+                    <span>Transcript</span>
                   </button>
+
+                  {selectedConversation.status !== "closed" && (
+                    <button
+                      type="button"
+                      onClick={handleOpenCloseModal}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white hover:border-rose-600 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800 dark:hover:bg-rose-700 dark:hover:text-white px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                      title="Quick action: Archive and lock this conversation with a resolution note"
+                    >
+                      <Lock size={13} />
+                      <span>Resolve & Close</span>
+                    </button>
+                  )}
                 </div>
               </header>
 
-              <div className="chat-management-bar">
-                <div className="chat-management-field">
-                  <span>Assigned to</span>
-                  <strong>{selectedConversation.assignedAdminName || "Unassigned"}</strong>
-                  <button
-                    type="button"
-                    className="chat-mini-btn"
-                    onClick={handleAssignToMe}
-                    disabled={assigning || selectedConversation.status === "closed"}
-                  >
-                    {assigning ? <LoaderCircle className="spin" size={14} /> : <UserCheck size={14} />}
-                    Assign to me
-                  </button>
+              {assignedToAnother && (
+                <div className="px-4 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200 flex items-center gap-2">
+                  <AlertTriangle size={14} className="shrink-0" />
+                  <span>
+                    Currently assigned to <strong>{selectedConversation.assignedAdminName}</strong>. Please coordinate before replying.
+                  </span>
                 </div>
-                <label className="chat-management-field">
-                  <span>Status</span>
-                  <select
-                    value={selectedConversation.status || "open"}
-                    onChange={(event) => handleStatusChange(event.target.value)}
-                    disabled={updatingStatus || selectedConversation.status === "closed"}
-                  >
-                    {STATUS_OPTIONS.filter((item) => item.value !== "all").map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="chat-management-field">
-                  <span>Priority</span>
-                  <select
-                    value={selectedConversation.priority || "normal"}
-                    onChange={(event) => handlePriorityChange(event.target.value)}
-                    disabled={updatingPriority || selectedConversation.status === "closed"}
-                  >
-                    {PRIORITY_OPTIONS.filter((item) => item.value !== "all").map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+              )}
 
-              {assignedToAnother ? (
-                <div className="chat-warning-banner">
-                  <AlertTriangle size={16} />
-                  Assigned to {selectedConversation.assignedAdminName}. Coordinate before replying.
-                </div>
-              ) : null}
-
-              {messagesError ? (
-                <div className="chat-inline-error">
-                  <XCircle size={16} />
-                  {messagesError}
-                </div>
-              ) : null}
-
-              <div className="chat-message-feed">
+              {/* Message Feed */}
+              <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-muted/15">
                 {messagesLoading ? (
                   <ListSkeleton rows={5} avatar style={{ padding: 12 }} />
                 ) : messages.length === 0 ? (
-                  <div className="chat-panel-state">
-                    <Inbox size={24} />
-                    <strong>No messages yet.</strong>
-                    <span>This conversation is ready when the tenant sends one.</span>
+                  <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground p-8 space-y-2">
+                    <MessageSquare size={32} className="text-muted-foreground/50" />
+                    <div className="font-semibold text-foreground">No messages yet</div>
+                    <div className="text-xs">
+                      Conversation opened. Awaiting messages or replies.
+                    </div>
                   </div>
                 ) : (
-                  messages.map((message) => {
-                    const isTenant = message.senderRole === "tenant";
+                  messages.map((msg) => {
+                    const isTenant = msg.senderRole === "tenant";
+
                     return (
-                      <article
-                        key={message.id}
-                        className={`chat-message ${
-                          isTenant ? "chat-message--tenant" : "chat-message--admin"
+                      <div
+                        key={msg.id}
+                        className={`flex flex-col ${
+                          isTenant ? "items-start" : "items-end"
                         }`}
                       >
-                        <div className="chat-message-bubble">
-                          <div className="chat-message-meta">
-                            <strong>{message.senderName}</strong>
-                            <time>{fmtDateTime(message.createdAt)}</time>
+                        <div
+                          className={`max-w-[78%] rounded-xl p-3.5 space-y-1.5 shadow-2xs ${
+                            isTenant
+                              ? "bg-card border border-border text-foreground"
+                              : "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                          }`}
+                        >
+                          <div
+                            className={`flex items-center justify-between gap-3 text-[11px] ${
+                              isTenant
+                                ? "text-muted-foreground"
+                                : "text-slate-300 dark:text-slate-600"
+                            }`}
+                          >
+                            <span className="font-bold">
+                              {msg.senderName} ({msg.senderRole || "admin"})
+                            </span>
+                            <time>{fmtDateTime(msg.createdAt)}</time>
                           </div>
-                          <p>{message.message}</p>
+                          <p className="text-xs leading-relaxed whitespace-pre-wrap break-words">
+                            {msg.message}
+                          </p>
                         </div>
-                      </article>
+                      </div>
                     );
                   })
                 )}
+
+                {tenantTyping?.conversationId === selectedConversation?.id && (
+                  <div className="flex items-center gap-2 text-xs italic text-muted-foreground pt-1">
+                    <span className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0.2s]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0.4s]" />
+                    </span>
+                    <span>{tenantTyping.name} is typing...</span>
+                  </div>
+                )}
+
+                <div ref={messageEndRef} />
               </div>
 
-              {tenantTyping?.conversationId === selectedConversation?.id && (
-                <div className="chat-typing-indicator">
-                  <span className="chat-typing-indicator__dots">
-                    <span /><span /><span />
-                  </span>
-                  <span>{tenantTyping.name} is typing…</span>
-                </div>
-              )}
-
+              {/* Closed Banner */}
               {selectedConversation.status === "closed" ? (
-                <div className="chat-closed-banner">
-                  <CheckCircle2 size={16} />
-                  This conversation is closed.
-                  {selectedConversation.closingNote ? (
-                    <span>Note: {selectedConversation.closingNote}</span>
-                  ) : null}
+                <div className="p-3.5 bg-slate-100 dark:bg-slate-900 border-t border-border text-xs text-slate-700 dark:text-slate-300 flex items-start gap-2.5">
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <div className="font-bold">This conversation is resolved & closed.</div>
+                    {selectedConversation.closingNote && (
+                      <div className="text-muted-foreground">
+                        Resolution Note: <em>{selectedConversation.closingNote}</em>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
-                <div className="chat-close-panel">
-                  <label>
-                    Closing note
-                    <textarea
-                      value={closeNote}
-                      onChange={(event) => setCloseNote(event.target.value)}
-                      placeholder="Required before closing the conversation"
-                      maxLength={1000}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="chat-close-btn"
-                    onClick={handleCloseConversation}
-                    disabled={closing}
-                  >
-                    {closing ? <LoaderCircle className="spin" size={15} /> : <Lock size={15} />}
-                    Close Conversation
-                  </button>
-                </div>
-              )}
+                /* Reply Composer */
+                <footer className="p-3 border-t border-border bg-card space-y-2.5">
+                  {/* Quick Replies */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                    {QUICK_REPLIES.map((template) => (
+                      <button
+                        type="button"
+                        key={template}
+                        onClick={() => {
+                          setReplyText(template);
+                          setReplyError("");
+                        }}
+                        className="rounded-full border border-border bg-card px-3 py-1 text-xs font-normal text-muted-foreground hover:text-foreground hover:bg-muted transition-colors whitespace-nowrap cursor-pointer shrink-0"
+                      >
+                        {template}
+                      </button>
+                    ))}
+                  </div>
 
-              <footer className="chat-reply-box">
-                <div className="chat-template-row">
-                  {QUICK_REPLIES.map((template) => (
+                  {replyError && (
+                    <div className="text-xs text-destructive flex items-center gap-1">
+                      <XCircle size={13} />
+                      <span>{replyError}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => {
+                        setReplyText(e.target.value);
+                        if (replyError) setReplyError("");
+
+                        if (
+                          selectedConversation?.id &&
+                          selectedConversation.status !== "closed" &&
+                          !typingSendRef.current
+                        ) {
+                          chatApi.broadcastTyping(selectedConversation.id);
+                          typingSendRef.current = window.setTimeout(() => {
+                            typingSendRef.current = null;
+                          }, 2000);
+                        }
+                      }}
+                      onKeyDown={handleKeyDownReply}
+                      placeholder="Type a reply... (Press Enter to send, Shift+Enter for new line)"
+                      rows={3}
+                      maxLength={1000}
+                      className="w-full rounded-lg border border-border bg-input-background p-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-border transition-colors resize-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`text-[11px] ${
+                        replyText.length > 900
+                          ? "text-rose-600 font-bold"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {replyText.trim().length} / 1000
+                    </span>
+
                     <button
                       type="button"
-                      key={template}
-                      className="chat-template-btn"
-                      onClick={() => {
-                        setReplyText(template);
-                        setReplyError("");
-                      }}
-                      disabled={selectedConversation.status === "closed"}
+                      onClick={handleSendReply}
+                      disabled={sending || !replyText.trim()}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                     >
-                      {template}
+                      {sending ? (
+                        <LoaderCircle size={14} className="animate-spin" />
+                      ) : (
+                        <Send size={14} />
+                      )}
+                      <span>{sending ? "Sending..." : "Send Reply"}</span>
                     </button>
-                  ))}
-                </div>
-                {replyError ? (
-                  <div className="chat-inline-error">
-                    <XCircle size={16} />
-                    {replyError}
                   </div>
-                ) : null}
-                <textarea
-                  value={replyText}
-                  onChange={(event) => {
-                    setReplyText(event.target.value);
-                    if (replyError) setReplyError("");
-                    // Debounced typing signal — fire at most once every 2s
-                    if (
-                      selectedConversation?.id &&
-                      selectedConversation.status !== "closed" &&
-                      !typingSendRef.current
-                    ) {
-                      chatApi.broadcastTyping(selectedConversation.id);
-                      typingSendRef.current = window.setTimeout(() => {
-                        typingSendRef.current = null;
-                      }, 2000);
-                    }
-                  }}
-                  placeholder="Write a reply to the tenant"
-                  maxLength={1000}
-                  disabled={sending || selectedConversation.status === "closed"}
-                />
-                <div className="chat-reply-actions">
-                  <span>{replyText.trim().length}/1000</span>
-                  <button
-                    type="button"
-                    className="chat-send-btn"
-                    onClick={handleSendReply}
-                    disabled={
-                      sending ||
-                      !replyText.trim() ||
-                      selectedConversation.status === "closed"
-                    }
-                  >
-                    {sending ? (
-                      <LoaderCircle className="spin" size={16} />
-                    ) : (
-                      <Send size={16} />
-                    )}
-                    {sending ? "Sending..." : "Send Reply"}
-                  </button>
-                </div>
-              </footer>
+                </footer>
+              )}
             </>
           ) : (
-            <div className="chat-empty-selection">
-              <MessageSquareText size={32} />
-              <h2>Select a conversation to view messages.</h2>
-              <p>Replies, unread counts, and workflow actions will update here.</p>
+            <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-3">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+                <MessageSquareText size={28} />
+              </div>
+              <h3 className="text-base font-bold text-foreground">
+                Select a conversation to view messages
+              </h3>
+              <p className="text-xs text-muted-foreground max-w-sm">
+                Choose a tenant thread from the list on the left to read messages, send replies, or adjust ticket statuses.
+              </p>
             </div>
           )}
         </section>
       </div>
+
+      {/* ── Close Conversation Modal Dialog ── */}
+      {closeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-400">
+                  <Lock size={16} />
+                </div>
+                <h3 className="text-sm font-bold text-foreground">Resolve & Close Conversation</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCloseModalOpen(false)}
+                disabled={closing}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Resolving and closing this conversation with{" "}
+              <strong className="text-foreground">
+                {selectedConversation?.tenantName}
+              </strong>{" "}
+              will archive the active thread and lock future replies. Please enter a formal resolution note for auditing.
+            </p>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground block">
+                Resolution Note <span className="text-destructive">*</span>
+              </label>
+              <textarea
+                value={closeNote}
+                onChange={(e) => {
+                  setCloseNote(e.target.value);
+                  if (closeNoteError) setCloseNoteError("");
+                }}
+                placeholder="Describe how this tenant concern was resolved..."
+                rows={4}
+                maxLength={500}
+                className="w-full rounded-lg border border-border bg-input-background p-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-border resize-none"
+              />
+              <div className="flex items-center justify-between text-[11px]">
+                {closeNoteError ? (
+                  <span className="text-destructive font-medium">{closeNoteError}</span>
+                ) : (
+                  <span className="text-muted-foreground">Min. 5 characters</span>
+                )}
+                <span className="text-muted-foreground">{closeNote.trim().length} / 500</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setCloseModalOpen(false)}
+                disabled={closing}
+                className="rounded-lg border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmClose}
+                disabled={closing || !closeNote.trim()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 px-4 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+              >
+                {closing ? (
+                  <LoaderCircle size={14} className="animate-spin" />
+                ) : (
+                  <Lock size={14} />
+                )}
+                <span>{closing ? "Resolving..." : "Confirm Resolution & Close"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Status Change Confirmation Modal Dialog ── */}
+      {statusModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400">
+                  <Tag size={16} />
+                </div>
+                <h3 className="text-sm font-bold text-foreground">Update Ticket Status</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStatusModalOpen(false)}
+                disabled={updatingStatus}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Select the new status for conversation with{" "}
+              <strong className="text-foreground">{selectedConversation?.tenantName}</strong>:
+            </p>
+
+            <div className="space-y-2">
+              {STATUS_OPTIONS.filter((opt) => opt.value !== "all").map((opt) => {
+                const isSelected = pendingStatus === opt.value;
+                const isCurrent = selectedConversation?.status === opt.value;
+
+                return (
+                  <button
+                    type="button"
+                    key={opt.value}
+                    onClick={() => setPendingStatus(opt.value)}
+                    className={`w-full text-left p-3 rounded-lg border transition-all cursor-pointer flex items-start gap-2.5 ${
+                      isSelected
+                        ? "bg-muted/90 border-primary/60 shadow-2xs"
+                        : "bg-card border-border hover:bg-muted/40"
+                    }`}
+                  >
+                    <div
+                      className={`h-4 w-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                        isSelected
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-card"
+                      }`}
+                    >
+                      {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-white dark:bg-slate-900" />}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold text-foreground">
+                          {opt.label}
+                        </span>
+                        {isCurrent && (
+                          <span className="rounded bg-muted px-1.5 py-0.2 text-[10px] font-semibold text-muted-foreground uppercase">
+                            Current
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                        {STATUS_DESCRIPTIONS[opt.value]}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setStatusModalOpen(false)}
+                disabled={updatingStatus}
+                className="rounded-lg border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmStatusChange}
+                disabled={updatingStatus || pendingStatus === selectedConversation?.status}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-1.5 text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+              >
+                {updatingStatus ? (
+                  <LoaderCircle size={14} className="animate-spin" />
+                ) : (
+                  <Check size={14} />
+                )}
+                <span>
+                  {pendingStatus === "closed"
+                    ? "Proceed to Close Note"
+                    : "Confirm Status Change"}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Priority Change Confirmation Modal Dialog ── */}
+      {priorityModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-400">
+                  <ShieldAlert size={16} />
+                </div>
+                <h3 className="text-sm font-bold text-foreground">Update Ticket Priority</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPriorityModalOpen(false)}
+                disabled={updatingPriority}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Select the priority level for conversation with{" "}
+              <strong className="text-foreground">{selectedConversation?.tenantName}</strong>:
+            </p>
+
+            <div className="space-y-2">
+              {PRIORITY_OPTIONS.filter((opt) => opt.value !== "all").map((opt) => {
+                const isSelected = pendingPriority === opt.value;
+                const isCurrent = selectedConversation?.priority === opt.value;
+
+                return (
+                  <button
+                    type="button"
+                    key={opt.value}
+                    onClick={() => setPendingPriority(opt.value)}
+                    className={`w-full text-left p-3 rounded-lg border transition-all cursor-pointer flex items-start gap-2.5 ${
+                      isSelected
+                        ? "bg-muted/90 border-primary/60 shadow-2xs"
+                        : "bg-card border-border hover:bg-muted/40"
+                    }`}
+                  >
+                    <div
+                      className={`h-4 w-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                        isSelected
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-card"
+                      }`}
+                    >
+                      {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-white dark:bg-slate-900" />}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold text-foreground">
+                          {opt.label} Priority
+                        </span>
+                        {isCurrent && (
+                          <span className="rounded bg-muted px-1.5 py-0.2 text-[10px] font-semibold text-muted-foreground uppercase">
+                            Current
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                        {PRIORITY_DESCRIPTIONS[opt.value]}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setPriorityModalOpen(false)}
+                disabled={updatingPriority}
+                className="rounded-lg border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmPriorityChange}
+                disabled={updatingPriority || pendingPriority === selectedConversation?.priority}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-1.5 text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+              >
+                {updatingPriority ? (
+                  <LoaderCircle size={14} className="animate-spin" />
+                ) : (
+                  <Check size={14} />
+                )}
+                <span>Confirm Priority</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

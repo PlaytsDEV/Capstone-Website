@@ -86,10 +86,15 @@ function mapRealBill(b, userId) {
     }
   } catch (_) { /* keep raw value */ }
 
+  const isInitialPayment = b.billType === 'initial_payment';
+  const initial = b.initialPaymentBreakdown || {};
+
   return {
     billing_id: b._id?.toString(),
     user_id: userId,
-    description: billingPeriod ? `${billingPeriod} Billing Statement` : 'Billing Statement',
+    description: isInitialPayment
+      ? 'Initial Payment'
+      : billingPeriod ? `${billingPeriod} Billing Statement` : 'Billing Statement',
     billing_period: billingPeriod,
     billing_type: 'consolidated',
     due_date: b.dueDate,
@@ -109,6 +114,19 @@ function mapRealBill(b, userId) {
     payment_date: b.paidAt,
     additional_charges: b.additionalCharges,
     created_at: b.createdAt,
+    // For the move-in "Initial Payment" bill, surface the same
+    // advance-rent/security-deposit/reservation-fee-credit breakdown the web
+    // tenant portal already shows (BillingTab.jsx), so the mobile app's
+    // existing move_in_financials rendering (bill-details.jsx) picks it up —
+    // previously this bill mapped through as an ordinary consolidated bill
+    // with no charge fields, so the paid reservation fee never appeared.
+    ...(isInitialPayment ? {
+      move_in_financials: {
+        advanceRent: initial.advanceRent || 0,
+        securityDeposit: initial.securityDeposit || 0,
+        reservationFeeAlreadyPaid: initial.reservationFeeCredit || 0,
+      },
+    } : {}),
   };
 }
 

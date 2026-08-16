@@ -1,4 +1,5 @@
 import { resolveSecurityDeposit } from "../utils/depositUtils.js";
+import { resolveRoomDiscountPricing } from "./contractPricingResolver.js";
 
 /**
  * Canonical applicant-to-tenant profile mapping.
@@ -111,17 +112,24 @@ export function resolveTenantOccupancyDetails({
   currentStay = null,
 } = {}) {
   const room = reservation.roomId || {};
+  const isPrivate =
+    String(room.type || reservation.preferredRoomType || reservation.roomType || "").toLowerCase().includes("private") ||
+    room.capacity === 1;
+
   return {
     branch: currentStay?.branch || room.branch || null,
     room: room.name || room.roomNumber || null,
     roomId: currentStay?.roomId || room._id || null,
-    bed:
-      currentStay?.bedCode ||
-      reservation.selectedBed?.position ||
-      reservation.selectedBed?.code ||
-      reservation.selectedBed?.id ||
-      null,
-    bedId: currentStay?.bedId || reservation.selectedBed?.id || null,
+    bed: isPrivate
+      ? "Private Room"
+      : (currentStay?.bedCode ||
+         reservation.selectedBed?.position ||
+         reservation.selectedBed?.code ||
+         reservation.selectedBed?.id ||
+         null),
+    bedId: isPrivate
+      ? ""
+      : (currentStay?.bedId || reservation.selectedBed?.id || null),
     moveInDate:
       currentStay?.leaseStartDate ||
       reservation.confirmedMoveInDate ||
@@ -138,7 +146,33 @@ export function resolveTenantFinancialSummary({
   currentBalance = 0,
   paymentStatus = null,
 } = {}) {
-  const monthlyRate = firstValue(reservation.monthlyRent, reservation.totalPrice);
+  const room = reservation.roomId || {};
+  const rawRoomType = String(room.type || reservation.preferredRoomType || reservation.roomType || "").toLowerCase();
+  const isPrivate = rawRoomType.includes("private") || room.capacity === 1;
+
+  let monthlyRate = firstValue(
+    reservation.contract?.approvedMonthlyRate,
+    reservation.pricingSnapshot?.finalMonthlyRate,
+    reservation.pricingDisplay?.finalMonthlyRate,
+    reservation.monthlyRent,
+    reservation.totalPrice,
+  );
+
+  // If this is a private room, but stored monthlyRent was stale/quadruple (e.g. <= 7000):
+  if (isPrivate && Number(monthlyRate) > 0 && Number(monthlyRate) < 10000) {
+    const roomPricing = resolveRoomDiscountPricing("private", {}, room);
+    const leaseDuration = Number(reservation.leaseDuration || 12);
+    monthlyRate = leaseDuration >= (roomPricing.longTermLeaseMinMonths || 6)
+      ? roomPricing.monthlyPrice
+      : roomPricing.shortTermRate;
+  } else if (monthlyRate == null && rawRoomType) {
+    const roomPricing = resolveRoomDiscountPricing(rawRoomType, {}, room);
+    const leaseDuration = Number(reservation.leaseDuration || 12);
+    monthlyRate = leaseDuration >= (roomPricing.longTermLeaseMinMonths || 6)
+      ? roomPricing.monthlyPrice
+      : roomPricing.shortTermRate;
+  }
+
   const approvedRate = hasValue(monthlyRate) ? Number(monthlyRate) : null;
   const reservationFee = hasValue(reservation.reservationFeeAmount)
     ? Number(reservation.reservationFeeAmount)

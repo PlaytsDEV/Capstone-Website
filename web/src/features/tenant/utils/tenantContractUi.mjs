@@ -46,8 +46,29 @@ export const formatRoomBed = (roomNumber, bedLabel) => {
 export const getTenantContractMessage = (contract) => {
   if (!contract) return {
     title: "Contract Not Available Yet",
-    message: "Your lease Contract has not been published yet. The dormitory administrator will make it available after the required information is completed and verified.",
+    message: "Your official contract or digital proof of stay has not been published yet. Once your stay is confirmed, you can view your lease details and download your official document here.",
   };
+  if (contract.tenantDocument?.type === "final_notarized") {
+    return {
+      title: "Final Notarized Contract Available",
+      message: "Your official wet-signed and notarized lease agreement is finalized and verified.",
+      nextAction: "You can view, print, or download your official notarized document below.",
+    };
+  }
+  if (contract.tenantDocument?.type === "generated_draft") {
+    return {
+      title: "Generated Draft — For Signing",
+      message: "Your contract has been generated and is ready for in-person signing. The final notarized copy will replace this document once uploaded by the admin.",
+      nextAction: "You can review and download the generated draft to check terms before signing.",
+    };
+  }
+  if (contract.stayProofAvailable || contract.status === "active") {
+    return {
+      title: "Verified Active Stay",
+      message: "Your official Digital Proof of Stay & Tenancy Agreement is active and verified.",
+      nextAction: "You can view, print, or download your official PDF stay record below.",
+    };
+  }
   if (contract.status === "generated" && contract.preparedDocument?.available !== true) {
     return {
       title: "Prepared Document Temporarily Unavailable",
@@ -71,7 +92,7 @@ export const getTenantContractMessage = (contract) => {
     message: "Your signed and notarized Contract is being reviewed for final publication.",
     nextAction: "The notarized scan remains private until publication.",
   };
-  if (["published", "active", "expiring_soon", "expired"].includes(contract.status)) return {
+  if (["published", "expiring_soon", "expired"].includes(contract.status)) return {
     title: "Final Contract Available",
     message: "Your wet-signed and notarized Contract is available as a secure digital copy.",
     nextAction: "View or download your final Contract below.",

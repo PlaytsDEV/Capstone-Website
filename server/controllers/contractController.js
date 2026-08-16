@@ -4,6 +4,7 @@ import fsPromises from "fs/promises";
 import { Contract, Reservation, User } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
 import logger from "../middleware/logger.js";
+import { notify } from "../utils/notificationService.js";
 import {
   createDraftContract, findCurrentContract,
   transitionContract, validateContractForGeneration,
@@ -32,6 +33,7 @@ import {
   resolveNotarizedContractPath,
   rejectNotarizedContract,
   uploadNotarizedContract,
+  uploadAndFinalizeNotarizedContract,
   verifyNotarizedContract,
 } from "../services/contractNotarizationService.js";
 import {
@@ -53,6 +55,11 @@ import {
   permanentlyDeleteTestContract,
   restoreArchivedContract,
 } from "../services/contractArchiveService.js";
+import {
+  resolveDigitalStayProofData,
+  renderDigitalStayProofPdf,
+  buildDigitalStayProofHtml,
+} from "../services/digitalStayProofService.js";
 
 const fail = (res, error) => res.status(error.statusCode || 500).json({
   error: error.message || "Contract operation failed",
@@ -428,6 +435,20 @@ const signatureAction = (signer) => async (req, res) => {
       contract, signer, value: req.body?.status, actorId: admin._id,
     });
     await auditSigningChange(req, before, contract, `${signer} signature changed from ${result.previousValue} to ${result.newValue}`);
+
+    if (signer === "tenant" && (result.newValue === "completed" || result.newValue === "signed")) {
+      try {
+        const tenantName = contract.tenantName || "Tenant";
+        const roomName = contract.roomName || "";
+        const branchName = contract.branch || "";
+        notify
+          .contractSignedByTenant(branchName, tenantName, roomName, contract._id)
+          .catch((e) => logger.warn({ err: e }, "Contract signed admin notification failed (non-fatal)"));
+      } catch (notifErr) {
+        // non-fatal
+      }
+    }
+
     res.json({ success: true, status: contract.status, previousValue: result.previousValue, newValue: result.newValue });
   } catch (error) { fail(res, error); }
 };
@@ -445,6 +466,20 @@ export const uploadSignedDocument = async (req, res) => {
       replacementReason: req.body?.replacementReason,
     });
     await auditSigningChange(req, before, contract, document.version === 1 ? "Signed Contract copy uploaded" : "Signed Contract copy replaced");
+
+    if (document.version === 1) {
+      try {
+        const tenantName = contract.tenantName || "Tenant";
+        const roomName = contract.roomName || "";
+        const branchName = contract.branch || "";
+        notify
+          .contractSignedByTenant(branchName, tenantName, roomName, contract._id)
+          .catch((e) => logger.warn({ err: e }, "Contract signed admin notification failed (non-fatal)"));
+      } catch (notifErr) {
+        // non-fatal
+      }
+    }
+
     res.status(201).json({ success: true, document: {
       version: document.version, fileName: document.fileName, fileHash: document.fileHash,
       fileSize: document.fileSize, mimeType: document.mimeType, uploadedAt: document.uploadedAt,
@@ -518,6 +553,46 @@ export const uploadNotarizedDocument = async (req, res) => {
       fileSize: document.fileSize, mimeType: document.mimeType, uploadedAt: document.uploadedAt,
     } });
   } catch (error) { fail(res, error); }
+};
+
+export const uploadFinalNotarizedContract = async (req, res) => {
+  try {
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    const before = contract.toObject();
+    const result = await uploadAndFinalizeNotarizedContract({
+      contract,
+      file: req.file,
+      actorId: admin._id,
+      replacementReason: req.body?.replacementReason,
+      preparedDocumentVersion: req.body?.preparedDocumentVersion,
+      notarialDetails: req.body?.notarialDetails
+        ? (typeof req.body.notarialDetails === "string" ? JSON.parse(req.body.notarialDetails) : req.body.notarialDetails)
+        : {},
+      notes: req.body?.notes || "",
+    });
+    await auditSigningChange(
+      req,
+      before,
+      contract,
+      "Final signed-and-notarized Contract uploaded and activated for tenant access",
+    );
+    res.status(201).json({
+      success: true,
+      status: contract.status,
+      finalDocument: result.finalDocument,
+      document: {
+        version: result.document.version,
+        fileName: result.document.fileName,
+        fileHash: result.document.fileHash,
+        fileSize: result.document.fileSize,
+        mimeType: result.document.mimeType,
+        uploadedAt: result.document.uploadedAt,
+      },
+    });
+  } catch (error) {
+    fail(res, error);
+  }
 };
 
 export const streamNotarizedDocument = async (req, res) => {
@@ -1015,6 +1090,40 @@ export const getMyCurrentContract = async (req, res) => {
     const user = await tenantActor(req);
     const contract = await resolveTenantCanonicalContract(user._id);
     if (!contract) {
+      try {
+        const stayData = await resolveDigitalStayProofData({ tenantId: user._id });
+        if (stayData) {
+          return res.json({
+            contractAvailable: true,
+            state: "STAY_PROOF_AVAILABLE",
+            contract: {
+              id: stayData.referenceNumber,
+              contractId: stayData.referenceNumber,
+              contractNumber: stayData.referenceNumber,
+              isCanonical: true,
+              status: "active",
+              displayStatus: "Verified Active Stay",
+              branch: stayData.branchName,
+              propertyName: "Lilycrest Dormitory",
+              roomNumber: stayData.roomNumber,
+              bedLabel: stayData.bedLabel,
+              roomType: stayData.roomType,
+              leaseStartDate: stayData.leaseStartDate,
+              leaseEndDate: stayData.leaseEndDate,
+              leaseDurationMonths: stayData.leaseDurationMonths,
+              approvedMonthlyRate: stayData.monthlyRent,
+              advanceRentAmount: stayData.advanceRent,
+              securityDepositAmount: stayData.securityDeposit,
+              stayProofAvailable: true,
+              preparedDocument: { available: true },
+              finalDocument: { available: true },
+            },
+            documents: { prepared: { available: true } },
+          });
+        }
+      } catch {
+        // Fall through to standard empty response
+      }
       return res.json({
         contractAvailable: false,
         state: "NO_PUBLISHED_CONTRACT",
@@ -1052,6 +1161,122 @@ export const getMyCurrentContract = async (req, res) => {
         "Multiple resident-visible canonical Contracts detected",
       );
     }
+    fail(res, error);
+  }
+};
+
+export const downloadMyStayProof = async (req, res) => {
+  try {
+    const user = await tenantActor(req);
+    const stayData = await resolveDigitalStayProofData({ tenantId: user._id });
+    const pdfBuffer = await renderDigitalStayProofPdf(stayData);
+    const isDownload = req.query?.download !== "0" && req.query?.download !== "false";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Length", pdfBuffer.length);
+    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="Lilycrest-Lease-Contract-${stayData.referenceNumber}.pdf"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(pdfBuffer);
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const getMyStayProofData = async (req, res) => {
+  try {
+    const user = await tenantActor(req);
+    const stayData = await resolveDigitalStayProofData({ tenantId: user._id });
+    res.json({ success: true, stayProof: stayData });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const getPublicStayVerification = async (req, res) => {
+  try {
+    const { referenceId } = req.params;
+    if (!referenceId) return res.status(400).json({ verified: false, message: "Reference ID is required" });
+    
+    const cleanRef = referenceId.trim();
+    let contract = await Contract.findOne({
+      $or: [
+        { contractNumber: cleanRef },
+        { contractNumber: cleanRef.toUpperCase() },
+      ],
+    }).lean();
+
+    let reservation = null;
+    if (!contract) {
+      reservation = await Reservation.findOne({
+        $or: [
+          { reservationCode: cleanRef },
+          { reservationCode: cleanRef.toUpperCase() },
+        ],
+      }).lean();
+    }
+
+    if (!contract && !reservation) {
+      return res.status(404).json({
+        verified: false,
+        message: "No active residency record matching this reference number was found.",
+      });
+    }
+
+    const stayData = await resolveDigitalStayProofData({
+      contractId: contract?._id,
+      reservationId: reservation?._id,
+      tenantId: contract?.tenantId || reservation?.userId,
+    });
+
+    res.json({
+      verified: true,
+      verification: {
+        referenceNumber: stayData.referenceNumber,
+        tenantName: stayData.tenantName,
+        branchName: stayData.branchName,
+        branchAddress: stayData.branchAddress,
+        roomNumber: stayData.roomNumber,
+        bedLabel: stayData.bedLabel,
+        roomType: stayData.roomType,
+        leaseStartDate: stayData.leaseStartDate,
+        leaseEndDate: stayData.leaseEndDate,
+        leaseDurationMonths: stayData.leaseDurationMonths,
+        status: stayData.status,
+        verificationStatus: stayData.verificationStatus,
+        issuedAt: stayData.issuedAt,
+      },
+    });
+  } catch (error) {
+    res.status(404).json({
+      verified: false,
+      message: error.message || "Unable to verify residency record.",
+    });
+  }
+};
+
+export const getStayProofDataForAdmin = async (req, res) => {
+  try {
+    await actor(req);
+    const { id } = req.params;
+    const stayData = await resolveDigitalStayProofData({ id });
+    res.json({ success: true, stayProof: stayData });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const downloadStayProofForAdmin = async (req, res) => {
+  try {
+    await actor(req);
+    const { id } = req.params;
+    const stayData = await resolveDigitalStayProofData({ id });
+    const pdfBuffer = await renderDigitalStayProofPdf(stayData);
+    const isDownload = req.query?.download === "1" || req.query?.download === "true";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Length", pdfBuffer.length);
+    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="Lilycrest-Lease-Contract-${stayData.referenceNumber}.pdf"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(pdfBuffer);
+  } catch (error) {
     fail(res, error);
   }
 };
@@ -1115,6 +1340,44 @@ export const streamMyFinalContract = async (req, res) => {
   try {
     const { contract } = await findOwnedContract(req);
     await streamFinal({ req, res, contract, channel: "tenant_web" });
+  } catch (error) { fail(res, error); }
+};
+
+export const streamMySignedContract = async (req, res) => {
+  try {
+    const user = await tenantActor(req);
+    let contract = null;
+    if (req.params.contractId && mongoose.isValidObjectId(req.params.contractId)) {
+      contract = await Contract.findOne({ _id: req.params.contractId, tenantId: user._id });
+    }
+    if (!contract) {
+      contract = await resolveTenantCanonicalContract(user._id);
+    }
+    if (!contract) {
+      return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    }
+    const requested = req.params.version ? Number(req.params.version) : null;
+    const document = requested
+      ? contract.signedDocuments.find((item) => Number(item.version) === requested)
+      : [...(contract.signedDocuments || [])].filter((item) => !item.superseded)
+        .sort((a, b) => Number(b.version) - Number(a.version))[0];
+    if (!document) {
+      return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
+    }
+    const absolute = resolveSignedContractPath(document.storageKey);
+    const stat = await fsPromises.stat(absolute).catch(() => null);
+    if (!stat?.isFile()) {
+      return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
+    }
+    await auditLogger.logModification(req, "contract", contract._id, null, null,
+      `Tenant ${req.query?.download === "true" || req.query?.download === "1" ? "downloaded" : "previewed"} signed Contract ${contract.contractNumber} version ${document.version}`);
+    res.setHeader("Content-Type", document.mimeType || "application/pdf");
+    res.setHeader("Content-Length", stat.size);
+    const isDownload = req.query?.download === "true" || req.query?.download === "1";
+    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="${document.fileName ? document.fileName.replaceAll('"', '') : `signed-contract-v${document.version}.pdf`}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Pragma", "no-cache");
+    fs.createReadStream(absolute).on("error", (streamError) => res.destroy(streamError)).pipe(res);
   } catch (error) { fail(res, error); }
 };
 

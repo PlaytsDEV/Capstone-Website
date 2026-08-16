@@ -41,6 +41,16 @@ router.patch(
   maintenanceController.reopenMyRequest,
 );
 router.post(
+  "/:requestId/confirm",
+  verifyApplicant,
+  maintenanceController.confirmResolution,
+);
+router.patch(
+  "/:requestId/confirm-resolved",
+  verifyApplicant,
+  maintenanceController.confirmResolution,
+);
+router.post(
   "/:requestId/reply",
   verifyApplicant,
   maintenanceController.sendTenantReply,
@@ -64,6 +74,78 @@ router.patch(
   filterByBranch,
   requirePermission("manageMaintenance"),
   maintenanceController.updateAdminRequestStatus,
+);
+
+router.patch(
+  "/admin/:requestId/provider",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.updateAdminMaintenanceProvider,
+);
+
+router.patch(
+  "/admin/:requestId/schedule",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.scheduleAdminMaintenance,
+);
+
+router.post(
+  "/admin/:requestId/finalize",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.finalizeAdminMaintenanceReport,
+);
+
+router.post(
+  "/admin/:requestId/generate-report",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.generateAdminMaintenanceReport,
+);
+
+router.post(
+  "/admin/:requestId/generate-update",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.generateAdminMaintenanceUpdate,
+);
+
+router.post(
+  "/admin/:requestId/suggest-provider",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.suggestAdminMaintenanceProvider,
+);
+
+router.post(
+  "/admin/:requestId/rate-provider",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.rateAdminMaintenanceProvider,
+);
+
+router.patch(
+  "/admin/:requestId/cost",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.updateAdminMaintenanceCost,
+);
+
+router.get(
+  "/admin/:requestId/duplicates",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.getAdminMaintenanceDuplicates,
 );
 
 router.post(
@@ -94,6 +176,7 @@ router.patch(
   requirePermission("manageMaintenance"),
   maintenanceController.updateRequest,
 );
+
 
 /**
  * GET /api/maintenance/stats/completion

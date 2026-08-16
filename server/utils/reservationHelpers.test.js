@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 const userFindById = jest.fn();
 const userFind = jest.fn();
 const roomFindById = jest.fn();
+const reservationFind = jest.fn();
 const reservationFindOne = jest.fn();
 const reservationFindById = jest.fn();
 const setCustomUserClaims = jest.fn();
@@ -16,6 +17,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     findById: roomFindById,
   },
   Reservation: {
+    find: reservationFind,
     findOne: reservationFindOne,
     findById: reservationFindById,
   },
@@ -32,6 +34,7 @@ const {
   getForbiddenTenantUpdateFields,
   syncReservationUserLifecycle,
   reconcileTenantUsersForScope,
+  getMoveInBlockers,
 } = await import("./reservationHelpers.js");
 
 const createUser = (overrides = {}) => ({
@@ -50,9 +53,24 @@ const mockRoomBranch = (branch) => {
 };
 
 const mockNoFallbackReservations = () => {
+  reservationFind.mockImplementation(() => ({
+    sort: jest.fn().mockReturnValue({
+      populate: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([]),
+      }),
+    }),
+  }));
   reservationFindOne.mockImplementation(() => ({
     sort: jest.fn().mockReturnValue({
       populate: jest.fn().mockResolvedValue(null),
+    }),
+  }));
+};
+
+const mockFindOneReservation = (reservation = null) => {
+  reservationFindOne.mockImplementation(() => ({
+    sort: jest.fn().mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
     }),
   }));
 };
@@ -262,6 +280,7 @@ describe("reconcileTenantUsersForScope", () => {
     userFindById.mockReset();
     userFind.mockReset();
     roomFindById.mockReset();
+    reservationFind.mockReset();
     reservationFindOne.mockReset();
     reservationFindById.mockReset();
     setCustomUserClaims.mockReset();
@@ -290,5 +309,109 @@ describe("reconcileTenantUsersForScope", () => {
     expect(user.role).toBe("applicant");
     expect(user.tenantStatus).toBe("applicant");
     expect(user.branch).toBeNull();
+  });
+
+  test("syncs branch when active stay has a different branch", async () => {
+    userFind.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([
+          {
+            _id: "user-1",
+            role: "tenant",
+            tenantStatus: "active",
+            branch: "gil-puyat",
+          },
+        ]),
+      }),
+    });
+
+    reservationFind.mockImplementation(() => ({
+      sort: jest.fn().mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue([
+            {
+              _id: "res-1",
+              userId: "user-1",
+              status: "checked-in",
+              roomId: { _id: "room-1", branch: "guadalupe" },
+            },
+          ]),
+        }),
+      }),
+    }));
+
+    const user = createUser({ role: "tenant", tenantStatus: "active", branch: "gil-puyat" });
+    userFindById.mockResolvedValue(user);
+    mockFindOneReservation({
+      _id: "res-1",
+      status: "checked-in",
+      roomId: { _id: "room-1", branch: "guadalupe" },
+    });
+
+    await reconcileTenantUsersForScope({ branch: "gil-puyat" });
+
+    expect(user.role).toBe("tenant");
+    expect(user.tenantStatus).toBe("active");
+    expect(user.branch).toBe("guadalupe");
+  });
+});
+
+describe("getMoveInBlockers", () => {
+  test("returns empty blockers when reservation is reserved and paid", () => {
+    expect(
+      getMoveInBlockers({
+        status: "reserved",
+        paymentStatus: "paid",
+      }),
+    ).toEqual([]);
+  });
+
+  test("allows move-in when paymentStatus is paid_in_full", () => {
+    expect(
+      getMoveInBlockers({
+        status: "reserved",
+        paymentStatus: "paid_in_full",
+      }),
+    ).toEqual([]);
+  });
+
+  test("allows move-in when initialPaymentStatus is paid", () => {
+    expect(
+      getMoveInBlockers({
+        status: "reserved",
+        initialPaymentStatus: "paid",
+        paymentStatus: "pending",
+      }),
+    ).toEqual([]);
+  });
+
+  test("allows move-in when reservationFeePaymentStatus is verified", () => {
+    expect(
+      getMoveInBlockers({
+        status: "reserved",
+        reservationFeePaymentStatus: "verified",
+        paymentStatus: "pending",
+      }),
+    ).toEqual([]);
+  });
+
+  test("flags blocker when reservation is not in reserved state", () => {
+    const blockers = getMoveInBlockers({
+      status: "pending",
+      paymentStatus: "paid",
+    });
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toMatch(/Reservation must be in "Reserved" state/);
+  });
+
+  test("flags blocker when reservation is unpaid", () => {
+    const blockers = getMoveInBlockers({
+      status: "reserved",
+      paymentStatus: "pending",
+    });
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toBe(
+      "Payment must be confirmed (status: Paid) before move-in.",
+    );
   });
 });

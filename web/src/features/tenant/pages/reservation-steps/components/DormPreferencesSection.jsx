@@ -7,7 +7,7 @@ import {
 } from "../applicationFormConstants";
 
 const errBorder = (show, value) =>
- show && !value ? "1.5px solid var(--danger)" : undefined;
+ show && !value ? "1px solid var(--danger)" : undefined;
 
 const openDatePicker = (event) => {
  event.currentTarget.showPicker?.();
@@ -39,7 +39,7 @@ const DormPreferencesSection = ({
  className="radio-group"
  style={{
  border: fieldErrors.referralSource
- ? "1.5px solid var(--danger)"
+ ? "1px solid var(--danger)"
  : errBorder(showValidationErrors, referralSource),
   borderRadius: "8px",
   padding: showValidationErrors && !referralSource ? "8px" : undefined,
@@ -128,15 +128,9 @@ const DormPreferencesSection = ({
  onChange={(e) => handleTimeInput(e.target.value)}
  style={{
  cursor: "pointer",
- padding: "10px 12px",
- borderRadius: "8px",
- border:
- fieldErrors.estimatedMoveInTime
+ border: fieldErrors.estimatedMoveInTime
  ? "1.5px solid var(--danger)"
- : errBorder(showValidationErrors, estimatedMoveInTime) || "1.5px solid var(--border)",
- fontSize: "14px",
- background: "var(--card)",
- width: "100%",
+ : errBorder(showValidationErrors, estimatedMoveInTime),
  }}
  >
  <option value="">Select time...</option>
@@ -178,6 +172,11 @@ const DormPreferencesSection = ({
  </option>
  ))}
  </select>
+ {leaseDuration && (
+    <div className="form-helper">
+      Preferred term selected during room booking: {Number(leaseDuration) === 12 ? "1 year (12 months)" : `${leaseDuration} ${Number(leaseDuration) === 1 ? "month" : "months"}`}
+    </div>
+  )}
  <FieldError
  error={
  showValidationErrors && !leaseDuration
@@ -196,7 +195,7 @@ const DormPreferencesSection = ({
  className="radio-group"
  style={{
  border: fieldErrors.workSchedule
- ? "1.5px solid var(--danger)"
+ ? "1px solid var(--danger)"
  : errBorder(showValidationErrors, workSchedule),
   borderRadius: "8px",
   padding: showValidationErrors && !workSchedule ? "8px" : undefined,

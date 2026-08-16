@@ -16,10 +16,10 @@ import { resolveContractLeasePricing } from "./contractPricingResolver.js";
 import { getBusinessSettings } from "../utils/businessSettings.js";
 
 export const CONTRACT_TRANSITIONS = Object.freeze({
-  draft: ["incomplete", "ready_for_generation", "cancelled"],
-  incomplete: ["draft", "ready_for_generation", "cancelled"],
-  ready_for_generation: ["incomplete", "generated", "cancelled"],
-  generated: ["awaiting_signatures", "notarized", "cancelled"],
+  draft: ["incomplete", "ready_for_generation", "awaiting_signatures", "partially_signed", "signed", "cancelled"],
+  incomplete: ["draft", "ready_for_generation", "awaiting_signatures", "partially_signed", "signed", "cancelled"],
+  ready_for_generation: ["draft", "incomplete", "generated", "awaiting_signatures", "partially_signed", "signed", "cancelled"],
+  generated: ["awaiting_signatures", "partially_signed", "signed", "notarized", "cancelled"],
   awaiting_signatures: ["partially_signed", "signed", "notarized", "cancelled"],
   partially_signed: ["awaiting_signatures", "signed", "notarized", "cancelled"],
   signed: ["awaiting_notarization", "notarized", "cancelled"],
@@ -63,6 +63,7 @@ const duplicateContractError = (existingContract) => serviceError(
 );
 
 export const assertValidContractTransition = (from, to) => {
+  if (from === to) return true;
   if (!CONTRACT_TRANSITIONS[from]?.includes(to)) {
     throw serviceError(
       `Contract status cannot change from ${from} to ${to}.`,
@@ -258,8 +259,8 @@ export const createDraftContract = async ({
       propertyName: property.propertyName,
       propertyAddress: property.propertyAddress,
       roomNumber: room.roomNumber,
-      bedId: stay?.bedId || selectedBed.id || "",
-      bedLabel: stay?.bedCode || getBedLabel(selectedBed),
+      bedId: canonicalRoomType === "private" ? "" : (stay?.bedId || selectedBed.id || ""),
+      bedLabel: canonicalRoomType === "private" ? "" : (stay?.bedCode || getBedLabel(selectedBed)),
       tenantLegalName: person.fullName || "",
       tenantAddress: person.currentAddress || formatReservationAddress(reservation.address) || "",
       tenantEmail: person.email || "",
@@ -519,3 +520,148 @@ export const transitionContract = async (contract, nextStatus, actorId, reason =
 
 export const findCurrentContract = (filter) =>
   Contract.findOne({ ...filter, isCurrent: true }).sort({ version: -1, createdAt: -1 });
+
+export const createReplacementContractForTransfer = async ({
+  reservationId,
+  stayId = null,
+  oldContract,
+  targetRoom,
+  targetBed = {},
+  effectiveTransferDate = new Date(),
+  actorId,
+  session = null,
+}) => {
+  if (!oldContract) {
+    throw serviceError("Previous active contract is required for replacement.", "PREVIOUS_CONTRACT_REQUIRED", 400);
+  }
+
+  const reservation = await Reservation.findById(reservationId).session(session).lean();
+  if (!reservation) throw serviceError("Reservation not found.", "RESERVATION_NOT_FOUND", 404);
+
+  const [tenant, stay] = await Promise.all([
+    User.findById(reservation.userId).session(session).lean(),
+    stayId ? Stay.findById(stayId).session(session).lean() : Stay.findById(oldContract.stayId).session(session).lean(),
+  ]);
+
+  if (!tenant) throw serviceError("Tenant not found.", "TENANT_NOT_FOUND", 404);
+  const branch = targetRoom.branch || oldContract.branch;
+  const canonicalRoomType = validateBranchRoomType(branch, targetRoom.type);
+  const property = resolveContractBranch(branch);
+
+  // Mark old contract as replaced
+  oldContract.status = "replaced";
+  oldContract.isCurrent = false;
+  oldContract.updatedBy = actorId;
+  oldContract.statusHistory.push({
+    status: "replaced",
+    changedBy: actorId,
+    changedAt: new Date(),
+    reason: `Replaced by room transfer contract (${oldContract.roomNumber} -> ${targetRoom.roomNumber})`,
+  });
+  await oldContract.save({ session });
+
+  const leaseStartDate = oldContract.leaseStartDate || stay?.leaseStartDate || effectiveTransferDate;
+  const leaseEndDate = oldContract.leaseEndDate || stay?.leaseEndDate;
+  const leaseDurationMonths = oldContract.leaseDurationMonths || (
+    leaseStartDate && leaseEndDate ? Math.max(1, dayjs(leaseEndDate).diff(dayjs(leaseStartDate), "month")) : 1
+  );
+
+  const targetRate = Number(targetRoom.monthlyPrice || targetRoom.price || 0);
+  const settings = await getBusinessSettings();
+  const pricing = resolveContractLeasePricing({
+    room: targetRoom,
+    roomType: canonicalRoomType,
+    leaseDurationMonths,
+    approvedMonthlyRate: targetRate,
+    longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
+  });
+
+  let resolvedTemplate = null;
+  try {
+    resolvedTemplate = resolveContractTemplate({
+      branch,
+      roomType: canonicalRoomType,
+      leaseType: pricing.isLongTerm ? "long-term" : "short-term",
+      leaseStartDate,
+      leaseEndDate,
+      leaseDurationMonths,
+    });
+  } catch {
+    // Template resolved on validation
+  }
+
+  const person = resolveTenantPersonalDetails({ user: tenant, reservation });
+  const number = await generateContractNumber(branch, new Date(), session);
+
+  const bedIdentifier = targetBed.id || String(targetBed._id || "");
+  const bedName = targetBed.label || targetBed.code || [targetBed.bunkBlock, targetBed.position].filter(Boolean).join("-") || bedIdentifier || "";
+
+  const createdDocs = await Contract.create(
+    [
+      {
+        ...number,
+        contractPurpose: "replacement",
+        parentContractId: oldContract.parentContractId || oldContract._id,
+        replacesContractId: oldContract._id,
+        replacementReason: `Room transfer: ${oldContract.roomNumber} (${oldContract.bedLabel || oldContract.bedId || ""}) -> ${targetRoom.roomNumber} (${bedName})`,
+        initialContractKey: null,
+        initialStayKey: null,
+        tenantId: tenant._id,
+        applicationId: reservation._id,
+        reservationId: reservation._id,
+        stayId: stay?._id || oldContract.stayId || null,
+        roomId: targetRoom._id,
+        branch,
+        version: (oldContract.version || 1) + 1,
+        templateType: resolvedTemplate?.templateId || `${canonicalRoomType.replaceAll("-", "_")}_${pricing.leaseType}`,
+        roomType: canonicalRoomType,
+        leaseType: pricing.leaseType,
+        propertyName: property.propertyName,
+        propertyAddress: property.propertyAddress,
+        roomNumber: targetRoom.roomNumber,
+        bedId: bedIdentifier,
+        bedLabel: bedName,
+        tenantLegalName: oldContract.tenantLegalName || person.fullName || "",
+        tenantAddress: oldContract.tenantAddress || person.currentAddress || formatReservationAddress(reservation.address) || "",
+        tenantEmail: oldContract.tenantEmail || person.email || "",
+        tenantPhone: oldContract.tenantPhone || person.phone || "",
+        tenantNationality: oldContract.tenantNationality || person.nationality || "",
+        tenantBirthDate: oldContract.tenantBirthDate || person.birthDate || null,
+        leaseStartDate,
+        leaseEndDate,
+        leaseDurationMonths,
+        regularMonthlyRate: pricing.regularMonthlyRate,
+        discountPercentage: 0,
+        discountType: "none",
+        discountAmount: 0,
+        approvedMonthlyRate: pricing.approvedMonthlyRate,
+        advanceRentAmount: 0,
+        securityDepositAmount: oldContract.securityDepositAmount || 0,
+        reservationFeeAmount: 0,
+        reservationFeeCreditAmount: 0,
+        pricingApprovalId: reservation._id,
+        pricingApprovedBy: actorId,
+        pricingApprovedAt: new Date(),
+        pricingApprovalNotes: `Auto-approved standard pricing on room transfer to ${targetRoom.roomNumber}`,
+        advanceCoverageStart: oldContract.advanceCoverageStart || leaseStartDate,
+        advanceCoverageEnd: oldContract.advanceCoverageEnd || (leaseStartDate ? dayjs(leaseStartDate).add(1, "month").subtract(1, "day").toDate() : null),
+        status: "draft",
+        statusHistory: [
+          { status: "draft", changedBy: actorId, reason: `Room transfer replacement draft created (${oldContract.roomNumber} -> ${targetRoom.roomNumber})` },
+        ],
+        createdBy: actorId,
+        updatedBy: actorId,
+        isCurrent: true,
+      },
+    ],
+    { session },
+  );
+
+  const created = createdDocs[0];
+  oldContract.supersededByContractId = created._id;
+  oldContract.supersededBy = created._id;
+  await oldContract.save({ session });
+
+  return created;
+};
+

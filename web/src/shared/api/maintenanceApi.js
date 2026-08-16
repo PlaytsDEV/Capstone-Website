@@ -59,6 +59,15 @@ export const maintenanceApi = {
     }),
 
   /**
+   * Confirm resolution or reopen a completed maintenance request (tenant)
+   */
+  confirmResolution: (requestId, payload = {}) =>
+    authFetch(`/maintenance/${requestId}/confirm`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  /**
    * Send a tenant reply with optional attachments.
    */
   sendTenantReply: (requestId, payload) =>
@@ -155,6 +164,27 @@ export const maintenanceApi = {
       body: JSON.stringify(payload),
     }),
 
+  updateAdminCost: (requestId, payload) =>
+    authFetch(`/maintenance/admin/${requestId}/cost`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  getAdminDuplicates: (requestId) =>
+    authFetch(`/maintenance/admin/${requestId}/duplicates`),
+
+  scheduleAdminMaintenance: (requestId, payload) =>
+    authFetch(`/maintenance/admin/${requestId}/schedule`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  finalizeAdminReport: (requestId, payload) =>
+    authFetch(`/maintenance/admin/${requestId}/finalize`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
   generateAdminUpdate: (requestId) =>
     authFetch(`/maintenance/admin/${requestId}/generate-update`, {
       method: "POST",
@@ -177,6 +207,12 @@ export const maintenanceApi = {
     authFetch(`/maintenance/admin/${requestId}/suggest-provider`, {
       method: "POST",
       body: JSON.stringify({}),
+    }),
+
+  rateAdminProvider: (requestId, payload = {}) =>
+    authFetch(`/maintenance/admin/${requestId}/rate-provider`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
 
   getServiceProviders: (filters = {}) =>

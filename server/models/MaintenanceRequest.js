@@ -233,6 +233,42 @@ const statusHistorySchema = new mongoose.Schema(
   { _id: false },
 );
 
+const costBreakdownSchema = new mongoose.Schema(
+  {
+    laborCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    materialsCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    totalCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    isTenantChargeable: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    chargeReason: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    billId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Billing",
+      default: null,
+    },
+  },
+  { _id: false },
+);
+
 const workLogSchema = new mongoose.Schema(
   {
     note: {
@@ -337,8 +373,199 @@ const conversationEntrySchema = new mongoose.Schema(
   { _id: false },
 );
 
+const occupancyContextSchema = new mongoose.Schema(
+  {
+    unitNumber: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    bedNumber: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    floor: {
+      type: Number,
+      default: null,
+    },
+  },
+  { _id: false },
+);
+
+const providerDetailsSchema = new mongoose.Schema(
+  {
+    providerType: {
+      type: String,
+      enum: ["IN_HOUSE", "EXTERNAL", null],
+      default: null,
+      index: true,
+    },
+    tenantVisibleLabel: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    internalProviderId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    privateContact: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    quotedCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    currency: {
+      type: String,
+      default: "PHP",
+    },
+    snapshotJson: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+  },
+  { _id: false },
+);
+
+const scheduleSchema = new mongoose.Schema(
+  {
+    scheduledDate: {
+      type: Date,
+      default: null,
+    },
+    notes: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
+const completionReportSchema = new mongoose.Schema(
+  {
+    reportId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    isDraft: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+    summary: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    workDone: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    partsReplaced: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    preventiveAdvice: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    finalizedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    finalizedByName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    finalizedAt: {
+      type: Date,
+      default: null,
+    },
+    reportUrl: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
+const resolutionConfirmationSchema = new mongoose.Schema(
+  {
+    confirmedAt: {
+      type: Date,
+      default: null,
+    },
+    tenantFeedback: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
+const providerRatingSchema = new mongoose.Schema(
+  {
+    rating: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: null,
+    },
+    feedback: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    tags: {
+      type: [String],
+      default: [],
+    },
+    ratedAt: {
+      type: Date,
+      default: null,
+    },
+    ratedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    ratedByName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    ratedByRole: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
 const buildRequestId = () =>
   `maint_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+const buildTicketNumber = () => {
+  const year = new Date().getFullYear();
+  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+  return `MNT-${year}-${randomSuffix}`;
+};
 
 const maintenanceRequestSchema = new mongoose.Schema(
   {
@@ -349,11 +576,29 @@ const maintenanceRequestSchema = new mongoose.Schema(
       index: true,
       trim: true,
     },
+    ticketNumber: {
+      type: String,
+      index: true,
+      trim: true,
+    },
     user_id: {
       type: String,
       required: true,
       index: true,
       trim: true,
+    },
+    // Optional client-supplied retry key for mobile submission idempotency
+    // (Phase 4A reconciliation). See the { user_id, client_request_id }
+    // partial unique index below — null/absent values never collide with
+    // each other, so historic rows and older app builds are unaffected.
+    client_request_id: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    occupancyContext: {
+      type: occupancyContextSchema,
+      default: () => ({}),
     },
 
     request_type: {
@@ -378,6 +623,29 @@ const maintenanceRequestSchema = new mongoose.Schema(
       enum: MAINTENANCE_STATUSES,
       default: "pending",
       index: true,
+    },
+
+    providerDetails: {
+      type: providerDetailsSchema,
+      default: () => ({}),
+    },
+    schedule: {
+      type: scheduleSchema,
+      default: () => ({}),
+    },
+    completionReport: {
+      type: completionReportSchema,
+      default: () => ({}),
+    },
+    reopenCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+      index: true,
+    },
+    resolutionConfirmation: {
+      type: resolutionConfirmationSchema,
+      default: () => ({}),
     },
 
     assigned_to: {
@@ -431,6 +699,10 @@ const maintenanceRequestSchema = new mongoose.Schema(
       type: String,
       default: null,
       trim: true,
+    },
+    providerRating: {
+      type: providerRatingSchema,
+      default: () => ({}),
     },
     notes: {
       type: String,
@@ -565,6 +837,20 @@ const maintenanceRequestSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    estimatedCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    actualCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    costBreakdown: {
+      type: costBreakdownSchema,
+      default: () => ({}),
+    },
   },
   {
     collection: "maintenance_requests",
@@ -575,14 +861,16 @@ const maintenanceRequestSchema = new mongoose.Schema(
   },
 );
 
-maintenanceRequestSchema.pre("validate", function ensureRequestId(next) {
+maintenanceRequestSchema.pre("validate", function ensureIdentifiers(next) {
   if (!this.request_id) {
     this.request_id = buildRequestId();
+  }
+  if (!this.ticketNumber) {
+    this.ticketNumber = buildTicketNumber();
   }
   next();
 });
 
-// Prevent unbounded array growth — keep the most recent entries.
 const MAINTENANCE_ARRAY_CAPS = {
   work_log: 200,
   statusHistory: 200,
@@ -607,10 +895,25 @@ maintenanceRequestSchema.index({ user_id: 1, created_at: -1 });
 maintenanceRequestSchema.index({ roomId: 1, status: 1, created_at: -1 });
 // Covers the SLA breach detection query in slaAlertJob.js
 maintenanceRequestSchema.index({ status: 1, urgency: 1, created_at: -1, slaBreachNotified: 1 });
-
-const MaintenanceRequest = mongoose.model(
-  "MaintenanceRequest",
-  maintenanceRequestSchema,
+// Mobile submission idempotency (Phase 4A): partial so rows without a
+// client_request_id (all historic data, and any future no-key submission)
+// never collide with each other. Also lazily created via the native driver
+// in mobile/controllers/maintenance.controller.js, since that controller
+// writes through getDb().collection(...) rather than this Mongoose model.
+// MUST use the same explicit name as that lazy createIndex() call — Mongoose
+// autoIndex builds this one first at boot, and a same-keys-different-name
+// index create is a hard MongoDB error (IndexOptionsConflict), which took
+// down every mobile maintenance submission in the Phase 4A live smoke test
+// until this name was aligned.
+maintenanceRequestSchema.index(
+  { user_id: 1, client_request_id: 1 },
+  { name: 'user_client_request_id_unique', unique: true, partialFilterExpression: { client_request_id: { $type: 'string' } } },
 );
+maintenanceRequestSchema.index({ deduplicationHash: 1, created_at: -1 });
+
+export const MaintenanceRequest =
+  mongoose.models.MaintenanceRequest ||
+  mongoose.model("MaintenanceRequest", maintenanceRequestSchema);
 
 export default MaintenanceRequest;
+

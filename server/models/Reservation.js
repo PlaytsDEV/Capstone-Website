@@ -780,6 +780,27 @@ const reservationSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "partial", "paid", "paid_in_full", "cancelled", "refunded"],
+      default: "pending",
+      index: true,
+    },
+    initialPaymentStatus: {
+      type: String,
+      enum: ["unpaid", "pending", "partial", "paid"],
+      default: "unpaid",
+      index: true,
+    },
+    initialPaymentBillId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Bill",
+      default: null,
+    },
+    initialPaymentSessionId: {
+      type: String,
+      default: null,
+    },
     // Timestamp of when the internal receipt email was successfully sent.
     // Prevents duplicate receipt emails on repeated webhook deliveries.
     receiptSentAt: {

@@ -102,7 +102,7 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
       return {
         bg: "bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700",
         text: "text-amber-900 dark:text-amber-300",
-        label: bed.occupiedBy?.fullName ? `${bed.occupiedBy.fullName.split(" ")[0]} (Hold)` : "In Progress",
+        label: bed.occupiedBy?.fullName ? `${bed.occupiedBy.fullName.split(" ")[0]} (Paying)` : "Payment Pending",
         dot: "bg-amber-500",
       };
     }

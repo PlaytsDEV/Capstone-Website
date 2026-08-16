@@ -1705,57 +1705,243 @@ html[data-theme="dark"] .visit-avail-badge {
    EXTENDED FILTER SYSTEM (Quick Chips, Filter Drawer, Active Tags)
    ============================================================================= */
 
-/* ── Quick Chip Strip ── */
-.res-chip-strip {
+/* ── Unified Control Toolbar & Segmented View Switcher ── */
+.res-control-toolbar {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.res-control-toolbar__section {
   display: flex;
   align-items: center;
   gap: 12px;
-  overflow-x: auto;
-  padding: 4px 0 8px 0;
+  flex-wrap: wrap;
+}
+
+.res-control-toolbar__label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  min-width: 90px;
+}
+
+/* ── Unified Status View Chips (Standalone Individual Buttons, Zero Outer Box) ── */
+.res-view-segmented-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  flex-wrap: wrap;
+}
+
+.res-view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.res-view-tab:hover {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--primary) 8%, var(--bg-card));
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border-light));
+}
+
+.res-view-tab--active {
+  background-color: var(--primary) !important;
+  color: #ffffff !important;
+  font-weight: 600;
+  border-color: var(--primary) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.res-view-tab--active.res-view-tab--warning {
+  background-color: #d97706 !important;
+  border-color: #d97706 !important;
+  color: #ffffff !important;
+}
+
+.res-view-tab--active.res-view-tab--danger {
+  background-color: #dc2626 !important;
+  border-color: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+.res-view-tab--active.res-view-tab--muted {
+  background-color: #334155 !important;
+  border-color: #334155 !important;
+  color: #ffffff !important;
+}
+
+.res-view-tab__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.res-view-tab--active .res-view-tab__count {
+  background-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+}
+
+/* ── Sideways Collapsible Status View & Trigger ── */
+.res-status-view-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  margin: -4px 0;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.res-status-view-trigger:hover {
+  background-color: var(--bg-hover, rgba(0, 0, 0, 0.04));
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+.res-status-view-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.res-status-view-chevron.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.res-view-item {
+  display: inline-flex;
+  align-items: center;
+  max-width: 320px;
+  opacity: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  transform: scaleX(1) translateX(0);
+  transform-origin: left center;
+  transition: max-width 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.24s ease,
+              transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.res-view-segmented-control.is-collapsed {
+  gap: 0;
+}
+
+.res-view-segmented-control.is-collapsed .res-view-item:not(.is-selected-item) {
+  max-width: 0;
+  opacity: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  transform: scaleX(0.9) translateX(-6px);
+}
+
+.res-view-segmented-control.is-collapsed .res-view-item:not(.is-selected-item) .res-view-tab {
+  padding: 0 !important;
+  border-width: 0 !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  opacity: 0 !important;
+}
+
+/* ── Quick Chip Strip & Triage Chips (Clean White/Solid Tokens) ── */
+.res-chip-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .res-chip-strip__title {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   color: var(--text-muted);
   white-space: nowrap;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 
 .res-chip-strip__list {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .res-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  border-radius: 9999px;
+  padding: 5px 12px;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 500;
   background-color: var(--bg-card);
   border: 1px solid var(--border-light);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+  user-select: none;
 }
 
 .res-chip:hover {
-  background-color: color-mix(in srgb, var(--bg-inset) 60%, transparent);
+  background-color: color-mix(in srgb, var(--primary) 8%, var(--bg-card));
   color: var(--text-primary);
-  border-color: var(--border-default);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border-light));
 }
 
 .res-chip--active {
-  background-color: var(--primary);
-  color: #ffffff !important;
-  border-color: var(--primary);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 30%, transparent);
+  background-color: color-mix(in srgb, var(--primary) 12%, var(--bg-card));
+  color: var(--primary) !important;
+  border-color: var(--primary) !important;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .res-chip__count {
@@ -1764,9 +1950,149 @@ html[data-theme="dark"] .visit-avail-badge {
   justify-content: center;
   padding: 1px 6px;
   border-radius: 9999px;
-  font-size: 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.res-chip__count--highlight {
+  background-color: color-mix(in srgb, var(--chip-accent, var(--primary)) 15%, transparent);
+  color: var(--chip-accent, var(--primary));
+  border: 1px solid color-mix(in srgb, var(--chip-accent, var(--primary)) 30%, transparent);
   font-weight: 700;
-  background-color: color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.res-chip__count--zero {
+  background-color: transparent;
+  border: 1px solid var(--border-light);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.res-chip__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--danger);
+  background-color: var(--bg-card);
+  border: 1px dashed color-mix(in srgb, var(--danger) 40%, transparent);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.res-chip__clear:hover {
+  background-color: color-mix(in srgb, var(--danger) 10%, transparent);
+  border-color: var(--danger);
+}
+
+.res-control-toolbar__divider {
+  height: 1px;
+  background-color: var(--border-light);
+  width: 100%;
+}
+
+/* ── Quick Chip Strip & Triage Chips ── */
+.res-chip-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.res-chip-strip__title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  min-width: 90px;
+}
+
+.res-chip-strip__list {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.res-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.res-chip:hover {
+  background-color: var(--bg-inset);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+.res-chip--active {
+  background-color: color-mix(in srgb, var(--primary) 12%, var(--bg-card));
+  color: var(--primary) !important;
+  border-color: var(--primary);
+  font-weight: 600;
+}
+
+.res-chip__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.res-chip__count--highlight {
+  background-color: color-mix(in srgb, var(--chip-accent, var(--primary)) 15%, transparent);
+  color: var(--chip-accent, var(--primary));
+  border: 1px solid color-mix(in srgb, var(--chip-accent, var(--primary)) 25%, transparent);
+  font-weight: 700;
+}
+
+.res-chip__count--zero {
+  background-color: color-mix(in srgb, var(--text-muted) 10%, transparent);
+  color: var(--text-muted);
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.res-chip__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--danger);
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--danger) 30%, transparent);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.res-chip__clear:hover {
+  background-color: color-mix(in srgb, var(--danger) 10%, transparent);
+  border-color: var(--danger);
 }
 
 /* ── Active Filter Tags ── */
@@ -1920,7 +2246,7 @@ html[data-theme="dark"] .visit-avail-badge {
 .res-drawer__select:focus,
 .res-drawer__input-date:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+  box-shadow: none;
 }
 
 .res-drawer__date-row {

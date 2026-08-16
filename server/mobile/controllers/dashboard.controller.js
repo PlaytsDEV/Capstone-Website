@@ -1,5 +1,27 @@
 const { getDb } = require('../config/database');
 const { ObjectId } = require('mongodb');
+const { sanitizeUserForClient, normalizeUser } = require('./user.controller');
+
+// Dashboard billing must show the exact same status/amount/utility-release
+// truth as /billing/me/latest (mobileBillingRoutes.js) for the same bill —
+// otherwise a bill can show "Paid" on Billing History and something else on
+// Home, which is the exact contradiction class this reconciliation phase
+// exists to eliminate. This file is CommonJS; services/mobileBillingBridge.js
+// is ESM, so it is loaded via dynamic import() (natively supported by Node
+// from CJS) rather than reimplemented locally. This previously WAS
+// reimplemented locally here (a hand-rolled `effectiveBillingFields()`) —
+// that copy was missing the voided/waived/payment-proof precedence rules
+// mobileBillingBridge.js's resolveMobileBillStatus() already handles
+// correctly, so a voided or waived-with-balance bill could show its raw,
+// unmapped status string on Home while showing the correct mapped status
+// everywhere else.
+let mobileBillingBridgePromise = null;
+function loadMobileBillingBridge() {
+  if (!mobileBillingBridgePromise) {
+    mobileBillingBridgePromise = import('../../services/mobileBillingBridge.js');
+  }
+  return mobileBillingBridgePromise;
+}
 
 // Convert slug like 'quadruple-sharing' → 'Quadruple Sharing'
 function formatRoomType(type) {
@@ -187,25 +209,14 @@ async function getDashboard(req, res) {
         .limit(10)
         .toArray();
 
+      const { toMobileBill } = await loadMobileBillingBridge();
       billing = bills.map((b) => ({
-        billing_id: b._id?.toString(),
+        ...toMobileBill(b),
+        // toMobileBill() doesn't carry these — dashboard-specific extras,
+        // additive only, never overriding any status/amount/date field.
         user_id: userId,
-        description: b.billingMonth || b.description || 'Bill',
-        billing_type: 'consolidated',
-        due_date: b.dueDate,
-        release_date: b.billingCycleStart,
-        billing_period: b.billingMonth,
-        status: b.status,
-        amount: b.totalAmount,
-        total: b.totalAmount,
-        gross_amount: b.grossAmount,
-        remaining_amount: b.remainingAmount,
-        payment_method: b.paymentMethod,
-        payment_date: b.paidAt,
         charges: b.charges,
-        additional_charges: b.additionalCharges,
         reservation_id: b.reservationId?.toString(),
-        created_at: b.createdAt,
       }));
     }
 
@@ -259,7 +270,10 @@ async function getDashboard(req, res) {
     const activeMaintenanceCount = activeMaintenanceMap.size;
 
     res.json({
-      user: { ...req.user, _id: undefined },
+      // Phase 4.5 cutover audit found this previously leaked the entire raw
+      // `users` Mongo document (minus `_id`) to the client — see the
+      // identical fix/rationale in controllers/user.controller.js getMe.
+      user: sanitizeUserForClient(normalizeUser(req.user)),
       assignment,
       room,
       billing,

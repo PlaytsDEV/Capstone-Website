@@ -27,6 +27,10 @@ function ToastItem({ notification, onDismiss }) {
  return () => window.clearTimeout(timer);
  }, [notification.duration, notification.id, onDismiss]);
 
+ const messageText = typeof notification.message === "string"
+   ? notification.message
+   : (notification.message?.message || notification.message?.text || String(notification.message || ""));
+
  return (
  <div
  className={`notification notification-${notification.type || "info"}`}
@@ -36,7 +40,7 @@ function ToastItem({ notification, onDismiss }) {
  <div className="notification-icon">
  <Icon size={18} />
  </div>
- <div className="notification-message">{notification.message}</div>
+ <div className="notification-message">{messageText}</div>
  <button
  className="notification-close"
  type="button"

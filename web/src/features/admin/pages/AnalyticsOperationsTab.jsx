@@ -1,13 +1,24 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink } from "lucide-react";
+import {
+  CalendarDays,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  ShieldAlert,
+  Timer,
+  Users,
+  Wrench,
+} from "lucide-react";
 import { useAuditAnalytics, useOperationsReport } from "../../../shared/hooks/queries/useAnalyticsReports";
+import { useMaintenanceProviderReport } from "../../../shared/hooks/queries/useMaintenance";
 import {
   AnalyticsBarChart,
   AnalyticsDonutChart,
   AnalyticsTabLayout,
   AnalyticsToolbar,
   DataTable,
+  PeriodComparisonCard,
   ReportChartPanel,
 } from "../components/shared";
 import { buildRangeLabel, formatBranch, formatDate, formatDateTime } from "./reportCommon";
@@ -125,12 +136,32 @@ const MAINTENANCE_COLUMNS = [
   },
 ];
 
-const EVENT_COLUMNS = [
-  { key: "action", label: "Event", sortable: true },
-  { key: "branch", label: "Branch", render: (row) => formatBranch(row.branch), sortable: true },
-  { key: "severity", label: "Severity", sortable: true },
-  { key: "user", label: "User", sortable: true },
-  { key: "timestamp", label: "Time", render: (row) => formatDateTime(row.timestamp), sortable: true },
+const PROVIDER_COLUMNS = [
+  { key: "providerName", label: "Provider / Technician", sortable: true },
+  { key: "category", label: "Specialty", sortable: true },
+  { key: "totalAssigned", label: "Assigned Jobs", sortable: true },
+  { key: "activeJobs", label: "Active", sortable: true },
+  { key: "completedJobs", label: "Completed", sortable: true },
+  { key: "overdueJobs", label: "Overdue", sortable: true },
+  {
+    key: "completionRate",
+    label: "Completion Rate",
+    sortable: true,
+    render: (row) => (
+      <span
+        style={{
+          padding: "3px 10px",
+          borderRadius: "12px",
+          fontSize: "11px",
+          background: (row.completionRate || 0) >= 80 ? "var(--success-subtle, #dcfce7)" : "var(--warning-subtle, #fef3c7)",
+          color: (row.completionRate || 0) >= 80 ? "var(--success-dark, #166534)" : "var(--warning-dark, #92400e)",
+          fontWeight: 700,
+        }}
+      >
+        {row.completionRate != null ? `${row.completionRate}%` : "—"}
+      </span>
+    ),
+  },
 ];
 
 export default function AnalyticsOperationsTab({
@@ -144,10 +175,9 @@ export default function AnalyticsOperationsTab({
   const [searchQuery, setSearchQuery] = useState("");
   const [slaFilter, setSlaFilter] = useState("all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [pageSize, setPageSize] = useState(5);
-  const [eventPage, setEventPage] = useState(1);
-  const [eventsPageSize, setEventsPageSize] = useState(5);
+  const [providerPage, setProviderPage] = useState(1);
+  const [providerPageSize, setProviderPageSize] = useState(5);
 
   const [resRange, setResRange] = useState(null);
   const activeResRange = resRange || range;
@@ -170,7 +200,9 @@ export default function AnalyticsOperationsTab({
 
   const { data, isLoading, isError } = useOperationsReport(params);
   const { data: resData } = useOperationsReport(resParams);
-  const { data: auditData } = useAuditAnalytics(params);
+  const { data: providerRawData, isLoading: isProvidersLoading } = useMaintenanceProviderReport(params);
+  const providerData = providerRawData?.data || providerRawData || {};
+  const providersList = Array.isArray(providerData?.providers) ? providerData.providers : [];
 
   const {
     data: insightData,
@@ -183,13 +215,10 @@ export default function AnalyticsOperationsTab({
   });
 
   const maintenanceIssues = unwrapTableRows(data?.tables?.maintenanceIssues);
-  const reservations = Array.isArray(data?.tables?.reservations) ? data?.tables?.reservations : [];
   const inquiryWindows = Array.isArray(data?.tables?.peakInquiryWindows) ? data?.tables?.peakInquiryWindows : [];
   const reservationsByPeriod = (resData || data)?.series?.reservationsByPeriod || [];
   const maintenanceByType = data?.series?.maintenanceByType || [];
   const maintenanceResolution = data?.series?.maintenanceResolution || [];
-
-  const recentSecurityEvents = unwrapTableRows(auditData?.tables?.recentSecurityEvents);
 
   const filteredMaintenance = useMemo(() => {
     return maintenanceIssues.filter((item) => {
@@ -210,16 +239,70 @@ export default function AnalyticsOperationsTab({
     });
   }, [maintenanceIssues, searchQuery, slaFilter, urgencyFilter]);
 
+  const resCount = data?.kpis?.reservations || 0;
+  const inqCount = data?.kpis?.inquiries || 0;
+  const maintCount = data?.kpis?.maintenanceRequests || 0;
+  const slaRate = data?.kpis?.slaComplianceRateLabel || "0%";
+
+  const reservationsDelta = data?.kpis?.comparison?.reservations || {
+    label: "+0",
+    changeType: "neutral",
+    text: "vs prev period",
+  };
+  const maintenanceDelta = data?.kpis?.comparison?.maintenanceRequests || {
+    label: "+0",
+    changeType: "neutral",
+    text: "vs prev period",
+  };
+  const inquiriesDelta = data?.kpis?.comparison?.inquiries || {
+    label: "+0",
+    changeType: "neutral",
+    text: "vs prev period",
+  };
+  const slaDelta = data?.kpis?.comparison?.slaComplianceRate || {
+    label: "+0 pp",
+    changeType: "neutral",
+    text: "vs target",
+  };
+
   const metricCards = [
-    { label: "Reservations", value: data?.kpis?.reservations || 0, tone: "blue" },
-    { label: "Inquiries", value: data?.kpis?.inquiries || 0, tone: "green" },
-    { label: "Maintenance", value: data?.kpis?.maintenanceRequests || 0, tone: "amber" },
-    { label: "On-Time Fix Rate", value: data?.kpis?.slaComplianceRateLabel || "0%", tone: "rose" },
+    {
+      icon: CalendarDays,
+      tone: "amber",
+      label: "Reservations",
+      value: resCount,
+      trend: reservationsDelta.text || `${reservationsDelta.label || "+0"} vs prev period`,
+      changeType: reservationsDelta.changeType || "neutral",
+    },
+    {
+      icon: Wrench,
+      tone: "purple",
+      label: "Maintenance Requests",
+      value: maintCount,
+      trend: maintenanceDelta.text || `${maintenanceDelta.label || "+0"} vs prev period`,
+      changeType: maintenanceDelta.changeType === "up" ? "down" : maintenanceDelta.changeType === "down" ? "up" : "neutral",
+    },
+    {
+      icon: Users,
+      tone: "teal",
+      label: "Inquiries",
+      value: inqCount,
+      trend: inquiriesDelta.text || `${inquiriesDelta.label || "+0"} vs prev period`,
+      changeType: inquiriesDelta.changeType || "neutral",
+    },
+    {
+      icon: CheckCircle2,
+      tone: "green",
+      label: "SLA Compliance",
+      value: slaRate,
+      trend: slaDelta.text || `${slaDelta.label || "+0 pp"} on-time rate`,
+      changeType: slaDelta.changeType || "neutral",
+    },
   ];
 
   const exportCsv = () => {
     handleCsvExport(
-      maintenanceIssues,
+      filteredMaintenance,
       [
         { key: "requestId", label: "Request ID" },
         { key: "typeLabel", label: "Type" },
@@ -244,7 +327,7 @@ export default function AnalyticsOperationsTab({
       kpis: metricCards.map((item, i) => ({
         label: item.label,
         value: item.value,
-        sub: "",
+        sub: item.trend,
         highlight: i === 0,
       })),
       aiInsight: {
@@ -275,7 +358,7 @@ export default function AnalyticsOperationsTab({
           title: "Maintenance Snapshot",
           type: "table",
           headers: ["Request ID", "Type", "Urgency", "Status", "SLA"],
-          rows: maintenanceIssues.slice(0, 12).map((item) => ({
+          rows: filteredMaintenance.slice(0, 12).map((item) => ({
             "Request ID": item.requestId || "-",
             Type: item.typeLabel || "-",
             Urgency: item.urgency || "-",
@@ -287,38 +370,53 @@ export default function AnalyticsOperationsTab({
     });
   };
 
+  const periodComparisonRows = [
+    {
+      label: "Reservations",
+      sublabel: "vs previous period",
+      value: resCount,
+      change: reservationsDelta.label,
+      changeType: reservationsDelta.changeType || "neutral",
+    },
+    {
+      label: "Maintenance requests",
+      sublabel: "vs previous period",
+      value: maintCount,
+      change: maintenanceDelta.label,
+      changeType: maintenanceDelta.changeType === "up" ? "down" : maintenanceDelta.changeType === "down" ? "up" : "neutral",
+    },
+    {
+      label: "Inquiries",
+      sublabel: "vs previous period",
+      value: inqCount,
+      change: inquiriesDelta.label,
+      changeType: inquiriesDelta.changeType || "neutral",
+    },
+    {
+      label: "SLA compliance",
+      sublabel: "vs previous period",
+      value: slaRate,
+      change: slaDelta.label,
+      changeType: slaDelta.changeType || "neutral",
+    },
+  ];
+
   return (
-    <AnalyticsTabLayout
-      header={
-        <AnalyticsToolbar
-          title="Operations & Health Analytics"
-          subtitle={`Scope: ${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`}
-          branch={buildBranchControl({
-            isOwner,
-            branch,
-            onChange: (value) => {
-              setPage(1);
-              onBranchChange(value);
-            },
-          })}
-          actions={<ExportButtons onCsv={exportCsv} onPdf={exportPdf} />}
-        />
-      }
-    >
+    <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       <MetricGrid items={metricCards} />
 
       <AnalyticsInsightSection
         reportLabel="operations"
-        summaryTitle="Operations Summary"
+        summaryTitle="Operations & SLA Intelligence"
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel
-          title="Reservation trend"
-          subtitle="Reservation volume over the selected period"
+          title="Reservation activity"
+          subtitle="Bookings per week"
           actions={
             <CardFilterSelect
               value={activeResRange}
@@ -328,7 +426,7 @@ export default function AnalyticsOperationsTab({
         >
           <AnalyticsBarChart
             data={reservationsByPeriod.map((item) => ({ label: item.label, count: item.count }))}
-            bars={[{ key: "count", label: "Reservations" }]}
+            bars={[{ key: "count", label: "Reservations", color: "#f59e0b" }]}
             emptyTitle="No reservation trend"
             emptyDescription="Reservation activity will appear once records exist in this range."
           />
@@ -344,7 +442,7 @@ export default function AnalyticsOperationsTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
         <ReportChartPanel title="Inquiry timing" subtitle="Peak inquiry windows in two-hour blocks">
           <AnalyticsBarChart
             data={inquiryWindows.map((item) => ({ label: item.label, count: item.count }))}
@@ -354,119 +452,112 @@ export default function AnalyticsOperationsTab({
           />
         </ReportChartPanel>
 
-        <ReportChartPanel title="Resolution and SLA" subtitle="Average maintenance resolution time by category">
-          <AnalyticsBarChart
-            data={maintenanceResolution.map((item) => ({ label: item.label, hours: item.avgHours }))}
-            bars={[{ key: "hours", label: "Average hours", color: "#f97316" }]}
-            valueFormatter={(value) => `${value} hrs`}
-            emptyTitle="No resolution data"
-            emptyDescription="Resolution performance needs completed maintenance tickets to render."
+        <PeriodComparisonCard
+          title="Period comparison"
+          subtitle="Current vs previous period"
+          rows={periodComparisonRows}
+        />
+      </div>
+
+      <div className="mb-5">
+        <ReportChartPanel title="Maintenance tickets table" subtitle="Most recent branch-scoped maintenance tickets">
+          <AnalyticsTableToolbar
+            searchQuery={searchQuery}
+            onSearchChange={(val) => {
+              setSearchQuery(val);
+              setPage(1);
+            }}
+            searchPlaceholder="Search request ID or type..."
+            filters={[
+              {
+                key: "slaFilter",
+                label: "SLA State",
+                value: slaFilter,
+                onChange: (val) => {
+                  setSlaFilter(val);
+                  setPage(1);
+                },
+                options: [
+                  { value: "all", label: "All SLA States" },
+                  { value: "on-time", label: "On-Time" },
+                  { value: "at-risk", label: "At Risk" },
+                  { value: "breached", label: "Breached" },
+                ],
+              },
+              {
+                key: "urgencyFilter",
+                label: "Urgency",
+                value: urgencyFilter,
+                onChange: (val) => {
+                  setUrgencyFilter(val);
+                  setPage(1);
+                },
+                options: [
+                  { value: "all", label: "All Urgency Levels" },
+                  { value: "low", label: "Low" },
+                  { value: "normal", label: "Normal" },
+                  { value: "high", label: "High" },
+                ],
+              },
+            ]}
+            hasActiveFilters={Boolean(searchQuery || slaFilter !== "all" || urgencyFilter !== "all")}
+            onResetFilters={() => {
+              setSearchQuery("");
+              setSlaFilter("all");
+              setUrgencyFilter("all");
+              setPage(1);
+            }}
+            extraActions={
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
+                  Showing {filteredMaintenance.length} of {maintenanceIssues.length} tickets
+                </span>
+                <ExportButtons onCsv={exportCsv} onPdf={exportPdf} />
+              </div>
+            }
+          />
+
+          <DataTable
+            columns={MAINTENANCE_COLUMNS}
+            data={filteredMaintenance}
+            loading={isLoading}
+            pagination={{
+              page,
+              pageSize,
+              total: filteredMaintenance.length,
+              onPageChange: setPage,
+              onPageSizeChange: setPageSize,
+            }}
+            emptyState={{
+              title: isError ? "Maintenance report unavailable" : "No maintenance tickets",
+              description: isError
+                ? "The operations report could not be loaded."
+                : "No maintenance tickets matched the selected filter criteria.",
+            }}
           />
         </ReportChartPanel>
       </div>
 
-      <ReportChartPanel title="Maintenance tickets table" subtitle="Most recent branch-scoped maintenance tickets">
-        <AnalyticsTableToolbar
-          searchQuery={searchQuery}
-          onSearchChange={(val) => {
-            setSearchQuery(val);
-            setPage(1);
-          }}
-          searchPlaceholder="Search request ID or type..."
-          filters={[
-            {
-              key: "slaFilter",
-              label: "SLA State",
-              value: slaFilter,
-              onChange: (val) => {
-                setSlaFilter(val);
-                setPage(1);
-              },
-              options: [
-                { value: "all", label: "All SLA States" },
-                { value: "on-time", label: "On-Time" },
-                { value: "at-risk", label: "At Risk" },
-                { value: "breached", label: "Breached" },
-              ],
-            },
-            {
-              key: "urgencyFilter",
-              label: "Urgency",
-              value: urgencyFilter,
-              onChange: (val) => {
-                setUrgencyFilter(val);
-                setPage(1);
-              },
-              options: [
-                { value: "all", label: "All Urgency Levels" },
-                { value: "low", label: "Low" },
-                { value: "normal", label: "Normal" },
-                { value: "high", label: "High" },
-              ],
-            },
-          ]}
-          hasActiveFilters={Boolean(searchQuery || slaFilter !== "all" || urgencyFilter !== "all")}
-          onResetFilters={() => {
-            setSearchQuery("");
-            setSlaFilter("all");
-            setUrgencyFilter("all");
-            setPage(1);
-          }}
-          extraActions={
-            <span className="text-xs font-medium text-muted-foreground">
-              Showing {filteredMaintenance.length} of {maintenanceIssues.length} tickets
-            </span>
-          }
-        />
-
-        <DataTable
-          columns={MAINTENANCE_COLUMNS}
-          data={filteredMaintenance}
-          loading={isLoading}
-          pagination={{
-            page,
-            pageSize,
-            total: filteredMaintenance.length,
-            onPageChange: setPage,
-            onPageSizeChange: setPageSize,
-          }}
-          emptyState={{
-            title: isError ? "Operations report unavailable" : "No maintenance issues",
-            description: isError
-              ? "The operations report could not be loaded."
-              : "No maintenance issues matched the selected filter.",
-          }}
-        />
-      </ReportChartPanel>
-
-      {isOwner && recentSecurityEvents.length > 0 && (
-        <ReportChartPanel
-          title="System infrastructure & security events"
-          subtitle="Owner security audit trail and access monitoring"
-          actions={
-            <Link to="/admin/audit-logs" className="admin-reports__link">
-              Open full audit log
-              <ExternalLink size={14} />
-            </Link>
-          }
-        >
+      {providersList.length > 0 && (
+        <ReportChartPanel title="Technician & Provider Performance" subtitle="Service provider task allocation and completion rates">
           <DataTable
-            columns={EVENT_COLUMNS}
-            data={recentSecurityEvents}
+            columns={PROVIDER_COLUMNS}
+            data={providersList}
+            loading={isProvidersLoading}
             pagination={{
-              page: eventPage,
-              pageSize: eventsPageSize,
-              total: recentSecurityEvents.length,
-              onPageChange: setEventPage,
-              onPageSizeChange: setEventsPageSize,
+              page: providerPage,
+              pageSize: providerPageSize,
+              total: providersList.length,
+              onPageChange: setProviderPage,
+              onPageSizeChange: setProviderPageSize,
             }}
             emptyState={{
-              title: "No audit events",
-              description: "System audit logs will appear as administrative actions occur.",
+              title: "No providers registered",
+              description: "Technician assignments will appear once work orders are dispatched.",
             }}
           />
         </ReportChartPanel>
       )}
-    </AnalyticsTabLayout>
+    </div>
   );
 }

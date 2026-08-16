@@ -19,7 +19,7 @@ import {
   normalizeMaintenanceUrgency,
 } from "../../config/maintenance.js";
 import { AppError, sendSuccess } from "../../middleware/errorHandler.js";
-import { MaintenanceRequest, User } from "../../models/index.js";
+import { MaintenanceRequest, Reservation, Room, User } from "../../models/index.js";
 import {
   buildActorSnapshot,
   buildMaintenanceRequestId,
@@ -55,6 +55,7 @@ const buildMaintenanceDocument = ({
   description,
   urgency,
   attachments,
+  occupancyContext = {},
 }) =>
   new MaintenanceRequest({
     request_id: requestId,
@@ -67,6 +68,7 @@ const buildMaintenanceDocument = ({
     attachments,
     reservationId,
     roomId,
+    occupancyContext,
     statusHistory: [
       {
         event: "submitted",
@@ -77,6 +79,7 @@ const buildMaintenanceDocument = ({
       },
     ],
   });
+
 
 /**
  * GET /api/m/maintenance/me
@@ -182,6 +185,38 @@ export const createRequest = async (req, res, next) => {
       dbUser,
       context: "maintenance_request",
     });
+
+    let occupancyContext = {
+      unitNumber: null,
+      bedNumber: null,
+      floor: null,
+    };
+    if (branchResolution.roomId) {
+      try {
+        const roomDoc = await Room.findById(branchResolution.roomId)
+          .select("roomNumber name floor")
+          .lean();
+        if (roomDoc) {
+          occupancyContext.unitNumber = roomDoc.roomNumber || roomDoc.name || null;
+          occupancyContext.floor = typeof roomDoc.floor === "number" ? roomDoc.floor : null;
+        }
+      } catch {
+        // non-fatal
+      }
+    }
+    if (branchResolution.reservationId) {
+      try {
+        const resDoc = await Reservation.findById(branchResolution.reservationId)
+          .select("bedNumber bed")
+          .lean();
+        if (resDoc) {
+          occupancyContext.bedNumber = resDoc.bedNumber || resDoc.bed || null;
+        }
+      } catch {
+        // non-fatal
+      }
+    }
+
     const requestId = buildMaintenanceRequestId();
     const attachments = normalizeAttachments(req.body.attachments, {
       context: "maintenance_request",
@@ -207,10 +242,27 @@ export const createRequest = async (req, res, next) => {
       description,
       urgency,
       attachments,
+      occupancyContext,
     });
     request.deduplicationHash = deduplicationHash;
 
     await request.save();
+
+    try {
+      const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
+      notify
+        .newMaintenanceTicket(
+          branchResolution.branch,
+          tenantName,
+          "",
+          urgency,
+          requestType,
+          request.request_id || request._id,
+        )
+        .catch((e) => logger.warn({ err: e }, "Maintenance admin notification failed (non-fatal)"));
+    } catch (notifErr) {
+      // non-fatal
+    }
 
     sendSuccess(
       res,
@@ -376,6 +428,7 @@ export const reopenMyRequest = async (req, res, next) => {
 
     request.reopen_note = note;
     request.reopened_at = reopenedAt;
+    request.reopenCount = (request.reopenCount || 0) + 1;
     request.reopen_history = [
       ...(request.reopen_history || []),
       {
@@ -398,7 +451,32 @@ export const reopenMyRequest = async (req, res, next) => {
 
     await request.save();
 
+    try {
+      const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
+      notify
+        .maintenanceReopened(
+          request.branch,
+          tenantName,
+          request.request_id || request._id,
+        )
+        .catch((e) => logger.warn({ err: e }, "Maintenance reopen notification failed (non-fatal)"));
+    } catch (notifErr) {
+      // non-fatal
+    }
+
+    try {
+      const { emitToAdmins } = await import("../../utils/socket.js");
+      emitToAdmins("ticket:updated", {
+        requestId: String(request._id),
+        status: request.status,
+        reopenCount: request.reopenCount,
+      });
+    } catch {
+      // non-fatal
+    }
+
     sendSuccess(res, {
+      message: "Maintenance request has been reopened.",
       request: serializeMaintenanceRequest(
         request.toObject(),
         serializeTenantSummary(dbUser, request),
@@ -409,6 +487,75 @@ export const reopenMyRequest = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * POST /api/maintenance/:requestId/confirm
+ * PATCH /api/maintenance/:requestId/confirm-resolved
+ * POST /api/v1/tenant/maintenance/:id/confirm
+ */
+export const confirmResolution = async (req, res, next) => {
+  try {
+    const dbUser = await getDbUser(req.user.uid);
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureTenantAccess(request, dbUser);
+
+    const action = String(req.body?.action || "").trim().toLowerCase();
+    const isConfirmed = req.body?.confirmed === true || action === "confirm" || action === "resolved" || action === "yes";
+
+    if (!REOPENABLE_MAINTENANCE_STATUSES.includes(request.status) && request.status !== "closed") {
+      throw new AppError(
+        "Only completed or resolved maintenance requests can receive resolution confirmation.",
+        409,
+        "INVALID_CONFIRMATION_STATE",
+      );
+    }
+
+    if (isConfirmed) {
+      const confirmedAt = new Date();
+      const feedback = toOptionalText(req.body?.feedback || req.body?.notes || req.body?.note);
+      request.resolutionConfirmation = {
+        confirmedAt,
+        tenantFeedback: feedback,
+      };
+      appendStatusHistory(request, {
+        event: "tenant_confirmed_resolved",
+        status: request.status,
+        ...buildActorSnapshot(dbUser),
+        note: feedback || "Tenant confirmed issue resolution.",
+        timestamp: confirmedAt,
+      });
+
+      await request.save();
+
+      try {
+        const { emitToAdmins } = await import("../../utils/socket.js");
+        emitToAdmins("ticket:updated", {
+          requestId: String(request._id),
+          status: request.status,
+          resolutionConfirmed: true,
+        });
+      } catch {
+        // non-fatal
+      }
+
+      sendSuccess(res, {
+        message: "Thank you! Issue resolution confirmed.",
+        request: serializeMaintenanceRequest(
+          request.toObject(),
+          serializeTenantSummary(dbUser, request),
+          { includeInternal: false },
+        ),
+      });
+    } else {
+      return reopenMyRequest(req, res, next);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const confirmMaintenanceResolved = confirmResolution;
+
 
 /**
  * POST /api/m/maintenance/:requestId/reply
@@ -489,6 +636,19 @@ export const sendTenantReply = async (req, res, next) => {
     }
 
     await request.save();
+
+    try {
+      const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
+      notify
+        .maintenanceTenantReply(
+          request.branch,
+          tenantName,
+          request.request_id || request._id,
+        )
+        .catch((e) => logger.warn({ err: e }, "Maintenance tenant reply notification failed (non-fatal)"));
+    } catch (notifErr) {
+      // non-fatal
+    }
 
     sendSuccess(res, {
       message: "Reply sent successfully.",

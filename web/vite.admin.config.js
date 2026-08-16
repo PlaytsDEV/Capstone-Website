@@ -13,6 +13,21 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       input: "admin.html",
+      output: {
+        manualChunks: {
+          "vendor-react": [
+            "react",
+            "react-dom",
+            "react/jsx-runtime",
+            "react/jsx-dev-runtime",
+            "react-router-dom",
+          ],
+          "vendor-tanstack": ["@tanstack/react-query"],
+          "vendor-firebase": ["firebase/app", "firebase/auth"],
+          "vendor-icons": ["lucide-react", "@tabler/icons-react"],
+          "vendor-charts": ["recharts"],
+        },
+      },
     },
   },
   esbuild: {
@@ -21,6 +36,7 @@ export default defineConfig({
     exclude: [],
   },
   optimizeDeps: {
+    include: ["jspdf", "html2canvas"],
     esbuildOptions: {
       loader: {
         ".js": "jsx",

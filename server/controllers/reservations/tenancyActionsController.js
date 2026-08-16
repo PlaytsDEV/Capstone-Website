@@ -64,6 +64,16 @@ export const archiveReservation = async (req, res, next) => {
     );
     if (denied) return;
 
+    if (
+      hasReservationStatus(reservation.status, "reserved", "approved_for_payment") ||
+      hasReservationStatus(reservation.status, "moveIn")
+    ) {
+      return res.status(400).json({
+        error: "Confirmed reserved bookings cannot be archived directly. Please process a cancellation or move-out workflow first.",
+        code: "RESERVED_CANNOT_BE_DELETED",
+      });
+    }
+
     const oldData = reservation.toObject();
     const dbUser = await findDbUser(req.user.uid);
 
@@ -577,12 +587,6 @@ export const moveOutReservation = async (req, res, next) => {
     if (denied) return;
 
     const actor = await findDbUser(req.user.uid);
-    const {
-      ensureMoveOutSurveyAssignment,
-      assertMoveOutSurveyComplete,
-    } = await import("../../services/surveyAutomationService.js");
-    await ensureMoveOutSurveyAssignment(reservation);
-    await assertMoveOutSurveyComplete(reservation._id);
     const oldData = reservation.toObject();
     const result = await moveOutStayWorkflow({
       reservationId,
@@ -624,9 +628,6 @@ export const moveOutReservation = async (req, res, next) => {
       return res.status(error.statusCode).json({
         error: error.message,
         code: error.code || "MOVEOUT_FAILED",
-        ...(error.surveyAssignmentId !== undefined && {
-          surveyAssignmentId: error.surveyAssignmentId,
-        }),
         ...(error.outstandingBalance !== undefined && {
           outstandingBalance: error.outstandingBalance,
           paymentStatus: error.paymentStatus,

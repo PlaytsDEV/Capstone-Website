@@ -62,10 +62,7 @@ export default function ConsolidatedBillingMonitorTab({
       }
     } catch (err) {
       console.error("[ConsolidatedMonitor] Failed to fetch data:", err);
-      showNotification({
-        type: "error",
-        message: "Failed to load consolidated billing statements.",
-      });
+      showNotification("Failed to load consolidated billing statements.", "error");
     } finally {
       setLoading(false);
     }
@@ -80,17 +77,11 @@ export default function ConsolidatedBillingMonitorTab({
     setSendingReminderId(record.id);
     try {
       await billingApi.sendOverdueNotice(record.id, "1st_notice");
-      showNotification({
-        type: "success",
-        message: `Payment reminder sent successfully to ${record.tenantName}!`,
-      });
+      showNotification(`Payment reminder sent successfully to ${record.tenantName}!`, "success");
       fetchConsolidatedData();
     } catch (err) {
       console.error("[ConsolidatedMonitor] Send reminder failed:", err);
-      showNotification({
-        type: "error",
-        message: err.message || "Failed to send payment reminder.",
-      });
+      showNotification(err.message || "Failed to send payment reminder.", "error");
     } finally {
       setSendingReminderId(null);
     }

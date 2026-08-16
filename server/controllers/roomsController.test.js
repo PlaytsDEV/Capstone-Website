@@ -136,7 +136,7 @@ describe("roomsController", () => {
     expect(next.mock.calls[0][0].code).toBe("ROOM_SYSTEM_FIELDS_FORBIDDEN");
   });
 
-  test("createRoom gives private rooms one single bed by default", async () => {
+  test("createRoom gives private rooms a bunk bed (upper + lower) by default", async () => {
     roomFindOne.mockReturnValue({
       select: jest.fn(() => ({
         lean: jest.fn().mockResolvedValue(null),
@@ -162,7 +162,10 @@ describe("roomsController", () => {
 
     expect(Room).toHaveBeenCalledWith(
       expect.objectContaining({
-        beds: [{ id: "bed-1", position: "lower", status: "available" }],
+        beds: [
+          { id: "bed-1", position: "upper", status: "available" },
+          { id: "bed-2", position: "lower", status: "available" },
+        ],
       }),
     );
     expect(sendSuccess).toHaveBeenCalledWith(
@@ -172,6 +175,7 @@ describe("roomsController", () => {
     );
     expect(next).not.toHaveBeenCalled();
   });
+
 
   test("updateRoom rejects generic bed writes", async () => {
     roomFindOne.mockResolvedValue({

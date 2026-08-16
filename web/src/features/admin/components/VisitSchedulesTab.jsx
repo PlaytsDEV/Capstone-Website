@@ -25,6 +25,7 @@ import {
   TableSkeleton,
 } from "../../../shared/components/LoadingSkeletons";
 import Pagination from "../../../shared/components/Pagination";
+import ProfileAvatar from "../../../shared/components/ProfileAvatar";
 import VisitDetailsModal from "./VisitDetailsModal";
 import { StatusBadge } from "./shared";
 import { mapVisitScheduleRows } from "../utils/reservationRows";
@@ -255,9 +256,10 @@ function VisitSchedulesTab() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  const { data: rawReservations = [], isLoading: loading } = useReservations({
-    view: "admin-list",
-  });
+  const { data: rawReservations = [], isLoading: loading } = useReservations(
+    { view: "admin-list" },
+    { refetchInterval: 5000, refetchOnWindowFocus: true, refetchOnMount: true },
+  );
 
   const schedules = useMemo(
     () => mapVisitScheduleRows(rawReservations),
@@ -868,11 +870,14 @@ function VisitSchedulesTab() {
                     >
                       <td className="py-4 px-4">
                         <div className={`flex items-center gap-3 ${isDim}`}>
-                          <div
-                            className={`w-10 h-10 rounded-full flex items-center justify-center font-medium text-sm ${getAvatarColor(initials(row.customer))}`}
-                          >
-                            {initials(row.customer)}
-                          </div>
+                          <ProfileAvatar
+                            className="w-10 h-10 rounded-full flex-shrink-0"
+                            user={row.userId}
+                            src={row.photoUrl || row.profileImage || row.userId?.profileImage}
+                            initials={initials(row.customer)}
+                            alt={`${row.customer} profile photo`}
+                            size={40}
+                          />
                           <div className="min-w-0">
                             <div className="font-medium text-foreground">
                               {row.customer}

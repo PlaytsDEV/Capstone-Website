@@ -3,7 +3,6 @@ import { ContactFooter } from "../components/ContactFooter";
 import { HeroSection } from "../components/HeroSection";
 import { JourneyHighlightsSection } from "../components/JourneyHighlightsSection";
 import { BenefitsSection } from "../components/BenefitsSection";
-import { SocialProofSection } from "../components/SocialProofSection";
 import { RoomInventory } from "../components/RoomInventory";
 import { FacilitiesSection } from "../components/FacilitiesSection";
 import { LocationSection } from "../components/LocationSection";
@@ -129,14 +128,7 @@ function LandingPageContent() {
         </ScrollReveal>
       </div>
 
-      {/* 6. TRUST — Social proof */}
-      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
-        <ScrollReveal variant="fade-up">
-          <RouteErrorBoundary name="SocialProofSection" fallback={<SectionFallback name="Testimonials" />}>
-            <SocialProofSection />
-          </RouteErrorBoundary>
-        </ScrollReveal>
-      </div>
+
 
       {/* 7. STORY — Brand identity */}
       <div style={{ borderBottom: '1px solid var(--lp-border)' }}>

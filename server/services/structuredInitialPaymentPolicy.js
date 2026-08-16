@@ -125,11 +125,11 @@ export function resolveVisibleStructuredRentPeriod(actualMoveInDate, referenceDa
   if (!anchor.isValid() || !reference.isValid()) return null;
   let cycleIndex = 1;
   let period = buildRollingRentalPeriod(anchor.toDate(), cycleIndex);
-  let generationDate = dayjs(period.coverageStart).subtract(5, "day").toDate();
+  let generationDate = dayjs(period.coverageStart).subtract(7, "day").toDate();
   if (reference.isBefore(dayjs(generationDate).startOf("day"))) return null;
   while (true) {
     const next = buildRollingRentalPeriod(anchor.toDate(), cycleIndex + 1);
-    const nextGeneration = dayjs(next.coverageStart).subtract(5, "day");
+    const nextGeneration = dayjs(next.coverageStart).subtract(7, "day");
     if (reference.isBefore(nextGeneration.startOf("day"))) break;
     cycleIndex += 1;
     period = next;

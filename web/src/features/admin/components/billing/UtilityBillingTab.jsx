@@ -62,6 +62,7 @@ import {
 import { getRoomLabel } from "../../../../shared/utils/roomLabel.js";
 import { fmtDate } from "../../utils/formatters";
 import { ExportButtons } from "../../pages/analyticsTabShared";
+import { AdminTablePageSkeleton } from "../AdminContentSkeletons";
 import useBillingNotifier from "./shared/useBillingNotifier";
 import "./shared/BillingDelta.css";
 import BillingCycleDetailModal from "./BillingCycleDetailModal";
@@ -97,6 +98,25 @@ const getRoomFloor = (r) => {
   return "1";
 };
 const WATER_BILLABLE_ROOM_TYPES = new Set(["private", "double-sharing"]);
+const MAX_METER_READING = 999999.99;
+const MAX_ELECTRICITY_RATE = 100.00;
+const MAX_WATER_RATE = 100000.00;
+
+const sanitizeNumericInput = (val, maxDecimals = 2, maxWholeDigits = 6) => {
+  if (!val) return "";
+  let clean = String(val).replace(/[^0-9.]/g, "");
+  const parts = clean.split(".");
+  if (parts.length > 2) {
+    clean = parts[0] + "." + parts.slice(1).join("");
+  }
+  const [whole, decimal] = clean.split(".");
+  const limitedWhole = whole ? whole.slice(0, maxWholeDigits) : "";
+  if (decimal !== undefined) {
+    return `${limitedWhole}.${decimal.slice(0, maxDecimals)}`;
+  }
+  return limitedWhole;
+};
+
 const fmtCurrency = (val) =>
   val != null
     ? `PHP ${Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -676,7 +696,7 @@ const UtilityBillingTab = ({
   const [periodSearch, setPeriodSearch] = useState("");
 
   const rooms = useMemo(() => {
-    const list = roomsData?.rooms || [];
+    const list = (roomsData?.rooms || []).filter((room) => room.branch !== "guadalupe");
     if (utilityType !== "water") return list;
     return list.filter((room) => WATER_BILLABLE_ROOM_TYPES.has(room.type));
   }, [roomsData?.rooms, utilityType]);
@@ -1621,7 +1641,7 @@ const UtilityBillingTab = ({
     } catch (err) {
       notify.error(
         err,
-        `Failed to send ${utilityType === "water" ? "water" : "electricity"} for ${roomName}.`,
+        `Unable to send ${utilityType === "water" ? "water" : "electricity"} charges for ${roomName}. Please try again.`,
       );
       throw err;
     } finally {
@@ -2209,21 +2229,11 @@ const UtilityBillingTab = ({
     effectiveBranch === "guadalupe";
 
   if (isGuadaUtility) {
-    return (
-      <section className="space-y-4" aria-label={`${utilityType} billing workspace`}>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
-          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
-            Utility billing not applicable for Guadalupe
-          </p>
-          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-            Guadalupe uses a fixed-rate billing setup. Separate electricity and
-            water utility billing are not used for this branch. Optional
-            appliance/device fees are handled through reservation recurring fees
-            when applicable.
-          </p>
-        </div>
-      </section>
-    );
+    return null;
+  }
+
+  if (roomsLoading && !roomsData) {
+    return <AdminTablePageSkeleton />;
   }
 
   return (
@@ -2424,18 +2434,6 @@ const UtilityBillingTab = ({
             </div>
           ) : (
             <>
-              {selectedRoom?.branch === "guadalupe" && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-                  <div className="font-semibold flex items-center gap-1.5">
-                    <Info size={14} className="text-amber-600 shrink-0" />
-                    Fixed-Rate Utility Setup (Guadalupe)
-                  </div>
-                  <div className="mt-1 text-amber-700 dark:text-amber-400">
-                    Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch. Optional appliance/device fees are handled through reservation recurring fees when applicable.
-                  </div>
-                </div>
-              )}
-
               <div className="rounded-[14px] border border-border bg-card px-5 py-4 shadow-[0_1px_0_rgba(15,23,42,0.02)]">
                 <div className="flex items-center gap-3">
                   <span
@@ -2545,30 +2543,16 @@ const UtilityBillingTab = ({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <div className="relative inline-block group">
                   <button
-                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold"
                     style={{
                       background: "var(--primary)",
                       color: "var(--primary-foreground)",
                     }}
                     onClick={() => setIsNewPeriodModalOpen(true)}
-                    disabled={selectedRoom?.branch === "guadalupe"}
                   >
-                    <Plus size={12} /> {selectedRoom?.branch === "guadalupe" ? "Fixed-Rate Branch" : "New Billing Period"}
+                    <Plus size={12} /> New Billing Period
                   </button>
-                  {selectedRoom?.branch === "guadalupe" && (
-                    <div className="pointer-events-none absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 w-64 rounded-lg bg-slate-900 p-2.5 text-xs text-white shadow-xl dark:bg-slate-800 dark:text-slate-100 border border-slate-700">
-                      <div className="font-semibold text-amber-400 flex items-center gap-1.5 mb-1">
-                        <Info size={13} /> Fixed-Rate Utility Branch
-                      </div>
-                      <div>
-                        Guadalupe uses fixed-rate billing. Separate sub-metered utility cycles are not used for this branch.
-                      </div>
-                      <div className="absolute top-full right-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-800" />
-                    </div>
-                  )}
-                </div>
                 <ExportButtons
                   onCsv={handleExportRows}
                   onPdf={handleExportPdf}
@@ -3100,22 +3084,33 @@ const UtilityBillingTab = ({
                 )}
                 <div className="grid gap-3 md:grid-cols-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-muted-foreground">
-                      Reading ({utilityType === "electricity" ? "kWh" : "cu.m."})
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-muted-foreground">
+                        Reading ({utilityType === "electricity" ? "kWh" : "cu.m."})
+                      </label>
+                      <span className="text-[10px] text-muted-foreground">
+                        Max: 999,999.99
+                      </span>
+                    </div>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
                       style={{ outlineColor: "var(--ring)" }}
                       value={editReadingForm.reading}
                       onChange={(e) =>
                         setEditReadingForm({
                           ...editReadingForm,
-                          reading: e.target.value,
+                          reading: sanitizeNumericInput(e.target.value, 2, 6),
                         })
                       }
                       autoFocus
                     />
+                    {parseFloat(editReadingForm.reading) > MAX_METER_READING && (
+                      <p className="text-[11px] font-medium text-red-500 mt-1">
+                        Reading cannot exceed 999,999.99
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-muted-foreground">
@@ -3165,7 +3160,12 @@ const UtilityBillingTab = ({
                     color: "var(--primary-foreground)",
                   }}
                   onClick={handleSaveEditReading}
-                  disabled={updateReading.isPending || isBelowBaseline}
+                  disabled={
+                    updateReading.isPending ||
+                    isBelowBaseline ||
+                    parseFloat(editReadingForm.reading) > MAX_METER_READING ||
+                    !editReadingForm.reading
+                  }
                 >
                   <Check size={13} />{" "}
                   {updateReading.isPending ? "Saving..." : "Save Changes"}
@@ -3199,196 +3199,298 @@ const UtilityBillingTab = ({
         );
       })()}
 
-      {editPeriodModal.open && (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center p-4 backdrop-blur-sm"
-          style={{
-            background:
-              "color-mix(in srgb, var(--background) 60%, transparent)",
-          }}
-          onClick={() => setEditPeriodModal({ open: false, periodId: null })}
-        >
+      {editPeriodModal.open && (() => {
+        const editedPeriod = periodList.find(
+          (p) => p.id === editPeriodModal.periodId,
+        );
+        const nextPeriodInChain = periodList.find(
+          (p) =>
+            p.id !== editPeriodModal.periodId &&
+            p.startDate &&
+            editedPeriod?.endDate &&
+            new Date(p.startDate) >= new Date(editedPeriod.endDate),
+        );
+        const hasDownstreamMismatch = Boolean(
+          nextPeriodInChain &&
+            utilityType === "electricity" &&
+            editPeriodForm.endReading !== "" &&
+            Number(editPeriodForm.endReading) !==
+              Number(editedPeriod?.endReading),
+        );
+
+        const startNum = parseFloat(editPeriodForm.startReading);
+        const endNum = parseFloat(editPeriodForm.endReading);
+        const rateNum = parseFloat(editPeriodForm.ratePerUnit);
+        const maxRate =
+          utilityType === "electricity" ? MAX_ELECTRICITY_RATE : MAX_WATER_RATE;
+
+        const isRateInvalid =
+          !isNaN(rateNum) && (rateNum < 0 || rateNum > maxRate);
+        const isStartReadingExceedsMax =
+          !isNaN(startNum) && startNum > MAX_METER_READING;
+        const isEndReadingExceedsMax =
+          !isNaN(endNum) && endNum > MAX_METER_READING;
+        const isReadingLower =
+          utilityType === "electricity" &&
+          !isNaN(startNum) &&
+          !isNaN(endNum) &&
+          endNum < startNum;
+
+        const isSaveDisabled =
+          updatePeriod.isPending ||
+          isRateInvalid ||
+          isStartReadingExceedsMax ||
+          isEndReadingExceedsMax ||
+          isReadingLower ||
+          !editPeriodForm.startDate ||
+          !editPeriodForm.endDate ||
+          !editPeriodForm.ratePerUnit;
+
+        return (
           <div
-            className="w-full max-w-xl rounded-2xl border border-border bg-card shadow-xl"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-40 flex items-center justify-center p-4 backdrop-blur-sm"
+            style={{
+              background:
+                "color-mix(in srgb, var(--background) 60%, transparent)",
+            }}
+            onClick={() => setEditPeriodModal({ open: false, periodId: null })}
           >
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <span className="text-sm font-semibold text-foreground">
-                Edit Billing Period
-              </span>
-              <button
-                className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-card-foreground"
-                onClick={() =>
-                  setEditPeriodModal({ open: false, periodId: null })
-                }
-              >
-                <X size={15} />
-              </button>
-            </div>
-            <div className="grid gap-3 px-5 py-4 md:grid-cols-2">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">
-                  Cycle Start
-                </label>
-                <input
-                  type="date"
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
-                  style={{ outlineColor: "var(--ring)" }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "var(--ring)";
-                    e.currentTarget.style.boxShadow =
-                      "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "";
-                    e.currentTarget.style.boxShadow = "";
-                  }}
-                  value={editPeriodForm.startDate}
-                  onChange={(e) =>
-                    setEditPeriodForm((current) => ({
-                      ...current,
-                      startDate: e.target.value,
-                    }))
+            <div
+              className="w-full max-w-xl rounded-2xl border border-border bg-card shadow-xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                <span className="text-sm font-semibold text-foreground">
+                  Edit Billing Period
+                </span>
+                <button
+                  className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-card-foreground"
+                  onClick={() =>
+                    setEditPeriodModal({ open: false, periodId: null })
                   }
-                />
+                >
+                  <X size={15} />
+                </button>
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">
-                  Cycle End
-                </label>
-                <input
-                  type="date"
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
-                  style={{ outlineColor: "var(--ring)" }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "var(--ring)";
-                    e.currentTarget.style.boxShadow =
-                      "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "";
-                    e.currentTarget.style.boxShadow = "";
-                  }}
-                  value={editPeriodForm.endDate}
-                  onChange={(e) =>
-                    setEditPeriodForm((current) => ({
-                      ...current,
-                      endDate: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-              {utilityType === "electricity" && (
-                <>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-muted-foreground">
-                      Start Meter Reading
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
-                      style={{ outlineColor: "var(--ring)" }}
-                      onFocus={(e) => {
-                        e.currentTarget.style.borderColor = "var(--ring)";
-                        e.currentTarget.style.boxShadow =
-                          "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
-                      }}
-                      onBlur={(e) => {
-                        e.currentTarget.style.borderColor = "";
-                        e.currentTarget.style.boxShadow = "";
-                      }}
-                      value={editPeriodForm.startReading}
-                      onChange={(e) =>
-                        setEditPeriodForm((current) => ({
-                          ...current,
-                          startReading: e.target.value,
-                        }))
-                      }
-                    />
+              <div className="grid gap-3 px-5 py-4 md:grid-cols-2">
+                {hasDownstreamMismatch && (
+                  <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground md:col-span-2">
+                    <AlertCircle size={14} className="shrink-0 mt-0.5 text-amber-500" />
+                    <div className="leading-relaxed">
+                      <span className="font-medium text-foreground">Chain Discrepancy:</span> Changing final reading from <span className="font-medium text-foreground">{editedPeriod?.endReading} kWh</span> to <span className="font-medium text-foreground">{editPeriodForm.endReading} kWh</span> creates a gap with the next cycle (starts at {nextPeriodInChain?.startReading} kWh).
+                    </div>
                   </div>
-                  <div className="space-y-1">
+                )}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Cycle Start
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
+                    style={{ outlineColor: "var(--ring)" }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = "var(--ring)";
+                      e.currentTarget.style.boxShadow =
+                        "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = "";
+                      e.currentTarget.style.boxShadow = "";
+                    }}
+                    value={editPeriodForm.startDate}
+                    onChange={(e) =>
+                      setEditPeriodForm((current) => ({
+                        ...current,
+                        startDate: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Cycle End
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
+                    style={{ outlineColor: "var(--ring)" }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = "var(--ring)";
+                      e.currentTarget.style.boxShadow =
+                        "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = "";
+                      e.currentTarget.style.boxShadow = "";
+                    }}
+                    value={editPeriodForm.endDate}
+                    onChange={(e) =>
+                      setEditPeriodForm((current) => ({
+                        ...current,
+                        endDate: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                {utilityType === "electricity" && (
+                  <>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-muted-foreground">
+                          Start Meter Reading
+                        </label>
+                        <span className="text-[10px] text-muted-foreground">
+                          Max: 999,999.99
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className={`w-full rounded-lg border px-3 py-2 text-sm text-card-foreground focus:outline-none ${
+                          isStartReadingExceedsMax ? "border-red-500" : "border-border"
+                        }`}
+                        style={{ outlineColor: "var(--ring)" }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = "var(--ring)";
+                          e.currentTarget.style.boxShadow =
+                            "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = "";
+                          e.currentTarget.style.boxShadow = "";
+                        }}
+                        value={editPeriodForm.startReading}
+                        onChange={(e) =>
+                          setEditPeriodForm((current) => ({
+                            ...current,
+                            startReading: sanitizeNumericInput(e.target.value, 2, 6),
+                          }))
+                        }
+                      />
+                      {isStartReadingExceedsMax && (
+                        <p className="text-[11px] font-medium text-red-500 mt-1">
+                          Reading cannot exceed 999,999.99 kWh
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-muted-foreground">
+                          End Meter Reading
+                        </label>
+                        <span className="text-[10px] text-muted-foreground">
+                          Max: 999,999.99
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className={`w-full rounded-lg border px-3 py-2 text-sm text-card-foreground focus:outline-none ${
+                          isEndReadingExceedsMax || isReadingLower
+                            ? "border-red-500"
+                            : "border-border"
+                        }`}
+                        style={{ outlineColor: "var(--ring)" }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = "var(--ring)";
+                          e.currentTarget.style.boxShadow =
+                            "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = "";
+                          e.currentTarget.style.boxShadow = "";
+                        }}
+                        value={editPeriodForm.endReading}
+                        onChange={(e) =>
+                          setEditPeriodForm((current) => ({
+                            ...current,
+                            endReading: sanitizeNumericInput(e.target.value, 2, 6),
+                          }))
+                        }
+                      />
+                      {isEndReadingExceedsMax ? (
+                        <p className="text-[11px] font-medium text-red-500 mt-1">
+                          Reading cannot exceed 999,999.99 kWh
+                        </p>
+                      ) : isReadingLower ? (
+                        <p className="text-[11px] font-medium text-red-500 mt-1">
+                          Cannot be lower than opening reading ({editPeriodForm.startReading})
+                        </p>
+                      ) : null}
+                    </div>
+                  </>
+                )}
+                <div className="space-y-1 md:col-span-2">
+                  <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-muted-foreground">
-                      End Meter Reading
+                      Rate (PHP/{utilityType === "electricity" ? "kWh" : "cu.m."})
                     </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
-                      style={{ outlineColor: "var(--ring)" }}
-                      onFocus={(e) => {
-                        e.currentTarget.style.borderColor = "var(--ring)";
-                        e.currentTarget.style.boxShadow =
-                          "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
-                      }}
-                      onBlur={(e) => {
-                        e.currentTarget.style.borderColor = "";
-                        e.currentTarget.style.boxShadow = "";
-                      }}
-                      value={editPeriodForm.endReading}
-                      onChange={(e) =>
-                        setEditPeriodForm((current) => ({
-                          ...current,
-                          endReading: e.target.value,
-                        }))
-                      }
-                    />
+                    <span className="text-[10px] text-muted-foreground">
+                      Max: ₱{maxRate.toLocaleString()}
+                    </span>
                   </div>
-                </>
-              )}
-              <div className="space-y-1 md:col-span-2">
-                <label className="text-xs font-semibold text-muted-foreground">
-                  Rate
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
-                  style={{ outlineColor: "var(--ring)" }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "var(--ring)";
-                    e.currentTarget.style.boxShadow =
-                      "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "";
-                    e.currentTarget.style.boxShadow = "";
-                  }}
-                  value={editPeriodForm.ratePerUnit}
-                  onChange={(e) =>
-                    setEditPeriodForm((current) => ({
-                      ...current,
-                      ratePerUnit: e.target.value,
-                    }))
-                  }
-                />
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className={`w-full rounded-lg border px-3 py-2 text-sm text-card-foreground focus:outline-none ${
+                      isRateInvalid ? "border-red-500" : "border-border"
+                    }`}
+                    style={{ outlineColor: "var(--ring)" }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = "var(--ring)";
+                      e.currentTarget.style.boxShadow =
+                        "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = "";
+                      e.currentTarget.style.boxShadow = "";
+                    }}
+                    value={editPeriodForm.ratePerUnit}
+                    onChange={(e) =>
+                      setEditPeriodForm((current) => ({
+                        ...current,
+                        ratePerUnit: sanitizeNumericInput(
+                          e.target.value,
+                          2,
+                          utilityType === "electricity" ? 3 : 6,
+                        ),
+                      }))
+                    }
+                  />
+                  {isRateInvalid && (
+                    <p className="text-[11px] font-medium text-red-500 mt-1">
+                      Rate cannot exceed ₱{maxRate.toLocaleString()}
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
-              <button
-                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold"
-                style={{
-                  background: "var(--primary)",
-                  color: "var(--primary-foreground)",
-                }}
-                onClick={handleSaveEditPeriod}
-                disabled={updatePeriod.isPending}
-              >
-                <Save size={13} />{" "}
-                {updatePeriod.isPending ? "Saving..." : "Save Changes"}
-              </button>
-              <button
-                className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted"
-                onClick={() =>
-                  setEditPeriodModal({ open: false, periodId: null })
-                }
-              >
-                Cancel
-              </button>
+              <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
+                <button
+                  className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    background: "var(--primary)",
+                    color: "var(--primary-foreground)",
+                  }}
+                  onClick={handleSaveEditPeriod}
+                  disabled={isSaveDisabled}
+                >
+                  <Save size={13} />{" "}
+                  {updatePeriod.isPending ? "Saving..." : "Save Changes"}
+                </button>
+                <button
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted"
+                  onClick={() =>
+                    setEditPeriodModal({ open: false, periodId: null })
+                  }
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <section className="lg:col-span-2 flex max-h-[600px] flex-col rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3465,6 +3567,9 @@ const UtilityBillingTab = ({
                           </span>
                         )}
                       </span>
+                      {row.bedName && (
+                        <span>Bed {row.bedName}</span>
+                      )}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {row.reading != null
@@ -3553,6 +3658,9 @@ const UtilityBillingTab = ({
         latestReading={latestData?.reading}
         defaultRatePerUnit={defaultRatePerUnit}
         roomBranch={selectedRoom?.branch}
+        roomName={getRoomLabel(selectedRoom) || selectedRoom?.name || selectedRoom?.roomNumber || ""}
+        activeTenantCount={selectedRoom?.activeTenantCount ?? selectedRoom?.occupants?.length ?? 0}
+        periods={periodList}
         onSuccess={(newPeriodId) => {
           if (newPeriodId) {
             selectAndFocusPeriod(newPeriodId);

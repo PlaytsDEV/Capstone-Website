@@ -35,6 +35,7 @@ import {
   Upload,
 } from "lucide-react";
 import { backupApi } from "../../../shared/api/backupApi";
+import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import "../styles/admin-backup.css";
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
@@ -477,6 +478,10 @@ export default function SystemBackupPage() {
 
   const isBackupRunning = records.some((r) => r.status === "in_progress");
   const isAnyOperationRunning = isBackupRunning || restoreLoading || uploadLoading;
+
+  if (configLoading && historyLoading && records.length === 0) {
+    return <AdminTablePageSkeleton />;
+  }
 
   return (
     <div className="backup-page">

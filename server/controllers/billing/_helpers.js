@@ -740,7 +740,7 @@ export function resolveRentCycleForBillingMonth(reservation, billingMonth) {
       billingCycleStart: period.coverageStart,
       billingCycleEnd: period.coverageEndExclusive,
       dueDate: period.coverageStart,
-      generationDate: dayjs(period.coverageStart).subtract(5, "day").toDate(),
+      generationDate: dayjs(period.coverageStart).subtract(7, "day").toDate(),
       cycleIndex,
       structured: true,
     };

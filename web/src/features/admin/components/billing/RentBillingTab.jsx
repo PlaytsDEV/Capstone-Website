@@ -28,6 +28,7 @@ import { useAdminPayments } from "../../../../shared/hooks/queries/useBilling";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { showConfirmation, showNotification } from "../../../../shared/utils/notification";
 import { fmtCurrency, fmtDate, fmtMonth, formatBranch } from "../../utils/formatters";
+import { AdminTablePageSkeleton } from "../AdminContentSkeletons";
 import {
   buildPaymentLedgerByBillId as buildSharedPaymentLedgerByBillId,
   formatAdminPaymentMode,
@@ -46,6 +47,7 @@ const BRANCH_OPTIONS = [
 
 const TENANT_STATUS_LABELS = {
   ready: "Upcoming",
+  pending_generation: "Pending Generation",
   generated: "Generated",
   sent: "Sent",
   paid: "Paid",
@@ -77,6 +79,28 @@ const normalizeAmount = (value) => {
 const formatCycle = (start, end) => {
   if (!start || !end) return "Missing cycle";
   return `${fmtDate(start)} - ${fmtDate(end)}`;
+};
+
+const isGenerationDatePast = (date) => {
+  if (!date) return false;
+  const genDate = new Date(date);
+  if (Number.isNaN(genDate.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  genDate.setHours(0, 0, 0, 0);
+  return genDate.getTime() < today.getTime();
+};
+
+const getNextCronCountdown = () => {
+  const now = new Date();
+  const utcTime = now.getTime() + now.getTimezoneOffset() * 60000;
+  const manilaTime = new Date(utcTime + 8 * 3600000);
+  const nextMidnight = new Date(manilaTime);
+  nextMidnight.setHours(24, 0, 0, 0);
+  const diffMs = nextMidnight.getTime() - manilaTime.getTime();
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffMinutes = Math.floor((diffMs % 3600000) / 60000);
+  return `${diffHours}h ${diffMinutes}m`;
 };
 
 const buildPdfFilename = (bill) =>
@@ -168,6 +192,7 @@ const getStatusStyles = (status) => {
     case "sent": return "bg-blue-50 text-blue-800 border-blue-200 font-bold shadow-xs";
     case "generated": return "bg-amber-50 text-amber-900 border-amber-200 font-bold shadow-xs";
     case "ready": return "bg-slate-100 text-slate-800 border-slate-200 font-bold shadow-xs";
+    case "pending_generation": return "bg-amber-50 text-amber-900 border-amber-300 font-bold shadow-xs";
     case "overdue": return "bg-red-50 text-red-800 border-red-200 font-bold shadow-xs";
     case "missing_data": return "bg-red-100 text-red-900 border-red-200 font-bold shadow-xs";
     default: return "bg-muted text-muted-foreground border-border font-semibold";
@@ -287,10 +312,10 @@ export default function RentBillingTab({ isActive }) {
   
   const [tenants, setTenants] = useState([]);
   const [bills, setBills] = useState([]);
-  const [amounts, setAmounts] = useState({});
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('all'); // all, upcoming, overdue, exceptions
   const [searchQuery, setSearchQuery] = useState("");
+  const [cronCountdown, setCronCountdown] = useState(getNextCronCountdown());
 
   const [previewLoadingId, setPreviewLoadingId] = useState(null);
   const [generatingId, setGeneratingId] = useState(null);
@@ -304,6 +329,14 @@ export default function RentBillingTab({ isActive }) {
   const branchParam = branch || undefined;
   const canLoad = isOwner || Boolean(branch);
 
+  // Keep cron countdown fresh
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCronCountdown(getNextCronCountdown());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   const loadData = useCallback(async () => {
     if (!canLoad || !isActive) return;
     setLoading(true);
@@ -312,17 +345,8 @@ export default function RentBillingTab({ isActive }) {
         billingApi.getRentBillableTenants({ branch: branchParam, month }),
         billingApi.getRentBills({ branch: branchParam, month, limit: 1000 }),
       ]);
-      const nextTenants = tenantData?.tenants || [];
-      setTenants(nextTenants);
+      setTenants(tenantData?.tenants || []);
       setBills(billData?.bills || []);
-      setAmounts((current) => {
-        const next = { ...current };
-        nextTenants.forEach((tenant) => {
-          const key = getId(tenant.reservationId);
-          if (next[key] == null) next[key] = tenant.monthlyRent || "";
-        });
-        return next;
-      });
     } catch (error) {
       showNotification(error?.message || "Failed to load rent billing.", "error");
     } finally {
@@ -343,17 +367,25 @@ export default function RentBillingTab({ isActive }) {
 
   const billsById = useMemo(() => new Map(bills.map((b) => [getId(b.id || b._id), b])), [bills]);
 
-  // Derived state for the table
+  // Derived state for the table with contract-rate locking and pending generation detection
   const tableRows = useMemo(() => {
     return tenants.map((tenant) => {
       const bill = getTenantBill(tenant, billsById);
       const billId = getId(bill?.id || bill?._id);
       const paymentRecord = billId ? paymentsByBillId.get(billId) : null;
       const normalizedBill = getNormalizedBillSnapshot(bill, paymentRecord);
-      const status = bill ? normalizedBill.status : getTenantStatus(tenant, bill, paymentRecord);
+      const baseStatus = bill ? normalizedBill.status : getTenantStatus(tenant, bill, paymentRecord);
       
-      const isMissingData = status === "missing_data" || normalizeAmount(amounts[getId(tenant.reservationId)] ?? tenant.monthlyRent) <= 0;
-      const computedStatus = isMissingData ? "missing_data" : status;
+      const contractRate = normalizeAmount(tenant.monthlyRent || tenant.pricingSnapshot?.finalMonthlyRate || 0);
+      const isMissingData = baseStatus === "missing_data" || contractRate <= 0;
+      
+      const genDate = tenant.nextBillingDate || tenant.billingCycle?.generationDate;
+      const isPastGen = isGenerationDatePast(genDate);
+      
+      let computedStatus = isMissingData ? "missing_data" : baseStatus;
+      if (computedStatus === "ready" && isPastGen) {
+        computedStatus = "pending_generation";
+      }
 
       return {
         ...tenant,
@@ -361,20 +393,26 @@ export default function RentBillingTab({ isActive }) {
         paymentRecord,
         normalizedBill,
         computedStatus,
-        daysOverdue: normalizedBill.daysOverdue
+        contractRate,
+        daysOverdue: normalizedBill.daysOverdue,
+        isPastGen,
       };
     }).sort((a, b) => {
-      // Sort by status priority: exceptions -> overdue -> upcoming -> generated -> paid
-      const order = { missing_data: 1, overdue: 2, ready: 3, generated: 4, sent: 5, partially_paid: 6, paid: 7 };
+      // Sort by status priority: exceptions -> overdue -> pending_generation -> ready -> generated -> sent -> partially_paid -> paid
+      const order = { missing_data: 1, overdue: 2, pending_generation: 3, ready: 4, generated: 5, sent: 6, partially_paid: 7, paid: 8 };
       return (order[a.computedStatus] || 99) - (order[b.computedStatus] || 99);
     });
-  }, [tenants, billsById, paymentsByBillId, amounts]);
+  }, [tenants, billsById, paymentsByBillId]);
 
   const filteredRows = useMemo(() => {
     let rows = tableRows;
-    if (activeTab === 'upcoming') rows = rows.filter(r => r.computedStatus === 'ready');
-    else if (activeTab === 'overdue') rows = rows.filter(r => r.computedStatus === 'overdue');
-    else if (activeTab === 'exceptions') rows = rows.filter(r => r.computedStatus === 'missing_data');
+    if (activeTab === 'upcoming') {
+      rows = rows.filter(r => r.computedStatus === 'ready' || r.computedStatus === 'pending_generation');
+    } else if (activeTab === 'overdue') {
+      rows = rows.filter(r => r.computedStatus === 'overdue');
+    } else if (activeTab === 'exceptions') {
+      rows = rows.filter(r => r.computedStatus === 'missing_data');
+    }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -395,11 +433,12 @@ export default function RentBillingTab({ isActive }) {
     let upcoming = 0;
 
     tableRows.forEach(row => {
-      const amount = normalizeAmount(amounts[getId(row.reservationId)] ?? row.monthlyRent);
+      const applianceFee = Number(row.applianceFees || row.charges?.applianceFees || 0);
+      const amount = row.contractRate + (Number.isFinite(applianceFee) ? applianceFee : 0);
       expected += amount;
 
       if (row.computedStatus === 'missing_data') exceptions++;
-      if (row.computedStatus === 'ready') upcoming++;
+      if (row.computedStatus === 'ready' || row.computedStatus === 'pending_generation') upcoming++;
 
       if (row.bill) {
         collected += row.normalizedBill.paidAmount;
@@ -410,7 +449,7 @@ export default function RentBillingTab({ isActive }) {
     const collectionPercent = expected > 0 ? Math.min(100, Math.round((collected / expected) * 100)) : 0;
 
     return { expected, collected, outstanding, exceptions, upcoming, collectionPercent };
-  }, [tableRows, amounts]);
+  }, [tableRows]);
 
   const sendableRows = useMemo(
     () => tableRows.filter(
@@ -421,10 +460,10 @@ export default function RentBillingTab({ isActive }) {
 
   const sendableTotalAmount = useMemo(
     () => sendableRows.reduce(
-      (sum, r) => sum + normalizeAmount(amounts[getId(r.reservationId)] ?? r.monthlyRent),
+      (sum, r) => sum + r.contractRate,
       0
     ),
-    [sendableRows, amounts]
+    [sendableRows]
   );
 
   const handlePreview = async (tenant) => {
@@ -435,7 +474,7 @@ export default function RentBillingTab({ isActive }) {
         reservationId,
         branch: tenant.branch || branch,
         billingMonth: month,
-        rentAmount: normalizeAmount(amounts[reservationId] ?? tenant.monthlyRent),
+        rentAmount: tenant.contractRate || tenant.monthlyRent,
       };
       const result = await billingApi.previewRentBill(payload);
       setPreview(result?.preview || null);
@@ -452,7 +491,7 @@ export default function RentBillingTab({ isActive }) {
       reservationId: getId(tenant.reservationId),
       branch: tenant.branch || branch,
       billingMonth: month,
-      rentAmount: normalizeAmount(amounts[getId(tenant.reservationId)] ?? tenant.monthlyRent),
+      rentAmount: tenant.contractRate || tenant.monthlyRent,
     };
     setGeneratingId(payload.reservationId);
     try {
@@ -525,6 +564,10 @@ export default function RentBillingTab({ isActive }) {
     await loadData();
   };
 
+  if (loading && tenants.length === 0) {
+    return <AdminTablePageSkeleton />;
+  }
+
   return (
     <section className="space-y-6" aria-label="Rent Billing Observability">
       {/* ── Dashboard Header & KPIs ────────────────────────────────────────────── */}
@@ -535,7 +578,7 @@ export default function RentBillingTab({ isActive }) {
             Automated Rent Lifecycle
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Monitor auto-generated rent bills. Bills generate automatically 5 days before their due date.
+            Monitor auto-generated rent bills. Bills generate automatically 7 days before their due date.
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -625,13 +668,18 @@ export default function RentBillingTab({ isActive }) {
                 Active
               </span>
             </div>
-            <p className="mt-1.5 text-[11px] text-muted-foreground">Generates bills 5 days before due date automatically.</p>
-            <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">Generates bills 7 days before due date automatically.</p>
+            <div className="mt-2 flex items-center justify-between text-[11px]">
+              <div className="flex items-center gap-1.5 font-bold text-emerald-700 dark:text-emerald-400">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                </span>
+                Daily at 12:00 AM
+              </div>
+              <span className="font-semibold text-muted-foreground text-[10px]">
+                Next in ~{cronCountdown}
               </span>
-              Daily at 12:00 AM
             </div>
           </div>
         </div>
@@ -754,6 +802,7 @@ export default function RentBillingTab({ isActive }) {
                 filteredRows.map((row) => {
                   const reservationId = getId(row.reservationId);
                   const isBusy = previewLoadingId === reservationId || generatingId === reservationId;
+                  const genDate = row.nextBillingDate || row.billingCycle?.generationDate;
                   
                   return (
                     <tr key={reservationId} className="group transition-colors hover:bg-muted/30">
@@ -785,6 +834,7 @@ export default function RentBillingTab({ isActive }) {
                         <div className="flex flex-col items-start gap-1">
                           <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getStatusStyles(row.computedStatus)}`}>
                             {row.computedStatus === 'missing_data' && <AlertCircle size={11} />}
+                            {row.computedStatus === 'pending_generation' && <Clock3 size={11} />}
                             {TENANT_STATUS_LABELS[row.computedStatus] || row.computedStatus}
                           </span>
                           {row.daysOverdue > 0 && (
@@ -794,7 +844,12 @@ export default function RentBillingTab({ isActive }) {
                           )}
                           {row.computedStatus === 'ready' && (
                             <p className="text-[10px] font-medium text-muted-foreground">
-                              Generates {fmtDate(row.nextBillingDate || row.billingCycle?.generationDate)}
+                              Auto-generates {fmtDate(genDate)}
+                            </p>
+                          )}
+                          {row.computedStatus === 'pending_generation' && (
+                            <p className="text-[10px] font-semibold text-amber-800 dark:text-amber-300">
+                              Scheduled {fmtDate(genDate)} (Awaiting cycle)
                             </p>
                           )}
                         </div>
@@ -814,17 +869,20 @@ export default function RentBillingTab({ isActive }) {
                             <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">of {fmtCurrency(row.bill.totalAmount)} total</p>
                           </>
                         ) : (
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="number"
-                              className={`w-24 h-7 rounded border bg-background px-2 py-1 text-xs font-semibold shadow-xs transition-colors ${
-                                row.computedStatus === 'missing_data' ? "border-red-400 focus:ring-red-200" : "border-border focus:border-[color:var(--color-accent,#D4AF37)] focus:ring-1 focus:ring-amber-200"
-                              }`}
-                              value={amounts[reservationId] ?? row.monthlyRent ?? ""}
-                              onChange={(e) => setAmounts(cur => ({ ...cur, [reservationId]: e.target.value }))}
-                              placeholder="0.00"
-                            />
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Expected</span>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-card-foreground">
+                                {fmtCurrency(row.contractRate)}
+                              </span>
+                              <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                Contract
+                              </span>
+                            </div>
+                            {Number(row.applianceFees || row.charges?.applianceFees || 0) > 0 && (
+                              <p className="mt-0.5 text-[10px] font-medium text-muted-foreground">
+                                +{fmtCurrency(row.applianceFees || row.charges?.applianceFees)} appliance fee
+                              </p>
+                            )}
                           </div>
                         )}
                       </td>
@@ -836,7 +894,7 @@ export default function RentBillingTab({ isActive }) {
                               onClick={() => handlePreview(row)}
                               disabled={isBusy || row.computedStatus === 'missing_data'}
                               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-card disabled:active:scale-100"
-                              title={row.computedStatus === 'missing_data' ? "Rent amount missing. Enter expected monthly rent to enable force generation." : "Manually force rent bill generation before the auto-scheduled date"}
+                              title={row.computedStatus === 'missing_data' ? "Contract rate missing. Update tenant contract pricing to enable force generation." : "Manually force rent bill generation before the auto-scheduled date"}
                             >
                               {isBusy ? <LoaderCircle size={13} className="animate-spin text-muted-foreground" /> : <Settings size={13} className="text-[color:var(--color-accent,#D4AF37)]" />}
                               Force Generate

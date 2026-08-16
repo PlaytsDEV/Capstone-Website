@@ -539,6 +539,22 @@ export const submitApplication = async (req, res, next) => {
           "Pending-review notification failed (non-fatal)",
         );
       }
+
+      try {
+        const applicantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
+        const roomName = updatedReservation.roomId?.name || "";
+        const branchName = updatedReservation.roomId?.branch || dbUser.branch || "";
+        notify
+          .newApplicationSubmitted(
+            branchName,
+            applicantName,
+            roomName,
+            updatedReservation._id,
+          )
+          .catch((e) => logger.warn({ err: e }, "Admin application submission notification failed (non-fatal)"));
+      } catch (adminNotifErr) {
+        // non-fatal
+      }
     }
   } catch (error) {
     if (isActiveBedAssignmentDuplicateError(error)) {
@@ -649,6 +665,22 @@ export const uploadPaymentProof = async (req, res, next) => {
       });
     } catch (socketErr) {
       logger.warn({ err: socketErr }, "Socket emit failed after tenant proof upload (non-fatal)");
+    }
+
+    try {
+      const tenantName = `${updatedReservation.userId?.firstName || ""} ${updatedReservation.userId?.lastName || ""}`.trim() || updatedReservation.userId?.email || dbUser.email;
+      const branchName = updatedReservation.roomId?.branch || dbUser.branch || "";
+      notify
+        .paymentProofSubmitted(
+          branchName,
+          tenantName,
+          "Reservation Deposit",
+          0,
+          updatedReservation._id,
+        )
+        .catch((e) => logger.warn({ err: e }, "Payment proof admin notification failed (non-fatal)"));
+    } catch (adminPayNotifErr) {
+      // non-fatal
     }
   } catch (error) {
     logger.error(

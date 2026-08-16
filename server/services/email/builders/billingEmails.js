@@ -77,7 +77,7 @@ export const buildOverdueNoticeEmail = ({
       ) +
       statPanel(
         stat("Total Amount (incl. penalty)", `₱${TOTAL_AMOUNT}`) +
-        `<p style="color:#a9841f;font-size:13px;margin:10px 0 0;">Includes ₱${escapeHtml(String(PENALTY))} in late penalties</p>`,
+        `<p style="color:#92400E;font-size:13px;margin:10px 0 0;">Includes ₱${escapeHtml(String(PENALTY))} in late penalties</p>`,
       ) +
       p("Please settle your payment immediately to avoid further charges.", { size: "14px" }),
   });

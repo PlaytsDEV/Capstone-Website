@@ -16,36 +16,31 @@ const api = fs.readFileSync(
   "utf8",
 );
 
-test("manual Reservation proof review is mounted in the active Billing workspace", () => {
+test("Reservation payments tab is mounted in the active Billing workspace", () => {
   assert.match(page, /ReservationPaymentReviewTab/);
   assert.match(page, /reservation-payments/);
-  assert.match(component, /Reservation Payment Review/);
+  assert.match(component, /Reservation Payments/);
   assert.match(component, /Expected/);
   assert.match(component, /Submitted/);
-  assert.match(component, /View Payment Proof/);
+  assert.match(component, /Settlement Variance/);
 });
 
-test("manual approval is gated and confirmed PayMongo entries are informational", () => {
-  assert.match(
-    component,
-    /payment\.source === "manual_proof" && payment\.status === "under_review"/,
-  );
-  assert.match(component, /Automatically confirmed by PayMongo/);
-  assert.match(component, /No manual approval action available for this payment/);
+test("PayMongo automated entries are informational and manual proof is removed", () => {
+  assert.match(component, /Verified via PayMongo/);
+  assert.doesNotMatch(component, /Manual Proofs/);
+  assert.doesNotMatch(component, /Financial Review Decision/);
+  assert.doesNotMatch(component, /View Payment Proof Receipt/);
 });
 
-test("decision modal preserves backend errors and prevents duplicate clicks", () => {
+test("alert banner handles request errors without raw exceptions", () => {
   assert.match(component, /role="alert"/);
   assert.match(component, /setError\(errorMessage\(requestError\)\)/);
-  assert.match(component, /if \(!decision \|\| saving\) return/);
-  assert.match(component, /PAYMENT_REJECTION_REASON_REQUIRED/);
-  assert.match(component, /disabled=\{saving\}/);
+  assert.match(component, /currentPage/);
+  assert.match(component, /itemsPerPage/);
 });
 
-test("frontend calls only dedicated proof decision endpoints", () => {
+test("frontend calls payment ledger and does not mutate reservation status directly", () => {
   assert.match(api, /listPaymentProofReviews/);
-  assert.match(api, /approvePaymentProof/);
-  assert.match(api, /rejectPaymentProof/);
   assert.doesNotMatch(component, /paymentStatus\s*:/);
   assert.doesNotMatch(component, /status\s*:\s*"reserved"/);
 });

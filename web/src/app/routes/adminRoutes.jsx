@@ -18,7 +18,6 @@ import {
   InquiriesPage,
   AnalyticsPage,
   AnalyticsDetailsPage,
-  SurveyAnalyticsPage,
   BranchManagementPage,
   RolePermissionsPage,
   SystemSettingsPage,
@@ -36,6 +35,7 @@ import {
   AdminDashboardSkeleton,
   AdminTablePageSkeleton,
   AdminCardGridSkeleton,
+  AdminMaintenanceSkeleton,
   AdminFormPageSkeleton,
   AdminChatSkeleton,
 } from "../../features/admin/components/AdminContentSkeletons";
@@ -87,23 +87,11 @@ export function AdminRoutes() {
       />
       <Route
         path="contracts"
-        element={
-          <RequirePermission permission="manageTenants">
-            <RouteShell name="Contracts" fallback={<AdminTablePageSkeleton />}>
-              <AdminContractsPage />
-            </RouteShell>
-          </RequirePermission>
-        }
+        element={<Navigate to="/admin/tenants" replace />}
       />
       <Route
         path="contracts/:contractId"
-        element={
-          <RequirePermission permission="manageTenants">
-            <RouteShell name="ContractDetails" fallback={<AdminTablePageSkeleton />}>
-              <AdminContractsPage />
-            </RouteShell>
-          </RequirePermission>
-        }
+        element={<Navigate to="/admin/tenants" replace />}
       />
       <Route
         path="audit-logs"
@@ -152,7 +140,7 @@ export function AdminRoutes() {
       <Route
         path="maintenance"
         element={
-          <RouteShell name="AdminMaintenance" fallback={<AdminCardGridSkeleton />}>
+          <RouteShell name="AdminMaintenance" fallback={<AdminMaintenanceSkeleton />}>
             <MaintenancePage />
           </RouteShell>
         }
@@ -164,10 +152,6 @@ export function AdminRoutes() {
             <AnalyticsPage />
           </RouteShell>
         }
-      />
-      <Route
-        path="analytics/feedback-surveys"
-        element={<Navigate to="/admin/analytics?tab=surveys" replace />}
       />
       <Route
         path="analytics/details"

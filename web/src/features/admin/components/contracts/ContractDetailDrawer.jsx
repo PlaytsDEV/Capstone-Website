@@ -283,7 +283,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
         anchor.click();
         window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       } else {
-        const child = window.open(url, "_blank", "noopener,noreferrer");
+        const child = window.open(url, "_blank");
         if (mode === "print" && child) child.addEventListener("load", () => child.print(), { once: true });
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
@@ -361,7 +361,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
       if (download) {
         const anchor = document.createElement("a");
         anchor.href = url; anchor.download = currentSigned?.fileName || "signed-contract"; anchor.click();
-      } else window.open(url, "_blank", "noopener,noreferrer");
+      } else window.open(url, "_blank");
       window.setTimeout(() => URL.revokeObjectURL(url), download ? 1000 : 60_000);
     } catch (requestError) { setError(getContractErrorMessage(requestError)); }
     finally { setBusy(""); }
@@ -388,8 +388,8 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
     if (!file) return;
     const replacing = (contract?.notarizedDocuments?.length || 0) > 0;
     showWorkflow({
-      title: replacing ? "Replace Signed and Notarized Copy" : "Upload Signed and Notarized Copy",
-      message: "Optional notarial details must be copied only from the physical paper.",
+      title: replacing ? "Replace Final Notarized Copy" : "Upload Final Notarized Contract",
+      message: "Upload the completed physical contract signed by all parties and notarized by the notary public. This will immediately establish the official Final Contract.",
       fields: [
         ...(replacing ? [{ key: "replacementReason", label: "Replacement reason", type: "textarea", required: true }] : []),
         { key: "notarizedAt", label: "Notarization date", type: "date" },
@@ -398,13 +398,13 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
         { key: "documentNumber", label: "Doc. No." }, { key: "pageNumber", label: "Page No." },
         { key: "bookNumber", label: "Book No." }, { key: "seriesYear", label: "Series year", type: "number" },
       ],
-      checks: [{ key: "confirmed", label: "I selected the scan that corresponds to the current prepared Contract." }],
-      submitLabel: replacing ? "Replace Copy" : "Upload Copy",
+      checks: [{ key: "confirmed", label: "I confirm that this document is physically signed and officially notarized." }],
+      submitLabel: replacing ? "Replace Final Contract" : "Upload Final Contract",
       onSubmit: (values) => {
         const { replacementReason, confirmed: _confirmed, ...notarialDetails } = values;
-        return runAction("notarized-upload", () => contractApi.uploadNotarizedContract(
+        return runAction("notarized-upload", () => contractApi.uploadFinalNotarizedContract(
           contractId, file, currentVersion, replacementReason?.trim(), notarialDetails,
-        ), "Signed-and-notarized Contract copy uploaded for verification.");
+        ), "Final signed and notarized Contract uploaded and activated.");
       },
     });
   };
@@ -443,7 +443,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
       if (download) {
         const anchor = document.createElement("a");
         anchor.href = url; anchor.download = currentNotarized?.fileName || "notarized-contract"; anchor.click();
-      } else window.open(url, "_blank", "noopener,noreferrer");
+      } else window.open(url, "_blank");
       window.setTimeout(() => URL.revokeObjectURL(url), download ? 1000 : 60_000);
     } catch (requestError) { setError(getContractErrorMessage(requestError)); }
     finally { setBusy(""); }
@@ -458,7 +458,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
         anchor.href = url;
         anchor.download = contract?.finalDocument?.fileName || "final-contract";
         anchor.click();
-      } else window.open(url, "_blank", "noopener,noreferrer");
+      } else window.open(url, "_blank");
       window.setTimeout(() => URL.revokeObjectURL(url), download ? 1000 : 60_000);
     } catch (requestError) { setError(getContractErrorMessage(requestError)); }
     finally { setBusy(""); }
@@ -512,7 +512,35 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
           <summary>View full details</summary>
         <div className="contract-detail-grid">
           <section><h3>Contract Overview</h3>
-            <dl><dt>Status</dt><dd>{formatContractStatus(contract.status)}</dd><dt>Contract Version</dt><dd>{contract.version}</dd><dt>Template</dt><dd>{formatContractValue(contract.templateType)}</dd><dt>Created</dt><dd>{date(contract.createdAt)}</dd><dt>Updated</dt><dd>{date(contract.updatedAt)}</dd></dl>
+            <dl>
+              <dt>Status</dt><dd>{formatContractStatus(contract.status)}</dd>
+              {contract.contractPurpose === "replacement" && (
+                <>
+                  <dt>Contract Type</dt>
+                  <dd><span className="contract-badge-replacement">Room Transfer Replacement</span></dd>
+                  <dt>Replacement Note</dt>
+                  <dd>{contract.replacementReason || "Replaces previous contract due to room transfer"}</dd>
+                  {contract.replacesContractId && (
+                    <>
+                      <dt>Predecessor</dt>
+                      <dd>
+                        <button
+                          type="button"
+                          className="contract-lineage-link"
+                          onClick={() => navigate(`/admin/contracts/${contract.replacesContractId}`)}
+                        >
+                          View Previous Contract
+                        </button>
+                      </dd>
+                    </>
+                  )}
+                </>
+              )}
+              <dt>Contract Version</dt><dd>{contract.version}</dd>
+              <dt>Template</dt><dd>{formatContractValue(contract.templateType)}</dd>
+              <dt>Created</dt><dd>{date(contract.createdAt)}</dd>
+              <dt>Updated</dt><dd>{date(contract.updatedAt)}</dd>
+            </dl>
           </section>
           <section><h3>Tenant</h3>
             <dl><dt>Legal Name</dt><dd>{contract.tenantLegalName || "—"}</dd><dt>Email</dt><dd>{contract.tenantEmail || "—"}</dd><dt>Phone</dt><dd>{contract.tenantPhone || "—"}</dd><dt>Address</dt><dd>{contract.tenantAddress || "—"}</dd><dt>Nationality</dt><dd>{contract.tenantNationality || "—"}</dd></dl>
@@ -636,10 +664,10 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
             {["generated", "awaiting_signatures", "partially_signed", "signed", "awaiting_notarization"]
               .includes(contract.status) && <>
               <input ref={notarizedInput} hidden type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={uploadNotarized}/>
-              <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => notarizedInput.current?.click()}>
-                <Upload size={16}/>{currentNotarized ? "Replace Signed and Notarized Copy" : "Upload Signed and Notarized Copy"}
+              <button className="contract-button" disabled={busy} onClick={() => notarizedInput.current?.click()}>
+                <Upload size={16}/>{contract.finalDocument ? "Replace Final Notarized Contract" : currentNotarized ? "Replace Signed and Notarized Copy" : "Upload Signed and Notarized Copy"}
               </button>
-              {currentNotarized && <>
+              {currentNotarized && !contract.finalDocument && <>
                 <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => openNotarized(false)}><Eye size={16}/>Preview</button>
                 <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => openNotarized(true)}><Download size={16}/>Download</button>
                 <button className="contract-button" disabled={busy} onClick={verifyNotarized}><FileCheck2 size={16}/>Verify Signed and Notarized Copy</button>

@@ -24,8 +24,8 @@ Lilycrest DMS implements a dual-token authentication model combining **Firebase 
 User roles govern resource access across the system:
 1. `applicant` — Can view public rooms and manage own reservation flow.
 2. `tenant` — Can view current room, pay monthly bills, submit maintenance tickets.
-3. `admin` — Can manage assigned branch rooms, reservations, utilities, and billing.
-4. `superadmin` / `owner` — Unrestricted access across both Gil Puyat and Guadalupe branches.
+3. `branch_admin` — Can manage assigned branch rooms, reservations, utilities, and billing.
+4. `owner` — Unrestricted access across all branches, system settings, and audit logs.
 
 ### Granular Permission Enforcement (`requirePermission`)
 Admin routes use granular permission keys to enforce least-privilege security:

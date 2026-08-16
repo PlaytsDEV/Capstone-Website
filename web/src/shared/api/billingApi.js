@@ -174,6 +174,12 @@ export const billingApi = {
   createDepositCheckout: (reservationId) =>
     authFetch(`/payments/deposit/${reservationId}/checkout`, { method: "POST" }),
 
+  /**
+   * Create a PayMongo checkout session for remaining Move-In Requirements
+   */
+  createMoveInCheckout: (reservationId) =>
+    authFetch(`/payments/reservation/${reservationId}/move-in-checkout`, { method: "POST" }),
+
   // ── Payment History ──
 
   /**
@@ -241,18 +247,28 @@ export const billingApi = {
     return authFetch(`/billing/overdue-notices${query ? `?${query}` : ""}`);
   },
 
-  sendOverdueNotice: (billId, noticeType) =>
-    authFetch(`/billing/${billId}/send-overdue-notice`, {
+  sendOverdueNotice: (billId, payload) => {
+    const body = typeof payload === "string" ? { noticeType: payload } : payload;
+    return authFetch(`/billing/${billId}/send-overdue-notice`, {
       method: "POST",
-      body: JSON.stringify({ noticeType }),
-    }),
+      body: JSON.stringify(body),
+    });
+  },
 
-  getTerminationCases: () =>
-    authFetch("/billing/termination-reviews"),
+  getTerminationCases: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return authFetch(`/billing/termination-reviews${query ? `?${query}` : ""}`);
+  },
 
   createTerminationCase: (payload) =>
     authFetch("/billing/termination-reviews", {
       method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateTerminationDecision: (id, payload) =>
+    authFetch(`/billing/termination-reviews/${id}/decision`, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     }),
 
@@ -262,9 +278,23 @@ export const billingApi = {
     return authFetch(`/billing/violations${query ? `?${query}` : ""}`);
   },
 
+  getActiveTenantsForViolations: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return authFetch(`/billing/violations/active-tenants${query ? `?${query}` : ""}`);
+  },
+
+  getViolationById: (id) =>
+    authFetch(`/billing/violations/${id}`),
+
   logViolation: (payload) =>
     authFetch("/billing/violations", {
       method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateViolationDecision: (id, payload) =>
+    authFetch(`/billing/violations/${id}/decision`, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     }),
 
@@ -274,4 +304,5 @@ export const billingApi = {
     return authFetch(`/billing/consolidated-monitor${query ? `?${query}` : ""}`);
   },
 };
+
 

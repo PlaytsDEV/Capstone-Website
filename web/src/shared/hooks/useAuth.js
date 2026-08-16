@@ -51,6 +51,7 @@ import { auth } from "../../firebase/config";
 import { useFirebaseAuth } from "./FirebaseAuthContext";
 import { USER_ROLES } from "../utils/constants";
 import { queryKeys } from "../lib/queryKeys";
+import { prewarmIdleWorkspaceRoutes } from "../lib/routePrefetch";
 
 const AuthContext =
   import.meta.env.DEV
@@ -246,6 +247,7 @@ export const AuthProvider = ({ children }) => {
       queryClient.setQueryData(["users", "currentUser"], resolvedUser);
       warmTenantRouteData(queryClient, resolvedUser);
       await warmAdminRouteData(queryClient, resolvedUser);
+      prewarmIdleWorkspaceRoutes(queryClient, resolvedUser);
 
     } catch (error) {
       // User not authenticated in backend - clear state
@@ -402,6 +404,8 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       queryClient.setQueryData(["users", "currentUser"], resolvedUser);
       warmTenantRouteData(queryClient, resolvedUser);
+      warmAdminRouteData(queryClient, resolvedUser);
+      prewarmIdleWorkspaceRoutes(queryClient, resolvedUser);
 
       return userData;
     } finally {

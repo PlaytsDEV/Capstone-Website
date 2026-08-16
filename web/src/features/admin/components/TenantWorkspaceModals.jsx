@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
@@ -6,7 +6,8 @@ import { formatBranch } from "../utils/formatters";
 import { resolveDepositFromPaymentInfo } from "../../../shared/utils/depositUtils";
 import { formatBedPosition, getBedDisplayLabel, getBedShortCode } from "../../../shared/utils/bedIdentifier";
 import { reservationApi } from "../../../shared/api/reservationApi";
-import { Clock, History } from "lucide-react";
+import { showNotification } from "../../../shared/utils/notification";
+import { Clock, History, ChevronLeft, ChevronRight, Download, CheckCircle2, LogOut } from "lucide-react";
 
 const fmtDate = (value) =>
   value
@@ -506,12 +507,150 @@ function WizardStepper({ steps, currentStep }) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   Searchable Room Dropdown Component
+   ───────────────────────────────────────────────────────────────────────────── */
+function SearchableRoomSelect({ rooms, value, onChange, disabled, placeholder = "Select a room...", fmtMoney, isInvalid }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const containerRef = useRef(null);
+
+  const selectedRoom = useMemo(
+    () => rooms.find((r) => String(r._id || r.id) === String(value)),
+    [rooms, value],
+  );
+
+  useEffect(() => {
+    if (!isOpen) {
+      if (selectedRoom) {
+        setSearchTerm(
+          `${selectedRoom.name || selectedRoom.roomNumber} (${fmtMoney(selectedRoom.monthlyPrice || selectedRoom.price)})`,
+        );
+      } else {
+        setSearchTerm("");
+      }
+    }
+  }, [value, selectedRoom, isOpen, fmtMoney]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredRooms = useMemo(() => {
+    const selectedLabel = selectedRoom
+      ? `${selectedRoom.name || selectedRoom.roomNumber} (${fmtMoney(selectedRoom.monthlyPrice || selectedRoom.price)})`
+      : "";
+    if (!searchTerm || (selectedRoom && searchTerm === selectedLabel)) {
+      return rooms;
+    }
+    const q = searchTerm.toLowerCase().trim();
+    return rooms.filter((r) => {
+      const name = String(r.name || r.roomNumber || "").toLowerCase();
+      const price = String(r.monthlyPrice || r.price || "").toLowerCase();
+      const floor = String(r.floor || "").toLowerCase();
+      return name.includes(q) || price.includes(q) || floor.includes(q);
+    });
+  }, [rooms, searchTerm, selectedRoom, fmtMoney]);
+
+  return (
+    <div className="twm-search-select" ref={containerRef}>
+      <div className="twm-search-select__input-wrap">
+        <input
+          type="text"
+          className={`twm-search-select__input ${isInvalid ? "tenant-modal-field--invalid" : ""}`}
+          placeholder={disabled ? "Loading available rooms..." : placeholder}
+          value={searchTerm}
+          disabled={disabled}
+          onFocus={() => setIsOpen(true)}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            if (!isOpen) setIsOpen(true);
+          }}
+        />
+        <span className={`twm-search-select__arrow ${isOpen ? "twm-search-select__arrow--open" : ""}`}>
+          ▼
+        </span>
+      </div>
+
+      {isOpen && !disabled && (
+        <div className="twm-search-select__dropdown">
+          {filteredRooms.length === 0 ? (
+            <div className="twm-search-select__empty">No matching rooms found</div>
+          ) : (
+            filteredRooms.map((room) => {
+              const rId = String(room._id || room.id);
+              const isSelected = String(value) === rId;
+              const hasAvail =
+                Array.isArray(room.beds) &&
+                room.beds.some(
+                  (b) => b.status === "available" || (b.status === undefined && b.available !== false),
+                );
+              const roomLabel = `${room.name || room.roomNumber} (${fmtMoney(room.monthlyPrice || room.price)})`;
+
+              return (
+                <div
+                  key={rId}
+                  className={`twm-search-select__option ${isSelected ? "twm-search-select__option--selected" : ""} ${!hasAvail ? "twm-search-select__option--disabled" : ""}`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!hasAvail) {
+                      showNotification(
+                        `Room ${room.name || room.roomNumber} has no available beds.`,
+                        "warning",
+                      );
+                      return;
+                    }
+                    onChange(rId);
+                    setIsOpen(false);
+                    if (containerRef.current) {
+                      const inputEl = containerRef.current.querySelector("input");
+                      if (inputEl) inputEl.blur();
+                    }
+                  }}
+                >
+                  <span style={{ fontWeight: isSelected ? 700 : 500 }}>{roomLabel}</span>
+                  <span
+                    className={`twm-search-select__badge ${
+                      hasAvail ? "twm-search-select__badge--avail" : "twm-search-select__badge--full"
+                    }`}
+                  >
+                    {hasAvail ? "Available" : "Full"}
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    Transfer Tenant Modal — 3-Step Wizard
    Step 1: Target Room & Date
    Step 2: Meter Readings
    Step 3: Review & Settlement Preview
    ───────────────────────────────────────────────────────────────────────────── */
-export function TransferTenantModal({ open, tenant, detail, loading, onClose, onSubmit, sourceRoomLatestReading, electricityRatePerUnit }) {
+export function TransferTenantModal({
+  open,
+  tenant,
+  detail,
+  loading,
+  onClose,
+  onSubmit,
+  sourceRoomLatestReading,
+  electricityRatePerUnit,
+}) {
   const branch = detail?.basicInfo?.branch || tenant?.branch || "";
   const { data: roomsData = [], isLoading: roomsLoading } = useRooms(
     open && branch ? { branch } : {},
@@ -520,6 +659,8 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
 
   // ── Wizard step state ─────────────────────────────────────────────────────
   const [step, setStep] = useState(1);
+  const [attemptedStep1, setAttemptedStep1] = useState(false);
+  const [attemptedStep2, setAttemptedStep2] = useState(false);
 
   // ── Form state ────────────────────────────────────────────────────────────
   const [roomId, setRoomId] = useState("");
@@ -539,6 +680,8 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
   useEffect(() => {
     if (!open) return;
     setStep(1);
+    setAttemptedStep1(false);
+    setAttemptedStep2(false);
     setRoomId("");
     setBedId("");
     setTargetRoomBaseline(null);
@@ -634,8 +777,76 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
     (outstandingBalance || 0);
 
   // ── Step gate validation ──────────────────────────────────────────────────
+  const handleFloatKeyDown = (e) => {
+    if (["e", "E", "-", "+"].includes(e.key)) {
+      e.preventDefault();
+    }
+  };
+
+  const sourceValid =
+    sourceRoomMeterReading.trim() !== "" &&
+    !isNaN(Number(sourceRoomMeterReading)) &&
+    Number(sourceRoomMeterReading) >= 0;
+  const targetValid =
+    targetRoomMeterReading.trim() !== "" &&
+    !isNaN(Number(targetRoomMeterReading)) &&
+    Number(targetRoomMeterReading) >= 0;
+
   const step1Valid = !!roomId && !!bedId && (!hasOutstanding || forceOverride);
-  const step2Valid = !sourceBelowBaseline && !targetBelowBaseline && reason.trim().length > 0;
+  const step2Valid =
+    sourceValid && targetValid && !sourceBelowBaseline && !targetBelowBaseline && reason.trim().length > 0;
+
+  // ── Step transition validation handlers with friendly toasts ────────────────
+  const handleNextStep1 = () => {
+    setAttemptedStep1(true);
+    if (!roomId) {
+      showNotification("Please select a target room for the transfer.", "warning");
+      return;
+    }
+    if (!bedId) {
+      showNotification("Please select an available bed in the target room.", "warning");
+      return;
+    }
+    if (hasOutstanding && !forceOverride) {
+      showNotification(
+        "Please acknowledge the tenant's outstanding balance before proceeding.",
+        "warning",
+      );
+      return;
+    }
+    setStep(2);
+  };
+
+  const handleNextStep2 = () => {
+    setAttemptedStep2(true);
+    if (!sourceValid) {
+      showNotification("Please enter a valid final meter reading (kWh) for the current room.", "warning");
+      return;
+    }
+    if (!targetValid) {
+      showNotification("Please enter a valid opening meter reading (kWh) for the new room.", "warning");
+      return;
+    }
+    if (sourceBelowBaseline) {
+      showNotification(
+        `Current room meter reading (${sourceEntered?.toLocaleString()} kWh) cannot be lower than the recorded baseline (${sourceBaseline?.toLocaleString()} kWh).`,
+        "warning",
+      );
+      return;
+    }
+    if (targetBelowBaseline) {
+      showNotification(
+        `New room opening meter reading (${targetEntered?.toLocaleString()} kWh) cannot be lower than the recorded baseline (${targetBaseline?.toLocaleString()} kWh).`,
+        "warning",
+      );
+      return;
+    }
+    if (!reason.trim()) {
+      showNotification("Please enter a reason for the room transfer.", "warning");
+      return;
+    }
+    setStep(3);
+  };
 
   // ── Bed label helper ─────────────────────────────────────────────────────
   const selectedBed = roomBeds.find((b) => String(b.id || b._id) === String(bedId));
@@ -671,6 +882,7 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
       });
     } catch (err) {
       console.error("Settlement PDF generation failed:", err);
+      showNotification("Failed to generate settlement receipt PDF.", "error");
     } finally {
       setPdfLoading(false);
     }
@@ -683,55 +895,61 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
         Cancel
       </button>
       <div className="twm-footer__spacer" />
-      {step > 1 && (
-        <button
-          type="button"
-          className="tenant-modal-btn tenant-modal-btn--ghost"
-          onClick={() => setStep((s) => s - 1)}
-        >
-          Back
-        </button>
-      )}
-      {step === 3 && (
-        <button
-          type="button"
-          className="tenant-modal-btn tenant-modal-btn--ghost"
-          disabled={pdfLoading}
-          onClick={handleDownloadTransferPDF}
-          title="Download printable settlement estimate"
-        >
-          {pdfLoading ? "Generating..." : "Download Estimate"}
-        </button>
-      )}
-      {step < 3 ? (
-        <button
-          type="button"
-          className="tenant-modal-btn tenant-modal-btn--primary"
-          disabled={step === 1 ? !step1Valid : !step2Valid}
-          onClick={() => setStep((s) => s + 1)}
-        >
-          Next
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="tenant-modal-btn tenant-modal-btn--primary"
-          disabled={loading || !step1Valid || !step2Valid}
-          onClick={() =>
-            onSubmit({
-              roomId,
-              bedId,
-              reason,
-              forceOverride,
-              effectiveTransferDate: effectiveTransferDate || undefined,
-              sourceRoomMeterReading: sourceRoomMeterReading ? Number(sourceRoomMeterReading) : null,
-              targetRoomMeterReading: targetRoomMeterReading ? Number(targetRoomMeterReading) : null,
-            })
-          }
-        >
-          {loading ? "Saving..." : "Confirm Transfer"}
-        </button>
-      )}
+      <div className="twm-footer__actions">
+        {step > 1 && (
+          <button
+            type="button"
+            className="tenant-modal-btn tenant-modal-btn--back"
+            onClick={() => setStep((s) => s - 1)}
+          >
+            <ChevronLeft size={16} />
+            <span>Back</span>
+          </button>
+        )}
+        {step === 1 ? (
+          <button
+            type="button"
+            className="tenant-modal-btn tenant-modal-btn--primary"
+            onClick={handleNextStep1}
+          >
+            <span>Next</span>
+            <ChevronRight size={16} />
+          </button>
+        ) : step === 2 ? (
+          <button
+            type="button"
+            className="tenant-modal-btn tenant-modal-btn--primary"
+            onClick={handleNextStep2}
+          >
+            <span>Next</span>
+            <ChevronRight size={16} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="tenant-modal-btn tenant-modal-btn--success"
+            disabled={loading || !step1Valid || !step2Valid}
+            onClick={() => {
+              if (!step1Valid || !step2Valid) {
+                showNotification("Please make sure all transfer details are valid.", "warning");
+                return;
+              }
+              onSubmit({
+                roomId,
+                bedId,
+                reason,
+                forceOverride,
+                effectiveTransferDate: effectiveTransferDate || undefined,
+                sourceRoomMeterReading: sourceRoomMeterReading ? Number(sourceRoomMeterReading) : null,
+                targetRoomMeterReading: targetRoomMeterReading ? Number(targetRoomMeterReading) : null,
+              });
+            }}
+          >
+            <CheckCircle2 size={16} />
+            <span>{loading ? "Saving..." : "Confirm Transfer"}</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 
@@ -787,38 +1005,30 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
           </div>
 
           <div className="tenant-modal-grid">
-            <label className="tenant-modal-field">
+            <div className={`tenant-modal-field ${attemptedStep1 && !roomId ? "tenant-modal-field--invalid" : ""}`}>
               <span>New Room</span>
-              <select
+              <SearchableRoomSelect
+                rooms={targetRooms}
                 value={roomId}
-                onChange={(event) => {
-                  const newRoomId = event.target.value;
+                onChange={(newRoomId) => {
                   setRoomId(newRoomId);
                   setBedId("");
                   fetchTargetBaseline(newRoomId);
                 }}
                 disabled={roomsLoading}
-              >
-                <option value="">Select a room</option>
-                {targetRooms.map((room) => {
-                  const hasAvail = Array.isArray(room.beds) &&
-                    room.beds.some((b) => b.status === "available" || (b.status === undefined && b.available !== false));
-                  return (
-                    <option key={room._id || room.id} value={room._id || room.id}>
-                      {room.name || room.roomNumber} ({fmtMoney(room.monthlyPrice || room.price)})
-                      {!hasAvail ? " — Full" : ""}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
+                placeholder="Search and select room..."
+                fmtMoney={fmtMoney}
+                isInvalid={attemptedStep1 && !roomId}
+              />
+            </div>
 
-            <label className="tenant-modal-field">
+            <label className={`tenant-modal-field ${attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}`}>
               <span>New Bed</span>
               <select
                 value={bedId}
                 onChange={(event) => setBedId(event.target.value)}
                 disabled={!roomId}
+                className={attemptedStep1 && !bedId ? "tenant-modal-field--invalid" : ""}
               >
                 <option value="">Select a bed</option>
                 {roomBeds.map((bed, index) => {
@@ -846,7 +1056,7 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
             </div>
           )}
 
-          <label className="tenant-modal-field">
+          <div className="tenant-modal-field">
             <span>Effective Transfer Date</span>
             <input
               type="date"
@@ -855,9 +1065,12 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
               onChange={(e) => setEffectiveTransferDate(e.target.value)}
             />
             <span className="twm-meter-hint">
-              Calculates partial rent for the current month based on the move date (defaults to today).
+              <Clock size={14} style={{ flexShrink: 0, marginTop: 2, color: "#2563eb" }} />
+              <span>
+                Future dates cannot be selected because room transfers take effect immediately upon administrative confirmation. Partial rent and utility usage are calculated up to today.
+              </span>
             </span>
-          </label>
+          </div>
         </>
       )}
 
@@ -870,13 +1083,14 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
 
           <div className="tenant-modal-grid">
             {/* Source Room Meter */}
-            <label className="tenant-modal-field">
+            <div className={`tenant-modal-field ${attemptedStep2 && (!sourceValid || sourceBelowBaseline) ? "tenant-modal-field--invalid" : ""}`}>
               <span>Current Room — Final Meter (kWh)</span>
               <input
                 type="number"
                 min="0"
-                step="0.01"
-                placeholder="e.g. 1,455.00"
+                step="any"
+                onKeyDown={handleFloatKeyDown}
+                placeholder="e.g. 1455.50"
                 value={sourceRoomMeterReading}
                 onChange={(e) => setSourceRoomMeterReading(e.target.value)}
               />
@@ -894,19 +1108,20 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
                 )}
                 {sourceBelowBaseline && (
                   <span className="twm-meter-hint twm-meter-hint--warn">
-                    ⚠ Reading ({sourceEntered?.toLocaleString()} kWh) is lower than the last recorded baseline ({sourceBaseline?.toLocaleString()} kWh). Please check the meter.
+                    ⚠ Reading ({sourceEntered?.toLocaleString()} kWh) cannot be lower than recorded baseline ({sourceBaseline?.toLocaleString()} kWh). Please check the meter.
                   </span>
                 )}
               </div>
-            </label>
+            </div>
 
             {/* Target Room Meter */}
-            <label className="tenant-modal-field">
+            <div className={`tenant-modal-field ${attemptedStep2 && (!targetValid || targetBelowBaseline) ? "tenant-modal-field--invalid" : ""}`}>
               <span>New Room — Opening Meter (kWh)</span>
               <input
                 type="number"
                 min="0"
-                step="0.01"
+                step="any"
+                onKeyDown={handleFloatKeyDown}
                 placeholder="e.g. 890.00"
                 value={targetRoomMeterReading}
                 onChange={(e) => setTargetRoomMeterReading(e.target.value)}
@@ -924,14 +1139,14 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
                 ) : null}
                 {targetBelowBaseline && (
                   <span className="twm-meter-hint twm-meter-hint--warn">
-                    ⚠ Opening reading ({targetEntered?.toLocaleString()} kWh) is lower than the last recorded baseline ({targetBaseline?.toLocaleString()} kWh).
+                    ⚠ Opening reading ({targetEntered?.toLocaleString()} kWh) cannot be lower than recorded baseline ({targetBaseline?.toLocaleString()} kWh).
                   </span>
                 )}
               </div>
-            </label>
+            </div>
           </div>
 
-          <label className="tenant-modal-field">
+          <label className={`tenant-modal-field ${attemptedStep2 && !reason.trim() ? "tenant-modal-field--invalid" : ""}`}>
             <span>Reason for Transfer</span>
             <textarea
               rows={3}
@@ -979,6 +1194,16 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
           <div className="twm-settlement-card">
             <div className="twm-settlement-card__header">
               <p className="twm-settlement-card__title">Transfer Settlement Estimate</p>
+              <button
+                type="button"
+                className="twm-settlement-card__download-btn"
+                disabled={pdfLoading}
+                onClick={handleDownloadTransferPDF}
+                title="Download printable settlement estimate"
+              >
+                <Download size={13} />
+                <span>{pdfLoading ? "Generating..." : "Download Estimate PDF"}</span>
+              </button>
             </div>
             <div className="twm-settlement-card__body">
               {daysSinceCycleStart != null && (
@@ -1164,54 +1389,48 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
         Cancel
       </button>
       <div className="twm-footer__spacer" />
-      {step > 1 && (
-        <button
-          type="button"
-          className="tenant-modal-btn tenant-modal-btn--ghost"
-          onClick={() => setStep((s) => s - 1)}
-        >
-          Back
-        </button>
-      )}
-      {step === 3 && (
-        <button
-          type="button"
-          className="tenant-modal-btn tenant-modal-btn--ghost"
-          disabled={pdfLoading}
-          onClick={handleDownloadMoveOutPDF}
-          title="Download printable settlement estimate"
-        >
-          {pdfLoading ? "Generating..." : "Download Estimate"}
-        </button>
-      )}
-      {step < 3 ? (
-        <button
-          type="button"
-          className="tenant-modal-btn tenant-modal-btn--primary"
-          disabled={step === 1 ? !step1Valid : !step2Valid}
-          onClick={() => setStep((s) => s + 1)}
-        >
-          Next
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="tenant-modal-btn tenant-modal-btn--danger"
-          disabled={loading || !step1Valid || !step2Valid}
-          onClick={() =>
-            onSubmit({
-              moveOutDate,
-              moveOutTime,
-              meterReading: Number(meterReading),
-              keyReturned,
-              damageDeductions: Number(damageDeductions || 0),
-              notes,
-            })
-          }
-        >
-          {loading ? "Saving..." : "Confirm Move-Out"}
-        </button>
-      )}
+      <div className="twm-footer__actions">
+        {step > 1 && (
+          <button
+            type="button"
+            className="tenant-modal-btn tenant-modal-btn--back"
+            onClick={() => setStep((s) => s - 1)}
+          >
+            <ChevronLeft size={16} />
+            <span>Back</span>
+          </button>
+        )}
+        {step < 3 ? (
+          <button
+            type="button"
+            className="tenant-modal-btn tenant-modal-btn--primary"
+            disabled={step === 1 ? !step1Valid : !step2Valid}
+            onClick={() => setStep((s) => s + 1)}
+          >
+            <span>Next</span>
+            <ChevronRight size={16} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="tenant-modal-btn tenant-modal-btn--danger"
+            disabled={loading || !step1Valid || !step2Valid}
+            onClick={() =>
+              onSubmit({
+                moveOutDate,
+                moveOutTime,
+                meterReading: Number(meterReading),
+                keyReturned,
+                damageDeductions: Number(damageDeductions || 0),
+                notes,
+              })
+            }
+          >
+            <LogOut size={16} />
+            <span>{loading ? "Saving..." : "Confirm Move-Out"}</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 
@@ -1378,6 +1597,16 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
           <div className="twm-settlement-card">
             <div className="twm-settlement-card__header">
               <p className="twm-settlement-card__title">Deposit Clearance Summary</p>
+              <button
+                type="button"
+                className="twm-settlement-card__download-btn"
+                disabled={pdfLoading}
+                onClick={handleDownloadMoveOutPDF}
+                title="Download printable settlement estimate"
+              >
+                <Download size={13} />
+                <span>{pdfLoading ? "Generating..." : "Download Estimate PDF"}</span>
+              </button>
             </div>
             <div className="twm-settlement-card__body">
               <div className="twm-settlement-row">

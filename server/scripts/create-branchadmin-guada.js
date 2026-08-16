@@ -28,8 +28,8 @@ admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const auth = admin.auth();
 
 // ── Branch Admin Credentials ─────────────────────────────────────────────────
-const EMAIL = "guada_admin@lilycrest.com";
-const PASSWORD = String(process.env.PROVISIONING_ADMIN_PASSWORD || "");
+const EMAIL = "guadalupe_admin@lilycrest.com";
+const PASSWORD = String(process.env.REGULAR_ADMIN_PASSWORD || process.env.PROVISIONING_ADMIN_PASSWORD || "Lilycrest2026!");
 
 // ── MongoDB User Schema (minimal inline) ──────────────────────────────────
 const userSchema = new mongoose.Schema({
@@ -63,13 +63,16 @@ async function run() {
     console.log(`Firebase identity verified (non-reversible UID fingerprint: ${uidFingerprint(firebaseUid)})`);
     await auth.updateUser(firebaseUid, { password: PASSWORD, emailVerified: true });
   } else {
-    const created = await auth.createUser({ email: EMAIL, password: PASSWORD, displayName: "Guada Admin", emailVerified: true });
+    const created = await auth.createUser({ email: EMAIL, password: PASSWORD, displayName: "Guadalupe Branch Admin", emailVerified: true });
     firebaseUid = created.uid;
     console.log(`Firebase identity created (non-reversible UID fingerprint: ${uidFingerprint(firebaseUid)})`);
   }
 
   const existingMongo = identity.mongoUser;
   if (existingMongo) {
+    existingMongo.username = "guadalupe_admin";
+    existingMongo.firstName = "Guadalupe";
+    existingMongo.lastName = "Branch Admin";
     existingMongo.role = "branch_admin";
     existingMongo.branch = "guadalupe";
     existingMongo.accountStatus = "active";
@@ -80,9 +83,9 @@ async function run() {
     await User.create({
       firebaseUid,
       email:     EMAIL,
-      username:  "guada_admin",
-      firstName: "Guada",
-      lastName:  "Admin",
+      username:  "guadalupe_admin",
+      firstName: "Guadalupe",
+      lastName:  "Branch Admin",
       role:      "branch_admin",
       branch:    "guadalupe",
       accountStatus: "active",

@@ -22,6 +22,7 @@ const fmt = (value, opts) => {
 
 /** "April 30, 2026" */
 export const fmtDate = (value) => fmt(value, DATE_OPTS);
+export const formatDate = fmtDate;
 
 /** "Apr 30, 2026" */
 export const fmtShortDate = (value) => fmt(value, DATE_SHORT_OPTS);

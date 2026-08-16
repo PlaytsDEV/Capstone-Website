@@ -17,28 +17,16 @@ const APP_DATE_LABELS = {
   custom: "Submitted: Custom Range",
 };
 
-const CHIP_LABELS = {
-  overdue: "Overdue Move-In",
-  new: "New Applications",
-  cancellation: "Cancellation Requested",
-  awaiting_payment: "Awaiting Payment",
-  proof_uploaded: "Proof Uploaded",
-};
-
-const PAYMENT_LABELS = {
-  pending: "Payment: Pending",
-  proof_uploaded: "Payment: Proof Uploaded",
-  verified: "Payment: Verified",
-  refunded: "Payment: Refunded",
-};
-
 const STATUS_LABELS = {
-  in_progress: "In Progress",
+  all: "All Active",
   new: "New Applications",
+  pending_review: "Pending Review",
   pending_application_review: "Under Review",
   needs_revision: "Needs Revision",
-  approved_for_payment: "Awaiting Payment",
+  approved_for_payment: "Approved for Payment",
+  payment_pending: "Payment Pending",
   reserved: "Reserved",
+  overdue: "Overdue Move-In",
   cancellation_requested: "Cancellation Requested",
   moveIn: "Moved In",
   cancelled: "Cancelled",
@@ -52,9 +40,7 @@ export default function ActiveFilterTags({
   onClearStatus,
   branchFilter,
   onClearBranch,
-  quickChip,
-  onClearChip,
-  advancedFilters,
+  advancedFilters = {},
   onClearAdvancedField,
   onClearAll,
 }) {
@@ -74,15 +60,6 @@ export default function ActiveFilterTags({
       id: "status",
       label: `Status: ${STATUS_LABELS[statusFilter] || statusFilter.replace(/_/g, " ")}`,
       onRemove: onClearStatus,
-    });
-  }
-
-
-  if (quickChip) {
-    tags.push({
-      id: "chip",
-      label: CHIP_LABELS[quickChip] || `Chip: ${quickChip}`,
-      onRemove: onClearChip,
     });
   }
 
@@ -110,14 +87,6 @@ export default function ActiveFilterTags({
     });
   }
 
-  if (advancedFilters.paymentStatus && advancedFilters.paymentStatus !== "any") {
-    tags.push({
-      id: "paymentStatus",
-      label: PAYMENT_LABELS[advancedFilters.paymentStatus] || `Payment: ${advancedFilters.paymentStatus}`,
-      onRemove: () => onClearAdvancedField("paymentStatus"),
-    });
-  }
-
   if (tags.length === 0) return null;
 
   return (
@@ -138,11 +107,12 @@ export default function ActiveFilterTags({
           </span>
         ))}
 
-        {tags.length >= 2 && (
+        {tags.length >= 1 && (
           <button
             type="button"
             className="res-filter-tag--clear-all"
             onClick={onClearAll}
+            title="Reset all active filters and scopes"
           >
             Clear All
           </button>

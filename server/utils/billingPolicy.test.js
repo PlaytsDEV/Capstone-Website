@@ -54,7 +54,7 @@ describe("buildRentBillingCycle", () => {
     expect(localYmd(cycle.billingCycleStart)).toBe("2026-5-5");
     expect(localYmd(cycle.billingCycleEnd)).toBe("2026-6-5");
     expect(localYmd(cycle.dueDate)).toBe("2026-5-5");
-    expect(localYmd(cycle.generationDate)).toBe("2026-4-30");
+    expect(localYmd(cycle.generationDate)).toBe("2026-4-28");
   });
 
   test("keeps the move-in-day due date regardless of weekday", () => {
@@ -63,7 +63,7 @@ describe("buildRentBillingCycle", () => {
     expect(localYmd(cycle.billingCycleStart)).toBe("2026-1-23");
     expect(localYmd(cycle.billingCycleEnd)).toBe("2026-2-23");
     expect(localYmd(cycle.dueDate)).toBe("2026-1-23");
-    expect(localYmd(cycle.generationDate)).toBe("2026-1-18");
+    expect(localYmd(cycle.generationDate)).toBe("2026-1-16");
   });
 });
 
@@ -113,7 +113,7 @@ describe("resolveCurrentRentBillingCycle", () => {
     expect(localYmd(cycle.billingCycleStart)).toBe("2026-3-5");
     expect(localYmd(cycle.billingCycleEnd)).toBe("2026-4-5");
     expect(localYmd(cycle.dueDate)).toBe("2026-3-5");
-    expect(localYmd(cycle.generationDate)).toBe("2026-2-28");
+    expect(localYmd(cycle.generationDate)).toBe("2026-2-26");
     expect(cycle.cycleIndex).toBe(2);
   });
 });
@@ -320,6 +320,364 @@ describe("syncBillAmounts", () => {
     expect(bill.remainingAmount).toBe(500);
     expect(bill.status).toBe("partially-paid");
     expect(bill.paymentDate).toBeNull();
+  });
+});
+
+// Regression coverage for the authoritative bill release lifecycle
+// (releasedAt). syncBillAmounts() is the single shared choke point every
+// real writer/send action already calls (rentGenerator, buildRentBillDraft,
+// the inline rentBillingController bulk path, sendUtilityPeriodBills,
+// sendDraftUtilityBills, payment settlement, overdue processing), so
+// hooking the write here — rather than in each writer individually —
+// guarantees exactly one write, using server time, the first time (and
+// only the first time) a bill is observed leaving "draft".
+//
+// `isNew: true` on a test bill simulates a document just built via
+// `new Bill(...)` and not yet saved (Mongoose's own semantics) — the exact
+// shape every real writer passes to syncBillAmounts() on creation. It is
+// flipped to `false` after the first sync to simulate `.save()` completing,
+// matching what a subsequent re-fetch-and-resync would see in production.
+describe("syncBillAmounts — releasedAt (authoritative release lifecycle)", () => {
+  const baseCharges = {
+    rent: 3500,
+    electricity: 0,
+    water: 0,
+    applianceFees: 0,
+    corkageFees: 0,
+    penalty: 0,
+    discount: 0,
+  };
+
+  test("1. first release writes releasedAt using server time (the `now` passed to syncBillAmounts)", () => {
+    const bill = {
+      isNew: true,
+      status: "pending",
+      dueDate: new Date("2026-06-05T00:00:00.000Z"),
+      charges: { ...baseCharges },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      releasedAt: null,
+    };
+    const now = new Date("2026-06-16T09:00:00.000Z");
+
+    syncBillAmounts(bill, { now });
+
+    expect(bill.releasedAt).toEqual(now);
+  });
+
+  test("2. a draft bill (utility period not yet sent) never receives releasedAt", () => {
+    const bill = {
+      status: "draft",
+      dueDate: null,
+      charges: { rent: 0, electricity: 1760, water: 0, applianceFees: 0, corkageFees: 0, penalty: 0, discount: 0 },
+      utilityDispatch: {
+        electricity: { state: "draft", amount: 1760 },
+        water: { state: "draft", amount: 0 },
+      },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      releasedAt: null,
+    };
+
+    syncBillAmounts(bill, { preserveStatus: true, now: new Date("2026-06-16T09:00:00.000Z") });
+
+    expect(bill.status).toBe("draft");
+    expect(bill.releasedAt).toBeNull();
+  });
+
+  test("3. the moment the same bill's status leaves draft, releasedAt is set (utility publish transition)", () => {
+    const bill = {
+      status: "draft",
+      dueDate: null,
+      charges: { rent: 0, electricity: 1760, water: 0, applianceFees: 0, corkageFees: 0, penalty: 0, discount: 0 },
+      utilityDispatch: {
+        electricity: { state: "draft", amount: 1760 },
+        water: { state: "draft", amount: 0 },
+      },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      releasedAt: null,
+    };
+    syncBillAmounts(bill, { preserveStatus: true, now: new Date("2026-06-16T09:00:00.000Z") });
+    expect(bill.releasedAt).toBeNull();
+
+    // Simulates sendUtilityPeriodBills()/sendDraftUtilityBills() flipping
+    // the bill out of draft as part of the actual publish action.
+    bill.status = "pending";
+    bill.dueDate = new Date("2026-06-23T00:00:00.000Z");
+    bill.utilityDispatch.electricity = {
+      state: "sent",
+      amount: 1760,
+      publishedAt: new Date("2026-06-17T10:00:00.000Z"),
+      issuedAt: new Date("2026-06-17T10:00:00.000Z"),
+      dueDate: new Date("2026-06-23T00:00:00.000Z"),
+    };
+    const publishNow = new Date("2026-06-17T10:00:00.000Z");
+    syncBillAmounts(bill, { releasing: true, now: publishNow });
+
+    expect(bill.releasedAt).toEqual(publishNow);
+    // Matches the spec's worked example: period end / generation time must
+    // not be what releasedAt reports.
+    expect(bill.releasedAt).not.toEqual(new Date("2026-06-16T09:00:00.000Z"));
+  });
+
+  test("4. repeated release (second syncBillAmounts call after already-released) preserves the original timestamp", () => {
+    const bill = {
+      isNew: true,
+      status: "pending",
+      dueDate: new Date("2026-06-23T00:00:00.000Z"),
+      charges: { ...baseCharges },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      releasedAt: null,
+    };
+    const firstNow = new Date("2026-06-17T10:00:00.000Z");
+    syncBillAmounts(bill, { now: firstNow });
+    expect(bill.releasedAt).toEqual(firstNow);
+    bill.isNew = false; // simulates .save() completing
+
+    const muchLater = new Date("2026-09-01T00:00:00.000Z");
+    syncBillAmounts(bill, { now: muchLater });
+
+    expect(bill.releasedAt).toEqual(firstNow);
+    expect(bill.releasedAt).not.toEqual(muchLater);
+  });
+
+  test("5. reminder/resend (repeated calls with unrelated field changes) preserves releasedAt", () => {
+    const bill = {
+      isNew: true,
+      status: "pending",
+      dueDate: new Date("2026-06-23T00:00:00.000Z"),
+      sentAt: new Date("2026-06-17T10:00:00.000Z"),
+      charges: { ...baseCharges },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      releasedAt: null,
+    };
+    const originalRelease = new Date("2026-06-17T10:00:00.000Z");
+    syncBillAmounts(bill, { now: originalRelease });
+    expect(bill.releasedAt).toEqual(originalRelease);
+    bill.isNew = false; // simulates .save() completing
+
+    // Simulates an admin "resend" that (as sendRentBill already does today)
+    // bumps sentAt to track the latest send attempt — a separate concept
+    // from the immutable first-release timestamp.
+    bill.sentAt = new Date("2026-06-21T08:00:00.000Z");
+    syncBillAmounts(bill, { now: new Date("2026-06-21T08:00:00.000Z") });
+
+    expect(bill.releasedAt).toEqual(originalRelease);
+    expect(bill.sentAt).toEqual(new Date("2026-06-21T08:00:00.000Z"));
+  });
+
+  test("6. payment settlement (status -> paid) preserves the original releasedAt", () => {
+    const bill = {
+      isNew: true,
+      status: "pending",
+      dueDate: new Date("2026-06-23T00:00:00.000Z"),
+      charges: { ...baseCharges },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      releasedAt: null,
+    };
+    const releaseTime = new Date("2026-06-17T10:00:00.000Z");
+    syncBillAmounts(bill, { now: releaseTime });
+    expect(bill.releasedAt).toEqual(releaseTime);
+    bill.isNew = false; // simulates .save() completing
+
+    bill.paidAmount = 3500;
+    syncBillAmounts(bill, { now: new Date("2026-06-20T00:00:00.000Z") });
+
+    expect(bill.status).toBe("paid");
+    expect(bill.releasedAt).toEqual(releaseTime);
+  });
+
+  test("7. overdue processing (status -> overdue past due date) preserves the original releasedAt", () => {
+    const bill = {
+      isNew: true,
+      status: "pending",
+      dueDate: new Date("2026-06-23T00:00:00.000Z"),
+      charges: { ...baseCharges },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      releasedAt: null,
+    };
+    const releaseTime = new Date("2026-06-17T10:00:00.000Z");
+    syncBillAmounts(bill, { now: releaseTime });
+    expect(bill.releasedAt).toEqual(releaseTime);
+    bill.isNew = false; // simulates .save() completing
+
+    syncBillAmounts(bill, { now: new Date("2026-07-01T00:00:00.000Z") });
+
+    expect(resolveBillStatus(bill, new Date("2026-07-01T00:00:00.000Z"))).toBe("overdue");
+    expect(bill.releasedAt).toEqual(releaseTime);
+  });
+
+  test("8. a general bill edit (e.g. description/branch metadata) cannot overwrite releasedAt through syncBillAmounts", () => {
+    const bill = {
+      isNew: true,
+      status: "pending",
+      dueDate: new Date("2026-06-23T00:00:00.000Z"),
+      charges: { ...baseCharges },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      releasedAt: null,
+      description: "June 2026 Billing Statement",
+    };
+    const releaseTime = new Date("2026-06-17T10:00:00.000Z");
+    syncBillAmounts(bill, { now: releaseTime });
+    bill.isNew = false; // simulates .save() completing
+
+    bill.description = "June 2026 Billing Statement (corrected)";
+    syncBillAmounts(bill, { now: new Date("2026-08-01T00:00:00.000Z") });
+
+    expect(bill.releasedAt).toEqual(releaseTime);
+  });
+
+  test("9. releasedAt is never derived from createdAt/dueDate/billingCycleStart/meter-reading date — only from server `now` at the moment status first leaves draft", () => {
+    const bill = {
+      isNew: true,
+      status: "pending",
+      createdAt: new Date("2026-06-16T09:00:00.000Z"), // bill generated internally
+      dueDate: new Date("2026-06-23T00:00:00.000Z"),
+      billingCycleStart: new Date("2026-05-26T00:00:00.000Z"),
+      billingCycleEnd: new Date("2026-06-15T00:00:00.000Z"),
+      utilityReadingDate: new Date("2026-06-15T00:00:00.000Z"),
+      charges: { ...baseCharges },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      releasedAt: null,
+    };
+    // The actual official release happens the next day.
+    const officialRelease = new Date("2026-06-17T10:00:00.000Z");
+
+    syncBillAmounts(bill, { now: officialRelease });
+
+    expect(bill.releasedAt).toEqual(officialRelease);
+    expect(bill.releasedAt).not.toEqual(bill.createdAt);
+    expect(bill.releasedAt).not.toEqual(bill.dueDate);
+    expect(bill.releasedAt).not.toEqual(bill.billingCycleStart);
+    expect(bill.releasedAt).not.toEqual(bill.billingCycleEnd);
+    expect(bill.releasedAt).not.toEqual(bill.utilityReadingDate);
+  });
+
+  test("10. a historical bill with no trustworthy release evidence stays null until it is actually synced past draft", () => {
+    const bill = {
+      status: "draft",
+      dueDate: null,
+      charges: { rent: 0, electricity: 1760, water: 0, applianceFees: 0, corkageFees: 0, penalty: 0, discount: 0 },
+      utilityDispatch: {
+        electricity: { state: "draft", amount: 1760 },
+        water: { state: "draft", amount: 0 },
+      },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      // No releasedAt field at all on this legacy-shaped document.
+    };
+
+    syncBillAmounts(bill, { preserveStatus: true, now: new Date("2026-08-16T00:00:00.000Z") });
+
+    expect(bill.releasedAt ?? null).toBeNull();
+  });
+
+  test("10b. an OLDER, already non-draft bill with no releasedAt (pre-existing production data, isNew: false) is NOT backfilled when re-synced by an unrelated later operation — this is the critical anti-fabrication guarantee", () => {
+    // Simulates a bill that was created and released long before this
+    // feature shipped: already "pending" (never draft, per the rent-bill
+    // lifecycle), loaded fresh from the database (isNew defaults to false
+    // for a document fetched via Bill.findOne/find), with no releasedAt on
+    // record. An unrelated later action (a payment update, the daily
+    // overdue cron) must NOT stamp releasedAt = today — that would fabricate
+    // a release date months after the real, unrecorded release event.
+    const bill = {
+      isNew: false,
+      status: "pending",
+      dueDate: new Date("2026-04-05T00:00:00.000Z"),
+      createdAt: new Date("2026-03-01T00:00:00.000Z"),
+      charges: { ...baseCharges },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      releasedAt: null,
+    };
+
+    // An unrelated operation touches this old bill much later (e.g. the
+    // tenant finally pays, or the overdue cron re-evaluates it).
+    syncBillAmounts(bill, { now: new Date("2026-08-16T00:00:00.000Z") });
+
+    expect(bill.releasedAt).toBeNull();
+
+    bill.paidAmount = 3500;
+    syncBillAmounts(bill, { now: new Date("2026-08-17T00:00:00.000Z") });
+
+    expect(bill.status).toBe("paid");
+    expect(bill.releasedAt).toBeNull();
+  });
+
+  test("11. electricity and water dispatch entries publishing at different times still resolve to one bill-level releasedAt, set on the FIRST transition", () => {
+    const bill = {
+      status: "draft",
+      dueDate: null,
+      charges: { rent: 0, electricity: 1760, water: 450, applianceFees: 0, corkageFees: 0, penalty: 0, discount: 0 },
+      utilityDispatch: {
+        electricity: { state: "draft", amount: 1760 },
+        water: { state: "draft", amount: 450 },
+      },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      releasedAt: null,
+    };
+    syncBillAmounts(bill, { preserveStatus: true, now: new Date("2026-06-16T00:00:00.000Z") });
+    expect(bill.releasedAt).toBeNull();
+
+    // Electricity is published first — this is the bill's first-ever release.
+    bill.status = "pending";
+    bill.utilityDispatch.electricity = { state: "sent", amount: 1760, publishedAt: new Date("2026-06-17T10:00:00.000Z") };
+    const firstRelease = new Date("2026-06-17T10:00:00.000Z");
+    syncBillAmounts(bill, { releasing: true, now: firstRelease });
+    expect(bill.releasedAt).toEqual(firstRelease);
+
+    // Water publishes later, on a separate admin action (its own call to
+    // syncBillAmounts with releasing: true, exactly like electricity's) —
+    // releasedAt must NOT jump forward to this second event (see
+    // getVisibleBillIssuedAt for the intentionally different "current
+    // issued date" behavior, which is untouched by this change).
+    bill.utilityDispatch.water = { state: "sent", amount: 450, publishedAt: new Date("2026-06-20T00:00:00.000Z") };
+    syncBillAmounts(bill, { releasing: true, now: new Date("2026-06-20T00:00:00.000Z") });
+
+    expect(bill.releasedAt).toEqual(firstRelease);
+  });
+
+  test("12. releasing: true on an already-released bill is a safe no-op (idempotent — matches a genuine resend/retry of the publish action)", () => {
+    const bill = {
+      isNew: true,
+      status: "pending",
+      dueDate: new Date("2026-06-23T00:00:00.000Z"),
+      charges: { ...baseCharges },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+      paymentDate: null,
+      releasedAt: null,
+    };
+    const releaseTime = new Date("2026-06-17T10:00:00.000Z");
+    syncBillAmounts(bill, { now: releaseTime });
+    expect(bill.releasedAt).toEqual(releaseTime);
+    bill.isNew = false;
+
+    // A retried/duplicate "publish" call (e.g. an admin double-clicking
+    // send, or a request retry) for a bill that is already released.
+    syncBillAmounts(bill, { releasing: true, now: new Date("2026-07-15T00:00:00.000Z") });
+
+    expect(bill.releasedAt).toEqual(releaseTime);
   });
 });
 

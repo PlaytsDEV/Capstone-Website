@@ -44,7 +44,7 @@ test("confirmed physical visit schedule hides free edit actions and locks applic
   assert.equal(ui.showBack, false);
   assert.equal(ui.showChangeViewingPreference, false);
   assert.equal(ui.showReturnToDashboard, true);
-  assert.match(ui.lockedMessage, /admin marks your physical visit as completed/i);
+  assert.match(ui.lockedMessage, /physical visit is completed/i);
 });
 
 test("confirmed physical visit schedules ignore free edit mode", () => {

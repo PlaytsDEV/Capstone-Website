@@ -14,7 +14,7 @@
  * - Uses custom CSS classes for animations and styling
  */
 
-import { publishNotification } from "./notificationBus";
+import { publishNotification } from "./notificationBus.js";
 
 /**
  * Show notification toast
@@ -40,12 +40,40 @@ let lastNotification = { message: "", timestamp: 0 };
 const DEBOUNCE_MS = 200; // Prevent duplicate consecutive notifications
 
 export const showNotification = (
-  message,
+  messageOrOptions,
   type = "info",
   duration = 3000,
   options = {},
 ) => {
-  if (!message) {
+  let message = messageOrOptions;
+  let resolvedType = type;
+  let resolvedDuration = duration;
+  let extraOptions = options;
+
+  if (messageOrOptions && typeof messageOrOptions === "object") {
+    message =
+      messageOrOptions.message ||
+      messageOrOptions.text ||
+      messageOrOptions.title ||
+      "";
+    resolvedType = messageOrOptions.type || "info";
+    resolvedDuration = messageOrOptions.duration || 3000;
+    const {
+      message: _m,
+      text: _t,
+      title: _ti,
+      type: _ty,
+      duration: _d,
+      ...rest
+    } = messageOrOptions;
+    extraOptions = { ...rest, ...options };
+  }
+
+  if (typeof message !== "string") {
+    message = String(message || "");
+  }
+
+  if (!message.trim()) {
     return null;
   }
 
@@ -60,9 +88,9 @@ export const showNotification = (
 
   return publishNotification({
     message,
-    type,
-    duration,
-    ...options,
+    type: resolvedType,
+    duration: resolvedDuration,
+    ...extraOptions,
   });
 };
 
@@ -155,7 +183,8 @@ export const showConfirmation = (
 };
 
 /**
- * Sanitizes notification message strings to remove legacy or accidental "N/A" placeholders.
+ * Sanitizes notification message strings to remove legacy or accidental "N/A" placeholders
+ * and any legacy appended "View in Announcements" suffixes.
  * E.g., "Your reservation N/A has been cancelled." -> "Your reservation has been cancelled."
  */
 export const cleanNotificationMessage = (message) => {
@@ -164,7 +193,53 @@ export const cleanNotificationMessage = (message) => {
     .replace(/\bYour reservation N\/A\b/gi, "Your reservation")
     .replace(/\b reservation N\/A\b/gi, " reservation")
     .replace(/\b N\/A\b/gi, "")
+    .replace(/\s*•\s*View in Announcements\b/gi, "")
+    .replace(/\s*View in Announcements\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
 };
 
+/**
+ * Transforms past-participle verb titles (e.g. "Reservation Cancelled") into formal event titles (e.g. "Reservation Cancellation")
+ */
+export const formatNotificationTitle = (title) => {
+  if (!title || typeof title !== "string") return title;
+  const exactMap = {
+    "Reservation Cancelled": "Reservation Cancellation",
+    "Physical Visit Completed": "Physical Visit Summary",
+    "Visit Schedule Rejected": "Visit Schedule Update",
+    "Visit Schedule Confirmed": "Visit Schedule Confirmation",
+    "Physical Visit Scheduled": "Physical Visit Request",
+    "Application Submitted": "Application Submission",
+    "Approved for Payment": "Application Approval",
+    "Revision Requested": "Application Revision Request",
+    "Application Rejected": "Application Status Update",
+    "Payment Confirmed": "Payment Confirmation",
+    "Reservation Confirmed": "Reservation Confirmation",
+  };
+  if (exactMap[title]) return exactMap[title];
+
+  return title
+    .replace(/\bCancelled\b/gi, "Cancellation")
+    .replace(/\bCanceled\b/gi, "Cancellation")
+    .replace(/\bCompleted\b/gi, "Summary")
+    .replace(/\bRejected\b/gi, "Update")
+    .replace(/\bConfirmed\b/gi, "Confirmation")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+/**
+ * Summarizes an announcement notification message for compact presentation
+ * in notifications lists and dropdowns (defaults to standard clean message).
+ */
+export const summarizeAnnouncementMessage = (message) => {
+  if (!message || typeof message !== "string") {
+    return "A new announcement is available.";
+  }
+  const cleaned = cleanNotificationMessage(message);
+  if (!cleaned) {
+    return "A new announcement is available.";
+  }
+  return cleaned;
+};

@@ -322,7 +322,7 @@ const ReservationApplicationStep = ({
       )}
 
       {!readOnly && visitPending && (
-        <div className="rf-draft-banner"><div className="info-box-title">You can continue completing your application</div><div className="info-text">Your physical visit is still pending. You can fill in your details and save your progress now — submission will be available once admin confirms your visit or grants access.</div></div>
+        <div className="rf-draft-banner"><div className="info-box-title">You can continue completing your application</div><div className="info-text">Your physical visit is pending. You may fill in your details and save your draft now — submission will be available once your visit is completed or approved.</div></div>
       )}
 
       <div className="rf-app-sections">

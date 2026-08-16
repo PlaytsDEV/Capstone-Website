@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import UtilityBillingTab from "../components/billing/UtilityBillingTab";
 import RentBillingTab from "../components/billing/RentBillingTab";
@@ -237,17 +237,17 @@ const normalizeOverdueRows = (data) => {
 };
 
 const normalizeViolationRows = (data) => {
-  const violations = data?.violations || data?.data || [];
+  const violations = Array.isArray(data) ? data : data?.violations || data?.data || [];
   return violations.map((v) => ({
-    rawStartDate: v.createdAt,
-    tenantName:  v.tenantName || `${v.tenant?.firstName || ""} ${v.tenant?.lastName || ""}`.trim() || "-",
-    roomName:    extractRoomLabel(v),
+    rawStartDate: v.dateOfIncident || v.createdAt,
+    tenantName:  v.tenantName || `${v.tenantId?.firstName || ""} ${v.tenantId?.lastName || ""}`.trim() || "-",
+    roomName:    v.roomName || extractRoomLabel(v),
     branch:      v.branch || v.room?.branch || v.roomId?.branch || "-",
-    type:        v.type || v.violationType || "-",
-    severity:    v.severity || "-",
-    description: v.description || "-",
+    type:        v.violationType || v.type || "-",
+    severity:    v.warningNumber ? `Warning #${v.warningNumber}` : "-",
+    description: v.evidenceNotes || v.customViolationDescription || v.description || "-",
     status:      v.status || "-",
-    createdAt:   v.createdAt,
+    createdAt:   v.dateOfIncident || v.createdAt,
   }));
 };
 
@@ -256,16 +256,27 @@ const normalizeViolationRows = (data) => {
 const AdminBillingPage = () => {
   const { user } = useAuth();
   const isOwner = user?.role === "owner";
-  const [activeTab, setActiveTab] = useState("electricity");
-
-
   const [branchFilter, setBranchFilter] = useState("");
+  const effectiveBranch = isOwner ? branchFilter : (user?.branch || "");
+  const [activeTab, setActiveTab] = useState(() => (user?.branch === "guadalupe" ? "rent" : "electricity"));
+
   const [preset, setPreset] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [isExporting, setIsExporting] = useState(false);
 
-  const effectiveBranch = isOwner ? branchFilter : (user?.branch || "");
+  useEffect(() => {
+    if (effectiveBranch === "guadalupe" && (activeTab === "electricity" || activeTab === "water")) {
+      setActiveTab("rent");
+    }
+  }, [effectiveBranch, activeTab]);
+
+  const handleBranchChange = useCallback((newBranch) => {
+    setBranchFilter(newBranch);
+    if (newBranch === "guadalupe" && (activeTab === "electricity" || activeTab === "water")) {
+      setActiveTab("rent");
+    }
+  }, [activeTab]);
 
   const handlePresetChange = useCallback((newPreset) => {
     setPreset(newPreset);
@@ -391,13 +402,13 @@ const AdminBillingPage = () => {
     try {
       const { rows, columns } = await fetchCurrentTabData();
       if (!rows.length) {
-        showNotification({ type: "info", message: "No data available to export for the selected range and branch filter." });
+        showNotification("No data available to export for the selected range and branch filter.", "info");
         return;
       }
       exportToCSV(rows, columns, buildFilename(activeTab, effectiveBranch, preset));
     } catch (err) {
       console.error("[BillingExport] CSV export failed:", err);
-      showNotification({ type: "error", message: "CSV export failed. Please try again." });
+      showNotification("CSV export failed. Please try again.", "error");
     } finally {
       setIsExporting(false);
     }
@@ -409,7 +420,7 @@ const AdminBillingPage = () => {
     try {
       const { rows, columns, title, headers } = await fetchCurrentTabData();
       if (!rows.length) {
-        showNotification({ type: "info", message: "No data available to export for the selected range and branch filter." });
+        showNotification("No data available to export for the selected range and branch filter.", "info");
         return;
       }
 
@@ -452,7 +463,7 @@ const AdminBillingPage = () => {
       });
     } catch (err) {
       console.error("[BillingExport] PDF export failed:", err);
-      showNotification({ type: "error", message: "PDF export failed. Please try again." });
+      showNotification("PDF export failed. Please try again.", "error");
     } finally {
       setIsExporting(false);
     }
@@ -472,7 +483,7 @@ const AdminBillingPage = () => {
           activeTab={activeTab}
           onTabChange={setActiveTab}
           branchFilter={isOwner ? branchFilter : undefined}
-          onBranchChange={isOwner ? setBranchFilter : undefined}
+          onBranchChange={isOwner ? handleBranchChange : undefined}
           preset={preset}
           onPresetChange={handlePresetChange}
           isOwner={isOwner}
@@ -529,7 +540,10 @@ const AdminBillingPage = () => {
           aria-labelledby="billing-tab-reservation-payments"
           className={activeTab === "reservation-payments" ? "block" : "hidden"}
         >
-          <ReservationPaymentReviewTab isActive={activeTab === "reservation-payments"} />
+          <ReservationPaymentReviewTab
+            isActive={activeTab === "reservation-payments"}
+            branch={effectiveBranch}
+          />
         </section>
 
         <section
@@ -538,9 +552,10 @@ const AdminBillingPage = () => {
           aria-labelledby="billing-tab-overdue-notices"
           className={activeTab === "overdue-notices" ? "block space-y-6" : "hidden"}
         >
-          <OverdueNoticeTracker />
-          <TerminationReviewBoard />
+          <OverdueNoticeTracker branch={effectiveBranch} />
+          <TerminationReviewBoard branch={effectiveBranch} />
         </section>
+
 
         <section
           role="tabpanel"
@@ -548,7 +563,7 @@ const AdminBillingPage = () => {
           aria-labelledby="billing-tab-violations"
           className={activeTab === "violations" ? "block" : "hidden"}
         >
-          <TenantViolationManager />
+          <TenantViolationManager branch={effectiveBranch} />
         </section>
       </div>
     </div>

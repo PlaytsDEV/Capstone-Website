@@ -13,6 +13,7 @@ const requirePermission = jest.fn((permission) => {
 
 const createBillCheckout = jest.fn(noop);
 const createDepositCheckout = jest.fn(noop);
+const createMoveInCheckout = jest.fn(noop);
 const checkSessionStatus = jest.fn(noop);
 const getPaymentsForBillController = jest.fn(noop);
 const getPaymentHistory = jest.fn();
@@ -33,6 +34,7 @@ await jest.unstable_mockModule("../middleware/permissions.js", () => ({
 await jest.unstable_mockModule("../controllers/paymentController.js", () => ({
   createBillCheckout,
   createDepositCheckout,
+  createMoveInCheckout,
   checkSessionStatus,
   getPaymentsForBill: getPaymentsForBillController,
   getAdminPaymentLedger: jest.fn(noop),
@@ -123,6 +125,7 @@ describe("paymentRoutes", () => {
     requirePermission.mockClear();
     createBillCheckout.mockClear();
     createDepositCheckout.mockClear();
+    createMoveInCheckout.mockClear();
     checkSessionStatus.mockClear();
     getPaymentsForBillController.mockClear();
     getPaymentHistory.mockReset();

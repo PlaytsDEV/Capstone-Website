@@ -10,7 +10,10 @@ import {
 import useNotificationStore from "../stores/notificationStore";
 import { useAuth } from "../hooks/useAuth";
 import { getVisibleNotificationsForUser } from "../utils/notificationVisibility";
-import { cleanNotificationMessage } from "../utils/notification";
+import {
+  cleanNotificationMessage,
+  formatNotificationTitle,
+} from "../utils/notification";
 import "./NotificationBell.css";
 import {
   Bell,
@@ -170,14 +173,20 @@ export default function NotificationBell() {
  return undefined;
  }, [isOpen]);
 
- const handleNotificationClick = (notification) => {
- if (!notification.isRead) {
- markAsRead.mutate(notification._id);
- }
+  const handleNotificationClick = (notification) => {
+    if (!notification.isRead) {
+      markAsRead.mutate(notification._id);
+    }
 
- setIsOpen(false);
- navigate(isAdmin() ? "/admin/notifications" : "/applicant/profile", isAdmin() ? undefined : { state: { tab: "notifications" } });
- };
+    setIsOpen(false);
+    if (!isAdmin() && notification.type === "announcement") {
+      navigate("/applicant/announcements");
+    } else if (notification.actionUrl) {
+      navigate(notification.actionUrl);
+    } else {
+      navigate(isAdmin() ? "/admin/notifications" : "/applicant/profile", isAdmin() ? undefined : { state: { tab: "notifications" } });
+    }
+  };
 
  return (
  <div className="nb-container">
@@ -265,7 +274,7 @@ export default function NotificationBell() {
  <NotificationBellIcon type={notification.type} />
  </span>
  <div className="nb-item-content">
- <p className="nb-item-title">{notification.title}</p>
+ <p className="nb-item-title">{formatNotificationTitle(notification.title)}</p>
  <p className="nb-item-message">{cleanNotificationMessage(notification.message)}</p>
  <span className="nb-item-time">
  {timeAgo(notification.createdAt)}

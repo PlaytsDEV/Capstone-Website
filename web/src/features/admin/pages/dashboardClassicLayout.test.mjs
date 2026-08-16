@@ -15,7 +15,7 @@ async function read(relativePath) {
 test("admin dashboard route points back to the classic dashboard component", async () => {
   const lazyPages = await read("src/app/lazyPages.js");
 
-  assert.match(lazyPages, /import\("\.\.\/features\/admin\/pages\/Dashboard"\)/);
+  assert.match(lazyPages, /import\("\.\.\/features\/admin\/pages\/Dashboard(\.jsx)?"\)/);
   assert.doesNotMatch(lazyPages, /DashboardOperations/);
 });
 

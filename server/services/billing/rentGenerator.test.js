@@ -141,7 +141,7 @@ describe("services/billing/rentGenerator", () => {
 
     const result = await ensureCurrentCycleRentBill({
       reservation,
-      referenceDate: new Date("2026-02-28T00:00:00.000Z"),
+      referenceDate: new Date("2026-02-26T00:00:00.000Z"),
       dryRun: false,
       notifyTenant: true,
       requireGenerationDateMatch: true,
@@ -153,6 +153,16 @@ describe("services/billing/rentGenerator", () => {
     expect(localYmd(billInstances[0].billingCycleEnd)).toBe("2026-4-5");
     expect(localYmd(billInstances[0].dueDate)).toBe("2026-3-5");
     expect(notify.billGenerated).toHaveBeenCalledTimes(1);
+
+    // Regression (bill-release notification audit): this cron-generation
+    // path previously called notify.billGenerated() with no options object
+    // at all, so the resulting push payload's billing_id was empty and
+    // tapping it fell back to the generic Billing tab instead of this
+    // specific bill. billId/billType must now be passed through.
+    const [, , , , options] = notify.billGenerated.mock.calls[0];
+    expect(options).toMatchObject({ billType: "rent" });
+    expect(options).toHaveProperty("billId");
+    expect(options.actionUrl).toEqual(expect.stringContaining("/bill-details?billId="));
   });
 
   test("does not bill the advance-covered first month for a structured Reservation", async () => {
@@ -190,7 +200,7 @@ describe("services/billing/rentGenerator", () => {
 
     const result = await ensureCurrentCycleRentBill({
       reservation,
-      referenceDate: new Date("2026-04-18T00:00:00.000Z"),
+      referenceDate: new Date("2026-04-16T00:00:00.000Z"),
       notifyTenant: false,
       requireGenerationDateMatch: true,
     });

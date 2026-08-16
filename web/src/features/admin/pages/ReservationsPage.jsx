@@ -2,16 +2,24 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Archive,
+  ArrowUpDown,
+  Building2,
   Calendar,
   CheckCircle,
+  ChevronDown,
   Clock,
   Eye,
   Download,
+  History,
+  Layers,
   RotateCcw,
+  SlidersHorizontal,
+  Sparkles,
   Trash2,
   User,
   Search,
   ArrowLeft,
+  X,
 } from "lucide-react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -30,6 +38,8 @@ import {
   syncBranchSearchParam,
 } from "../../../shared/utils/branchFilterQuery.mjs";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
+import ProfileAvatar from "../../../shared/components/ProfileAvatar";
+import { showNotification } from "../../../shared/utils/notification";
 import { useReservations } from "../../../shared/hooks/queries/useReservations";
 import {
   RESERVATION_STATUS_LABELS,
@@ -42,6 +52,7 @@ import VisitSchedulesTab from "../components/VisitSchedulesTab";
 import VisitAvailabilityTab from "../components/VisitAvailabilityTab";
 import InquiriesPage from "./InquiriesPage";
 import Pagination from "../../../shared/components/Pagination";
+import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import {
   ActionBar,
   DataTable,
@@ -58,13 +69,10 @@ import {
   mapReservationAdminRow,
   applyMoveInFilter,
   applyAppDateFilter,
-  applyQuickChip,
   getReservationDocumentWarnings,
 } from "../utils/reservationRows";
-import ReservationQuickChips from "../components/ReservationQuickChips";
 import ReservationFilterDrawer from "../components/ReservationFilterDrawer";
 import ActiveFilterTags from "../components/ActiveFilterTags";
-import { SlidersHorizontal } from "lucide-react";
 import "../styles/design-tokens.css";
 import "../styles/admin-reservations.css";
 
@@ -134,13 +142,12 @@ function ReservationsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortState, setSortState] = useState({ key: "createdAt", dir: "desc" });
 
-  const [quickChip, setQuickChip] = useState(null);
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
+  const [isStatusViewExpanded, setIsStatusViewExpanded] = useState(true);
   const [advancedFilters, setAdvancedFilters] = useState({
     moveIn: "any",
     applicationDate: "any",
     roomType: "any",
-    paymentStatus: "any",
     moveInStart: "",
     moveInEnd: "",
     appDateStart: "",
@@ -193,7 +200,10 @@ function ReservationsPage() {
     data: rawReservations = [],
     isLoading: loading,
     error: queryError,
-  } = useReservations({ view: "admin-list", archive: "all" });
+  } = useReservations(
+    { view: "admin-list", archive: isOwner ? "all" : "active" },
+    { refetchInterval: 5000, refetchOnWindowFocus: true, refetchOnMount: true },
+  );
   const error = queryError?.message || null;
 
   const reservations = useMemo(
@@ -206,9 +216,18 @@ function ReservationsPage() {
     [reservations],
   );
 
-  const counts = useMemo(
-    () => ({
+  const counts = useMemo(() => {
+    let overdue = 0;
+    let isNew = 0;
+
+    activeReservations.forEach((r) => {
+      if (checkOverdueReservation(r)) overdue++;
+      if (r.isNew) isNew++;
+    });
+
+    return {
       total: activeReservations.length,
+      isNew,
       pendingApplicationReview: activeReservations.filter((reservation) =>
         reservation.status === "pending_application_review",
       ).length,
@@ -221,6 +240,7 @@ function ReservationsPage() {
       reserved: activeReservations.filter(
         (reservation) => reservation.status === "reserved",
       ).length,
+      overdue,
       cancellationRequested: activeReservations.filter(hasPendingCancellationRequest)
         .length,
       cancelled: activeReservations.filter(
@@ -231,9 +251,8 @@ function ReservationsPage() {
       ).length,
       archived: reservations.filter((reservation) => reservation.isArchived)
         .length,
-    }),
-    [activeReservations, reservations],
-  );
+    };
+  }, [activeReservations, reservations]);
 
   const filteredReservations = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -255,21 +274,21 @@ function ReservationsPage() {
           ? true
           : statusFilter === "archived"
             ? true
+          : statusFilter === "new"
+            ? reservation.isNew
           : statusFilter === "pending_review"
             ? reservation.status === "pending_application_review" ||
               reservation.status === "needs_revision"
           : statusFilter === "reserved"
             ? reservation.status === "reserved" ||
               reservation.status === "approved_for_payment"
-          : statusFilter === "new"
-            ? reservation.isNew
           : statusFilter === "overdue"
             ? checkOverdueReservation(reservation)
-            : statusFilter === "in_progress"
-              ? IN_PROGRESS_STATUSES.includes(reservation.status)
-              : statusFilter === "cancellation_requested"
-                ? hasPendingCancellationRequest(reservation)
-                : hasReservationStatus(reservation.status, statusFilter);
+          : statusFilter === "in_progress"
+            ? IN_PROGRESS_STATUSES.includes(reservation.status)
+          : statusFilter === "cancellation_requested"
+            ? hasPendingCancellationRequest(reservation)
+            : hasReservationStatus(reservation.status, statusFilter);
       const matchBranch =
         branchFilter === "all" || reservation.branchCode === branchFilter;
 
@@ -278,10 +297,6 @@ function ReservationsPage() {
       const matchRoomType =
         advancedFilters.roomType === "any" ||
         reservation.roomType === advancedFilters.roomType;
-      const matchPayment =
-        advancedFilters.paymentStatus === "any" ||
-        reservation.paymentStatus === advancedFilters.paymentStatus;
-      const matchChip = applyQuickChip(reservation, quickChip);
 
       return (
         matchSearch &&
@@ -289,15 +304,12 @@ function ReservationsPage() {
         matchBranch &&
         matchMoveIn &&
         matchAppDate &&
-        matchRoomType &&
-        matchPayment &&
-        matchChip
+        matchRoomType
       );
     });
   }, [
     advancedFilters,
     branchFilter,
-    quickChip,
     reservations,
     searchTerm,
     statusFilter,
@@ -308,20 +320,28 @@ function ReservationsPage() {
     if (advancedFilters.moveIn !== "any") count++;
     if (advancedFilters.applicationDate !== "any") count++;
     if (advancedFilters.roomType !== "any") count++;
-    if (advancedFilters.paymentStatus !== "any") count++;
     return count;
   }, [advancedFilters]);
+
+  const hasActiveFilters = useMemo(
+    () =>
+      Boolean(
+        searchTerm.trim() ||
+        (isOwner && branchFilter !== "all") ||
+        statusFilter !== "all" ||
+        activeAdvancedFilterCount > 0,
+      ),
+    [activeAdvancedFilterCount, branchFilter, isOwner, searchTerm, statusFilter],
+  );
 
   const handleResetAllFilters = useCallback(() => {
     setSearchTerm("");
     setStatusFilter("all");
     setBranchFilter("all");
-    setQuickChip(null);
     setAdvancedFilters({
       moveIn: "any",
       applicationDate: "any",
       roomType: "any",
-      paymentStatus: "any",
       moveInStart: "",
       moveInEnd: "",
       appDateStart: "",
@@ -400,6 +420,12 @@ function ReservationsPage() {
     setSearchParams(nextParams, { replace: true });
   }, [branchFilter, isOwner, searchParams, setSearchParams, user?.role]);
 
+  useEffect(() => {
+    if (!isOwner && statusFilter === "archived") {
+      setStatusFilter("all");
+    }
+  }, [isOwner, statusFilter]);
+
   const summaryItems = useMemo(
     () => [
       {
@@ -437,7 +463,89 @@ function ReservationsPage() {
     ],
     [counts],
   );
-  const activeSummaryIndex = SUMMARY_FILTERS.indexOf(statusFilter);
+
+  const statusViewTabs = useMemo(
+    () => [
+      {
+        id: "all",
+        label: "All Active",
+        count: counts.total,
+        icon: null,
+        title: "View all active reservations",
+        activeClass: "res-view-tab--active res-view-tab--primary",
+      },
+      {
+        id: "new",
+        label: "New Applications",
+        count: counts.isNew,
+        icon: Sparkles,
+        iconColor:
+          counts.isNew > 0
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-muted-foreground",
+        title: "Newly submitted applicant reservations",
+        activeClass: "res-view-tab--active res-view-tab--primary",
+      },
+      {
+        id: "reserved",
+        label: "Reserved",
+        count: counts.reserved + counts.approvedForPayment,
+        icon: CheckCircle,
+        iconColor: "text-muted-foreground",
+        title: "Filter confirmed and reserved reservations",
+        activeClass: "res-view-tab--active res-view-tab--primary",
+      },
+      {
+        id: "overdue",
+        label: "Overdue Move-In",
+        count: counts.overdue,
+        icon: AlertTriangle,
+        iconColor:
+          counts.overdue > 0
+            ? "text-red-600 dark:text-red-400"
+            : "text-muted-foreground",
+        title: "Reservations past scheduled move-in date",
+        activeClass: "res-view-tab--active res-view-tab--danger",
+        inactiveClass:
+          counts.overdue > 0 ? "text-red-700 dark:text-red-400 font-medium" : "",
+      },
+      {
+        id: "cancellation_requested",
+        label: "Cancellation Requests",
+        count: counts.cancellationRequested,
+        icon: AlertTriangle,
+        iconColor:
+          counts.cancellationRequested > 0
+            ? "text-amber-600 dark:text-amber-400"
+            : "text-muted-foreground",
+        title: "Review pending cancellation requests",
+        activeClass: "res-view-tab--active res-view-tab--warning",
+        inactiveClass:
+          counts.cancellationRequested > 0
+            ? "text-amber-700 dark:text-amber-400 font-medium"
+            : "",
+      },
+      {
+        id: "cancelled",
+        label: "Cancelled",
+        count: counts.cancelled,
+        icon: Trash2,
+        iconColor: "text-muted-foreground",
+        title: "View cancelled reservations",
+        activeClass: "res-view-tab--active res-view-tab--danger",
+      },
+      isOwner && {
+        id: "archived",
+        label: "Archived",
+        count: counts.archived,
+        icon: Archive,
+        iconColor: "text-muted-foreground",
+        title: "View archived records",
+        activeClass: "res-view-tab--active res-view-tab--muted",
+      },
+    ].filter(Boolean),
+    [counts, isOwner],
+  );
 
   const tabs = useMemo(
     () => [
@@ -447,40 +555,6 @@ function ReservationsPage() {
       { key: "inquiries", label: "Inquiries" },
     ],
     [],
-  );
-
-  const filters = useMemo(
-    () => [
-      ...(isOwner
-        ? [
-            {
-              key: "branch",
-              options: OWNER_BRANCH_FILTER_OPTIONS,
-              value: branchFilter,
-              onChange: (value) => {
-                setBranchFilter(value);
-                setCurrentPage(1);
-              },
-            },
-          ]
-        : []),
-      {
-        key: "status",
-        options: [
-          { value: "all", label: "All Statuses" },
-          { value: "in_progress", label: "In Progress" },
-          { value: "reserved", label: "Reserved" },
-          { value: "moveIn", label: "Moved In" },
-          { value: "cancelled", label: "Cancelled" },
-        ],
-        value: statusFilter,
-        onChange: (value) => {
-          setStatusFilter(value);
-          setCurrentPage(1);
-        },
-      },
-    ],
-    [branchFilter, isOwner, statusFilter],
   );
 
   const prefetchReservationDetail = useCallback(
@@ -642,11 +716,25 @@ function ReservationsPage() {
 
   const handleDelete = useCallback(
     (reservationId) => {
+      const targetRes = reservations.find((r) => r.id === reservationId);
+      if (
+        targetRes &&
+        (hasReservationStatus(targetRes.status, "reserved", "approved_for_payment") ||
+          hasReservationStatus(targetRes.status, "moveIn"))
+      ) {
+        showNotification(
+          "Confirmed reserved bookings cannot be deleted directly. Please process a cancellation or move-in/move-out workflow first.",
+          "error",
+          5000,
+        );
+        return;
+      }
+
       setConfirmModal({
         open: true,
         title: "Delete Reservation?",
         message:
-          "Remove this reservation from your active list? Billing and record history are safely preserved in the background, and you can restore it anytime.",
+          "Remove this reservation from your active list? Billing and record history are safely preserved in the background, and you can restore it anytime from the Archived tab.",
         variant: "danger",
         confirmText: "Delete Reservation",
         onConfirm: async () => {
@@ -658,8 +746,8 @@ function ReservationsPage() {
             (oldData) => {
               if (!Array.isArray(oldData)) return oldData;
               return oldData.map((res) =>
-                res._id === reservationId || res.id === reservationId
-                  ? { ...res, isArchived: true, status: "archived" }
+                String(res._id || res.id) === String(reservationId)
+                  ? { ...res, isArchived: true, status: "archived", archivedAt: new Date().toISOString() }
                   : res,
               );
             },
@@ -682,6 +770,47 @@ function ReservationsPage() {
         },
       });
     },
+    [queryClient, refetchReservations, reservations],
+  );
+
+  const handleHardDelete = useCallback(
+    (reservationId) => {
+      setConfirmModal({
+        open: true,
+        title: "Permanently Delete Reservation?",
+        message:
+          "This will permanently purge this archived reservation record and its audit history from the database. This action is irreversible and restricted to System Owners.",
+        variant: "danger",
+        confirmText: "Permanently Delete",
+        onConfirm: async () => {
+          setConfirmModal((previous) => ({ ...previous, open: false }));
+
+          // Optimistic UI removal: completely remove from cache
+          queryClient.setQueriesData(
+            { queryKey: ["reservations"] },
+            (oldData) => {
+              if (!Array.isArray(oldData)) return oldData;
+              return oldData.filter(
+                (res) => String(res._id || res.id) !== String(reservationId),
+              );
+            },
+          );
+
+          showNotification("Reservation permanently deleted.", "success", 4000);
+
+          try {
+            await reservationApi.delete(reservationId, { hardDelete: true });
+            refetchReservations();
+          } catch (error) {
+            refetchReservations();
+            showNotification(
+              error?.message || "Failed to permanently delete reservation. Please try again.",
+              "error",
+            );
+          }
+        },
+      });
+    },
     [queryClient, refetchReservations],
   );
 
@@ -696,11 +825,32 @@ function ReservationsPage() {
         confirmText: "Restore",
         onConfirm: async () => {
           setConfirmModal((previous) => ({ ...previous, open: false }));
+
+          // Optimistic UI restoration in cache
+          queryClient.setQueriesData(
+            { queryKey: ["reservations"] },
+            (oldData) => {
+              if (!Array.isArray(oldData)) return oldData;
+              return oldData.map((res) =>
+                String(res._id || res.id) === String(reservationId)
+                  ? {
+                      ...res,
+                      isArchived: false,
+                      status: res.archivedPreviousStatus || "cancelled",
+                      archivedAt: null,
+                    }
+                  : res,
+              );
+            },
+          );
+
+          showNotification("Reservation restored successfully.", "success", 4000);
+
           try {
             await reservationApi.restore(reservationId);
-            showNotification("Reservation restored", "success");
             refetchReservations();
           } catch (error) {
+            refetchReservations();
             showNotification(
               error?.message || "Failed to restore reservation",
               "error",
@@ -709,7 +859,7 @@ function ReservationsPage() {
         },
       });
     },
-    [refetchReservations],
+    [queryClient, refetchReservations],
   );
 
   const handleExportCSV = useCallback(() => {
@@ -747,12 +897,14 @@ function ReservationsPage() {
           const docWarnings = getReservationDocumentWarnings(row);
           return (
             <div className="res-applicant-cell">
-              <div
-                className={`res-avatar ${getAvatarColor(rowInitials)}`}
-                aria-label={row.customer}
-              >
-                {rowInitials}
-              </div>
+              <ProfileAvatar
+                className="res-avatar"
+                user={row.userId}
+                src={row.photoUrl || row.profileImage || row.userId?.profileImage}
+                initials={rowInitials}
+                alt={`${row.customer} profile photo`}
+                size={36}
+              />
               <div className="res-applicant-info">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="res-applicant-name">{row.customer}</span>
@@ -814,50 +966,118 @@ function ReservationsPage() {
       },
       {
         key: "moveInDate",
-        label: isArchivedView ? "Archived" : "Move-In",
+        label: isArchivedView
+          ? "Archived Date"
+          : statusFilter === "cancelled"
+            ? "Cancelled Date"
+            : "Move-In",
         sortable: true,
         width: "14%",
-        render: (row) => formatShortDate(row.moveInDate),
+        render: (row) =>
+          isArchivedView
+            ? formatShortDate(row.archivedAt || row.createdAt)
+            : row.status === "cancelled" && row.cancelledAt
+              ? formatShortDate(row.cancelledAt)
+              : formatShortDate(row.moveInDate),
       },
       {
         key: "createdAt",
-        label: isArchivedView ? "Archived By" : "Date",
+        label: isArchivedView
+          ? "Archived By"
+          : statusFilter === "cancelled"
+            ? "Cancelled By"
+            : "Date",
         sortable: false,
         width: "14%",
-        render: (row) => formatShortDate(row.createdAt),
+        render: (row) =>
+          isArchivedView
+            ? row.archivedByName || "Admin"
+            : row.status === "cancelled"
+              ? row.cancelledByName || "Admin"
+              : formatShortDate(row.createdAt),
       },
       {
         key: "actions",
         label: "",
         width: "80px",
         align: "right",
-        render: (row) => (
-          <div
-            className="res-actions"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              className="res-icon-btn"
-              title="View details"
-              onClick={() => handleView(row.id)}
+        render: (row) => {
+          const isReservedOrActive =
+            hasReservationStatus(row.status, "reserved", "approved_for_payment") ||
+            hasReservationStatus(row.status, "moveIn");
+
+          return (
+            <div
+              className="res-actions"
+              onClick={(event) => event.stopPropagation()}
             >
-              <Eye size={16} />
-            </button>
-            {can("manageReservations") && (
               <button
-                className="res-icon-btn res-icon-btn--danger"
-                title="Delete"
-                onClick={() => handleDelete(row.id)}
+                className="res-icon-btn"
+                title="View details"
+                onClick={() => handleView(row.id)}
               >
-                <Trash2 size={14} />
+                <Eye size={16} />
               </button>
-            )}
-          </div>
-        ),
+              {isArchivedView ? (
+                <>
+                  {can("manageReservations") && (
+                    <button
+                      className="res-icon-btn text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                      title="Restore reservation"
+                      onClick={() => handleRestore(row.id)}
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  )}
+                  {isOwner && (
+                    <button
+                      className="res-icon-btn res-icon-btn--danger"
+                      title="Permanently Delete (Owner Only)"
+                      onClick={() => handleHardDelete(row.id)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </>
+              ) : (
+                can("manageReservations") && (
+                  isReservedOrActive ? (
+                    <span
+                      className="inline-flex cursor-not-allowed opacity-35"
+                      title="Confirmed reserved bookings cannot be deleted directly. Process a cancellation or move-in first."
+                    >
+                      <button
+                        type="button"
+                        className="res-icon-btn"
+                        disabled
+                        tabIndex={-1}
+                        aria-disabled="true"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      className="res-icon-btn res-icon-btn--danger"
+                      title="Delete / Archive"
+                      onClick={() => handleDelete(row.id)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )
+                )
+              )}
+            </div>
+          );
+        },
       },
     ],
-    [can, handleDelete, handleView, isArchivedView],
+    [can, handleDelete, handleHardDelete, handleRestore, handleView, isArchivedView, isOwner],
   );
+
+  if (loading && (!rawReservations || rawReservations.length === 0)) {
+    return <AdminTablePageSkeleton />;
+  }
 
   return (
     <div className="space-y-6">
@@ -897,152 +1117,56 @@ function ReservationsPage() {
       {activeTab === "reservations" && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            {summaryItems.map((item) => {
-              const isActive =
-                statusFilter === item.key ||
-                (item.key === "pending_review" &&
-                  (statusFilter === "pending_application_review" ||
-                    statusFilter === "needs_revision" ||
-                    statusFilter === "in_progress")) ||
-                (item.key === "reserved" &&
-                  (statusFilter === "approved_for_payment" ||
-                    statusFilter === "reserved"));
-              return (
-                <div
-                  key={item.key}
-                  onClick={() => {
-                    setStatusFilter(item.key);
-                    setCurrentPage(1);
-                  }}
-                  style={{
-                    backgroundColor: "var(--bg-card)",
-                    borderColor: isActive ? "var(--primary)" : "var(--border-light)",
-                    boxShadow: isActive
-                      ? "0 4px 12px rgba(2,6,23,0.06)"
-                      : "0 1px 3px rgba(2,6,23,0.02)",
-                  }}
-                  className={`border rounded-xl p-4 cursor-pointer transition-all hover:border-[color:var(--primary)] ${
-                    isActive ? "ring-1 ring-[color:var(--primary)]" : ""
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      {item.label}
-                    </span>
-                    <div
-                      className={`p-2 rounded-lg ${
-                        item.color === "blue"
-                          ? "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"
-                          : item.color === "orange"
-                          ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400"
-                          : item.color === "teal"
-                          ? "bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400"
-                          : "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
-                      }`}
-                    >
-                      <item.icon className="w-4 h-4" strokeWidth={2} />
-                    </div>
-                  </div>
-
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-2xl font-bold tracking-tight text-foreground">
-                      {item.value}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground font-medium">
-                      {item.subtext}
-                    </span>
+            {summaryItems.map((item) => (
+              <div
+                key={item.key}
+                style={{
+                  backgroundColor: "var(--bg-card)",
+                  borderColor: "var(--border-light)",
+                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.02)",
+                }}
+                className="border rounded-xl p-4 transition-colors"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    {item.label}
+                  </span>
+                  <div
+                    className={`p-2 rounded-lg ${
+                      item.color === "blue"
+                        ? "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"
+                        : item.color === "orange"
+                        ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400"
+                        : item.color === "teal"
+                        ? "bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400"
+                        : "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4" strokeWidth={2} />
                   </div>
                 </div>
-              );
-            })}
+
+                <div className="flex items-baseline justify-between">
+                  <span className="text-2xl font-bold tracking-tight text-foreground">
+                    {item.value}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground font-medium">
+                    {item.subtext}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mr-1">
-              Views:
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setStatusFilter("all");
-                setCurrentPage(1);
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                statusFilter === "all"
-                  ? "bg-[color:var(--primary)] text-primary-foreground font-semibold shadow-sm"
-                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              All Active ({counts.total})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setStatusFilter("cancellation_requested");
-                setCurrentPage(1);
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                statusFilter === "cancellation_requested"
-                  ? "bg-amber-600 text-white font-semibold shadow-sm"
-                  : counts.cancellationRequested > 0
-                  ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-medium"
-                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              Cancellation Requests ({counts.cancellationRequested})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setStatusFilter("cancelled");
-                setCurrentPage(1);
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                statusFilter === "cancelled"
-                  ? "bg-rose-600 text-white font-semibold shadow-sm"
-                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Cancelled ({counts.cancelled})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setStatusFilter("archived");
-                setCurrentPage(1);
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                statusFilter === "archived"
-                  ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 font-semibold shadow-sm"
-                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              <Archive className="w-3.5 h-3.5" />
-              Archived ({counts.archived})
-            </button>
-          </div>
-
-          <ReservationQuickChips
-            reservations={reservations}
-            activeChip={quickChip}
-            onSelectChip={(chip) => {
-              setQuickChip(chip);
-              setCurrentPage(1);
-            }}
-          />
-
+          {/* Unified Table & Filter Workspace Card */}
           <div
             style={{ backgroundColor: "var(--bg-card)", border: `1px solid var(--border-light)` }}
-            className="border rounded-lg p-5 overflow-visible"
+            className="border rounded-xl p-4 sm:p-5 overflow-visible"
           >
-            <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between mb-4">
+            {/* Row 1: Global Search, Branch, Sort, Advanced Filters, Reset, Export */}
+            <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between mb-3.5">
               <div className="relative flex-1 min-w-[240px]">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Search by name, email, code, or room..."
@@ -1052,68 +1176,75 @@ function ReservationsPage() {
                     setCurrentPage(1);
                   }}
                   style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                  className="w-full pl-10 pr-4 h-9 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
+                  className="w-full pl-10 pr-9 h-9 border rounded-lg text-xs focus:outline-none focus:border-[var(--primary)] focus:ring-0 transition-colors"
                 />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded cursor-pointer"
+                    title="Clear search text"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5 sm:justify-start lg:justify-end">
-                <select
-                  value={`${sortState.key}-${sortState.dir}`}
-                  onChange={(e) => {
-                    const [key, dir] = e.target.value.split("-");
-                    setSortState({ key, dir });
-                    setCurrentPage(1);
-                  }}
-                  style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                  className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
-                  title="Sort reservations"
-                >
-                  <option value="createdAt-desc">Recent Transaction</option>
-                  <option value="createdAt-asc">Oldest Transaction</option>
-                  <option value="customer-asc">Alphabetical (A - Z)</option>
-                  <option value="customer-desc">Alphabetical (Z - A)</option>
-                </select>
-
-                {isOwner && (
+                {/* Sort Selector with Explicit Icon Prefix */}
+                <div className="relative inline-flex items-center">
+                  <ArrowUpDown className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
                   <select
-                    value={branchFilter}
+                    value={`${sortState.key}-${sortState.dir}`}
                     onChange={(e) => {
-                      setBranchFilter(e.target.value);
+                      const [key, dir] = e.target.value.split("-");
+                      setSortState({ key, dir });
                       setCurrentPage(1);
                     }}
                     style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                    className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+                    className="h-9 pl-8 pr-7 border rounded-lg text-xs font-medium focus:outline-none focus:border-[var(--primary)] focus:ring-0 cursor-pointer hover:bg-muted transition-colors"
+                    title="Sort reservations order"
                   >
-                    {OWNER_BRANCH_FILTER_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
+                    <option value="createdAt-desc">Recent Transaction</option>
+                    <option value="createdAt-asc">Oldest Transaction</option>
+                    <option value="customer-asc">Applicant (A - Z)</option>
+                    <option value="customer-desc">Applicant (Z - A)</option>
                   </select>
+                </div>
+
+                {/* Branch Selector with Explicit Icon Prefix */}
+                {isOwner && (
+                  <div className="relative inline-flex items-center">
+                    <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <select
+                      value={branchFilter}
+                      onChange={(e) => {
+                        setBranchFilter(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
+                      className="h-9 pl-8 pr-7 border rounded-lg text-xs font-medium focus:outline-none focus:border-[var(--primary)] focus:ring-0 cursor-pointer hover:bg-muted transition-colors"
+                      title="Filter by dormitory branch"
+                    >
+                      {OWNER_BRANCH_FILTER_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 )}
 
-                <select
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
-                  className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
-                >
-                  {filters
-                    .find((f) => f.key === "status")
-                    ?.options.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                </select>
-
+                {/* Advanced Filter Drawer Trigger */}
                 <button
                   type="button"
                   onClick={() => setMoreFiltersOpen(true)}
-                  className="h-9 px-3.5 border border-[var(--border-light)] rounded-lg hover:bg-muted transition-colors flex items-center gap-2 text-xs font-medium cursor-pointer"
+                  className={`h-9 px-3.5 border rounded-lg transition-colors flex items-center gap-2 text-xs font-medium cursor-pointer ${
+                    activeAdvancedFilterCount > 0
+                      ? "border-[color:var(--primary)] bg-primary/10 text-primary font-semibold"
+                      : "border-[var(--border-light)] hover:bg-muted"
+                  }`}
+                  title="Open advanced date, room type, and payment filters"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
                   <span>More Filters</span>
@@ -1124,11 +1255,90 @@ function ReservationsPage() {
                   )}
                 </button>
 
+                {/* Export Report Dropdown */}
                 <ExportButtons
                   onCsv={handleExportCSV}
                   onPdf={handleExportPDF}
                   disabled={sortedReservations.length === 0}
                 />
+              </div>
+            </div>
+
+            {/* Row 2: Unified Status & Workflow Pipeline Strip */}
+            <div className="flex items-center gap-2.5 flex-wrap pt-3 border-t border-[var(--border-light)] mb-4">
+              <button
+                type="button"
+                onClick={() => setIsStatusViewExpanded((prev) => !prev)}
+                className="res-status-view-trigger"
+                aria-expanded={isStatusViewExpanded}
+                title={
+                  isStatusViewExpanded
+                    ? "Collapse status filters sideways"
+                    : "Expand all status filters sideways"
+                }
+              >
+                <Layers size={13} className="text-muted-foreground" aria-hidden="true" />
+                <span>Status View:</span>
+                <ChevronDown
+                  size={13}
+                  className={`res-status-view-chevron ${!isStatusViewExpanded ? "is-collapsed" : ""}`}
+                  aria-hidden="true"
+                />
+              </button>
+
+              <div
+                className={`res-view-segmented-control ${!isStatusViewExpanded ? "is-collapsed" : ""}`}
+                role="tablist"
+                aria-label="Reservation Status Views"
+              >
+                {statusViewTabs.map((tab) => {
+                  const isSelected = statusFilter === tab.id;
+                  const Icon = tab.icon;
+                  return (
+                    <div
+                      key={tab.id}
+                      className={`res-view-item ${isSelected ? "is-selected-item" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={isSelected}
+                        onClick={() => {
+                          if (!isStatusViewExpanded && isSelected) {
+                            setIsStatusViewExpanded(true);
+                            return;
+                          }
+                          setStatusFilter(
+                            tab.id === "all"
+                              ? "all"
+                              : statusFilter === tab.id
+                                ? "all"
+                                : tab.id,
+                          );
+                          setCurrentPage(1);
+                        }}
+                        className={`res-view-tab ${
+                          isSelected ? tab.activeClass : tab.inactiveClass || ""
+                        }`}
+                        title={
+                          !isStatusViewExpanded && isSelected
+                            ? `${tab.title} (Click to expand other filters)`
+                            : tab.title
+                        }
+                      >
+                        {Icon && (
+                          <Icon
+                            size={13}
+                            className={isSelected ? "text-white" : tab.iconColor}
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span>{tab.label}</span>
+                        <span className="res-view-tab__count">{tab.count}</span>
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -1139,8 +1349,6 @@ function ReservationsPage() {
               onClearStatus={() => setStatusFilter("all")}
               branchFilter={branchFilter}
               onClearBranch={() => setBranchFilter("all")}
-              quickChip={quickChip}
-              onClearChip={() => setQuickChip(null)}
               advancedFilters={advancedFilters}
               onClearAdvancedField={(field) =>
                 setAdvancedFilters((prev) => ({ ...prev, [field]: "any" }))
@@ -1161,7 +1369,6 @@ function ReservationsPage() {
                   moveIn: "any",
                   applicationDate: "any",
                   roomType: "any",
-                  paymentStatus: "any",
                   moveInStart: "",
                   moveInEnd: "",
                   appDateStart: "",
@@ -1234,11 +1441,14 @@ function ReservationsPage() {
                       >
                         <td className="py-4 px-4">
                           <div className="flex items-center gap-3">
-                            <div
-                              className={`w-10 h-10 rounded-full flex items-center justify-center font-medium text-sm ${getAvatarColor(initials(row.customer))}`}
-                            >
-                              {initials(row.customer)}
-                            </div>
+                            <ProfileAvatar
+                              className="w-10 h-10 rounded-full flex-shrink-0"
+                              user={row.userId}
+                              src={row.photoUrl || row.profileImage || row.userId?.profileImage}
+                              initials={initials(row.customer)}
+                              alt={`${row.customer} profile photo`}
+                              size={40}
+                            />
                             <div>
                               <div className="flex items-center gap-2 font-medium text-foreground">
                                 <span>{row.customer}</span>

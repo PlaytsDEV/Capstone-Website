@@ -4,6 +4,7 @@ import {
  Bell,
  Check,
  FileText,
+ LoaderCircle,
  Megaphone,
  ShieldAlert,
  TriangleAlert,
@@ -18,7 +19,8 @@ import {
  formatAnnouncementCategory,
  getAnnouncementCategoryMeta,
 } from "../../../../shared/utils/announcementConfig";
-import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
+import { showNotification } from "../../../../shared/utils/notification";
+import { AnnouncementListSkeleton } from "../../../../shared/components/LoadingSkeletons";
 import "../../../admin/styles/design-tokens.css";
 
 const CATEGORY_ICONS = {
@@ -70,94 +72,107 @@ const fmtDate = (value) =>
 const getAnnouncementId = (announcement) => announcement.id || announcement._id;
 
 const LoadingState = () => (
- <div style={s.root}>
+ <div style={{ width: "100%" }}>
  <div style={s.heading}>
+ <div>
  <h1 style={s.title}>Announcements</h1>
- <p style={s.subtitle}>Stay updated with branch notices, policy versions, and required acknowledgments</p>
+ <p style={s.subtitle}>
+ Stay updated with branch notices, policy versions, and required acknowledgments.
+ </p>
  </div>
- <ListSkeleton rows={4} />
+ <div
+ className="sk-shimmer"
+ style={{ width: 68, height: 26, borderRadius: 999, flexShrink: 0 }}
+ />
+ </div>
+ <AnnouncementListSkeleton count={3} />
  </div>
 );
 
 export default function AnnouncementsTab() {
- const [filter, setFilter] = useState("all");
- const queryClient = useQueryClient();
- const acknowledgeAnnouncement = useAcknowledgeAnnouncement();
- const markReadAttemptsRef = useRef(new Set());
+  const [filter, setFilter] = useState("all");
+  const [acknowledgingId, setAcknowledgingId] = useState(null);
+  const queryClient = useQueryClient();
+  const acknowledgeAnnouncement = useAcknowledgeAnnouncement();
+  const markReadAttemptsRef = useRef(new Set());
 
- const { data: announcementData, isLoading } = useAnnouncements(50);
- const announcements = announcementData?.announcements || [];
+  const { data: announcementData, isLoading } = useAnnouncements(50);
+  const announcements = announcementData?.announcements || [];
 
- const filters = useMemo(() => {
- const values = [
- ...FILTER_CATEGORIES,
- ...new Set(
- announcements
- .map((announcement) => announcement.category)
- .filter(Boolean),
- ),
- ];
+  const filters = useMemo(() => {
+    const values = [
+      ...FILTER_CATEGORIES,
+      ...new Set(
+        announcements
+          .map((announcement) => announcement.category)
+          .filter(Boolean),
+      ),
+    ];
 
- return [...new Set(values)].map((value) => ({
- value,
- label: value === "all" ? "All" : formatAnnouncementCategory(value),
- }));
- }, [announcements]);
+    return [...new Set(values)].map((value) => ({
+      value,
+      label: value === "all" ? "All" : formatAnnouncementCategory(value),
+    }));
+  }, [announcements]);
 
- const filtered = useMemo(
- () =>
- announcements.filter(
- (announcement) =>
- filter === "all" || announcement.category === filter,
- ),
- [announcements, filter],
- );
+  const filtered = useMemo(
+    () =>
+      announcements.filter(
+        (announcement) =>
+          filter === "all" || announcement.category === filter,
+      ),
+    [announcements, filter],
+  );
 
- useEffect(() => {
- const unreadIds = announcements
- .map((announcement) => getAnnouncementId(announcement))
- .filter(
- (announcementId, index) =>
- announcements[index].unread &&
- !markReadAttemptsRef.current.has(announcementId),
- );
+  useEffect(() => {
+    const unreadIds = announcements
+      .map((announcement) => getAnnouncementId(announcement))
+      .filter(
+        (announcementId, index) =>
+          announcements[index].unread &&
+          !markReadAttemptsRef.current.has(announcementId),
+      );
 
- if (unreadIds.length === 0) return undefined;
+    if (unreadIds.length === 0) return undefined;
 
- unreadIds.forEach((announcementId) =>
- markReadAttemptsRef.current.add(announcementId),
- );
+    unreadIds.forEach((announcementId) =>
+      markReadAttemptsRef.current.add(announcementId),
+    );
 
- let cancelled = false;
- Promise.allSettled(
- unreadIds.map((announcementId) => announcementApi.markAsRead(announcementId)),
- ).then((results) => {
- results.forEach((result, index) => {
- if (result.status === "rejected") {
- markReadAttemptsRef.current.delete(unreadIds[index]);
- }
- });
- if (!cancelled) {
- queryClient.invalidateQueries({ queryKey: ["announcements"] });
- }
- });
+    let cancelled = false;
+    Promise.allSettled(
+      unreadIds.map((announcementId) => announcementApi.markAsRead(announcementId)),
+    ).then((results) => {
+      results.forEach((result, index) => {
+        if (result.status === "rejected") {
+          markReadAttemptsRef.current.delete(unreadIds[index]);
+        }
+      });
+      if (!cancelled) {
+        queryClient.invalidateQueries({ queryKey: ["announcements"] });
+      }
+    });
 
- return () => {
- cancelled = true;
- };
- }, [announcements, queryClient]);
+    return () => {
+      cancelled = true;
+    };
+  }, [announcements, queryClient]);
 
- const handleAcknowledge = async (announcementId) => {
- try {
- await acknowledgeAnnouncement.mutateAsync(announcementId);
- } catch (error) {
- console.error("Failed to acknowledge announcement:", error);
- }
- };
+  const handleAcknowledge = async (announcementId) => {
+    setAcknowledgingId(announcementId);
+    try {
+      await acknowledgeAnnouncement.mutateAsync(announcementId);
+      showNotification("Notice acknowledged successfully.", "success", 3500);
+    } catch (error) {
+      showNotification(error.message || "Failed to acknowledge notice.", "error", 4000);
+    } finally {
+      setAcknowledgingId(null);
+    }
+  };
 
- if (isLoading) {
- return <LoadingState />;
- }
+  if (isLoading) {
+    return <LoadingState />;
+  }
 
  return (
  <div style={{ width: "100%" }}>
@@ -260,11 +275,24 @@ export default function AnnouncementsTab() {
  </div>
  ) : (
  <button
- onClick={() => handleAcknowledge(getAnnouncementId(announcement))}
- style={s.ackButton}
- disabled={acknowledgeAnnouncement.isPending}
+   onClick={() => handleAcknowledge(getAnnouncementId(announcement))}
+   style={{
+     ...s.ackButton,
+     ...(acknowledgingId === getAnnouncementId(announcement) ? { opacity: 0.75, cursor: "not-allowed" } : {}),
+   }}
+   disabled={Boolean(acknowledgingId)}
  >
- <ShieldAlert size={12} /> Acknowledge
+   {acknowledgingId === getAnnouncementId(announcement) ? (
+     <>
+       <LoaderCircle size={12} className="animate-spin" />
+       Acknowledging...
+     </>
+   ) : (
+     <>
+       <ShieldAlert size={12} />
+       Acknowledge
+     </>
+   )}
  </button>
  )}
  </div>

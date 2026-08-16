@@ -50,6 +50,7 @@ import {
   resolveAdminBranchFilter,
   loadTenantMap,
   buildMaintenanceReportPayload,
+  findOverlappingRoomRequests,
 } from "./_helpers.js";
 import { notify } from "../../utils/notificationService.js";
 
@@ -350,6 +351,8 @@ export const getAdminAll = async (req, res, next) => {
     }
 
     const requests = await MaintenanceRequest.find(query)
+      .populate("roomId", "name roomNumber floor branch")
+      .populate("reservationId", "roomNumber bedNumber bed status")
       .sort({ created_at: -1 })
       .limit(limit)
       .lean();
@@ -389,6 +392,13 @@ export const getRequestById = async (req, res, next) => {
       if (request.user_id !== dbUser.user_id) {
         throw new AppError("Access denied", 403, "FORBIDDEN");
       }
+    }
+
+    if (request.roomId && typeof request.populate === "function") {
+      await request.populate("roomId", "name roomNumber floor branch");
+    }
+    if (request.reservationId && typeof request.populate === "function") {
+      await request.populate("reservationId", "roomNumber bedNumber bed status");
     }
 
     const tenantUser =
@@ -514,9 +524,17 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
 
     const adminUser = await getDbUser(req.user.uid);
     const actor = buildActorSnapshot(adminUser);
-    const providerSource = normalizeProviderSource(
-      req.body?.providerSource || req.body?.source,
-    );
+    let rawSource = req.body?.providerSource || req.body?.source;
+    if (!rawSource) {
+      if (req.body?.providerId === null || req.body?.providerId === "none" || req.body?.providerId === "") {
+        rawSource = "none";
+      } else if (req.body?.providerId) {
+        rawSource = "directory";
+      } else if (req.body?.providerName) {
+        rawSource = "manual";
+      }
+    }
+    const providerSource = normalizeProviderSource(rawSource);
     if (!providerSource) {
       throw new AppError(
         "Please choose a service provider assignment option.",
@@ -668,6 +686,30 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
       request.assignedByRole = actor.actor_role;
       request.assigned_to = nextProvider.name;
       request.assigned_at = eventTimestamp;
+
+      const providerType = req.body?.providerType === "IN_HOUSE" ? "IN_HOUSE" : "EXTERNAL";
+      const tenantVisibleLabel =
+        toOptionalText(req.body?.tenantVisibleLabel) ||
+        (providerType === "IN_HOUSE"
+          ? "LilyCrest Facilities Team"
+          : (nextProvider.category ? `Authorized ${nextProvider.category} Specialist` : "Authorized External Specialist"));
+      const quotedCost = parseOptionalAmount(req.body?.quotedCost) || 0;
+
+      request.providerDetails = {
+        providerType,
+        tenantVisibleLabel,
+        internalProviderId: nextProvider.id ? String(nextProvider.id) : null,
+        privateContact: nextProvider.contact,
+        quotedCost,
+        currency: "PHP",
+        snapshotJson: nextProvider,
+      };
+
+      // Automatically transition lifecycle status to provider_assigned / in_progress if pending
+      if (["pending", "pending_review", "viewed", "submitted"].includes(request.status)) {
+        request.status = "provider_assigned";
+        request.in_progress_at = eventTimestamp;
+      }
     }
 
     appendStatusHistory(request, {
@@ -1145,6 +1187,350 @@ export const restoreAdminMaintenanceRequest = async (req, res, next) => {
   }
 };
 
+/**
+ * PATCH /api/maintenance/admin/:requestId/cost
+ */
+export const updateAdminMaintenanceCost = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+    const adminUser = await getDbUser(req.user.uid);
+
+    const rawLabor = Number(req.body?.laborCost);
+    const rawMaterials = Number(req.body?.materialsCost);
+
+    if (
+      (req.body?.laborCost !== undefined && (isNaN(rawLabor) || rawLabor < 0 || rawLabor > 500000)) ||
+      (req.body?.materialsCost !== undefined && (isNaN(rawMaterials) || rawMaterials < 0 || rawMaterials > 500000))
+    ) {
+      return sendError(res, 400, "Cost amounts must be non-negative and cannot exceed PHP 500,000.00.");
+    }
+
+    const laborCost = Math.min(500000, Math.max(0, rawLabor || 0));
+    const materialsCost = Math.min(500000, Math.max(0, rawMaterials || 0));
+    const totalCost = laborCost + materialsCost;
+    const isTenantChargeable = Boolean(req.body?.isTenantChargeable);
+    const rawReason = toOptionalText(req.body?.chargeReason);
+    const chargeReason = rawReason ? rawReason.slice(0, 300) : null;
+
+    request.estimatedCost = totalCost;
+    request.actualCost = totalCost;
+    request.costBreakdown = {
+      laborCost,
+      materialsCost,
+      totalCost,
+      isTenantChargeable,
+      chargeReason,
+      billId: request.costBreakdown?.billId || null,
+    };
+
+    if (isTenantChargeable && !request.chargeableTenantId && request.userId) {
+      request.chargeableTenantId = request.userId;
+    }
+
+    const eventTimestamp = new Date();
+    appendStatusHistory(request, {
+      event: "cost_attribution_updated",
+      status: request.status,
+      ...buildActorSnapshot(adminUser),
+      note: `Cost: PHP ${totalCost.toLocaleString("en-PH", { minimumFractionDigits: 2 })} (${isTenantChargeable ? "Tenant Chargeable" : "Dormitory Absorbed"})`,
+      timestamp: eventTimestamp,
+    });
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      message: "Cost breakdown updated successfully.",
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/maintenance/admin/:requestId/duplicates
+ */
+export const getAdminMaintenanceDuplicates = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+
+    const overlapping = await findOverlappingRoomRequests(request);
+    const tenantMap = await loadTenantMap(overlapping);
+
+    sendSuccess(res, {
+      count: overlapping.length,
+      hasPotentialDuplicates: overlapping.length > 0,
+      duplicates: overlapping.map((dup) =>
+        serializeMaintenanceRequest(
+          dup,
+          serializeTenantSummary(tenantMap.get(dup.user_id), dup),
+        ),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/maintenance/admin/:requestId/schedule
+ * POST /api/v1/admin/maintenance/:id/schedule
+ */
+export const scheduleAdminMaintenance = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    const adminUser = await getDbUser(req.user.uid);
+    const scheduledDate = req.body?.scheduledDate ? new Date(req.body.scheduledDate) : null;
+    const notes = toOptionalText(req.body?.notes || req.body?.scheduleNotes);
+
+    if (!scheduledDate || Number.isNaN(scheduledDate.getTime())) {
+      throw new AppError("A valid scheduled date/time is required.", 400, "INVALID_SCHEDULE_DATE");
+    }
+
+    request.schedule = {
+      scheduledDate,
+      notes,
+    };
+
+    if (["pending", "pending_review", "provider_assigned", "viewed"].includes(request.status)) {
+      request.status = "scheduled";
+    }
+
+    appendStatusHistory(request, {
+      event: "work_scheduled",
+      status: request.status,
+      ...buildActorSnapshot(adminUser),
+      note: notes || `Work scheduled for ${scheduledDate.toISOString()}`,
+      timestamp: new Date(),
+    });
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    try {
+      if (request.userId) {
+        notify.maintenanceScheduled(request.userId, request.request_type, scheduledDate, notes, request.request_id);
+      }
+    } catch {
+      // non-fatal
+    }
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      message: "Maintenance visit scheduled successfully.",
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/maintenance/admin/:requestId/finalize
+ * POST /api/v1/admin/maintenance/:id/finalize
+ */
+export const finalizeAdminMaintenanceReport = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    const adminUser = await getDbUser(req.user.uid);
+    const summary = toOptionalText(req.body?.summary || req.body?.reportSummary);
+    const workDone = toOptionalText(req.body?.workDone || req.body?.work_done || req.body?.technicalWork);
+    const partsReplaced = toOptionalText(req.body?.partsReplaced || req.body?.parts_replaced);
+    const preventiveAdvice = toOptionalText(req.body?.preventiveAdvice || req.body?.preventive_advice);
+    const reportUrl = toOptionalText(req.body?.reportUrl || req.body?.report_url);
+
+    if (!summary && !workDone) {
+      throw new AppError("Completion report summary or work details are required to finalize.", 400, "MISSING_REPORT_CONTENT");
+    }
+
+    const finalizedAt = new Date();
+    const reportId = request.completionReport?.reportId || `rep_${Date.now()}`;
+    const finalizedByName = `${adminUser.firstName || ""} ${adminUser.lastName || ""}`.trim() || adminUser.email;
+
+    request.completionReport = {
+      reportId,
+      isDraft: false,
+      summary: summary || request.completionReport?.summary || "Maintenance work completed.",
+      workDone: workDone || request.completionReport?.workDone || "",
+      partsReplaced: partsReplaced || request.completionReport?.partsReplaced || "None",
+      preventiveAdvice: preventiveAdvice || request.completionReport?.preventiveAdvice || "",
+      finalizedBy: adminUser.user_id || String(adminUser._id || ""),
+      finalizedByName,
+      finalizedAt,
+      reportUrl: reportUrl || request.completionReport?.reportUrl || null,
+    };
+
+    if (request.status !== "completed") {
+      request.status = "completed";
+      request.resolved_at = finalizedAt;
+    }
+
+    appendStatusHistory(request, {
+      event: "report_finalized",
+      status: "completed",
+      ...buildActorSnapshot(adminUser),
+      note: "Completion report finalized and published to tenant.",
+      timestamp: finalizedAt,
+    });
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    try {
+      if (request.userId) {
+        notify.maintenanceReportFinalized(request.userId, request.request_type, request.request_id);
+      }
+    } catch {
+      // non-fatal
+    }
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      message: "Completion report finalized and signed successfully.",
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/rate-provider
+ * Admin rates an assigned service provider (1-5 stars) and optionally leaves feedback.
+ * Updates the provider's running average internal rating and usage count.
+ */
+export const rateAdminMaintenanceProvider = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    if (request.isArchived) {
+      throw new AppError(
+        "Archived maintenance requests cannot be rated.",
+        409,
+        "REQUEST_ARCHIVED",
+      );
+    }
+
+    const providerName = request.assignedProviderName || request.assigned_to;
+    if (!providerName && !request.assignedProviderId) {
+      throw new AppError(
+        "Cannot rate provider because no contractor is assigned to this request.",
+        400,
+        "NO_ASSIGNED_PROVIDER",
+        [{ field: "rating", message: "Assign a service provider before submitting a rating." }],
+      );
+    }
+
+    const rawRating = Number(req.body?.rating);
+    if (!Number.isFinite(rawRating) || rawRating < 1 || rawRating > 5) {
+      throw new AppError(
+        "Please provide a valid rating between 1 and 5 stars.",
+        400,
+        "INVALID_RATING",
+        [{ field: "rating", message: "Rating must be between 1 and 5 stars." }],
+      );
+    }
+
+    const rating = Math.round(rawRating * 10) / 10;
+    const feedback = toOptionalText(req.body?.feedback || req.body?.comment);
+    const tags = normalizeTextList(req.body?.tags || []);
+    const adminUser = await getDbUser(req.user.uid);
+    const actor = buildActorSnapshot(adminUser);
+    const ratedAt = new Date();
+
+    request.providerRating = {
+      rating,
+      feedback,
+      tags,
+      ratedAt,
+      ratedBy: actor.actor_id,
+      ratedByName: actor.actor_name,
+      ratedByRole: actor.actor_role,
+    };
+
+    appendStatusHistory(request, {
+      event: "provider_rated",
+      status: request.status,
+      ...actor,
+      note: `Rated service provider "${providerName || "Assigned Contractor"}" ${rating} / 5 stars.${feedback ? ` Feedback: ${feedback}` : ""}`,
+      timestamp: ratedAt,
+    });
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    // If assigned provider is registered in directory, update aggregate statistics
+    if (request.assignedProviderId && mongoose.Types.ObjectId.isValid(request.assignedProviderId)) {
+      const providerDoc = await ServiceProvider.findById(request.assignedProviderId);
+      if (providerDoc) {
+        const nextRatingCount = (providerDoc.ratingCount || 0) + 1;
+        const nextTotalPoints = (providerDoc.totalRatingPoints || 0) + rating;
+        const newAverage = Math.round((nextTotalPoints / nextRatingCount) * 10) / 10;
+        const nextUsageCount = (providerDoc.usageCount || 0) + 1;
+
+        providerDoc.ratingCount = nextRatingCount;
+        providerDoc.totalRatingPoints = nextTotalPoints;
+        providerDoc.internalRating = newAverage;
+        providerDoc.usageCount = nextUsageCount;
+        if (feedback) {
+          providerDoc.internalFeedback = normalizeTextList([
+            ...(providerDoc.internalFeedback || []),
+            feedback,
+          ]);
+        }
+        await providerDoc.save();
+      }
+    }
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      message: `Rating of ${rating} stars recorded for ${providerName || "service provider"}.`,
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+      providerRating: request.providerRating,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getByBranch = getAdminAll;
 export const getRequest = getRequestById;
 export const updateRequest = updateAdminRequestStatusCompat;
+
