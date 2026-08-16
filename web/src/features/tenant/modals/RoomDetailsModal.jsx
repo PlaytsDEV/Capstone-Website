@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   AlertCircle,
   Bed,
@@ -24,6 +24,10 @@ import BedSelector from "../components/BedSelector";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 import { showNotification } from "../../../shared/utils/notification";
 import { LEASE_OPTIONS } from "../pages/reservation-steps/applicationFormConstants";
+import { getOptimizedUrl, getThumbnailUrl } from "../../../shared/utils/imageOptimizer";
+
+// Global cache of preloaded image URLs to prevent duplicate instances
+const PRELOADED_URLS = new Set();
 
 // ─── Helpers ──────────────────────────────────────────────────
 
@@ -58,8 +62,8 @@ function getAvailabilityMeta(room) {
 }
 
 function getImages(room) {
-  if (room.images?.length) return room.images;
-  if (room.image) return [room.image];
+  if (room?.images?.length) return room.images;
+  if (room?.image) return [room.image];
   return [];
 }
 
@@ -68,19 +72,64 @@ function isPrivateRoomType(type) {
   return normalized === "private" || normalized.includes("private");
 }
 
+function getFlyerRates(roomType, targetRoom = {}) {
+  const norm = String(roomType || "").toLowerCase();
+  let regularLong = targetRoom.regularLongRate ?? 6000;
+  let regularShort = targetRoom.regularShortRate ?? 7000;
+  let defaultDiscount = targetRoom.quadrupleDiscountPercent ?? 10;
+
+  if (norm.includes("double")) {
+    regularLong = targetRoom.regularLongRate ?? 9000;
+    regularShort = targetRoom.regularShortRate ?? 10000;
+    defaultDiscount = targetRoom.doubleDiscountPercent ?? 20;
+  } else if (norm.includes("private")) {
+    regularLong = targetRoom.regularLongRate ?? 15000;
+    regularShort = targetRoom.regularShortRate ?? 16000;
+    defaultDiscount = targetRoom.privateDiscountPercent ?? 10;
+  } else {
+    regularLong = targetRoom.regularLongRate ?? 6000;
+    regularShort = targetRoom.regularShortRate ?? 7000;
+    defaultDiscount = targetRoom.quadrupleDiscountPercent ?? 10;
+  }
+
+  const discountPercent =
+    typeof targetRoom.longTermDiscountPercent === "number"
+      ? targetRoom.longTermDiscountPercent
+      : defaultDiscount;
+
+  let longTerm =
+    typeof targetRoom.monthlyPrice === "number" && targetRoom.monthlyPrice > 0
+      ? targetRoom.monthlyPrice
+      : Math.round(regularLong * (1 - discountPercent / 100));
+
+  let shortTerm =
+    typeof targetRoom.shortTermRate === "number" && targetRoom.shortTermRate > 0
+      ? targetRoom.shortTermRate
+      : typeof targetRoom.price === "number" && targetRoom.price > 0
+      ? targetRoom.price
+      : Math.round(regularShort * (1 - discountPercent / 100));
+
+  if (discountPercent > 0 && discountPercent < 100) {
+    regularLong = Math.round(longTerm / (1 - discountPercent / 100));
+    regularShort = Math.round(shortTerm / (1 - discountPercent / 100));
+  }
+
+  return { regularShort, shortTerm, regularLong, longTerm, discountPercent };
+}
+
 // ─── Small presentational pieces ─────────────────────────────
 
-const SectionHeading = ({ icon: Icon, tone = "neutral", title, subtitle, action }) => (
-  <div className="flex items-center justify-between gap-3 mb-4">
-    <div className="flex items-center gap-3 min-w-0">
-      <div
-        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-        style={{ backgroundColor: `color-mix(in srgb, var(--${tone}) 16%, transparent)` }}
-      >
-        <Icon className="w-[18px] h-[18px]" style={{ color: `var(--${tone})` }} />
-      </div>
+const SectionHeading = ({ icon: Icon, tone = "primary", title, subtitle, action }) => (
+  <div className="flex items-center justify-between gap-3 mb-3.5">
+    <div className="flex items-center gap-2.5 min-w-0">
+      {Icon && (
+        <Icon
+          className="w-5 h-5 shrink-0"
+          style={{ color: tone && tone !== "neutral" ? `var(--${tone})` : "var(--primary)" }}
+        />
+      )}
       <div className="min-w-0">
-        <h3 className="font-semibold text-sm text-foreground truncate">{title}</h3>
+        <h3 className="font-semibold text-sm text-foreground tracking-tight truncate">{title}</h3>
         {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
       </div>
     </div>
@@ -89,9 +138,14 @@ const SectionHeading = ({ icon: Icon, tone = "neutral", title, subtitle, action 
 );
 
 const StatChip = ({ icon: Icon, label, value, tone = "neutral" }) => (
-  <div className="flex-1 min-w-[110px] rounded-xl border border-border/70 bg-muted/40 px-3 py-2.5">
-    <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
-      <Icon className="w-3.5 h-3.5" style={{ color: `var(--${tone})` }} />
+  <div className="flex-1 min-w-[110px] rounded-xl border border-border/70 bg-card px-3.5 py-2.5">
+    <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
+      {Icon && (
+        <Icon
+          className="w-3.5 h-3.5 shrink-0"
+          style={{ color: tone && tone !== "neutral" ? `var(--${tone})` : "var(--muted-foreground)" }}
+        />
+      )}
       {label}
     </div>
     <p className="text-lg font-semibold text-foreground leading-none">{value}</p>
@@ -108,10 +162,10 @@ export default function RoomDetailsModal({
   isOverbooked,
   selectedBed,
   onSelectBed,
-  selectedAppliances,
+  selectedAppliances = {},
   onApplianceQuantityChange,
   calculateApplianceFees,
-  availableAppliances,
+  availableAppliances = [],
   proceedButtonText = "Proceed to Reservation",
   selectedLeaseDuration = "",
   onSelectLeaseDuration,
@@ -119,6 +173,7 @@ export default function RoomDetailsModal({
   onTargetMoveInDateChange,
 }) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [hdLoadedMap, setHdLoadedMap] = useState({});
   const [internalLeaseDuration, setInternalLeaseDuration] = useState("");
   const [internalMoveInDate, setInternalMoveInDate] = useState(() => {
     const d = new Date();
@@ -128,7 +183,33 @@ export default function RoomDetailsModal({
 
   useEscapeClose(isOpen && !!room, onClose);
 
-  if (!isOpen || !room) return null;
+  // Stable memoized image array
+  const images = useMemo(
+    () => getImages(room || {}),
+    [room?.id, room?.images, room?.image]
+  );
+
+  // Preload all full-res and thumbnail photos on modal mount exactly once
+  useEffect(() => {
+    if (!isOpen || images.length === 0 || typeof Image === "undefined") return;
+    images.forEach((imgSrc) => {
+      if (!imgSrc) return;
+      const hdUrl = getOptimizedUrl(imgSrc, { width: 1200, quality: 82 });
+      const thumbUrl = getThumbnailUrl(imgSrc, { width: 120, quality: 70 });
+      if (!PRELOADED_URLS.has(hdUrl)) {
+        PRELOADED_URLS.add(hdUrl);
+        const hd = new Image();
+        hd.src = hdUrl;
+      }
+      if (!PRELOADED_URLS.has(thumbUrl)) {
+        PRELOADED_URLS.add(thumbUrl);
+        const thumb = new Image();
+        thumb.src = thumbUrl;
+      }
+    });
+  }, [isOpen, images]);
+
+  const isHdLoaded = Boolean(hdLoadedMap[currentImageIndex]);
 
   const activeLeaseDuration =
     onSelectLeaseDuration && selectedLeaseDuration !== undefined
@@ -139,101 +220,81 @@ export default function RoomDetailsModal({
     activeLeaseDuration && String(activeLeaseDuration).trim() !== "",
   );
 
-  const handleLeaseChange = (val) => {
+  const handleLeaseChange = useCallback((val) => {
     setInternalLeaseDuration(val);
     if (onSelectLeaseDuration) onSelectLeaseDuration(val);
-  };
+  }, [onSelectLeaseDuration]);
 
   const activeMoveInDate = targetMoveInDate || internalMoveInDate;
 
-  const handleMoveInChange = (val) => {
+  const handleMoveInChange = useCallback((val) => {
     setInternalMoveInDate(val);
     if (onTargetMoveInDateChange) onTargetMoveInDateChange(val);
-  };
+  }, [onTargetMoveInDateChange]);
 
-  const getFlyerRates = (roomType, targetRoom = {}) => {
-    const norm = String(roomType || "").toLowerCase();
-    let regularLong = targetRoom.regularLongRate ?? 6000;
-    let regularShort = targetRoom.regularShortRate ?? 7000;
-    let defaultDiscount = targetRoom.quadrupleDiscountPercent ?? 10;
+  const flyer = useMemo(
+    () => (room ? getFlyerRates(room.type, room) : { regularShort: 0, shortTerm: 0, regularLong: 0, longTerm: 0, discountPercent: 0 }),
+    [room?.type, room?.regularLongRate, room?.regularShortRate, room?.monthlyPrice, room?.shortTermRate, room?.price, room?.longTermDiscountPercent, room?.quadrupleDiscountPercent, room?.doubleDiscountPercent, room?.privateDiscountPercent]
+  );
 
-    if (norm.includes("double")) {
-      regularLong = targetRoom.regularLongRate ?? 9000;
-      regularShort = targetRoom.regularShortRate ?? 10000;
-      defaultDiscount = targetRoom.doubleDiscountPercent ?? 20;
-    } else if (norm.includes("private")) {
-      regularLong = targetRoom.regularLongRate ?? 15000;
-      regularShort = targetRoom.regularShortRate ?? 16000;
-      defaultDiscount = targetRoom.privateDiscountPercent ?? 10;
-    } else {
-      regularLong = targetRoom.regularLongRate ?? 6000;
-      regularShort = targetRoom.regularShortRate ?? 7000;
-      defaultDiscount = targetRoom.quadrupleDiscountPercent ?? 10;
-    }
-
-    const discountPercent =
-      typeof targetRoom.longTermDiscountPercent === "number"
-        ? targetRoom.longTermDiscountPercent
-        : defaultDiscount;
-
-    let longTerm =
-      typeof targetRoom.monthlyPrice === "number" && targetRoom.monthlyPrice > 0
-        ? targetRoom.monthlyPrice
-        : Math.round(regularLong * (1 - discountPercent / 100));
-
-    let shortTerm =
-      typeof targetRoom.shortTermRate === "number" && targetRoom.shortTermRate > 0
-        ? targetRoom.shortTermRate
-        : typeof targetRoom.price === "number" && targetRoom.price > 0
-        ? targetRoom.price
-        : Math.round(regularShort * (1 - discountPercent / 100));
-
-    if (discountPercent > 0 && discountPercent < 100) {
-      regularLong = Math.round(longTerm / (1 - discountPercent / 100));
-      regularShort = Math.round(shortTerm / (1 - discountPercent / 100));
-    }
-
-    return { regularShort, shortTerm, regularLong, longTerm, discountPercent };
-  };
-
-  const flyer = getFlyerRates(room.type, room);
-  const isDiscountEnabled = room.isDiscountEnabled !== false;
-
-  const minMonths = room.longTermLeaseMinMonths ?? 6;
+  const isDiscountEnabled = room?.isDiscountEnabled !== false;
+  const minMonths = room?.longTermLeaseMinMonths ?? 6;
   const leaseMonths = parseInt(activeLeaseDuration, 10) || minMonths;
   const isLongTerm = leaseMonths >= minMonths;
 
-  const activeRegularRate = isLongTerm ? flyer.regularLong : flyer.regularShort;
+  const {
+    activeRegularRate,
+    activeMonthlyRate,
+    activeFlyerDiscount,
+    discountPercent,
+    applianceFeesAmount,
+    securityDepositAmount,
+    calculatedUpfrontTotal,
+    calculatedContractTotal,
+    totalSavingsAmount,
+  } = useMemo(() => {
+    const regularRate = isLongTerm ? flyer.regularLong : flyer.regularShort;
+    const monthlyRate = isDiscountEnabled
+      ? isLongTerm
+        ? flyer.longTerm
+        : flyer.shortTerm
+      : regularRate;
+    const flyerDiscount =
+      isDiscountEnabled && regularRate > monthlyRate
+        ? regularRate - monthlyRate
+        : 0;
+    const discPct =
+      isDiscountEnabled && regularRate > 0 && flyerDiscount > 0
+        ? Math.round((flyerDiscount / regularRate) * 100)
+        : 0;
+    const applianceFees = calculateApplianceFees ? calculateApplianceFees() : 0;
+    const secDeposit = monthlyRate;
+    const upfrontTotal = monthlyRate + secDeposit + applianceFees;
+    const contractTotal = (monthlyRate + applianceFees) * leaseMonths;
+    const savings = flyerDiscount * leaseMonths;
 
-  let activeMonthlyRate = isDiscountEnabled
-    ? isLongTerm
-      ? flyer.longTerm
-      : flyer.shortTerm
-    : activeRegularRate;
+    return {
+      activeRegularRate: regularRate,
+      activeMonthlyRate: monthlyRate,
+      activeFlyerDiscount: flyerDiscount,
+      discountPercent: discPct,
+      applianceFeesAmount: applianceFees,
+      securityDepositAmount: secDeposit,
+      calculatedUpfrontTotal: upfrontTotal,
+      calculatedContractTotal: contractTotal,
+      totalSavingsAmount: savings,
+    };
+  }, [flyer, isLongTerm, isDiscountEnabled, calculateApplianceFees, leaseMonths]);
 
-  const activeFlyerDiscount =
-    isDiscountEnabled && activeRegularRate > activeMonthlyRate
-      ? activeRegularRate - activeMonthlyRate
-      : 0;
+  const requiresBedSelection = useMemo(
+    () => Boolean(room?.beds && room.beds.length > 1 && !isPrivateRoomType(room.type)),
+    [room?.beds, room?.type]
+  );
 
-  const discountPercent =
-    isDiscountEnabled && activeRegularRate > 0 && activeFlyerDiscount > 0
-      ? Math.round((activeFlyerDiscount / activeRegularRate) * 100)
-      : 0;
-
-  const applianceFeesAmount = calculateApplianceFees ? calculateApplianceFees() : 0;
-  const securityDepositAmount = activeMonthlyRate;
-  const calculatedUpfrontTotal = activeMonthlyRate + securityDepositAmount + applianceFeesAmount;
-  const calculatedContractTotal = (activeMonthlyRate + applianceFeesAmount) * leaseMonths;
-  const totalSavingsAmount = activeFlyerDiscount * leaseMonths;
-
-  const images = getImages(room);
-  const requiresBedSelection =
-    room.beds && room.beds.length > 1 && !isPrivateRoomType(room.type);
   const proceedDisabled =
     isOverbooked || !hasLeaseSelected || (requiresBedSelection && !selectedBed);
 
-  const handleProceedClick = () => {
+  const handleProceedClick = useCallback(() => {
     if (!hasLeaseSelected) {
       showNotification("Please select a preferred lease term before proceeding.", "warning");
       return;
@@ -247,47 +308,61 @@ export default function RoomDetailsModal({
       return;
     }
     if (onProceed) onProceed();
-  };
+  }, [hasLeaseSelected, requiresBedSelection, selectedBed, isOverbooked, onProceed]);
 
-  const totalBeds = room.capacity || room.beds?.length || 0;
-  const availableBeds =
-    room.availableBeds ??
-    (room.beds
-      ? room.beds.filter(
-          (bed) =>
-            String(bed.status || "").toLowerCase().trim() === "available" ||
-            (bed.status === undefined && bed.available),
-        ).length
-      : 0);
-  const occupancyPercentage = totalBeds ? ((totalBeds - availableBeds) / totalBeds) * 100 : 0;
+  const { totalBeds, availableBeds, occupancyPercentage } = useMemo(() => {
+    if (!room) return { totalBeds: 0, availableBeds: 0, occupancyPercentage: 0 };
+    const total = room.capacity || room.beds?.length || 0;
+    const available =
+      room.availableBeds ??
+      (room.beds
+        ? room.beds.filter(
+            (bed) =>
+              String(bed.status || "").toLowerCase().trim() === "available" ||
+              (bed.status === undefined && bed.available),
+          ).length
+        : 0);
+    const pct = total ? ((total - available) / total) * 100 : 0;
+    return { totalBeds: total, availableBeds: available, occupancyPercentage: pct };
+  }, [room?.capacity, room?.beds, room?.availableBeds]);
 
-  const handlePrevImage = () => {
+  const handlePrevImage = useCallback(() => {
     if (!images.length) return;
     setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
-  };
-  const handleNextImage = () => {
+  }, [images.length]);
+
+  const handleNextImage = useCallback(() => {
     if (!images.length) return;
     setCurrentImageIndex((prev) => (prev + 1) % images.length);
-  };
+  }, [images.length]);
 
-  const availability = getAvailabilityMeta(room);
-  const defaultTerms = (() => {
+  const availability = useMemo(() => (room ? getAvailabilityMeta(room) : { label: "Available", bg: "var(--success)", fg: "#fff" }), [room]);
+
+  const defaultTerms = useMemo(() => {
     const terms = LEASE_OPTIONS.map((opt) => Number(opt.value)).sort((a, b) => a - b);
     if (!terms.includes(minMonths)) {
       terms.push(minMonths);
       terms.sort((a, b) => a - b);
     }
     return terms;
-  })();
+  }, [minMonths]);
+
+  if (!isOpen || !room) return null;
 
   return (
     <div
-      className="rdm-overlay fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-[2px] p-0 sm:p-4"
+      className="rdm-overlay fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4"
       onClick={onClose}
     >
       <style>{`
         @keyframes rdm-rise { from { opacity: 0; transform: translateY(16px) scale(0.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        .rdm-panel { animation: rdm-rise 0.22s cubic-bezier(0.16,1,0.3,1); }
+        .rdm-panel {
+          animation: rdm-rise 0.22s cubic-bezier(0.16,1,0.3,1);
+          contain: content;
+          will-change: transform;
+          transform: translateZ(0);
+          backface-visibility: hidden;
+        }
         @media (prefers-reduced-motion: reduce) { .rdm-panel { animation: none; } }
         .rdm-scroller::-webkit-scrollbar { width: 8px; }
         .rdm-scroller::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
@@ -296,6 +371,8 @@ export default function RoomDetailsModal({
           border: 1px solid var(--border);
           background: var(--muted);
           transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+          will-change: transform;
+          transform: translateZ(0);
         }
         .rdm-chip:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
         .rdm-chip.is-active {
@@ -339,19 +416,43 @@ export default function RoomDetailsModal({
           </button>
         </div>
 
-        {/* Body */}
+        {/* Body — unified single scroll for entire modal */}
         <div className="rdm-scroller flex-1 overflow-y-auto">
-          <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-8 p-5 sm:p-7">
-            {/* ── LEFT: visual identity, sticky on desktop ── */}
-            <div className="lg:sticky lg:top-0 lg:self-start space-y-5">
-              <SpotlightCard spotlightColor="rgba(212, 175, 55, 0.24)" className="p-0">
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-8 p-5 sm:p-7 items-start">
+            {/* ── LEFT: visual identity ── */}
+            <div className="space-y-5">
+              <SpotlightCard className="p-0">
                 <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-muted">
                   {images.length > 0 && (
-                    <img
-                      src={images[currentImageIndex]}
-                      alt={`${room.title} — photo ${currentImageIndex + 1}`}
-                      className="w-full h-full object-cover"
-                    />
+                    <>
+                      {/* Base layer: Instant thumbnail from cache (0ms blank time) */}
+                      <img
+                        src={getThumbnailUrl(images[currentImageIndex], { width: 480, quality: 75 })}
+                        alt=""
+                        aria-hidden="true"
+                        className="w-full h-full object-cover"
+                        style={{
+                          filter: isHdLoaded ? "none" : "blur(4px)",
+                          transform: isHdLoaded ? "scale(1)" : "scale(1.03)",
+                          transition: "filter 0.3s ease, transform 0.3s ease",
+                        }}
+                      />
+
+                      {/* Overlay layer: Full 1200px HD image fading in smoothly */}
+                      <img
+                        src={getOptimizedUrl(images[currentImageIndex], { width: 1200, quality: 82 })}
+                        alt={`${room.title} — photo ${currentImageIndex + 1}`}
+                        loading="eager"
+                        fetchpriority="high"
+                        decoding="async"
+                        onLoad={() => setHdLoadedMap((prev) => ({ ...prev, [currentImageIndex]: true }))}
+                        className="w-full h-full object-cover absolute inset-0"
+                        style={{
+                          opacity: isHdLoaded ? 1 : 0,
+                          transition: "opacity 0.3s ease",
+                        }}
+                      />
+                    </>
                   )}
 
                   <span
@@ -386,20 +487,29 @@ export default function RoomDetailsModal({
               </SpotlightCard>
 
               {images.length > 1 && (
-                <div className="rdm-thumbstrip flex gap-2 overflow-x-auto pb-1">
+                <div className="rdm-thumbstrip flex gap-2 overflow-x-auto pb-1 items-center">
                   {images.map((image, index) => (
                     <button
                       key={index}
+                      type="button"
                       onClick={() => setCurrentImageIndex(index)}
                       aria-label={`View photo ${index + 1}`}
                       aria-current={currentImageIndex === index}
-                      className="shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all"
+                      className="shrink-0 w-16 h-16 min-w-[4rem] min-h-[4rem] aspect-square rounded-lg overflow-hidden border-2 bg-muted relative flex items-center justify-center cursor-pointer transition-all"
                       style={{
                         borderColor: currentImageIndex === index ? "var(--primary)" : "transparent",
-                        opacity: currentImageIndex === index ? 1 : 0.7,
+                        opacity: currentImageIndex === index ? 1 : 0.75,
+                        boxShadow: currentImageIndex === index ? "0 0 0 1px var(--primary)" : "none",
                       }}
                     >
-                      <img src={image} alt="" className="w-full h-full object-cover" />
+                      <img
+                        src={getThumbnailUrl(image, { width: 120, quality: 70 })}
+                        alt={`Photo thumbnail ${index + 1}`}
+                        loading="eager"
+                        fetchpriority="high"
+                        decoding="async"
+                        className="w-full h-full object-cover block"
+                      />
                     </button>
                   ))}
                 </div>
@@ -740,22 +850,17 @@ export default function RoomDetailsModal({
         {/* Footer — persistent price + CTA */}
         <div className="shrink-0 border-t border-border px-5 sm:px-7 py-4 bg-card shadow-[0_-6px_18px_-8px_rgba(0,0,0,0.08)]">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                style={{ backgroundColor: "color-mix(in srgb, var(--primary) 14%, transparent)" }}
-              >
-                <CreditCard className="w-[18px] h-[18px]" style={{ color: "var(--primary)" }} />
-              </div>
+            <div className="flex items-center gap-3">
+              <CreditCard className="w-5 h-5 shrink-0" style={{ color: "var(--primary)" }} />
               {hasLeaseSelected ? (
                 <div>
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Est. upfront move-in total</p>
+                  <p className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">Est. upfront move-in total</p>
                   <p className="text-xl font-bold tabular-nums leading-tight" style={{ color: "var(--primary)" }}>
                     ₱{calculatedUpfrontTotal.toLocaleString()}
                   </p>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Select a lease term to see your total.</p>
+                <p className="text-sm font-medium text-muted-foreground">Select a lease term to see your total.</p>
               )}
             </div>
 

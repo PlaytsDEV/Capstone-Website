@@ -68,9 +68,7 @@ function ContractSummaryBanner({ contract, stayData }) {
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Accommodation
           </span>
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/60">
-            <Building2 size={14} />
-          </div>
+          <Building2 size={16} className="text-blue-600 dark:text-blue-400 flex-shrink-0" strokeWidth={2} />
         </div>
         <div className="mt-2">
           <div className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
@@ -88,9 +86,7 @@ function ContractSummaryBanner({ contract, stayData }) {
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Lease Period
           </span>
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/60">
-            <Calendar size={14} />
-          </div>
+          <Calendar size={16} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" strokeWidth={2} />
         </div>
         <div className="mt-2">
           <div className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
@@ -108,9 +104,7 @@ function ContractSummaryBanner({ contract, stayData }) {
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Monthly Rate
           </span>
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/60">
-            <Coins size={14} />
-          </div>
+          <Coins size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" strokeWidth={2} />
         </div>
         <div className="mt-2">
           <div className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
@@ -128,9 +122,7 @@ function ContractSummaryBanner({ contract, stayData }) {
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Initial Deposits
           </span>
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-100 dark:border-purple-900/60">
-            <ShieldCheck size={14} />
-          </div>
+          <ShieldCheck size={16} className="text-purple-600 dark:text-purple-400 flex-shrink-0" strokeWidth={2} />
         </div>
         <div className="mt-2">
           <div className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
@@ -227,26 +219,22 @@ export default function ContractsPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl sm:text-2xl font-bold text-foreground">Official Lease Contract</h1>
-            {contract?.tenantDocument?.type === "final_notarized" || contract?.finalDocument?.available || contract?.status === "active" ? (
+            {contract?.tenantDocument?.type === "final_notarized" || contract?.finalDocument?.available ? (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60">
                 <CheckCircle2 size={12} />
-                Final Notarized Contract
-              </span>
-            ) : contract?.tenantDocument?.type === "generated_draft" || contract?.preparedDocument?.available ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900/60">
-                <FileText size={12} />
-                Generated Draft — For Signing
+                Notarized Lease Contract
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
-                Contract is being prepared
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900/60">
+                <FileText size={12} />
+                Lease Draft — Ready for Signing
               </span>
             )}
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            {contract?.tenantDocument?.type === "generated_draft"
-              ? "Your contract has been generated and is ready for in-person signing. The final notarized copy will replace this document once uploaded by the admin."
-              : "Your official First JRAC Partnership Co. Contract of Lease agreement and terms of residency."}
+            {contract?.tenantDocument?.type === "final_notarized" || contract?.finalDocument?.available
+              ? "Your official notarized lease agreement and tenancy terms with First JRAC Partnership Co."
+              : "Your lease contract draft has been prepared with your confirmed advance rent and deposit terms. You can review all terms before signing in person upon move in."}
           </p>
         </div>
       </header>

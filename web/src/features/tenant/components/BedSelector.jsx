@@ -1,31 +1,32 @@
-import React from "react";
+import React, { useMemo, useCallback } from "react";
 import { Check, Lock, Wrench } from "lucide-react";
 import "../styles/bed-selector.css";
 import { getBedDisplayLabel, groupBedsByBunk } from "../../../shared/utils/bedIdentifier";
 
 /**
  * Visual Bed Selector — minimalist double-deck bunk bed layout (Bunk A, Bunk B... Upper / Lower).
+ * Memoized to prevent re-renders when parent modal lease term or move-in date updates.
  */
-const BedSelector = ({ beds = [], selectedBed, onSelect, readOnly = false }) => {
+function BedSelector({ beds = [], selectedBed, onSelect, readOnly = false }) {
   if (!beds.length) return null;
 
-  const { bunks, singleBeds } = groupBedsByBunk(beds);
+  const { bunks, singleBeds } = useMemo(() => groupBedsByBunk(beds), [beds]);
 
-  const getStatus = (bed) => {
+  const getStatus = useCallback((bed) => {
     if (!bed) return "empty";
     const rawStatus = bed.status || (bed.available === false ? "occupied" : "available");
     return String(rawStatus).toLowerCase().trim();
-  };
+  }, []);
 
-  const isSelectable = (bed) => {
+  const isSelectable = useCallback((bed) => {
     if (readOnly || !bed) return false;
     const status = getStatus(bed);
     return status === "available";
-  };
+  }, [readOnly, getStatus]);
 
-  const isSelected = (bed) => bed && selectedBed?.id === bed.id;
+  const isSelected = useCallback((bed) => Boolean(bed && selectedBed?.id === bed.id), [selectedBed?.id]);
 
-  const handleClick = (bed, bunkBlock) => {
+  const handleClick = useCallback((bed, bunkBlock) => {
     if (!isSelectable(bed)) return;
     onSelect?.({
       id: bed.id,
@@ -33,7 +34,7 @@ const BedSelector = ({ beds = [], selectedBed, onSelect, readOnly = false }) => 
       bunkBlock: bed.bunkBlock || bunkBlock,
       code: bed.code,
     });
-  };
+  }, [isSelectable, onSelect]);
 
   const renderBed = (bed, fallbackLabel, indexInRoom = 0, bunkBlock = "A") => {
     if (!bed) return null;
@@ -127,6 +128,6 @@ const BedSelector = ({ beds = [], selectedBed, onSelect, readOnly = false }) => 
       </div>
     </div>
   );
-};
+}
 
-export default BedSelector;
+export default React.memo(BedSelector);

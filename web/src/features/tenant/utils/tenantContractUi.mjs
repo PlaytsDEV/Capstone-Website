@@ -50,16 +50,16 @@ export const getTenantContractMessage = (contract) => {
   };
   if (contract.tenantDocument?.type === "final_notarized") {
     return {
-      title: "Final Notarized Contract Available",
-      message: "Your official wet-signed and notarized lease agreement is finalized and verified.",
+      title: "Notarized Lease Contract",
+      message: "Your lease agreement has been signed, notarized, and registered as your permanent official record.",
       nextAction: "You can view, print, or download your official notarized document below.",
     };
   }
   if (contract.tenantDocument?.type === "generated_draft") {
     return {
-      title: "Generated Draft — For Signing",
-      message: "Your contract has been generated and is ready for in-person signing. The final notarized copy will replace this document once uploaded by the admin.",
-      nextAction: "You can review and download the generated draft to check terms before signing.",
+      title: "Lease Draft — Ready for Signing",
+      message: "Your lease contract draft has been prepared with your confirmed advance rent and deposit terms. You can review all terms before signing in person upon move in.",
+      nextAction: "Review your lease terms below. You will physically sign this agreement when you move in.",
     };
   }
   if (contract.stayProofAvailable || contract.status === "active") {

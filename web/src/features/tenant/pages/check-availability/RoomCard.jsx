@@ -1,19 +1,57 @@
 import React, { useState, useRef, useCallback, useMemo } from "react";
 import { ChevronLeft, ChevronRight, MapPin } from "lucide-react";
-import { getOptimizedUrl } from "../../../../shared/utils/imageOptimizer";
+import { getThumbnailUrl, getOptimizedUrl } from "../../../../shared/utils/imageOptimizer";
 
 /**
- * Redesigned Room Card — soft shadows, bed availability dots, muted type badge.
+ * Redesigned Room Card — solid HSL tokens, bed availability dots, clear lease pricing.
  */
-const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" }) => {
+const RoomCard = React.memo(({ room, onClick, onSelect, selectedLeaseTermFilter = "All", isPriority = false }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [loadedMap, setLoadedMap] = useState({});   // { [index]: true } when fully loaded
+  const [loadedMap, setLoadedMap] = useState({}); // { [index]: true } when fully loaded
   const debounceRef = useRef(false);
+  const prefetchedRef = useRef(false);
 
   const images = useMemo(() => {
     const rawImages = room.images?.length ? room.images : [room.image];
-    return rawImages.map((src) => getOptimizedUrl(src));
+    return rawImages.map((src) => getThumbnailUrl(src));
   }, [room.images, room.image]);
+
+  // Preload secondary carousel images, primary HD image, and modal chunk on hover
+  const handleCardMouseEnter = useCallback(() => {
+    if (!prefetchedRef.current) {
+      prefetchedRef.current = true;
+
+      // Prefetch modal component chunk
+      import("../../modals/RoomDetailsModal").catch(() => {});
+
+      if (typeof Image !== "undefined") {
+        // Preload primary HD image for instant modal display
+        const primaryRaw = room.images?.[0] || room.image;
+        if (primaryRaw) {
+          const hd = new Image();
+          hd.src = getOptimizedUrl(primaryRaw, { width: 1200, quality: 82 });
+        }
+
+        // Preload secondary carousel slides
+        if (images.length > 1) {
+          images.slice(1).forEach((src) => {
+            if (src) {
+              const preloader = new Image();
+              preloader.src = src;
+            }
+          });
+        }
+      }
+    }
+  }, [images, room.images, room.image]);
+
+  const handleCardClick = useCallback(() => {
+    if (onSelect) {
+      onSelect(room);
+    } else if (onClick) {
+      onClick(room);
+    }
+  }, [onSelect, onClick, room]);
 
   const navigate = useCallback((delta, e) => {
     e.stopPropagation();
@@ -126,10 +164,10 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
   }, [room]);
 
   return (
-    <div className="ca-card" onClick={onClick}>
+    <div className="ca-card" onClick={handleCardClick} onMouseEnter={handleCardMouseEnter}>
       {/* Image carousel */}
       <div className="ca-card-image-wrap">
-        {/* Shimmer overlay — visible until this image is fully preloaded */}
+        {/* Solid neutral placeholder surface — strictly no gradients */}
         {!isCurrentLoaded && (
           <div
             aria-hidden="true"
@@ -137,10 +175,7 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
               position: "absolute",
               inset: 0,
               zIndex: 2,
-              background:
-                "linear-gradient(90deg,var(--skeleton-base,#e2e8f0) 25%,var(--skeleton-shine,#f1f5f9) 50%,var(--skeleton-base,#e2e8f0) 75%)",
-              backgroundSize: "200% 100%",
-              animation: "caCardShimmer 1.4s infinite",
+              backgroundColor: "var(--card-muted, #f1f5f9)",
               borderRadius: "inherit",
             }}
           />
@@ -149,8 +184,8 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
         <img
           src={images[currentImageIndex]}
           alt={room.title || "Room photo"}
-          loading={currentImageIndex === 0 ? "eager" : "lazy"}
-          fetchpriority={currentImageIndex === 0 ? "high" : "auto"}
+          loading={isPriority && currentImageIndex === 0 ? "eager" : "lazy"}
+          fetchpriority={isPriority && currentImageIndex === 0 ? "high" : "low"}
           decoding="async"
           onLoad={() => setLoadedMap((prev) => ({ ...prev, [currentImageIndex]: true }))}
           onError={() => setLoadedMap((prev) => ({ ...prev, [currentImageIndex]: true }))}
@@ -166,7 +201,14 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
 
         {/* Discount Badge */}
         {discountPercent > 0 && (
-          <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full text-[11px] font-bold shadow-md bg-amber-500 text-slate-950 z-10">
+          <div
+            className="absolute top-3 right-3 px-2.5 py-1 rounded-full text-[11px] font-bold shadow-sm z-10"
+            style={{
+              backgroundColor: "var(--chart-3, #d97706)",
+              color: "#ffffff",
+              border: "1px solid color-mix(in srgb, var(--chart-3, #d97706) 40%, transparent)",
+            }}
+          >
             {discountPercent}% OFF
           </div>
         )}
@@ -180,7 +222,7 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
               type="button"
               aria-label="Previous image"
             >
-              <ChevronLeft style={{ width: 16, height: 16, color: "#374151" }} />
+              <ChevronLeft style={{ width: 16, height: 16, color: "var(--foreground, #0f172a)" }} />
             </button>
             <button
               className="ca-card-nav-btn right"
@@ -188,7 +230,7 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
               type="button"
               aria-label="Next image"
             >
-              <ChevronRight style={{ width: 16, height: 16, color: "#374151" }} />
+              <ChevronRight style={{ width: 16, height: 16, color: "var(--foreground, #0f172a)" }} />
             </button>
           </>
         )}
@@ -219,17 +261,17 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
             <div className="dots">
               {/* Available beds first (green) */}
               {Array.from({ length: availableBeds }).map((_, i) => (
-                <div key={`a-${i}`} className="ca-bed-dot available" />
+                <div key={`a-${i}`} className="ca-bed-dot available" title="Available Bed" />
               ))}
               {/* Taken beds (red) */}
               {Array.from({ length: takenBeds }).map((_, i) => (
-                <div key={`t-${i}`} className="ca-bed-dot taken" />
+                <div key={`t-${i}`} className="ca-bed-dot taken" title="Occupied Bed" />
               ))}
               {Array.from({ length: reservedBeds }).map((_, i) => (
-                <div key={`r-${i}`} className="ca-bed-dot reserved" />
+                <div key={`r-${i}`} className="ca-bed-dot reserved" title="Reserved Bed" />
               ))}
               {Array.from({ length: lockedBeds }).map((_, i) => (
-                <div key={`l-${i}`} className="ca-bed-dot locked" />
+                <div key={`l-${i}`} className="ca-bed-dot locked" title="Under Maintenance" />
               ))}
             </div>
           )}
@@ -246,7 +288,7 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
 
         {/* Location */}
         <div className="ca-card-location">
-          <MapPin />
+          <MapPin size={13} />
           <span>{room.branch}</span>
         </div>
 
@@ -258,7 +300,14 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
                 ₱{shortTermRate.toLocaleString()}
               </span>
               <span className="ca-price-unit">/ mo</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
+              <span
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                style={{
+                  backgroundColor: "color-mix(in srgb, var(--info, #2563eb) 12%, var(--card, #fff))",
+                  color: "var(--info-dark, #1e40af)",
+                  border: "1px solid color-mix(in srgb, var(--info, #2563eb) 25%, transparent)",
+                }}
+              >
                 Short-Term
               </span>
             </>
@@ -268,7 +317,14 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
                 ₱{longTermRate.toLocaleString()}
               </span>
               <span className="ca-price-unit">/ mo</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+              <span
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                style={{
+                  backgroundColor: "color-mix(in srgb, var(--success, #059669) 12%, var(--card, #fff))",
+                  color: "var(--success-dark, #065f46)",
+                  border: "1px solid color-mix(in srgb, var(--success, #059669) 25%, transparent)",
+                }}
+              >
                 Long-Term Rate
               </span>
             </>
@@ -281,7 +337,14 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
                 ₱{longTermRate.toLocaleString()}
               </span>
               <span className="ca-price-unit">/ mo</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-700 border border-amber-500/20 dark:text-amber-300">
+              <span
+                className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                style={{
+                  backgroundColor: "color-mix(in srgb, var(--chart-3, #d97706) 12%, var(--card, #fff))",
+                  color: "var(--chart-3, #d97706)",
+                  border: "1px solid color-mix(in srgb, var(--chart-3, #d97706) 25%, transparent)",
+                }}
+              >
                 Flexi-Lease
               </span>
             </>

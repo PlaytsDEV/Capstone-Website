@@ -277,11 +277,16 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   overflow: hidden;
   cursor: pointer;
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  content-visibility: auto;
+  contain-intrinsic-size: 380px 420px;
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
 .ca-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-4px) translateZ(0);
   border-color: var(--border-hover, #CBD5E1);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
@@ -295,6 +300,7 @@
   border-bottom: 1px solid var(--border-color, #E2E8F0);
   overflow: hidden;
   flex-shrink: 0;
+  contain: paint;
 }
 
 .ca-card-image-wrap img {
@@ -303,16 +309,14 @@
   height: 100%;
   object-fit: cover;
   vertical-align: bottom;
-  transition: transform 0.35s ease;
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .ca-card:hover .ca-card-image-wrap img {
-  transform: scale(1.04);
-}
-
-@keyframes caCardShimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  transform: scale(1.04) translateZ(0);
 }
 
 /* Carousel nav */

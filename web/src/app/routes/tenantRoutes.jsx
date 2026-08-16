@@ -81,7 +81,7 @@ export function TenantRoutes() {
         <Route
           path="contracts"
           element={
-            <ProtectedRoute requiredRole="tenant">
+            <ProtectedRoute requiredRole="applicant">
               <RouteShell name="Contracts" fallback={<ContractsPageSkeleton />}>
                 <ContractsPage />
               </RouteShell>

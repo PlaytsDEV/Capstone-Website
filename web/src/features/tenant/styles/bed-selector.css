@@ -94,9 +94,12 @@
 .bs-bed {
   border-radius: 8px;
   padding: 12px;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   border: 1.5px solid transparent;
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .bs-bed-content {

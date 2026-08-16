@@ -2,8 +2,8 @@ import React from "react";
 import SkeletonPulse from "../../../../shared/components/SkeletonPulse";
 
 /**
- * BillingPageSkeleton — shimmer skeleton that mirrors the Tenant BillingTab layout 1:1.
- * Features solid, neutral surfaces with crisp 1px borders and zero blue gradients.
+ * BillingPageSkeleton — shimmer skeleton that mirrors the Tenant Statement Ledger layout 1:1.
+ * Features solid, neutral surfaces with crisp 1px borders and zero gradients.
  */
 export default function BillingPageSkeleton() {
   return (
@@ -13,112 +13,71 @@ export default function BillingPageSkeleton() {
       aria-live="polite"
       aria-label="Loading billing dashboard"
     >
-      {/* Page Header */}
-      <div className="billing-page-header" style={{ marginBottom: "24px" }}>
-        <SkeletonPulse width="180px" height="26px" style={{ marginBottom: "8px" }} />
-        <SkeletonPulse width="280px" height="14px" />
-      </div>
-
-      {/* Top KPI Cards Grid (Rent & Fees Due, Utilities Due) */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-          gap: "20px",
-          marginBottom: "24px",
-        }}
-      >
-        {[1, 2].map((card) => (
-          <div
-            key={card}
-            style={{
-              background: "var(--surface-card, #ffffff)",
-              borderRadius: 16,
-              border: "1px solid var(--border-card, #e2e8f0)",
-              padding: "24px",
-              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-            }}
-          >
-            <div style={{ marginBottom: 16 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 12,
-                }}
-              >
-                <SkeletonPulse width="120px" height="14px" />
-                <SkeletonPulse width="90px" height="20px" borderRadius="10px" />
-              </div>
-              <SkeletonPulse width="160px" height="32px" />
-            </div>
-            <div
-              style={{
-                marginBottom: 16,
-                background: "var(--surface-hover, #f8fafc)",
-                borderRadius: 10,
-                padding: "12px 14px",
-                border: "1px solid var(--border-card, #f1f5f9)",
-              }}
-            >
-              <SkeletonPulse width="100%" height="28px" borderRadius="6px" />
-            </div>
-            <SkeletonPulse width="100%" height="42px" borderRadius="8px" />
+      {/* Top Ledger Hero Card */}
+      <div className="statement-ledger-hero">
+        <div className="statement-ledger-hero__top">
+          <div>
+            <SkeletonPulse width="140px" height="14px" style={{ marginBottom: "10px" }} />
+            <SkeletonPulse width="220px" height="42px" style={{ marginBottom: "6px" }} />
+            <SkeletonPulse width="300px" height="14px" />
           </div>
-        ))}
-      </div>
-
-      {/* Navigation Pill Tabs */}
-      <div style={{ marginBottom: "24px", display: "flex", justifyContent: "flex-start" }}>
-        <div
-          style={{
-            display: "flex",
-            background: "var(--surface-hover, #f1f5f9)",
-            padding: "4px",
-            borderRadius: "30px",
-            gap: "4px",
-          }}
-        >
-          <SkeletonPulse width="120px" height="34px" borderRadius="24px" />
-          <SkeletonPulse width="100px" height="34px" borderRadius="24px" />
-          <SkeletonPulse width="130px" height="34px" borderRadius="24px" />
+          <div>
+            <SkeletonPulse width="180px" height="44px" borderRadius="10px" />
+          </div>
+        </div>
+        <div className="statement-ledger-hero__chips">
+          <SkeletonPulse width="160px" height="24px" borderRadius="6px" />
+          <SkeletonPulse width="140px" height="24px" borderRadius="6px" />
+          <SkeletonPulse width="140px" height="24px" borderRadius="6px" />
         </div>
       </div>
 
-      {/* Bill Cards List */}
+      {/* Filter Chips Toolbar */}
+      <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+        <SkeletonPulse width="120px" height="34px" borderRadius="20px" />
+        <SkeletonPulse width="100px" height="34px" borderRadius="20px" />
+        <SkeletonPulse width="110px" height="34px" borderRadius="20px" />
+      </div>
+
+      {/* Selection Toolbar */}
+      <div className="ledger-selection-toolbar">
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <SkeletonPulse width="18px" height="18px" borderRadius="4px" />
+          <SkeletonPulse width="150px" height="16px" />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <SkeletonPulse width="160px" height="16px" />
+          <SkeletonPulse width="140px" height="36px" borderRadius="8px" />
+        </div>
+      </div>
+
+      {/* Statement Cards Stream */}
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         {[1, 2, 3].map((row) => (
-          <div
-            key={row}
-            style={{
-              background: "var(--surface-card, #ffffff)",
-              borderRadius: 12,
-              border: "1px solid var(--border-card, #e2e8f0)",
-              overflow: "hidden",
-              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.02)",
-            }}
-          >
+          <div key={row} className="statement-card">
             <div style={{ padding: "16px 20px" }}>
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  gap: 12,
+                  gap: 14,
                   flexWrap: "wrap",
                 }}
               >
-                <div>
-                  <SkeletonPulse width="170px" height="15px" style={{ marginBottom: 8 }} />
-                  <SkeletonPulse width="min(220px, 65vw)" height="12px" />
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <SkeletonPulse width="18px" height="18px" borderRadius="4px" />
+                  <SkeletonPulse width="20px" height="20px" borderRadius="4px" />
+                  <div>
+                    <SkeletonPulse width="180px" height="16px" style={{ marginBottom: 6 }} />
+                    <SkeletonPulse width="min(220px, 60vw)" height="12px" />
+                  </div>
                 </div>
                 <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                   <SkeletonPulse width="75px" height="22px" borderRadius="20px" />
-                  <SkeletonPulse width="90px" height="16px" />
+                  <SkeletonPulse width="90px" height="18px" />
+                  <SkeletonPulse width="95px" height="32px" borderRadius="6px" />
+                  <SkeletonPulse width="20px" height="20px" borderRadius="4px" />
                 </div>
               </div>
             </div>

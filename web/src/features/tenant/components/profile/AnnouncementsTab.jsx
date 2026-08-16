@@ -1,470 +1,806 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import React, { useEffect, useMemo, useState } from "react";
 import {
- Bell,
- Check,
- FileText,
- LoaderCircle,
- Megaphone,
- ShieldAlert,
- TriangleAlert,
- Wrench,
+  Bell,
+  Check,
+  CheckCheck,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  FileText,
+  Filter,
+  LoaderCircle,
+  Megaphone,
+  Pin,
+  RotateCcw,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  TriangleAlert,
+  Wrench,
+  X,
 } from "lucide-react";
-import { announcementApi } from "../../../../shared/api/apiClient";
 import {
- useAcknowledgeAnnouncement,
- useAnnouncements,
+  useAcknowledgeAnnouncement,
+  useAnnouncements,
+  useMarkAllAnnouncementsRead,
 } from "../../../../shared/hooks/queries/useAnnouncements";
 import {
- formatAnnouncementCategory,
- getAnnouncementCategoryMeta,
+  formatAnnouncementCategory,
+  getAnnouncementCategoryMeta,
 } from "../../../../shared/utils/announcementConfig";
 import { showNotification } from "../../../../shared/utils/notification";
 import { AnnouncementListSkeleton } from "../../../../shared/components/LoadingSkeletons";
+import AnnouncementDetailModal from "../announcements/AnnouncementDetailModal";
 import "../../../admin/styles/design-tokens.css";
+import "../../styles/tenant-announcements.css";
 
 const CATEGORY_ICONS = {
- general: Megaphone,
- reminder: Bell,
- maintenance: Wrench,
- policy: FileText,
- alert: TriangleAlert,
- event: Megaphone,
+  general: Megaphone,
+  reminder: Bell,
+  maintenance: Wrench,
+  policy: FileText,
+  alert: TriangleAlert,
+  emergency: TriangleAlert,
+  event: Megaphone,
 };
 
-const FILTER_CATEGORIES = ["all", "general", "reminder", "maintenance", "policy", "event", "alert"];
-
-const CATEGORY_COLORS = {
- slate: { color: "var(--muted-foreground)", bg: "var(--muted)" },
- teal: {
- color: "var(--chart-2)",
- bg: "color-mix(in srgb, var(--chart-2) 14%, var(--card))",
- },
- orange: {
- color: "var(--chart-3)",
- bg: "color-mix(in srgb, var(--chart-3) 14%, var(--card))",
- },
- blue: {
- color: "var(--info-dark)",
- bg: "color-mix(in srgb, var(--info) 14%, var(--card))",
- },
- purple: {
- color: "var(--chart-4)",
- bg: "color-mix(in srgb, var(--chart-4) 14%, var(--card))",
- },
- green: {
- color: "var(--success-dark)",
- bg: "color-mix(in srgb, var(--success) 14%, var(--card))",
- },
- red: {
- color: "var(--danger-dark)",
- bg: "color-mix(in srgb, var(--danger) 14%, var(--card))",
- },
+const getPriorityObjective = (announcement) => {
+  const cat = announcement.category?.toLowerCase();
+  if (cat === "emergency" || cat === "alert" || announcement.priority === "urgent") {
+    return {
+      tier: "urgent",
+      badgeClass: "tenant-announcement-badge--urgent",
+      iconColor: "#dc2626",
+      label: cat === "emergency" ? "Emergency" : "Alert",
+    };
+  }
+  if (cat === "maintenance" || announcement.priority === "high") {
+    return {
+      tier: "warning",
+      badgeClass: "tenant-announcement-badge--warning",
+      iconColor: "#d97706",
+      label: "Maintenance",
+    };
+  }
+  if (announcement.contentType === "policy" || cat === "policy") {
+    return {
+      tier: "policy",
+      badgeClass: "tenant-announcement-badge--policy",
+      iconColor: "#2563eb",
+      label: "Policy",
+    };
+  }
+  return {
+    tier: "neutral",
+    badgeClass: "tenant-announcement-badge--neutral",
+    iconColor: "#64748b",
+    label: formatAnnouncementCategory(announcement.category),
+  };
 };
 
-const fmtDate = (value) =>
- new Date(value).toLocaleDateString("en-PH", {
- year: "numeric",
- month: "short",
- day: "numeric",
- });
+const fmtDateTime = (value) => {
+  if (!value) return "";
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return String(value);
+    const datePart = d.toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+    const timePart = d.toLocaleTimeString("en-PH", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    return `${datePart}, ${timePart}`;
+  } catch {
+    return String(value);
+  }
+};
 
 const getAnnouncementId = (announcement) => announcement.id || announcement._id;
 
-const LoadingState = () => (
- <div style={{ width: "100%" }}>
- <div style={s.heading}>
- <div>
- <h1 style={s.title}>Announcements</h1>
- <p style={s.subtitle}>
- Stay updated with branch notices, policy versions, and required acknowledgments.
- </p>
- </div>
- <div
- className="sk-shimmer"
- style={{ width: 68, height: 26, borderRadius: 999, flexShrink: 0 }}
- />
- </div>
- <AnnouncementListSkeleton count={3} />
- </div>
-);
-
 export default function AnnouncementsTab() {
-  const [filter, setFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("all");
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
   const [acknowledgingId, setAcknowledgingId] = useState(null);
-  const queryClient = useQueryClient();
-  const acknowledgeAnnouncement = useAcknowledgeAnnouncement();
-  const markReadAttemptsRef = useRef(new Set());
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
+  const [pinnedIndex, setPinnedIndex] = useState(0);
 
-  const { data: announcementData, isLoading } = useAnnouncements(50);
+  const { data: announcementData, isLoading } = useAnnouncements(100);
   const announcements = announcementData?.announcements || [];
 
-  const filters = useMemo(() => {
-    const values = [
-      ...FILTER_CATEGORIES,
-      ...new Set(
-        announcements
-          .map((announcement) => announcement.category)
-          .filter(Boolean),
-      ),
-    ];
+  const acknowledgeAnnouncement = useAcknowledgeAnnouncement();
+  const markAllAsReadMutation = useMarkAllAnnouncementsRead();
 
-    return [...new Set(values)].map((value) => ({
-      value,
-      label: value === "all" ? "All" : formatAnnouncementCategory(value),
-    }));
+  // Metrics for smart filter tabs
+  const stats = useMemo(() => {
+    const total = announcements.length;
+    const pendingAck = announcements.filter(
+      (a) => a.requiresAck && !a.acknowledged,
+    ).length;
+    const unread = announcements.filter((a) => a.unread).length;
+    const policies = announcements.filter(
+      (a) => a.contentType === "policy" || a.category === "policy",
+    ).length;
+    const maintenance = announcements.filter((a) => a.category === "maintenance").length;
+    const alerts = announcements.filter((a) => a.category === "alert" || a.category === "emergency").length;
+    const reminders = announcements.filter((a) => a.category === "reminder").length;
+    const events = announcements.filter((a) => a.category === "event").length;
+    const general = announcements.filter((a) => a.category === "general").length;
+    const acknowledged = announcements.filter((a) => a.acknowledged).length;
+
+    return {
+      total,
+      pendingAck,
+      unread,
+      policies,
+      maintenance,
+      alerts,
+      reminders,
+      events,
+      general,
+      acknowledged,
+    };
   }, [announcements]);
 
-  const filtered = useMemo(
-    () =>
-      announcements.filter(
-        (announcement) =>
-          filter === "all" || announcement.category === filter,
-      ),
-    [announcements, filter],
-  );
+  // Tab definitions
+  const filterTabs = useMemo(() => {
+    const tabs = [
+      { key: "all", label: "All Notices", count: stats.total },
+    ];
 
-  useEffect(() => {
-    const unreadIds = announcements
-      .map((announcement) => getAnnouncementId(announcement))
-      .filter(
-        (announcementId, index) =>
-          announcements[index].unread &&
-          !markReadAttemptsRef.current.has(announcementId),
-      );
-
-    if (unreadIds.length === 0) return undefined;
-
-    unreadIds.forEach((announcementId) =>
-      markReadAttemptsRef.current.add(announcementId),
-    );
-
-    let cancelled = false;
-    Promise.allSettled(
-      unreadIds.map((announcementId) => announcementApi.markAsRead(announcementId)),
-    ).then((results) => {
-      results.forEach((result, index) => {
-        if (result.status === "rejected") {
-          markReadAttemptsRef.current.delete(unreadIds[index]);
-        }
+    if (stats.pendingAck > 0) {
+      tabs.push({
+        key: "action_required",
+        label: "Action Required",
+        count: stats.pendingAck,
+        badgeType: "ack",
       });
-      if (!cancelled) {
-        queryClient.invalidateQueries({ queryKey: ["announcements"] });
+    }
+
+    if (stats.unread > 0) {
+      tabs.push({
+        key: "unread",
+        label: "Unread",
+        count: stats.unread,
+      });
+    }
+
+    if (stats.policies > 0) {
+      tabs.push({ key: "policy", label: "Policies", count: stats.policies });
+    }
+
+    if (stats.maintenance > 0) {
+      tabs.push({ key: "maintenance", label: "Maintenance", count: stats.maintenance });
+    }
+
+    if (stats.alerts > 0) {
+      tabs.push({ key: "alert", label: "Alerts", count: stats.alerts, badgeType: "alert" });
+    }
+
+    if (stats.reminders > 0) {
+      tabs.push({ key: "reminder", label: "Reminders", count: stats.reminders });
+    }
+
+    if (stats.events > 0) {
+      tabs.push({ key: "event", label: "Events", count: stats.events });
+    }
+
+    if (stats.general > 0) {
+      tabs.push({ key: "general", label: "General", count: stats.general });
+    }
+
+    if (stats.acknowledged > 0) {
+      tabs.push({ key: "acknowledged", label: "Acknowledged", count: stats.acknowledged });
+    }
+
+    return tabs;
+  }, [stats]);
+
+  // Filtered announcements
+  const filtered = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    return announcements.filter((a) => {
+      // Smart Tab Filter
+      if (activeTab === "action_required") {
+        if (!a.requiresAck || a.acknowledged) return false;
+      } else if (activeTab === "unread") {
+        if (!a.unread) return false;
+      } else if (activeTab === "acknowledged") {
+        if (!a.acknowledged) return false;
+      } else if (activeTab === "policy") {
+        if (a.contentType !== "policy" && a.category !== "policy") return false;
+      } else if (activeTab === "alert") {
+        if (a.category !== "alert" && a.category !== "emergency") return false;
+      } else if (activeTab !== "all") {
+        if (a.category !== activeTab) return false;
       }
+
+      // Search Query
+      if (query) {
+        const title = (a.title || "").toLowerCase();
+        const content = (a.content || "").toLowerCase();
+        const author = (a.authorName || "").toLowerCase();
+        const policyKey = (a.policyKey || "").toLowerCase();
+        const version = String(a.version || "");
+
+        const matches =
+          title.includes(query) ||
+          content.includes(query) ||
+          author.includes(query) ||
+          policyKey.includes(query) ||
+          version.includes(query);
+
+        if (!matches) return false;
+      }
+
+      return true;
     });
+  }, [announcements, activeTab, searchQuery]);
 
-    return () => {
-      cancelled = true;
+  // Option 1: Pinned Slideshow List & Unpinned Stream
+  // Sorted descending so the main pin (index 0) is always guaranteed to be the latest!
+  const { pinnedList, unpinnedList } = useMemo(() => {
+    const getTimestamp = (item) => {
+      const val = item.pinnedAt || item.date || item.createdAt || item.updatedAt;
+      const t = new Date(val).getTime();
+      return isNaN(t) ? 0 : t;
     };
-  }, [announcements, queryClient]);
 
-  const handleAcknowledge = async (announcementId) => {
-    setAcknowledgingId(announcementId);
+    const pinned = filtered
+      .filter((a) => a.isPinned)
+      .sort((a, b) => getTimestamp(b) - getTimestamp(a));
+
+    const unpinned = filtered
+      .filter((a) => !a.isPinned)
+      .sort((a, b) => getTimestamp(b) - getTimestamp(a));
+
+    return { pinnedList: pinned, unpinnedList: unpinned };
+  }, [filtered]);
+
+  // Reset index when pinned list length shrinks or changes
+  useEffect(() => {
+    if (pinnedIndex >= pinnedList.length && pinnedList.length > 0) {
+      setPinnedIndex(0);
+    }
+  }, [pinnedList.length, pinnedIndex]);
+
+  const hasActiveFilters = searchQuery.trim() !== "" || activeTab !== "all";
+
+  const handleResetFilters = () => {
+    setSearchQuery("");
+    setActiveTab("all");
+    setPinnedIndex(0);
+  };
+
+  const handleAcknowledge = async (e, announcement) => {
+    e.stopPropagation();
+    const id = getAnnouncementId(announcement);
+    if (!id || acknowledgingId) return;
+
+    setAcknowledgingId(id);
     try {
-      await acknowledgeAnnouncement.mutateAsync(announcementId);
+      await acknowledgeAnnouncement.mutateAsync(id);
       showNotification("Notice acknowledged successfully.", "success", 3500);
+      if (selectedAnnouncement && getAnnouncementId(selectedAnnouncement) === id) {
+        setSelectedAnnouncement((prev) => ({
+          ...prev,
+          acknowledged: true,
+          acknowledgedAt: new Date().toISOString(),
+        }));
+      }
     } catch (error) {
-      showNotification(error.message || "Failed to acknowledge notice.", "error", 4000);
+      showNotification(
+        error.message || "Failed to acknowledge notice.",
+        "error",
+        4000,
+      );
     } finally {
       setAcknowledgingId(null);
     }
   };
 
+  const handleMarkAllRead = async () => {
+    const unreadIds = announcements
+      .filter((a) => a.unread)
+      .map((a) => getAnnouncementId(a));
+
+    if (unreadIds.length === 0 || isMarkingAllRead) return;
+
+    setIsMarkingAllRead(true);
+    try {
+      await markAllAsReadMutation.mutateAsync(unreadIds);
+      showNotification("All announcements marked as read.", "success", 3000);
+    } catch (err) {
+      showNotification(err?.message || "Failed to mark notices as read.", "error", 4000);
+    } finally {
+      setIsMarkingAllRead(false);
+    }
+  };
+
   if (isLoading) {
-    return <LoadingState />;
+    return (
+      <div className="tenant-announcements-root">
+        <div className="tenant-announcements-header">
+          <div className="tenant-announcements-header__text">
+            <h1>Announcements</h1>
+            <p>
+              Stay updated with branch notices, policy guidelines, and dormitory advisories.
+            </p>
+          </div>
+        </div>
+        <AnnouncementListSkeleton count={4} />
+      </div>
+    );
   }
 
- return (
- <div style={{ width: "100%" }}>
- <div style={s.heading}>
- <div>
- <h1 style={s.title}>Announcements</h1>
- <p style={s.subtitle}>
- Stay updated with branch notices, policy versions, and required acknowledgments.
- </p>
- </div>
- <span style={s.countBadge}>{filtered.length} shown</span>
- </div>
+  const currentPinned =
+    pinnedList.length > 0 ? pinnedList[pinnedIndex % pinnedList.length] : null;
 
- <div style={s.filterRow} aria-label="Filter announcements">
- {filters.map((item) => (
- <button
- key={item.value}
- onClick={() => setFilter(item.value)}
- style={{
- ...s.chip,
- ...(filter === item.value ? s.chipActive : {}),
- }}
- >
- {item.label}
- </button>
- ))}
- </div>
+  return (
+    <div className="tenant-announcements-root">
+      {/* ── Top Header & Actions ── */}
+      <div className="tenant-announcements-header">
+        <div className="tenant-announcements-header__text">
+          <h1>Announcements</h1>
+          <p>
+            Stay updated with branch notices, policy guidelines, and dormitory advisories.
+          </p>
+        </div>
 
- {filtered.length === 0 ? (
- <div style={s.emptyState}>
- <Megaphone size={48} color="var(--neutral)" />
- <h3 style={s.emptyTitle}>No announcements</h3>
- <p style={s.emptyBody}>
- {filter === "all"
- ? "There are no announcements yet."
- : `No ${formatAnnouncementCategory(filter).toLowerCase()} announcements to show.`}
- </p>
- </div>
- ) : (
- <div style={s.list}>
- {filtered.map((announcement) => {
- const categoryMeta = getAnnouncementCategoryMeta(announcement.category);
- const tone =
- CATEGORY_COLORS[categoryMeta.tone] || CATEGORY_COLORS.slate;
- const CategoryIcon =
- CATEGORY_ICONS[announcement.category] || Megaphone;
+        <div className="tenant-announcements-header__actions">
+          <button
+            type="button"
+            className="tenant-announcements-btn-secondary"
+            onClick={handleMarkAllRead}
+            disabled={stats.unread === 0 || isMarkingAllRead}
+            title={stats.unread === 0 ? "No unread announcements" : "Mark all as read"}
+          >
+            {isMarkingAllRead ? (
+              <>
+                <LoaderCircle size={14} className="animate-spin" />
+                Marking Read...
+              </>
+            ) : (
+              <>
+                <CheckCheck size={14} />
+                Mark All as Read
+              </>
+            )}
+          </button>
+        </div>
+      </div>
 
- return (
- <div
- key={getAnnouncementId(announcement)}
- style={{
- ...s.card,
- ...(announcement.unread ? { background: "var(--card)", boxShadow: "var(--shadow-sm)" } : {}),
- }}
- >
- <div style={s.cardTop}>
- <div style={s.cardHeading}>
- {announcement.unread ? <div style={s.unreadDot} /> : null}
- <h3 style={s.cardTitle}>{announcement.title}</h3>
- </div>
+      {/* ── Individual Filter Cards Row & Search ── */}
+      <div className="tenant-announcements-filters-bar">
+        {/* Filter Cards Row */}
+        <div
+          className="tenant-announcements-filter-cards"
+          role="tablist"
+          aria-label="Filter notices"
+        >
+          {filterTabs.map((tab) => {
+            const isActive = activeTab === tab.key;
+            let badgeExtraClass = "";
+            if (tab.badgeType === "ack") {
+              badgeExtraClass = " tenant-announcements-card-badge--ack";
+            } else if (tab.badgeType === "alert") {
+              badgeExtraClass = " tenant-announcements-card-badge--alert";
+            }
 
- <div style={s.cardMeta}>
- <span
- style={{
- ...s.categoryBadge,
- background: tone.bg,
- color: tone.color,
- }}
- >
- <CategoryIcon size={11} />
- {categoryMeta.label}
- </span>
- <span style={s.dateText}>{fmtDate(announcement.date)}</span>
- </div>
- </div>
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`tenant-announcements-filter-card ${
+                  isActive ? "tenant-announcements-filter-card--active" : ""
+                }`}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                <span>{tab.label}</span>
+                {tab.count !== undefined ? (
+                  <span className={`tenant-announcements-card-badge${badgeExtraClass}`}>
+                    {tab.count}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
 
- <p style={s.cardBody}>{announcement.content}</p>
+        {/* Keyword Search Input */}
+        <div className="tenant-announcements-search-wrap">
+          <Search size={14} className="tenant-announcements-search-icon" />
+          <input
+            type="text"
+            className="tenant-announcements-search-input"
+            placeholder="Search notices, policies, updates..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              className="tenant-announcements-search-clear"
+              onClick={() => setSearchQuery("")}
+              aria-label="Clear search"
+            >
+              <X size={14} />
+            </button>
+          ) : null}
+        </div>
+      </div>
 
- {announcement.contentType === "policy" ? (
- <div style={{ marginTop: 10, color: "var(--muted-foreground)", fontSize: 12 }}>
- Version {announcement.version || 1}
- {announcement.effectiveDate
- ? ` • Effective ${fmtDate(announcement.effectiveDate)}`
- : ""}
- </div>
- ) : null}
+      {/* Filter Summary */}
+      {hasActiveFilters ? (
+        <div className="tenant-announcements-summary-bar">
+          <span>
+            Showing <strong>{filtered.length}</strong> of{" "}
+            <strong>{announcements.length}</strong> notices
+          </span>
+          <button
+            type="button"
+            className="tenant-announcements-clear-btn"
+            onClick={handleResetFilters}
+          >
+            <RotateCcw size={12} />
+            Reset Filters
+          </button>
+        </div>
+      ) : null}
 
- {announcement.requiresAck ? (
- <div style={s.actionRow}>
- {announcement.acknowledged ? (
- <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
- <span style={s.ackBadge}>
- <Check size={13} /> Acknowledged
- </span>
- {announcement.acknowledgedAt ? (
- <span style={{ color: "var(--muted-foreground)", fontSize: 12 }}>
- Acknowledged {fmtDate(announcement.acknowledgedAt)}
- </span>
- ) : null}
- </div>
- ) : (
- <button
-   onClick={() => handleAcknowledge(getAnnouncementId(announcement))}
-   style={{
-     ...s.ackButton,
-     ...(acknowledgingId === getAnnouncementId(announcement) ? { opacity: 0.75, cursor: "not-allowed" } : {}),
-   }}
-   disabled={Boolean(acknowledgingId)}
- >
-   {acknowledgingId === getAnnouncementId(announcement) ? (
-     <>
-       <LoaderCircle size={12} className="animate-spin" />
-       Acknowledging...
-     </>
-   ) : (
-     <>
-       <ShieldAlert size={12} />
-       Acknowledge
-     </>
-   )}
- </button>
- )}
- </div>
- ) : null}
- </div>
- );
- })}
- </div>
- )}
- </div>
- );
+      {/* ── Empty State or Notice Stream ── */}
+      {filtered.length === 0 ? (
+        <div className="tenant-announcements-empty">
+          <div className="tenant-announcements-empty__icon">
+            {hasActiveFilters ? <Filter size={24} /> : <Megaphone size={24} />}
+          </div>
+          <h3 className="tenant-announcements-empty__title">
+            {hasActiveFilters
+              ? "No matching announcements"
+              : "No announcements published"}
+          </h3>
+          <p className="tenant-announcements-empty__desc">
+            {hasActiveFilters
+              ? "No announcements matched your current search or filter. Try clearing active filters."
+              : "There are currently no active notices or policy updates published for your branch."}
+          </p>
+          {hasActiveFilters ? (
+            <button
+              type="button"
+              className="tenant-announcements-btn-secondary"
+              onClick={handleResetFilters}
+            >
+              <RotateCcw size={13} />
+              Clear All Filters
+            </button>
+          ) : null}
+        </div>
+      ) : (
+        <div className="tenant-announcements-list">
+          {/* 🌟 1. Option 1: Pinned Spotlight Slideshow Card (Main Pin is the Latest) */}
+          {currentPinned
+            ? renderSpotlightSlideshow(
+                currentPinned,
+                pinnedList.length,
+                pinnedIndex % pinnedList.length,
+                setPinnedIndex,
+                handleAcknowledge,
+                setSelectedAnnouncement,
+                acknowledgingId,
+              )
+            : null}
+
+          {/* 🌟 2. Regular (Unpinned) Announcement Cards Stream */}
+          {unpinnedList.map((announcement) =>
+            renderAnnouncementCard(
+              announcement,
+              handleAcknowledge,
+              setSelectedAnnouncement,
+              acknowledgingId,
+            ),
+          )}
+        </div>
+      )}
+
+      {/* ── Detail & Reader Modal ── */}
+      <AnnouncementDetailModal
+        isOpen={Boolean(selectedAnnouncement)}
+        onClose={() => setSelectedAnnouncement(null)}
+        announcement={selectedAnnouncement}
+      />
+    </div>
+  );
 }
 
-const s = {
- root: { width: "100%", maxWidth: 920, margin: "0 auto" },
- heading: {
- display: "flex",
- justifyContent: "space-between",
- alignItems: "flex-start",
- gap: 16,
- marginBottom: 20,
- },
- title: {
- fontSize: 22,
- fontWeight: 700,
- color: "var(--text-heading)",
- margin: 0,
- },
- subtitle: { fontSize: 13, color: "var(--muted-foreground)", margin: "4px 0 0", lineHeight: 1.5 },
- countBadge: {
- flexShrink: 0,
- padding: "5px 10px",
- borderRadius: 999,
- background: "var(--muted)",
- color: "var(--muted-foreground)",
- fontSize: 12,
- fontWeight: 600,
- },
- filterRow: {
- display: "flex",
- gap: 8,
- marginBottom: 16,
- paddingBottom: 4,
- overflowX: "auto",
- flexWrap: "wrap",
- },
- chip: {
- display: "inline-flex",
- alignItems: "center",
- gap: 6,
- padding: "6px 14px",
- borderRadius: 20,
- border: "1px solid var(--border-card)",
- background: "var(--card)",
- color: "var(--muted-foreground)",
- fontSize: 13,
- fontWeight: 500,
- cursor: "pointer",
- transition: "all 0.15s",
- },
- chipActive: {
- background: "var(--primary)",
- color: "var(--primary-foreground)",
- border: "1px solid var(--primary)",
-},
- list: { display: "flex", flexDirection: "column", gap: 12 },
- card: {
- padding: "16px 18px",
- background: "var(--card)",
- border: "1px solid var(--border)",
- borderRadius: 12,
- boxShadow: "var(--shadow-xs)",
- },
- cardTop: {
- display: "flex",
- justifyContent: "space-between",
- alignItems: "flex-start",
- gap: 12,
- marginBottom: 8,
- },
- cardHeading: {
- display: "flex",
- alignItems: "center",
- gap: 8,
- flex: 1,
- minWidth: 0,
- },
- unreadDot: {
- width: 7,
- height: 7,
- borderRadius: "50%",
- background: "var(--primary)",
- flexShrink: 0,
- },
- cardTitle: {
- fontSize: 14,
- fontWeight: 600,
- color: "var(--text-heading)",
- margin: 0,
- overflow: "hidden",
- textOverflow: "ellipsis",
- whiteSpace: "nowrap",
- },
- cardMeta: {
- display: "flex",
- alignItems: "center",
- gap: 8,
- flexShrink: 0,
- },
- categoryBadge: {
- display: "inline-flex",
- alignItems: "center",
- gap: 4,
- padding: "3px 10px",
- borderRadius: 20,
- fontSize: 11,
- fontWeight: 600,
- },
- dateText: {
- fontSize: 11,
- color: "var(--neutral)",
- },
- cardBody: {
- fontSize: 13,
- color: "var(--text-secondary)",
- margin: 0,
- lineHeight: 1.5,
- },
- actionRow: {
- marginTop: 12,
- },
- ackBadge: {
- display: "inline-flex",
- alignItems: "center",
- gap: 5,
- fontSize: 12,
- fontWeight: 600,
- color: "var(--success)",
- },
- ackButton: {
- display: "inline-flex",
- alignItems: "center",
- gap: 5,
- padding: "6px 14px",
- background: "var(--primary)",
- color: "var(--primary-foreground)",
- border: "none",
- borderRadius: 6,
- fontSize: 12,
- fontWeight: 600,
- cursor: "pointer",
- },
- emptyState: {
- display: "flex",
- flexDirection: "column",
- alignItems: "center",
- justifyContent: "center",
- textAlign: "center",
- padding: "56px 24px",
- background: "var(--card)",
- borderRadius: 10,
- border: "1px solid var(--border)",
- },
- emptyTitle: {
- fontSize: 16,
- fontWeight: 600,
- color: "var(--foreground)",
- margin: "16px 0 8px",
- },
- emptyBody: {
- fontSize: 13,
- color: "var(--muted-foreground)",
- maxWidth: 280,
- },
-};
+/**
+ * Option 1: Pinned Spotlight Slideshow Card
+ * Sorted so the main pin is always the latest! Displays Date & Time.
+ */
+function renderSpotlightSlideshow(
+  announcement,
+  totalPinned,
+  currentIndex,
+  setPinnedIndex,
+  handleAcknowledge,
+  setSelectedAnnouncement,
+  acknowledgingId,
+) {
+  const id = getAnnouncementId(announcement);
+  const CategoryIcon = CATEGORY_ICONS[announcement.category] || Megaphone;
+  const priority = getPriorityObjective(announcement);
+
+  return (
+    <div
+      key={`spotlight-${id}`}
+      className="tenant-announcement-spotlight"
+      onClick={() => setSelectedAnnouncement(announcement)}
+      role="article"
+      tabIndex={0}
+    >
+      {/* Spotlight Header Row with Slideshow Controls & Date/Time */}
+      <div className="tenant-announcement-spotlight__tag-row">
+        <span className="tenant-announcement-spotlight__tag">
+          <Pin size={13} style={{ fill: "currentColor" }} />
+          Pinned Announcement
+        </span>
+
+        <div
+          className="tenant-announcement-spotlight__nav"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Previous / Next Slideshow Buttons if 2+ pins */}
+          {totalPinned > 1 ? (
+            <>
+              <button
+                type="button"
+                className="tenant-announcement-spotlight__nav-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPinnedIndex((prev) => (prev - 1 + totalPinned) % totalPinned);
+                }}
+                title="Previous pinned notice"
+                aria-label="Previous pinned notice"
+              >
+                <ChevronLeft size={14} />
+              </button>
+
+              <span className="tenant-announcement-spotlight__counter">
+                {currentIndex + 1} of {totalPinned}
+              </span>
+
+              <button
+                type="button"
+                className="tenant-announcement-spotlight__nav-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPinnedIndex((prev) => (prev + 1) % totalPinned);
+                }}
+                title="Next pinned notice"
+                aria-label="Next pinned notice"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </>
+          ) : null}
+
+          {/* Date and Time */}
+          <span className="tenant-announcement-spotlight__date">
+            {fmtDateTime(announcement.date || announcement.createdAt)}
+          </span>
+        </div>
+      </div>
+
+      {/* Title + Priority Badges */}
+      <div className="tenant-announcement-card__top">
+        <div className="tenant-announcement-card__title-row">
+          {announcement.unread ? (
+            <div
+              className="tenant-announcement-card__unread-dot"
+              title="Unread Notice"
+            />
+          ) : null}
+
+          <span className={`tenant-announcement-badge ${priority.badgeClass}`}>
+            <CategoryIcon size={12} style={{ color: priority.iconColor }} />
+            {priority.label}
+          </span>
+
+          {announcement.contentType === "policy" ? (
+            <span className="tenant-announcement-badge tenant-announcement-badge--policy">
+              <FileText size={11} style={{ color: "#2563eb" }} />
+              Policy v{announcement.version || 1}
+            </span>
+          ) : null}
+
+          <h3 className="tenant-announcement-card__title">
+            {announcement.title}
+          </h3>
+        </div>
+      </div>
+
+      {/* Body Snippet */}
+      <p className="tenant-announcement-card__body">{announcement.content}</p>
+
+      {/* Footer & Actions */}
+      <div className="tenant-announcement-card__footer">
+        <div className="tenant-announcement-card__status-wrap">
+          {announcement.requiresAck ? (
+            announcement.acknowledged ? (
+              <span className="tenant-announcement-ack-badge">
+                <CheckCheck size={14} />
+                Acknowledged on {fmtDateTime(announcement.acknowledgedAt)}
+              </span>
+            ) : (
+              <span className="tenant-announcement-ack-pending-text">
+                <ShieldAlert size={14} />
+                Resident Acknowledgment Required
+              </span>
+            )
+          ) : null}
+        </div>
+
+        <div className="tenant-announcement-card__btn-group">
+          <button
+            type="button"
+            className="tenant-announcement-btn-view"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedAnnouncement(announcement);
+            }}
+          >
+            <Eye size={13} />
+            View Details
+          </button>
+
+          {announcement.requiresAck && !announcement.acknowledged ? (
+            <button
+              type="button"
+              className="tenant-announcement-btn-ack"
+              onClick={(e) => handleAcknowledge(e, announcement)}
+              disabled={acknowledgingId === id}
+            >
+              {acknowledgingId === id ? (
+                <>
+                  <LoaderCircle size={13} className="animate-spin" />
+                  Acknowledging...
+                </>
+              ) : (
+                <>
+                  <ShieldCheck size={13} />
+                  Acknowledge
+                </>
+              )}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Regular Announcement Card
+ * Displays Date & Time and Semantic Priority Badges
+ */
+function renderAnnouncementCard(
+  announcement,
+  handleAcknowledge,
+  setSelectedAnnouncement,
+  acknowledgingId,
+) {
+  const id = getAnnouncementId(announcement);
+  const CategoryIcon = CATEGORY_ICONS[announcement.category] || Megaphone;
+  const priority = getPriorityObjective(announcement);
+
+  return (
+    <div
+      key={id}
+      className="tenant-announcement-card"
+      onClick={() => setSelectedAnnouncement(announcement)}
+      role="article"
+      tabIndex={0}
+      style={{ cursor: "pointer" }}
+    >
+      {/* Top row: Title + Priority Badges */}
+      <div className="tenant-announcement-card__top">
+        <div className="tenant-announcement-card__title-row">
+          {announcement.unread ? (
+            <div
+              className="tenant-announcement-card__unread-dot"
+              title="Unread Notice"
+            />
+          ) : null}
+
+          {/* Semantic Priority / Category Badge */}
+          <span className={`tenant-announcement-badge ${priority.badgeClass}`}>
+            <CategoryIcon size={12} style={{ color: priority.iconColor }} />
+            {priority.label}
+          </span>
+
+          <h3 className="tenant-announcement-card__title">
+            {announcement.title}
+          </h3>
+        </div>
+
+        <div className="tenant-announcement-card__badges">
+          {announcement.contentType === "policy" ? (
+            <span className="tenant-announcement-badge tenant-announcement-badge--policy">
+              <FileText size={11} style={{ color: "#2563eb" }} />
+              Policy v{announcement.version || 1}
+            </span>
+          ) : null}
+
+          {/* Date and Time */}
+          <span className="tenant-announcement-card__date">
+            {fmtDateTime(announcement.date || announcement.createdAt)}
+          </span>
+        </div>
+      </div>
+
+      {/* Body Content Snippet — Crisp & Legible */}
+      <p className="tenant-announcement-card__body">{announcement.content}</p>
+
+      {/* Footer & Action Buttons */}
+      <div className="tenant-announcement-card__footer">
+        <div className="tenant-announcement-card__status-wrap">
+          {announcement.requiresAck ? (
+            announcement.acknowledged ? (
+              <span className="tenant-announcement-ack-badge">
+                <CheckCheck size={14} />
+                Acknowledged on {fmtDateTime(announcement.acknowledgedAt)}
+              </span>
+            ) : (
+              <span className="tenant-announcement-ack-pending-text">
+                <ShieldAlert size={14} />
+                Resident Acknowledgment Required
+              </span>
+            )
+          ) : null}
+        </div>
+
+        <div className="tenant-announcement-card__btn-group">
+          <button
+            type="button"
+            className="tenant-announcement-btn-view"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedAnnouncement(announcement);
+            }}
+          >
+            <Eye size={13} />
+            View Details
+          </button>
+
+          {announcement.requiresAck && !announcement.acknowledged ? (
+            <button
+              type="button"
+              className="tenant-announcement-btn-ack"
+              onClick={(e) => handleAcknowledge(e, announcement)}
+              disabled={acknowledgingId === id}
+            >
+              {acknowledgingId === id ? (
+                <>
+                  <LoaderCircle size={13} className="animate-spin" />
+                  Acknowledging...
+                </>
+              ) : (
+                <>
+                  <ShieldCheck size={13} />
+                  Acknowledge
+                </>
+              )}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}

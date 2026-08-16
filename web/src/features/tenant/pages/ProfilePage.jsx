@@ -505,7 +505,10 @@ const ProfilePage = () => {
       )}
 
       {activeTab === "history" && (
-        <ActivityHistoryTab reservations={reservations} />
+        <ActivityHistoryTab
+          reservations={reservations}
+          isLoading={reservationsLoading}
+        />
       )}
 
       {activeTab === "maintenance" && <TenantMaintenanceWorkspace embedded />}

@@ -4,6 +4,9 @@ import {
   Calendar,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
   Clock,
   ClipboardList,
   FileCheck,
@@ -13,10 +16,12 @@ import {
   MessageSquare,
   Paperclip,
   Pencil,
+  PhoneCall,
   Plus,
   Printer,
   RefreshCcw,
   Trash2,
+  UploadCloud,
   User,
   X,
 } from "lucide-react";
@@ -30,11 +35,11 @@ import {
   useUpdateMyMaintenanceRequest,
 } from "../../../../shared/hooks/queries/useMaintenance";
 import { useAuth } from "../../../../shared/hooks/useAuth";
+import Pagination from "../../../../shared/components/Pagination";
 import { showNotification } from "../../../../shared/utils/notification";
 import {
   ACTIVE_MAINTENANCE_STATUSES,
   MAINTENANCE_REQUEST_TYPES,
-  MAINTENANCE_URGENCY_LEVELS,
   MIN_MAINTENANCE_DESCRIPTION_LENGTH,
   REOPENABLE_MAINTENANCE_STATUSES,
   formatMaintenanceStatus,
@@ -43,7 +48,6 @@ import {
   getMaintenanceTypeMeta,
   getMaintenanceUrgencyMeta,
 } from "../../../../shared/utils/maintenanceConfig";
-
 import {
   getMaintenanceAttachmentKind,
   getMaintenanceAttachmentLabel,
@@ -56,6 +60,7 @@ import {
   uploadMaintenanceAttachment,
   validateFile,
 } from "../../../../shared/utils/firebaseStorageUpload";
+import { MaintenanceConversationSection } from "../../../../shared/components/MaintenanceConversationSection";
 import "../../styles/tenant-common.css";
 import "../../../admin/styles/design-tokens.css";
 
@@ -66,7 +71,6 @@ const EMPTY_FORM_DATA = Object.freeze({
   attachments: [],
 });
 
-// Statuses considered "done" for the purposes of the status badge icon.
 const RESOLVED_STATUS_SET = new Set(["resolved", "completed", "closed"]);
 const REJECTED_STATUS_SET = new Set(["rejected", "cancelled", "canceled"]);
 
@@ -88,6 +92,27 @@ const CANONICAL_STEPS = [
   { key: "scheduled", label: "Scheduled" },
   { key: "in_progress", label: "In Progress" },
   { key: "completed", label: "Completed" },
+];
+
+const URGENCY_OPTIONS = [
+  {
+    key: "normal",
+    label: "Normal Priority",
+    eta: "24–48 hrs",
+    description: "Standard repair timeline for non-disruptive facility items.",
+  },
+  {
+    key: "urgent",
+    label: "Urgent Priority",
+    eta: "12–24 hrs",
+    description: "Priority triage for essential appliances, power, or leaks.",
+  },
+  {
+    key: "emergency",
+    label: "Emergency Priority",
+    eta: "Immediate",
+    description: "Critical safety hazard, active flooding, or electrical risk.",
+  },
 ];
 
 const getStepIndex = (st) => {
@@ -154,7 +179,12 @@ function CompletionReportModal({ request, onClose }) {
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Official Maintenance Completion Report</h3>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button type="button" className="btn btn-secondary" style={{ fontSize: 13, padding: "6px 12px" }} onClick={handlePrint}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: 13, padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6 }}
+              onClick={handlePrint}
+            >
               <Printer size={14} /> Print / Save PDF
             </button>
             <button
@@ -162,6 +192,7 @@ function CompletionReportModal({ request, onClose }) {
               className="btn btn-secondary"
               style={{ padding: 6, display: "grid", placeItems: "center" }}
               onClick={onClose}
+              aria-label="Close Report"
             >
               <X size={16} />
             </button>
@@ -439,31 +470,62 @@ function AttachmentLink({ attachment, index, onPreview }) {
   );
 }
 
-function ConfirmDialog({ title, message, confirmLabel = "Confirm", danger, onConfirm, onCancel }) {
+function ConfirmDialog({
+  title,
+  message,
+  cancelLabel = "Cancel",
+  confirmLabel = "Confirm",
+  confirmVariant = "primary",
+  danger,
+  isProcessing = false,
+  onConfirm,
+  onCancel,
+}) {
+  const getConfirmButtonClass = () => {
+    if (danger || confirmVariant === "danger") return "btn btn-danger";
+    if (confirmVariant === "success") return "btn btn-success";
+    return "btn btn-primary";
+  };
+
   return (
-    <div className="maintenance-modal-backdrop" onClick={onCancel} style={{ zIndex: 10000 }}>
+    <div
+      className="maintenance-modal-backdrop"
+      onClick={!isProcessing ? onCancel : undefined}
+      style={{ zIndex: 10000 }}
+    >
       <div
         onClick={(event) => event.stopPropagation()}
         style={{
           background: "var(--card)",
           borderRadius: 16,
           padding: 24,
-          maxWidth: 380,
+          maxWidth: 420,
           width: "90%",
           boxShadow: "0 24px 64px rgba(0, 0, 0, 0.2)",
+          border: "1px solid var(--border)",
         }}
       >
-        <h3 style={{ margin: "0 0 8px" }}>{title}</h3>
-        <p style={{ margin: "0 0 20px", color: "var(--muted-foreground)" }}>{message}</p>
+        <h3 style={{ margin: "0 0 8px", fontSize: 18, color: "var(--foreground)", fontWeight: 600 }}>{title}</h3>
+        <p style={{ margin: "0 0 20px", color: "var(--muted-foreground)", fontSize: 14, lineHeight: 1.5 }}>
+          {message}
+        </p>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-          <button type="button" className="btn btn-secondary" onClick={onCancel}>
-            Never mind
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onCancel}
+            disabled={isProcessing}
+          >
+            {cancelLabel}
           </button>
           <button
             type="button"
-            className={danger ? "btn btn-secondary maintenance-danger-button" : "btn btn-primary"}
+            className={getConfirmButtonClass()}
             onClick={onConfirm}
+            disabled={isProcessing}
+            style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
           >
+            {isProcessing ? <LoaderCircle size={15} className="admin-announcements-spin" /> : null}
             {confirmLabel}
           </button>
         </div>
@@ -474,7 +536,7 @@ function ConfirmDialog({ title, message, confirmLabel = "Confirm", danger, onCon
 
 export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const { user } = useAuth();
-  const [showForm, setShowForm] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [editingRequestId, setEditingRequestId] = useState(null);
   const [selectedRequestId, setSelectedRequestId] = useState(null);
@@ -486,10 +548,15 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const [replyAttachments, setReplyAttachments] = useState([]);
   const [uploadingReplyAttachment, setUploadingReplyAttachment] = useState(false);
   const [formData, setFormData] = useState({ ...EMPTY_FORM_DATA });
-  const [statusFilter, setStatusFilter] = useState("active");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [pendingCancelRequest, setPendingCancelRequest] = useState(null);
+  const [pendingDiscardModal, setPendingDiscardModal] = useState(false);
+  const [pendingSubmitModal, setPendingSubmitModal] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [expandedCardIds, setExpandedCardIds] = useState(() => new Set());
+  const [collapsedCardIds, setCollapsedCardIds] = useState(() => new Set());
 
-  const formSectionRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const { data, isLoading } = useMyMaintenanceRequests({ limit: 50 });
   const createMutation = useCreateMaintenanceRequest();
@@ -515,17 +582,71 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     );
   }, [requests, statusFilter]);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(5);
+
+  const totalItems = filteredRequests.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage) || 1);
+  const paginatedRequests = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredRequests.slice(start, start + itemsPerPage);
+  }, [filteredRequests, currentPage, itemsPerPage]);
+
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const isCardExpanded = (request) => {
+    const id = request.request_id || request._id;
+    if (collapsedCardIds.has(id)) return false;
+    if (expandedCardIds.has(id)) return true;
+    return ACTIVE_MAINTENANCE_STATUSES.includes(request.status);
+  };
+
+  const toggleCardExpanded = (request) => {
+    const id = request.request_id || request._id;
+    const currentlyExpanded = isCardExpanded(request);
+    if (currentlyExpanded) {
+      setCollapsedCardIds((prev) => new Set(prev).add(id));
+      setExpandedCardIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    } else {
+      setExpandedCardIds((prev) => new Set(prev).add(id));
+      setCollapsedCardIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const areAllFilteredExpanded = useMemo(() => {
+    if (!paginatedRequests.length) return false;
+    return paginatedRequests.every((r) => isCardExpanded(r));
+  }, [paginatedRequests, expandedCardIds, collapsedCardIds]);
+
+  const handleExpandAll = () => {
+    const allIds = new Set(paginatedRequests.map((r) => r.request_id || r._id));
+    setExpandedCardIds(allIds);
+    setCollapsedCardIds(new Set());
+  };
+
+  const handleCollapseAll = () => {
+    const allIds = new Set(paginatedRequests.map((r) => r.request_id || r._id));
+    setCollapsedCardIds(allIds);
+    setExpandedCardIds(new Set());
+  };
+
   useEffect(() => {
     setReplyMessage("");
     setReplyAttachments([]);
     setDetailTab("details");
   }, [selectedRequestId]);
-
-  useEffect(() => {
-    if (showForm && formSectionRef.current) {
-      formSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [showForm, editingRequestId]);
 
   const isEditing = Boolean(editingRequestId);
   const isSavingForm = createMutation.isPending || updateMutation.isPending || uploadingAttachment;
@@ -533,6 +654,18 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const descriptionTooShort =
     descriptionLength > 0 &&
     descriptionLength < MIN_MAINTENANCE_DESCRIPTION_LENGTH;
+  const attachmentCount = formData.attachments?.length || 0;
+  const hasRequiredAttachment = attachmentCount >= 1;
+
+  const isFormDirty = useMemo(() => {
+    if (!showModal) return false;
+    return (
+      formData.description.trim().length > 0 ||
+      (formData.attachments && formData.attachments.length > 0) ||
+      formData.request_type !== "maintenance" ||
+      formData.urgency !== "normal"
+    );
+  }, [showModal, formData]);
 
   const summary = useMemo(
     () => ({
@@ -548,15 +681,25 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   );
 
   const resetComposer = () => {
-    setShowForm(false);
+    setShowModal(false);
     setEditingRequestId(null);
     setFormData({ ...EMPTY_FORM_DATA });
+    setPendingDiscardModal(false);
+    setPendingSubmitModal(false);
+  };
+
+  const handleRequestModalClose = () => {
+    if (isFormDirty && !isEditing) {
+      setPendingDiscardModal(true);
+    } else {
+      resetComposer();
+    }
   };
 
   const openCreateForm = () => {
     setEditingRequestId(null);
     setFormData({ ...EMPTY_FORM_DATA });
-    setShowForm(true);
+    setShowModal(true);
   };
 
   const openEditForm = (request) => {
@@ -567,25 +710,20 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       description: request.description || "",
       attachments: normalizeMaintenanceAttachments(request.attachments),
     });
-    setShowForm(true);
+    setShowModal(true);
     setSelectedRequestId(null);
   };
 
-  const handleAttachmentUpload = async (event) => {
-    const files = Array.from(event.target.files || []).filter(Boolean);
+  const processAttachmentFiles = async (files) => {
     if (files.length === 0) return;
 
     if ((formData.attachments?.length || 0) + files.length > 5) {
       showNotification("You can upload a maximum of 5 attachments per request.", "error");
-      event.target.value = "";
       return;
     }
 
     const validFiles = filterValidFiles(files);
-    if (validFiles.length === 0) {
-      event.target.value = "";
-      return;
-    }
+    if (validFiles.length === 0) return;
 
     setUploadingAttachment(true);
 
@@ -612,8 +750,30 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       showNotification(error.message || "Failed to upload attachment.", "error");
     } finally {
       setUploadingAttachment(false);
-      event.target.value = "";
     }
+  };
+
+  const handleAttachmentUpload = (event) => {
+    const files = Array.from(event.target.files || []).filter(Boolean);
+    processAttachmentFiles(files);
+    event.target.value = "";
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files || []).filter(Boolean);
+    processAttachmentFiles(files);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
   };
 
   const handleRemoveAttachment = (attachmentKey) => {
@@ -686,14 +846,18 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       });
       setReplyMessage("");
       setReplyAttachments([]);
-      showNotification("Reply sent to admin.", "success");
     } catch (error) {
       showNotification(error.message || "Failed to send reply.", "error");
     }
   };
 
-  const handleSubmitRequest = async (event) => {
+  const handleSubmitRequest = (event) => {
     event.preventDefault();
+
+    if (descriptionLength === 0) {
+      showNotification("Please provide a description of the maintenance issue.", "error");
+      return;
+    }
 
     if (descriptionTooShort) {
       showNotification(
@@ -703,6 +867,18 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       return;
     }
 
+    if (!hasRequiredAttachment) {
+      showNotification(
+        "Please attach at least 1 photo or document showing the issue before submitting.",
+        "error",
+      );
+      return;
+    }
+
+    setPendingSubmitModal(true);
+  };
+
+  const confirmSubmitRequest = async () => {
     try {
       const existingAttachments = normalizeMaintenanceAttachments(formData.attachments);
 
@@ -729,6 +905,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         error.message || `Failed to ${isEditing ? "update" : "submit"} maintenance request.`,
         "error",
       );
+      setPendingSubmitModal(false);
     }
   };
 
@@ -794,10 +971,11 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     ? `Unit ${user.roomNumber}${user.bedNumber ? ` - Bed ${user.bedNumber}` : ""}`
     : user?.room
     ? `Room ${user.room}`
-    : "Assigned Room";
+    : "Assigned Dormitory Unit";
 
   return (
     <div className={embedded ? "" : "tenant-page"}>
+      {/* Page Header */}
       <div className="page-header maintenance-page-header">
         <div>
           <h1>Maintenance Requests</h1>
@@ -808,219 +986,45 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         <button
           type="button"
           className="btn btn-primary"
-          onClick={() => {
-            if (showForm) {
-              resetComposer();
-              return;
-            }
-            openCreateForm();
-          }}
+          onClick={openCreateForm}
+          style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
         >
           <Plus size={16} />
-          {showForm ? "Close Form" : "Report an Issue"}
+          Report an Issue
         </button>
       </div>
 
-      {showForm ? (
-        <div className="section-card" ref={formSectionRef}>
-          <h2>{isEditing ? "Edit Maintenance Request" : "Submit Maintenance Request"}</h2>
-
-          <div className="room-context-pill">
-            <User size={14} />
-            <span>Reporting for: <strong>{roomContextLabel}</strong></span>
+      {/* Standalone Display-Only KPI Overview Cards */}
+      <div className="maintenance-kpi-grid">
+        <div className="maintenance-kpi-card">
+          <div className="maintenance-kpi-card__top">
+            <span className="maintenance-kpi-card__label">Active Requests</span>
+            <Clock size={16} strokeWidth={2} style={{ color: "#D97706" }} />
           </div>
-
-          <form className="maintenance-form" onSubmit={handleSubmitRequest}>
-            <div className="form-group">
-              <label>Select Category</label>
-              <div className="category-picker-grid">
-                {MAINTENANCE_REQUEST_TYPES.map((catKey) => {
-                  const meta = getMaintenanceTypeMeta(catKey);
-                  const Icon = meta.icon;
-                  const isSelected = formData.request_type === catKey;
-                  return (
-                    <button
-                      key={catKey}
-                      type="button"
-                      className={`category-picker-btn ${isSelected ? "selected" : ""}`}
-                      onClick={() => setFormData((c) => ({ ...c, request_type: catKey }))}
-                    >
-                      <Icon size={20} color={isSelected ? "#2563EB" : meta.color} />
-                      <span>{meta.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="form-group" style={{ marginTop: 16 }}>
-              <label htmlFor="maintenance-urgency">Urgency Level</label>
-              <select
-                id="maintenance-urgency"
-                className="form-control"
-                value={formData.urgency}
-                onChange={(event) =>
-                  setFormData((current) => ({
-                    ...current,
-                    urgency: event.target.value,
-                  }))
-                }
-                required
-              >
-                {MAINTENANCE_URGENCY_LEVELS.map((urgency) => {
-                  const meta = getMaintenanceUrgencyMeta(urgency);
-                  return (
-                    <option key={urgency} value={urgency}>
-                      {meta.label} - {meta.description} (ETA: {meta.estimate})
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            <div className={`form-group${descriptionTooShort ? " has-error" : ""}`} style={{ marginTop: 16 }}>
-              <label htmlFor="maintenance-description">Issue Description</label>
-              <textarea
-                id="maintenance-description"
-                className="form-control"
-                rows="4"
-                placeholder="Describe the issue in detail (symptoms, location, when it started)..."
-                value={formData.description}
-                onChange={(event) =>
-                  setFormData((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-                required
-              />
-              <p className="maintenance-help-text">
-                Minimum {MIN_MAINTENANCE_DESCRIPTION_LENGTH} characters. Clear descriptions help technicians arrive with the correct tools.
-              </p>
-              {descriptionTooShort ? (
-                <p className="maintenance-field-error">
-                  Description must be at least {MIN_MAINTENANCE_DESCRIPTION_LENGTH} characters.
-                </p>
-              ) : null}
-            </div>
-
-            <div className="form-group" style={{ marginTop: 16 }}>
-              <label htmlFor="maintenance-attachments">Photo / Proof Attachments (Max 5)</label>
-              <label
-                htmlFor="maintenance-attachments"
-                className="btn btn-secondary"
-                style={{
-                  width: "fit-content",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                {uploadingAttachment ? (
-                  <LoaderCircle size={16} className="admin-announcements-spin" />
-                ) : (
-                  <Paperclip size={16} />
-                )}
-                {uploadingAttachment ? "Uploading..." : "Attach Photos or Files"}
-              </label>
-              <input
-                id="maintenance-attachments"
-                type="file"
-                hidden
-                multiple
-                accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
-                onChange={handleAttachmentUpload}
-                disabled={isSavingForm}
-              />
-
-              {formData.attachments?.length ? (
-                <div className="maintenance-attachment-list" style={{ marginTop: 10 }}>
-                  {formData.attachments.map((attachment, index) => {
-                    const attachmentKey = getAttachmentKey(attachment, index);
-                    return (
-                      <div key={attachmentKey} className="maintenance-attachment-row">
-                        <span>{getMaintenanceAttachmentName(attachment, index)}</span>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={() => handleRemoveAttachment(attachmentKey)}
-                          style={{ padding: "6px 10px" }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="form-actions" style={{ marginTop: 20 }}>
-              <button type="button" className="btn btn-secondary" onClick={resetComposer}>
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={isSavingForm || descriptionTooShort}
-              >
-                {uploadingAttachment
-                  ? "Uploading..."
-                  : isSavingForm
-                  ? isEditing
-                    ? "Saving..."
-                    : "Submitting..."
-                  : isEditing
-                  ? "Save Changes"
-                  : "Submit Request"}
-              </button>
-            </div>
-          </form>
+          <div className="maintenance-kpi-card__val">{summary.active}</div>
+          <p className="maintenance-kpi-card__sub">Under review or in progress</p>
         </div>
-      ) : null}
 
-      <div className="section-card" style={{ marginBottom: 20 }}>
-        <h2>Overview</h2>
-        <div
-          style={{
-            display: "grid",
-            gap: 12,
-            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-          }}
-        >
-          {[
-            { label: "Active Requests", value: summary.active },
-            { label: "Completed / History", value: summary.resolved },
-            { label: "Total Filed", value: summary.total },
-          ].map((item) => (
-            <div
-              key={item.label}
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                padding: "14px 16px",
-                background: "var(--card)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "var(--muted-foreground)",
-                  marginBottom: 6,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                {item.label}
-              </div>
-              <strong style={{ fontSize: 22, color: "var(--foreground)" }}>
-                {item.value}
-              </strong>
-            </div>
-          ))}
+        <div className="maintenance-kpi-card">
+          <div className="maintenance-kpi-card__top">
+            <span className="maintenance-kpi-card__label">Completed / History</span>
+            <CheckCircle2 size={16} strokeWidth={2} style={{ color: "#059669" }} />
+          </div>
+          <div className="maintenance-kpi-card__val">{summary.resolved}</div>
+          <p className="maintenance-kpi-card__sub">Resolved and verified</p>
+        </div>
+
+        <div className="maintenance-kpi-card">
+          <div className="maintenance-kpi-card__top">
+            <span className="maintenance-kpi-card__label">Total Filed</span>
+            <ClipboardList size={16} strokeWidth={2} style={{ color: "#2563EB" }} />
+          </div>
+          <div className="maintenance-kpi-card__val">{summary.total}</div>
+          <p className="maintenance-kpi-card__sub">Lifetime tickets submitted</p>
         </div>
       </div>
 
+      {/* Request Records Section with Dedicated Filter Bar */}
       <div className="section-card">
         <div
           style={{
@@ -1030,352 +1034,771 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             flexWrap: "wrap",
             gap: 12,
             marginBottom: 16,
+            paddingBottom: 12,
+            borderBottom: "1px solid var(--border)",
           }}
         >
-          <h2 style={{ margin: 0 }}>Request Records</h2>
-          {requests.length > 0 ? (
-            <div style={{ display: "inline-flex", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Request Records</h2>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                padding: "2px 8px",
+                borderRadius: 999,
+                background: "var(--muted)",
+                color: "var(--muted-foreground)",
+              }}
+            >
+              {filteredRequests.length}
+            </span>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "inline-flex",
+                gap: 4,
+                background: "var(--muted)",
+                padding: 3,
+                borderRadius: 999,
+                border: "1px solid var(--border)",
+              }}
+            >
               {STATUS_FILTERS.map((filter) => (
                 <button
                   key={filter.key}
                   type="button"
-                  onClick={() => setStatusFilter(filter.key)}
+                  onClick={() => {
+                    setStatusFilter(filter.key);
+                    setCurrentPage(1);
+                  }}
                   style={{
-                    padding: "6px 14px",
+                    padding: "5px 14px",
                     borderRadius: 999,
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: 600,
                     cursor: "pointer",
-                    border:
-                      statusFilter === filter.key
-                        ? "1px solid #2563EB"
-                        : "1px solid var(--border)",
-                    background:
-                      statusFilter === filter.key ? "#EFF6FF" : "transparent",
-                    color: statusFilter === filter.key ? "#1D4ED8" : "var(--muted-foreground)",
+                    border: "none",
+                    background: statusFilter === filter.key ? "var(--card)" : "transparent",
+                    color: statusFilter === filter.key ? "var(--foreground)" : "var(--muted-foreground)",
+                    boxShadow: statusFilter === filter.key ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+                    transition: "all 0.15s ease",
                   }}
                 >
                   {filter.label}
                 </button>
               ))}
             </div>
-          ) : null}
+
+            {filteredRequests.length > 0 ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={areAllFilteredExpanded ? handleCollapseAll : handleExpandAll}
+                style={{
+                  fontSize: 12,
+                  padding: "5px 12px",
+                  borderRadius: 999,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+                title={areAllFilteredExpanded ? "Collapse all ticket cards" : "Expand all ticket cards"}
+              >
+                <ChevronsUpDown size={14} />
+                <span>{areAllFilteredExpanded ? "Collapse All" : "Expand All"}</span>
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {isLoading ? (
-          <p>Loading maintenance requests...</p>
+          <p style={{ color: "var(--muted-foreground)", fontSize: 14 }}>Loading maintenance requests...</p>
         ) : requests.length === 0 ? (
           <div className="maintenance-empty-state">
-            <ClipboardList size={30} />
-            <div>
-              <strong>No maintenance requests yet</strong>
-              <p>
-                Use the "Report an Issue" button whenever you need assistance with room facilities, plumbing, AC, or utilities.
-              </p>
-            </div>
+            <ClipboardList size={28} strokeWidth={1.75} style={{ color: "#64748B", marginBottom: 10 }} />
+            <strong>No maintenance requests yet</strong>
+            <p>
+              Use the "Report an Issue" button above whenever you need assistance with room facilities, plumbing, AC, or utilities.
+            </p>
           </div>
         ) : filteredRequests.length === 0 ? (
           <div className="maintenance-empty-state">
-            <ClipboardList size={30} />
-            <div>
-              <strong>No {statusFilter === "resolved" ? "completed" : "active"} requests</strong>
-              <p>Switch filter tabs above to view other tickets in your history.</p>
-            </div>
+            <ClipboardList size={28} strokeWidth={1.75} style={{ color: "#64748B", marginBottom: 10 }} />
+            <strong>No {statusFilter === "resolved" ? "completed" : "active"} requests</strong>
+            <p>Switch filter tabs above to view other tickets in your history.</p>
           </div>
         ) : (
-          <div className="maintenance-list">
-            {filteredRequests.map((request) => {
-              const typeMeta = getMaintenanceTypeMeta(request.request_type);
-              const urgencyMeta = getMaintenanceUrgencyMeta(request.urgency);
-              const statusMeta = getMaintenanceStatusMeta(request.status);
-              const TypeIcon = typeMeta.icon;
-              const StatusIcon = getStatusIcon(request.status);
-              const isPending = request.status === "pending" || request.status === "pending_review";
-              const isReopenable = REOPENABLE_MAINTENANCE_STATUSES.includes(request.status);
-              const isCompleted = ["completed", "resolved"].includes(request.status);
-              const isConfirmed = Boolean(request.resolutionConfirmation?.confirmedAt);
-              const hasReport = Boolean(request.completionReport && !request.completionReport.isDraft);
-              const providerLabel = request.tenantVisibleProviderLabel || request.providerDetails?.tenantVisibleLabel || request.assigned_to;
-              const scheduledDate = request.schedule?.scheduledDate ? new Date(request.schedule.scheduledDate) : null;
-              const visibleRequestAttachments = getTenantVisibleAttachments(request.attachments);
-              const latestReply = getLatestTenantReply(request);
-              const latestReplyAttachments = getTenantVisibleAttachments(latestReply?.attachments);
-              const latestReplySummary = getReplySummary(latestReply);
+          <>
+            <div className="maintenance-list">
+              {paginatedRequests.map((request) => {
+                const requestId = request.request_id || request._id;
+                const typeMeta = getMaintenanceTypeMeta(request.request_type);
+                const urgencyMeta = getMaintenanceUrgencyMeta(request.urgency);
+                const statusMeta = getMaintenanceStatusMeta(request.status);
+                const TypeIcon = typeMeta.icon;
+                const StatusIcon = getStatusIcon(request.status);
+                const isPending = request.status === "pending" || request.status === "pending_review";
+                const isReopenable = REOPENABLE_MAINTENANCE_STATUSES.includes(request.status);
+                const isCompleted = ["completed", "resolved"].includes(request.status);
+                const isConfirmed = Boolean(request.resolutionConfirmation?.confirmedAt);
+                const hasReport = Boolean(request.completionReport && !request.completionReport.isDraft);
+                const providerLabel = request.tenantVisibleProviderLabel || request.providerDetails?.tenantVisibleLabel || request.assigned_to;
+                const scheduledDate = request.schedule?.scheduledDate ? new Date(request.schedule.scheduledDate) : null;
+                const latestReply = getLatestTenantReply(request);
+                const latestReplyAttachments = getTenantVisibleAttachments(latestReply?.attachments);
+                const latestReplySummary = getReplySummary(latestReply);
 
-              return (
-                <article
-                  key={request.request_id || request._id}
-                  className="maintenance-item"
-                  style={{ flexDirection: "column", alignItems: "stretch" }}
-                >
-                  <div
+                const isExpanded = isCardExpanded(request);
+
+                return (
+                  <article
+                    key={requestId}
+                    className="maintenance-item"
                     style={{
-                      display: "flex",
-                      gap: 14,
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
+                      flexDirection: "column",
+                      alignItems: "stretch",
+                      padding: 0,
+                      overflow: "hidden",
+                      border: "1px solid var(--border)",
+                      borderRadius: 14,
+                      background: "var(--card)",
                     }}
                   >
-                    <div style={{ display: "flex", gap: 12 }}>
-                      <div
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 12,
-                          background: `${typeMeta.color}1A`,
-                          color: typeMeta.color,
-                          display: "grid",
-                          placeItems: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <TypeIcon size={18} />
-                      </div>
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                          <h3 style={{ margin: 0 }}>{typeMeta.label}</h3>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#2563EB", background: "#EFF6FF", padding: "2px 8px", borderRadius: 4 }}>
-                            {request.ticketNumber || `#${request.request_id?.slice(0, 8)}`}
-                          </span>
-                        </div>
-                        <p style={{ margin: "4px 0 0", color: "var(--muted-foreground)" }}>
-                          {fmtDate(request.created_at)} • {urgencyMeta.label} Priority
-                        </p>
-                      </div>
-                    </div>
-
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        padding: "6px 12px",
-                        borderRadius: 999,
-                        background: statusMeta.bg,
-                        color: statusMeta.color,
-                        fontSize: 12,
-                        fontWeight: 700,
-                      }}
-                    >
-                      <StatusIcon size={12} />
-                      {formatMaintenanceStatus(request.status)}
-                    </span>
-                  </div>
-
-                  <p style={{ margin: "14px 0 0", color: "var(--foreground)" }}>
-                    {request.description}
-                  </p>
-
-                  {/* Step Tracker */}
-                  <div style={{ marginTop: 14 }}>
-                    <MaintenanceStepTracker status={request.status} reopenCount={request.reopenCount} />
-                  </div>
-
-                  {/* Provider & Schedule Badges */}
-                  {(providerLabel || scheduledDate) ? (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
-                      {providerLabel ? (
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, background: "#EFF6FF", color: "#1E40AF", fontSize: 12, fontWeight: 600 }}>
-                          <User size={13} />
-                          <span>Assigned: {providerLabel}</span>
-                        </div>
-                      ) : null}
-                      {scheduledDate ? (
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, background: "#CFFAFE", color: "#0E7490", fontSize: 12, fontWeight: 600 }}>
-                          <Calendar size={13} />
-                          <span>Scheduled: {fmtDateTime(scheduledDate)}</span>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  {/* Official Completion Report CTA */}
-                  {hasReport ? (
+                    {/* Collapsible Card Header Bar */}
                     <div
+                      onClick={() => toggleCardExpanded(request)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleCardExpanded(request);
+                        }
+                      }}
                       style={{
-                        marginTop: 14,
-                        borderRadius: 12,
-                        padding: "12px 14px",
-                        background: "#F0FDF4",
-                        border: "1px solid #BBF7D0",
                         display: "flex",
+                        gap: 14,
                         justifyContent: "space-between",
                         alignItems: "center",
-                        flexWrap: "wrap",
-                        gap: 10,
+                        padding: "14px 18px",
+                        cursor: "pointer",
+                        userSelect: "none",
+                        background: "var(--card)",
+                        borderBottom: isExpanded ? "1px solid var(--border)" : "none",
+                        transition: "background 0.15s ease",
                       }}
+                      aria-expanded={isExpanded}
+                      title={isExpanded ? "Click to collapse" : "Click to expand details"}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <FileCheck size={16} color="#16A34A" />
-                        <div>
-                          <strong style={{ color: "#166534", fontSize: 13, display: "block" }}>Official Completion Report Available</strong>
-                          <span style={{ color: "#15803D", fontSize: 12 }}>Signed & verified by Facilities Supervisor</span>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ fontSize: 12, padding: "6px 12px" }}
-                        onClick={() => setViewingReportRequest(request)}
-                      >
-                        View Official Report
-                      </button>
-                    </div>
-                  ) : null}
-
-                  {/* Resolution Prompt */}
-                  {isCompleted ? (
-                    isConfirmed ? (
-                      <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6, color: "#15803D", fontSize: 12, fontWeight: 600 }}>
-                        <CheckCircle2 size={14} />
-                        <span>Resolution verified by resident on {fmtDate(request.resolutionConfirmation?.confirmedAt)}</span>
-                      </div>
-                    ) : (
-                      <div className="resolution-confirmation-banner">
-                        <div>
-                          <h4>Was your maintenance issue resolved?</h4>
-                          <p>Please verify that the technician completed the repair satisfactorily.</p>
-                        </div>
-                        <div className="resolution-banner-actions">
-                          <button
-                            type="button"
-                            className="btn-success"
-                            disabled={confirmResolutionMutation.isPending}
-                            onClick={() => handleConfirmResolution(request, true)}
-                          >
-                            <Check size={14} /> Yes, Resolved
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-outline-danger"
-                            disabled={confirmResolutionMutation.isPending}
-                            onClick={() => handleConfirmResolution(request, false)}
-                          >
-                            <X size={14} /> No, Issue Remains
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  ) : null}
-
-                  {request.notes ? (
-                    <div
-                      style={{
-                        marginTop: 14,
-                        borderRadius: 12,
-                        padding: "12px 14px",
-                        background: "var(--warning-light)",
-                        color: "var(--warning-dark)",
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "flex-start",
-                      }}
-                    >
-                      <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-                      <div>
-                        <strong style={{ display: "block", marginBottom: 4 }}>
-                          Admin Response
-                        </strong>
-                        <span>{request.notes}</span>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {latestReply ? (
-                    <div
-                      style={{
-                        marginTop: 14,
-                        borderRadius: 12,
-                        padding: "12px 14px",
-                        background: "var(--info-light)",
-                        color: "var(--info-dark)",
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "flex-start",
-                      }}
-                    >
-                      <MessageSquare size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-                      <div style={{ width: "100%" }}>
-                        <strong style={{ display: "block", marginBottom: 4 }}>
-                          Latest Admin Reply
-                        </strong>
-                        <span>{latestReplySummary}</span>
-
-                        {latestReplyAttachments.length ? (
-                          <div className="maintenance-detail-links" style={{ marginTop: 12 }}>
-                            {latestReplyAttachments.map((attachment, index) => (
-                              <AttachmentLink
-                                key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
-                                attachment={attachment}
-                                index={index}
-                                onPreview={setPreviewAttachment}
-                              />
-                            ))}
+                      <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0, flex: 1 }}>
+                        <TypeIcon size={18} strokeWidth={2} style={{ color: typeMeta.color, flexShrink: 0 }} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{typeMeta.label}</h3>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted-foreground)", background: "var(--muted)", padding: "2px 8px", borderRadius: 4 }}>
+                              {request.ticketNumber || `#${request.request_id?.slice(0, 8)}`}
+                            </span>
                           </div>
-                        ) : null}
+                          <p style={{ margin: "2px 0 0", color: "var(--muted-foreground)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {fmtDate(request.created_at)} • {urgencyMeta.label} Priority
+                            {!isExpanded && request.description ? (
+                              <span style={{ marginLeft: 8, color: "var(--foreground)", opacity: 0.8 }}>
+                                — {request.description}
+                              </span>
+                            ) : null}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ) : null}
 
-                  <div
-                    className="form-actions maintenance-detail-actions"
-                    style={{ justifyContent: "space-between", marginTop: 16 }}
-                  >
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => setSelectedRequestId(request.request_id)}
-                    >
-                      View Details
-                    </button>
-
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      {isPending ? (
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={() => openEditForm(request)}
-                        >
-                          <Pencil size={14} />
-                          Edit
-                        </button>
-                      ) : null}
-
-                      {isPending ? (
-                        <button
-                          type="button"
-                          className="btn btn-secondary maintenance-danger-button"
-                          disabled={cancelMutation.isPending}
-                          onClick={() => requestCancelConfirmation(request)}
-                        >
-                          <Trash2 size={14} />
-                          Cancel
-                        </button>
-                      ) : null}
-
-                      {isReopenable ? (
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={() => {
-                            setSelectedRequestId(request.request_id);
-                            setDetailTab("reopen");
-                            setReopenNote(request.reopen_note || "");
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "5px 12px",
+                            borderRadius: 999,
+                            background: statusMeta.bg,
+                            color: statusMeta.color,
+                            fontSize: 12,
+                            fontWeight: 700,
                           }}
                         >
-                          <RefreshCcw size={14} />
-                          Reopen
+                          <StatusIcon size={12} />
+                          {formatMaintenanceStatus(request.status)}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleCardExpanded(request);
+                          }}
+                          className="btn btn-secondary"
+                          style={{
+                            padding: "6px 8px",
+                            borderRadius: 999,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "var(--muted-foreground)",
+                          }}
+                          aria-label={isExpanded ? "Collapse card" : "Expand card"}
+                        >
+                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                         </button>
-                      ) : null}
+                      </div>
                     </div>
-                  </div>
+
+                    {/* Collapsible Card Body */}
+                    {isExpanded ? (
+                      <div style={{ padding: "16px 20px 20px" }}>
+                        <p style={{ margin: 0, color: "var(--foreground)", lineHeight: 1.5 }}>
+                          {request.description}
+                        </p>
+
+                        {/* Step Tracker */}
+                        <div style={{ marginTop: 14 }}>
+                          <MaintenanceStepTracker status={request.status} reopenCount={request.reopenCount} />
+                        </div>
+
+                        {/* Provider & Schedule Badges */}
+                        {(providerLabel || scheduledDate) ? (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
+                            {providerLabel ? (
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, background: "#EFF6FF", color: "#1E40AF", fontSize: 12, fontWeight: 600 }}>
+                                <User size={13} />
+                                <span>Assigned: {providerLabel}</span>
+                              </div>
+                            ) : null}
+                            {scheduledDate ? (
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, background: "#CFFAFE", color: "#0E7490", fontSize: 12, fontWeight: 600 }}>
+                                <Calendar size={13} />
+                                <span>Scheduled: {fmtDateTime(scheduledDate)}</span>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {/* Official Completion Report CTA */}
+                        {hasReport ? (
+                          <div
+                            style={{
+                              marginTop: 14,
+                              borderRadius: 12,
+                              padding: "12px 14px",
+                              background: "#F0FDF4",
+                              border: "1px solid #BBF7D0",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              flexWrap: "wrap",
+                              gap: 10,
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <FileCheck size={16} color="#16A34A" />
+                              <div>
+                                <strong style={{ color: "#166534", fontSize: 13, display: "block" }}>Official Completion Report Available</strong>
+                                <span style={{ color: "#15803D", fontSize: 12 }}>Signed & verified by Facilities Supervisor</span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ fontSize: 12, padding: "6px 12px" }}
+                              onClick={() => setViewingReportRequest(request)}
+                            >
+                              View Official Report
+                            </button>
+                          </div>
+                        ) : null}
+
+                        {/* Resolution Prompt */}
+                        {isCompleted ? (
+                          isConfirmed ? (
+                            <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6, color: "#15803D", fontSize: 12, fontWeight: 600 }}>
+                              <CheckCircle2 size={14} />
+                              <span>Resolution verified by resident on {fmtDate(request.resolutionConfirmation?.confirmedAt)}</span>
+                            </div>
+                          ) : (
+                            <div className="resolution-confirmation-banner">
+                              <div>
+                                <h4>Was your maintenance issue resolved?</h4>
+                                <p>Please verify that the technician completed the repair satisfactorily.</p>
+                              </div>
+                              <div className="resolution-banner-actions">
+                                <button
+                                  type="button"
+                                  className="btn-success"
+                                  disabled={confirmResolutionMutation.isPending}
+                                  onClick={() => handleConfirmResolution(request, true)}
+                                >
+                                  <Check size={14} /> Yes, Resolved
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-outline-danger"
+                                  disabled={confirmResolutionMutation.isPending}
+                                  onClick={() => handleConfirmResolution(request, false)}
+                                >
+                                  <X size={14} /> No, Issue Remains
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        ) : null}
+
+                        {request.notes ? (
+                          <div
+                            style={{
+                            marginTop: 14,
+                            borderRadius: 12,
+                            padding: "12px 14px",
+                            background: "var(--warning-light)",
+                            color: "var(--warning-dark)",
+                            display: "flex",
+                            gap: 10,
+                            alignItems: "flex-start",
+                          }}
+                        >
+                          <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                          <div>
+                            <strong style={{ display: "block", marginBottom: 4 }}>
+                              Admin Response
+                            </strong>
+                            <span>{request.notes}</span>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {latestReply ? (
+                        <div
+                          style={{
+                            marginTop: 14,
+                            borderRadius: 12,
+                            padding: "12px 14px",
+                            background: "var(--info-light)",
+                            color: "var(--info-dark)",
+                            display: "flex",
+                            gap: 10,
+                            alignItems: "flex-start",
+                          }}
+                        >
+                          <MessageSquare size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                          <div style={{ width: "100%" }}>
+                            <strong style={{ display: "block", marginBottom: 4 }}>
+                              Latest Admin Reply
+                            </strong>
+                            <span>{latestReplySummary}</span>
+
+                            {latestReplyAttachments.length ? (
+                              <div className="maintenance-detail-links" style={{ marginTop: 12 }}>
+                                {latestReplyAttachments.map((attachment, index) => (
+                                  <AttachmentLink
+                                    key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
+                                    attachment={attachment}
+                                    index={index}
+                                    onPreview={setPreviewAttachment}
+                                  />
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div
+                        className="form-actions maintenance-detail-actions"
+                        style={{ justifyContent: "space-between", marginTop: 16 }}
+                      >
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => setSelectedRequestId(request.request_id)}
+                        >
+                          View Details
+                        </button>
+
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          {isPending ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => openEditForm(request)}
+                            >
+                              <Pencil size={14} />
+                              Edit
+                            </button>
+                          ) : null}
+
+                          {isPending ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary maintenance-danger-button"
+                              disabled={cancelMutation.isPending}
+                              onClick={() => requestCancelConfirmation(request)}
+                            >
+                              <Trash2 size={14} />
+                              Cancel
+                            </button>
+                          ) : null}
+
+                          {isReopenable ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => {
+                                setSelectedRequestId(request.request_id);
+                                setDetailTab("reopen");
+                                setReopenNote(request.reopen_note || "");
+                              }}
+                            >
+                              <RefreshCcw size={14} />
+                              Reopen
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </article>
               );
             })}
           </div>
-        )}
-      </div>
 
+          {totalItems > 0 ? (
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onLimitChange={(newLimit) => {
+                  setItemsPerPage(newLimit);
+                  setCurrentPage(1);
+                }}
+                pageSizeOptions={[5, 10, 20]}
+                itemLabel="tickets"
+              />
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+
+      {/* Submit / Edit Maintenance Request Modal */}
+      {showModal ? (
+        <div className="maintenance-modal-backdrop" onClick={handleRequestModalClose}>
+          <div className="maintenance-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="maintenance-modal__header">
+              <div>
+                <h2>{isEditing ? "Edit Maintenance Request" : "Submit Maintenance Request"}</h2>
+                <p>Provide details of the issue for fast triage and technician dispatch.</p>
+              </div>
+              <button type="button" aria-label="Close form" onClick={handleRequestModalClose}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="room-context-pill">
+              <User size={14} />
+              <span>Reporting for: <strong>{roomContextLabel}</strong> (Auto-populated from tenancy)</span>
+            </div>
+
+            <form className="maintenance-form" onSubmit={handleSubmitRequest}>
+              {/* Category Picker */}
+              <div className="form-group">
+                <label>Select Category *</label>
+                <div className="category-picker-grid">
+                  {MAINTENANCE_REQUEST_TYPES.map((catKey) => {
+                    const meta = getMaintenanceTypeMeta(catKey);
+                    const Icon = meta.icon;
+                    const isSelected = formData.request_type === catKey;
+                    return (
+                      <button
+                        key={catKey}
+                        type="button"
+                        className={`category-picker-btn ${isSelected ? "selected" : ""}`}
+                        onClick={() => setFormData((c) => ({ ...c, request_type: catKey }))}
+                      >
+                        <Icon size={20} color={isSelected ? "#2563EB" : meta.color} />
+                        <span>{meta.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Urgency Selector Cards */}
+              <div className="form-group" style={{ marginTop: 16 }}>
+                <label>Urgency Level *</label>
+                <div className="urgency-picker-grid">
+                  {URGENCY_OPTIONS.map((urgency) => {
+                    const isSelected = formData.urgency === urgency.key;
+                    return (
+                      <div
+                        key={urgency.key}
+                        className={`urgency-card ${isSelected ? "selected" : ""} ${urgency.key === "emergency" ? "urgency-card--emergency" : ""}`}
+                        onClick={() => setFormData((c) => ({ ...c, urgency: urgency.key }))}
+                      >
+                        <div className="urgency-card__header">
+                          <span className="urgency-card__title">{urgency.label}</span>
+                          <span className="urgency-card__eta">{urgency.eta}</span>
+                        </div>
+                        <p className="urgency-card__desc">{urgency.description}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Emergency Notice Banner */}
+                {formData.urgency === "emergency" ? (
+                  <div className="emergency-notice-banner">
+                    <AlertTriangle size={20} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div>
+                      <h5>Emergency Protocol Notice</h5>
+                      <p>
+                        For active flooding, major power sparks, gas smell, or fire hazards, please notify the 24/7 Front Desk immediately after submitting this ticket.
+                      </p>
+                      <span className="hotline-pill">
+                        <PhoneCall size={12} /> Front Desk Hotline: (02) 8123-4567 / (0917) 123-4567
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Description Field with Live Counter */}
+              <div className={`form-group${descriptionTooShort ? " has-error" : ""}`} style={{ marginTop: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <label htmlFor="maintenance-description">Issue Description *</label>
+                  <span className={`character-counter ${descriptionLength >= MIN_MAINTENANCE_DESCRIPTION_LENGTH ? "valid" : descriptionLength > 0 ? "invalid" : ""}`}>
+                    {descriptionLength} / {MIN_MAINTENANCE_DESCRIPTION_LENGTH} min characters
+                  </span>
+                </div>
+                <textarea
+                  id="maintenance-description"
+                  className="form-control"
+                  rows="4"
+                  placeholder="Describe the issue in detail (symptoms, location, when it started, and specific unit fixture affected)..."
+                  value={formData.description}
+                  onChange={(event) =>
+                    setFormData((current) => ({
+                      ...current,
+                      description: event.target.value,
+                    }))
+                  }
+                  required
+                  autoFocus
+                />
+                <p className="maintenance-help-text">
+                  Minimum {MIN_MAINTENANCE_DESCRIPTION_LENGTH} characters. Clear descriptions help technicians arrive with the correct spare parts on the first visit.
+                </p>
+                {descriptionTooShort ? (
+                  <p className="maintenance-field-error">
+                    Description must be at least {MIN_MAINTENANCE_DESCRIPTION_LENGTH} characters.
+                  </p>
+                ) : null}
+              </div>
+
+              {/* Attachments Dropzone & List */}
+              <div className="form-group" style={{ marginTop: 16 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 6,
+                  }}
+                >
+                  <label style={{ margin: 0 }}>Photo / Document Attachments *</label>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color:
+                        attachmentCount >= 5
+                          ? "#D97706"
+                          : attachmentCount > 0
+                          ? "#2563EB"
+                          : "#DC2626",
+                    }}
+                  >
+                    {attachmentCount} / 5 {attachmentCount === 0 ? "(At least 1 required)" : ""}
+                  </span>
+                </div>
+                <div
+                  className={`maintenance-dropzone ${isDragOver ? "dragover" : ""}`}
+                  onDragOver={attachmentCount < 5 ? handleDragOver : (e) => e.preventDefault()}
+                  onDragLeave={attachmentCount < 5 ? handleDragLeave : undefined}
+                  onDrop={attachmentCount < 5 ? handleDrop : (e) => e.preventDefault()}
+                  onClick={() =>
+                    !uploadingAttachment &&
+                    attachmentCount < 5 &&
+                    fileInputRef.current?.click()
+                  }
+                  style={
+                    uploadingAttachment
+                      ? { opacity: 0.85, cursor: "wait" }
+                      : attachmentCount >= 5
+                      ? {
+                          opacity: 0.85,
+                          cursor: "default",
+                          background: "var(--muted)",
+                          borderStyle: "solid",
+                        }
+                      : attachmentCount > 0
+                      ? {
+                          padding: "1rem 1.25rem",
+                          borderColor: "var(--border-strong, #CBD5E1)",
+                        }
+                      : {}
+                  }
+                >
+                  {uploadingAttachment ? (
+                    <>
+                      <LoaderCircle size={26} className="admin-announcements-spin" style={{ color: "#2563EB" }} />
+                      <span className="maintenance-dropzone__title" style={{ color: "#2563EB" }}>
+                        Uploading attachments...
+                      </span>
+                      <span className="maintenance-dropzone__sub">
+                        Please wait while files are being uploaded
+                      </span>
+                    </>
+                  ) : attachmentCount >= 5 ? (
+                    <>
+                      <CheckCircle2 size={24} strokeWidth={2} style={{ color: "#059669" }} />
+                      <span className="maintenance-dropzone__title" style={{ color: "var(--foreground)" }}>
+                        Maximum 5 attachments reached
+                      </span>
+                      <span className="maintenance-dropzone__sub">
+                        Remove an attachment below if you want to upload a different file
+                      </span>
+                    </>
+                  ) : attachmentCount > 0 ? (
+                    <>
+                      <UploadCloud size={24} style={{ color: "#2563EB" }} />
+                      <span className="maintenance-dropzone__title" style={{ color: "var(--foreground)" }}>
+                        Add more photos or documents ({5 - attachmentCount} remaining)
+                      </span>
+                      <span className="maintenance-dropzone__sub">
+                        Drag & drop or click to browse additional files (JPG, PNG, WEBP, PDF up to 10MB)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud size={28} color={isDragOver ? "#2563EB" : "var(--muted-foreground)"} />
+                      <span className="maintenance-dropzone__title">
+                        Drag & drop photos here, or click to browse
+                      </span>
+                      <span className="maintenance-dropzone__sub">
+                        At least 1 photo or document is required (JPG, PNG, WEBP, PDF up to 10MB)
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  id="maintenance-attachments"
+                  type="file"
+                  hidden
+                  multiple
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+                  onChange={handleAttachmentUpload}
+                  disabled={uploadingAttachment || isSavingForm}
+                />
+
+                {uploadingAttachment ? (
+                  <div
+                    className="maintenance-attachment-row"
+                    style={{
+                      marginTop: 10,
+                      border: "1px dashed #2563EB",
+                      background: "rgba(37, 99, 235, 0.05)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                    }}
+                  >
+                    <LoaderCircle size={15} className="admin-announcements-spin" style={{ color: "#2563EB" }} />
+                    <span style={{ color: "#2563EB", fontSize: 13, fontWeight: 600 }}>
+                      Uploading attachment, please wait...
+                    </span>
+                  </div>
+                ) : null}
+
+                {formData.attachments?.length ? (
+                  <div className="maintenance-attachment-list" style={{ marginTop: 10 }}>
+                    {formData.attachments.map((attachment, index) => {
+                      const attachmentKey = getAttachmentKey(attachment, index);
+                      return (
+                        <div key={attachmentKey} className="maintenance-attachment-row">
+                          <span>{getMaintenanceAttachmentName(attachment, index)}</span>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => handleRemoveAttachment(attachmentKey)}
+                            disabled={uploadingAttachment || isSavingForm}
+                            style={{ padding: "6px 10px" }}
+                            aria-label="Remove attachment"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Form Action Buttons */}
+              <div className="form-actions" style={{ marginTop: 24, justifyContent: "flex-end", gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleRequestModalClose}
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-success"
+                  disabled={
+                    uploadingAttachment ||
+                    createMutation.isPending ||
+                    updateMutation.isPending ||
+                    descriptionTooShort ||
+                    descriptionLength === 0 ||
+                    !hasRequiredAttachment
+                  }
+                  style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+                >
+                  {createMutation.isPending || updateMutation.isPending ? (
+                    <LoaderCircle size={16} className="admin-announcements-spin" />
+                  ) : null}
+                  {createMutation.isPending || updateMutation.isPending
+                    ? isEditing
+                      ? "Saving Changes..."
+                      : "Submitting..."
+                    : isEditing
+                    ? "Save Changes"
+                    : "Submit Request"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Ticket Details & Conversation Modal */}
       {selectedRequest ? (
         <div
           className="maintenance-modal-backdrop"
@@ -1424,25 +1847,47 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 (tab) =>
                   tab.key !== "reopen" ||
                   REOPENABLE_MAINTENANCE_STATUSES.includes(selectedRequest.status),
-              ).map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setDetailTab(tab.key)}
-                  style={{
-                    padding: "10px 16px",
-                    border: "none",
-                    background: "none",
-                    cursor: "pointer",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: detailTab === tab.key ? "#2563EB" : "var(--muted-foreground)",
-                    borderBottom: detailTab === tab.key ? "2px solid #2563EB" : "2px solid transparent",
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
+              ).map((tab) => {
+                const isConversation = tab.key === "conversation";
+                const count = isConversation && Array.isArray(selectedRequest.conversation) ? selectedRequest.conversation.length : 0;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setDetailTab(tab.key)}
+                    style={{
+                      padding: "10px 16px",
+                      border: "none",
+                      background: "none",
+                      cursor: "pointer",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: detailTab === tab.key ? "var(--color-primary, #0A1628)" : "var(--muted-foreground)",
+                      borderBottom: detailTab === tab.key ? "2px solid var(--color-primary, #0A1628)" : "2px solid transparent",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <span>{tab.label}</span>
+                    {isConversation && count > 0 ? (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: "1px 6px",
+                          borderRadius: 999,
+                          background: detailTab === tab.key ? "var(--primary-light, #EFF6FF)" : "var(--muted)",
+                          color: detailTab === tab.key ? "var(--primary-dark, #1E3A8A)" : "var(--muted-foreground)",
+                          border: "1px solid var(--border)",
+                        }}
+                      >
+                        {count}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
 
             {detailTab === "details" ? (
@@ -1602,103 +2047,21 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             ) : null}
 
             {detailTab === "conversation" ? (
-              <>
-                {selectedRequest.conversation?.length ? (
-                  <section className="maintenance-detail-section">
-                    <h3>Reply History</h3>
-                    <div className="maintenance-timeline">
-                      {selectedRequest.conversation.map((entry, index) => (
-                        <article key={`${entry.created_at}-${index}`}>
-                          <strong>{fmtDateTime(entry.created_at)}</strong>
-                          <span>
-                            {entry.sender_side === "tenant" ? "Tenant" : "Dormitory Admin"}
-                            {entry.sender_name ? ` - ${entry.sender_name}` : ""}
-                          </span>
-                          {entry.message ? <p>{entry.message}</p> : null}
-                          {getTenantVisibleAttachments(entry.attachments).length ? (
-                            <div className="maintenance-detail-links" style={{ marginTop: 10 }}>
-                              {getTenantVisibleAttachments(entry.attachments).map((attachment, attachmentIndex) => (
-                                <AttachmentLink
-                                  key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${attachmentIndex}`}
-                                  attachment={attachment}
-                                  index={attachmentIndex}
-                                  onPreview={setPreviewAttachment}
-                                />
-                              ))}
-                            </div>
-                          ) : null}
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-                ) : (
-                  <p style={{ color: "var(--muted-foreground)" }}>No replies yet.</p>
-                )}
-
-                {ACTIVE_MAINTENANCE_STATUSES.includes(selectedRequest.status) ? (
-                  <section className="maintenance-detail-section">
-                    <h3>Send Reply</h3>
-                    <form className="maintenance-form" onSubmit={handleSendReply}>
-                      <textarea
-                        className="form-control"
-                        rows="3"
-                        placeholder="Add an update for the admin team."
-                        value={replyMessage}
-                        onChange={(event) => setReplyMessage(event.target.value)}
-                      />
-                      <div className="form-actions" style={{ justifyContent: "space-between", marginTop: 10 }}>
-                        <label
-                          htmlFor="maintenance-reply-attachments"
-                          className="btn btn-secondary"
-                          style={{ width: "fit-content", display: "inline-flex", gap: 8 }}
-                        >
-                          <Paperclip size={14} />
-                          {uploadingReplyAttachment ? "Uploading..." : "Attach Photo"}
-                        </label>
-                        <input
-                          id="maintenance-reply-attachments"
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
-                          multiple
-                          onChange={handleReplyAttachmentUpload}
-                          disabled={uploadingReplyAttachment || sendReplyMutation.isPending}
-                          style={{ display: "none" }}
-                        />
-                        <button
-                          type="submit"
-                          className="btn btn-primary"
-                          disabled={uploadingReplyAttachment || sendReplyMutation.isPending}
-                        >
-                          <MessageSquare size={14} />
-                          {sendReplyMutation.isPending ? "Sending..." : "Send Reply"}
-                        </button>
-                      </div>
-                      {replyAttachments.length ? (
-                        <div className="maintenance-attachment-list" style={{ marginTop: 10 }}>
-                          {replyAttachments.map((attachment, index) => {
-                            const uri = getMaintenanceAttachmentUri(attachment);
-                            return (
-                              <div
-                                key={`${uri || attachment.name}-${index}`}
-                                className="maintenance-attachment-row"
-                              >
-                                <span>{getMaintenanceAttachmentName(attachment, index)}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveReplyAttachment(uri)}
-                                  aria-label="Remove attachment"
-                                >
-                                  <X size={14} />
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </form>
-                  </section>
-                ) : null}
-              </>
+              <MaintenanceConversationSection
+                conversation={selectedRequest.conversation || []}
+                currentSide="tenant"
+                isActiveTicket={ACTIVE_MAINTENANCE_STATUSES.includes(selectedRequest.status)}
+                ticketStatus={formatMaintenanceStatus(selectedRequest.status)}
+                onSendReply={async ({ message, attachments }) => {
+                  await sendReplyMutation.mutateAsync({
+                    requestId: selectedRequest.request_id,
+                    payload: { message, attachments },
+                  });
+                }}
+                isSending={sendReplyMutation.isPending}
+                onPreviewAttachment={setPreviewAttachment}
+                requestId={selectedRequest.request_id}
+              />
             ) : null}
 
             {detailTab === "reopen" && REOPENABLE_MAINTENANCE_STATUSES.includes(selectedRequest.status) ? (
@@ -1719,8 +2082,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                   <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={reopenMutation.isPending}
+                    disabled={reopenMutation.isPending || !reopenNote.trim()}
                     onClick={handleReopenRequest}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
                   >
                     <RefreshCcw size={14} />
                     {reopenMutation.isPending ? "Reopening..." : "Reopen Request"}
@@ -1732,6 +2096,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         </div>
       ) : null}
 
+      {/* Completion Report Printable Modal */}
       {viewingReportRequest ? (
         <CompletionReportModal
           request={viewingReportRequest}
@@ -1739,6 +2104,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         />
       ) : null}
 
+      {/* Photo Preview Lightbox Modal */}
       {previewAttachment ? (
         <div
           onClick={() => setPreviewAttachment(null)}
@@ -1746,7 +2112,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             position: "fixed",
             inset: 0,
             zIndex: 9999,
-            background: "rgba(0, 0, 0, 0.8)",
+            background: "rgba(0, 0, 0, 0.85)",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -1772,6 +2138,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               cursor: "pointer",
               color: "#FFFFFF",
             }}
+            aria-label="Close photo preview"
           >
             <X size={20} />
           </button>
@@ -1787,18 +2154,63 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               objectFit: "contain",
             }}
           />
-          <span style={{ color: "#CBD5E1", fontSize: 13 }}>{previewAttachment.name}</span>
+          <span style={{ color: "#CBD5E1", fontSize: 13, fontWeight: 600 }}>{previewAttachment.name}</span>
         </div>
       ) : null}
 
+      {/* Submit Confirmation Dialog */}
+      {pendingSubmitModal ? (
+        <ConfirmDialog
+          title={isEditing ? "Save Changes to Request?" : "Submit Maintenance Request?"}
+          message={
+            isEditing
+              ? "Are you sure you want to save the updated details for this maintenance request?"
+              : "Are you sure you want to submit this maintenance request to the dormitory management team? Please confirm all details and attachments are accurate before proceeding."
+          }
+          cancelLabel="Keep Editing"
+          confirmLabel={
+            createMutation.isPending || updateMutation.isPending
+              ? isEditing
+                ? "Saving..."
+                : "Submitting..."
+              : isEditing
+              ? "Save Changes"
+              : "Confirm & Submit"
+          }
+          confirmVariant="success"
+          isProcessing={createMutation.isPending || updateMutation.isPending}
+          onConfirm={confirmSubmitRequest}
+          onCancel={() =>
+            !createMutation.isPending &&
+            !updateMutation.isPending &&
+            setPendingSubmitModal(false)
+          }
+        />
+      ) : null}
+
+      {/* Cancel Confirmation Dialog */}
       {pendingCancelRequest ? (
         <ConfirmDialog
-          title="Cancel this request?"
-          message="This maintenance request will be marked as cancelled and removed from your active list. This can't be undone."
+          title="Cancel Maintenance Request?"
+          message="This request will be marked as cancelled and removed from your active queue. This action cannot be undone."
+          cancelLabel="Keep Request"
           confirmLabel={cancelMutation.isPending ? "Cancelling..." : "Cancel Request"}
           danger
           onConfirm={confirmCancelRequest}
           onCancel={() => setPendingCancelRequest(null)}
+        />
+      ) : null}
+
+      {/* Discard Unsaved Changes Dialog */}
+      {pendingDiscardModal ? (
+        <ConfirmDialog
+          title="Discard Unsaved Changes?"
+          message="You have unsaved changes in this maintenance request. Closing will discard your entries."
+          cancelLabel="Keep Editing"
+          confirmLabel="Discard Changes"
+          danger
+          onConfirm={resetComposer}
+          onCancel={() => setPendingDiscardModal(false)}
         />
       ) : null}
     </div>
