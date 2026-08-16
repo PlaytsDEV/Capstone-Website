@@ -69,6 +69,21 @@ const relationshipRank = (contract, activeStay) => {
   return -1;
 };
 
+// A stayId/reservationId match is only a relevance signal between Contracts
+// that are otherwise equally "real" — it must never let a pre-generation
+// draft outrank a Contract that has actually progressed (generated or
+// beyond). Without this tier, a draft created at reservation time (and thus
+// still carrying the original Stay's stayId) can outrank the tenant's later,
+// fully-generated/published Contract for the same stay whenever that later
+// Contract's stayId was never backfilled — reproduced in
+// tenantContractSelectionService.test.js "a stale early-stage draft must
+// never outrank a later fully-generated Contract for the same stay". This
+// only changes ranking among candidates already passing
+// isResidentContractEligible, so it can only matter when includeEarlyStages
+// is true (mobile) — Web's default candidate set never contains an
+// early-stage Contract in the first place, so this tier is a no-op there.
+const stageTier = (contract) => (EARLY_STAGE_STATUSES.has(contract.status) ? 0 : 1);
+
 export const selectCanonicalTenantContract = ({
   contracts = [],
   activeStay = null,
@@ -76,12 +91,20 @@ export const selectCanonicalTenantContract = ({
 }) => {
   const candidates = contracts
     .filter((contract) => isResidentContractEligible(contract, { includeEarlyStages }))
-    .map((contract) => ({ contract, rank: relationshipRank(contract, activeStay) }))
+    .map((contract) => ({
+      contract,
+      rank: relationshipRank(contract, activeStay),
+      tier: stageTier(contract),
+    }))
     .filter(({ rank }) => rank >= 0);
   if (!candidates.length) return null;
 
-  const highestRank = Math.max(...candidates.map(({ rank }) => rank));
-  const highest = candidates.filter(({ rank }) => rank === highestRank);
+  // Tier first (progressed Contracts always beat early-stage drafts),
+  // relationship strength only breaks ties within the same tier.
+  const highestTier = Math.max(...candidates.map(({ tier }) => tier));
+  const tiered = candidates.filter(({ tier }) => tier === highestTier);
+  const highestRank = Math.max(...tiered.map(({ rank }) => rank));
+  const highest = tiered.filter(({ rank }) => rank === highestRank);
   if (highest.length !== 1) {
     throw Object.assign(
       new Error("Multiple resident-visible canonical Contracts were found."),

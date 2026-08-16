@@ -160,4 +160,52 @@ describe("resident canonical Contract selection", () => {
       activeStay,
     })).toBeNull();
   });
+
+  // Reproduces the production mobile/web discrepancy where the tenant's
+  // admin-visible "Verified Active Stay" Contract (dates, room, PDF) was
+  // authoritative, but the mobile app still showed "Preparing Contract" with
+  // different (stale) dates for the same tenant. Root cause: a pre-generation
+  // draft Contract created at reservation time inherits the active Stay's
+  // stayId (relationshipRank 400); the later, fully-generated/active Contract
+  // for the same stay is only linked by reservationId (rank 300) because its
+  // stayId was never backfilled. Ranking by relationship strength alone let
+  // the stale draft outrank the real, tenant-visible Contract whenever
+  // includeEarlyStages is true (mobile's opt-in) — exactly reproducing wrong
+  // dates and a false "Preparing" state despite a real PDF existing.
+  test("a stale early-stage draft must never outrank a later fully-generated Contract for the same stay", () => {
+    const staleDraft = contract({
+      _id: "draft-old",
+      status: "draft",
+      publicationStatus: undefined,
+      stayId: "stay-1",
+      leaseStartDate: "2026-09-13",
+      leaseEndDate: "2027-09-13",
+    });
+    const correctedActive = contract({
+      _id: "active-new",
+      status: "active",
+      publicationStatus: "published",
+      tenantVisible: true,
+      stayId: null,
+      leaseStartDate: "2026-08-12",
+      leaseEndDate: "2027-09-12",
+    });
+    const selected = selectCanonicalTenantContract({
+      contracts: [staleDraft, correctedActive],
+      activeStay,
+      includeEarlyStages: true,
+    });
+    expect(selected?._id).toBe("active-new");
+  });
+
+  test("among Contracts of the same tier, relationship strength still decides (unchanged)", () => {
+    const selected = selectCanonicalTenantContract({
+      contracts: [
+        contract({ _id: "old", stayId: "stay-old", reservationId: "reservation-old" }),
+        contract({ _id: "current", stayId: "stay-1" }),
+      ],
+      activeStay,
+    });
+    expect(selected._id).toBe("current");
+  });
 });
