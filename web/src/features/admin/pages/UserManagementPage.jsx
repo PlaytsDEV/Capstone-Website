@@ -48,6 +48,8 @@ import {
   StatusBadge,
 } from "../components/shared";
 import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
+import RolePermissionsPage from "../../super-admin/pages/RolePermissionsPage";
+import AdminTabs from "../../../shared/components/AdminTabs";
 import { ExportButtons } from "./analyticsTabShared.js";
 import {
   handleExportUsersCSV,
@@ -64,26 +66,26 @@ function renderRoleBadge(role) {
   switch (role) {
     case "owner":
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary text-primary-foreground border border-primary/40">
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-700/50">
           Owner
         </span>
       );
     case "branch_admin":
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-info-light text-info-dark border border-info/30">
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-info-light text-info-dark border border-info/30 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-700/50">
           Branch Admin
         </span>
       );
     case "tenant":
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-success-light text-success-dark border border-success/30">
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-success-light text-success-dark border border-success/30 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-700/50">
           Tenant
         </span>
       );
     case "applicant":
     default:
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700">
           Applicant
         </span>
       );
@@ -317,6 +319,36 @@ function UserManagementPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { authFetch } = useApiClient();
   const queryClient = useQueryClient();
+
+  const rawTab = searchParams.get("tab") || "users";
+  const activeTab = isOwner && rawTab === "roles" ? "roles" : "users";
+
+  const userManagementTabs = useMemo(
+    () => [
+      {
+        id: "users",
+        label: "User Accounts",
+        icon: Users,
+      },
+      {
+        id: "roles",
+        label: "Roles & Access Matrix",
+        icon: Shield,
+      },
+    ],
+    [],
+  );
+
+  const handleTabChange = (tabKey) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (tabKey === "users") {
+      nextParams.delete("tab");
+      nextParams.delete("userId");
+    } else {
+      nextParams.set("tab", tabKey);
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
   const [selectedUser, setSelectedUser] = useState(null);
   const [accessDrawerUser, setAccessDrawerUser] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -632,7 +664,10 @@ function UserManagementPage() {
 
   const handleOpenPermissions = (userData) => {
     if (!userData?._id) return;
-    appNavigate(`/admin/roles?userId=${encodeURIComponent(userData._id)}`);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("tab", "roles");
+    nextParams.set("userId", userData._id);
+    setSearchParams(nextParams, { replace: true });
   };
 
   const handleEditClick = (userData) => {
@@ -1099,7 +1134,7 @@ function UserManagementPage() {
     },
   ];
 
-  if (loading && !usersData) {
+  if (loading && !usersData && activeTab === "users") {
     return <AdminTablePageSkeleton />;
   }
 
@@ -1112,52 +1147,68 @@ function UserManagementPage() {
             className="mb-1 text-2xl font-semibold"
             style={{ color: "var(--foreground)" }}
           >
-            Accounts
+            Accounts & Access
           </h1>
           <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-            Manage access credentials, verify account states, and resolve sign-in or lifecycle issues
+            Manage access credentials, verify account states, and configure role access permissions.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <ExportButtons
-            onCsv={handleExportCSV}
-            onPdf={handleExportPDF}
-            loading={isExportingPdf}
-            disabled={loading}
-          />
+        {activeTab === "users" && (
+          <div className="flex items-center gap-2.5">
+            <ExportButtons
+              onCsv={handleExportCSV}
+              onPdf={handleExportPDF}
+              loading={isExportingPdf}
+              disabled={loading}
+            />
 
-          {isOwner && (
-            <button
-              id="btn-add-user"
-              onClick={() => {
-                setAddForm({
-                  username: "",
-                  firstName: "",
-                  lastName: "",
-                  email: "",
-                  phone: "",
-                  role: "applicant",
-                  branch: "",
-                  password: "",
-                });
-                setAddFormErrors({});
-                setIsAddModalOpen(true);
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
-              style={{
-                backgroundColor: "var(--primary)",
-                color: "var(--primary-foreground)",
-              }}
-            >
-              <UserPlus className="h-4 w-4" />
-              Add User
-            </button>
-          )}
-        </div>
+            {isOwner && (
+              <button
+                id="btn-add-user"
+                onClick={() => {
+                  setAddForm({
+                    username: "",
+                    firstName: "",
+                    lastName: "",
+                    email: "",
+                    phone: "",
+                    role: "applicant",
+                    branch: "",
+                    password: "",
+                  });
+                  setAddFormErrors({});
+                  setIsAddModalOpen(true);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                style={{
+                  backgroundColor: "var(--primary)",
+                  color: "var(--primary-foreground)",
+                }}
+              >
+                <UserPlus className="h-4 w-4" />
+                <span>Add User</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Stats Grid */}
+      {/* Owner Navigation Tabs */}
+      {isOwner && (
+        <AdminTabs
+          tabs={userManagementTabs}
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          ariaLabel="User accounts and roles management tabs"
+        />
+      )}
+
+      {activeTab === "roles" && isOwner ? (
+        <RolePermissionsPage isEmbedded={true} />
+      ) : (
+        <>
+          {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
         {summaryItems.map((item) => {
           const IconComponent = item.icon;
@@ -1642,6 +1693,8 @@ function UserManagementPage() {
         canManagePermissions={isOwner}
         onOpenPermissions={handleOpenPermissions}
       />
+        </>
+      )}
     </div>
   );
 }

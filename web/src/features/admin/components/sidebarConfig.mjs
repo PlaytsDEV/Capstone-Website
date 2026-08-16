@@ -33,12 +33,10 @@ export const NAV_ITEMS = [
   { to: "/admin/analytics", icon: TrendingUp, text: "Analytics", group: "workspace", priority: 8 },
   { to: "/admin/announcements", icon: Megaphone, text: "Announcements", group: "workspace", priority: 9, permission: "manageAnnouncements" },
   { to: "/admin/notifications", icon: Bell, text: "Notifications", group: "workspace", priority: 10 },
-  { to: "/admin/users", icon: UserCog, text: "Accounts", group: "system", priority: 1, permission: "manageUsers" },
-  { to: "/admin/roles", icon: Shield, text: "Roles & Permissions", group: "system", priority: 2, saOnly: true },
+  { to: "/admin/users", icon: UserCog, text: "Accounts & Access", group: "system", priority: 1, permission: "manageUsers" },
+  { to: "/admin/branches", icon: Building2, text: "Branches", group: "system", priority: 2, saOnly: true },
   { to: "/admin/audit-logs", icon: FileText, text: "Audit & Security", group: "system", priority: 3, saOnly: true },
-  { to: "/admin/branches", icon: Building2, text: "Branches", group: "system", priority: 4, saOnly: true },
-  { to: "/admin/settings", icon: Settings, text: "Policies & Settings", group: "system", priority: 5, saOnly: true },
-  { to: "/admin/backups", icon: Database, text: "System Backup", group: "system", priority: 6, saOnly: true },
+  { to: "/admin/settings", icon: Settings, text: "Policies & Maintenance", group: "system", priority: 4, saOnly: true },
 ];
 
 export function getVisibleNavItems({ isOwner = false, can = () => true } = {}) {

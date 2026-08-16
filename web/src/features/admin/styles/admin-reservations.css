@@ -2448,12 +2448,19 @@ html[data-theme="dark"] .visit-avail-badge {
 .visit-history-role-badge {
   font-size: 10px;
   font-weight: 600;
-  padding: 1px 6px;
+  padding: 2px 7px;
   border-radius: 4px;
-  background-color: #3b82f6;
-  color: #ffffff;
+  background-color: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+}
+
+:is(.dark *) .visit-history-role-badge {
+  background-color: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.35);
 }
 
 .visit-history-expand-btn {

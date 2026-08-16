@@ -1,12 +1,141 @@
 @import "design-tokens.css";
 
+/* =============================================================================
+   ADMIN SIDEBAR STYLES (Rock-Solid Vertical Stability & Smooth Transitions)
+   ============================================================================= */
+
+/* ── Shell & Base Layout ─────────────────────────────────────────────────── */
+.admin-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 256px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  color: var(--foreground);
+  border-right: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: none;
+  z-index: 50;
+  will-change: width;
+  overflow: visible;
+  transition:
+    width 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 180ms ease-in-out,
+    border-color 180ms ease-in-out;
+}
+
+.admin-sidebar.admin-sidebar-collapsed {
+  width: 72px;
+}
+
+/* ── Header (Brand + Floating Collapse Toggle / Close) ──────────────────── */
+.admin-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  height: 64px;
+  min-height: 64px;
+  max-height: 64px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+.admin-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.admin-sidebar-brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.admin-sidebar-brand-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--foreground);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.admin-sidebar.admin-sidebar-collapsed .admin-sidebar-brand-name {
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+}
+
+/* Close (mobile) & collapse toggle (desktop) */
+.admin-sidebar-close,
+.admin-sidebar-collapse-toggle {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.admin-sidebar-close {
+  display: none;
+  width: 32px;
+  height: 32px;
+}
+
+.admin-sidebar-collapse-toggle {
+  position: absolute;
+  top: 50%;
+  right: -14px;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  z-index: 60;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.admin-sidebar-close:hover,
+.admin-sidebar-collapse-toggle:hover {
+  color: var(--foreground);
+  background: #ffffff;
+  border-color: var(--ring, #d4af37);
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.2), 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Custom Thin Scrollbar ────────────────────────────────────────────────── */
 .sidebar-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #e5e7eb transparent;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 12%, transparent) transparent;
 }
 
 .sidebar-scroll::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 .sidebar-scroll::-webkit-scrollbar-track {
@@ -14,12 +143,12 @@
 }
 
 .sidebar-scroll::-webkit-scrollbar-thumb {
-  background: #e5e7eb;
-  border-radius: 2px;
+  background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  border-radius: 999px;
 }
 
 .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background: #d9dde3;
+  background: color-mix(in srgb, var(--foreground) 20%, transparent);
 }
 
 .sidebar-scroll::-webkit-scrollbar-button {
@@ -28,6 +157,228 @@
   display: none;
 }
 
+/* ── Navigation Container ─────────────────────────────────────────────────── */
+.admin-sidebar-nav {
+  flex: 1;
+  padding: 10px 10px 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-sizing: border-box;
+}
+
+.admin-sidebar-group {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Group labels maintain constant height so items NEVER jump vertically */
+.admin-sidebar-group-label {
+  height: 20px;
+  line-height: 20px;
+  margin-bottom: 6px;
+  padding: 0 14px;
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
+  position: relative;
+  opacity: 1;
+  transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* In collapsed mode, label fades out smoothly; subsequent groups show a subtle centered divider */
+.admin-sidebar.admin-sidebar-collapsed .admin-sidebar-group-label {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.admin-sidebar.admin-sidebar-collapsed .admin-sidebar-group:not(:first-child) .admin-sidebar-group-label::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 1px;
+  background: var(--border);
+  display: block;
+}
+
+.admin-sidebar-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── Navigation Item (Identical Padding & Alignment in Both Modes) ─────────── */
+.admin-sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
+  width: 100%;
+  padding: 0 14px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: none;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  position: relative;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+  overflow: hidden;
+  white-space: nowrap;
+  text-decoration: none;
+  outline: none;
+}
+
+.admin-sidebar-nav-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring, #d4af37);
+}
+
+.admin-sidebar-nav-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.admin-sidebar-nav-icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.18s ease;
+}
+
+/* ── Nav Item Hover State (Inactive) ──────────────────────────────────────── */
+.admin-sidebar-nav-item:hover {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--foreground);
+  transform: translateX(2px);
+}
+
+.admin-sidebar-nav-item:hover .admin-sidebar-nav-icon {
+  color: var(--foreground);
+}
+
+/* ── Nav Item Active State (Selected Tab) ─────────────────────────────────── */
+.admin-sidebar-nav-item.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+.admin-sidebar-nav-item.active .admin-sidebar-nav-icon {
+  color: var(--primary-foreground);
+}
+
+.admin-sidebar-nav-item.active:hover {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* ── Collapsed Sidebar Overrides (Zero Layout Shift & Zero Jumps) ──────────── */
+.admin-sidebar.admin-sidebar-collapsed .admin-sidebar-nav-label {
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+}
+
+.admin-sidebar.admin-sidebar-collapsed .admin-sidebar-nav-item:hover,
+.admin-sidebar.admin-sidebar-collapsed .admin-sidebar-logout:hover:not(:disabled) {
+  transform: none;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+.admin-sidebar-footer {
+  padding: 11px 10px;
+  height: 64px;
+  min-height: 64px;
+  max-height: 64px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.admin-sidebar-logout {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
+  padding: 0 14px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  color: var(--danger, #ef4444);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+  outline: none;
+}
+
+.admin-sidebar-logout .admin-sidebar-nav-label {
+  transition:
+    opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.admin-sidebar-logout:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--danger, #ef4444);
+}
+
+.admin-sidebar-logout:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger, #ef4444) 8%, transparent);
+  transform: translateX(2px);
+}
+
+.admin-sidebar-logout:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Tooltips (Desktop Collapsed Mode) ───────────────────────────────────── */
 .sb-tooltip {
   position: absolute;
   left: calc(100% + 10px);
@@ -67,4 +418,163 @@
     opacity: 1;
     transform: translateY(-50%) translateX(0);
   }
+}
+
+/* ── Responsive Mobile ────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .admin-sidebar {
+    transform: translateX(-100%);
+    width: min(86vw, 300px);
+  }
+
+  .admin-sidebar.open {
+    transform: translateX(0);
+  }
+
+  .admin-sidebar.admin-sidebar-collapsed {
+    width: min(86vw, 300px);
+  }
+
+  .admin-sidebar-close {
+    display: inline-flex;
+  }
+
+  .admin-sidebar-collapse-toggle {
+    display: none;
+  }
+
+  .admin-sidebar.admin-sidebar-collapsed .admin-sidebar-brand-name,
+  .admin-sidebar.admin-sidebar-collapsed .admin-sidebar-nav-label,
+  .admin-sidebar.admin-sidebar-collapsed .admin-sidebar-logout span {
+    opacity: 1;
+    width: auto;
+    overflow: visible;
+    pointer-events: auto;
+  }
+
+  .admin-sidebar.admin-sidebar-collapsed .admin-sidebar-group-label {
+    opacity: 1;
+    height: 20px;
+    line-height: 20px;
+    padding: 0 10px;
+    margin-bottom: 6px;
+    color: var(--muted-foreground);
+    pointer-events: auto;
+  }
+
+  .admin-sidebar.admin-sidebar-collapsed .admin-sidebar-group:not(:first-child) .admin-sidebar-group-label::after {
+    display: none;
+  }
+
+  .admin-sidebar.admin-sidebar-collapsed .admin-sidebar-nav-item,
+  .admin-sidebar.admin-sidebar-collapsed .admin-sidebar-logout {
+    justify-content: flex-start;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+/* ── Legacy .sb compatibility classes ─────────────────────────────────────── */
+.sb-menu {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sb-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
+  width: 100%;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: none;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  position: relative;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+  overflow: hidden;
+  white-space: nowrap;
+  text-decoration: none;
+  outline: none;
+}
+
+.sb-link:hover {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--foreground);
+  transform: translateX(2px);
+}
+
+.sb-link:hover .sb-link-icon {
+  color: var(--foreground);
+}
+
+.sb-link.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+.sb-link.active .sb-link-icon {
+  color: var(--primary-foreground);
+}
+
+.sb-group-label {
+  height: 20px;
+  line-height: 20px;
+  margin-bottom: 6px;
+  padding: 0 10px;
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sb-signout {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  color: var(--danger, #ef4444);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.sb-signout:hover {
+  background: color-mix(in srgb, var(--danger, #ef4444) 8%, transparent);
+  transform: translateX(2px);
 }

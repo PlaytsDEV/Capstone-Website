@@ -1,43 +1,94 @@
 /* ============================================================
-   SUPER ADMIN BRANCHES PAGE
+   SUPER ADMIN BRANCHES OPERATIONS MATRIX — SOLID HSL
+   Minimalist, high-contrast, strictly no-gradients design system
    ============================================================ */
 @import "../../admin/styles/design-tokens.css";
 
 .sa-branches-header-copy {
   max-width: 720px;
-  margin: 10px 0 0;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-md);
-  line-height: 1.6;
+  margin: 8px 0 0;
+  color: var(--muted-foreground, #64748b);
+  font-size: var(--font-size-md, 14px);
+  line-height: 1.55;
 }
 
+.sa-branches-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sa-branches-sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-full, 999px);
+  background: var(--muted, #f1f5f9);
+  color: var(--muted-foreground, #64748b);
+  font-size: var(--font-size-xs, 12px);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.sa-branches-sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success, #16a34a);
+  display: inline-block;
+}
+
+/* ── Refresh / Sync Button ── */
 .sa-branches-refresh-btn {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--card);
-  color: var(--foreground);
-  font-size: var(--font-size-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: var(--radius-full, 999px);
+  background: #ffffff;
+  color: var(--foreground, #0f172a);
+  font-size: var(--font-size-sm, 13px);
   font-weight: 700;
-  padding: 10px 16px;
+  padding: 8px 16px;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   transition:
-    border-color var(--duration-normal) var(--ease-out),
-    box-shadow var(--duration-normal) var(--ease-out),
-    transform var(--duration-normal) var(--ease-out);
+    border-color var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    background-color var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    box-shadow var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    transform var(--duration-fast, 150ms) var(--ease-out, ease-out);
 }
 
 .sa-branches-refresh-btn:hover:not(:disabled) {
-  border-color: var(--muted-foreground);
-  box-shadow: var(--shadow-md);
+  border-color: #0f172a;
+  background: #f8fafc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   transform: translateY(-1px);
 }
 
 .sa-branches-refresh-btn:disabled {
-  opacity: 0.65;
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #94a3b8;
   cursor: wait;
 }
 
-/* ── Overview strip ── */
+.sa-branches-state-spinner {
+  animation: sa-spin 0.85s linear infinite;
+}
+
+@keyframes sa-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Network Overview Strip (Top KPIs) ── */
 .sa-branches-overview {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -46,71 +97,125 @@
 }
 
 .sa-branches-overview-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 18px;
-  box-shadow: var(--shadow-sm);
+  background: var(--card, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-lg, 12px);
+  padding: 18px 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition:
+    border-color var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    box-shadow var(--duration-fast, 150ms) var(--ease-out, ease-out);
+}
+
+.sa-branches-overview-card:hover {
+  border-color: #94a3b8;
+}
+
+.sa-branches-overview-card--alert {
+  border-color: color-mix(in srgb, var(--danger, #dc2626) 35%, var(--border, #e2e8f0));
+}
+
+.sa-branches-overview-card--warning {
+  border-color: color-mix(in srgb, var(--warning, #d97706) 35%, var(--border, #e2e8f0));
+}
+
+.sa-branches-overview-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .sa-branches-overview-label {
-  display: block;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs, 12px);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--muted-foreground, #64748b);
+}
+
+.sa-branches-overview-icon-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--muted, #f1f5f9);
+  color: var(--foreground, #0f172a);
+  flex-shrink: 0;
+}
+
+.sa-branches-overview-icon-badge--danger {
+  background: var(--danger-light, #fee2e2);
+  color: var(--danger-dark, #b91c1c);
+}
+
+.sa-branches-overview-icon-badge--warning {
+  background: var(--warning-light, #fef3c7);
+  color: var(--warning-dark, #b45309);
 }
 
 .sa-branches-overview-value {
   display: block;
   margin-top: 12px;
-  font-size: 30px;
+  font-size: 28px;
   line-height: 1;
-  letter-spacing: -0.04em;
-  color: var(--foreground);
-  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--foreground, #0f172a);
+  font-weight: 800;
 }
 
 .sa-branches-overview-meta {
   display: block;
-  margin-top: 10px;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-sm);
-  line-height: 1.5;
+  margin-top: 8px;
+  color: var(--muted-foreground, #64748b);
+  font-size: var(--font-size-xs, 12px);
+  line-height: 1.45;
 }
 
-/* ── Branch grid ── */
+/* ── Branch Cards Grid (Side by Side Comparison) ── */
 .sa-branches-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .sa-branch-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
+  background: var(--card, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-xl, 16px);
   padding: 24px;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
   transition:
-    box-shadow var(--duration-normal) var(--ease-out),
-    transform var(--duration-normal) var(--ease-out),
-    border-color var(--duration-normal) var(--ease-out);
+    border-color var(--duration-normal, 200ms) var(--ease-out, ease-out),
+    box-shadow var(--duration-normal, 200ms) var(--ease-out, ease-out);
 }
 
 .sa-branch-card:hover {
-  border-color: var(--muted-foreground);
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+  border-color: #94a3b8;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
+/* ── Card Header ── */
 .sa-branch-card-header {
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  margin-bottom: 20px;
+}
+
+.sa-branch-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg, 10px);
+  flex-shrink: 0;
 }
 
 .sa-branch-card-heading {
@@ -121,43 +226,34 @@
   gap: 12px;
 }
 
-.sa-branch-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-lg);
-  flex-shrink: 0;
-}
-
 .sa-branch-card-name {
   margin: 0;
-  color: var(--foreground);
+  color: var(--foreground, #0f172a);
   font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.03em;
+  line-height: 1.2;
 }
 
 .sa-branch-card-id {
   display: inline-block;
-  margin-top: 6px;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  margin-top: 4px;
+  color: var(--muted-foreground, #64748b);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .sa-branch-health-pill {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 7px 12px;
+  gap: 5px;
+  padding: 5px 11px;
   border-radius: 999px;
-  background: var(--success-light);
-  color: var(--success-dark);
-  font-size: var(--font-size-xs);
+  background: var(--success-light, #dcfce7);
+  color: var(--success-dark, #15803d);
+  font-size: var(--font-size-xs, 12px);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -166,110 +262,236 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
 }
 
 .sa-branch-warning-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
+  gap: 5px;
+  padding: 5px 10px;
   border-radius: 999px;
-  background: var(--warning-light);
-  color: var(--warning-dark);
-  font-size: var(--font-size-xs);
+  background: var(--warning-light, #fef3c7);
+  color: var(--warning-dark, #b45309);
+  font-size: var(--font-size-xs, 12px);
   font-weight: 700;
 }
 
-/* ── Occupancy block ── */
+/* ── Occupancy Progress Section ── */
 .sa-branch-occupancy {
-  margin-bottom: 20px;
-  padding: 18px;
-  background: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  background: var(--muted, #f1f5f9);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-lg, 10px);
 }
 
 .sa-branch-occupancy-header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 12px;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-sm);
-  font-weight: 700;
+  margin-bottom: 10px;
 }
 
-.sa-branch-occupancy-rate {
-  font-size: 28px;
-  letter-spacing: -0.05em;
-  font-weight: 700;
-}
-
-.sa-branch-occupancy-detail {
-  margin-top: 8px;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-sm);
-}
-
-/* ── Stats grid ── */
-.sa-branch-stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.sa-branch-stat-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--card);
-}
-
-.sa-branch-stat-icon {
-  color: var(--muted-foreground);
-  flex-shrink: 0;
-}
-
-.sa-branch-stat-value {
-  display: block;
-  color: var(--foreground);
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.sa-branch-stat-label {
-  display: block;
-  margin-top: 6px;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-xs);
+.sa-branch-occupancy-title {
+  color: var(--muted-foreground, #64748b);
+  font-size: var(--font-size-xs, 12px);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-/* ── Admins + Links sections ── */
-.sa-branch-admins,
-.sa-branch-links {
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
+.sa-branch-occupancy-rate {
+  font-size: 24px;
+  letter-spacing: -0.04em;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.sa2-bar-track {
+  height: 6px;
+  background: var(--border, #e2e8f0);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.sa2-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  min-width: 4px;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sa-branch-occupancy-detail {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted-foreground, #64748b);
+  font-size: var(--font-size-xs, 12px);
+}
+
+.sa-branch-occupancy-sub {
+  color: var(--muted-foreground, #64748b);
+}
+
+/* ── Interactive Workflow Metric Tiles ── */
+.sa-branch-metrics-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sa-branch-section-eyebrow {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground, #64748b);
+}
+
+.sa-branch-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sa-branch-tile {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-lg, 10px);
+  padding: 12px 14px;
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 84px;
+  transition:
+    border-color var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    box-shadow var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    transform var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    background-color var(--duration-fast, 150ms) var(--ease-out, ease-out);
+}
+
+.sa-branch-tile:hover {
+  border-color: var(--foreground, #0f172a);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+  background: var(--card, #ffffff);
+}
+
+.sa-branch-tile-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.sa-branch-tile-icon {
+  color: var(--muted-foreground, #64748b);
+  flex-shrink: 0;
+}
+
+.sa-branch-tile-jump {
+  color: var(--muted-foreground, #64748b);
+  opacity: 0.4;
+  transition:
+    opacity var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    transform var(--duration-fast, 150ms) var(--ease-out, ease-out);
+}
+
+.sa-branch-tile:hover .sa-branch-tile-jump {
+  opacity: 1;
+  color: var(--foreground, #0f172a);
+  transform: translate(1px, -1px);
+}
+
+.sa-branch-tile-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.sa-branch-tile-dot--danger {
+  background: var(--danger, #dc2626);
+}
+
+.sa-branch-tile-dot--warning {
+  background: var(--warning, #d97706);
+}
+
+.sa-branch-tile-dot--info {
+  background: var(--info, #2563eb);
+}
+
+.sa-branch-tile--danger {
+  border-color: color-mix(in srgb, var(--danger, #dc2626) 30%, var(--border, #e2e8f0));
+}
+
+.sa-branch-tile--warning {
+  border-color: color-mix(in srgb, var(--warning, #d97706) 30%, var(--border, #e2e8f0));
+}
+
+.sa-branch-tile--info {
+  border-color: color-mix(in srgb, var(--info, #2563eb) 30%, var(--border, #e2e8f0));
+}
+
+.sa-branch-tile-value {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--foreground, #0f172a);
+  letter-spacing: -0.02em;
+}
+
+.sa-branch-tile-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted-foreground, #64748b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Assigned Branch Admins Roster ── */
+.sa-branch-admins {
+  border-top: 1px solid var(--border, #e2e8f0);
+  padding-top: 16px;
 }
 
 .sa-branch-admins-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 14px;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-xs);
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.sa-branch-admins-header-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-foreground, #64748b);
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.sa-branch-manage-link {
+  font-size: var(--font-size-xs, 12px);
+  font-weight: 700;
+  color: var(--foreground, #0f172a);
+  text-decoration: none;
+  transition: opacity var(--duration-fast, 150ms);
+}
+
+.sa-branch-manage-link:hover {
+  text-decoration: underline;
+  opacity: 0.8;
 }
 
 .sa-branch-admins-list {
@@ -283,127 +505,174 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--muted);
+  padding: 10px 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-lg, 10px);
+  background: var(--muted, #f1f5f9);
+}
+
+.sa-branch-admin-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sa-branch-admin-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--foreground, #0f172a);
+  flex-shrink: 0;
 }
 
 .sa-branch-admin-name {
   display: block;
-  color: var(--foreground);
-  font-size: var(--font-size-md);
+  color: var(--foreground, #0f172a);
+  font-size: var(--font-size-sm, 13px);
   font-weight: 700;
+  line-height: 1.2;
 }
 
 .sa-branch-admin-email {
   display: block;
-  margin-top: 4px;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-xs);
+  margin-top: 2px;
+  color: var(--muted-foreground, #64748b);
+  font-size: 11px;
 }
 
 .sa-branch-admin-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 999px;
-  background: var(--info-light);
-  color: var(--info-dark);
-  font-size: var(--font-size-xs);
+  background: var(--info-light, #eff6ff);
+  color: var(--info-dark, #1d4ed8);
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   white-space: nowrap;
 }
 
-/* ── Quick link cards ── */
-.sa-branch-link-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.sa-branch-link-card {
+.sa-branch-admins-empty {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 108px;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--info) 20%, var(--border));
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--info) 4%, var(--card));
-  text-decoration: none;
-  transition:
-    border-color var(--duration-normal) var(--ease-out),
-    box-shadow var(--duration-normal) var(--ease-out),
-    transform var(--duration-normal) var(--ease-out);
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--warning, #d97706) 40%, var(--border, #e2e8f0));
+  border-radius: var(--radius-lg, 10px);
+  background: var(--warning-light, #fef3c7);
+  color: var(--warning-dark, #b45309);
+  font-size: var(--font-size-xs, 12px);
 }
 
-.sa-branch-link-card:hover {
-  border-color: color-mix(in srgb, var(--info) 50%, var(--border));
-  box-shadow: 0 12px 24px color-mix(in srgb, var(--info) 12%, transparent);
+.sa-branch-admins-empty strong {
+  display: block;
+  font-weight: 700;
+}
+
+.sa-branch-admins-empty p {
+  margin: 3px 0 0;
+  font-weight: 400;
+  color: var(--warning-dark, #b45309);
+}
+
+/* ── Branch Action Footer Buttons ── */
+.sa-branch-footer-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+
+.sa-branch-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 12px;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: var(--radius-md, 8px);
+  background: #ffffff;
+  color: #334155;
+  font-size: var(--font-size-xs, 12px);
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition:
+    border-color var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    background-color var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    color var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    transform var(--duration-fast, 150ms) var(--ease-out, ease-out);
+}
+
+.sa-branch-action-btn:hover {
+  border-color: #0f172a;
+  color: #0f172a;
+  background: #f8fafc;
   transform: translateY(-1px);
 }
 
-.sa-branch-link-card strong {
-  color: var(--foreground);
-  font-size: var(--font-size-md);
-  font-weight: 800;
+.sa-branch-action-btn--primary {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
 }
 
-.sa-branch-link-card span {
-  color: var(--muted-foreground);
-  font-size: var(--font-size-xs);
-  line-height: 1.55;
+.sa-branch-action-btn--primary:hover {
+  background: #1e293b;
+  border-color: #1e293b;
+  color: #ffffff;
 }
 
-/* ── State (loading / error) ── */
+/* ── Error & Fallback States ── */
 .sa-branches-state {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 22px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--card);
-  color: var(--foreground);
+  padding: 20px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-lg, 10px);
+  background: var(--card, #ffffff);
+  color: var(--foreground, #0f172a);
   font-weight: 600;
 }
 
 .sa-branches-state p {
   margin: 4px 0 0;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-sm);
+  color: var(--muted-foreground, #64748b);
+  font-size: var(--font-size-sm, 13px);
   font-weight: 400;
 }
 
 .sa-branches-state--error {
-  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
-  background: var(--warning-light);
-  color: var(--warning-dark);
+  border-color: color-mix(in srgb, var(--danger, #dc2626) 40%, var(--border, #e2e8f0));
+  background: var(--danger-light, #fee2e2);
+  color: var(--danger-dark, #b91c1c);
 }
 
 .sa-branches-state--error p {
-  color: var(--warning-dark);
+  color: var(--danger-dark, #b91c1c);
 }
 
-.sa-branches-state-spinner {
-  animation: sa-branches-spin 0.9s linear infinite;
-  color: var(--muted-foreground);
-}
-
-@keyframes sa-branches-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-/* ── Also fix BRANCH_META in the JSX ── */
-
-/* ── Responsive ── */
+/* ── Responsive Breakpoints ── */
 @media (max-width: 1200px) {
   .sa-branches-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sa-branch-stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -414,24 +683,21 @@
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 640px) {
   .sa-branches-overview,
-  .sa-branch-stats,
-  .sa-branch-link-grid {
+  .sa-branch-stats-grid,
+  .sa-branch-footer-actions {
     grid-template-columns: 1fr;
   }
 
-  .sa-branch-card {
-    padding: 18px;
-  }
-
-  .sa-branch-card-heading,
-  .sa-branch-admin-row {
+  .sa2-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 12px;
   }
 
-  .sa-branch-warning-badges {
-    justify-content: flex-start;
+  .sa-branches-header-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 }
