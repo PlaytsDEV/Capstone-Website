@@ -189,7 +189,7 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
 
       <AnalyticsInsightSection
         reportLabel="financials"
-        summaryTitle="Financial Summary & Projections"
+        summaryTitle="Financial Summary"
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
