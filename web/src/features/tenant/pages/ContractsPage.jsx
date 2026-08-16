@@ -227,13 +227,26 @@ export default function ContractsPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl sm:text-2xl font-bold text-foreground">Official Lease Contract</h1>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60">
-              <CheckCircle2 size={12} />
-              Active Agreement
-            </span>
+            {contract?.tenantDocument?.type === "final_notarized" || contract?.finalDocument?.available || contract?.status === "active" ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60">
+                <CheckCircle2 size={12} />
+                Final Notarized Contract
+              </span>
+            ) : contract?.tenantDocument?.type === "generated_draft" || contract?.preparedDocument?.available ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900/60">
+                <FileText size={12} />
+                Generated Draft — For Signing
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
+                Contract is being prepared
+              </span>
+            )}
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Your official First JRAC Partnership Co. Contract of Lease agreement and terms of residency.
+            {contract?.tenantDocument?.type === "generated_draft"
+              ? "Your contract has been generated and is ready for in-person signing. The final notarized copy will replace this document once uploaded by the admin."
+              : "Your official First JRAC Partnership Co. Contract of Lease agreement and terms of residency."}
           </p>
         </div>
       </header>

@@ -218,7 +218,7 @@ export default function TenantsWorkspacePage() {
     );
 
     const tenants = workspaceData?.tenants || [];
-    const loading = authLoading || isLoading || isFetching;
+    const loading = authLoading || (isLoading && !workspaceData);
 
     const baseFiltered = useMemo(() => {
         const term = searchTerm.trim().toLowerCase();

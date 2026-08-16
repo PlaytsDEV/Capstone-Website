@@ -39,6 +39,26 @@ import {
   buildTenantWorkspaceEntry,
 } from "./_helpers.js";
 
+// In-memory throttle for tenant scope reconciliation (prevents redundant MongoDB write scans on repeated GET reads)
+const lastScopeReconcileTime = new Map();
+const RECONCILE_THROTTLE_MS = 60 * 1000; // 60 seconds
+
+export const throttledReconcileTenantUsersForScope = async ({ branch = null } = {}) => {
+  const key = branch || "all";
+  const now = Date.now();
+  const lastTime = lastScopeReconcileTime.get(key) || 0;
+  if (now - lastTime < RECONCILE_THROTTLE_MS) {
+    return;
+  }
+  lastScopeReconcileTime.set(key, now);
+  try {
+    await reconcileTenantUsersForScope({ branch });
+  } catch (err) {
+    lastScopeReconcileTime.delete(key);
+    throw err;
+  }
+};
+
 export const getCurrentResidents = async (req, res) => {
   try {
     const dbUser = await findDbUser(req.user.uid);
@@ -74,7 +94,7 @@ export const getCurrentResidents = async (req, res) => {
       roomQuery.branch = requestedBranch;
     }
 
-    await reconcileTenantUsersForScope({
+    await throttledReconcileTenantUsersForScope({
       branch: roomQuery.branch || null,
     });
 
@@ -129,7 +149,7 @@ export const getTenantWorkspace = async (req, res) => {
       requestedBranch: req.query.branch,
     });
 
-    await reconcileTenantUsersForScope({
+    await throttledReconcileTenantUsersForScope({
       branch: roomQuery.branch || null,
     });
 

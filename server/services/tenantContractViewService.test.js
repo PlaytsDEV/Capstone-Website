@@ -112,4 +112,67 @@ describe("tenant Contract safe view", () => {
     });
     expect(JSON.stringify(published)).not.toContain("private/final.pdf");
   });
+
+  test("populates unified tenantDocument for draft and final states", () => {
+    const draftContract = {
+      _id: "contract-draft",
+      status: "generated",
+      preparedDocuments: [
+        {
+          version: 1,
+          storageKey: "branch/2026/LC-01/draft_v1.pdf",
+          fileName: "draft_v1.pdf",
+          fileSize: 50000,
+          pageCount: 3,
+          superseded: false,
+        },
+      ],
+      finalDocument: null,
+    };
+    const draftView = toTenantContractView(draftContract);
+    expect(draftView.tenantDocument).toMatchObject({
+      available: true,
+      type: "generated_draft",
+      label: "Generated Draft — For Signing",
+      isFinal: false,
+      version: 1,
+      fileName: "draft_v1.pdf",
+      viewUrl: "/api/contracts/my/contract-draft/documents/prepared",
+      downloadUrl: "/api/contracts/my/contract-draft/documents/prepared?download=1",
+    });
+
+    const finalContract = {
+      _id: "contract-final",
+      status: "active",
+      notarizedDocumentVersion: 1,
+      preparedDocuments: [
+        {
+          version: 1,
+          storageKey: "branch/2026/LC-01/draft_v1.pdf",
+          fileName: "draft_v1.pdf",
+          fileSize: 50000,
+          superseded: false,
+        },
+      ],
+      finalDocument: {
+        storageKey: "branch/2026/LC-01/final_v1.pdf",
+        fileName: "final_v1.pdf",
+        fileSize: 120000,
+        pageCount: 4,
+        sourceType: "notarized",
+        sourceVersion: 1,
+      },
+    };
+    const finalView = toTenantContractView(finalContract);
+    expect(finalView.tenantDocument).toMatchObject({
+      available: true,
+      type: "final_notarized",
+      label: "Final Notarized Contract",
+      isFinal: true,
+      version: 1,
+      fileName: "final_v1.pdf",
+      viewUrl: "/api/contracts/my/contract-final/documents/final",
+      downloadUrl: "/api/contracts/my/contract-final/documents/final?download=1",
+    });
+  });
 });

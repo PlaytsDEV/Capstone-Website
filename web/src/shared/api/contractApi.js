@@ -128,6 +128,17 @@ export const contractApi = {
     body.append("notarialDetails", JSON.stringify(notarialDetails));
     return authFetch(`/contracts/${contractId}/documents/notarized`, { method: "POST", body });
   },
+  uploadFinalNotarizedContract: (
+    contractId, file, preparedDocumentVersion, replacementReason = "", notarialDetails = {}, notes = "",
+  ) => {
+    const body = new FormData();
+    body.append("file", file);
+    if (preparedDocumentVersion) body.append("preparedDocumentVersion", String(preparedDocumentVersion));
+    if (replacementReason) body.append("replacementReason", replacementReason);
+    if (notes) body.append("notes", notes);
+    body.append("notarialDetails", typeof notarialDetails === "string" ? notarialDetails : JSON.stringify(notarialDetails));
+    return authFetch(`/contracts/${contractId}/documents/final-notarized`, { method: "POST", body });
+  },
   getNotarizedContractFile: (contractId, version, download = false) =>
     fetchPrivateContractBlob(`/contracts/${contractId}/documents/notarized${version ? `/${version}` : ""}${download ? "?download=true" : ""}`),
   verifyNotarizedContract: (contractId, documentVersion, checklist, notes = "") =>

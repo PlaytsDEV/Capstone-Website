@@ -33,6 +33,7 @@ import {
   resolveNotarizedContractPath,
   rejectNotarizedContract,
   uploadNotarizedContract,
+  uploadAndFinalizeNotarizedContract,
   verifyNotarizedContract,
 } from "../services/contractNotarizationService.js";
 import {
@@ -552,6 +553,46 @@ export const uploadNotarizedDocument = async (req, res) => {
       fileSize: document.fileSize, mimeType: document.mimeType, uploadedAt: document.uploadedAt,
     } });
   } catch (error) { fail(res, error); }
+};
+
+export const uploadFinalNotarizedContract = async (req, res) => {
+  try {
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    const before = contract.toObject();
+    const result = await uploadAndFinalizeNotarizedContract({
+      contract,
+      file: req.file,
+      actorId: admin._id,
+      replacementReason: req.body?.replacementReason,
+      preparedDocumentVersion: req.body?.preparedDocumentVersion,
+      notarialDetails: req.body?.notarialDetails
+        ? (typeof req.body.notarialDetails === "string" ? JSON.parse(req.body.notarialDetails) : req.body.notarialDetails)
+        : {},
+      notes: req.body?.notes || "",
+    });
+    await auditSigningChange(
+      req,
+      before,
+      contract,
+      "Final signed-and-notarized Contract uploaded and activated for tenant access",
+    );
+    res.status(201).json({
+      success: true,
+      status: contract.status,
+      finalDocument: result.finalDocument,
+      document: {
+        version: result.document.version,
+        fileName: result.document.fileName,
+        fileHash: result.document.fileHash,
+        fileSize: result.document.fileSize,
+        mimeType: result.document.mimeType,
+        uploadedAt: result.document.uploadedAt,
+      },
+    });
+  } catch (error) {
+    fail(res, error);
+  }
 };
 
 export const streamNotarizedDocument = async (req, res) => {
