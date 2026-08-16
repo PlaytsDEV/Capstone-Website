@@ -26,7 +26,8 @@
 
 import mongoose from "mongoose";
 import { v4 as uuidv4 } from "uuid";
-import { getFirebaseStorage } from "../config/firebase.js";
+import { getFirebaseStorage, resolveFirebaseStorageBucket } from "../config/firebase.js";
+import { authorizeTenantStorageObject } from "./documentStorageAuthorization.service.js";
 
 const DOC_MAX_BYTES = 5 * 1024 * 1024; // 5 MB — mirrors the standalone backend's limit
 const DOCUMENT_CONTENT_MAX_BYTES = 50 * 1024 * 1024;
@@ -256,6 +257,20 @@ export async function uploadUserDocument(mobileTenant, body = {}) {
   const metadata = normalizeUploadedDocumentMetadata(body);
   if (metadata.error) return { error: metadata.error };
 
+  // Prove the submitted storagePath is genuinely this tenant's own object
+  // (own upload prefix, and downloadUrl decodes to that exact bucket/path)
+  // before any privileged Firebase Admin access is ever performed against it
+  // from getUserDocumentContent/deleteUserDocument below. Fail closed.
+  const authorization = authorizeTenantStorageObject({
+    downloadUrl: metadata.value.downloadUrl,
+    storagePath: metadata.value.storagePath,
+    userId: mobileTenant.user_id,
+    configuredBucket: resolveFirebaseStorageBucket(),
+  });
+  if (!authorization.authorized) {
+    return { error: "Document storage location could not be verified." };
+  }
+
   const docId = `doc_${uuidv4().replace(/-/g, "").slice(0, 12)}`;
   const docEntry = {
     doc_id: docId,
@@ -327,6 +342,19 @@ export async function getUserDocumentContent(mobileTenant, docId) {
   }
 
   if (doc.storagePath) {
+    // Re-verify ownership before every privileged read, not just at
+    // registration time, so a record stored before this invariant existed
+    // (or corrupted/tampered after the fact) can never be served.
+    const authorization = authorizeTenantStorageObject({
+      downloadUrl: doc.downloadUrl,
+      storagePath: doc.storagePath,
+      userId: mobileTenant.user_id,
+      configuredBucket: resolveFirebaseStorageBucket(),
+    });
+    if (!authorization.authorized) {
+      return { status: 409, detail: "This document could not be verified and must be re-uploaded." };
+    }
+
     let buffer;
     try {
       [buffer] = await getFirebaseStorage().file(doc.storagePath).download();
@@ -411,6 +439,26 @@ export async function deleteUserDocument(mobileTenant, docId) {
   }
 
   if (document.storagePath) {
+    // Re-verify ownership before every privileged delete — same invariant as
+    // getUserDocumentContent above. The record belongs to this tenant but its
+    // stored path can't be verified (e.g. predates this invariant, or was
+    // tampered with) — never issue a privileged delete against an unverified
+    // path. Undo the pending-deletion marker and leave the record for review
+    // instead of silently discarding it.
+    const authorization = authorizeTenantStorageObject({
+      downloadUrl: document.downloadUrl,
+      storagePath: document.storagePath,
+      userId: mobileTenant.user_id,
+      configuredBucket: resolveFirebaseStorageBucket(),
+    });
+    if (!authorization.authorized) {
+      await usersCollection().updateOne(
+        { user_id: mobileTenant.user_id, "uploaded_documents.doc_id": docId },
+        { $unset: { "uploaded_documents.$.deletion_pending": "", "uploaded_documents.$.deletion_requested_at": "" } },
+      ).catch(() => {});
+      return { status: 409, detail: "This document could not be verified and must be re-uploaded." };
+    }
+
     try {
       await getFirebaseStorage().file(document.storagePath).delete({ ignoreNotFound: true });
     } catch (storageError) {
