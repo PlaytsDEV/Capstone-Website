@@ -35,6 +35,10 @@ const BACKEND_CODE_MESSAGES = {
   OTP_RESEND_COOLDOWN: "Please wait a moment before requesting another code.",
   OTP_EMAIL_SEND_FAILED: "We could not send the verification code. Please try again later.",
   OTP_NOT_REQUIRED: "A verification code isn't required right now.",
+  VERIFICATION_EMAIL_SEND_FAILED:
+    "We could not send the verification link right now. Please try again from the verification screen.",
+  EMAIL_PROVIDER_NOT_CONFIGURED:
+    "The verification email service is temporarily unavailable. Please try again shortly.",
   RATE_LIMIT_EXCEEDED: "You have requested too many codes. Please wait before trying again.",
   RATE_LIMITED: "You have requested too many codes. Please wait before trying again.",
 };

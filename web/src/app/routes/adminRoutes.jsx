@@ -37,7 +37,11 @@ import {
   AdminCardGridSkeleton,
   AdminMaintenanceSkeleton,
   AdminFormPageSkeleton,
+  AdminRolePermissionsSkeleton,
   AdminChatSkeleton,
+  AdminBranchesSkeleton,
+  AdminPoliciesSettingsSkeleton,
+  AdminSystemBackupSkeleton,
 } from "../../features/admin/components/AdminContentSkeletons";
 
 export function AdminRoutes() {
@@ -220,8 +224,8 @@ export function AdminRoutes() {
       <Route
         path="branches"
         element={
-          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminCardGridSkeleton />}>
-            <RouteShell name="Branches" fallback={<AdminCardGridSkeleton />}>
+          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminBranchesSkeleton />}>
+            <RouteShell name="Branches" fallback={<AdminBranchesSkeleton />}>
               <BranchManagementPage />
             </RouteShell>
           </ProtectedRoute>
@@ -230,8 +234,8 @@ export function AdminRoutes() {
       <Route
         path="settings"
         element={
-          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminFormPageSkeleton />}>
-            <RouteShell name="Settings" fallback={<AdminFormPageSkeleton />}>
+          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminPoliciesSettingsSkeleton />}>
+            <RouteShell name="Settings" fallback={<AdminPoliciesSettingsSkeleton />}>
               <SystemSettingsPage />
             </RouteShell>
           </ProtectedRoute>
@@ -240,8 +244,8 @@ export function AdminRoutes() {
       <Route
         path="roles"
         element={
-          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminFormPageSkeleton />}>
-            <RouteShell name="Roles" fallback={<AdminFormPageSkeleton />}>
+          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminRolePermissionsSkeleton />}>
+            <RouteShell name="Roles" fallback={<AdminRolePermissionsSkeleton />}>
               <RolePermissionsPage />
             </RouteShell>
           </ProtectedRoute>
@@ -250,8 +254,8 @@ export function AdminRoutes() {
       <Route
         path="backups"
         element={
-          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminTablePageSkeleton />}>
-            <RouteShell name="SystemBackup" fallback={<AdminTablePageSkeleton />}>
+          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminSystemBackupSkeleton />}>
+            <RouteShell name="SystemBackup" fallback={<AdminSystemBackupSkeleton />}>
               <SystemBackupPage />
             </RouteShell>
           </ProtectedRoute>

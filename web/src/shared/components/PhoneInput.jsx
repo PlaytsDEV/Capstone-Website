@@ -212,9 +212,10 @@ const PhoneInput = ({
  const detectedCountry = detectCountryFromE164(cleaned);
 
  if (detectedCountry) {
- // Country detected — extract local number
+ // Country detected — extract local number and strip leading 0
  const dialDigits = detectedCountry.dialCode.replace(/\D/g, "");
- const local = numericPart.slice(dialDigits.length);
+ let local = numericPart.slice(dialDigits.length);
+ if (local.startsWith("0")) local = local.slice(1);
  const maxL = getExpectedLength(detectedCountry.code);
  const truncated = local.slice(0, maxL);
  setSelectedCountry(detectedCountry);
@@ -230,6 +231,15 @@ const PhoneInput = ({
 
  // ── MODE 2: Local digit mode ───────────────────────────────
  let digits = raw.replace(/\D/g, "");
+
+ // Handle accidental pasting of country code prefix without "+", e.g. 630917... or 63917...
+ if (selectedCountry?.dialCode === "+63") {
+   if (digits.startsWith("630") && digits.length > 10) {
+     digits = digits.slice(3);
+   } else if (digits.startsWith("63") && digits.length > 10) {
+     digits = digits.slice(2);
+   }
+ }
 
  // Auto-convert leading "0" (e.g. PH: "09171..." → "9171...")
  if (digits.startsWith("0")) digits = digits.slice(1);

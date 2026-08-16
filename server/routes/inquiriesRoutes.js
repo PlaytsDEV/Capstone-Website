@@ -22,7 +22,7 @@
  */
 
 import express from "express";
-import { verifyToken, verifyAdmin, verifyOwner } from "../middleware/auth.js";
+import { verifyToken, verifyAdmin, verifyOwner, optionalAuth } from "../middleware/auth.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
 import { inquiryLimiter } from "../middleware/rateLimiter.js";
 import { validate } from "../validation/validate.js";
@@ -151,11 +151,11 @@ router.get("/:id", verifyToken, verifyAdmin, filterByBranch, getInquiryById);
 /**
  * POST /api/inquiries
  *
- * Submit a new inquiry from the contact form.
+ * Submit a new inquiry from the contact form or room exploration.
  *
- * Access: Public (no authentication required)
+ * Access: Public (optional authentication supported)
  */
-router.post("/", inquiryLimiter, validate(createInquirySchema), createInquiry);
+router.post("/", inquiryLimiter, optionalAuth, validate(createInquirySchema), createInquiry);
 
 // ============================================================================
 // UPDATE INQUIRY

@@ -14,6 +14,7 @@
   display: flex;
   flex-direction: column;
   margin-left: 280px; /* ← matches sidebar width */
+  will-change: margin-left;
   transition: margin-left 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 

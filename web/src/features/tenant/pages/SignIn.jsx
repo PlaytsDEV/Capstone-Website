@@ -49,7 +49,7 @@ import { resolveResendVerificationMessage } from "../../../shared/api/apiError";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import SocialAuthButtons from "../../../shared/components/SocialAuthButtons";
 import FloatingInput from "../../../shared/components/FloatingInput";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import "../../../shared/styles/auth-forms.css";
 import "../../public/styles/tenant-signin.css";
 import "../../../shared/styles/notification.css";
@@ -84,6 +84,13 @@ function SignIn() {
   const [resendCooldownEnd, setResendCooldownEnd] = useState(null);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [verifiedSuccess, setVerifiedSuccess] = useState(false);
+  const [capsLockActive, setCapsLockActive] = useState(false);
+
+  const handlePasswordKey = (e) => {
+    if (e.getModifierState) {
+      setCapsLockActive(e.getModifierState("CapsLock"));
+    }
+  };
 
   // Show notification when redirected here due to session expiry
   useEffect(() => {
@@ -321,15 +328,15 @@ function SignIn() {
  setUnverifiedEmail(formData.email);
  await auth.signOut();
  sessionStorage.removeItem("resendInProgress");
- if (delivery) {
- navigate("/auth-action?state=sent", { replace: true });
- } else {
- showNotification(
- "Your email is not verified, and we could not send a new link right now. Please try again.",
- "error",
- 6000,
- );
- }
+  if (delivery) {
+  navigate("/auth-action?state=sent", { replace: true });
+  } else {
+  showNotification(
+  "Your email address is not verified yet. Please check your inbox, or use the option below to resend your verification link.",
+  "warning",
+  7000,
+  );
+  }
  setGlobalLoading(false);
  return;
  }
@@ -649,6 +656,12 @@ function SignIn() {
  type={showPassword ? "text" : "password"}
  value={formData.password}
  onChange={handleChange}
+ onKeyDown={handlePasswordKey}
+ onKeyUp={handlePasswordKey}
+ onBlur={() => {
+ setTouched((prev) => ({ ...prev, password: true }));
+ setCapsLockActive(false);
+ }}
  onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
  disabled={submitting}
  autoComplete="current-password"
@@ -661,6 +674,29 @@ function SignIn() {
  />
  }
  />
+
+ {capsLockActive && (
+ <div
+ style={{
+ display: "flex",
+ alignItems: "center",
+ gap: "6px",
+ marginTop: "-12px",
+ marginBottom: "16px",
+ padding: "6px 12px",
+ borderRadius: "8px",
+ fontSize: "12px",
+ color: "#B45309",
+ backgroundColor: "#FEF3C7",
+ border: "1px solid #FDE68A",
+ fontWeight: 500,
+ }}
+ role="status"
+ >
+ <AlertTriangle size={13} style={{ color: "#D97706", flexShrink: 0 }} />
+ <span>Caps Lock is ON</span>
+ </div>
+ )}
 
  <div className="auth-options-row">
  <label className="auth-remember">

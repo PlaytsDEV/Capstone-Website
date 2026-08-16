@@ -53,6 +53,10 @@ export function LegacyRoutes() {
         path="/super-admin/settings"
         element={<Navigate to="/admin/settings" replace />}
       />
+      <Route
+        path="/super-admin/backups"
+        element={<Navigate to="/admin/settings?tab=backups" replace />}
+      />
     </>
   );
 }

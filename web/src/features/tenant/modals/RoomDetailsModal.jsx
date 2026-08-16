@@ -799,35 +799,35 @@ export default function RoomDetailsModal({
   </div>
 
   <div className="border-t border-border p-6">
-  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-  <div className="text-center sm:text-left">
-  <p className="text-sm text-muted-foreground">
-  Ready to reserve? Continue to complete your reservation.
-  </p>
-  <p className="text-xs text-muted-foreground mt-1">
-  Bed selection may be required before proceeding.
-  </p>
-  </div>
-        <button
-          type="button"
-          onClick={handleProceedClick}
-          className={`px-8 py-4 rounded-xl font-medium transition-all duration-200 cursor-pointer active:scale-[0.98] ${
-            proceedDisabled
-              ? "opacity-90 hover:opacity-100"
-              : "hover:opacity-90 shadow-md"
-          }`}
-          style={{
-            backgroundColor: "var(--color-accent)",
-            color: "var(--color-primary)",
-          }}
-        >
-          {!hasLeaseSelected
-            ? "Please Select Lease Term"
-            : requiresBedSelection && !selectedBed
-            ? "Please Select a Bed"
-            : proceedButtonText}
-        </button>
-  </div>
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="text-center sm:text-left">
+        <p className="text-sm text-muted-foreground">
+          Ready to reserve? Continue to complete your reservation.
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Bed selection may be required before proceeding.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={handleProceedClick}
+        className={`px-8 py-4 rounded-xl font-medium transition-all duration-200 cursor-pointer active:scale-[0.98] ${
+          proceedDisabled
+            ? "opacity-90 hover:opacity-100"
+            : "hover:opacity-90 shadow-md"
+        }`}
+        style={{
+          backgroundColor: "var(--color-accent)",
+          color: "var(--color-primary)",
+        }}
+      >
+        {!hasLeaseSelected
+          ? "Please Select Lease Term"
+          : requiresBedSelection && !selectedBed
+          ? "Please Select a Bed"
+          : proceedButtonText}
+      </button>
+    </div>
   </div>
   </div>
   </div>

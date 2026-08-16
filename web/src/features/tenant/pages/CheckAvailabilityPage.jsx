@@ -87,8 +87,9 @@ function CheckAvailabilityPage() {
  const [selectedLeaseTermFilter, setSelectedLeaseTermFilter] = useState("All");
  const [minPrice, setMinPrice] = useState(0);
  const [maxPrice, setMaxPrice] = useState(15000);
- const [isInquiryModalOpen, setIsInquiryModalOpen] = useState(false);
- const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [isInquiryModalOpen, setIsInquiryModalOpen] = useState(false);
+  const [inquiryRoomContext, setInquiryRoomContext] = useState(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
  const [selectedRoom, setSelectedRoom] = useState(null);
  const [selectedAppliances, setSelectedAppliances] = useState({});
  const [selectedBed, setSelectedBed] = useState(null);
@@ -357,6 +358,16 @@ function CheckAvailabilityPage() {
     setSelectedAppliances({});
     setSelectedBed(null);
     setSelectedLeaseDuration("");
+  }, []);
+
+  const handleOpenRoomInquiry = useCallback((room) => {
+    setInquiryRoomContext(room || null);
+    setIsInquiryModalOpen(true);
+  }, []);
+
+  const handleCloseInquiry = useCallback(() => {
+    setIsInquiryModalOpen(false);
+    setInquiryRoomContext(null);
   }, []);
 
   const handleApplianceQuantityChange = useCallback((id, qty) => {
@@ -646,15 +657,32 @@ function CheckAvailabilityPage() {
  )}
 
  {filteredRooms.length === 0 && !roomsLoading && !roomsError && (
- <div className="ca-empty">
- <div className="ca-empty-icon">
- <Search style={{ width: 28, height: 28, color: "#9CA3AF" }} />
- </div>
- <h3>No rooms match your filters</h3>
- <p>Try changing the branch, room type, or price range</p>
- <button onClick={clearAllFilters}>Clear All Filters</button>
- </div>
- )}
+    <div className="ca-empty">
+      <div className="ca-empty-icon">
+        <Search style={{ width: 28, height: 28, color: "#9CA3AF" }} />
+      </div>
+      <h3>No rooms match your filters</h3>
+      <p>Try changing the branch, room type, or price range</p>
+      <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "12px", flexWrap: "wrap" }}>
+        <button onClick={clearAllFilters}>Clear All Filters</button>
+        <button
+          type="button"
+          onClick={() => handleOpenRoomInquiry(null)}
+          style={{
+            padding: "8px 16px",
+            borderRadius: "8px",
+            border: "1px solid var(--border-card, #e2e8f0)",
+            backgroundColor: "var(--surface-card, #ffffff)",
+            color: "var(--text-main, #0f172a)",
+            fontWeight: "500",
+            cursor: "pointer",
+          }}
+        >
+          Send an Inquiry
+        </button>
+      </div>
+    </div>
+  )}
 
 
  </main>
@@ -685,12 +713,24 @@ function CheckAvailabilityPage() {
     </Suspense>
   )}
 
- <Suspense fallback={null}>
-   <InquiryModal
-     isOpen={isInquiryModalOpen}
-     onClose={() => setIsInquiryModalOpen(false)}
-   />
- </Suspense>
+  <Suspense fallback={null}>
+    <InquiryModal
+      isOpen={isInquiryModalOpen}
+      onClose={handleCloseInquiry}
+      defaultBranch={
+        inquiryRoomContext?.branchKey === "guadalupe" || inquiryRoomContext?.branch === "Guadalupe"
+          ? "guadalupe"
+          : inquiryRoomContext?.branchKey === "gil-puyat" || inquiryRoomContext?.branch === "Gil Puyat"
+          ? "gil-puyat"
+          : selectedBranch === "Guadalupe"
+          ? "guadalupe"
+          : selectedBranch === "Gil Puyat"
+          ? "gil-puyat"
+          : "general"
+      }
+      roomData={inquiryRoomContext}
+    />
+  </Suspense>
 
  <ConfirmModal
  isOpen={showLogoutConfirm}

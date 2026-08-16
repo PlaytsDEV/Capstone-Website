@@ -69,8 +69,8 @@ const ProtectedRoute = ({ children, requiredRole, requireAuth = true, loadingFal
  );
  }
 
- // Check role requirements using custom claims from ID token
- if (requiredRole) {
+ // Check role requirements using custom claims from ID token (for auth-required routes)
+ if (requiredRole && requireAuth) {
  if (requiredRole === USER_ROLES.BRANCH_ADMIN) {
  if (!isAdmin()) {
  return <Navigate to={getDefaultRoute()} replace />;

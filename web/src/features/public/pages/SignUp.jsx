@@ -51,6 +51,7 @@ import PrivacyModal from "../../tenant/modals/PrivacyModal";
 import "../../../shared/styles/auth-forms.css";
 import "../styles/tenant-signup.css";
 import "../../../shared/styles/notification.css";
+import { AlertTriangle } from "lucide-react";
 import hero1 from "../../../assets/images/hero1.jpg";
 import { normalizeInternalContinuation } from "../../../shared/utils/emailVerificationFlow";
 
@@ -92,6 +93,13 @@ function SignUp() {
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [fieldValid, setFieldValid] = useState({});
+  const [capsLockActive, setCapsLockActive] = useState(false);
+
+  const handlePasswordKey = (e) => {
+    if (e.getModifierState) {
+      setCapsLockActive(e.getModifierState("CapsLock"));
+    }
+  };
   const [passwordStrength, setPasswordStrength] = useState({
     score: 0,
     level: "weak",
@@ -319,6 +327,11 @@ function SignUp() {
       navigate("/auth-action?state=sent", { replace: true });
     } catch (deliveryError) {
       if (deliveryError.response?.data?.state === "VERIFICATION_EMAIL_SEND_FAILED") {
+        showNotification(
+          "Account created successfully. Our verification email service is temporarily unavailable; you can request a new link once ready.",
+          "warning",
+          7000,
+        );
         navigate("/auth-action?state=send-failed", { replace: true });
       } else {
         await auth.signOut();
@@ -327,7 +340,7 @@ function SignUp() {
           state: { email: formData.email },
           flash: {
             type: "warning",
-            message: "Account created, but the verification email could not be sent. Please sign in to try again.",
+            message: "Account created successfully. Please sign in to request a new email verification link.",
           },
         });
       }
@@ -663,6 +676,12 @@ function SignUp() {
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
                   onChange={handleChange}
+                  onKeyDown={handlePasswordKey}
+                  onKeyUp={handlePasswordKey}
+                  onBlur={() => {
+                    validateField("password", formData.password);
+                    setCapsLockActive(false);
+                  }}
                   maxLength={FIELD_LIMITS.password}
                   onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
                   disabled={loading}
@@ -675,6 +694,29 @@ function SignUp() {
                     />
                   }
                 />
+
+                {capsLockActive && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      marginTop: "6px",
+                      marginBottom: "4px",
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                      color: "#B45309",
+                      backgroundColor: "#FEF3C7",
+                      border: "1px solid #FDE68A",
+                      fontWeight: 500,
+                    }}
+                    role="status"
+                  >
+                    <AlertTriangle size={13} style={{ color: "#D97706", flexShrink: 0 }} />
+                    <span>Caps Lock is ON</span>
+                  </div>
+                )}
 
                 {/* Password strength indicator */}
                 {formData.password.length > 0 && (
@@ -758,6 +800,12 @@ function SignUp() {
                 type={showConfirmPassword ? "text" : "password"}
                 value={formData.confirmPassword}
                 onChange={handleChange}
+                onKeyDown={handlePasswordKey}
+                onKeyUp={handlePasswordKey}
+                onBlur={() => {
+                  validateField("confirmPassword", formData.confirmPassword);
+                  setCapsLockActive(false);
+                }}
                 maxLength={FIELD_LIMITS.confirmPassword}
                 onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
                 disabled={loading}

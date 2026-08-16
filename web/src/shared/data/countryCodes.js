@@ -187,7 +187,9 @@ export const parseE164 = (value) => {
   );
   const match = sorted.find((c) => value.startsWith(c.dialCode));
   if (match) {
-    return { country: match, localNumber: value.slice(match.dialCode.length) };
+    let local = value.slice(match.dialCode.length);
+    if (local.startsWith("0")) local = local.slice(1);
+    return { country: match, localNumber: local };
   }
-  return { country: DEFAULT_COUNTRY, localNumber: value.replace(/^\+/, "") };
+  return { country: DEFAULT_COUNTRY, localNumber: value.replace(/^\+/, "").replace(/^0/, "") };
 };

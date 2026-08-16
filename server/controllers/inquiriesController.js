@@ -541,7 +541,14 @@ export const createInquiry = async (req, res, next) => {
         ? (sourceNote?.trim() || "Website Contact Form")
         : (sourceNote?.trim() || null);
 
+    let authUserId = req.authUser?._id || null;
+    if (!authUserId && req.user?.uid) {
+      const foundUser = await User.findOne({ firebaseUid: req.user.uid }).select("_id").lean();
+      if (foundUser?._id) authUserId = foundUser._id;
+    }
+
     const inquiry = new Inquiry({
+      user: authUserId,
       fullName: name.trim(),
       name: name.trim(),
       contactNumber: phone?.trim() || "N/A",
@@ -560,11 +567,12 @@ export const createInquiry = async (req, res, next) => {
 
     // Create automated notification for admin users
     try {
+      const userTag = authUserId ? " (Registered User)" : "";
       await notifyBranchAdmins(
         branch,
         "inquiry_new",
         "New Customer Inquiry Received",
-        `New inquiry from ${name.trim()} (${email.toLowerCase().trim()}) regarding "${subject.trim()}".`,
+        `New inquiry from ${name.trim()}${userTag} (${email.toLowerCase().trim()}) regarding "${subject.trim()}".`,
         {
           actionUrl: "/admin/reservations?tab=inquiries",
           entityType: "Inquiry",
@@ -576,6 +584,7 @@ export const createInquiry = async (req, res, next) => {
     }
 
     res.status(201).json({
+      success: true,
       message: "Inquiry submitted successfully. We will get back to you soon!",
       inquiryId: inquiry._id,
       inquiry,
