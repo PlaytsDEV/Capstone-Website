@@ -30,6 +30,7 @@ jest.unstable_mockModule("../middleware/mobileTenantAuth.js", () => ({
 jest.unstable_mockModule("../controllers/billing/_helpers.js", () => ({
   generateRentBillPdf: jest.fn(),
   formatBillReference: jest.fn(() => "LC-RB-TEST"),
+  buildTenantUtilityBreakdown: jest.fn(() => null),
   SERVER_ROOT: "/tmp",
   BILL_PDF_ROOT: "/tmp/uploads/bills",
 }));
@@ -39,6 +40,7 @@ jest.unstable_mockModule("../config/paymongo.js", () => ({
 }));
 jest.unstable_mockModule("../utils/billingPolicy.js", () => ({
   getVisibleBillSnapshot: jest.fn((bill) => bill),
+  getVisibleBillCharges: jest.fn((bill) => bill?.charges || {}),
 }));
 jest.unstable_mockModule("../utils/billSettlement.js", () => ({
   settlePaymongoBill: jest.fn(),
@@ -59,6 +61,8 @@ jest.unstable_mockModule("../services/mobileBillingBridge.js", () => ({
   toMobileBill: jest.fn((b) => b),
   isMobileEffectivelyPaid: jest.fn(() => false),
   toMobilePaymentMethodLabel: jest.fn(() => null),
+  formatMobileElectricityBreakdown: jest.fn(() => null),
+  formatMobileWaterBreakdown: jest.fn(() => null),
 }));
 
 const { default: mobileBillingRoutes } = await import("./mobileBillingRoutes.js");

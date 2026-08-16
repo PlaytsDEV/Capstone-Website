@@ -28,11 +28,13 @@ import path from "path";
 import { Bill, Reservation } from "../models/index.js";
 import { mobileTenantAuth } from "../middleware/mobileTenantAuth.js";
 import { toMobileBill, isMobileEffectivelyPaid, toMobilePaymentMethodLabel } from "../services/mobileBillingBridge.js";
-import { getVisibleBillSnapshot } from "../utils/billingPolicy.js";
+import { formatMobileElectricityBreakdown, formatMobileWaterBreakdown } from "../services/mobileBillingBridge.js";
+import { getVisibleBillCharges, getVisibleBillSnapshot } from "../utils/billingPolicy.js";
 import { generateBillReceiptPdf } from "../utils/pdfGenerator.js";
 import {
   generateRentBillPdf,
   formatBillReference,
+  buildTenantUtilityBreakdown,
   SERVER_ROOT,
   BILL_PDF_ROOT,
 } from "../controllers/billing/_helpers.js";
@@ -53,17 +55,43 @@ const asyncRoute = (handler) => (req, res, next) =>
 
 const NON_DRAFT_FILTER = { status: { $ne: "draft" }, isArchived: false };
 
+async function mapMobileBillsWithBreakdowns(bills, tenantId) {
+  const dbUser = { _id: tenantId };
+  return Promise.all(
+    bills.map(async (bill) => {
+      const visibleCharges = getVisibleBillCharges(bill);
+      let electricityBreakdown = null;
+      let waterBreakdown = null;
+      if (Number(visibleCharges.electricity || 0) > 0) {
+        electricityBreakdown = await buildTenantUtilityBreakdown({ dbUser, bill, utilityType: "electricity" });
+      }
+      if (Number(visibleCharges.water || 0) > 0) {
+        waterBreakdown = await buildTenantUtilityBreakdown({ dbUser, bill, utilityType: "water" });
+      }
+      return toMobileBill(bill, { electricityBreakdown, waterBreakdown });
+    }),
+  );
+}
+
+async function mapMobileBillWithBreakdowns(bill, tenantId) {
+  if (!bill) return null;
+  const [mobileBill] = await mapMobileBillsWithBreakdowns([bill], tenantId);
+  return mobileBill;
+}
+
 router.get("/billing/me", mobileTenantAuth, asyncRoute(async (req, res) => {
   const bills = await Bill.find({ userId: req.mobileTenant._id, ...NON_DRAFT_FILTER })
     .sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 });
-  res.json(bills.map(toMobileBill));
+  const mapped = await mapMobileBillsWithBreakdowns(bills, req.mobileTenant._id);
+  res.json(mapped);
 }));
 
 router.get("/billing/me/latest", mobileTenantAuth, asyncRoute(async (req, res) => {
   const bill = await Bill.findOne({ userId: req.mobileTenant._id, ...NON_DRAFT_FILTER })
     .sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 });
   if (!bill) return res.status(404).json({ detail: "No billing found" });
-  res.json(toMobileBill(bill));
+  const mapped = await mapMobileBillWithBreakdowns(bill, req.mobileTenant._id);
+  res.json(mapped);
 }));
 
 router.get("/billing/history", mobileTenantAuth, asyncRoute(async (req, res) => {
@@ -71,7 +99,8 @@ router.get("/billing/history", mobileTenantAuth, asyncRoute(async (req, res) => 
   const bills = await Bill.find({ userId: req.mobileTenant._id, ...NON_DRAFT_FILTER })
     .sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 })
     .limit(limit);
-  res.json(bills.map(toMobileBill));
+  const mapped = await mapMobileBillsWithBreakdowns(bills, req.mobileTenant._id);
+  res.json(mapped);
 }));
 
 // Preserves the mobile app's existing bill-shaped (not ledger-shaped)
@@ -82,7 +111,9 @@ router.get("/billing/history/paid", mobileTenantAuth, asyncRoute(async (req, res
   const bills = await Bill.find({ userId: req.mobileTenant._id, ...NON_DRAFT_FILTER })
     .sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 })
     .limit(limit);
-  res.json(bills.filter(isMobileEffectivelyPaid).map(toMobileBill));
+  const paidBills = bills.filter(isMobileEffectivelyPaid);
+  const mapped = await mapMobileBillsWithBreakdowns(paidBills, req.mobileTenant._id);
+  res.json(mapped);
 }));
 
 router.get("/billing/:billingId", mobileTenantAuth, asyncRoute(async (req, res) => {
@@ -92,7 +123,38 @@ router.get("/billing/:billingId", mobileTenantAuth, asyncRoute(async (req, res) 
   }
   const bill = await Bill.findOne({ _id: billingId, userId: req.mobileTenant._id, isArchived: false });
   if (!bill) return res.status(404).json({ detail: "Bill not found" });
-  res.json(toMobileBill(bill));
+  const mapped = await mapMobileBillWithBreakdowns(bill, req.mobileTenant._id);
+  res.json(mapped);
+}));
+
+router.get("/billing/:billingId/breakdown/:utilityType", mobileTenantAuth, asyncRoute(async (req, res) => {
+  const { billingId, utilityType } = req.params;
+  if (!["electricity", "water"].includes(utilityType)) {
+    return res.status(400).json({ detail: "Invalid utility type" });
+  }
+  if (!/^[0-9a-fA-F]{24}$/.test(billingId)) {
+    return res.status(404).json({ detail: "Bill not found" });
+  }
+  const bill = await Bill.findOne({ _id: billingId, userId: req.mobileTenant._id, isArchived: false });
+  if (!bill) return res.status(404).json({ detail: "Bill not found" });
+
+  const dbUser = { _id: req.mobileTenant._id };
+  const breakdown = await buildTenantUtilityBreakdown({ dbUser, bill, utilityType });
+  if (!breakdown) {
+    return res.status(404).json({ detail: `No ${utilityType} breakdown found for this bill` });
+  }
+
+  if (utilityType === "electricity") {
+    return res.json({
+      ...breakdown,
+      electricity_breakdown: formatMobileElectricityBreakdown(breakdown),
+    });
+  }
+
+  return res.json({
+    ...breakdown,
+    water_breakdown: formatMobileWaterBreakdown(breakdown),
+  });
 }));
 
 router.get("/billing/:billingId/pdf", mobileTenantAuth, asyncRoute(async (req, res) => {

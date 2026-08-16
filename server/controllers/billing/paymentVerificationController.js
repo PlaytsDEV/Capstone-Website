@@ -13,6 +13,7 @@ import {
   isPaymentValidationError,
   buildBillPaymentFlow,
 } from "./_helpers.js";
+import { logBillingAudit } from "../../utils/billingAudit.js";
 import dayjs from "dayjs";
 
 export const markBillAsPaid = async (req, res, next) => {
@@ -49,6 +50,23 @@ export const markBillAsPaid = async (req, res, next) => {
       bill.notes = note;
       await bill.save();
     }
+
+    await logBillingAudit(req, {
+      admin,
+      action: "Recorded Manual Bill Payment",
+      severity: "info",
+      entityType: "payment",
+      entityId: bill._id,
+      branch: bill.branch,
+      details: `Recorded manual payment of ₱${appliedAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })} for Bill #${bill.billNumber || bill._id}${note ? ` (Note: ${note})` : ""}`,
+      metadata: {
+        billId: bill._id,
+        appliedAmount,
+        note,
+        userId: bill.userId,
+      },
+    });
+
     res.json({ success: true, bill: bill.toObject() });
   } catch (error) {
     if (isPaymentValidationError(error)) {
@@ -167,6 +185,41 @@ export const verifyPayment = async (req, res, next) => {
       bill.paymentProof.verifiedAt = new Date();
     }
     await bill.save();
+
+    if (action === "approve") {
+      const approvedAmount = Number(
+        bill.paymentProof?.submittedAmount || bill.totalAmount || 0,
+      );
+      await logBillingAudit(req, {
+        admin,
+        action: "Approved Payment Proof",
+        severity: "info",
+        entityType: "payment",
+        entityId: bill._id,
+        branch: bill.branch,
+        details: `Approved payment proof of ₱${approvedAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })} for Bill #${bill.billNumber || bill._id}`,
+        metadata: {
+          billId: bill._id,
+          approvedAmount,
+          userId: bill.userId,
+        },
+      });
+    } else {
+      await logBillingAudit(req, {
+        admin,
+        action: "Rejected Payment Proof",
+        severity: "warning",
+        entityType: "payment",
+        entityId: bill._id,
+        branch: bill.branch,
+        details: `Rejected payment proof for Bill #${bill.billNumber || bill._id}. Reason: ${rejectionReason || "Payment proof not acceptable"}`,
+        metadata: {
+          billId: bill._id,
+          rejectionReason,
+          userId: bill.userId,
+        },
+      });
+    }
 
     try {
       const tenant = await User.findById(bill.userId).lean();

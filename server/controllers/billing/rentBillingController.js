@@ -31,6 +31,7 @@ import { sendDraftUtilityBills } from "../../utils/utilityBillFlow.js";
 import { createMilestoneSubInvoices } from "../../services/milestoneInvoiceService.js";
 import { executeLatePenaltyCron } from "../../services/penaltyEngineService.js";
 import { getTenantBillsInPriorityOrder } from "../../services/billingPriorityService.js";
+import { logBillingAudit } from "../../utils/billingAudit.js";
 
 export const getRentBills = async (req, res, next) => {
   try {
@@ -341,6 +342,23 @@ export const generateAllRentBills = async (req, res, next) => {
         summary.failed += 1;
         errors.push({ tenantName, error: error.message || "Failed to generate bill" });
       }
+    }
+
+    if (summary.generated > 0) {
+      await logBillingAudit(req, {
+        admin,
+        action: "Generated Monthly Rent Bills",
+        severity: "info",
+        entityType: "billing",
+        branch,
+        details: `Generated ${summary.generated} rent bill(s) for branch ${branch} (Billing Month: ${targetMonth})`,
+        metadata: {
+          branch,
+          targetMonth,
+          summary,
+          generatedCount: summary.generated,
+        },
+      });
     }
 
     const warning = warnings.length > 0

@@ -152,6 +152,85 @@ function mobileUtilityDeadlines(bill, charges = {}) {
 }
 
 /**
+ * Format canonical electricity breakdown (buildTenantUtilityBreakdown) into
+ * the mobile app's legacy-compatible segment array structure.
+ *
+ * @param {Object|null} breakdown
+ * @returns {Array<Object>|null}
+ */
+export function formatMobileElectricityBreakdown(breakdown) {
+  if (!breakdown || !Array.isArray(breakdown.segments) || breakdown.segments.length === 0) {
+    return null;
+  }
+
+  const rate = Number(breakdown.ratePerKwh || 16);
+  return breakdown.segments.map((seg, idx) => {
+    const occupants = Number(seg.activeTenantCount || 1);
+    const readingFrom = Number(seg.readingFrom ?? 0);
+    const readingTo = Number(seg.readingTo ?? 0);
+    const consumption = Number(seg.segmentTotalKwh ?? (readingTo - readingFrom) ?? 0);
+    const shareCost = Number(seg.sharePerTenantCost ?? 0);
+    const shareKwh = Number(seg.sharePerTenantKwh ?? 0);
+    const segmentTotal = Number(seg.segmentTotalCost ?? (shareCost * occupants) ?? (consumption * rate));
+
+    const startDateStr = seg.startDate
+      ? (typeof seg.startDate === "string" ? seg.startDate.slice(0, 10) : new Date(seg.startDate).toISOString().slice(0, 10))
+      : (seg.periodLabel || "");
+    const endDateStr = seg.endDate
+      ? (typeof seg.endDate === "string" ? seg.endDate.slice(0, 10) : new Date(seg.endDate).toISOString().slice(0, 10))
+      : (seg.periodLabel || "");
+
+    return {
+      segment_index: idx + 1,
+      period_label: seg.periodLabel || `Segment ${idx + 1}`,
+      occupants,
+      active_tenants: occupants,
+      reading_date_from: startDateStr,
+      reading_date_to: endDateStr,
+      period_start: startDateStr,
+      period_end: endDateStr,
+      reading_from: readingFrom,
+      reading_to: readingTo,
+      consumption: +consumption.toFixed(2),
+      rate,
+      segment_total: +segmentTotal.toFixed(2),
+      share_per_tenant: +shareCost.toFixed(2),
+      share_per_tenant_kwh: +shareKwh.toFixed(2),
+    };
+  });
+}
+
+/**
+ * Format canonical water breakdown (buildTenantUtilityBreakdown) into
+ * the mobile app's legacy-compatible water_breakdown structure.
+ *
+ * @param {Object|null} breakdown
+ * @returns {Object|null}
+ */
+export function formatMobileWaterBreakdown(breakdown) {
+  if (!breakdown || !breakdown.record) return null;
+  const rec = breakdown.record;
+  const rate = Number(rec.ratePerUnit || 50);
+  const consumption = Number(rec.usage || 0);
+  const readingFrom = Number(rec.readingFrom ?? 0);
+  const readingTo = Number(rec.readingTo ?? (readingFrom + consumption));
+  const total = Number(rec.roomTotal ?? (consumption * rate));
+  const myShare = Number(rec.myShare ?? 0);
+  const tenantsSharing = Number(rec.tenantsSharing || 1);
+
+  return {
+    reading_from: readingFrom,
+    reading_to: readingTo,
+    consumption: +consumption.toFixed(1),
+    rate,
+    total: +total.toFixed(2),
+    sharing_policy: "Equal division among active tenants",
+    tenants_sharing: tenantsSharing,
+    my_share: +myShare.toFixed(2),
+  };
+}
+
+/**
  * Map a canonical Bill (Mongoose document or .lean() object) to the flat,
  * legacy-mobile-shaped JSON the current mobile frontend already expects
  * (see server/mobile/controllers/billing.controller.js `mapRealBill()`,
@@ -163,9 +242,10 @@ function mobileUtilityDeadlines(bill, charges = {}) {
  * human-readable label rather than a raw enum/settlement-rail value.
  *
  * @param {import("mongoose").Document|Object} bill - canonical Bill
+ * @param {{electricityBreakdown?: Object|null, waterBreakdown?: Object|null}} [options]
  * @returns {Object} mobile-shaped bill JSON
  */
-export function toMobileBill(bill) {
+export function toMobileBill(bill, { electricityBreakdown = null, waterBreakdown = null } = {}) {
   const visible = getVisibleBillSnapshot(bill);
   const mobileStatus = resolveMobileBillStatus({
     status: bill.status,
@@ -184,6 +264,8 @@ export function toMobileBill(bill) {
   }
 
   const charges = visible.charges || {};
+  const formattedElectricityBreakdown = formatMobileElectricityBreakdown(electricityBreakdown);
+  const formattedWaterBreakdown = formatMobileWaterBreakdown(waterBreakdown);
 
   return {
     billing_id: String(bill._id),
@@ -219,6 +301,12 @@ export function toMobileBill(bill) {
     payment_proof_status: bill.paymentProof?.verificationStatus || "none",
     created_at: bill.createdAt || null,
     utility_deadlines: mobileUtilityDeadlines(bill, charges),
+    electricity_breakdown: formattedElectricityBreakdown,
+    water_breakdown: formattedWaterBreakdown,
+    utility_breakdowns: {
+      electricity: electricityBreakdown || null,
+      water: waterBreakdown || null,
+    },
   };
 }
 
