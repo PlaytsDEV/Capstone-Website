@@ -151,8 +151,35 @@ export function ChatMessageBubble({
     <div
       className={`flex flex-col my-2.5 ${
         isUser ? "items-end" : "items-start"
-      } animate-fadeIn`}
+      }`}
+      style={{
+        animation: "bubbleSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+      }}
     >
+      <style>{`
+        @keyframes bubbleSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(8px) scale(0.98);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @keyframes chipPopIn {
+          from {
+            opacity: 0;
+            transform: translateY(6px) scale(0.96);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+      `}</style>
+
       <div
         className={`flex items-start gap-2 max-w-[88%] ${
           isUser ? "flex-row-reverse" : "flex-row"
@@ -160,7 +187,7 @@ export function ChatMessageBubble({
       >
         {/* Avatar Icon */}
         <div
-          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-semibold select-none"
+          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-semibold select-none shadow-xs transition-transform duration-200 hover:scale-110"
           style={{
             backgroundColor: isUser
               ? "var(--lp-navy, #0A1628)"
@@ -217,7 +244,7 @@ export function ChatMessageBubble({
                     key={idx}
                     type="button"
                     onClick={() => handleActionClick(action)}
-                    className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer shadow-xs focus:outline-none"
+                    className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer shadow-xs focus:outline-none active:scale-95"
                     style={{
                       backgroundColor: isFormAction
                         ? "var(--lp-navy, #0A1628)"
@@ -226,13 +253,15 @@ export function ChatMessageBubble({
                       border: isFormAction
                         ? "1px solid var(--lp-accent, #D4AF37)"
                         : "1px solid var(--lp-border, #E6D9B2)",
+                      animation: `chipPopIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 60}ms forwards`,
+                      opacity: 0,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = "translateY(-1px)";
-                      e.currentTarget.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
+                      e.currentTarget.style.transform = "translateY(-1.5px) scale(1.02)";
+                      e.currentTarget.style.boxShadow = "0 3px 8px rgba(10, 22, 40, 0.12)";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.transform = "translateY(0) scale(1)";
                       e.currentTarget.style.boxShadow = "";
                     }}
                   >

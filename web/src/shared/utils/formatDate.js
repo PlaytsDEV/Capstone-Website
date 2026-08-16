@@ -95,6 +95,9 @@ export const formatTimestamp = (date) =>
     minute: "2-digit",
   });
 
+/** Alias for formatTimestamp */
+export const fmtTimestamp = formatTimestamp;
+
 /** Relative time: "5 minutes ago" */
 export const getRelativeTime = (date) => {
   if (!date) return "";

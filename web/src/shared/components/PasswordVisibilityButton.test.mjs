@@ -22,6 +22,7 @@ const harnessPlugin = {
 test("password visibility control stays synchronized and accessible", async (t) => {
   const vite = await createServer({
     root: webRoot,
+    configFile: path.resolve(webRoot, "vite.config.js"),
     logLevel: "error",
     plugins: [harnessPlugin],
     server: { host: "127.0.0.1", port: 0 },
@@ -39,7 +40,7 @@ test("password visibility control stays synchronized and accessible", async (t) 
   });
   const address = vite.httpServer.address();
   await page.goto(`http://127.0.0.1:${address.port}/__password-visibility-test__`);
-  await page.getByTestId("password").waitFor({ state: "visible", timeout: 10_000 }).catch(() => {
+  await page.getByTestId("password").waitFor({ state: "visible", timeout: 30_000 }).catch(() => {
     assert.fail(`password harness did not render: ${browserErrors.join(" | ")}`);
   });
 

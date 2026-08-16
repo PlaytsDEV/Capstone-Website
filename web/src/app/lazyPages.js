@@ -9,35 +9,18 @@ import React from "react";
  */
 const lazyWithRetry = (importFn) =>
   React.lazy(async () => {
-    const pageKey = `module_retry_${window.location.pathname}`;
-
     // Attempt in-memory retry first to handle transient Vite HMR / transform delays
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const component = await importFn();
-        sessionStorage.removeItem(pageKey);
-        return component;
+        return await importFn();
       } catch (err) {
-        if (attempt === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 250));
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+        } else {
+          console.warn("[lazyWithRetry] Dynamic import failed after retries:", err);
+          throw err;
         }
       }
-    }
-
-    try {
-      const component = await importFn();
-      sessionStorage.removeItem(pageKey);
-      return component;
-    } catch (error) {
-      console.warn("[lazyWithRetry] Dynamic import failed after retry:", error);
-      const isAlreadyRetried = sessionStorage.getItem(pageKey);
-      if (!isAlreadyRetried) {
-        sessionStorage.setItem(pageKey, "true");
-        window.location.reload();
-        return new Promise(() => {});
-      }
-      sessionStorage.removeItem(pageKey);
-      throw error;
     }
   });
 

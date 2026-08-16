@@ -225,53 +225,85 @@ export function PublicChatbotModal({ isOpen, onClose, initialPrompt = "" }) {
   if (!isOpen) return null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="chatbot-header-title"
-      className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 w-full sm:w-[380px] h-[100dvh] sm:h-[560px] max-h-[100dvh] sm:max-h-[560px] z-[999] flex flex-col rounded-none sm:rounded-2xl shadow-2xl overflow-hidden transition-all duration-200"
-      style={{
-        backgroundColor: "var(--lp-bg, #ffffff)",
-        border: "1px solid var(--lp-border, #E6D9B2)",
-      }}
-    >
-      {/* ── HEADER ── */}
+    <>
+      <style>{`
+        @keyframes modalPopIn {
+          from {
+            opacity: 0;
+            transform: translateY(16px) scale(0.96);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @keyframes liveDotPulse {
+          0% {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+          }
+          70% {
+            box-shadow: 0 0 0 5px rgba(16, 185, 129, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+          }
+        }
+
+        .lc-live-dot {
+          animation: liveDotPulse 2.2s ease-in-out infinite;
+        }
+      `}</style>
+
       <div
-        className="px-3.5 py-3 flex items-center justify-between flex-shrink-0 text-white select-none"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="chatbot-header-title"
+        className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 w-full sm:w-[380px] h-[100dvh] sm:h-[560px] max-h-[100dvh] sm:max-h-[560px] z-[999] flex flex-col rounded-none sm:rounded-2xl shadow-2xl overflow-hidden"
         style={{
-          backgroundColor: "var(--lp-navy, #0A1628)",
-          borderBottom: "1px solid var(--lp-accent, #D4AF37)",
+          backgroundColor: "var(--lp-bg, #ffffff)",
+          border: "1px solid var(--lp-border, #E6D9B2)",
+          animation: "modalPopIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+          transformOrigin: "bottom right",
         }}
       >
-        {/* Left: Avatar + Title */}
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{
-              backgroundColor: "rgba(212, 175, 55, 0.18)",
-              border: "1px solid var(--lp-accent, #D4AF37)",
-            }}
-          >
-            <Bot className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h3
-                id="chatbot-header-title"
-                className="text-xs sm:text-sm font-bold tracking-tight text-white truncate"
-              >
-                Lilycrest AI Receptionist
-              </h3>
+        {/* ── HEADER ── */}
+        <div
+          className="px-3.5 py-3 flex items-center justify-between flex-shrink-0 text-white select-none"
+          style={{
+            backgroundColor: "var(--lp-navy, #0A1628)",
+            borderBottom: "1px solid var(--lp-accent, #D4AF37)",
+          }}
+        >
+          {/* Left: Avatar + Title */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{
+                backgroundColor: "rgba(212, 175, 55, 0.18)",
+                border: "1px solid var(--lp-accent, #D4AF37)",
+              }}
+            >
+              <Bot className="w-4 h-4 text-amber-400" />
             </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
-              <span className="truncate">Online • 24/7 Digital Assistant</span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h3
+                  id="chatbot-header-title"
+                  className="text-xs sm:text-sm font-bold tracking-tight text-white truncate"
+                >
+                  Lilycrest AI Receptionist
+                </h3>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 lc-live-dot flex-shrink-0" />
+                <span className="truncate">Online • 24/7 Digital Assistant</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Right: Actions (Branch Toggle, Clear, Close) */}
-        <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Right: Actions (Branch Toggle, Clear, Close) */}
+          <div className="flex items-center gap-1 flex-shrink-0">
           {/* Branch Selector Dropdown */}
           <div className="relative" ref={branchMenuRef}>
             <button
@@ -481,6 +513,7 @@ export function PublicChatbotModal({ isOpen, onClose, initialPrompt = "" }) {
         </div>
       )}
     </div>
+    </>
   );
 }
 

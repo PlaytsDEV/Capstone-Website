@@ -246,7 +246,7 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       queryClient.setQueryData(["users", "currentUser"], resolvedUser);
       warmTenantRouteData(queryClient, resolvedUser);
-      await warmAdminRouteData(queryClient, resolvedUser);
+      warmAdminRouteData(queryClient, resolvedUser);
       prewarmIdleWorkspaceRoutes(queryClient, resolvedUser);
 
     } catch (error) {

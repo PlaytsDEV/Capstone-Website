@@ -49,8 +49,8 @@ export function AdminRoutes() {
     <Route
       path="/admin"
       element={
-        <ProtectedRoute requiredRole="branch_admin" loadingFallback={<GlobalLoading />}>
-          <RouteShell name="AdminLayout" fallback={<GlobalLoading />}>
+        <ProtectedRoute requiredRole="branch_admin" loadingFallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="AdminLayout" fallback={<AdminLayoutSkeleton />}>
             <AdminLayout />
           </RouteShell>
         </ProtectedRoute>
@@ -60,7 +60,7 @@ export function AdminRoutes() {
       <Route
         path="dashboard"
         element={
-          <RouteShell name="AdminDashboard" fallback={<GlobalLoading />}>
+          <RouteShell name="AdminDashboard" fallback={<AdminDashboardSkeleton />}>
             <AdminDashboardPage />
           </RouteShell>
         }

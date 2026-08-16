@@ -43,7 +43,7 @@ export function PublicChatbotLauncher() {
             transform: translateY(0px);
           }
           50% {
-            transform: translateY(-2px);
+            transform: translateY(-2.5px);
           }
         }
 
@@ -52,39 +52,105 @@ export function PublicChatbotLauncher() {
             transform: rotate(0deg);
           }
           86% {
-            transform: rotate(-6deg);
+            transform: rotate(-7deg) scale(1.03);
           }
           90% {
-            transform: rotate(6deg);
+            transform: rotate(7deg) scale(1.03);
           }
           94% {
-            transform: rotate(-3deg);
+            transform: rotate(-3deg) scale(1.01);
           }
         }
 
-        @keyframes botRingPulse {
-          0% {
-            box-shadow: 0 4px 14px rgba(10, 22, 40, 0.25), 0 0 0 0 rgba(212, 175, 55, 0.45);
+        @keyframes botBlink {
+          0%, 92%, 100% {
+            transform: scaleY(1);
           }
-          60% {
-            box-shadow: 0 6px 18px rgba(10, 22, 40, 0.30), 0 0 0 6px rgba(212, 175, 55, 0);
+          95% {
+            transform: scaleY(0.15);
+          }
+        }
+
+        @keyframes botLevitate {
+          0%, 100% {
+            transform: translateY(0px);
+            box-shadow: 0 8px 18px rgba(10, 22, 40, 0.24), 0 0 0 0 rgba(212, 175, 55, 0.50);
+          }
+          50% {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 32px rgba(10, 22, 40, 0.32), 0 0 0 8px rgba(212, 175, 55, 0);
+          }
+        }
+
+        @keyframes pillFloatSync {
+          0%, 100% {
+            transform: translateY(0px);
+            box-shadow: 0 4px 14px rgba(10, 22, 40, 0.20);
+          }
+          50% {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 24px rgba(10, 22, 40, 0.26);
+          }
+        }
+
+        @keyframes radarPing {
+          0% {
+            transform: scale(0.9);
+            box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.75);
+          }
+          70% {
+            transform: scale(1.08);
+            box-shadow: 0 0 0 7px rgba(212, 175, 55, 0);
           }
           100% {
-            box-shadow: 0 4px 14px rgba(10, 22, 40, 0.25), 0 0 0 0 rgba(212, 175, 55, 0);
+            transform: scale(0.9);
+            box-shadow: 0 0 0 0 rgba(212, 175, 55, 0);
+          }
+        }
+
+        @keyframes pillSlideIn {
+          from {
+            opacity: 0;
+            transform: translateX(12px) scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0) scale(1);
           }
         }
 
         .lc-bot-btn {
-          animation: botRingPulse 3.8s ease-in-out infinite;
+          animation: botLevitate 3.2s ease-in-out infinite;
+          will-change: transform, box-shadow;
         }
 
         .lc-bot-btn:hover {
-          animation: none;
+          animation-play-state: paused;
+          transform: translateY(-10px) scale(1.06) !important;
+          box-shadow: 0 22px 38px rgba(10, 22, 40, 0.38), 0 0 0 4px rgba(212, 175, 55, 0.40) !important;
+        }
+
+        .lc-bot-btn:active {
+          transform: translateY(-2px) scale(0.95) !important;
+          box-shadow: 0 4px 10px rgba(10, 22, 40, 0.20) !important;
         }
 
         .lc-bot-icon-idle {
-          animation: botFloat 2.6s ease-in-out infinite, botGentleTilt 6.5s ease-in-out infinite;
+          animation: botFloat 2.6s ease-in-out infinite, botGentleTilt 6s ease-in-out infinite;
           transform-origin: center bottom;
+        }
+
+        .lc-bot-icon-idle svg {
+          animation: botBlink 4s ease-in-out infinite;
+          transform-origin: center center;
+        }
+
+        .lc-radar-badge {
+          animation: radarPing 2s ease-in-out infinite;
+        }
+
+        .lc-pill-animated {
+          animation: pillSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards, pillFloatSync 3.2s ease-in-out 0.35s infinite;
         }
       `}</style>
 
@@ -99,15 +165,14 @@ export function PublicChatbotLauncher() {
             type="button"
             onClick={handleToggle}
             aria-label="Open AI Assistant prompt"
-            className="hidden sm:flex items-center gap-2 py-2 px-3.5 rounded-full text-xs font-semibold shadow-xl transition-all duration-200 cursor-pointer whitespace-nowrap hover:scale-105"
+            className="hidden sm:flex items-center gap-2 py-2 px-3.5 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer whitespace-nowrap lc-pill-animated hover:scale-105 active:scale-95"
             style={{
               backgroundColor: "var(--lp-navy, #0A1628)",
               border: "1px solid var(--lp-accent, #D4AF37)",
               color: "#ffffff",
-              boxShadow: "0 4px 14px rgba(10, 22, 40, 0.20)",
             }}
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+            <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 animate-spin" style={{ animationDuration: "6s" }} />
             <span>Need Help? Ask Lilycrest AI</span>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-0.5 flex-shrink-0" />
           </button>
@@ -126,21 +191,17 @@ export function PublicChatbotLauncher() {
             border: "2px solid var(--lp-accent, #D4AF37)",
             color: "#ffffff",
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = "scale(1.06)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = "scale(1)";
-          }}
         >
           {/* Animated Icon Transition */}
           {isOpen ? (
-            <X className="w-6 h-6 text-amber-400 transition-transform duration-200" />
+            <X className="w-6 h-6 text-amber-400 transition-transform duration-200 rotate-0 hover:rotate-90" />
           ) : (
             <div className="relative">
-              <Bot className="w-6 h-6 text-amber-400 lc-bot-icon-idle group-hover:scale-110 transition-transform duration-200" />
+              <div className="lc-bot-icon-idle">
+                <Bot className="w-6 h-6 text-amber-400 group-hover:scale-110 transition-transform duration-200" />
+              </div>
               {hasUnread && (
-                <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 border-2 border-[#0A1628]" />
+                <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 border-2 border-[#0A1628] lc-radar-badge" />
               )}
             </div>
           )}

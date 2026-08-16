@@ -104,6 +104,13 @@ const ProtectedRoute = ({ children, requiredRole, requireAuth = true, loadingFal
  }
  }
 
+ // Strict session lock: Authenticated admin or owner accounts cannot browse applicant/tenant routes
+ if (isAuthenticated && (isAdmin() || isOwner())) {
+   if (requiredRole === USER_ROLES.APPLICANT || requiredRole === USER_ROLES.TENANT) {
+     return <Navigate to="/admin/dashboard" replace />;
+   }
+ }
+
  return children;
 };
 

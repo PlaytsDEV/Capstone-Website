@@ -216,19 +216,27 @@ function SignIn() {
  const hasAdminClaims = (tokenResult) =>
  Boolean(tokenResult?.claims?.branch_admin || tokenResult?.claims?.owner);
 
- const navigateAfterAuth = (user, fallbackName = "there", options = {}) => {
- const { suppressSuccessToast = false } = options;
- const successMessage = buildAuthSuccessMessage(user, fallbackName);
+  const navigateAfterAuth = (user, fallbackName = "there", options = {}) => {
+    const { suppressSuccessToast = false } = options;
+    const successMessage = buildAuthSuccessMessage(user, fallbackName);
 
- if (!suppressSuccessToast) {
- showNotification(successMessage, "success", AUTH_TOAST_DURATION);
- }
- appNavigate(
- postAuthContinuation !== "/signin"
- ? postAuthContinuation
- : getAuthenticatedUserDestination(user),
- );
- };
+    if (!suppressSuccessToast) {
+      showNotification(successMessage, "success", AUTH_TOAST_DURATION);
+    }
+
+    const isStaffOrOwner =
+      user?.role === "branch_admin" ||
+      user?.role === "owner" ||
+      user?.role === "super_admin";
+
+    appNavigate(
+      isStaffOrOwner
+        ? "/admin/dashboard"
+        : postAuthContinuation !== "/signin"
+          ? postAuthContinuation
+          : getAuthenticatedUserDestination(user),
+    );
+  };
 
  const validateForm = () => {
  setTouched({ email: true, password: true });

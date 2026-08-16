@@ -36,6 +36,19 @@ const QUICK_PROMPTS = [
 export function ChatQuickPrompts({ onSelectPrompt, disabled = false }) {
   return (
     <div className="py-2 px-1">
+      <style>{`
+        @keyframes promptCardIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px) scale(0.96);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+      `}</style>
+
       <div className="flex items-center gap-1.5 mb-2 px-1">
         <Sparkles className="w-3.5 h-3.5" style={{ color: "var(--lp-accent, #D4AF37)" }} />
         <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--lp-text-muted, #64748B)" }}>
@@ -44,7 +57,7 @@ export function ChatQuickPrompts({ onSelectPrompt, disabled = false }) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-        {QUICK_PROMPTS.map((item) => {
+        {QUICK_PROMPTS.map((item, idx) => {
           const Icon = item.icon;
           return (
             <button
@@ -52,29 +65,33 @@ export function ChatQuickPrompts({ onSelectPrompt, disabled = false }) {
               type="button"
               disabled={disabled}
               onClick={() => onSelectPrompt(item.prompt)}
-              className="flex items-start gap-2 p-2.5 rounded-xl text-left text-xs font-medium transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group focus:outline-none"
+              className="flex items-start gap-2 p-2.5 rounded-xl text-left text-xs font-medium transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group focus:outline-none active:scale-95 shadow-xs"
               style={{
                 backgroundColor: "var(--lp-bg-card, #ffffff)",
                 border: "1px solid var(--lp-border, #E6D9B2)",
                 color: "var(--lp-text, #162f53)",
+                animation: `promptCardIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 60}ms forwards`,
+                opacity: 0,
               }}
               onMouseEnter={(e) => {
                 if (!disabled) {
                   e.currentTarget.style.borderColor = "var(--lp-accent, #D4AF37)";
                   e.currentTarget.style.backgroundColor = "var(--lp-icon-bg, rgba(212, 175, 55, 0.08))";
-                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.transform = "translateY(-2px) scale(1.01)";
+                  e.currentTarget.style.boxShadow = "0 4px 10px rgba(10, 22, 40, 0.08)";
                 }
               }}
               onMouseLeave={(e) => {
                 if (!disabled) {
                   e.currentTarget.style.borderColor = "var(--lp-border, #E6D9B2)";
                   e.currentTarget.style.backgroundColor = "var(--lp-bg-card, #ffffff)";
-                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.transform = "translateY(0) scale(1)";
+                  e.currentTarget.style.boxShadow = "";
                 }
               }}
             >
               <div
-                className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5"
+                className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform duration-200 group-hover:scale-115 group-hover:rotate-6"
                 style={{
                   backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.12))",
                   color: "var(--lp-accent, #D4AF37)",
@@ -82,7 +99,7 @@ export function ChatQuickPrompts({ onSelectPrompt, disabled = false }) {
               >
                 <Icon className="w-3 h-3" />
               </div>
-              <span className="leading-snug flex-1 group-hover:text-amber-700 dark:group-hover:text-amber-300">
+              <span className="leading-snug flex-1 group-hover:text-amber-700 dark:group-hover:text-amber-300 transition-colors duration-150">
                 {item.label}
               </span>
             </button>
