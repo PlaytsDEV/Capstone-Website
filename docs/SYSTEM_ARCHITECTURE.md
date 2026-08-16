@@ -56,7 +56,7 @@ CapstoneSystem/
         └── src/                        # React source code
             ├── assets/                 # SVGs and static visual elements
             ├── features/               # Domain-driven feature modules
-            │   ├── admin/              # Branch Admin & Super Admin pages & components
+            │   ├── admin/              # Branch Admin & Owner pages & components
             │   ├── public/             # Guest room browsing & landing pages
             │   └── tenant/             # Tenant portal & self-service pages
             ├── index.css               # Core Design System, HSL color tokens & utility classes

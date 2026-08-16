@@ -60,7 +60,7 @@ The backend enforces HTTP security headers via `helmet()`:
 ## 3. Email, OTP & SMTP Deployment Analysis
 
 ### Password Setup & Email Verification
-When a Branch Admin or Super Admin creates a new user account:
+When a Branch Admin or Owner creates a new user account:
 1. The backend generates a secure, time-limited setup token.
 2. An automated setup email is dispatched via SMTP (Nodemailer service).
 3. The recipient opens the secure link to define their initial password.

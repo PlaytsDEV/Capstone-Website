@@ -25,7 +25,7 @@ Comprehensive reference for the Lilycrest Dormitory Management System RESTful AP
 | `GET` | `/api/users` | Admin (`requirePermission('manage_users')`) | List users with branch and role filters. |
 | `PATCH` | `/api/users/:userId/suspend` | Admin | Suspend a user account. |
 | `PATCH` | `/api/users/:userId/reactivate` | Admin | Reactivate a suspended user account. |
-| `PATCH` | `/api/users/:userId/permissions` | Super Admin | Update granular admin permission keys. |
+| `PATCH` | `/api/users/:userId/permissions` | Owner | Update granular admin permission keys. |
 
 ---
 

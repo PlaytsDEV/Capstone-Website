@@ -8,7 +8,7 @@
 ## 2. Frontend & UI Guidelines (React / Vite)
 - **Minimalist & High-Contrast UX**: Prioritize clean layouts, intuitive workflows, modern typography, HSL color palettes, subtle glassmorphism, and micro-animations.
 - **Avoid Generic AI Tropes**: Strictly avoid cliché, formulaic AI/Claude-generated design aesthetics (e.g., repetitive indigo/purple gradient hero cards, cookie-cutter floating pill templates, and generic AI component layouts). Enforce bespoke, brand-tailored visual character, custom HSL color harmonies, and distinct structural UX specific to Lilycrest DMS.
-- **Visual Unification**: Maintain consistent card layouts, status badges, occupancy indicators, and ToggleSwitches across all admin, super-admin, and public pages.
+- **Visual Unification**: Maintain consistent card layouts, status badges, occupancy indicators, and ToggleSwitches across all admin, owner, and public pages.
 - **Resilience & Skeleton Loading**: Wrap single-page routes in per-route error boundaries and use skeleton placeholders (`*Skeleton.jsx`) during asynchronous Suspense fallbacks to eliminate layout shift.
 - **Dynamic SEO & Accessibility**: Maintain descriptive page titles, semantic HTML5, explicit form labels, and clear interactive targets.
 
@@ -17,7 +17,7 @@
 - **Mobile Compatibility**: Ensure schema or authentication updates maintain full backward compatibility with mobile API endpoints (`/api/mobile/...`).
 - **Atomic Operations**: Always use atomic MongoDB operations (`$inc`, `$set`) or transactions for room occupancy, electricity billing, and balance calculations to prevent race conditions.
 - **Billing Lifecycle & Prerequisites**: Respect tenant lifecycle conditions (e.g., tenants must have a `checked-in` status before generating monthly billing records).
-- **Permissions & Security**: Enforce role-based authorization and granular permission keys (`requirePermission`) on all backend endpoints; maintain Super Admin routing locks.
+- **Permissions & Security**: Enforce role-based authorization and granular permission keys (`requirePermission`) on all backend endpoints; maintain Owner routing locks.
 
 ## 4. Development Workflow & System Controls
 - **CI/CD & Git Pre-Commit Hooks**: Ensure pre-commit/pre-push hooks pass (linting, build checks, contract validation) before pushing remote commits.

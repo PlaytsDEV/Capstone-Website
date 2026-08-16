@@ -20,7 +20,7 @@ Use this workflow to perform system-wide code health, API contract verification,
 
 ### 3. Visual Unification & Theme Audit
 - Check that UI components reference custom HSL tokens from `index.css` and `ThemeContext`.
-- Ensure buttons, badges, status indicators, dynamic cards, and ToggleSwitches maintain uniform visual hierarchy across Super Admin, Admin, and Tenant dashboards.
+- Ensure buttons, badges, status indicators, dynamic cards, and ToggleSwitches maintain uniform visual hierarchy across Owner, Admin, and Tenant dashboards.
 - Eliminate layout jumps and smooth out light/dark mode color transitions.
 
 ### 4. Build & Test Verification

@@ -12,7 +12,7 @@ A web-based management platform for a multi-branch dormitory (Gil Puyat and Guad
 | **Applicant** | Self-service portal | Create account, submit 5-step room reservation, upload IDs/payment proofs, track application status. |
 | **Tenant** | Self-service portal | View current contract, pay monthly bills via PayMongo or payment proof upload, submit maintenance requests, view branch announcements. |
 | **Admin** | Assigned branch | Manage branch rooms, review/approve reservations, record utility readings, generate bills, resolve maintenance tickets, publish announcements. |
-| **Super Admin** | All branches | System owner access across both branches, manage admin accounts, override decisions, view cross-branch financial reports and audit logs. |
+| **Owner** | All branches | System owner access across both branches, manage admin accounts, override decisions, view cross-branch financial reports and audit logs. |
 
 ---
 
@@ -22,7 +22,7 @@ A web-based management platform for a multi-branch dormitory (Gil Puyat and Guad
 - **Registration & Login**: Email/password authentication, branch preference, password reset via email/username.
 - **Profile Self-Service**: Edit phone number, username, profile photo preview & upload.
 - **Branch Admin Management**: View branch users, filter by role (`applicant`, `tenant`), create applicant accounts with password setup emails, edit user metadata, deactivate accounts.
-- **Super Admin Governance**: Cross-branch user table, branch reassignment, role elevation/demotion, user statistics (total, role distribution, active/inactive counts).
+- **Owner Governance**: Cross-branch user table, branch reassignment, role elevation/demotion, user statistics (total, role distribution, active/inactive counts).
 - **Session & Security Guard**: Role-based access control (RBAC), automatic session expiration warnings, logout confirmation prompts.
 
 ### Module 2: Reservation, Tenant & Contract Management
@@ -54,5 +54,5 @@ A web-based management platform for a multi-branch dormitory (Gil Puyat and Guad
 - **Announcements Engine**: Categorized posts (Reminder, Maintenance, Policy, Event, Alert, General), targeted visibility (Public, Tenants, Staff), mandatory acknowledgment tracking, pinned posts feed.
 
 ### Module 6: Reports, Analytics & Executive Audit Trail
-- **Admin & Super Admin Dashboards**: Summary metrics cards, 6-month reservation trends, expiring contracts alerts, overdue bills alerts, side-by-side branch comparisons.
+- **Admin & Owner Dashboards**: Summary metrics cards, 6-month reservation trends, expiring contracts alerts, overdue bills alerts, side-by-side branch comparisons.
 - **Executive Audit Trail**: Chronological activity logs (logins, data mutations, deletions, errors), color-coded severity levels (Info, Warning, High, Critical), failed login tracking, CSV export, retention cleanup.

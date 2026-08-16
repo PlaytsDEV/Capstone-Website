@@ -26,7 +26,7 @@ src/
 │   ├── public/           # Public pages (landing, signup, legal, verify email)
 │   ├── tenant/           # Applicant & tenant features
 │   ├── admin/            # Branch admin interface
-│   ├── super-admin/      # System admin pages (nested in admin layout)
+│   ├── owner/            # Owner pages (nested in admin layout)
 │   └── shared/           # Cross-feature shared components
 │
 ├── shared/               # Shared across all roles
@@ -110,7 +110,7 @@ Outputs to `build/` directory.
 - Google OAuth integration
 - Email verification with dedicated verify page
 - Password reset
-- Unified sign-in for all roles (tenants, admins, super admins)
+- Unified sign-in for all roles (tenants, admins, owners)
 
 ### Public Features
 
@@ -214,7 +214,7 @@ All API calls use modular API clients in `shared/api/` with automatic:
 - `/admin/users` — User management
 - `/admin/audit-logs` — Audit trail
 
-### Protected Routes (Super Admin — nested under `/admin`)
+### Protected Routes (Owner — nested under `/admin`)
 
 - `/admin/branches` — Branch management
 - `/admin/roles` — Role & permissions
