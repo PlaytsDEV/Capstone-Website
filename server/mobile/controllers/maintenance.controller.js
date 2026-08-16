@@ -51,13 +51,98 @@ function ensureClientRequestIdIndex(db) {
 }
 
 const ACTIVE_RESERVATION_STATUSES = ['moveIn', 'active', 'completed', 'confirmed'];
-const VALID_URGENCIES = ['low', 'normal', 'high'];
-const VALID_STATUSES = ['pending', 'viewed', 'in_progress', 'resolved', 'completed', 'rejected', 'cancelled'];
-// Matches the current mobile frontend's fixed request-type list
-// (app/(tabs)/services.jsx REQUEST_TYPES) and the currently-live standalone
-// mobile backend's VALID_REQUEST_TYPES. Phase 4.5 cutover audit found this
-// canonical controller previously accepted any string as a category.
-const VALID_REQUEST_TYPES = ['maintenance', 'plumbing', 'electrical', 'aircon', 'cleaning', 'pest', 'furniture', 'other'];
+const VALID_URGENCIES = ['low', 'normal', 'high', 'urgent', 'emergency'];
+const VALID_STATUSES = [
+  'pending',
+  'pending_review',
+  'provider_assigned',
+  'scheduled',
+  'viewed',
+  'reviewed',
+  'in_progress',
+  'waiting_tenant',
+  'resolved',
+  'completed',
+  'reopened',
+  'rejected',
+  'cancelled',
+  'closed',
+];
+
+// Matches the canonical maintenance request types while supporting legacy mobile categories
+const VALID_REQUEST_TYPES = [
+  'maintenance',
+  'plumbing',
+  'electrical',
+  'aircon',
+  'elevator',
+  'furniture',
+  'internet',
+  'cleaning',
+  'pest',
+  'other',
+];
+
+const LEGACY_TYPE_MAP = Object.freeze({
+  hardware: 'maintenance',
+  appliance: 'maintenance',
+  air_conditioning: 'aircon',
+  'air-conditioning': 'aircon',
+  furniture_fixture: 'furniture',
+  'furniture/fixture': 'furniture',
+  internet_network: 'internet',
+  'internet/network': 'internet',
+  network: 'internet',
+  pest_control: 'pest',
+  'pest control': 'pest',
+});
+
+const LEGACY_URGENCY_MAP = Object.freeze({
+  medium: 'normal',
+});
+
+const TYPE_LABELS = Object.freeze({
+  maintenance: 'Maintenance',
+  plumbing: 'Plumbing',
+  electrical: 'Electrical',
+  aircon: 'Air Conditioning',
+  elevator: 'Elevator',
+  furniture: 'Furniture / Fixture',
+  internet: 'Internet / Network',
+  cleaning: 'Cleaning',
+  pest: 'Pest Control',
+  other: 'Other',
+});
+
+function normalizeMaintenanceType(value) {
+  if (value == null) return '';
+  const normalized = String(value).trim().toLowerCase();
+  return LEGACY_TYPE_MAP[normalized] || normalized;
+}
+
+function normalizeMaintenanceUrgency(value) {
+  if (value == null) return 'normal';
+  const normalized = String(value).trim().toLowerCase();
+  return LEGACY_URGENCY_MAP[normalized] || (VALID_URGENCIES.includes(normalized) ? normalized : 'normal');
+}
+
+function formatRequestTypeLabel(type) {
+  const normalized = normalizeMaintenanceType(type);
+  return TYPE_LABELS[normalized] || (type ? String(type).charAt(0).toUpperCase() + String(type).slice(1) : 'Maintenance');
+}
+
+function buildLegacyDescription(title, description) {
+  const trimmedTitle = typeof title === 'string' ? title.trim() : '';
+  const trimmedDescription = typeof description === 'string' ? description.trim() : '';
+
+  if (!trimmedTitle) return trimmedDescription;
+  if (!trimmedDescription) return trimmedTitle;
+  if (trimmedDescription.toLowerCase().startsWith(trimmedTitle.toLowerCase())) {
+    return trimmedDescription;
+  }
+  return `${trimmedTitle}\n\n${trimmedDescription}`;
+}
+
 const DESCRIPTION_MIN = 10;
 const DESCRIPTION_MAX = 1000;
 const MAX_TENANT_ATTACHMENTS = 4;
@@ -74,8 +159,10 @@ const INTERNAL_THREAD_TYPES = new Set([
   'status_change',
   'status_changed',
   'status_visible',
+  'status_update',
   'internal_note',
   'internal_log',
+  'admin_log',
   'workflow_action',
   'viewed',
   'processing',
@@ -84,6 +171,8 @@ const INTERNAL_THREAD_TYPES = new Set([
   'tenant_cancelled',
   'tenant_reopened',
   'tenant_confirmed_resolved',
+  'audit',
+  'history',
 ]);
 
 function attachmentText(value) {
@@ -182,12 +271,20 @@ function inferAttachmentType(entry, name, uri) {
 }
 
 function normalizeAttachmentEntry(entry, index = 0) {
+  if (!entry) return null;
+  if (typeof entry === 'object') {
+    if (entry.isRemoved === true || entry.visibility === 'admin_only') {
+      return null;
+    }
+  }
+
   const uri = getAttachmentUri(entry);
   if (!uri || !isRemoteUri(uri)) return null;
 
   const name = getAttachmentName(entry, uri, index);
   const type = inferAttachmentType(entry, name, uri);
   const normalized = {
+    id: (typeof entry === 'object' && entry ? entry.id || entry.attachmentId || entry.storagePath : null) || uri || `att_${index}`,
     name,
     uri,
     url: uri,
@@ -449,15 +546,105 @@ function stripTenantRequestFields(request) {
   const thread = buildTenantThread(clean);
   const latestUpdate = latestTenantVisibleUpdate(thread);
 
+  // 1. Strip internal notes, work logs, logs, and deduplication hashes
   delete clean.notes;
   delete clean.resolution_note;
+  delete clean.resolutionNote;
   delete clean.completionNote;
   delete clean.work_log;
   delete clean.workLog;
   delete clean.statusHistory;
   delete clean.internalLogs;
+  delete clean.deduplicationHash;
 
+  // 2. Strip vendor/provider private contacts, internal IDs, and internal assignees
+  delete clean.assignedProviderContact;
+  delete clean.assignedProviderNotes;
+  delete clean.assignedProviderSource;
+  delete clean.assignedProviderId;
+  delete clean.assigned_to;
+  delete clean.assignedTo;
+  delete clean.assignedBy;
+  delete clean.assignedByName;
+  delete clean.assignedByRole;
+
+  // 3. Provider details sanitization
+  const tenantVisibleLabel =
+    clean.providerDetails?.tenantVisibleLabel ||
+    (clean.providerDetails?.providerType === 'IN_HOUSE'
+      ? 'LilyCrest Facilities Team'
+      : clean.providerDetails?.providerType === 'EXTERNAL'
+        ? (clean.assignedProviderCategory
+            ? `Authorized ${clean.assignedProviderCategory} Specialist`
+            : 'Authorized External Specialist')
+        : (clean.assigned_to || clean.assignedProviderName
+            ? 'LilyCrest Facilities Team'
+            : null));
+
+  clean.providerDetails = {
+    providerType: clean.providerDetails?.providerType || null,
+    tenantVisibleLabel,
+  };
+  clean.provider_details = clean.providerDetails;
+  clean.tenantVisibleProviderLabel = tenantVisibleLabel;
+
+  // 4. Completion report sanitization: hide if draft or not finalized
+  if (clean.completionReport) {
+    if (clean.completionReport.isDraft || (!clean.completionReport.summary && !clean.completionReport.reportId)) {
+      clean.completionReport = null;
+      clean.completion_report = null;
+    } else {
+      const sanitizedReport = {
+        reportId: clean.completionReport.reportId || null,
+        isDraft: false,
+        summary: clean.completionReport.summary || null,
+        workDone: clean.completionReport.workDone || null,
+        partsReplaced: clean.completionReport.partsReplaced || null,
+        preventiveAdvice: clean.completionReport.preventiveAdvice || null,
+        finalizedByName: clean.completionReport.finalizedByName || 'LilyCrest Management',
+        finalizedAt: clean.completionReport.finalizedAt || null,
+        reportUrl: clean.completionReport.reportUrl || null,
+      };
+      clean.completionReport = sanitizedReport;
+      clean.completion_report = sanitizedReport;
+    }
+  } else {
+    clean.completionReport = null;
+    clean.completion_report = null;
+  }
+
+  // 5. Cost breakdown: hide private internal costs unless tenant is chargeable
+  const isChargeable = Boolean(clean.costBreakdown?.isTenantChargeable);
+  if (!isChargeable) {
+    clean.estimatedCost = 0;
+    clean.actualCost = 0;
+    clean.costBreakdown = {
+      laborCost: 0,
+      materialsCost: 0,
+      totalCost: 0,
+      isTenantChargeable: false,
+      chargeReason: null,
+      billId: null,
+    };
+  } else {
+    clean.estimatedCost = Number(clean.estimatedCost || clean.costBreakdown?.totalCost || 0);
+    clean.actualCost = Number(clean.actualCost || clean.costBreakdown?.totalCost || 0);
+    clean.costBreakdown = {
+      laborCost: Number(clean.costBreakdown?.laborCost || 0),
+      materialsCost: Number(clean.costBreakdown?.materialsCost || 0),
+      totalCost: Number(clean.costBreakdown?.totalCost || clean.actualCost || 0),
+      isTenantChargeable: true,
+      chargeReason: clean.costBreakdown?.chargeReason || null,
+      billId: clean.costBreakdown?.billId ? String(clean.costBreakdown.billId) : null,
+    };
+  }
+
+  // 6. Filter attachments for tenant visibility (strip admin_only & removed)
   clean.attachments = normalizeAttachmentList(clean.attachments);
+  clean.photos = clean.attachments;
+  clean.images = clean.attachments;
+
+  // 7. Conversation thread
   clean.conversation = thread;
   clean.updates = thread;
   clean.thread = thread;
@@ -476,6 +663,16 @@ function stripTenantRequestFields(request) {
         created_at: latestUpdate.created_at,
       }
     : null;
+
+  // 8. Aliases and canonical fields
+  clean.id = clean.request_id || String(clean._id || '');
+  clean.category = clean.request_type || 'other';
+  clean.title = clean.title || `${formatRequestTypeLabel(clean.request_type)} Request`;
+  clean.ticketNumber = clean.ticketNumber || `MNT-${new Date(clean.created_at || Date.now()).getFullYear()}-${String(clean.request_id || clean.id || '0000').slice(-4).toUpperCase()}`;
+  clean.ticket_number = clean.ticketNumber;
+  clean.reopenCount = typeof clean.reopenCount === 'number' ? clean.reopenCount : (Array.isArray(clean.reopen_history) ? clean.reopen_history.length : 0);
+  clean.reopen_count = clean.reopenCount;
+  clean.tenant_confirmed_resolved = Boolean(clean.tenant_confirmed_resolved || clean.resolutionConfirmation?.confirmedAt);
 
   return clean;
 }
@@ -536,6 +733,11 @@ async function resolveTenantContext(db, user) {
     branch: sanitizeBranch(user?.branch || user?.branchId),
     reservationId: null,
     roomId: null,
+    occupancyContext: {
+      unitNumber: null,
+      bedNumber: null,
+      floor: null,
+    },
   };
 
   const mongoId = asObjectId(user?._id);
@@ -549,7 +751,7 @@ async function resolveTenantContext(db, user) {
     },
     {
       sort: { createdAt: -1 },
-      projection: { _id: 1, roomId: 1, branch: 1 },
+      projection: { _id: 1, roomId: 1, branch: 1, bedNumber: 1, bed: 1, roomNumber: 1 },
     }
   );
 
@@ -557,17 +759,26 @@ async function resolveTenantContext(db, user) {
     context.branch = sanitizeBranch(reservation.branch) || context.branch;
     context.reservationId = reservation._id || null;
     context.roomId = asObjectId(reservation.roomId) || reservation.roomId || null;
+    if (reservation.bedNumber || reservation.bed) {
+      context.occupancyContext.bedNumber = reservation.bedNumber || reservation.bed || null;
+    }
+    if (reservation.roomNumber) {
+      context.occupancyContext.unitNumber = reservation.roomNumber;
+    }
   }
 
   if (!context.roomId || !context.branch) {
     const bedHistory = await db.collection('bedhistories').findOne(
       { tenantId: mongoId, status: 'active' },
-      { sort: { moveInDate: -1 }, projection: { roomId: 1, branch: 1 } }
+      { sort: { moveInDate: -1 }, projection: { roomId: 1, branch: 1, bedNumber: 1 } }
     );
 
     if (bedHistory) {
       context.branch = sanitizeBranch(bedHistory.branch) || context.branch;
       context.roomId = context.roomId || asObjectId(bedHistory.roomId) || bedHistory.roomId || null;
+      if (bedHistory.bedNumber && !context.occupancyContext.bedNumber) {
+        context.occupancyContext.bedNumber = bedHistory.bedNumber;
+      }
     }
   }
 
@@ -583,17 +794,25 @@ async function resolveTenantContext(db, user) {
     }
   }
 
-  if (!context.branch && context.roomId) {
+  if (context.roomId) {
     const roomObjectId = asObjectId(context.roomId);
     const roomFilter = roomObjectId
       ? { _id: roomObjectId }
       : { room_id: String(context.roomId) };
 
     const room = await db.collection('rooms').findOne(roomFilter, {
-      projection: { branch: 1, branchId: 1 },
+      projection: { branch: 1, branchId: 1, roomNumber: 1, name: 1, floor: 1 },
     });
 
-    context.branch = sanitizeBranch(room?.branch || room?.branchId) || context.branch;
+    if (room) {
+      context.branch = sanitizeBranch(room.branch || room.branchId) || context.branch;
+      if (!context.occupancyContext.unitNumber) {
+        context.occupancyContext.unitNumber = room.roomNumber || room.name || null;
+      }
+      if (typeof room.floor === 'number' && context.occupancyContext.floor === null) {
+        context.occupancyContext.floor = room.floor;
+      }
+    }
   }
 
   return context;
@@ -642,10 +861,17 @@ async function loadRequestsAcrossCollections(db, filter) {
 async function findRequestForUser(db, requestId, userId) {
   for (const collectionName of [PRIMARY_COLLECTION, LEGACY_COLLECTION]) {
     try {
-      const request = await db.collection(collectionName).findOne({
+      let request = await db.collection(collectionName).findOne({
         request_id: requestId,
         user_id: userId,
       });
+
+      if (!request && ObjectId.isValid(requestId)) {
+        request = await db.collection(collectionName).findOne({
+          _id: asObjectId(requestId),
+          user_id: userId,
+        });
+      }
 
       if (request) {
         return { request, collectionName };
@@ -658,10 +884,14 @@ async function findRequestForUser(db, requestId, userId) {
   return null;
 }
 
+
 async function findRequestForAdmin(db, requestId) {
   for (const collectionName of [PRIMARY_COLLECTION, LEGACY_COLLECTION]) {
     try {
-      const request = await db.collection(collectionName).findOne({ request_id: requestId });
+      let request = await db.collection(collectionName).findOne({ request_id: requestId });
+      if (!request && ObjectId.isValid(requestId)) {
+        request = await db.collection(collectionName).findOne({ _id: asObjectId(requestId) });
+      }
       if (request) {
         return { request, collectionName };
       }
@@ -698,6 +928,7 @@ async function getMyMaintenance(req, res) {
         { user_id: userId },
         ...(mongoId ? [{ userId: mongoId }] : []),
       ],
+      isArchived: { $ne: true },
     };
 
     if (status) {
@@ -717,7 +948,7 @@ async function getMaintenanceDetail(req, res) {
   try {
     const db = getDb();
     const { requestId } = req.params;
-    const located = await findRequestForUser(db, requestId, req.user.user_id);
+    const located = await findRequestForUser(db, requestId, req.user.user_id, req.user._id);
 
     if (!located) {
       return res.status(404).json({ detail: 'Request not found' });
@@ -744,8 +975,10 @@ async function sendTenantReply(req, res) {
   try {
     const db = getDb();
     const { requestId } = req.params;
-    const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
-    const attachments = normalizeAttachmentList(req.body?.attachments);
+    const rawMessage = req.body?.message ?? req.body?.reply ?? req.body?.text ?? req.body?.body;
+    const message = typeof rawMessage === 'string' ? rawMessage.trim() : '';
+    const attachmentsRaw = req.body?.attachments ?? req.body?.photos ?? req.body?.images;
+    const attachments = normalizeAttachmentList(attachmentsRaw);
 
     if (!message && attachments.length === 0) {
       return res.status(400).json({ detail: 'Message or attachment is required' });
@@ -753,7 +986,7 @@ async function sendTenantReply(req, res) {
     if (message && message.length > 1000) {
       return res.status(400).json({ detail: 'Reply message cannot exceed 1000 characters.' });
     }
-    if (Array.isArray(req.body?.attachments) && req.body.attachments.length > MAX_TENANT_ATTACHMENTS) {
+    if (Array.isArray(attachmentsRaw) && attachmentsRaw.length > MAX_TENANT_ATTACHMENTS) {
       return res.status(400).json({ detail: `A maximum of ${MAX_TENANT_ATTACHMENTS} attachments is allowed.` });
     }
     const sizeCheck = await assertAttachmentsWithinSizeLimit(attachments);
@@ -761,18 +994,12 @@ async function sendTenantReply(req, res) {
       return res.status(400).json({ detail: sizeCheck.detail });
     }
 
-    const located = await findRequestForUser(db, requestId, req.user.user_id);
+    const located = await findRequestForUser(db, requestId, req.user.user_id, req.user._id);
     if (!located) {
       return res.status(404).json({ detail: 'Request not found' });
     }
 
-    // Blocks replies on already-closed-out requests, matching the currently-
-    // live standalone mobile backend (and the frontend's own
-    // canReplyToRequest gate in app/(tabs)/services.jsx, which already hides
-    // the reply box for resolved/completed/cancelled/rejected). Phase 4.5
-    // cutover audit found this canonical guard previously only blocked
-    // cancelled/closed/rejected, silently allowing replies to pile up on an
-    // already-resolved/completed request.
+    // Blocks replies on already-closed-out requests
     const closedStatuses = ['cancelled', 'closed', 'rejected', 'resolved', 'completed'];
     if (closedStatuses.includes(String(located.request.status || '').toLowerCase())) {
       return res.status(400).json({ detail: 'This request is closed.' });
@@ -828,11 +1055,13 @@ async function sendTenantReply(req, res) {
     }
 
     await db.collection(located.collectionName).updateOne(
-      { request_id: requestId },
+      { request_id: located.request.request_id || requestId },
       { $set: updateDoc }
     );
 
-    const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });
+    const updatedSource = await db.collection(located.collectionName).findOne({
+      request_id: located.request.request_id || requestId,
+    });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
     res.status(201).json(stripTenantRequestFields(updated));
@@ -846,28 +1075,43 @@ async function sendTenantReply(req, res) {
 async function createMaintenance(req, res) {
   try {
     const db = getDb();
-    const requestType = typeof req.body?.request_type === 'string'
-      ? req.body.request_type.trim()
-      : '';
-    const description = typeof req.body?.description === 'string'
-      ? req.body.description.trim()
-      : '';
-    const urgencyRaw = typeof req.body?.urgency === 'string'
-      ? req.body.urgency.trim().toLowerCase()
-      : 'normal';
-    const attachmentsRaw = req.body?.attachments;
 
+    // Support both canonical and legacy field names: request_type / category / type
+    const rawType = req.body?.request_type ?? req.body?.category ?? req.body?.type;
+    const requestType = normalizeMaintenanceType(rawType);
+
+    // Support both description and title + description
+    const rawTitle = req.body?.title;
+    const rawDescription = req.body?.description;
+    const description = buildLegacyDescription(rawTitle, rawDescription);
+
+    // Urgency support (including legacy 'medium' -> 'normal')
+    const urgencyRaw = req.body?.urgency;
+    const urgency = normalizeMaintenanceUrgency(urgencyRaw);
+
+    // Attachments support: attachments, photos, images
+    const attachmentsRaw = req.body?.attachments ?? req.body?.photos ?? req.body?.images;
+
+    if (!rawType && rawType !== '') {
+      return res.status(400).json({ detail: 'request_type is required' });
+    }
     if (!requestType) {
       return res.status(400).json({ detail: 'request_type is required' });
     }
     if (!VALID_REQUEST_TYPES.includes(requestType)) {
-      return res.status(400).json({ detail: 'Validation failed.', errors: { request_type: `request_type must be one of: ${VALID_REQUEST_TYPES.join(', ')}` } });
+      return res.status(400).json({
+        detail: 'Validation failed.',
+        errors: { request_type: `request_type must be one of: ${VALID_REQUEST_TYPES.join(', ')}` },
+      });
     }
     if (!description) {
       return res.status(400).json({ detail: 'description is required' });
     }
     if (description.length < DESCRIPTION_MIN || description.length > DESCRIPTION_MAX) {
-      return res.status(400).json({ detail: 'Validation failed.', errors: { description: `description must be between ${DESCRIPTION_MIN} and ${DESCRIPTION_MAX} characters.` } });
+      return res.status(400).json({
+        detail: 'Validation failed.',
+        errors: { description: `description must be between ${DESCRIPTION_MIN} and ${DESCRIPTION_MAX} characters.` },
+      });
     }
     if (Array.isArray(attachmentsRaw) && attachmentsRaw.length > MAX_TENANT_ATTACHMENTS) {
       return res.status(400).json({ detail: `A maximum of ${MAX_TENANT_ATTACHMENTS} attachments is allowed.` });
@@ -884,7 +1128,6 @@ async function createMaintenance(req, res) {
     }
     const clientRequestId = clientRequestIdRaw || null;
 
-    const urgency = VALID_URGENCIES.includes(urgencyRaw) ? urgencyRaw : 'normal';
     const attachments = normalizeAttachmentList(attachmentsRaw);
     const sizeCheck = await assertAttachmentsWithinSizeLimit(attachments);
     if (!sizeCheck.ok) {
@@ -904,10 +1147,15 @@ async function createMaintenance(req, res) {
 
     const tenantContext = await resolveTenantContext(db, req.user);
     const now = new Date();
+    const year = now.getFullYear();
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const ticketNumber = `MNT-${year}-${randomSuffix}`;
+    const requestId = `maint_${uuidv4().replace(/-/g, '').substring(0, 12)}`;
 
     const newRequest = normalizeRequestForPrimary(
       {
-        request_id: `maint_${uuidv4().replace(/-/g, '').substring(0, 12)}`,
+        request_id: requestId,
+        ticketNumber,
         user_id: req.user.user_id,
         ...(req.user._id ? { userId: asObjectId(req.user._id) || req.user._id } : {}),
         client_request_id: clientRequestId,
@@ -915,18 +1163,36 @@ async function createMaintenance(req, res) {
         description,
         urgency,
         status: 'pending',
+        isReopened: false,
         assigned_to: null,
         notes: null,
         attachments,
         reopen_note: null,
         reopen_history: [],
+        reopenCount: 0,
+        resolutionConfirmation: null,
+        occupancyContext: tenantContext.occupancyContext || {},
+        providerDetails: {
+          providerType: null,
+          tenantVisibleLabel: null,
+        },
+        schedule: {},
+        completionReport: null,
+        costBreakdown: {
+          laborCost: 0,
+          materialsCost: 0,
+          totalCost: 0,
+          isTenantChargeable: false,
+          chargeReason: null,
+          billId: null,
+        },
         statusHistory: [
           {
             event: 'submitted',
             status: 'pending',
             actor_id: req.user.user_id || null,
             actor_name: actorNameFromUser(req.user),
-            actor_role: req.user.role || null,
+            actor_role: req.user.role || 'tenant',
             note: null,
             timestamp: now,
           },
@@ -946,11 +1212,6 @@ async function createMaintenance(req, res) {
     try {
       await db.collection(PRIMARY_COLLECTION).insertOne(newRequest);
     } catch (error) {
-      // Two concurrent submissions of the same (tenant, key) can both pass
-      // the findOne check above before either insert lands — the unique
-      // partial index is what actually prevents the duplicate ticket; on
-      // that race, return the ticket the other request created instead of
-      // erroring.
       if (clientRequestId && error?.code === 11000) {
         const winner = await db.collection(PRIMARY_COLLECTION).findOne({
           user_id: req.user.user_id,
@@ -973,35 +1234,82 @@ async function createMaintenance(req, res) {
 async function updateMaintenance(req, res) {
   try {
     const { requestId } = req.params;
-    const { request_type, description, urgency } = req.body;
     const db = getDb();
 
-    const located = await findRequestForUser(db, requestId, req.user.user_id);
+    const located = await findRequestForUser(db, requestId, req.user.user_id, req.user._id);
     if (!located) {
       return res.status(404).json({ detail: 'Request not found' });
     }
-    if ((located.request.status || '').toLowerCase() !== 'pending') {
-      return res.status(400).json({ detail: 'Only pending requests can be edited' });
+    const request = located.request;
+    const EDITABLE_STATUSES = ['pending', 'pending_review', 'viewed', 'reviewed'];
+    if (!EDITABLE_STATUSES.includes(request.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Requests can only be edited before a provider has been assigned.',
+        error: 'INVALID_STATUS_FOR_EDIT',
+      });
     }
 
     const updates = { updated_at: new Date(), updatedAt: new Date() };
 
-    if (typeof request_type === 'string' && request_type.trim()) {
-      updates.request_type = request_type.trim();
+    const rawType = req.body?.request_type ?? req.body?.category ?? req.body?.type;
+    if (rawType !== undefined) {
+      const normalizedType = normalizeMaintenanceType(rawType);
+      if (!normalizedType || !VALID_REQUEST_TYPES.includes(normalizedType)) {
+        return res.status(400).json({
+          detail: 'Validation failed.',
+          errors: { request_type: `request_type must be one of: ${VALID_REQUEST_TYPES.join(', ')}` },
+        });
+      }
+      updates.request_type = normalizedType;
     }
-    if (description !== undefined) {
-      updates.description = typeof description === 'string' ? description.trim() : '';
+
+    const rawTitle = req.body?.title;
+    const rawDescription = req.body?.description;
+    if (rawDescription !== undefined || rawTitle !== undefined) {
+      const description = buildLegacyDescription(
+        rawTitle ?? (rawDescription !== undefined ? '' : located.request.title),
+        rawDescription ?? located.request.description,
+      );
+      if (description.length < DESCRIPTION_MIN || description.length > DESCRIPTION_MAX) {
+        return res.status(400).json({
+          detail: 'Validation failed.',
+          errors: { description: `description must be between ${DESCRIPTION_MIN} and ${DESCRIPTION_MAX} characters.` },
+        });
+      }
+      updates.description = description;
     }
-    if (typeof urgency === 'string' && VALID_URGENCIES.includes(urgency.trim().toLowerCase())) {
-      updates.urgency = urgency.trim().toLowerCase();
+
+    const rawUrgency = req.body?.urgency;
+    if (rawUrgency !== undefined) {
+      const normalizedUrgency = normalizeMaintenanceUrgency(rawUrgency);
+      if (!VALID_URGENCIES.includes(normalizedUrgency)) {
+        return res.status(400).json({ detail: 'Invalid maintenance urgency' });
+      }
+      updates.urgency = normalizedUrgency;
+    }
+
+    const attachmentsRaw = req.body?.attachments ?? req.body?.photos ?? req.body?.images;
+    if (attachmentsRaw !== undefined) {
+      if (Array.isArray(attachmentsRaw) && attachmentsRaw.length > MAX_TENANT_ATTACHMENTS) {
+        return res.status(400).json({ detail: `A maximum of ${MAX_TENANT_ATTACHMENTS} attachments is allowed.` });
+      }
+      const attachments = normalizeAttachmentList(attachmentsRaw);
+      const sizeCheck = await assertAttachmentsWithinSizeLimit(attachments);
+      if (!sizeCheck.ok) {
+        return res.status(400).json({ detail: sizeCheck.detail });
+      }
+      updates.attachments = attachments;
     }
 
     await db.collection(located.collectionName).updateOne(
-      { request_id: requestId },
+      { request_id: located.request.request_id || requestId },
       { $set: updates }
     );
 
-    const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });
+    const updatedSource = await db.collection(located.collectionName).findOne({
+      request_id: located.request.request_id || requestId,
+    });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
     res.json(stripTenantRequestFields(updated));
@@ -1017,12 +1325,18 @@ async function cancelMaintenance(req, res) {
     const { requestId } = req.params;
     const db = getDb();
 
-    const located = await findRequestForUser(db, requestId, req.user.user_id);
+    const located = await findRequestForUser(db, requestId, req.user.user_id, req.user._id);
     if (!located) {
       return res.status(404).json({ detail: 'Request not found' });
     }
-    if ((located.request.status || '').toLowerCase() !== 'pending') {
-      return res.status(400).json({ detail: 'Only pending requests can be cancelled' });
+    const request = located.request;
+    const CANCELLABLE_STATUSES = ['pending', 'pending_review', 'viewed', 'reviewed'];
+    if (!CANCELLABLE_STATUSES.includes(request.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Requests can only be cancelled before a provider has been assigned.',
+        error: 'INVALID_STATUS_FOR_CANCEL',
+      });
     }
 
     const now = new Date();
@@ -1034,13 +1348,13 @@ async function cancelMaintenance(req, res) {
       status: 'cancelled',
       actor_id: req.user.user_id || null,
       actor_name: actorNameFromUser(req.user),
-      actor_role: req.user.role || null,
+      actor_role: req.user.role || 'tenant',
       note: null,
       timestamp: now,
     });
 
     await db.collection(located.collectionName).updateOne(
-      { request_id: requestId },
+      { request_id: located.request.request_id || requestId },
       {
         $set: {
           status: 'cancelled',
@@ -1052,7 +1366,9 @@ async function cancelMaintenance(req, res) {
       }
     );
 
-    const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });
+    const updatedSource = await db.collection(located.collectionName).findOne({
+      request_id: located.request.request_id || requestId,
+    });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
     res.json(stripTenantRequestFields(updated));
@@ -1066,10 +1382,10 @@ async function cancelMaintenance(req, res) {
 async function reopenMaintenance(req, res) {
   try {
     const { requestId } = req.params;
-    const { reopen_note } = req.body;
+    const { reopen_note, note: bodyNote } = req.body || {};
     const db = getDb();
 
-    const located = await findRequestForUser(db, requestId, req.user.user_id);
+    const located = await findRequestForUser(db, requestId, req.user.user_id, req.user._id);
     if (!located) {
       return res.status(404).json({ detail: 'Request not found' });
     }
@@ -1082,7 +1398,7 @@ async function reopenMaintenance(req, res) {
     const now = new Date();
     const note = typeof reopen_note === 'string' && reopen_note.trim()
       ? reopen_note.trim()
-      : null;
+      : (typeof bodyNote === 'string' && bodyNote.trim() ? bodyNote.trim() : null);
 
     const reopenHistory = Array.isArray(located.request.reopen_history)
       ? [...located.request.reopen_history]
@@ -1101,19 +1417,31 @@ async function reopenMaintenance(req, res) {
       status: 'pending',
       actor_id: req.user.user_id || null,
       actor_name: actorNameFromUser(req.user),
-      actor_role: req.user.role || null,
+      actor_role: req.user.role || 'tenant',
       note,
       timestamp: now,
     });
 
+    const currentReopenCount = typeof located.request.reopenCount === 'number'
+      ? located.request.reopenCount
+      : (reopenHistory.length - 1);
+    const reopenCount = currentReopenCount + 1;
+
     await db.collection(located.collectionName).updateOne(
-      { request_id: requestId },
+      { request_id: located.request.request_id || requestId },
       {
         $set: {
           status: 'pending',
+          isReopened: true,
           reopen_note: note,
           reopen_history: reopenHistory,
+          reopenCount,
           reopened_at: now,
+          resolved_at: null,
+          work_started_at: null,
+          resolution_note: null,
+          tenant_confirmed_resolved: false,
+          resolutionConfirmation: null,
           statusHistory,
           updated_at: now,
           updatedAt: now,
@@ -1121,7 +1449,9 @@ async function reopenMaintenance(req, res) {
       }
     );
 
-    const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });
+    const updatedSource = await db.collection(located.collectionName).findOne({
+      request_id: located.request.request_id || requestId,
+    });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
     res.json(stripTenantRequestFields(updated));
@@ -1132,46 +1462,65 @@ async function reopenMaintenance(req, res) {
 }
 
 // Tenant confirms a resolved request is actually fixed (resolved -> completed).
-// Phase 4.5 cutover audit found this handler/route was entirely missing from
-// canonical — the app's "Confirm Resolved" button had no backing endpoint
-// and would 404. Matches the currently-live standalone mobile backend's
-// resolved-only transition rule (never completed->completed, never from any
-// other status) and sets tenant_confirmed_resolved so the frontend's own
-// button-gating condition (`!detailRequest.tenant_confirmed_resolved`) hides
-// both this button and "Still an Issue" afterward.
+// Matches the canonical resolution lifecycle and confirms issue resolution.
 async function confirmMaintenanceResolved(req, res) {
   try {
     const { requestId } = req.params;
     const db = getDb();
 
-    const located = await findRequestForUser(db, requestId, req.user.user_id);
+    const located = await findRequestForUser(db, requestId, req.user.user_id, req.user._id);
     if (!located) {
       return res.status(404).json({ detail: 'Request not found' });
     }
+
+    const action = String(req.body?.action || '').trim().toLowerCase();
+    const isExplicitReopen = req.body?.confirmed === false || action === 'reopen' || action === 'still_an_issue' || action === 'no';
+
+    if (isExplicitReopen) {
+      return reopenMaintenance(req, res);
+    }
+
     if ((located.request.status || '').toLowerCase() !== 'resolved') {
       return res.status(400).json({ detail: 'Only resolved requests can be confirmed.' });
     }
 
     const now = new Date();
+    const feedback = typeof req.body?.feedback === 'string'
+      ? req.body.feedback.trim()
+      : (typeof req.body?.notes === 'string' ? req.body.notes.trim() : (typeof req.body?.note === 'string' ? req.body.note.trim() : null));
+    const rawRating = Number(req.body?.rating);
+    const rating = Number.isFinite(rawRating) && rawRating >= 1 && rawRating <= 5 ? Math.round(rawRating * 10) / 10 : null;
+
+    const ratingNote = rating ? ` (${rating} / 5 stars)` : '';
     const statusHistory = Array.isArray(located.request.statusHistory)
       ? [...located.request.statusHistory]
       : [];
     statusHistory.push({
       event: 'tenant_confirmed_resolved',
-      status: 'completed',
+      status: 'resolved',
       actor_id: req.user.user_id || null,
       actor_name: actorNameFromUser(req.user),
-      actor_role: req.user.role || null,
-      note: null,
+      actor_role: req.user.role || 'tenant',
+      note: feedback
+        ? `Tenant verified issue resolution${ratingNote}. Feedback: "${feedback}"`
+        : `Tenant verified issue resolution${ratingNote}.`,
       timestamp: now,
     });
 
+    const resolutionConfirmation = {
+      confirmedAt: now,
+      tenantFeedback: feedback || null,
+      rating,
+      action: 'confirm',
+    };
+
     await db.collection(located.collectionName).updateOne(
-      { request_id: requestId },
+      { request_id: located.request.request_id || requestId },
       {
         $set: {
-          status: 'completed',
+          status: 'resolved',
           tenant_confirmed_resolved: true,
+          resolutionConfirmation,
           resolved_at: located.request.resolved_at || now,
           statusHistory,
           updated_at: now,
@@ -1180,7 +1529,9 @@ async function confirmMaintenanceResolved(req, res) {
       }
     );
 
-    const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });
+    const updatedSource = await db.collection(located.collectionName).findOne({
+      request_id: located.request.request_id || requestId,
+    });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
     res.json(stripTenantRequestFields(updated));
@@ -1237,16 +1588,18 @@ async function adminUpdateStatus(req, res) {
     if (['resolved', 'completed'].includes(normalizedStatus)) {
       updates.resolved_at = now;
     }
-    if (['pending', 'viewed', 'in_progress'].includes(normalizedStatus)) {
+    if (['pending', 'viewed', 'reviewed', 'in_progress', 'waiting_tenant'].includes(normalizedStatus)) {
       updates.cancelled_at = null;
     }
 
     await db.collection(located.collectionName).updateOne(
-      { request_id: requestId },
+      { request_id: located.request.request_id || requestId },
       { $set: updates }
     );
 
-    const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });
+    const updatedSource = await db.collection(located.collectionName).findOne({
+      request_id: located.request.request_id || requestId,
+    });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
 
@@ -1291,6 +1644,8 @@ module.exports = {
   cancelMaintenance,
   reopenMaintenance,
   confirmMaintenanceResolved,
+  confirmResolution: confirmMaintenanceResolved,
   adminUpdateStatus,
   adminGetAll,
 };
+

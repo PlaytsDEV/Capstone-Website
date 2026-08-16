@@ -1,5 +1,15 @@
-import { useEffect, useState } from "react";
-import { Coins, Save } from "lucide-react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  Building2,
+  Check,
+  Coins,
+  FileText,
+  Loader2,
+  Receipt,
+  Save,
+  UserX,
+} from "lucide-react";
 import { showNotification } from "../../../../../shared/utils/notification";
 import { useUpdateMaintenanceCost } from "../../../../../shared/hooks/queries/useMaintenance";
 import {
@@ -8,14 +18,23 @@ import {
   sanitizeAmountInput,
 } from "../maintenanceUtils";
 
-export function CostAttributionCard({ request, disabled = false }) {
+export const CostAttributionCard = forwardRef(function CostAttributionCard(
+  { request, disabled = false, hideStandaloneAction = false },
+  ref,
+) {
   const updateCostMutation = useUpdateMaintenanceCost();
 
   const [laborCost, setLaborCost] = useState(
-    request?.costBreakdown?.laborCost !== undefined ? String(request.costBreakdown.laborCost) : "0",
+    request?.costBreakdown?.laborCost !== undefined &&
+      Number(request.costBreakdown.laborCost) !== 0
+      ? String(request.costBreakdown.laborCost)
+      : "",
   );
   const [materialsCost, setMaterialsCost] = useState(
-    request?.costBreakdown?.materialsCost !== undefined ? String(request.costBreakdown.materialsCost) : "0",
+    request?.costBreakdown?.materialsCost !== undefined &&
+      Number(request.costBreakdown.materialsCost) !== 0
+      ? String(request.costBreakdown.materialsCost)
+      : "",
   );
   const [isTenantChargeable, setIsTenantChargeable] = useState(
     Boolean(request?.costBreakdown?.isTenantChargeable),
@@ -23,92 +42,264 @@ export function CostAttributionCard({ request, disabled = false }) {
   const [chargeReason, setChargeReason] = useState(
     request?.costBreakdown?.chargeReason || "",
   );
+  const [touched, setTouched] = useState({
+    labor: false,
+    materials: false,
+    reason: false,
+  });
 
   useEffect(() => {
     if (request) {
       setLaborCost(
-        request?.costBreakdown?.laborCost !== undefined ? String(request.costBreakdown.laborCost) : "0",
+        request?.costBreakdown?.laborCost !== undefined &&
+          Number(request.costBreakdown.laborCost) !== 0
+          ? String(request.costBreakdown.laborCost)
+          : "",
       );
       setMaterialsCost(
-        request?.costBreakdown?.materialsCost !== undefined ? String(request.costBreakdown.materialsCost) : "0",
+        request?.costBreakdown?.materialsCost !== undefined &&
+          Number(request.costBreakdown.materialsCost) !== 0
+          ? String(request.costBreakdown.materialsCost)
+          : "",
       );
       setIsTenantChargeable(Boolean(request?.costBreakdown?.isTenantChargeable));
       setChargeReason(request?.costBreakdown?.chargeReason || "");
+      setTouched({ labor: false, materials: false, reason: false });
     }
   }, [request]);
 
-  const numLabor = Math.min(MAX_MAINTENANCE_ITEM_COST, Math.max(0, Number(laborCost) || 0));
-  const numMaterials = Math.min(MAX_MAINTENANCE_ITEM_COST, Math.max(0, Number(materialsCost) || 0));
+  const rawNumLabor = Number(laborCost) || 0;
+  const rawNumMaterials = Number(materialsCost) || 0;
+
+  const laborError = useMemo(() => {
+    if (isNaN(rawNumLabor) || rawNumLabor < 0)
+      return "Labor cost cannot be negative.";
+    if (rawNumLabor > MAX_MAINTENANCE_ITEM_COST) {
+      return `Labor cost cannot exceed ₱${MAX_MAINTENANCE_ITEM_COST.toLocaleString("en-PH")}.`;
+    }
+    return null;
+  }, [rawNumLabor]);
+
+  const materialsError = useMemo(() => {
+    if (isNaN(rawNumMaterials) || rawNumMaterials < 0)
+      return "Materials cost cannot be negative.";
+    if (rawNumMaterials > MAX_MAINTENANCE_ITEM_COST) {
+      return `Materials cost cannot exceed ₱${MAX_MAINTENANCE_ITEM_COST.toLocaleString("en-PH")}.`;
+    }
+    return null;
+  }, [rawNumMaterials]);
+
+  const reasonError = useMemo(() => {
+    if (!isTenantChargeable) return null;
+    const trimmed = chargeReason.trim();
+    if (!trimmed)
+      return "Please state the reason for charging this repair to the tenant.";
+    if (trimmed.length < 5) return "Reason must be at least 5 characters long.";
+    if (trimmed.length > 250) return "Reason cannot exceed 250 characters.";
+    return null;
+  }, [isTenantChargeable, chargeReason]);
+
+  const hasValidationErrors = Boolean(
+    laborError || materialsError || reasonError,
+  );
+
+  const numLabor = Math.min(
+    MAX_MAINTENANCE_ITEM_COST,
+    Math.max(0, rawNumLabor),
+  );
+  const numMaterials = Math.min(
+    MAX_MAINTENANCE_ITEM_COST,
+    Math.max(0, rawNumMaterials),
+  );
   const totalCost = numLabor + numMaterials;
 
+  const hasChanges =
+    numLabor !== Number(request?.costBreakdown?.laborCost || 0) ||
+    numMaterials !== Number(request?.costBreakdown?.materialsCost || 0) ||
+    isTenantChargeable !==
+      Boolean(request?.costBreakdown?.isTenantChargeable) ||
+    chargeReason.trim() !==
+      String(request?.costBreakdown?.chargeReason || "").trim();
+
   const handleSaveCost = async () => {
-    if (numLabor > MAX_MAINTENANCE_ITEM_COST || numMaterials > MAX_MAINTENANCE_ITEM_COST) {
+    setTouched({ labor: true, materials: true, reason: true });
+
+    if (disabled) {
       showNotification({
-        title: "Invalid Amount",
-        message: `Maximum allowable cost per item is PHP ${MAX_MAINTENANCE_ITEM_COST.toLocaleString("en-PH")}.`,
+        title: "Ticket Locked",
+        message: "This maintenance request is locked and its expense records cannot be edited.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (!hasChanges) {
+      showNotification({
+        title: "No Changes Detected",
+        message: "To record expenses, enter or update the Labor Cost, Materials Cost, or Tenant Misuse attribution first.",
+        type: "info",
+      });
+      return;
+    }
+
+    if (laborError) {
+      showNotification({
+        title: "Invalid Labor Cost",
+        message: laborError,
         type: "error",
+      });
+      return;
+    }
+    if (materialsError) {
+      showNotification({
+        title: "Invalid Materials Cost",
+        message: materialsError,
+        type: "error",
+      });
+      return;
+    }
+    if (reasonError) {
+      showNotification({
+        title: "Reason Required",
+        message: reasonError,
+        type: "warning",
       });
       return;
     }
 
     try {
+      const reqId = request?.request_id || request?.id || request?._id;
       await updateCostMutation.mutateAsync({
-        requestId: request.request_id,
+        requestId: reqId,
         payload: {
           laborCost: numLabor,
           materialsCost: numMaterials,
           isTenantChargeable,
-          chargeReason: isTenantChargeable ? chargeReason.trim().slice(0, 250) : null,
+          chargeReason: isTenantChargeable
+            ? chargeReason.trim().slice(0, 250)
+            : null,
         },
       });
 
       showNotification({
-        title: "Cost Saved",
-        message: `Maintenance cost recorded at PHP ${totalCost.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`,
+        title: "Expenses Recorded",
+        message: `Maintenance expense of PHP ${totalCost.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} recorded to system ${isTenantChargeable ? "as tenant damage charge" : "under Owner's company operational expenses"}.`,
         type: "success",
       });
     } catch (err) {
       showNotification({
         title: "Save Failed",
-        message: getMaintenanceApiErrorMessage(err, "Failed to save cost details"),
+        message: getMaintenanceApiErrorMessage(
+          err,
+          "Failed to save cost details",
+        ),
         type: "error",
       });
     }
   };
 
-  const hasChanges =
-    numLabor !== Number(request?.costBreakdown?.laborCost || 0) ||
-    numMaterials !== Number(request?.costBreakdown?.materialsCost || 0) ||
-    isTenantChargeable !== Boolean(request?.costBreakdown?.isTenantChargeable) ||
-    chargeReason.trim() !== String(request?.costBreakdown?.chargeReason || "").trim();
+  // Expose methods for unified multi-card submission in parent modal
+  useImperativeHandle(ref, () => ({
+    validate: () => {
+      setTouched({ labor: true, materials: true, reason: true });
+      if (laborError) {
+        return { valid: false, message: laborError, field: "labor" };
+      }
+      if (materialsError) {
+        return { valid: false, message: materialsError, field: "materials" };
+      }
+      if (reasonError) {
+        return { valid: false, message: reasonError, field: "reason" };
+      }
+      return {
+        valid: true,
+        hasChanges,
+        payload: {
+          laborCost: numLabor,
+          materialsCost: numMaterials,
+          isTenantChargeable,
+          chargeReason: isTenantChargeable
+            ? chargeReason.trim().slice(0, 250)
+            : null,
+        },
+      };
+    },
+    saveCost: async () => {
+      setTouched({ labor: true, materials: true, reason: true });
+      if (laborError) throw new Error(laborError);
+      if (materialsError) throw new Error(materialsError);
+      if (reasonError) throw new Error(reasonError);
+
+      if (!hasChanges) {
+        return { skipped: true };
+      }
+
+      const reqId = request?.request_id || request?.id || request?._id;
+      return updateCostMutation.mutateAsync({
+        requestId: reqId,
+        payload: {
+          laborCost: numLabor,
+          materialsCost: numMaterials,
+          isTenantChargeable,
+          chargeReason: isTenantChargeable
+            ? chargeReason.trim().slice(0, 250)
+            : null,
+        },
+      });
+    },
+    getPayload: () => ({
+      laborCost: numLabor,
+      materialsCost: numMaterials,
+      isTenantChargeable,
+      chargeReason: isTenantChargeable
+        ? chargeReason.trim().slice(0, 250)
+        : null,
+    }),
+    hasChanges,
+    hasValidationErrors,
+    isPending: updateCostMutation.isPending,
+  }));
 
   return (
-    <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
+    <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
         <div className="flex items-center gap-2">
-          <Coins size={15} className="text-amber-600 dark:text-amber-400" />
+          <Receipt size={16} className="text-slate-700 dark:text-slate-300" />
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-            Cost & Attribution
+            Repair Expenses &amp; Cost Attribution
           </h3>
         </div>
-        <span className="rounded bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-          Admin Only
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+            Post-Service Accounting
+          </span>
+          <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+            Admin Only
+          </span>
+        </div>
       </div>
 
-      {/* 3-Column Financial Grid */}
-      <div className="grid grid-cols-3 gap-2.5 items-end">
+      {/* 3-Column Financial Inputs */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-stretch">
         {/* Labor Cost */}
         <div className="space-y-1">
           <div className="flex items-center justify-between">
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
               Labor Cost
             </label>
-            <span className="text-[10px] text-slate-400">Max 500k</span>
+            <span className="text-[10px] text-slate-400 font-medium">
+              Max ₱500,000
+            </span>
           </div>
-          <div className="relative rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition">
-            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-xs font-bold text-slate-400">
+          <div
+            className={`relative flex items-center rounded-lg border bg-white dark:bg-slate-900 transition ${
+              laborError && touched.labor
+                ? "border-rose-500"
+                : "border-slate-300 dark:border-slate-700 focus-within:border-slate-900 dark:focus-within:border-slate-100"
+            }`}
+          >
+            <span className="pointer-events-none pl-3 text-xs font-bold text-slate-400 dark:text-slate-500">
               ₱
             </span>
             <input
@@ -116,12 +307,29 @@ export function CostAttributionCard({ request, disabled = false }) {
               inputMode="decimal"
               maxLength={9}
               value={laborCost}
-              onChange={(e) => setLaborCost(sanitizeAmountInput(e.target.value))}
+              onFocus={(e) => {
+                if (laborCost === "0" || laborCost === "0.00") {
+                  setLaborCost("");
+                } else if (laborCost) {
+                  e.target.select();
+                }
+              }}
+              onBlur={() => setTouched((curr) => ({ ...curr, labor: true }))}
+              onChange={(e) => {
+                setTouched((curr) => ({ ...curr, labor: true }));
+                setLaborCost(sanitizeAmountInput(e.target.value));
+              }}
               disabled={disabled || updateCostMutation.isPending}
-              placeholder="0.00"
-              className="h-9 w-full rounded-lg bg-transparent pl-6 pr-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 font-mono"
+              placeholder="0"
+              className="h-9 w-full rounded-lg bg-transparent pl-1.5 pr-3 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 font-mono"
             />
           </div>
+          {laborError && touched.labor && (
+            <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
+              <AlertCircle size={11} className="shrink-0" />
+              <span>{laborError}</span>
+            </p>
+          )}
         </div>
 
         {/* Materials Cost */}
@@ -130,10 +338,18 @@ export function CostAttributionCard({ request, disabled = false }) {
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
               Materials Cost
             </label>
-            <span className="text-[10px] text-slate-400">Max 500k</span>
+            <span className="text-[10px] text-slate-400 font-medium">
+              Max ₱500,000
+            </span>
           </div>
-          <div className="relative rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition">
-            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-xs font-bold text-slate-400">
+          <div
+            className={`relative flex items-center rounded-lg border bg-white dark:bg-slate-900 transition ${
+              materialsError && touched.materials
+                ? "border-rose-500"
+                : "border-slate-300 dark:border-slate-700 focus-within:border-slate-900 dark:focus-within:border-slate-100"
+            }`}
+          >
+            <span className="pointer-events-none pl-3 text-xs font-bold text-slate-400 dark:text-slate-500">
               ₱
             </span>
             <input
@@ -141,76 +357,231 @@ export function CostAttributionCard({ request, disabled = false }) {
               inputMode="decimal"
               maxLength={9}
               value={materialsCost}
-              onChange={(e) => setMaterialsCost(sanitizeAmountInput(e.target.value))}
+              onFocus={(e) => {
+                if (materialsCost === "0" || materialsCost === "0.00") {
+                  setMaterialsCost("");
+                } else if (materialsCost) {
+                  e.target.select();
+                }
+              }}
+              onBlur={() =>
+                setTouched((curr) => ({ ...curr, materials: true }))
+              }
+              onChange={(e) => {
+                setTouched((curr) => ({ ...curr, materials: true }));
+                setMaterialsCost(sanitizeAmountInput(e.target.value));
+              }}
               disabled={disabled || updateCostMutation.isPending}
-              placeholder="0.00"
-              className="h-9 w-full rounded-lg bg-transparent pl-6 pr-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 font-mono"
+              placeholder="0"
+              className="h-9 w-full rounded-lg bg-transparent pl-1.5 pr-3 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 font-mono"
             />
           </div>
+          {materialsError && touched.materials && (
+            <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
+              <AlertCircle size={11} className="shrink-0" />
+              <span>{materialsError}</span>
+            </p>
+          )}
         </div>
 
-        {/* Total Expense */}
+        {/* Total Expense KPI Tile */}
         <div className="space-y-1">
           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Total Expense
+            Total Computed Expense
           </label>
-          <div className="flex h-9 items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-2.5 min-w-0">
-            <span className="text-[9px] font-bold text-slate-400 uppercase shrink-0">PHP</span>
+          <div className="flex h-9 items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 px-3 min-w-0">
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+              <Coins size={12} className="text-slate-400" />
+              PHP
+            </span>
             <span className="text-xs font-bold text-slate-900 dark:text-slate-100 font-mono truncate text-right ml-1">
-              ₱{totalCost.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₱
+              {totalCost.toLocaleString("en-PH", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Resident Damage Attribution Box */}
-      <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/30 p-2.5 space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <label className={`flex items-center gap-2 select-none min-w-0 ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
-            <input
-              type="checkbox"
-              checked={isTenantChargeable}
-              onChange={(e) => setIsTenantChargeable(e.target.checked)}
-              disabled={disabled || updateCostMutation.isPending}
-              className="h-4 w-4 rounded border-slate-300 dark:border-slate-700 accent-primary cursor-pointer shrink-0 disabled:cursor-not-allowed"
-            />
-            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
-              Charge to resident (Tenant Damage)
-            </span>
-          </label>
+      {/* Attribution Policy 2-Option Segmented Selector */}
+      <div className="space-y-2 pt-1">
+        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+          Expense Cost Attribution Policy *
+        </label>
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {/* Option 1: Company Absorbed */}
           <button
             type="button"
-            onClick={handleSaveCost}
-            disabled={disabled || !hasChanges || updateCostMutation.isPending}
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-40 transition cursor-pointer"
+            disabled={disabled || updateCostMutation.isPending}
+            onClick={() => {
+              setIsTenantChargeable(false);
+              setTouched((curr) => ({ ...curr, reason: false }));
+            }}
+            className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition cursor-pointer ${
+              !isTenantChargeable
+                ? "border-slate-800 dark:border-slate-200 bg-slate-50 dark:bg-slate-800/60 shadow-2xs"
+                : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900/50"
+            }`}
           >
-            <Save size={12} />
-            <span>{updateCostMutation.isPending ? "Saving..." : "Save Cost"}</span>
+            <div
+              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition ${
+                !isTenantChargeable
+                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                  : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+              }`}
+            >
+              {!isTenantChargeable ? (
+                <Check size={13} strokeWidth={2.5} />
+              ) : (
+                <Building2 size={13} />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center justify-between">
+                <span>Owner Company Operating Expense</span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                Dormitory absorbed • Standard wear &amp; tear or facility maintenance.
+              </p>
+            </div>
+          </button>
+
+          {/* Option 2: Charge to Tenant */}
+          <button
+            type="button"
+            disabled={disabled || updateCostMutation.isPending}
+            onClick={() => {
+              setIsTenantChargeable(true);
+              // Do NOT mark touched immediately so red error is not triggered before typing
+              setTouched((curr) => ({ ...curr, reason: false }));
+            }}
+            className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition cursor-pointer ${
+              isTenantChargeable
+                ? "border-slate-800 dark:border-slate-200 bg-slate-50 dark:bg-slate-800/60 shadow-2xs"
+                : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900/50"
+            }`}
+          >
+            <div
+              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition ${
+                isTenantChargeable
+                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                  : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+              }`}
+            >
+              {isTenantChargeable ? (
+                <Check size={13} strokeWidth={2.5} />
+              ) : (
+                <UserX size={13} />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center justify-between">
+                <span>Charge to Tenant</span>
+                <span className="text-[10px] font-bold uppercase rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 border border-slate-200 dark:border-slate-700">
+                  Tenant Misuse
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                Tenant damage / negligence • Flagged for monthly billing statement.
+              </p>
+            </div>
           </button>
         </div>
 
+        {/* Tenant Damage Reason Container (Revealed when Charge to Tenant is active) */}
         {isTenantChargeable && (
-          <div className="space-y-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 p-3.5 space-y-2 mt-2">
             <div className="flex items-center justify-between">
-              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                Reason for resident damage charge
+              <label className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <FileText size={13} className="text-slate-500 shrink-0" />
+                <span>Reason for Tenant Damage Charge *</span>
               </label>
-              <span className="text-[10px] text-slate-400">{chargeReason.length}/250</span>
+              <span
+                className={`text-[10px] font-medium ${
+                  chargeReason.length > 240
+                    ? "text-rose-600 dark:text-rose-400 font-bold"
+                    : "text-slate-400 dark:text-slate-500"
+                }`}
+              >
+                {chargeReason.length}/250 (Min 5 chars)
+              </span>
             </div>
             <input
               type="text"
               maxLength={250}
               value={chargeReason}
-              onChange={(e) => setChargeReason(e.target.value)}
+              onBlur={() => setTouched((curr) => ({ ...curr, reason: true }))}
+              onChange={(e) => {
+                setChargeReason(e.target.value);
+              }}
               disabled={disabled || updateCostMutation.isPending}
-              placeholder="e.g. Fixture broken due to resident misuse"
-              className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition disabled:opacity-50"
+              placeholder="e.g. Fixture broken due to tenant misuse, physical force, or negligence"
+              className={`h-9 w-full rounded-lg border bg-white dark:bg-slate-900 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none transition disabled:opacity-50 ${
+                reasonError && touched.reason
+                  ? "border-rose-500 focus:border-rose-600"
+                  : "border-slate-300 dark:border-slate-700 focus:border-slate-900 dark:focus:border-slate-100"
+              }`}
             />
+            {reasonError && touched.reason && (
+              <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                <AlertCircle size={11} className="shrink-0" />
+                <span>{reasonError}</span>
+              </p>
+            )}
           </div>
         )}
       </div>
+
+      {/* Standalone Action Footer Bar (Rendered when not embedded in a unified multi-card stage) */}
+      {!hideStandaloneAction && (
+        <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            {hasChanges ? (
+              <span className="text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-1.5">
+                <AlertCircle size={13} className="shrink-0" />
+                Unsaved expense changes detected.
+              </span>
+            ) : (
+              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Check size={13} className="text-emerald-600 shrink-0" />
+                All repair expense records are synced.
+              </span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveCost}
+            disabled={updateCostMutation.isPending}
+            title={
+              disabled
+                ? "Ticket is locked"
+                : hasChanges
+                  ? "Click to save and record expenses"
+                  : "Enter or edit Labor / Materials cost to record expenses"
+            }
+            className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-4 text-xs font-bold shadow-xs transition cursor-pointer active:scale-[0.98] ${
+              hasChanges && !hasValidationErrors
+                ? "bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 text-white dark:text-slate-900"
+                : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
+            }`}
+          >
+            {updateCostMutation.isPending ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Save size={13} />
+            )}
+            <span>
+              {updateCostMutation.isPending
+                ? "Recording Expenses..."
+                : "Record Expenses"}
+            </span>
+          </button>
+        </div>
+      )}
     </div>
   );
-}
-
+});

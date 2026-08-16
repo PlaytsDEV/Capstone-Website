@@ -51,6 +51,11 @@ router.patch(
   maintenanceController.confirmResolution,
 );
 router.post(
+  "/:requestId/reschedule-request",
+  verifyApplicant,
+  maintenanceController.requestMaintenanceReschedule,
+);
+router.post(
   "/:requestId/reply",
   verifyApplicant,
   maintenanceController.sendTenantReply,
@@ -90,6 +95,14 @@ router.patch(
   filterByBranch,
   requirePermission("manageMaintenance"),
   maintenanceController.scheduleAdminMaintenance,
+);
+
+router.patch(
+  "/admin/:requestId/reschedule-response",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.respondToMaintenanceReschedule,
 );
 
 router.post(
@@ -302,5 +315,13 @@ router.get(
 // ============================================================================
 // EXPORT
 // ============================================================================
+
+router.patch(
+  "/admin/:requestId/read",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.markAdminMaintenanceRead,
+);
 
 export default router;

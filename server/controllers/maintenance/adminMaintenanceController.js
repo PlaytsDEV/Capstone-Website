@@ -235,14 +235,24 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
   }
 
   if (statusChanged && ["resolved", "completed", "closed"].includes(nextStatus)) {
+    const actor = buildActorSnapshot(adminUser);
     request.resolved_at = eventTimestamp;
+    request.resolvedBy = actor.actor_id || null;
+    request.resolvedByName = actor.actor_name || null;
     request.resolution_note = nextNotes ?? request.notes ?? null;
     if (nextStatus === "closed") {
       request.closed_at = eventTimestamp;
     }
   }
 
-  if (statusChanged && ["pending", "viewed", "in_progress", "waiting_tenant"].includes(nextStatus)) {
+  if (statusChanged && nextStatus === "reviewed") {
+    const actor = buildActorSnapshot(adminUser);
+    request.reviewedAt = eventTimestamp;
+    request.reviewedBy = actor.actor_id || null;
+    request.reviewedByName = actor.actor_name || null;
+  }
+
+  if (statusChanged && ["pending", "viewed", "reviewed", "in_progress", "waiting_tenant"].includes(nextStatus)) {
     request.cancelled_at = null;
     request.closed_at = null;
     if (!["resolved", "completed"].includes(nextStatus)) {
@@ -437,28 +447,46 @@ export const updateAdminRequestStatus = async (req, res, next) => {
       payload: req.body,
     });
 
-    await request.save();
+    let finalRequest = request;
+    try {
+      await request.save();
+    } catch (saveError) {
+      if (saveError?.name === "VersionError") {
+        // Refetch latest document and reapply the admin update to resolve concurrency conflict
+        const freshRequest = await findAccessibleRequest(req.params.requestId);
+        ensureAdminAccess(freshRequest, req);
+        applyAdminUpdateToRequest({
+          request: freshRequest,
+          adminUser,
+          payload: req.body,
+        });
+        await freshRequest.save();
+        finalRequest = freshRequest;
+      } else {
+        throw saveError;
+      }
+    }
 
     await auditLogger.logModification(
       req,
       "maintenance",
-      request._id,
+      finalRequest._id,
       null,
       null,
       "Updated Maintenance Request Status",
-      `Updated maintenance request #${request.request_id || request._id} status to ${request.status}`,
+      `Updated maintenance request #${finalRequest.request_id || finalRequest._id} status to ${finalRequest.status}`,
     );
 
-    const tenantUser = await User.findOne({ user_id: request.user_id })
+    const tenantUser = await User.findOne({ user_id: finalRequest.user_id })
       .select("_id user_id firstName lastName email phone branch role")
       .lean();
 
     if (hasTenantVisibleUpdate && tenantUser?._id) {
       await notify.maintenanceUpdated(
         tenantUser._id,
-        request.request_type,
-        request.status,
-        request.request_id,
+        finalRequest.request_type,
+        finalRequest.status,
+        finalRequest.request_id,
         {
           statusChanged,
           hasAdminNote: notesChanged,
@@ -474,16 +502,16 @@ export const updateAdminRequestStatus = async (req, res, next) => {
 
     sendSuccess(res, {
       request: serializeMaintenanceRequest(
-        request.toObject(),
-        serializeTenantSummary(tenantUser, request),
+        finalRequest.toObject(),
+        serializeTenantSummary(tenantUser, finalRequest),
       ),
     });
 
     try {
       const { emitToAdmins } = await import("../../utils/socket.js");
       emitToAdmins("ticket:updated", {
-        requestId: String(request._id),
-        status: request.status,
+        requestId: String(finalRequest._id),
+        status: finalRequest.status,
       });
     } catch {
       // non-fatal
@@ -716,9 +744,20 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
         snapshotJson: nextProvider,
       };
 
-      // Automatically transition lifecycle status to provider_assigned / in_progress if pending
-      if (["pending", "pending_review", "viewed", "submitted"].includes(request.status)) {
-        request.status = "provider_assigned";
+      if (req.body?.scheduledDate) {
+        const scheduledDate = new Date(req.body.scheduledDate);
+        if (!Number.isNaN(scheduledDate.getTime())) {
+          request.schedule = {
+            scheduledDate,
+            notes: toOptionalText(req.body.scheduleNotes || req.body.notes),
+            scheduledBy: actor.actor_id || null,
+            scheduledByName: actor.actor_name || null,
+          };
+          request.status = "in_progress";
+          request.in_progress_at = eventTimestamp;
+        }
+      } else if (["pending", "pending_review", "viewed", "reviewed", "submitted"].includes(request.status)) {
+        request.status = "in_progress";
         request.in_progress_at = eventTimestamp;
       }
     }
@@ -1284,7 +1323,11 @@ export const updateAdminMaintenanceCost = async (req, res, next) => {
     const totalCost = laborCost + materialsCost;
     const isTenantChargeable = Boolean(req.body?.isTenantChargeable);
     const rawReason = toOptionalText(req.body?.chargeReason);
-    const chargeReason = rawReason ? rawReason.slice(0, 300) : null;
+    const chargeReason = rawReason ? rawReason.slice(0, 250) : null;
+
+    if (isTenantChargeable && (!chargeReason || chargeReason.length < 5)) {
+      return sendError(res, 400, "Please provide a valid reason (at least 5 characters) for charging repair costs to the tenant.");
+    }
 
     request.estimatedCost = totalCost;
     request.actualCost = totalCost;
@@ -1384,12 +1427,15 @@ export const scheduleAdminMaintenance = async (req, res, next) => {
       throw new AppError("A valid scheduled date/time is required.", 400, "INVALID_SCHEDULE_DATE");
     }
 
+    const actor = buildActorSnapshot(adminUser);
     request.schedule = {
       scheduledDate,
       notes,
+      scheduledBy: actor.actor_id || null,
+      scheduledByName: actor.actor_name || null,
     };
 
-    if (["pending", "pending_review", "provider_assigned", "viewed"].includes(request.status)) {
+    if (["pending", "pending_review", "provider_assigned", "viewed", "reviewed"].includes(request.status)) {
       request.status = "scheduled";
     }
 
@@ -1418,6 +1464,89 @@ export const scheduleAdminMaintenance = async (req, res, next) => {
 
     sendSuccess(res, {
       message: "Maintenance visit scheduled successfully.",
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/maintenance/admin/:requestId/reschedule-response
+ * Responds to a tenant reschedule request.
+ */
+export const respondToMaintenanceReschedule = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    const adminUser = await getDbUser(req.user.uid);
+    const actor = buildActorSnapshot(adminUser);
+    const action = String(req.body?.action || "accept").trim().toLowerCase();
+    const notes = toOptionalText(req.body?.notes || req.body?.scheduleNotes);
+    const adjustedDate = req.body?.scheduledDate ? new Date(req.body.scheduledDate) : null;
+
+    if (!request.rescheduleRequest?.proposedDate && !adjustedDate) {
+      throw new AppError("No active reschedule request or scheduled date specified.", 400, "INVALID_RESCHEDULE");
+    }
+
+    const nextDate = action === "accept"
+      ? (request.rescheduleRequest?.proposedDate || adjustedDate)
+      : adjustedDate;
+
+    if (action === "accept" || action === "adjust") {
+      request.schedule = {
+        ...request.schedule,
+        scheduledDate: nextDate,
+        notes: notes || request.schedule?.notes || null,
+        scheduledBy: actor.actor_id || null,
+        scheduledByName: actor.actor_name || null,
+      };
+      request.rescheduleRequest = {
+        ...request.rescheduleRequest,
+        status: "accepted",
+        respondedAt: new Date(),
+        respondedBy: actor.actor_name,
+        responseNote: notes || "Reschedule accepted by dormitory staff.",
+      };
+
+      appendStatusHistory(request, {
+        event: "reschedule_accepted",
+        status: request.status,
+        ...actor,
+        note: `Staff accepted reschedule to ${nextDate ? nextDate.toLocaleString() : "new date"}${notes ? `. Notes: ${notes}` : ""}`,
+        timestamp: new Date(),
+      });
+    } else if (action === "decline") {
+      request.rescheduleRequest = {
+        ...request.rescheduleRequest,
+        status: "declined",
+        respondedAt: new Date(),
+        respondedBy: actor.actor_name,
+        responseNote: notes || "Reschedule request could not be accommodated.",
+      };
+
+      appendStatusHistory(request, {
+        event: "reschedule_declined",
+        status: request.status,
+        ...actor,
+        note: notes ? `Staff declined reschedule request: "${notes}"` : "Staff declined reschedule request.",
+        timestamp: new Date(),
+      });
+    }
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      message: action === "decline" ? "Reschedule request declined." : "Schedule updated successfully.",
       request: serializeMaintenanceRequest(
         request.toObject(),
         serializeTenantSummary(tenantUser, request),
@@ -1465,10 +1594,7 @@ export const finalizeAdminMaintenanceReport = async (req, res, next) => {
       reportUrl: reportUrl || request.completionReport?.reportUrl || null,
     };
 
-    if (request.status !== "completed") {
-      request.status = "completed";
-      request.resolved_at = finalizedAt;
-    }
+
 
     appendStatusHistory(request, {
       event: "report_finalized",
@@ -1615,3 +1741,115 @@ export const getByBranch = getAdminAll;
 export const getRequest = getRequestById;
 export const updateRequest = updateAdminRequestStatusCompat;
 
+/**
+ * POST /api/m/maintenance/admin/:requestId/resolution-proof
+ */
+/**
+ * PATCH /api/m/maintenance/admin/:requestId/read
+ */
+export const markAdminMaintenanceRead = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+    
+    await MaintenanceRequest.updateOne(
+      { _id: request._id },
+      { $set: { lastAdminReadAt: new Date() } }
+    );
+
+    sendSuccess(res, { read: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const saveResolutionProof = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+    const adminUser = await getDbUser(req.user.uid);
+
+    const targetStatus = "resolved"; // Admins cannot set completed directly
+    const note = toOptionalText(req.body?.note || req.body?.workLogNote || req.body?.proofNote || "Resolution proof uploaded.");
+    
+    const rawAttachments = req.body?.attachments || req.body?.work_log_attachments || [];
+    const attachments = normalizeAttachments(rawAttachments, {
+      context: "maintenance_resolution_proof",
+      visibility: "tenant_admin",
+      branchId: request.branch,
+      uploadedBy: adminUser?.user_id,
+      senderRole: adminUser?.role || "admin",
+      relatedId: request.request_id,
+    });
+
+    const eventTimestamp = new Date();
+    
+    request.work_log = [
+      ...(Array.isArray(request.work_log) ? request.work_log : []),
+      {
+        note,
+        attachments,
+        ...buildActorSnapshot(adminUser),
+        logged_at: eventTimestamp,
+      },
+    ];
+
+    if (request.status !== targetStatus) {
+      request.status = targetStatus;
+      request.resolved_at = eventTimestamp;
+      if (targetStatus === "completed") {
+        request.closed_at = eventTimestamp;
+      }
+      
+      appendStatusHistory(request, {
+        event: "resolution_proof_uploaded",
+        status: targetStatus,
+        ...buildActorSnapshot(adminUser),
+        note,
+        timestamp: eventTimestamp,
+      });
+    }
+
+    await request.save();
+    
+    try {
+      const { emitToAdmins } = await import("../../utils/socket.js");
+      emitToAdmins("ticket:updated", {
+        requestId: String(request._id),
+        status: request.status,
+      });
+    } catch {
+      // non-fatal
+    }
+
+    const tenantUser = await User.findOne({ user_id: request.user_id }).select(USER_SELECT_FIELDS).lean();
+    if (tenantUser?._id) {
+      try {
+        await notify.maintenanceUpdated(
+          tenantUser._id,
+          request.request_type,
+          request.status,
+          request.request_id,
+          {
+            statusChanged: true,
+            hasAdminNote: true,
+            hasProgressEntry: true,
+            hasProgressAttachments: attachments.length > 0,
+          }
+        );
+      } catch {
+        // non-fatal
+      }
+    }
+
+    sendSuccess(res, {
+      message: `Resolution proof saved. Status updated to ${formatMaintenanceStatusLabel(targetStatus)}.`,
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        tenantUser ? serializeTenantSummary(tenantUser, request) : null,
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};

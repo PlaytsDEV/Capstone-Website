@@ -145,29 +145,29 @@ describe("Scenario 5: Maintenance Ticket Escalation & Vendor Expense Allocation"
     expect(validateMaintenanceStateTransition("reopened", "in_progress").valid).toBe(true);
   });
 
-  it("8. should auto-resolve tickets in resolved status after 72-hour tenant confirmation window", () => {
-    // Within 72h window
+  it("8. should auto-resolve tickets in resolved status after 7-day (168h) tenant confirmation window", () => {
+    // Within 7-day window (e.g. 72 hours ago)
     const recentResolvedTicket = {
       _id: "maint-401",
       status: "resolved",
-      resolvedAt: dayjs().subtract(36, "hour").toDate(),
+      resolvedAt: dayjs().subtract(72, "hour").toDate(),
     };
     const recentResult = evaluateAutoResolution(recentResolvedTicket);
     expect(recentResult.shouldAutoResolve).toBe(false);
-    expect(recentResult.hoursElapsed).toBe(36);
-    expect(recentResult.hoursRemaining).toBe(36);
+    expect(recentResult.hoursElapsed).toBe(72);
+    expect(recentResult.hoursRemaining).toBe(96);
 
-    // Past 72h window (e.g. 75 hours ago)
+    // Past 7-day window (e.g. 175 hours / ~7.3 days ago)
     const expiredResolvedTicket = {
       _id: "maint-402",
       status: "resolved",
-      resolvedAt: dayjs().subtract(75, "hour").toDate(),
+      resolvedAt: dayjs().subtract(175, "hour").toDate(),
     };
     const expiredResult = evaluateAutoResolution(expiredResolvedTicket);
     expect(expiredResult.shouldAutoResolve).toBe(true);
     expect(expiredResult.targetStatus).toBe("completed");
-    expect(expiredResult.hoursElapsed).toBe(75);
+    expect(expiredResult.hoursElapsed).toBe(175);
     expect(expiredResult.hoursRemaining).toBe(0);
-    expect(expiredResult.reason).toContain("72-hour tenant verification window");
+    expect(expiredResult.reason).toContain("7 days");
   });
 });

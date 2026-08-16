@@ -1,5 +1,15 @@
-import { useState } from "react";
-import { ChevronDown, ClipboardList, FileDown, MessageSquare, XCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  ChevronDown,
+  ClipboardList,
+  Download,
+  FileDown,
+  FileSpreadsheet,
+  FileText,
+  LoaderCircle,
+  MessageSquare,
+  XCircle,
+} from "lucide-react";
 import {
   BRANCH_OPTIONS,
 } from "../../../../../shared/utils/constants";
@@ -28,57 +38,129 @@ import {
 } from "../maintenanceUtils";
 
 export function MaintenanceExportDropdown({
-  options = [],
+  options,
+  onExportCSV,
+  onExportPDF,
   disabled = false,
+  loading = false,
   align = "right",
   placement = "bottom",
+  className = "",
 }) {
   const [open, setOpen] = useState(false);
-  const visibleOptions = options.filter(Boolean);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  // Support either explicit onExportCSV / onExportPDF handlers or options array
+  const resolvedOptions = Array.isArray(options)
+    ? options.filter(Boolean)
+    : [
+        onExportCSV && {
+          key: "export-csv",
+          label: "Export as CSV",
+          icon: <FileSpreadsheet size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />,
+          onClick: onExportCSV,
+          disabled: disabled || loading,
+        },
+        onExportPDF && {
+          key: "export-pdf",
+          label: "Export as PDF",
+          icon: <FileText size={15} className="text-rose-600 dark:text-rose-400 shrink-0" />,
+          onClick: onExportPDF,
+          disabled: disabled || loading,
+        },
+      ].filter(Boolean);
+
+  const handleAction = (actionFn) => {
+    setOpen(false);
+    if (actionFn) actionFn();
+  };
 
   return (
-    <div
-      className="relative"
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
-      }}
-    >
+    <div className={`relative inline-block ${className}`} ref={dropdownRef}>
       <button
         type="button"
-        className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold text-card-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 disabled:cursor-not-allowed disabled:opacity-50 transition cursor-pointer"
         onClick={() => setOpen((current) => !current)}
-        disabled={disabled || visibleOptions.length === 0}
+        disabled={disabled || loading || resolvedOptions.length === 0}
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <FileDown size={14} />
-        Export
-        <ChevronDown size={14} />
+        {loading ? (
+          <LoaderCircle size={13} className="animate-spin text-primary shrink-0" />
+        ) : (
+          <Download size={13} className="shrink-0" />
+        )}
+        <span>{loading ? "Exporting..." : "Export"}</span>
+        <ChevronDown
+          size={13}
+          className={`text-slate-400 dark:text-slate-500 transition-transform duration-200 ${
+            open ? "rotate-180" : ""
+          }`}
+        />
       </button>
-      {open ? (
+
+      {open && !disabled && !loading && resolvedOptions.length > 0 ? (
         <div
           role="menu"
-          className={`absolute z-[1300] min-w-56 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-xl ${
-            placement === "top" ? "bottom-full mb-2" : "top-full mt-2"
+          className={`absolute z-[1300] min-w-44 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1 shadow-lg animate-in fade-in-50 zoom-in-95 duration-100 ${
+            placement === "top" ? "bottom-full mb-1.5" : "top-full mt-1.5"
           } ${
-            align === "left" ? "left-0" : "left-0 sm:left-auto sm:right-0"
+            align === "left" ? "left-0" : "right-0"
           }`}
         >
-          {visibleOptions.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center px-4 py-2 text-left text-sm text-card-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => {
-                setOpen(false);
-                option.onClick?.();
-              }}
-              disabled={option.disabled}
-            >
-              {option.label}
-            </button>
-          ))}
+          {resolvedOptions.map((option) => {
+            const isCsv =
+              option.key?.toLowerCase().includes("csv") ||
+              option.label?.toLowerCase().includes("csv");
+            const isPdf =
+              option.key?.toLowerCase().includes("pdf") ||
+              option.label?.toLowerCase().includes("pdf");
+
+            const optionIcon =
+              option.icon ||
+              (isCsv ? (
+                <FileSpreadsheet size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+              ) : isPdf ? (
+                <FileText size={15} className="text-rose-600 dark:text-rose-400 shrink-0" />
+              ) : (
+                <FileDown size={15} className="text-slate-500 dark:text-slate-400 shrink-0" />
+              ));
+
+            return (
+              <button
+                key={option.key || option.label}
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 transition-colors cursor-pointer"
+                onClick={() => handleAction(option.onClick)}
+                disabled={option.disabled}
+              >
+                {optionIcon}
+                <span className="truncate">{option.label}</span>
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </div>
@@ -361,7 +443,7 @@ export function MaintenanceReportFilters({
           </select>
         </label>
         <label>
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">SLA Health</span>
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Target Timeline</span>
           <select value={filters.slaHealth} onChange={(event) => onChange("slaHealth", event.target.value)} className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground">
             {ANALYTICS_SLA_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
           </select>

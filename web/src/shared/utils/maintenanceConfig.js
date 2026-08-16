@@ -1,14 +1,14 @@
 import {
-    ArrowUpDown,
-    BedDouble,
-    Bug,
-    Droplets,
-    MoreHorizontal,
-    Snowflake,
-    Sparkles,
-    Wifi,
-    Wrench,
-    Zap,
+  ArrowUpDown,
+  BedDouble,
+  Bug,
+  Droplets,
+  MoreHorizontal,
+  Snowflake,
+  Sparkles,
+  Wifi,
+  Wrench,
+  Zap,
 } from "lucide-react";
 
 export const MAINTENANCE_REQUEST_TYPE_META = Object.freeze({
@@ -70,6 +70,8 @@ export const MAINTENANCE_URGENCY_LEVELS = Object.freeze([
 ]);
 
 export const MIN_MAINTENANCE_DESCRIPTION_LENGTH = 10;
+export const MAX_MAINTENANCE_DESCRIPTION_LENGTH = 1000;
+export const MAX_MAINTENANCE_ATTACHMENTS = 5;
 
 export const ACTIVE_MAINTENANCE_STATUSES = Object.freeze([
   "pending",
@@ -77,8 +79,10 @@ export const ACTIVE_MAINTENANCE_STATUSES = Object.freeze([
   "provider_assigned",
   "scheduled",
   "viewed",
+  "reviewed",
   "in_progress",
   "waiting_tenant",
+  "resolved",
   "reopened",
 ]);
 
@@ -96,7 +100,6 @@ export const REOPENABLE_MAINTENANCE_STATUSES = Object.freeze([
 ]);
 
 export const TERMINAL_ADMIN_MAINTENANCE_STATUSES = Object.freeze([
-  "resolved",
   "completed",
   "rejected",
   "cancelled",
@@ -111,78 +114,98 @@ export const LOCKED_ADMIN_MAINTENANCE_STATUSES = Object.freeze([
 export const MAINTENANCE_STATUS_META = Object.freeze({
   pending: {
     label: "Pending Review",
+    shortLabel: "Pending",
     bg: "#FEF3C7",
-    color: "#F59E0B",
+    color: "#B45309",
     variant: "warning",
   },
   pending_review: {
     label: "Pending Review",
+    shortLabel: "Pending",
     bg: "#FEF3C7",
-    color: "#F59E0B",
+    color: "#B45309",
     variant: "warning",
   },
   provider_assigned: {
     label: "Provider Assigned",
-    bg: "#E0E7FF",
-    color: "#4338CA",
+    shortLabel: "Assigned",
+    bg: "#DBEAFE",
+    color: "#1D4ED8",
     variant: "info",
   },
   scheduled: {
     label: "Scheduled",
-    bg: "#CFFAFE",
-    color: "#0891B2",
+    shortLabel: "Scheduled",
+    bg: "#E0F2FE",
+    color: "#0369A1",
     variant: "info",
   },
   viewed: {
-    label: "Viewed",
+    label: "Under Review",
+    shortLabel: "Under Review",
     bg: "#FEF3C7",
-    color: "#D97706",
+    color: "#B45309",
+    variant: "warning",
+  },
+  reviewed: {
+    label: "Under Review",
+    shortLabel: "Under Review",
+    bg: "#FEF3C7",
+    color: "#B45309",
     variant: "warning",
   },
   in_progress: {
     label: "In Progress",
+    shortLabel: "In Progress",
     bg: "#DBEAFE",
-    color: "#3B82F6",
+    color: "#1D4ED8",
     variant: "info",
   },
   waiting_tenant: {
-    label: "Waiting for Tenant",
-    bg: "#E0F2FE",
-    color: "#0284C7",
+    label: "In Progress",
+    shortLabel: "In Progress",
+    bg: "#DBEAFE",
+    color: "#1D4ED8",
     variant: "info",
   },
   reopened: {
     label: "Reopened",
+    shortLabel: "Reopened",
     bg: "#FEE2E2",
-    color: "#B91C1C",
+    color: "#DC2626",
     variant: "error",
   },
   resolved: {
-    label: "Resolved",
-    bg: "#D1FAE5",
-    color: "#059669",
-    variant: "success",
+    label: "Resolved (Awaiting Verification)",
+    shortLabel: "Resolved",
+    bg: "#FEF9C3",
+    color: "#854D0E",
+    variant: "warning",
   },
   completed: {
     label: "Completed",
+    shortLabel: "Completed",
     bg: "#DCFCE7",
-    color: "#22C55E",
+    color: "#15803D",
     variant: "success",
   },
   rejected: {
     label: "Rejected",
+    shortLabel: "Rejected",
     bg: "#FEE2E2",
     color: "#DC2626",
     variant: "error",
   },
   cancelled: {
     label: "Cancelled",
+    shortLabel: "Cancelled",
     bg: "#F3F4F6",
-    color: "#9CA3AF",
+    color: "#6B7280",
     variant: "neutral",
   },
   closed: {
     label: "Closed",
+    shortLabel: "Closed",
     bg: "#E2E8F0",
     color: "#475569",
     variant: "neutral",
@@ -191,28 +214,29 @@ export const MAINTENANCE_STATUS_META = Object.freeze({
 
 export const ADMIN_MAINTENANCE_STATUS_OPTIONS = Object.freeze([
   "pending_review",
+  "viewed",
+  "reviewed",
   "provider_assigned",
   "scheduled",
-  "viewed",
   "in_progress",
   "waiting_tenant",
   "resolved",
-  "completed",
   "rejected",
   "closed",
 ]);
 
 export const ADMIN_MAINTENANCE_STATUS_TRANSITIONS = Object.freeze({
-  pending: ["viewed", "provider_assigned", "scheduled", "in_progress", "rejected", "waiting_tenant", "completed", "resolved"],
-  pending_review: ["provider_assigned", "scheduled", "in_progress", "rejected", "waiting_tenant", "completed", "resolved"],
-  provider_assigned: ["scheduled", "in_progress", "waiting_tenant", "completed", "resolved", "rejected"],
-  scheduled: ["in_progress", "waiting_tenant", "completed", "resolved", "rejected"],
-  viewed: ["provider_assigned", "scheduled", "in_progress", "rejected", "waiting_tenant"],
-  in_progress: ["waiting_tenant", "scheduled", "resolved", "completed", "rejected"],
-  waiting_tenant: ["in_progress", "scheduled", "resolved", "completed", "rejected"],
-  reopened: ["provider_assigned", "scheduled", "in_progress", "waiting_tenant", "completed", "resolved", "rejected"],
-  resolved: ["completed", "closed", "reopened"],
-  completed: ["closed", "reopened"],
+  pending: ["viewed", "reviewed", "provider_assigned", "scheduled", "in_progress", "rejected", "waiting_tenant"],
+  pending_review: ["viewed", "reviewed", "provider_assigned", "scheduled", "in_progress", "rejected", "waiting_tenant"],
+  viewed: ["reviewed", "provider_assigned", "scheduled", "in_progress", "rejected", "waiting_tenant"],
+  reviewed: ["provider_assigned", "scheduled", "in_progress", "waiting_tenant", "rejected"],
+  provider_assigned: ["scheduled", "in_progress", "waiting_tenant", "resolved", "rejected"],
+  scheduled: ["in_progress", "waiting_tenant", "resolved", "rejected"],
+  in_progress: ["waiting_tenant", "scheduled", "resolved", "rejected"],
+  waiting_tenant: ["in_progress", "scheduled", "resolved", "rejected"],
+  reopened: ["viewed", "reviewed", "provider_assigned", "scheduled", "in_progress", "waiting_tenant", "resolved", "rejected"],
+  resolved: ["closed"],
+  completed: ["closed"],
   rejected: ["closed"],
   cancelled: [],
   closed: [],
@@ -227,9 +251,10 @@ export const getMaintenanceUrgencyMeta = (urgency) =>
 
 export const getMaintenanceStatusMeta = (status) =>
   MAINTENANCE_STATUS_META[status] || {
-    label: status || "Unknown",
+    label: status ? String(status).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Unknown",
+    shortLabel: status || "Unknown",
     bg: "#F3F4F6",
-    color: "#9CA3AF",
+    color: "#6B7280",
     variant: "neutral",
   };
 
@@ -253,4 +278,101 @@ export const formatMaintenanceUrgency = (urgency) =>
 
 export const formatMaintenanceStatus = (status) =>
   getMaintenanceStatusMeta(status).label;
+
+// ═══════════════════════════════════════════════════════════════
+// CANONICAL MAINTENANCE STAGE PIPELINE (5 Unified Stages)
+// ═══════════════════════════════════════════════════════════════
+
+export const CANONICAL_MAINTENANCE_STEPS = Object.freeze([
+  { key: "pending_review", label: "Pending Review", number: 1 },
+  { key: "reviewed", label: "Under Review", number: 2 },
+  { key: "in_progress", label: "In Progress", number: 3 },
+  { key: "resolved", label: "Resolved", number: 4 },
+  { key: "completed", label: "Completed", number: 5 },
+]);
+
+/**
+ * Map a backend status string to the 0-based CANONICAL step index.
+ * Returns -1 for terminal/unknown statuses.
+ */
+export function getMaintenanceStepIndex(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "pending" || s === "pending_review" || s === "submitted") return 0;
+  if (s === "viewed" || s === "reviewed" || s === "under_review") return 1;
+  if (s === "provider_assigned" || s === "scheduled" || s === "in_progress" || s === "waiting_tenant") return 2;
+  if (s === "resolved") return 3;
+  if (s === "completed" || s === "closed") return 4;
+  if (s === "reopened") return 2; // Reopened → returns to in_progress step 3
+  return -1; // terminal/unknown (rejected, cancelled)
+}
+
+/**
+ * Returns the recommended next action metadata for the admin
+ * based on the current status of a maintenance request.
+ * Returns: { actionLabel, actionKey, actionColor, contextNote, requiresSchedule }
+ */
+export function getNextRecommendedStageAction(request) {
+  const status = String(request?.status || "").toLowerCase();
+
+  if (status === "pending" || status === "pending_review" || status === "submitted") {
+    return {
+      actionLabel: "Review Request",
+      actionKey: "mark_reviewed",
+      actionColor: "info",
+      contextNote: "Review the reported issue and resident photos to prepare for technician assignment.",
+      requiresSchedule: false,
+    };
+  }
+  if (status === "viewed" || status === "reviewed" || status === "under_review") {
+    return {
+      actionLabel: "Confirm Provider & Schedule Visit",
+      actionKey: "confirm_dispatch",
+      actionColor: "primary",
+      contextNote: "Assign an in-house staff member or contractor and set the repair visit schedule.",
+      requiresSchedule: true,
+    };
+  }
+  if (
+    status === "provider_assigned" ||
+    status === "scheduled" ||
+    status === "in_progress" ||
+    status === "waiting_tenant"
+  ) {
+    return {
+      actionLabel: "Upload Proof & Mark Resolved",
+      actionKey: "upload_proof",
+      actionColor: "success",
+      contextNote: "Technician work in progress. Upload resolution photos to request resident verification.",
+      requiresSchedule: false,
+    };
+  }
+  if (status === "resolved") {
+    return {
+      actionLabel: "Awaiting Resident Verification",
+      actionKey: "await_verification",
+      actionColor: "warning",
+      contextNote: "Work is done. Awaiting the resident's confirmation that the issue is fully fixed.",
+      requiresSchedule: false,
+    };
+  }
+  if (status === "completed" || status === "closed") {
+    return {
+      actionLabel: "Official Completion Report Ready",
+      actionKey: "view_report",
+      actionColor: "success",
+      contextNote: "Maintenance ticket completed and verified by resident. Official completion report available.",
+      requiresSchedule: false,
+    };
+  }
+  if (status === "reopened") {
+    return {
+      actionLabel: "Follow-Up Work In Progress",
+      actionKey: "reopen_triage",
+      actionColor: "danger",
+      contextNote: "Resident reported the issue still persists. Additional technician follow-up required.",
+      requiresSchedule: true,
+    };
+  }
+  return null;
+}
 

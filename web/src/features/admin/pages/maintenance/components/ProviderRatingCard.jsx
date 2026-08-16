@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Award, CheckCircle2, Star, ThumbsUp } from "lucide-react";
+import { AlertCircle, Award, CheckCircle2, Loader2, Star, ThumbsUp } from "lucide-react";
 import { getAssignedProviderName } from "../maintenanceUtils";
 
 const RATING_TAG_OPTIONS = [
@@ -21,6 +21,8 @@ const RATING_LABELS = {
   5: "5 - Excellent / Highly Recommended",
 };
 
+const MAX_FEEDBACK_LENGTH = 500;
+
 export function ProviderRatingCard({
   request,
   isSubmitting = false,
@@ -31,6 +33,8 @@ export function ProviderRatingCard({
   const [hoverRating, setHoverRating] = useState(0);
   const [selectedTags, setSelectedTags] = useState(["Quality Repair", "Punctual"]);
   const [feedback, setFeedback] = useState("");
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState(false);
 
   const providerName = getAssignedProviderName(request);
   const existingRating = request?.providerRating;
@@ -45,21 +49,21 @@ export function ProviderRatingCard({
   if (existingRating?.rating) {
     const starCount = Number(existingRating.rating || 5);
     return (
-      <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
           <div className="flex items-center gap-2">
-            <Award size={15} className="text-amber-500" />
+            <Award size={15} className="text-slate-700 dark:text-slate-300" />
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
               Contractor Performance Rating
             </h3>
           </div>
-          <span className="inline-flex items-center gap-1 rounded bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-            <CheckCircle2 size={11} />
+          <span className="inline-flex items-center gap-1 rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+            <CheckCircle2 size={11} className="text-emerald-600 dark:text-emerald-400" />
             Rated
           </span>
         </div>
 
-        <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-2 text-xs">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 p-3 space-y-2 text-xs">
           <div className="flex items-center justify-between">
             <span className="font-bold text-slate-900 dark:text-slate-100">
               {providerName}
@@ -71,7 +75,7 @@ export function ProviderRatingCard({
                   size={13}
                   className={
                     star <= starCount
-                      ? "fill-amber-400 text-amber-400"
+                      ? "fill-amber-400 text-amber-500"
                       : "text-slate-300 dark:text-slate-600"
                   }
                 />
@@ -96,27 +100,81 @@ export function ProviderRatingCard({
           )}
 
           {existingRating.feedback && (
-            <p className="text-slate-600 dark:text-slate-300 text-xs italic bg-white dark:bg-slate-900 p-2 rounded border border-slate-200/60 dark:border-slate-800">
+            <p className="text-slate-600 dark:text-slate-300 text-xs italic bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-800">
               "{existingRating.feedback}"
             </p>
           )}
 
           <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1">
-            Recorded by {existingRating.ratedByName || "Admin"} • Trains AI ranking algorithm
+            Recorded by {existingRating.ratedByName || "Admin"} • Evaluates contractor performance history
           </div>
         </div>
       </div>
     );
   }
 
+  const validate = (ratingVal, tagsVal, notesVal) => {
+    const errs = {};
+    if (!ratingVal || ratingVal < 1 || ratingVal > 5) {
+      errs.rating = "Please select a valid rating from 1 to 5 stars.";
+    }
+
+    if (!Array.isArray(tagsVal) || tagsVal.length === 0) {
+      errs.tags = "Please select at least 1 performance attribute.";
+    }
+
+    if (notesVal && notesVal.length > MAX_FEEDBACK_LENGTH) {
+      errs.feedback = `Notes cannot exceed ${MAX_FEEDBACK_LENGTH} characters.`;
+    }
+
+    // Require an explanatory note or low-performance tag if 1 or 2 stars
+    if (ratingVal <= 2) {
+      const hasNegativeTag = tagsVal.some((t) =>
+        ["Delayed Arrival", "Required Follow-up", "Unsatisfactory"].includes(t),
+      );
+      if (!hasNegativeTag && (!notesVal || notesVal.trim().length < 5)) {
+        errs.feedback = "Please provide brief notes explaining the low rating (min 5 characters).";
+      }
+    }
+
+    return errs;
+  };
+
   const handleTagToggle = (tag) => {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
-    );
+    setSelectedTags((prev) => {
+      const next = prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag];
+      if (touched) {
+        setErrors(validate(selectedRating, next, feedback));
+      }
+      return next;
+    });
+  };
+
+  const handleRatingChange = (star) => {
+    setSelectedRating(star);
+    if (touched) {
+      setErrors(validate(star, selectedTags, feedback));
+    }
+  };
+
+  const handleFeedbackChange = (e) => {
+    const val = e.target.value;
+    setFeedback(val);
+    if (touched) {
+      setErrors(validate(selectedRating, selectedTags, val));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setTouched(true);
+    const validationErrors = validate(selectedRating, selectedTags, feedback);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+    setErrors({});
+
     if (!onSubmitRating) return;
     await onSubmitRating({
       rating: selectedRating,
@@ -128,67 +186,83 @@ export function ProviderRatingCard({
   const currentDisplayRating = hoverRating || selectedRating;
 
   return (
-    <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
-      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3">
+      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
         <div className="flex items-center gap-2">
-          <Award size={15} className="text-amber-500" />
+          <Award size={15} className="text-slate-700 dark:text-slate-300" />
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
             Rate Contractor Performance
           </h3>
         </div>
         {isResolvedOrCompleted && (
-          <span className="rounded bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+          <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
             Pending Feedback
           </span>
         )}
       </div>
 
       <div className="text-xs text-slate-600 dark:text-slate-400">
-        Rate <span className="font-bold text-slate-900 dark:text-slate-100">{providerName}</span> on service quality, punctuality, and fair pricing to train future AI provider suggestions.
+        Rate <span className="font-bold text-slate-900 dark:text-slate-100">{providerName}</span> on service quality, punctuality, and fair pricing to refine future contractor suggestions.
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3 pt-1">
         {/* Star Selector */}
-        <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-1.5">
+        <div
+          className={`rounded-lg border bg-slate-50/50 dark:bg-slate-800/30 p-3 space-y-1.5 transition-colors ${
+            errors.rating
+              ? "border-rose-300 dark:border-rose-700"
+              : "border-slate-200 dark:border-slate-800"
+          }`}
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-              Quality & Reliability Score
+              Quality &amp; Reliability Score <span className="text-rose-500">*</span>
             </span>
-            <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
               {RATING_LABELS[currentDisplayRating] || `${currentDisplayRating} Stars`}
             </span>
           </div>
 
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex items-center gap-1.5 pt-1">
             {[1, 2, 3, 4, 5].map((star) => (
               <button
                 type="button"
                 key={star}
                 disabled={disabled || isSubmitting}
-                onClick={() => setSelectedRating(star)}
+                onClick={() => handleRatingChange(star)}
                 onMouseEnter={() => setHoverRating(star)}
                 onMouseLeave={() => setHoverRating(0)}
-                className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+                className="p-1 rounded hover:bg-slate-200/50 dark:hover:bg-slate-700 transition cursor-pointer"
                 title={`Rate ${star} Stars`}
               >
                 <Star
                   size={20}
                   className={
                     star <= currentDisplayRating
-                      ? "fill-amber-400 text-amber-400 transition-transform scale-110"
+                      ? "fill-amber-400 text-amber-500 transition-transform scale-110"
                       : "text-slate-300 dark:text-slate-600 hover:text-slate-400"
                   }
                 />
               </button>
             ))}
           </div>
+          {errors.rating && (
+            <p className="flex items-center gap-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 pt-1">
+              <AlertCircle size={12} /> {errors.rating}
+            </p>
+          )}
         </div>
 
         {/* Quick Tag Chips */}
         <div className="space-y-1.5">
-          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-            Quick Performance Attributes
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Performance Attributes <span className="text-rose-500">*</span>
+            </label>
+            <span className="text-[10px] text-slate-400">
+              {selectedTags.length} selected
+            </span>
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {RATING_TAG_OPTIONS.map((tag) => {
               const isSelected = selectedTags.includes(tag);
@@ -198,9 +272,9 @@ export function ProviderRatingCard({
                   key={tag}
                   disabled={disabled || isSubmitting}
                   onClick={() => handleTagToggle(tag)}
-                  className={`rounded-md border px-2 py-1 text-[11px] font-medium transition cursor-pointer ${
+                  className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition cursor-pointer ${
                     isSelected
-                      ? "border-primary bg-primary text-primary-foreground font-semibold"
+                      ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900 font-semibold"
                       : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                   }`}
                 >
@@ -209,21 +283,51 @@ export function ProviderRatingCard({
               );
             })}
           </div>
+          {errors.tags && (
+            <p className="flex items-center gap-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 pt-0.5">
+              <AlertCircle size={12} /> {errors.tags}
+            </p>
+          )}
         </div>
 
         {/* Feedback Textarea */}
         <div className="space-y-1">
-          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-            Internal Contractor Notes (Optional)
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Internal Contractor Notes {selectedRating <= 2 ? <span className="text-rose-500">*</span> : "(Optional)"}
+            </label>
+            <span
+              className={`text-[10px] ${
+                feedback.length > MAX_FEEDBACK_LENGTH
+                  ? "text-rose-600 font-bold"
+                  : "text-slate-400 dark:text-slate-500"
+              }`}
+            >
+              {feedback.length} / {MAX_FEEDBACK_LENGTH}
+            </span>
+          </div>
           <textarea
             rows={2}
             value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
+            onChange={handleFeedbackChange}
             disabled={disabled || isSubmitting}
-            placeholder="e.g. Arrived on time with proper tools, cleanly sealed aircon drainage pipe."
-            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition resize-none"
+            placeholder={
+              selectedRating <= 2
+                ? "Please explain what went wrong with this contractor (e.g. late arrival, incomplete fix)..."
+                : "e.g. Arrived on time with proper tools, cleanly sealed aircon drainage pipe."
+            }
+            style={{ outline: "none", boxShadow: "none" }}
+            className={`w-full rounded-lg border bg-white dark:bg-slate-900 p-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 transition resize-none ${
+              errors.feedback
+                ? "border-rose-400 dark:border-rose-600 focus:border-rose-500"
+                : "border-slate-200 dark:border-slate-700 focus:border-slate-400 dark:focus:border-slate-500"
+            }`}
           />
+          {errors.feedback && (
+            <p className="flex items-center gap-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 pt-0.5">
+              <AlertCircle size={12} /> {errors.feedback}
+            </p>
+          )}
         </div>
 
         {/* Submit Button */}
@@ -231,10 +335,14 @@ export function ProviderRatingCard({
           <button
             type="submit"
             disabled={disabled || isSubmitting}
-            className="inline-flex h-8.5 items-center gap-1.5 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-40 transition cursor-pointer"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-100 dark:hover:bg-slate-200 dark:text-slate-900 px-5 text-xs font-bold shadow-xs disabled:opacity-40 transition cursor-pointer active:scale-[0.98]"
           >
-            <ThumbsUp size={13} />
-            <span>{isSubmitting ? "Recording..." : "Save Contractor Rating"}</span>
+            {isSubmitting ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <ThumbsUp size={13} />
+            )}
+            <span>{isSubmitting ? "Saving Rating..." : "Save Contractor Rating"}</span>
           </button>
         </div>
       </form>

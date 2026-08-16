@@ -444,6 +444,16 @@ const scheduleSchema = new mongoose.Schema(
       default: null,
       trim: true,
     },
+    scheduledBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    scheduledByName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
   },
   { _id: false },
 );
@@ -510,6 +520,55 @@ const resolutionConfirmationSchema = new mongoose.Schema(
       default: null,
     },
     tenantFeedback: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    rating: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: null,
+    },
+    action: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
+const rescheduleRequestSchema = new mongoose.Schema(
+  {
+    requestedAt: {
+      type: Date,
+      default: null,
+    },
+    proposedDate: {
+      type: Date,
+      default: null,
+    },
+    reason: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    status: {
+      type: String,
+      enum: ["pending", "accepted", "declined", null],
+      default: null,
+    },
+    respondedAt: {
+      type: Date,
+      default: null,
+    },
+    respondedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    responseNote: {
       type: String,
       default: null,
       trim: true,
@@ -645,6 +704,10 @@ const maintenanceRequestSchema = new mongoose.Schema(
     },
     resolutionConfirmation: {
       type: resolutionConfirmationSchema,
+      default: () => ({}),
+    },
+    rescheduleRequest: {
+      type: rescheduleRequestSchema,
       default: () => ({}),
     },
 
@@ -793,6 +856,65 @@ const maintenanceRequestSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Room",
       default: null,
+      index: true,
+    },
+    // --- Stage 2: Reviewed audit fields ---
+    reviewedAt: {
+      type: Date,
+      default: null,
+    },
+    reviewedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    reviewedByName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    // --- Stage 9: Resolved actor fields ---
+    resolvedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    resolvedByName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    // --- Completion timestamp (set by tenant mobile, not admin) ---
+    completedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // --- Schedule actor fields ---
+    scheduledBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    scheduledByName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    // --- Unread tracking (Decision #5: lastAdminReadAt) ---
+    lastAdminReadAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    // --- Reopen flag (Decision #4: isReopened) ---
+    isReopened: {
+      type: Boolean,
+      default: false,
       index: true,
     },
     isArchived: {

@@ -24,30 +24,59 @@ import {
 } from "../../../../../shared/utils/maintenanceConfig";
 import {
   ARCHIVE_FILTER_OPTIONS,
+  OPERATIONAL_STAGES,
   SLA_FILTER_OPTIONS,
+  SPECIFIC_STATUS_OPTIONS,
   SUMMARY_STATUSES,
+  getStageLabel,
+  getStatusLabel,
+  getStageStatusLabel,
 } from "../maintenanceUtils";
 import { MaintenanceExportDropdown } from "./MaintenanceReportModal";
 
+export const QUEUE_FILTER_OPTIONS = [
+  { key: "all", label: "All Requests" },
+  { key: "open_queue", label: "Active Queue" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "needs_attention", label: "Needs Attention", alertBadge: true },
+  { key: "resolved", label: "Resolved (Awaiting)" },
+  { key: "completed", label: "Completed" },
+];
+
+/**
+ * MaintenanceFilters — 4-Core Primary Toolbar with an organized Advanced Filters drawer.
+ */
 export function MaintenanceFilters({
   searchQuery,
-  statusFilter,
-  archiveView,
-  branchFilter,
+  stageFilter = "all",
+  statusFilter = "all",
+  stageStatusFilter,
+  queueFilter,
+  archiveView = "active",
+  branchFilter = "all",
   userBranch,
-  urgencyFilter,
-  slaFilter,
-  requestTypeFilter,
-  dateFrom,
-  dateTo,
-  sortMode,
-  showAdvancedFilters,
-  isOwner,
-  filteredRequestsCount,
-  summaryRequestsCount,
+  urgencyFilter = "all",
+  slaFilter = "all",
+  requestTypeFilter = "all",
+  dateFrom = "",
+  dateTo = "",
+  sortMode = "newest",
+  showAdvancedFilters = false,
+  isOwner = false,
+  filteredRequestsCount = 0,
+  summaryRequestsCount = 0,
+  stageCounts = {},
+  statusCounts = {},
+  stageStatusCounts = {},
+  queueCounts = {},
+  urgencyCounts = {},
+  branchCounts = {},
   activeFilterChips = [],
-  onSearchQueryChange,
+  onStageFilterChange,
   onStatusFilterChange,
+  onStageStatusFilterChange,
+  onQueueFilterChange,
+  onSearchQueryChange,
   onArchiveViewChange,
   onBranchFilterChange,
   onUrgencyFilterChange,
@@ -60,8 +89,33 @@ export function MaintenanceFilters({
   onExport,
   onExportCsv,
   onExportPdf,
+  isExporting = false,
   onResetFilters,
 }) {
+  const effectiveStage = stageFilter || queueFilter || (stageStatusFilter && !String(stageStatusFilter).startsWith("status:") ? String(stageStatusFilter).replace(/^stage:/, "") : "all");
+  const effectiveStatus = statusFilter || (stageStatusFilter && String(stageStatusFilter).startsWith("status:") ? String(stageStatusFilter).replace(/^status:/, "") : "all");
+
+  const effectiveStageCounts = Object.keys(stageCounts).length > 0 ? stageCounts : queueCounts;
+  const effectiveStatusCounts = Object.keys(statusCounts).length > 0 ? statusCounts : stageStatusCounts;
+
+  const handleStageChange = (val) => {
+    if (onStageFilterChange) {
+      onStageFilterChange(val);
+    } else if (onQueueFilterChange) {
+      onQueueFilterChange(val === "all" ? null : val);
+    } else if (onStageStatusFilterChange) {
+      onStageStatusFilterChange(val);
+    }
+  };
+
+  const handleStatusChange = (val) => {
+    if (onStatusFilterChange) {
+      onStatusFilterChange(val);
+    } else if (onStageStatusFilterChange) {
+      onStageStatusFilterChange(val);
+    }
+  };
+
   const advancedFiltersActiveCount =
     (slaFilter !== "all" ? 1 : 0) +
     (requestTypeFilter !== "all" ? 1 : 0) +
@@ -72,7 +126,8 @@ export function MaintenanceFilters({
 
   const hasAnyActiveFilter =
     searchQuery.trim() !== "" ||
-    statusFilter !== "all" ||
+    effectiveStage !== "all" ||
+    effectiveStatus !== "all" ||
     (isOwner && branchFilter !== "all") ||
     urgencyFilter !== "all" ||
     advancedFiltersActiveCount > 0;
@@ -151,28 +206,13 @@ export function MaintenanceFilters({
 
   const activeDatePreset = getActiveDatePreset();
 
-  const exportOptions = [
-    {
-      key: "requests-pdf",
-      label: "Download List as PDF",
-      onClick: onExportPdf,
-      disabled: filteredRequestsCount === 0 || !onExportPdf,
-    },
-    {
-      key: "requests-csv",
-      label: "Download List as CSV",
-      onClick: onExportCsv || onExport,
-      disabled: filteredRequestsCount === 0,
-    },
-  ];
-
   return (
     <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3.5">
-      {/* Primary Toolbar Row */}
+      {/* Primary 4-Core Toolbar Row */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Left Side: Search & Quick Dropdowns */}
+        {/* Left Side: Search & 4-Core Quick Dropdowns */}
         <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
-          {/* Search Box */}
+          {/* 1. Search Box */}
           <div className="relative flex-1 min-w-[220px] max-w-sm sm:max-w-md">
             <Search
               size={15}
@@ -180,7 +220,7 @@ export function MaintenanceFilters({
             />
             <input
               type="text"
-              placeholder="Search tenant, ID, or description..."
+              placeholder="Search tenant, room, ID, or description..."
               value={searchQuery}
               onChange={(e) => onSearchQueryChange(e.target.value)}
               className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 pl-9 pr-8 text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 transition"
@@ -197,62 +237,93 @@ export function MaintenanceFilters({
             )}
           </div>
 
-          {/* Quick Filters Group */}
+          {/* Core Dropdowns Group */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Status Filter */}
+            {/* 2. Operational Stage Dropdown */}
             <select
-              value={statusFilter}
-              onChange={(e) => onStatusFilterChange(e.target.value)}
-              className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-primary focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition min-w-[125px]"
+              value={effectiveStage}
+              onChange={(e) => handleStageChange(e.target.value)}
+              className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-primary focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition min-w-[140px]"
+              aria-label="Filter by operational stage"
             >
-              <option value="all">All Statuses</option>
-              {SUMMARY_STATUSES.map((item) => (
-                <option key={item.key} value={item.key}>
-                  {item.label}
-                </option>
-              ))}
+              <option value="all">
+                All Stages {effectiveStageCounts.all !== undefined ? `(${effectiveStageCounts.all})` : ""}
+              </option>
+              {OPERATIONAL_STAGES.map((stage) => {
+                const count = effectiveStageCounts[stage.key] ?? effectiveStageCounts[stage.stageKey];
+                return (
+                  <option key={stage.key} value={stage.key}>
+                    {stage.label} {count !== undefined ? `(${count})` : ""}
+                  </option>
+                );
+              })}
             </select>
 
-            {/* Branch Filter (for Owners) or Assigned Branch Badge (for Branch Admins) */}
-            {isOwner ? (
+            {/* 3. Specific Status Dropdown */}
+            <select
+              value={effectiveStatus}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-primary focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition min-w-[140px]"
+              aria-label="Filter by specific status"
+            >
+              <option value="all">
+                All Statuses {effectiveStatusCounts.all !== undefined ? `(${effectiveStatusCounts.all})` : ""}
+              </option>
+              {SPECIFIC_STATUS_OPTIONS.map((status) => {
+                const count = effectiveStatusCounts[status.key] ?? effectiveStatusCounts[status.rawStatus];
+                return (
+                  <option key={status.key} value={status.key}>
+                    {status.label} {count !== undefined ? `(${count})` : ""}
+                  </option>
+                );
+              })}
+            </select>
+
+            {/* 3. Urgency Filter Dropdown */}
+            <select
+              value={urgencyFilter}
+              onChange={(e) => onUrgencyFilterChange(e.target.value)}
+              className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-primary focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition min-w-[130px]"
+            >
+              <option value="all">
+                All Urgencies {urgencyCounts.all !== undefined ? `(${urgencyCounts.all})` : ""}
+              </option>
+              {MAINTENANCE_URGENCY_LEVELS.map((urgency) => {
+                const count = urgencyCounts[urgency];
+                return (
+                  <option key={urgency} value={urgency}>
+                    {getMaintenanceUrgencyMeta(urgency).label} {count !== undefined ? `(${count})` : ""}
+                  </option>
+                );
+              })}
+            </select>
+
+            {/* 4. Branch Filter (Owners Only - Auto-hidden for Branch Admins) */}
+            {isOwner && (
               <select
                 value={branchFilter}
                 onChange={(e) => onBranchFilterChange(e.target.value)}
                 className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-primary focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition min-w-[130px]"
               >
-                <option value="all">All Branches</option>
-                {BRANCH_OPTIONS.map((branch) => (
-                  <option key={branch.value} value={branch.value}>
-                    {branch.label}
-                  </option>
-                ))}
-              </select>
-            ) : userBranch ? (
-              <div className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-800/80 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200">
-                <span className="text-slate-400 font-normal">Branch:</span>
-                <span>{BRANCH_DISPLAY_NAMES[userBranch] || userBranch}</span>
-              </div>
-            ) : null}
-
-            {/* Urgency Filter */}
-            <select
-              value={urgencyFilter}
-              onChange={(e) => onUrgencyFilterChange(e.target.value)}
-              className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-primary focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition min-w-[135px]"
-            >
-              <option value="all">All Urgency Levels</option>
-              {MAINTENANCE_URGENCY_LEVELS.map((urgency) => (
-                <option key={urgency} value={urgency}>
-                  {getMaintenanceUrgencyMeta(urgency).label}
+                <option value="all">
+                  All Branches {branchCounts.all !== undefined ? `(${branchCounts.all})` : ""}
                 </option>
-              ))}
-            </select>
+                {BRANCH_OPTIONS.map((branch) => {
+                  const count = branchCounts[branch.value];
+                  return (
+                    <option key={branch.value} value={branch.value}>
+                      {branch.label} {count !== undefined ? `(${count})` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            )}
           </div>
         </div>
 
-        {/* Right Side: Action Controls */}
+        {/* Right Side: Advanced Toggle, Quick Reset, Export */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* More Filters Toggle */}
+          {/* Advanced Filters Button with Active Count Pill */}
           <button
             type="button"
             onClick={onToggleAdvancedFilters}
@@ -264,7 +335,7 @@ export function MaintenanceFilters({
             aria-expanded={showAdvancedFilters}
           >
             <SlidersHorizontal size={13} />
-            <span>More Filters</span>
+            <span>Filters</span>
             {advancedFiltersActiveCount > 0 && (
               <span className="flex h-4.5 min-w-[18px] px-1 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white">
                 {advancedFiltersActiveCount}
@@ -273,13 +344,7 @@ export function MaintenanceFilters({
             {showAdvancedFilters ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           </button>
 
-          {/* Export Dropdown */}
-          <MaintenanceExportDropdown
-            options={exportOptions}
-            disabled={filteredRequestsCount === 0}
-          />
-
-          {/* Reset Filters Button */}
+          {/* Quick 1-Click Reset All Button (Visible only when any filter is active) */}
           {hasAnyActiveFilter && (
             <button
               type="button"
@@ -288,13 +353,21 @@ export function MaintenanceFilters({
               title="Reset all filters"
             >
               <RotateCcw size={12} />
-              <span>Reset</span>
+              <span>Reset All</span>
             </button>
           )}
+
+          {/* Export Dropdown */}
+          <MaintenanceExportDropdown
+            onExportCSV={onExportCsv || onExport}
+            onExportPDF={onExportPdf}
+            disabled={filteredRequestsCount === 0}
+            loading={isExporting}
+          />
         </div>
       </div>
 
-      {/* Expandable Advanced Filters Drawer (Unified Enterprise Panel) */}
+      {/* Expandable Advanced Filters Drawer */}
       {showAdvancedFilters && (
         <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 p-4 space-y-4 animate-in fade-in slide-in-from-top-1 duration-150">
           {/* Drawer Header */}
@@ -302,7 +375,7 @@ export function MaintenanceFilters({
             <div className="flex items-center gap-2">
               <SlidersHorizontal size={14} className="text-primary" />
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
-                Advanced Filter Parameters
+                Secondary Filters & Sorting
               </h4>
               {advancedFiltersActiveCount > 0 && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary text-white">
@@ -315,41 +388,17 @@ export function MaintenanceFilters({
                 type="button"
                 onClick={handleClearAdvancedFilters}
                 className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
-                title="Reset all advanced filter options"
+                title="Reset all secondary filter options"
               >
                 <RotateCcw size={12} />
-                <span>Clear Advanced Filters</span>
+                <span>Clear Secondary Filters</span>
               </button>
             )}
           </div>
 
-          {/* Primary Advanced Selects Grid */}
+          {/* Secondary Selects Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            {/* SLA Health */}
-            <div>
-              <label className="mb-1.5 block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                SLA Health
-              </label>
-              <div className="relative">
-                <Activity
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none"
-                />
-                <select
-                  value={slaFilter}
-                  onChange={(e) => onSlaFilterChange(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition"
-                >
-                  {SLA_FILTER_OPTIONS.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Request Type / Category */}
+            {/* 1. Request Type / Service Category */}
             <div>
               <label className="mb-1.5 block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                 Service Category
@@ -374,7 +423,31 @@ export function MaintenanceFilters({
               </div>
             </div>
 
-            {/* Sort Order */}
+            {/* 2. Target Timeline */}
+            <div>
+              <label className="mb-1.5 block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                Target Timeline
+              </label>
+              <div className="relative">
+                <Activity
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none"
+                />
+                <select
+                  value={slaFilter}
+                  onChange={(e) => onSlaFilterChange(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition"
+                >
+                  {SLA_FILTER_OPTIONS.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* 3. Sort Order */}
             <div>
               <label className="mb-1.5 block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                 Sort Order
@@ -395,7 +468,7 @@ export function MaintenanceFilters({
               </div>
             </div>
 
-            {/* Archive Scope */}
+            {/* 4. Archive Scope */}
             <div>
               <label className="mb-1.5 block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                 Archive Scope
@@ -541,8 +614,16 @@ export function MaintenanceFilters({
               )}
             </span>
           ))}
+          <button
+            type="button"
+            onClick={onResetFilters}
+            className="text-[11px] font-semibold text-primary hover:underline px-1.5 py-0.5"
+          >
+            Clear all
+          </button>
         </div>
       )}
     </div>
   );
 }
+

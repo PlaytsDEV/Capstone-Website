@@ -251,10 +251,10 @@ export const saveAdminMaintenanceProof = async (req, res, next) => {
       visibility: "admin_only",
     });
 
-    // Automatically transition lifecycle status to completed if in-progress or pending
+    // Automatically transition lifecycle status to resolved if in-progress or pending
     if (["pending", "viewed", "in_progress", "submitted", "waiting_for_tenant"].includes(request.status)) {
-      request.status = "completed";
-      request.completed_at = eventTimestamp;
+      request.status = "resolved";
+      request.resolved_at = eventTimestamp;
     }
 
     appendStatusHistory(request, {

@@ -23,8 +23,10 @@ import {
   useMaintenanceDuplicates,
   useMaintenanceRequest,
   useRemoveMaintenanceAttachment,
+  useRespondToMaintenanceReschedule,
   useRestoreMaintenanceRequest,
   useSaveMaintenanceProof,
+  useScheduleAdminMaintenance,
   useSendMaintenanceReply,
   useSendMaintenanceTenantSummary,
   useServiceProviders,
@@ -56,6 +58,7 @@ import {
   exportMaintenanceRequestsPdf,
   fmtDate,
   fmtDateTime,
+  formatBranchLabel,
   formatMaintenanceCsvRows,
   formatMaintenanceReportAsText,
   getDefaultMaintenanceReportRange,
@@ -93,6 +96,9 @@ import {
   validatePhilippineMobile,
   validateProgressAttachmentFile,
   formatSlaState,
+  getStageLabel,
+  getStatusLabel,
+  getStageStatusLabel,
 } from "./maintenance/maintenanceUtils";
 
 import { BranchBadge } from "./maintenance/components/BranchBadge";
@@ -119,8 +125,17 @@ export default function AdminMaintenancePage() {
   const {
     isOwner,
     userBranch,
+    stageFilter,
+    setStageFilter,
+    stageCounts,
     statusFilter,
     setStatusFilter,
+    statusCounts,
+    stageStatusFilter,
+    setStageStatusFilter,
+    stageStatusCounts,
+    urgencyCounts,
+    branchCounts,
     archiveView,
     setArchiveView,
     requestTypeFilter,
@@ -214,6 +229,7 @@ export default function AdminMaintenancePage() {
   const [proofFieldErrors, setProofFieldErrors] = useState({});
   const [proofFormMessage, setProofFormMessage] = useState("");
   const [updateType, setUpdateType] = useState("status_update");
+  const [isExporting, setIsExporting] = useState(false);
 
   const selectedRequestStatusOptions = useMemo(
     () => getAllowedAdminMaintenanceStatuses(selectedRequest?.status),
@@ -267,14 +283,15 @@ export default function AdminMaintenancePage() {
           "",
       });
     } else {
-      setProviderChoice(PROVIDER_NONE_CHOICE);
+      setProviderChoice(PROVIDER_MANUAL_CHOICE);
       setManualProvider({
-        providerName: "",
-        contactNumber: "",
-        serviceType: "",
-        notes: "",
+        providerName: "Lilycrest Facilities Team",
+        contactNumber: "09171234567",
+        serviceType: selectedRequest?.request_type ? getMaintenanceTypeMeta(selectedRequest.request_type).label : "Maintenance",
+        notes: `In-house facilities team for ${formatBranchLabel(getRequestBranch(selectedRequest))}.`,
       });
     }
+    setProviderSuggestion(null);
     setProviderFieldErrors({});
     setProviderFormMessage("");
   }, [
@@ -288,20 +305,17 @@ export default function AdminMaintenancePage() {
 
   const activeFilterChips = useMemo(() => {
     const chips = [];
-    if (summaryCardKey) {
-      const summaryCard = MANAGEMENT_SUMMARY_CARDS.find((c) => c.key === summaryCardKey);
-      if (summaryCard) {
-        chips.push({
-          key: `card-${summaryCardKey}`,
-          label: `Metric: ${summaryCard.label}`,
-          onRemove: () => setSummaryCardKey(null),
-        });
-      }
+    if (stageFilter && stageFilter !== "all") {
+      chips.push({
+        key: `stage-${stageFilter}`,
+        label: `Stage: ${getStageLabel(stageFilter)}`,
+        onRemove: () => setStageFilter("all"),
+      });
     }
-    if (statusFilter !== "all") {
+    if (statusFilter && statusFilter !== "all") {
       chips.push({
         key: `status-${statusFilter}`,
-        label: `Status: ${formatMaintenanceStatus(statusFilter)}`,
+        label: `Status: ${getStatusLabel(statusFilter)}`,
         onRemove: () => setStatusFilter("all"),
       });
     }
@@ -339,7 +353,7 @@ export default function AdminMaintenancePage() {
       const slaLabel = SLA_FILTER_OPTIONS.find((item) => item.key === slaFilter)?.label || slaFilter;
       chips.push({
         key: `sla-${slaFilter}`,
-        label: `SLA: ${slaLabel}`,
+        label: `Timeline: ${slaLabel}`,
         onRemove: () => setSlaFilter("all"),
       });
     }
@@ -366,23 +380,42 @@ export default function AdminMaintenancePage() {
     isOwner,
     requestTypeFilter,
     slaFilter,
+    stageFilter,
     statusFilter,
-    summaryCardKey,
     urgencyFilter,
   ]);
 
   const handleExportCsv = () => {
-    exportCsvFile(formatMaintenanceCsvRows(filteredRequests), "maintenance-requests-list");
+    handleExportMaintenanceCSV({
+      requests: filteredRequests,
+      branchFilter,
+    });
   };
 
-  const handleExportPdf = () => {
-    exportMaintenanceRequestsPdf({
-      requests: filteredRequests,
-      summaryItems,
-      branchFilter,
-      statusFilter,
-      searchQuery,
-    });
+  const handleExportPdf = async () => {
+    try {
+      setIsExporting(true);
+      await handleExportMaintenancePDF({
+        requests: filteredRequests,
+        summaryItems,
+        branchFilter,
+        stageFilter,
+        statusFilter,
+        urgencyFilter,
+        slaFilter,
+        searchQuery,
+        dateFrom,
+        dateTo,
+      });
+    } catch (err) {
+      showNotification({
+        title: "Export Failed",
+        message: "Failed to generate maintenance PDF report.",
+        type: "error",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleSummaryFilter = (index) => {
@@ -391,27 +424,33 @@ export default function AdminMaintenancePage() {
     setSummaryCardKey((current) => (current === cardKey ? null : cardKey));
   };
 
-  const handleQuickStatusChange = async (requestId, nextStatus) => {
+  const handleQuickStatusChange = async (requestId, nextStatus, options = {}) => {
     try {
-      await updateRequestMutation.mutateAsync({
+      const res = await updateRequestMutation.mutateAsync({
         requestId,
         payload: { status: nextStatus },
       });
-      showNotification({
-        title: "Request Updated",
-        message: `Request #${requestId} is now ${formatMaintenanceStatus(nextStatus)}.`,
-        type: "success",
-      });
+      if (!options?.silent && nextStatus !== "viewed") {
+        showNotification({
+          title: "Request Updated",
+          message: `Request #${requestId} is now ${formatMaintenanceStatus(nextStatus)}.`,
+          type: "success",
+        });
+      }
+      return res;
     } catch (err) {
-      showNotification({
-        title: "Update Failed",
-        message: getMaintenanceApiErrorMessage(err, "Failed to update request status"),
-        type: "error",
-      });
+      if (!options?.silent) {
+        showNotification({
+          title: "Update Failed",
+          message: getMaintenanceApiErrorMessage(err, "Failed to update request status"),
+          type: "error",
+        });
+      }
+      throw err;
     }
   };
 
-  const handleAssignProvider = async () => {
+  const handleAssignProvider = async (extraPayload = {}) => {
     if (!selectedRequest) return;
     try {
       let payload;
@@ -420,36 +459,63 @@ export default function AdminMaintenancePage() {
           providerSource: "none",
           providerId: null,
           notes: manualProvider.notes?.trim() || "",
+          ...extraPayload,
         };
       } else if (providerChoice === PROVIDER_MANUAL_CHOICE) {
+        const trimmedName = manualProvider.providerName?.trim() || "";
+        const cleanContact = (manualProvider.contactNumber || "").replace(/\D/g, "");
+        const errors = {};
+
+        if (!trimmedName || trimmedName.length < 3) {
+          errors.providerName = "Provider name must be at least 3 characters.";
+        }
+        if (!cleanContact || !/^09\d{9}$/.test(cleanContact)) {
+          errors.contactNumber = "Please enter a valid 11-digit Philippine mobile number starting with 09.";
+        }
+
+        if (Object.keys(errors).length > 0) {
+          setProviderFieldErrors(errors);
+          showNotification({
+            title: "Validation Error",
+            message: Object.values(errors)[0],
+            type: "warning",
+          });
+          return;
+        }
+
         payload = {
           providerSource: "manual",
-          providerName: manualProvider.providerName.trim(),
-          contactNumber: manualProvider.contactNumber.trim(),
-          serviceType: manualProvider.serviceType.trim() || undefined,
+          providerName: trimmedName,
+          contactNumber: cleanContact,
+          serviceType: manualProvider.serviceType?.trim() || undefined,
           notes: manualProvider.notes?.trim() || "",
           saveForFuture: Boolean(saveManualProviderForFuture),
+          ...extraPayload,
         };
       } else {
         payload = {
           providerSource: "directory",
           providerId: providerChoice,
           notes: manualProvider.notes?.trim() || "",
+          ...extraPayload,
         };
       }
 
-      await assignProviderMutation.mutateAsync({
+      const res = await assignProviderMutation.mutateAsync({
         requestId: selectedRequest.request_id,
         payload,
       });
 
       showNotification({
-        title: "Provider Assigned",
-        message: `Contractor details updated for ticket #${selectedRequest.request_id}.`,
+        title: extraPayload.scheduledDate ? "Provider & Schedule Confirmed" : "Provider Assigned",
+        message: extraPayload.scheduledDate
+          ? `Technician assigned and visit scheduled for #${selectedRequest.request_id}. Work is now in progress.`
+          : `Contractor details updated for ticket #${selectedRequest.request_id}.`,
         type: "success",
       });
       setProviderFieldErrors({});
       setProviderFormMessage("");
+      return res;
     } catch (err) {
       setProviderFormMessage(getMaintenanceApiErrorMessage(err, "Failed to assign provider."));
       showNotification({
@@ -457,6 +523,7 @@ export default function AdminMaintenancePage() {
         message: getMaintenanceApiErrorMessage(err, "Failed to assign provider."),
         type: "error",
       });
+      throw err;
     }
   };
 
@@ -468,9 +535,9 @@ export default function AdminMaintenancePage() {
       });
       setProviderSuggestion(result?.data || result);
       showNotification({
-        title: "Recommendation Ready",
-        message: "AI suggested service providers based on branch coverage and history.",
-        type: "info",
+        title: "Nearby Services Found",
+        message: "Ranked nearby service recommendations are ready for review.",
+        type: "success",
       });
     } catch (err) {
       showNotification({
@@ -508,6 +575,51 @@ export default function AdminMaintenancePage() {
     }
   };
 
+  const scheduleAdminMutation = useScheduleAdminMaintenance();
+  const respondToRescheduleMutation = useRespondToMaintenanceReschedule();
+
+  const handleRespondToReschedule = async ({ action, scheduledDate, notes }) => {
+    if (!selectedRequest) return;
+    try {
+      await respondToRescheduleMutation.mutateAsync({
+        requestId: selectedRequest.request_id,
+        payload: { action, scheduledDate, notes },
+      });
+      showNotification({
+        title: action === "decline" ? "Reschedule Declined" : "Schedule Updated",
+        message: action === "decline" ? "Resident reschedule request declined." : "New repair schedule confirmed.",
+        type: "success",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Reschedule Response Failed",
+        message: getMaintenanceApiErrorMessage(err, "Failed to respond to reschedule request."),
+        type: "error",
+      });
+    }
+  };
+
+  const handleSchedule = () => {
+    // Scheduling is handled internally by MaintenanceDetailModal via useScheduleAdminMaintenance
+  };
+
+  const handleGenerateReport = async (reportType = "admin") => {
+    if (!selectedRequest) return;
+    try {
+      const res = await generateReportMutation.mutateAsync({
+        requestId: selectedRequest.request_id,
+        reportType,
+      });
+      setReportPreview(res?.data || res);
+    } catch (err) {
+      showNotification({
+        title: "Report Generation Failed",
+        message: getMaintenanceApiErrorMessage(err, "Unable to generate maintenance report."),
+        type: "error",
+      });
+    }
+  };
+
   if (isLoading && (!requests || requests.length === 0)) {
     return <AdminMaintenanceSkeleton />;
   }
@@ -525,15 +637,20 @@ export default function AdminMaintenancePage() {
         <PageShell.Summary>
           <MaintenanceSummaryCards
             summaryItems={summaryItems}
-            activeSummaryIndex={activeSummaryIndex}
-            onSummaryFilter={handleSummaryFilter}
           />
         </PageShell.Summary>
 
         <PageShell.Actions>
           <MaintenanceFilters
             searchQuery={searchQuery}
+            stageFilter={stageFilter}
+            stageCounts={stageCounts}
             statusFilter={statusFilter}
+            statusCounts={statusCounts}
+            stageStatusFilter={stageStatusFilter}
+            stageStatusCounts={stageStatusCounts}
+            urgencyCounts={urgencyCounts}
+            branchCounts={branchCounts}
             archiveView={archiveView}
             branchFilter={branchFilter}
             userBranch={userBranch}
@@ -548,8 +665,10 @@ export default function AdminMaintenancePage() {
             filteredRequestsCount={filteredRequests.length}
             summaryRequestsCount={summaryRequests.length}
             activeFilterChips={activeFilterChips}
-            onSearchQueryChange={setSearchQuery}
+            onStageFilterChange={setStageFilter}
             onStatusFilterChange={setStatusFilter}
+            onStageStatusFilterChange={setStageStatusFilter}
+            onSearchQueryChange={setSearchQuery}
             onArchiveViewChange={setArchiveView}
             onBranchFilterChange={setBranchFilter}
             onUrgencyFilterChange={setUrgencyFilter}
@@ -561,6 +680,7 @@ export default function AdminMaintenancePage() {
             onToggleAdvancedFilters={() => setShowAdvancedFilters((curr) => !curr)}
             onExportCsv={handleExportCsv}
             onExportPdf={handleExportPdf}
+            isExporting={isExporting}
             onResetFilters={handleResetFilters}
           />
         </PageShell.Actions>
@@ -571,10 +691,15 @@ export default function AdminMaintenancePage() {
             isLoading={isLoading}
             currentPage={currentPage}
             onPageChange={setCurrentPage}
-            onRowClick={(row) => {
+            onRowClick={async (row) => {
               setSelectedRequestId(row.request_id);
               if (row.status === "pending") {
                 handleQuickStatusChange(row.request_id, "viewed");
+              }
+              try {
+                await maintenanceApi.markAsRead(row.request_id);
+              } catch {
+                // non-fatal
               }
             }}
           />
@@ -604,7 +729,11 @@ export default function AdminMaintenancePage() {
             isAssigningProvider={assignProviderMutation.isPending}
             isSuggestingProvider={suggestProviderMutation.isPending}
             isRatingProvider={rateProviderMutation.isPending}
+            onSchedule={handleSchedule}
+            onRespondToReschedule={handleRespondToReschedule}
+            isRespondingToReschedule={respondToRescheduleMutation.isPending}
             onQuickStatusChange={handleQuickStatusChange}
+            onGenerateReport={handleGenerateReport}
             onRemoveAttachment={(target) => {
               if (target) {
                 setAttachmentRemovalDialog({

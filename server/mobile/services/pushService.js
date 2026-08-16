@@ -306,11 +306,17 @@ async function notifyMaintenanceStatusChange(userId, request, newStatus) {
 
   const STATUS_LABELS = {
     pending: 'Pending',
+    pending_review: 'Pending Review',
     viewed: 'Viewed',
     seen: 'Viewed',
+    reviewed: 'Under Review',
+    provider_assigned: 'Provider Assigned',
+    scheduled: 'Scheduled for Service',
     in_progress: 'In Progress',
+    waiting_tenant: 'In Progress',
     resolved: 'Resolved',
     completed: 'Completed',
+    closed: 'Closed',
     rejected: 'Rejected',
     cancelled: 'Cancelled',
   };

@@ -994,6 +994,8 @@ export const serializeMaintenanceRequest = (
     ? {
         confirmedAt: request.resolutionConfirmation.confirmedAt,
         tenantFeedback: request.resolutionConfirmation.tenantFeedback || null,
+        rating: request.resolutionConfirmation.rating || null,
+        action: request.resolutionConfirmation.action || null,
       }
     : null;
 
@@ -1012,6 +1014,12 @@ export const serializeMaintenanceRequest = (
     status: request.status,
     providerDetails,
     provider_details: providerDetails,
+    isReopened: Boolean(request.isReopened),
+    reviewedAt: request.reviewedAt || null,
+    completedAt: request.completedAt || null,
+    lastAdminReadAt: includeInternal ? (request.lastAdminReadAt || null) : undefined,
+    reviewedBy: includeInternal ? (request.reviewedBy || null) : undefined,
+    resolvedBy: includeInternal ? (request.resolvedBy || null) : undefined,
     tenantVisibleProviderLabel: tenantVisibleLabel,
     schedule,
     completionReport,

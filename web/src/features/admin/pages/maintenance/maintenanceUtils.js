@@ -30,6 +30,8 @@ import {
   getMaintenanceAttachmentLabel,
   getMaintenanceAttachmentName,
   getMaintenanceAttachmentUri,
+  isMaintenanceImageAttachment,
+  isMaintenancePdfAttachment,
   isViewableMaintenanceAttachmentUri,
   normalizeMaintenanceAttachments,
 } from "../../../../shared/utils/maintenanceAttachments";
@@ -39,6 +41,8 @@ export {
   getMaintenanceAttachmentLabel,
   getMaintenanceAttachmentName,
   getMaintenanceAttachmentUri,
+  isMaintenanceImageAttachment,
+  isMaintenancePdfAttachment,
   isViewableMaintenanceAttachmentUri,
   normalizeMaintenanceAttachments,
 };
@@ -99,7 +103,7 @@ export const REPORT_EXPORT_COLUMNS = [
 export const MAINTENANCE_TABS = [
   { key: "requests", label: "Requests", icon: ClipboardList },
   { key: "service_providers", label: "Service Providers", icon: Wrench },
-  { key: "analytics", label: "Analytics & SLA", icon: Clock3 },
+  { key: "analytics", label: "Analytics & Timeline", icon: Clock3 },
   { key: "branch_reports", label: "Branch Reports", icon: FileText },
 ];
 export const ASSIGNMENT_FILTER_OPTIONS = [
@@ -108,7 +112,7 @@ export const ASSIGNMENT_FILTER_OPTIONS = [
   { key: "unassigned", label: "Unassigned" },
 ];
 export const ANALYTICS_SLA_OPTIONS = [
-  { key: "all", label: "All SLA health" },
+  { key: "all", label: "All Timelines" },
   { key: "overdue", label: "Overdue" },
   { key: "due_soon", label: "Due Soon" },
   { key: "on_track", label: "On Track" },
@@ -238,7 +242,7 @@ export const getDefaultMaintenanceReportRange = () => {
 };
 
 export const formatSlaState = (slaState) => {
-  if (!slaState) return "No SLA";
+  if (!slaState) return "No Target Timeline";
   if (slaState.label === "delayed") return "Delayed";
   if (slaState.label === "priority") return "Priority";
   if (slaState.label === "closed") return "Closed";
@@ -260,7 +264,6 @@ export const urgencyRank = {
 };
 
 export const TERMINAL_STATUSES = new Set([
-  "resolved",
   "completed",
   "rejected",
   "cancelled",
@@ -268,11 +271,16 @@ export const TERMINAL_STATUSES = new Set([
 ]);
 
 export const SUMMARY_STATUSES = [
-  { key: "pending", label: "Pending" },
+  { key: "pending_review", label: "Pending Review" },
+  { key: "provider_assigned", label: "Provider Assigned" },
+  { key: "scheduled", label: "Scheduled" },
   { key: "viewed", label: "Viewed" },
+  { key: "reviewed", label: "Under Review" },
   { key: "in_progress", label: "In Progress" },
-  { key: "resolved", label: "Resolved" },
+  { key: "waiting_tenant", label: "Waiting for Tenant" },
+  { key: "resolved", label: "Resolved (Awaiting Verification)" },
   { key: "completed", label: "Completed" },
+  { key: "reopened", label: "Reopened" },
   { key: "rejected", label: "Rejected" },
   { key: "cancelled", label: "Cancelled" },
   { key: "closed", label: "Closed" },
@@ -284,38 +292,45 @@ export const MANAGEMENT_SUMMARY_CARDS = [
     label: "Active Queue",
     icon: ClipboardList,
     color: "blue",
-    description: "Pending & viewed",
+    description: "Pending, viewed & assigned",
   },
   {
     key: "in_progress",
     label: "In Progress",
     icon: RefreshCcw,
     color: "purple",
-    description: "Assigned & servicing",
+    description: "Scheduled & servicing",
   },
   {
     key: "needs_attention",
     label: "Needs Attention",
     icon: AlertTriangle,
     color: "red",
-    description: "Overdue SLA or urgent",
+    description: "Reopened, overdue timeline, urgent",
+  },
+  {
+    key: "resolved",
+    label: "Resolved (Awaiting)",
+    icon: Clock3,
+    color: "amber",
+    description: "Awaiting resident confirmation",
   },
   {
     key: "completed",
-    label: "Resolved",
+    label: "Completed",
     icon: CheckCircle2,
     color: "green",
-    description: "Completed in period",
+    description: "Verified & completed",
   },
 ];
 
 export const SLA_FILTER_OPTIONS = [
-  { key: "all", label: "All SLA health" },
+  { key: "all", label: "All Timelines" },
   { key: "on_track", label: "On Track" },
   { key: "priority", label: "Priority" },
   { key: "delayed", label: "Delayed" },
   { key: "closed", label: "Closed" },
-  { key: "no_sla", label: "No SLA" },
+  { key: "no_sla", label: "No Target Timeline" },
 ];
 
 export const isNonTerminal = (status) => !TERMINAL_STATUSES.has(status);
@@ -361,24 +376,111 @@ export const matchesSummaryCard = ({ request, cardKey, dateFrom, dateTo }) => {
 
   switch (cardKey) {
     case "open_queue":
-      return request.status === "pending" || request.status === "viewed";
+      return ["pending", "pending_review", "viewed", "reviewed", "provider_assigned"].includes(request.status);
     case "in_progress":
-      return request.status === "in_progress" || request.status === "approved" || request.status === "service_provider_assigned";
+      return ["in_progress", "scheduled", "approved", "service_provider_assigned", "waiting_tenant"].includes(request.status);
     case "needs_attention": {
       const rawSla = String(request.slaState?.label || request.slaState || "").toLowerCase();
       const isOverdue = rawSla.includes("delay") || rawSla.includes("overdue") || rawSla.includes("breach") || rawSla.includes("priority");
       const isUrgentUnassigned = (request.urgency === "high" || request.urgency === "emergency") && !getAssignedProviderName(request);
-      return (isOverdue || isUrgentUnassigned) && isNonTerminal(request.status);
+      const isReopened = request.status === "reopened" || Boolean(request.reopenCount && request.status !== "completed");
+      return (isOverdue || isUrgentUnassigned || isReopened) && isNonTerminal(request.status);
     }
+    case "resolved":
+      return request.status === "resolved";
     case "completed":
       return (
-        request.status === "resolved" ||
         request.status === "completed" ||
         isCompletedInWindow({ request, dateFrom, dateTo })
       );
     default:
       return true;
   }
+};
+
+export const OPERATIONAL_STAGES = [
+  { key: "open_queue", label: "Active Queue", stageKey: "open_queue", description: "Pending, viewed & assigned" },
+  { key: "in_progress", label: "In Progress", stageKey: "in_progress", description: "Scheduled & servicing" },
+  { key: "needs_attention", label: "Needs Attention", stageKey: "needs_attention", description: "Reopened, overdue timeline, urgent" },
+  { key: "resolved", label: "Resolved (Awaiting)", stageKey: "resolved", description: "Awaiting resident confirmation" },
+  { key: "completed", label: "Completed", stageKey: "completed", description: "Verified & completed" },
+];
+
+export const SPECIFIC_STATUS_OPTIONS = [
+  { key: "pending_review", label: "Pending Review", rawStatus: "pending_review" },
+  { key: "provider_assigned", label: "Provider Assigned", rawStatus: "provider_assigned" },
+  { key: "scheduled", label: "Scheduled", rawStatus: "scheduled" },
+  { key: "viewed", label: "Viewed", rawStatus: "viewed" },
+  { key: "reviewed", label: "Under Review", rawStatus: "reviewed" },
+  { key: "in_progress", label: "In Progress (Active)", rawStatus: "in_progress" },
+  { key: "waiting_tenant", label: "Waiting for Tenant", rawStatus: "waiting_tenant" },
+  { key: "resolved", label: "Resolved", rawStatus: "resolved" },
+  { key: "completed", label: "Completed", rawStatus: "completed" },
+  { key: "reopened", label: "Reopened", rawStatus: "reopened" },
+  { key: "rejected", label: "Rejected", rawStatus: "rejected" },
+  { key: "cancelled", label: "Cancelled", rawStatus: "cancelled" },
+  { key: "closed", label: "Closed", rawStatus: "closed" },
+];
+
+export const getStageLabel = (stageKey) => {
+  if (!stageKey || stageKey === "all") return "All Stages";
+  const rawKey = String(stageKey).replace(/^stage:/, "");
+  const stage = OPERATIONAL_STAGES.find((s) => s.key === rawKey || s.stageKey === rawKey);
+  return stage ? stage.label : rawKey;
+};
+
+export const getStatusLabel = (statusKey) => {
+  if (!statusKey || statusKey === "all") return "All Statuses";
+  const rawKey = String(statusKey).replace(/^status:/, "");
+  const status = SPECIFIC_STATUS_OPTIONS.find((s) => s.key === rawKey || s.rawStatus === rawKey);
+  if (status) return status.label;
+  const legacyStatus = SUMMARY_STATUSES.find((s) => s.key === rawKey);
+  if (legacyStatus) return legacyStatus.label;
+  return formatMaintenanceStatus(rawKey);
+};
+
+export const getStageStatusLabel = (filterKey) => {
+  if (!filterKey || filterKey === "all") return "All Requests";
+  if (String(filterKey).startsWith("stage:")) return getStageLabel(filterKey);
+  if (String(filterKey).startsWith("status:")) return getStatusLabel(filterKey);
+  const stage = OPERATIONAL_STAGES.find((s) => s.key === filterKey || s.stageKey === filterKey);
+  if (stage) return stage.label;
+  const status = SPECIFIC_STATUS_OPTIONS.find((s) => s.key === filterKey || s.rawStatus === filterKey);
+  if (status) return status.label;
+  const legacyStatus = SUMMARY_STATUSES.find((s) => s.key === filterKey);
+  if (legacyStatus) return legacyStatus.label;
+  return formatMaintenanceStatus(filterKey);
+};
+
+export const matchesStage = ({ request, stage, dateFrom, dateTo }) => {
+  if (!stage || stage === "all") return true;
+  const rawKey = String(stage).replace(/^stage:/, "");
+  return matchesSummaryCard({ request, cardKey: rawKey, dateFrom, dateTo });
+};
+
+export const matchesStatus = ({ request, status }) => {
+  if (!status || status === "all") return true;
+  const rawKey = String(status).replace(/^status:/, "");
+  return request.status === rawKey;
+};
+
+export const matchesStageOrStatus = ({ request, stageOrStatus, dateFrom, dateTo }) => {
+  if (!stageOrStatus || stageOrStatus === "all") return true;
+
+  if (String(stageOrStatus).startsWith("stage:")) {
+    return matchesStage({ request, stage: stageOrStatus, dateFrom, dateTo });
+  }
+
+  if (String(stageOrStatus).startsWith("status:")) {
+    return matchesStatus({ request, status: stageOrStatus });
+  }
+
+  const isKnownStage = MANAGEMENT_SUMMARY_CARDS.some((card) => card.key === stageOrStatus);
+  if (isKnownStage) {
+    return matchesStage({ request, stage: stageOrStatus, dateFrom, dateTo });
+  }
+
+  return matchesStatus({ request, status: stageOrStatus });
 };
 
 export const matchesSlaFilter = ({ request, slaFilter }) => {
@@ -390,19 +492,73 @@ export const matchesSlaFilter = ({ request, slaFilter }) => {
   return request.slaState?.label === slaFilter;
 };
 
+export const getStatusBadgeMeta = (status) => {
+  switch (status) {
+    case "pending":
+    case "pending_review":
+    case "viewed":
+    case "reviewed":
+      return {
+        badge:
+          "bg-amber-50 text-amber-800 border-amber-200/90 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60",
+        dot: "bg-amber-500",
+      };
+    case "provider_assigned":
+    case "scheduled":
+    case "in_progress":
+    case "waiting_tenant":
+      return {
+        badge:
+          "bg-blue-50 text-blue-700 border-blue-200/90 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60",
+        dot: "bg-blue-500",
+      };
+    case "resolved":
+    case "completed":
+      return {
+        badge:
+          "bg-emerald-50 text-emerald-700 border-emerald-200/90 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60",
+        dot: "bg-emerald-500",
+      };
+    case "reopened":
+    case "rejected":
+      return {
+        badge:
+          "bg-rose-50 text-rose-700 border-rose-200/90 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60",
+        dot: "bg-rose-500",
+      };
+    case "cancelled":
+    case "closed":
+    default:
+      return {
+        badge:
+          "bg-slate-100 text-slate-600 border-slate-200/90 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700",
+        dot: "bg-slate-400",
+      };
+  }
+};
+
 export const getStatusDotClass = (status) => {
   switch (status) {
     case "pending":
+    case "pending_review":
     case "viewed":
-      return "bg-amber-300";
+    case "reviewed":
+      return "bg-amber-400";
+    case "provider_assigned":
+    case "scheduled":
     case "in_progress":
+    case "waiting_tenant":
       return "bg-blue-500";
     case "resolved":
+      return "bg-amber-500";
     case "completed":
       return "bg-emerald-500";
-    case "rejected":
+    case "reopened":
       return "bg-rose-500";
+    case "rejected":
+      return "bg-red-500";
     case "cancelled":
+    case "closed":
       return "bg-slate-400";
     default:
       return "bg-slate-400";
@@ -412,19 +568,28 @@ export const getStatusDotClass = (status) => {
 export const getStatusTextClass = (status) => {
   switch (status) {
     case "pending":
+    case "pending_review":
     case "viewed":
-      return "text-warning-dark";
+    case "reviewed":
+      return "text-amber-700 dark:text-amber-300";
+    case "provider_assigned":
+    case "scheduled":
     case "in_progress":
-      return "text-blue-600";
+    case "waiting_tenant":
+      return "text-blue-600 dark:text-blue-400";
     case "resolved":
+      return "text-amber-700 dark:text-amber-300";
     case "completed":
-      return "text-emerald-600";
+      return "text-emerald-700 dark:text-emerald-300";
+    case "reopened":
+      return "text-rose-700 dark:text-rose-300";
     case "rejected":
-      return "text-error-dark";
+      return "text-red-700 dark:text-red-300";
     case "cancelled":
-      return "text-muted-foreground";
+    case "closed":
+      return "text-slate-600 dark:text-slate-400";
     default:
-      return "text-muted-foreground";
+      return "text-slate-600 dark:text-slate-400";
   }
 };
 
@@ -490,7 +655,9 @@ export const formatSenderLabel = ({ role, name, fallback = "Staff update" } = {}
 };
 
 export const createFilterPayload = ({
+  stage,
   status,
+  stageOrStatus,
   requestType,
   urgency,
   dateFrom,
@@ -500,7 +667,20 @@ export const createFilterPayload = ({
 }) => {
   const filters = { limit: 200 };
 
-  if (status && status !== "all") filters.status = status;
+  const effectiveStatus = status || (stageOrStatus && !String(stageOrStatus).startsWith("stage:") ? stageOrStatus : null);
+  if (effectiveStatus && effectiveStatus !== "all") {
+    if (effectiveStatus.startsWith("status:")) {
+      filters.status = effectiveStatus.replace(/^status:/, "");
+    } else if (!effectiveStatus.startsWith("stage:") && !MANAGEMENT_SUMMARY_CARDS.some((c) => c.key === effectiveStatus)) {
+      filters.status = effectiveStatus;
+    }
+  }
+
+  const effectiveStage = stage || (stageOrStatus && String(stageOrStatus).startsWith("stage:") ? stageOrStatus.replace(/^stage:/, "") : null);
+  if (effectiveStage && effectiveStage !== "all") {
+    filters.stage = effectiveStage;
+  }
+
   if (requestType && requestType !== "all") filters.request_type = requestType;
   if (urgency && urgency !== "all") filters.urgency = urgency;
   if (dateFrom) filters.date_from = dateFrom;
@@ -542,7 +722,7 @@ export const REPORT_REQUEST_COLUMNS = [
   { key: "createdAt", label: "Created Date" },
   { key: "updatedAt", label: "Last Updated" },
   { key: "resolutionAt", label: "Resolution Date" },
-  { key: "slaLabel", label: "SLA Status" },
+  { key: "slaLabel", label: "Target Timeline" },
 ];
 
 export const PROVIDER_REPORT_COLUMNS = [
@@ -558,17 +738,29 @@ export const PROVIDER_REPORT_COLUMNS = [
 ];
 
 export const AVATAR_PALETTES = [
-  { bg: "bg-blue-700", text: "text-white" },
-  { bg: "bg-emerald-700", text: "text-white" },
-  { bg: "bg-violet-700", text: "text-white" },
-  { bg: "bg-rose-700", text: "text-white" },
-  { bg: "bg-amber-700", text: "text-white" },
-  { bg: "bg-cyan-700", text: "text-white" },
+  { bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-700 dark:text-slate-200 border border-slate-200/90 dark:border-slate-700" },
+  { bg: "bg-slate-200/80 dark:bg-slate-800", text: "text-slate-800 dark:text-slate-100 border border-slate-300/80 dark:border-slate-700" },
+  { bg: "bg-blue-50 dark:bg-blue-950/40", text: "text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-900/60" },
+  { bg: "bg-slate-100 dark:bg-slate-800/90", text: "text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700" },
 ];
 
 export const getAvatarPalette = (name = "") => {
   const index = [...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % AVATAR_PALETTES.length;
   return AVATAR_PALETTES[index];
+};
+
+export const formatCleanRoomName = (rawRoom) => {
+  if (!rawRoom) return "";
+  let clean = String(rawRoom).trim();
+  // Remove duplicate branch acronyms if present, e.g. "GP - Room 803" or "GD - Room 101" or "GP 803"
+  clean = clean.replace(/^(GP|GD|GIL|GUAD)\s*[-:]?\s*/i, "").trim();
+  if (/^(unit|bed|suite|room)\b/i.test(clean)) {
+    return clean;
+  }
+  // Remove duplicate "Room" word if repeated, e.g. "Room Room 803" or "Room 803"
+  clean = clean.replace(/^room\s+/i, "").trim();
+  if (!clean) return "";
+  return `Room ${clean}`;
 };
 
 export const isRemoteUri = (uri) => isViewableMaintenanceAttachmentUri(uri);
@@ -1186,120 +1378,189 @@ export const formatMaintenanceReportAsText = (report, request) => {
   return textLines.join("\n").trim();
 };
 
+import {
+  handleExportMaintenanceCSV,
+  handleExportMaintenancePDF,
+  formatMaintenanceForCSV,
+  MAINTENANCE_CSV_COLUMNS,
+} from "../../utils/maintenanceExportUtils.js";
+
+export {
+  handleExportMaintenanceCSV,
+  handleExportMaintenancePDF,
+  formatMaintenanceForCSV,
+  MAINTENANCE_CSV_COLUMNS,
+};
+
 export const formatMaintenanceCsvRows = (requests = []) =>
-  requests.map((req) => ({
-    "Request ID": req.request_id || req.requestId || "",
-    Tenant: req.tenant?.full_name || req.tenantName || "",
-    Branch: req.branch || "",
-    Type: getMaintenanceTypeMeta(req.request_type || req.requestType).label,
-    Urgency: getMaintenanceUrgencyMeta(req.urgency).label,
-    Status: formatMaintenanceStatus(req.status),
-    Submitted: req.created_at || req.createdAt || "",
-  }));
+  formatMaintenanceForCSV(requests);
 
 export const exportCsvFile = (rows, filename = "download") => {
-  if (!rows || !rows.length) return;
-  const keys = Object.keys(rows[0]);
-  const header = keys.join(",");
-  const body = rows
-    .map((row) =>
-      keys
-        .map((key) => {
-          const val = row[key] ?? "";
-          const escaped = String(val).replace(/"/g, '""');
-          return `"${escaped}"`;
-        })
-        .join(","),
-    )
-    .join("\n");
-
-  const blob = new Blob([`${header}\n${body}`], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", `${filename}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  handleExportMaintenanceCSV({ requests: rows, branchFilter: "all" });
 };
 
 export const exportMaintenanceRequestsPdf = async ({
   requests = [],
   summaryItems = [],
   branchFilter = "all",
+  stageFilter = "all",
   statusFilter = "all",
+  urgencyFilter = "all",
+  slaFilter = "all",
   searchQuery = "",
+  dateFrom = "",
+  dateTo = "",
 }) => {
-  const d = new Date();
-  const dateSlug = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const filename = `Lilycrest_Maintenance_Requests_${dateSlug}.pdf`;
-
-  const kpis = summaryItems.map((item) => ({
-    label: item.label.toUpperCase(),
-    value: String(item.value || 0),
-    format: "number",
-  }));
-
-  const tableRows = requests.map((req) => ({
-    ID: `#${(req.request_id || req.requestId || "").slice(-6).toUpperCase()}`,
-    Tenant: req.tenant?.full_name || req.tenantName || "Deleted Account",
-    Branch: req.branch || "Unassigned",
-    Type: getMaintenanceTypeMeta(req.request_type || req.requestType).label,
-    Urgency: getMaintenanceUrgencyMeta(req.urgency).label,
-    Status: formatMaintenanceStatus(req.status),
-    Submitted: fmtDate(req.created_at || req.createdAt),
-  }));
-
-  const filterDesc = [
-    `Branch: ${branchFilter === "all" ? "All Branches" : branchFilter}`,
-    `Status: ${statusFilter === "all" ? "All Statuses" : formatMaintenanceStatus(statusFilter)}`,
-    searchQuery ? `Search: "${searchQuery}"` : null,
-  ]
-    .filter(Boolean)
-    .join(" | ");
-
-  await exportReportPdf({
-    title: "Maintenance Requests Report",
-    subtitle: `Filter Context: ${filterDesc}`,
-    filename,
-    period: `Generated on ${d.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`,
-    reportType: "Maintenance",
-    kpis: kpis.slice(0, 6),
-    sections: [
-      {
-        type: "table",
-        title: "Filtered Maintenance Requests List",
-        description: `Export containing ${requests.length} maintenance records matching the active filter criteria.`,
-        headers: ["ID", "Tenant", "Branch", "Type", "Urgency", "Status", "Submitted"],
-        colWidths: [22, 38, 26, 28, 22, 22, 16],
-        rows: tableRows,
-      },
-    ],
+  await handleExportMaintenancePDF({
+    requests,
+    summaryItems,
+    branchFilter,
+    stageFilter,
+    statusFilter,
+    urgencyFilter,
+    slaFilter,
+    searchQuery,
+    dateFrom,
+    dateTo,
   });
 };
 
-export const formatContractorDispatchTicket = (request) => {
+export const formatContractorDispatchTicket = (request, options = {}) => {
   if (!request) return "";
+
+  const ticketNumber =
+    request.ticketNumber ||
+    request.ticket_number ||
+    (request.request_id ? (String(request.request_id).startsWith("#") ? request.request_id : `#${request.request_id}`) : "") ||
+    (request._id ? `#${String(request._id).slice(-6).toUpperCase()}` : "") ||
+    (request.id ? `#${request.id}` : "#REQ-TICKET");
+
+  const branchKey = getRequestBranch(request) || request.branch || request.branchId;
+  const branchDisplayName =
+    BRANCH_DISPLAY_NAMES[branchKey] || formatBranchLabel(branchKey) || "Lilycrest Dormitory";
+
   const typeMeta = getMaintenanceTypeMeta(request.request_type || request.requestType);
   const urgencyMeta = getMaintenanceUrgencyMeta(request.urgency);
-  const branchName = BRANCH_DISPLAY_NAMES[request.branch] || request.branch || "Branch";
-  const roomName = request.room?.name || request.roomId?.name || "Assigned Unit";
-  const tenantName = request.tenant?.full_name || request.tenant?.name || "Resident";
-  const tenantPhone = request.tenant?.phone || request.tenant?.contact || "N/A";
-  const dateStr = fmtDateTime(request.created_at || new Date());
 
-  return `[LILYCREST MAINTENANCE DISPATCH]
-Ticket ID: #${request.request_id || request.id}
-Branch: ${branchName}
-Unit / Room: ${roomName}
-Category: ${typeMeta.label}
-Priority: ${urgencyMeta.label}
-Date Logged: ${dateStr}
+  const tenantName =
+    request.tenant?.full_name ||
+    request.tenant?.fullName ||
+    request.tenantName ||
+    request.user?.fullName ||
+    (request.tenant?.firstName
+      ? `${request.tenant.firstName} ${request.tenant.lastName || ""}`.trim()
+      : "") ||
+    "Resident";
 
-Resident: ${tenantName} (Contact: ${tenantPhone})
-Issue Description:
-"${request.description || "N/A"}"
+  const tenantPhone =
+    request.tenant?.phone ||
+    request.tenant?.contactNumber ||
+    request.tenant?.contact ||
+    request.tenant?.mobileNumber ||
+    request.tenant?.phoneNumber ||
+    request.tenantPhone ||
+    request.tenantContact ||
+    "N/A";
 
-Special Notes / Instructions:
-${request.notes || request.assignedProviderNotes || "Please coordinate with branch management upon arrival."}`;
+  const rawRoomCandidate =
+    request.occupancyContext?.unitNumber
+      ? `Unit ${request.occupancyContext.unitNumber}`
+      : request.occupancy_context?.unitNumber
+      ? `Unit ${request.occupancy_context.unitNumber}`
+      : request.room?.name ||
+        (request.room?.roomNumber ? `Room ${request.room.roomNumber}` : "") ||
+        (request.roomId?.name ? request.roomId.name : "") ||
+        (request.roomId?.roomNumber ? `Room ${request.roomId.roomNumber}` : "") ||
+        request.room_number ||
+        request.roomNumber ||
+        "";
+
+  const roomName = formatCleanRoomName(rawRoomCandidate) || rawRoomCandidate || "Unit Unassigned";
+
+  const bedSlot =
+    request.occupancyContext?.bedNumber
+      ? `Bed ${request.occupancyContext.bedNumber}`
+      : request.occupancy_context?.bedNumber
+      ? `Bed ${request.occupancy_context.bedNumber}`
+      : request.bedIdentifier ||
+        request.bed?.bedNumber ||
+        request.bedNumber ||
+        null;
+
+  const providerName =
+    options.providerName ||
+    getAssignedProviderName(request) ||
+    "Lilycrest Facilities Team";
+
+  const providerContact =
+    options.providerContact ||
+    getAssignedProviderContact(request) ||
+    "09171234567";
+
+  const categoryLabel =
+    options.category ||
+    getAssignedProviderCategory(request) ||
+    typeMeta.label ||
+    "Maintenance";
+
+  const dispatchMode =
+    options.dispatchMode ||
+    (providerName === "Lilycrest Facilities Team" ? "in_house" : "contractor");
+
+  const dispatchTypeLabel =
+    dispatchMode === "in_house"
+      ? "On-Site Facilities Dispatch (In-House Team)"
+      : dispatchMode === "directory"
+      ? "Registered Directory Contractor"
+      : "External Contractor / Specialist";
+
+  const scheduledDateVal = request.scheduledDate || request.scheduled_date;
+  const scheduleStr = scheduledDateVal
+    ? fmtDateTime(scheduledDateVal)
+    : "Pending Schedule / Immediate Intake";
+
+  const description =
+    request.description ||
+    request.issue ||
+    request.problemDescription ||
+    "No specific problem description provided by resident.";
+
+  const specialNotes =
+    options.notes ||
+    request.assignedProviderNotes ||
+    request.notes ||
+    "Please coordinate with Lilycrest branch reception upon arrival.";
+
+  const dateLogged = fmtDateTime(request.created_at || request.createdAt || new Date());
+
+  return [
+    "========================================",
+    "[LILYCREST MAINTENANCE DISPATCH TICKET]",
+    "========================================",
+    `Ticket ID: ${ticketNumber.startsWith("#") ? ticketNumber : `#${ticketNumber}`}`,
+    `Category: ${categoryLabel}`,
+    `Priority: ${urgencyMeta.label}`,
+    `Branch: ${branchDisplayName}`,
+    `Location: ${roomName}${bedSlot ? ` (${bedSlot})` : ""}`,
+    `Date Logged: ${dateLogged}`,
+    `Scheduled Visit: ${scheduleStr}`,
+    "",
+    "--- ASSIGNED SERVICE PROVIDER ---",
+    `Technician / Team: ${providerName}`,
+    `Provider Contact: ${providerContact}`,
+    `Dispatch Channel: ${dispatchTypeLabel}`,
+    "",
+    "--- RESIDENT CONTACT & ACCESS ---",
+    `Resident Name: ${tenantName}`,
+    `Resident Contact: ${tenantPhone}`,
+    `Unit / Bed: ${roomName}${bedSlot ? ` (${bedSlot})` : ""}`,
+    "",
+    "--- ISSUE DETAILS ---",
+    `Description: "${description}"`,
+    "",
+    "--- SPECIAL INSTRUCTIONS / NOTES ---",
+    specialNotes,
+    "========================================",
+  ].join("\n");
 };
+

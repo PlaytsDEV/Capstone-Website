@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
+import dayjs from "dayjs";
 
 const reservationFind = jest.fn();
 const roomFind = jest.fn();
@@ -21,6 +22,7 @@ const getPenaltyRatePerDay = jest.fn(async () => 50);
 const getMaxPenaltyCapPercent = jest.fn(async () => 100);
 const resolvePenaltyRatePerDay = jest.fn((rate) => rate || 50);
 const dispatchDueScheduledAnnouncements = jest.fn();
+const maintenanceRequestFind = jest.fn();
 const notify = {
   general: jest.fn(),
   reservationExpired: jest.fn(),
@@ -54,6 +56,9 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     find: billFind,
   },
   User: {},
+  MaintenanceRequest: {
+    find: maintenanceRequestFind,
+  },
 }));
 
 await jest.unstable_mockModule("../utils/reservationHelpers.js", () => ({
@@ -366,5 +371,35 @@ describe("scheduler jobs", () => {
     await scheduler.dispatchScheduledAnnouncements();
 
     expect(dispatchDueScheduledAnnouncements).toHaveBeenCalledTimes(1);
+  });
+
+  test("autoCompleteResolvedTickets transitions 7-day inactive resolved tickets to completed", async () => {
+    const expiredTicket = {
+      _id: "maint-701",
+      ticketNumber: "MNT-2026-701",
+      status: "resolved",
+      resolved_at: dayjs().subtract(8, "day").toDate(),
+      statusHistory: [],
+      userId: "user-123",
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+
+    maintenanceRequestFind.mockResolvedValue([expiredTicket]);
+
+    await scheduler.autoCompleteResolvedTickets();
+
+    expect(expiredTicket.status).toBe("completed");
+    expect(expiredTicket.closed_at).toBeDefined();
+    expect(expiredTicket.statusHistory).toHaveLength(1);
+    expect(expiredTicket.statusHistory[0].event).toBe("auto_completed_after_7_days");
+    expect(expiredTicket.save).toHaveBeenCalledTimes(1);
+    expect(notify.general).toHaveBeenCalledWith(
+      "user-123",
+      "Maintenance Request Completed",
+      expect.stringContaining("MNT-2026-701"),
+      expect.any(Object)
+    );
   });
 });

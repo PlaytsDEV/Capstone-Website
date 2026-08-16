@@ -32,7 +32,7 @@
 
 import cron from "node-cron";
 import dayjs from "dayjs";
-import { Reservation, Room, Bill, User } from "../models/index.js";
+import { Reservation, Room, Bill, User, MaintenanceRequest } from "../models/index.js";
 import { getAuth } from "../config/firebase.js";
 import notify from "./notificationService.js";
 import {
@@ -1012,6 +1012,84 @@ async function detectConsecutiveOverdueMonths() {
   }
 }
 
+// ─── Job 16: Maintenance 7-Day Auto-Completion (daily at 02:30) ────────
+// Auto-completes tickets in "resolved" status after 7 days (168 hours) of no movement.
+
+async function autoCompleteResolvedTickets() {
+  try {
+    const now = dayjs();
+    const cutoffDate = now.subtract(7, "day").toDate();
+
+    const resolvedTickets = await MaintenanceRequest.find({
+      status: "resolved",
+      isArchived: false,
+      $or: [
+        { resolved_at: { $lte: cutoffDate } },
+        { resolvedAt: { $lte: cutoffDate } },
+        {
+          resolved_at: null,
+          resolvedAt: null,
+          updated_at: { $lte: cutoffDate },
+        },
+      ],
+    });
+
+    let completedCount = 0;
+
+    for (const ticket of resolvedTickets) {
+      const completionDate = now.toDate();
+      ticket.status = "completed";
+      ticket.closed_at = ticket.closed_at || completionDate;
+      ticket.completedAt = ticket.completedAt || completionDate;
+
+      const history = Array.isArray(ticket.statusHistory) ? ticket.statusHistory : [];
+      history.push({
+        event: "auto_completed_after_7_days",
+        status: "completed",
+        actor_id: "system_cron",
+        actor_name: "LilyCrest Automated Scheduler",
+        actor_role: "system",
+        note: "Maintenance ticket automatically marked completed after 7 days of inactivity in resolved status.",
+        timestamp: completionDate,
+      });
+      ticket.statusHistory = history;
+
+      await ticket.save();
+      completedCount++;
+
+      try {
+        const { emitToAdmins } = await import("./socket.js");
+        emitToAdmins("ticket:updated", {
+          requestId: String(ticket._id),
+          status: "completed",
+          autoCompleted: true,
+        });
+      } catch {
+        // non-fatal
+      }
+
+      if (ticket.userId || ticket.user_id) {
+        try {
+          notify.general(
+            ticket.userId || ticket.user_id,
+            "Maintenance Request Completed",
+            `Your maintenance request (${ticket.ticketNumber || ticket.request_id}) has been automatically finalized as Completed after the 7-day observation period.`,
+            { entityType: "maintenance", entityId: ticket._id }
+          );
+        } catch {
+          // notification error non-fatal
+        }
+      }
+    }
+
+    if (completedCount > 0) {
+      logger.info({ count: completedCount }, "Resolved maintenance tickets auto-completed after 7 days");
+    }
+  } catch (error) {
+    logger.error({ err: error }, "Maintenance 7-day auto-completion job failed");
+  }
+}
+
 export function startScheduler(options = {}) {
   if (scheduledJobs.length > 0) {
     logger.warn(
@@ -1180,6 +1258,16 @@ export function startScheduler(options = {}) {
     }),
   );
 
+  // Job 16: Maintenance 7-Day Auto-Completion — daily at 02:30
+  // Automatically completes resolved tickets after 7 days of inactivity.
+  scheduledJobs.push(
+    cron.schedule("30 2 * * *", autoCompleteResolvedTickets, {
+      scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
+      name: "maintenance-7day-auto-completion",
+    }),
+  );
+
   return scheduledJobs.length;
 }
 
@@ -1207,6 +1295,7 @@ export {
   detectSlaBreaches,
   detectConsecutiveOverdueMonths,
   reconcileOccupancyIntegrity,
+  autoCompleteResolvedTickets,
 };
 
 export default { startScheduler, stopScheduler };

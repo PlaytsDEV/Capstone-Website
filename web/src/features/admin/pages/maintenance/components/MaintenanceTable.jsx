@@ -14,16 +14,15 @@ import {
 import {
   formatMaintenanceStatus,
   getMaintenanceTypeMeta,
-  getMaintenanceUrgencyMeta,
 } from "../../../../../shared/utils/maintenanceConfig";
 import { formatBranch, fmtDate, getRelativeTime } from "../../../../../shared/utils/formatDate";
 import { DataTable } from "../../../components/shared";
 import {
+  formatCleanRoomName,
   getAssignedProviderName,
   getAvatarPalette,
   getRequestBranch,
-  getStatusDotClass,
-  getStatusTextClass,
+  getStatusBadgeMeta,
   ITEMS_PER_PAGE,
 } from "../maintenanceUtils";
 
@@ -98,7 +97,7 @@ export function MaintenanceTable({
       {
         key: "resident",
         label: "Resident & Location",
-        width: "25%",
+        width: "21%",
         render: (row) => {
           const rawName = row.tenant?.full_name || row.tenantName || "";
           const isDeleted =
@@ -108,23 +107,21 @@ export function MaintenanceTable({
             row.is_deleted;
           const palette = getAvatarPalette(rawName);
           const branchName = formatBranch(getRequestBranch(row));
-          const roomInfo =
-            row.room_number || row.room?.name || row.roomId?.name
-              ? `Room ${row.room_number || row.room?.name || row.roomId?.name}`
-              : null;
+          const rawRoom = row.room_number || row.room?.name || row.roomId?.name || "";
+          const roomInfo = formatCleanRoomName(rawRoom);
           const bedSlot = row.bedIdentifier || row.bed?.bedNumber || row.bedNumber || null;
 
           if (isDeleted) {
             return (
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">
-                  <UserX size={14} />
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700">
+                  <UserX size={15} />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                  <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                     Deleted Account
                   </div>
-                  <div className="text-[10px] text-slate-400">{branchName}</div>
+                  <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{branchName}</div>
                 </div>
               </div>
             );
@@ -140,22 +137,25 @@ export function MaintenanceTable({
               .toUpperCase() || "T";
 
           return (
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               <div
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${palette.bg} ${palette.text}`}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${palette.bg} ${palette.text}`}
               >
                 {initials}
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                <div
+                  className="text-sm font-semibold text-slate-900 dark:text-slate-100 line-clamp-1 break-words"
+                  title={rawName}
+                >
                   {rawName}
                 </div>
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
                   <span>{branchName}</span>
                   {roomInfo && (
                     <>
-                      <span>•</span>
-                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                      <span className="text-slate-300 dark:text-slate-600">•</span>
+                      <span className="font-medium text-slate-600 dark:text-slate-300">
                         {roomInfo}{bedSlot ? ` (${bedSlot})` : ""}
                       </span>
                     </>
@@ -169,17 +169,16 @@ export function MaintenanceTable({
       {
         key: "issue",
         label: "Issue & Category",
-        width: "31%",
+        width: "22%",
         render: (row) => {
           const typeMeta = getMaintenanceTypeMeta(row.request_type);
           const TypeIcon = typeMeta.icon;
           const attachmentCount = row.attachments?.length || 0;
-          const shortId = row.request_id ? `#${row.request_id.slice(-6).toUpperCase()}` : "";
 
           return (
-            <div className="flex items-start gap-2.5">
+            <div className="flex items-start gap-3">
               <span
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border mt-0.5"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border mt-0.5"
                 style={{
                   backgroundColor: `${typeMeta.color}14`,
                   borderColor: `${typeMeta.color}33`,
@@ -187,27 +186,25 @@ export function MaintenanceTable({
                 }}
                 title={typeMeta.label}
               >
-                <TypeIcon size={15} />
+                <TypeIcon size={16} />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                     {typeMeta.label}
                   </span>
-                  {shortId && (
-                    <span className="font-mono text-[10px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                      {shortId}
-                    </span>
-                  )}
                   {attachmentCount > 0 && (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                      <Paperclip size={10} className="text-slate-400" />
+                    <span
+                      className="inline-flex items-center gap-1 text-xs font-medium text-slate-400 dark:text-slate-500"
+                      title={`${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`}
+                    >
+                      <Paperclip size={12} className="text-slate-400 dark:text-slate-500" />
                       <span>{attachmentCount}</span>
                     </span>
                   )}
                 </div>
                 <p
-                  className="text-xs font-normal text-slate-600 dark:text-slate-300 truncate mt-0.5"
+                  className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 break-words mt-0.5 leading-relaxed"
                   title={row.description}
                 >
                   {row.description || "No description provided"}
@@ -220,67 +217,52 @@ export function MaintenanceTable({
       {
         key: "priority_sla",
         label: "Priority & Schedule",
-        width: "16%",
+        width: "14%",
         render: (row) => {
-          const urgencyMeta = getMaintenanceUrgencyMeta(row.urgency);
           const rawUrgency = String(row.urgency || "").toLowerCase();
-          const urgencyLabel =
-            rawUrgency === "low"
-              ? "Low"
-              : rawUrgency === "normal" || rawUrgency === "medium"
-              ? "Standard"
-              : "Urgent";
+          const isUrgent = rawUrgency === "urgent" || rawUrgency === "high" || rawUrgency === "emergency";
+          const isLow = rawUrgency === "low";
+          const urgencyLabel = isLow ? "Low" : isUrgent ? "Urgent" : "Standard";
 
-          const rawSla = String(row.slaState || "").toLowerCase();
+          const isTerminal = ["completed", "rejected", "cancelled", "closed", "resolved"].includes(row.status);
+          const rawSla = String(row.slaState?.label || row.slaState || "").toLowerCase();
+
           let slaElement = null;
-          if (rawSla.includes("delay") || rawSla.includes("overdue") || rawSla.includes("breach")) {
-            slaElement = (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
-                <AlertTriangle size={11} className="shrink-0" />
-                <span>Overdue</span>
-              </span>
-            );
-          } else if (rawSla.includes("soon") || rawSla.includes("risk")) {
-            slaElement = (
-              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
-                <Clock size={11} className="shrink-0" />
-                <span>Due soon</span>
-              </span>
-            );
-          } else if (rawSla.includes("close") || rawSla.includes("cancel")) {
-            slaElement = (
-              <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                Closed
-              </span>
-            );
-          } else if (rawSla.includes("complete") || rawSla.includes("resolve")) {
-            slaElement = (
-              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 size={11} className="shrink-0" />
-                <span>Resolved</span>
-              </span>
-            );
-          } else {
-            slaElement = (
-              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                <CheckCircle2 size={11} className="shrink-0 text-emerald-500" />
-                <span>On schedule</span>
-              </span>
-            );
+          if (!isTerminal) {
+            if (rawSla.includes("delay") || rawSla.includes("overdue") || rawSla.includes("breach")) {
+              slaElement = (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600 dark:text-rose-400">
+                  <AlertTriangle size={13} className="shrink-0" />
+                  <span>Overdue</span>
+                </span>
+              );
+            } else if (rawSla.includes("soon") || rawSla.includes("risk") || rawSla.includes("priority")) {
+              slaElement = (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                  <Clock size={13} className="shrink-0" />
+                  <span>Due soon</span>
+                </span>
+              );
+            } else {
+              slaElement = (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 dark:text-slate-500">
+                  <span>On schedule</span>
+                </span>
+              );
+            }
           }
 
           return (
-            <div className="flex flex-col items-start gap-1">
-              <span
-                className="inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold"
-                style={{
-                  backgroundColor: `${urgencyMeta.color}14`,
-                  borderColor: `${urgencyMeta.color}33`,
-                  color: urgencyMeta.color,
-                }}
-              >
-                {urgencyLabel}
-              </span>
+            <div className="flex flex-col items-start gap-1.5">
+              {isUrgent ? (
+                <span className="inline-flex items-center rounded-md border border-rose-200/90 bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-300">
+                  Urgent
+                </span>
+              ) : (
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                  {urgencyLabel}
+                </span>
+              )}
               {slaElement}
             </div>
           );
@@ -289,37 +271,48 @@ export function MaintenanceTable({
       {
         key: "status",
         label: "Status",
-        width: "14%",
-        render: (row) => (
-          <div
-            className={`inline-flex items-center gap-1.5 text-xs font-semibold ${getStatusTextClass(
-              row.status,
-            )}`}
-          >
-            <span className={`h-1.5 w-1.5 rounded-full ${getStatusDotClass(row.status)}`} />
-            <span>{formatMaintenanceStatus(row.status)}</span>
-          </div>
-        ),
+        width: "12%",
+        render: (row) => {
+          const statusMeta = getStatusBadgeMeta(row.status);
+
+          return (
+            <div className="flex flex-col items-start gap-1.5">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold ${statusMeta.badge}`}
+              >
+                <span className={`h-2 w-2 rounded-full shrink-0 ${statusMeta.dot}`} />
+                <span>{formatMaintenanceStatus(row.status)}</span>
+              </span>
+              {row.isReopened && row.status !== "reopened" && (
+                <span
+                  id={`reopened-badge-${row.request_id}`}
+                  className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/60"
+                >
+                  Reopened
+                </span>
+              )}
+            </div>
+          );
+        },
       },
       {
         key: "technician",
         label: "Technician",
-        width: "15%",
+        width: "17%",
         render: (row) => {
           const provider = getAssignedProviderName(row);
           if (!provider) {
             return (
-              <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700/60">
+              <span className="text-xs text-slate-400 dark:text-slate-500 font-normal italic">
                 Unassigned
               </span>
             );
           }
           return (
-            <div className="flex items-center gap-1.5">
-              <Wrench size={12} className="text-primary shrink-0" />
+            <div className="flex items-start gap-2 min-w-0" title={provider}>
+              <Wrench size={14} className="text-slate-400 dark:text-slate-500 shrink-0 mt-0.5" />
               <span
-                className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate"
-                title={provider}
+                className="text-sm font-medium text-slate-800 dark:text-slate-200 line-clamp-2 break-words leading-snug"
               >
                 {provider}
               </span>
@@ -336,15 +329,15 @@ export function MaintenanceTable({
           const relTime = getRelativeTime(row.created_at);
           return (
             <div
-              className="flex items-center justify-end gap-2.5"
+              className="flex items-center justify-end gap-3"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="text-right">
-                <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block whitespace-nowrap">
+              <div className="text-right shrink-0">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block whitespace-nowrap">
                   {fmtDate(row.created_at)}
                 </span>
                 {relTime && (
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500 block whitespace-nowrap">
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 block whitespace-nowrap mt-0.5">
                     {relTime}
                   </span>
                 )}
@@ -352,11 +345,11 @@ export function MaintenanceTable({
               <button
                 type="button"
                 onClick={() => onRowClick?.(row)}
-                className="inline-flex h-7 items-center gap-0.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white shrink-0 cursor-pointer"
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white shrink-0 cursor-pointer shadow-2xs"
                 title="Open maintenance request"
               >
                 <span>Open</span>
-                <ChevronRight size={12} className="text-slate-400" />
+                <ChevronRight size={13} className="text-slate-400" />
               </button>
             </div>
           );

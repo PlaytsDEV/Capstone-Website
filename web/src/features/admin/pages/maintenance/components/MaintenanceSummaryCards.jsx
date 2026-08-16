@@ -1,15 +1,19 @@
 import { SummaryBar } from "../../../components/shared";
 
+/**
+ * MaintenanceSummaryCards — Informational overview cards for maintenance metrics with interactive stage filtering.
+ */
 export function MaintenanceSummaryCards({
   summaryItems = [],
-  activeSummaryIndex = -1,
-  onSummaryFilter,
+  onItemClick,
+  activeIndex = -1,
 }) {
   return (
     <SummaryBar
       items={summaryItems}
-      activeIndex={activeSummaryIndex}
-      onItemClick={(index) => onSummaryFilter?.(index)}
+      onItemClick={onItemClick}
+      activeIndex={activeIndex}
     />
   );
 }
+

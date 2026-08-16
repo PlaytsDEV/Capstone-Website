@@ -48,6 +48,14 @@ import {
   matchesSummaryCard,
   normalizeApiValidationDetail,
   normalizeMaintenanceBranch,
+  OPERATIONAL_STAGES,
+  SPECIFIC_STATUS_OPTIONS,
+  matchesStage,
+  matchesStatus,
+  matchesStageOrStatus,
+  getStageLabel,
+  getStatusLabel,
+  getStageStatusLabel,
   PROVIDER_MANUAL_CHOICE,
   PROVIDER_NONE_CHOICE,
   TEXT_MIN_LENGTHS,
@@ -85,6 +93,7 @@ export function useMaintenanceData() {
 
   const defaultReportRange = useMemo(() => getDefaultMaintenanceReportRange(), []);
 
+  const [stageFilter, setStageFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [archiveView, setArchiveView] = useState("active");
   const [requestTypeFilter, setRequestTypeFilter] = useState("all");
@@ -98,7 +107,6 @@ export function useMaintenanceData() {
   );
   const [sortMode, setSortMode] = useState("newest");
   const [searchQuery, setSearchQuery] = useState("");
-  const [summaryCardKey, setSummaryCardKey] = useState(null);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -193,6 +201,7 @@ export function useMaintenanceData() {
   const listFilters = useMemo(
     () =>
       createFilterPayload({
+        stage: stageFilter,
         status: statusFilter,
         requestType: requestTypeFilter,
         urgency: urgencyFilter,
@@ -207,6 +216,7 @@ export function useMaintenanceData() {
       dateFrom,
       dateTo,
       requestTypeFilter,
+      stageFilter,
       statusFilter,
       urgencyFilter,
     ],
@@ -348,8 +358,77 @@ export function useMaintenanceData() {
     [dateFrom, dateTo, summaryRequests],
   );
 
+  const stageCounts = useMemo(() => {
+    const counts = { all: summaryRequests.length };
+    OPERATIONAL_STAGES.forEach((stage) => {
+      counts[stage.key] = summaryRequests.filter((request) =>
+        matchesStage({
+          request,
+          stage: stage.key,
+          dateFrom,
+          dateTo,
+        }),
+      ).length;
+      counts[stage.stageKey] = counts[stage.key];
+    });
+    return counts;
+  }, [dateFrom, dateTo, summaryRequests]);
+
+  const statusCounts = useMemo(() => {
+    const counts = { all: summaryRequests.length };
+    SPECIFIC_STATUS_OPTIONS.forEach((status) => {
+      counts[status.key] = summaryRequests.filter((request) =>
+        matchesStatus({
+          request,
+          status: status.key,
+        }),
+      ).length;
+      counts[status.rawStatus] = counts[status.key];
+    });
+    return counts;
+  }, [summaryRequests]);
+
+  const stageStatusCounts = useMemo(
+    () => ({ ...stageCounts, ...statusCounts }),
+    [stageCounts, statusCounts],
+  );
+
+  const queueCounts = stageCounts;
+
+  const urgencyCounts = useMemo(() => {
+    const counts = {
+      all: summaryRequests.length,
+      emergency: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+    };
+    summaryRequests.forEach((req) => {
+      const u = String(req.urgency || "").toLowerCase();
+      if (u && counts[u] !== undefined) {
+        counts[u] += 1;
+      }
+    });
+    return counts;
+  }, [summaryRequests]);
+
+  const branchCounts = useMemo(() => {
+    const counts = {
+      all: summaryRequests.length,
+      guadalupe: 0,
+      "gil-puyat": 0,
+    };
+    summaryRequests.forEach((req) => {
+      const b = normalizeMaintenanceBranch(req.branch);
+      if (b && counts[b] !== undefined) {
+        counts[b] += 1;
+      }
+    });
+    return counts;
+  }, [summaryRequests]);
+
   const activeSummaryIndex = MANAGEMENT_SUMMARY_CARDS.findIndex(
-    (item) => item.key === summaryCardKey,
+    (item) => item.key === stageFilter,
   );
 
   const sortedRequests = useMemo(() => {
@@ -392,17 +471,22 @@ export function useMaintenanceData() {
       searchedRequests.filter(
         (request) =>
           matchesSlaFilter({ request, slaFilter }) &&
-          matchesSummaryCard({
+          matchesStage({
             request,
-            cardKey: summaryCardKey,
+            stage: stageFilter,
             dateFrom,
             dateTo,
+          }) &&
+          matchesStatus({
+            request,
+            status: statusFilter,
           }),
       ),
-    [dateFrom, dateTo, searchedRequests, slaFilter, summaryCardKey],
+    [dateFrom, dateTo, searchedRequests, slaFilter, stageFilter, statusFilter],
   );
 
   const handleResetFilters = () => {
+    setStageFilter("all");
     setStatusFilter("all");
     setArchiveView("active");
     setRequestTypeFilter("all");
@@ -413,7 +497,6 @@ export function useMaintenanceData() {
     setBranchFilter(isOwner ? "all" : userBranch);
     setSortMode("newest");
     setSearchQuery("");
-    setSummaryCardKey(null);
     setShowAdvancedFilters(false);
     setCurrentPage(1);
   };
@@ -425,8 +508,26 @@ export function useMaintenanceData() {
     handleTabChange,
 
     // Filters
+    stageFilter,
+    setStageFilter,
+    stageCounts,
     statusFilter,
     setStatusFilter,
+    statusCounts,
+    stageStatusFilter: stageFilter !== "all" ? stageFilter : statusFilter,
+    setStageStatusFilter: (val) => {
+      if (!val || val === "all") {
+        setStageFilter("all");
+        setStatusFilter("all");
+      } else if (OPERATIONAL_STAGES.some((s) => s.key === val || s.stageKey === val || `stage:${s.key}` === val)) {
+        setStageFilter(val.replace(/^stage:/, ""));
+      } else {
+        setStatusFilter(val.replace(/^status:/, ""));
+      }
+    },
+    stageStatusCounts,
+    urgencyCounts,
+    branchCounts,
     archiveView,
     setArchiveView,
     requestTypeFilter,
@@ -445,8 +546,12 @@ export function useMaintenanceData() {
     setSortMode,
     searchQuery,
     setSearchQuery,
-    summaryCardKey,
-    setSummaryCardKey,
+    summaryCardKey: stageFilter,
+    setSummaryCardKey: setStageFilter,
+    queueFilter: stageFilter,
+    setQueueFilter: setStageFilter,
+    queueCounts: stageCounts,
+    activeSummaryIndex,
     showAdvancedFilters,
     setShowAdvancedFilters,
     handleResetFilters,
@@ -471,7 +576,6 @@ export function useMaintenanceData() {
 
     // Summary Items
     summaryItems,
-    activeSummaryIndex,
 
     // Analytics / Reports
     analyticsData,

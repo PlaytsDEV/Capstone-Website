@@ -239,7 +239,7 @@ async function getDashboard(req, res) {
         { user_id: userId },
         ...(mongoId ? [{ userId: mongoId }] : []),
       ],
-      status: { $in: ['pending', 'viewed', 'in_progress'] },
+      status: { $in: ['pending', 'viewed', 'reviewed', 'in_progress'] },
     };
 
     const maintenanceCollections = ['maintenance_requests', 'maintenancerequests'];

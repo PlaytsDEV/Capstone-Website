@@ -1107,3 +1107,266 @@
   font-size: 0.85rem;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   ADMIN MAINTENANCE STAGE LIFECYCLE HUB
+   Solid HSL tokens only — strictly no gradients
+═══════════════════════════════════════════════════════════ */
+
+/* Stage Hub Container */
+.admin-stage-hub {
+  container-type: inline-size;
+}
+
+/* ─── 6-Step Stage Tracker ─── */
+.admin-stage-tracker {
+  overflow-x: auto;
+}
+
+.admin-stage-steps {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  min-width: 420px;
+}
+
+.admin-stage-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  position: relative;
+}
+
+.admin-stage-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: background-color 0.2s, border-color 0.2s;
+  position: relative;
+  z-index: 1;
+}
+
+.admin-stage-dot--done {
+  background-color: hsl(var(--primary));
+  color: white;
+  border: 2px solid hsl(var(--primary));
+}
+
+.admin-stage-dot--active {
+  background-color: white;
+  color: hsl(var(--primary));
+  border: 2.5px solid hsl(var(--primary));
+  box-shadow: 0 0 0 3px color-mix(in srgb, hsl(var(--primary)) 15%, transparent);
+}
+
+.dark .admin-stage-dot--active {
+  background-color: hsl(220 13% 12%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, hsl(var(--primary)) 20%, transparent);
+}
+
+.admin-stage-dot--upcoming {
+  background-color: hsl(220 13% 95%);
+  color: hsl(220 9% 55%);
+  border: 2px solid hsl(220 13% 85%);
+}
+
+.dark .admin-stage-dot--upcoming {
+  background-color: hsl(220 13% 18%);
+  color: hsl(220 9% 45%);
+  border-color: hsl(220 13% 25%);
+}
+
+.admin-stage-number {
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.admin-stage-connector {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  right: -50%;
+  height: 2px;
+  z-index: 0;
+}
+
+.admin-stage-connector--done {
+  background-color: hsl(var(--primary));
+}
+
+.admin-stage-connector--pending {
+  background-color: hsl(220 13% 85%);
+}
+
+.dark .admin-stage-connector--pending {
+  background-color: hsl(220 13% 25%);
+}
+
+.admin-stage-label {
+  margin-top: 5px;
+  font-size: 9px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.3;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+.admin-stage-label--done {
+  color: hsl(var(--primary));
+}
+
+.admin-stage-label--active {
+  color: hsl(var(--primary));
+  font-weight: 700;
+}
+
+.admin-stage-label--upcoming {
+  color: hsl(220 9% 55%);
+}
+
+.dark .admin-stage-label--upcoming {
+  color: hsl(220 9% 40%);
+}
+
+/* ─── Stage CTA Buttons ─── */
+.admin-stage-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+
+.admin-stage-cta--primary {
+  background-color: hsl(var(--primary));
+  color: white;
+  border-color: hsl(var(--primary));
+}
+.admin-stage-cta--primary:hover {
+  background-color: hsl(var(--primary) / 0.88);
+}
+
+.admin-stage-cta--info {
+  background-color: hsl(199 89% 94%);
+  color: hsl(199 89% 28%);
+  border-color: hsl(199 89% 78%);
+}
+.dark .admin-stage-cta--info {
+  background-color: hsl(199 50% 15%);
+  color: hsl(199 89% 65%);
+  border-color: hsl(199 50% 28%);
+}
+.admin-stage-cta--info:hover {
+  background-color: hsl(199 89% 88%);
+}
+.dark .admin-stage-cta--info:hover {
+  background-color: hsl(199 50% 20%);
+}
+
+.admin-stage-cta--warning {
+  background-color: hsl(38 92% 94%);
+  color: hsl(38 92% 28%);
+  border-color: hsl(38 92% 72%);
+}
+.dark .admin-stage-cta--warning {
+  background-color: hsl(38 50% 15%);
+  color: hsl(38 92% 65%);
+  border-color: hsl(38 50% 28%);
+}
+.admin-stage-cta--warning:hover {
+  background-color: hsl(38 92% 88%);
+}
+
+.admin-stage-cta--success {
+  background-color: hsl(142 72% 94%);
+  color: hsl(142 72% 22%);
+  border-color: hsl(142 72% 70%);
+}
+.dark .admin-stage-cta--success {
+  background-color: hsl(142 40% 12%);
+  color: hsl(142 72% 50%);
+  border-color: hsl(142 40% 24%);
+}
+.admin-stage-cta--success:hover {
+  background-color: hsl(142 72% 88%);
+}
+
+.admin-stage-cta--outline {
+  background-color: transparent;
+  color: hsl(220 9% 46%);
+  border-color: hsl(220 13% 80%);
+}
+.dark .admin-stage-cta--outline {
+  color: hsl(220 9% 55%);
+  border-color: hsl(220 13% 28%);
+}
+.admin-stage-cta--outline:hover {
+  background-color: hsl(220 13% 96%);
+}
+.dark .admin-stage-cta--outline:hover {
+  background-color: hsl(220 13% 16%);
+}
+
+/* ─── Inline Visit Scheduler ─── */
+.admin-scheduler-preset {
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid hsl(199 89% 70%);
+  background-color: hsl(199 89% 96%);
+  color: hsl(199 89% 30%);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.dark .admin-scheduler-preset {
+  background-color: hsl(199 50% 14%);
+  color: hsl(199 89% 62%);
+  border-color: hsl(199 50% 26%);
+}
+.admin-scheduler-preset:hover {
+  background-color: hsl(199 89% 88%);
+}
+.dark .admin-scheduler-preset:hover {
+  background-color: hsl(199 50% 20%);
+}
+
+/* ─── Override Dropdown (Secondary) ─── */
+.admin-override-dropdown > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+}
+.admin-override-dropdown > summary::before {
+  content: "▸";
+  font-size: 10px;
+  transition: transform 0.15s;
+}
+.admin-override-dropdown[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+/* Slow spin animation for reopened icon */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+

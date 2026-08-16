@@ -206,19 +206,19 @@ export function validateMaintenanceStateTransition(
 
 /**
  * Evaluates whether a resolved maintenance ticket has exceeded the tenant verification window
- * and qualifies for automatic resolution closure (72h timeout fallback).
+ * and qualifies for automatic resolution closure (7-day / 168h timeout fallback).
  */
 export function evaluateAutoResolution(
   ticket = {},
   referenceDate = new Date(),
-  timeoutHours = 72
+  timeoutHours = 168
 ) {
   const status = String(ticket.status || "").toLowerCase();
   if (status !== "resolved") {
     return { shouldAutoResolve: false, hoursElapsed: 0, hoursRemaining: 0 };
   }
 
-  const resolvedAt = ticket.resolvedAt || ticket.updatedAt || ticket.createdAt;
+  const resolvedAt = ticket.resolved_at || ticket.resolvedAt || ticket.updated_at || ticket.updatedAt || ticket.created_at || ticket.createdAt;
   if (!resolvedAt) {
     return { shouldAutoResolve: false, hoursElapsed: 0, hoursRemaining: 0 };
   }
@@ -231,7 +231,7 @@ export function evaluateAutoResolution(
       shouldAutoResolve: true,
       hoursElapsed: Math.round(elapsedHours * 10) / 10,
       hoursRemaining: 0,
-      reason: `Auto-resolved after exceeding the ${timeoutHours}-hour tenant verification window.`,
+      reason: `Auto-completed after exceeding the ${timeoutHours}-hour (7 days) resolution observation window.`,
       targetStatus: "completed",
     };
   }
@@ -240,7 +240,7 @@ export function evaluateAutoResolution(
     shouldAutoResolve: false,
     hoursElapsed: Math.round(elapsedHours * 10) / 10,
     hoursRemaining,
-    reason: `Pending tenant verification (${hoursRemaining}h remaining in auto-close window).`,
+    reason: `Pending resolution observation (${hoursRemaining}h remaining in 7-day auto-complete window).`,
   };
 }
 

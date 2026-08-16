@@ -534,15 +534,27 @@ export const confirmResolution = async (req, res, next) => {
     if (isConfirmed) {
       const confirmedAt = new Date();
       const feedback = toOptionalText(req.body?.feedback || req.body?.notes || req.body?.note);
+      const rawRating = Number(req.body?.rating);
+      const rating = Number.isFinite(rawRating) && rawRating >= 1 && rawRating <= 5 ? Math.round(rawRating * 10) / 10 : null;
+      
+      request.status = "resolved";
+      request.resolved_at = request.resolved_at || confirmedAt;
+      
       request.resolutionConfirmation = {
         confirmedAt,
         tenantFeedback: feedback,
+        rating,
+        action: "confirm"
       };
+
+      const ratingNote = rating ? ` (${rating} / 5 stars)` : "";
       appendStatusHistory(request, {
         event: "tenant_confirmed_resolved",
-        status: request.status,
+        status: "resolved",
         ...buildActorSnapshot(dbUser),
-        note: feedback || "Tenant confirmed issue resolution.",
+        note: feedback
+          ? `Tenant verified issue resolution${ratingNote}. Feedback: "${feedback}"`
+          : `Tenant verified issue resolution${ratingNote}.`,
         timestamp: confirmedAt,
       });
 
@@ -560,7 +572,7 @@ export const confirmResolution = async (req, res, next) => {
       }
 
       sendSuccess(res, {
-        message: "Thank you! Issue resolution confirmed.",
+        message: "Thank you! Your rating and resolution confirmation have been submitted.",
         request: serializeMaintenanceRequest(
           request.toObject(),
           serializeTenantSummary(dbUser, request),
@@ -568,7 +580,47 @@ export const confirmResolution = async (req, res, next) => {
         ),
       });
     } else {
-      return reopenMyRequest(req, res, next);
+      // Resident indicates the issue is NOT yet resolved -> return to in_progress for rework
+      const rejectedAt = new Date();
+      const feedback = toOptionalText(req.body?.feedback || req.body?.notes || req.body?.note || req.body?.reopen_note);
+
+      request.status = "in_progress";
+      request.resolved_at = null;
+      request.resolutionConfirmation = {
+        confirmedAt: rejectedAt,
+        tenantFeedback: feedback,
+        action: "rejected_back_to_in_progress",
+      };
+
+      appendStatusHistory(request, {
+        event: "tenant_rejected_resolution",
+        status: "in_progress",
+        ...buildActorSnapshot(dbUser),
+        note: feedback ? `Resident reported issue still unresolved: "${feedback}"` : "Resident indicated issue is still unresolved. Ticket returned to In Progress.",
+        timestamp: rejectedAt,
+      });
+
+      await request.save();
+
+      try {
+        const { emitToAdmins } = await import("../../utils/socket.js");
+        emitToAdmins("ticket:updated", {
+          requestId: String(request._id),
+          status: "in_progress",
+          resolutionRejected: true,
+        });
+      } catch {
+        // non-fatal
+      }
+
+      sendSuccess(res, {
+        message: "Your feedback was sent to facilities. The repair has been returned to In Progress.",
+        request: serializeMaintenanceRequest(
+          request.toObject(),
+          serializeTenantSummary(dbUser, request),
+          { includeInternal: false },
+        ),
+      });
     }
   } catch (error) {
     next(error);
@@ -576,6 +628,80 @@ export const confirmResolution = async (req, res, next) => {
 };
 
 export const confirmMaintenanceResolved = confirmResolution;
+
+/**
+ * POST /api/m/maintenance/:requestId/reschedule-request
+ * Allows a resident to request a schedule adjustment if unavailable.
+ */
+export const requestMaintenanceReschedule = async (req, res, next) => {
+  try {
+    const dbUser = await getDbUser(req.user.uid);
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureTenantAccess(request, dbUser);
+
+    if (["cancelled", "closed", "completed"].includes(normalizeMaintenanceStatus(request.status))) {
+      throw new AppError(
+        "Closed or completed maintenance requests cannot be rescheduled.",
+        409,
+        "REQUEST_CLOSED",
+      );
+    }
+
+    const proposedDate = req.body?.proposedDate ? new Date(req.body.proposedDate) : null;
+    const reason = toOptionalText(req.body?.reason || req.body?.notes);
+
+    if (!proposedDate || Number.isNaN(proposedDate.getTime())) {
+      throw new AppError(
+        "A valid preferred reschedule date and time is required.",
+        400,
+        "INVALID_PROPOSED_DATE",
+      );
+    }
+
+    const requestedAt = new Date();
+    request.rescheduleRequest = {
+      requestedAt,
+      proposedDate,
+      reason,
+      status: "pending",
+      respondedAt: null,
+      respondedBy: null,
+      responseNote: null,
+    };
+
+    appendStatusHistory(request, {
+      event: "tenant_reschedule_requested",
+      status: request.status,
+      ...buildActorSnapshot(dbUser),
+      note: `Resident requested reschedule to ${proposedDate.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}${reason ? `. Reason: "${reason}"` : ""}`,
+      timestamp: requestedAt,
+    });
+
+    await request.save();
+
+    try {
+      const { emitToAdmins } = await import("../../utils/socket.js");
+      emitToAdmins("ticket:updated", {
+        requestId: String(request._id),
+        status: request.status,
+        rescheduleRequested: true,
+      });
+    } catch {
+      // non-fatal
+    }
+
+    sendSuccess(res, {
+      message: "Reschedule request submitted to dormitory facilities management.",
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(dbUser, request),
+        { includeInternal: false },
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 
 /**

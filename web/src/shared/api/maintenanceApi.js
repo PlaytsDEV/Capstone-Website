@@ -52,20 +52,30 @@ export const maintenanceApi = {
   /**
    * Reopen a resolved/completed maintenance request
    */
-  reopenRequest: (requestId, note) =>
-    authFetch(`/maintenance/${requestId}/reopen`, {
+  reopenRequest: (requestId, noteOrPayload) => {
+    const note =
+      typeof noteOrPayload === "string"
+        ? noteOrPayload
+        : noteOrPayload?.note || noteOrPayload?.reopen_note || "";
+    return authFetch(`/maintenance/${requestId}/reopen`, {
       method: "PATCH",
-      body: JSON.stringify({ reopen_note: note }),
-    }),
+      body: JSON.stringify({ note, reopen_note: note }),
+    });
+  },
 
   /**
    * Confirm resolution or reopen a completed maintenance request (tenant)
    */
-  confirmResolution: (requestId, payload = {}) =>
-    authFetch(`/maintenance/${requestId}/confirm`, {
+  confirmResolution: (requestId, payload = {}) => {
+    const body =
+      typeof payload === "boolean"
+        ? { action: payload ? "confirm" : "reopen", confirmed: payload }
+        : payload;
+    return authFetch(`/maintenance/${requestId}/confirm`, {
       method: "POST",
-      body: JSON.stringify(payload),
-    }),
+      body: JSON.stringify(body),
+    });
+  },
 
   /**
    * Send a tenant reply with optional attachments.
@@ -95,6 +105,14 @@ export const maintenanceApi = {
 
   getAdminProviderReport: (filters = {}) =>
     authFetch(`/maintenance/admin/reports/providers${buildQueryString(filters)}`),
+
+  /**
+   * Mark a maintenance request as read by admin
+   */
+  markAsRead: (requestId) =>
+    authFetch(`/maintenance/admin/${requestId}/read`, {
+      method: "PATCH",
+    }),
 
   /**
    * Update maintenance request status/notes/assignment (admin only)
@@ -170,8 +188,14 @@ export const maintenanceApi = {
       body: JSON.stringify(payload),
     }),
 
-  getAdminDuplicates: (requestId) =>
-    authFetch(`/maintenance/admin/${requestId}/duplicates`),
+  /**
+   * Request a reschedule (tenant)
+   */
+  requestReschedule: (requestId, payload) =>
+    authFetch(`/maintenance/${requestId}/reschedule-request`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 
   scheduleAdminMaintenance: (requestId, payload) =>
     authFetch(`/maintenance/admin/${requestId}/schedule`, {
@@ -179,7 +203,19 @@ export const maintenanceApi = {
       body: JSON.stringify(payload),
     }),
 
+  respondToReschedule: (requestId, payload) =>
+    authFetch(`/maintenance/admin/${requestId}/reschedule-response`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
   finalizeAdminReport: (requestId, payload) =>
+    authFetch(`/maintenance/admin/${requestId}/finalize`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  finalizeAdminMaintenanceReport: (requestId, payload) =>
     authFetch(`/maintenance/admin/${requestId}/finalize`, {
       method: "POST",
       body: JSON.stringify(payload),

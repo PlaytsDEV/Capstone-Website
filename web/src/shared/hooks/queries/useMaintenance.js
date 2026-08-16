@@ -13,6 +13,8 @@ export function useMyMaintenanceRequests(filters) {
     queryKey: queryKeys.maintenance.mine(filters),
     queryFn: () => maintenanceApi.getMyRequests(filters),
     placeholderData: keepPreviousData,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -146,13 +148,41 @@ export function useSendTenantMaintenanceReply() {
   });
 }
 
+const syncMaintenanceCache = (qc, data, requestId, defaultPatch = null) => {
+  const updatedReq = data?.request || data?.data?.request || (data?.status ? data : null) || defaultPatch;
+  const targetId = requestId || updatedReq?.request_id || updatedReq?.id || updatedReq?._id;
+  if (!targetId) return;
+
+  if (updatedReq) {
+    qc.setQueryData(queryKeys.maintenance.detail(targetId), (old) => {
+      if (old?.request) {
+        return { ...old, request: { ...old.request, ...updatedReq } };
+      }
+      return { request: updatedReq };
+    });
+  }
+
+  qc.setQueriesData({ queryKey: ["maintenance", "admin"] }, (old) => {
+    if (!old || !Array.isArray(old.requests)) return old;
+    return {
+      ...old,
+      requests: old.requests.map((r) =>
+        String(r.request_id || r.id || r._id) === String(targetId)
+          ? { ...r, ...(updatedReq || {}) }
+          : r,
+      ),
+    };
+  });
+};
+
 /** Update maintenance request status/notes/assignment (admin) */
 export function useUpdateMaintenanceRequest() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ requestId, payload }) =>
       maintenanceApi.updateAdminRequestStatus(requestId, payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId, variables?.payload);
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       if (variables?.requestId) {
         qc.invalidateQueries({
@@ -169,7 +199,8 @@ export function useSendMaintenanceReply() {
   return useMutation({
     mutationFn: ({ requestId, payload }) =>
       maintenanceApi.sendAdminReply(requestId, payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId);
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       if (variables?.requestId) {
         qc.invalidateQueries({
@@ -185,7 +216,8 @@ export function useSaveMaintenanceProof() {
   return useMutation({
     mutationFn: ({ requestId, payload }) =>
       maintenanceApi.saveAdminProof(requestId, payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId, { status: "resolved" });
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       if (variables?.requestId) {
         qc.invalidateQueries({
@@ -201,7 +233,8 @@ export function useRemoveMaintenanceAttachment() {
   return useMutation({
     mutationFn: ({ requestId, payload }) =>
       maintenanceApi.removeAdminAttachment(requestId, payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId);
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       if (variables?.requestId) {
         qc.invalidateQueries({
@@ -226,7 +259,8 @@ export function useAssignMaintenanceProvider() {
   return useMutation({
     mutationFn: ({ requestId, payload }) =>
       maintenanceApi.assignAdminProvider(requestId, payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId, { status: "in_progress" });
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       qc.invalidateQueries({ queryKey: ["maintenance", "serviceProviders"] });
       if (variables?.requestId) {
@@ -243,7 +277,8 @@ export function useAssignMaintenanceBranch() {
   return useMutation({
     mutationFn: ({ requestId, branch }) =>
       maintenanceApi.assignAdminBranch(requestId, { branch }),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId, { branch: variables?.branch });
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       qc.invalidateQueries({ queryKey: ["maintenance", "serviceProviders"] });
       if (variables?.requestId) {
@@ -344,7 +379,10 @@ export function useUpdateMaintenanceCost() {
   return useMutation({
     mutationFn: ({ requestId, payload }) =>
       maintenanceApi.updateAdminCost(requestId, payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId, {
+        costBreakdown: variables?.payload,
+      });
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       if (variables?.requestId) {
         qc.invalidateQueries({
@@ -382,7 +420,44 @@ export function useConfirmMaintenanceResolution() {
   return useMutation({
     mutationFn: ({ requestId, payload }) =>
       maintenanceApi.confirmResolution(requestId, payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId);
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+/** Request maintenance reschedule (tenant) */
+export function useRequestMaintenanceReschedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.requestReschedule(requestId, payload),
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId);
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+/** Respond to maintenance reschedule request (admin) */
+export function useRespondToMaintenanceReschedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.respondToReschedule(requestId, payload),
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId);
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       if (variables?.requestId) {
         qc.invalidateQueries({
@@ -399,7 +474,11 @@ export function useScheduleAdminMaintenance() {
   return useMutation({
     mutationFn: ({ requestId, payload }) =>
       maintenanceApi.scheduleAdminMaintenance(requestId, payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId, {
+        status: "scheduled",
+        scheduledDate: variables?.payload?.scheduledDate,
+      });
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       if (variables?.requestId) {
         qc.invalidateQueries({
@@ -416,7 +495,8 @@ export function useFinalizeAdminMaintenanceReport() {
   return useMutation({
     mutationFn: ({ requestId, payload }) =>
       maintenanceApi.finalizeAdminReport(requestId, payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId, { status: "completed" });
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       if (variables?.requestId) {
         qc.invalidateQueries({
