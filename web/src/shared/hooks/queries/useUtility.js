@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import { utilityApi } from "../../api/utilityApi.js";
 import { billingApi } from "../../api/billingApi.js";
 
@@ -14,6 +19,8 @@ const buildQueryOptions = (baseEnabled, options) => {
   const { enabled, ...queryOptions } = normalizedOptions;
 
   return {
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
     ...queryOptions,
     enabled: (enabled ?? true) && baseEnabled,
   };

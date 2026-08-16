@@ -29,7 +29,7 @@ const TenantLayout = ({ children }) => {
 
   useEffect(() => {
     contentRef.current?.scrollTo({ top: 0, behavior: "auto" });
-  }, [location.pathname, location.search]);
+  }, [location.pathname]);
 
   return (
     <div className="tenant-layout">
@@ -52,7 +52,7 @@ const TenantLayout = ({ children }) => {
             <AccountBlockedBanner accountStatus={user.accountStatus} />
           )}
           <RouteTransitionBoundary
-            routeKey={`${location.pathname}${location.search}`}
+            routeKey={location.pathname}
             className="tenant-route-transition"
           >
             {content}

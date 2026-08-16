@@ -41,7 +41,7 @@ export default function AdminLayout() {
 
  useEffect(() => {
  contentRef.current?.scrollTo({ top: 0, behavior: "auto" });
- }, [location.pathname, location.search]);
+ }, [location.pathname]);
 
  const breadcrumbs = ["Admin", pageMeta.title];
 
@@ -68,7 +68,7 @@ export default function AdminLayout() {
  className="admin-content"
  >
  <RouteTransitionBoundary
- routeKey={`${location.pathname}${location.search}`}
+ routeKey={location.pathname}
  >
  <Outlet />
  </RouteTransitionBoundary>

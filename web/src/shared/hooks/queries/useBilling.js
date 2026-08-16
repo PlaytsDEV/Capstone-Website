@@ -1,22 +1,33 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import { billingApi } from "../../api/apiClient";
 import { queryKeys } from "../../lib/queryKeys";
 
 // ── Tenant Hooks ──
 
 /** Get tenant's own bills */
-export function useMyBills() {
+export function useMyBills(options = {}) {
   return useQuery({
     queryKey: queryKeys.billing.myBills,
     queryFn: () => billingApi.getMyBills(),
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
+    ...options,
   });
 }
 
 /** Get current month billing */
-export function useCurrentBilling() {
+export function useCurrentBilling(options = {}) {
   return useQuery({
     queryKey: queryKeys.billing.current,
     queryFn: () => billingApi.getCurrentBilling(),
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
+    ...options,
   });
 }
 
@@ -24,10 +35,13 @@ export function useCurrentBilling() {
 // ── Admin Hooks ──
 
 /** Get billing statistics */
-export function useBillingStats() {
+export function useBillingStats(options = {}) {
   return useQuery({
     queryKey: queryKeys.billing.stats,
     queryFn: () => billingApi.getStats(),
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
+    ...options,
   });
 }
 
@@ -36,23 +50,31 @@ export function useBillsByBranch(params, options = {}) {
   return useQuery({
     queryKey: queryKeys.billing.byBranch(params),
     queryFn: () => billingApi.getBillsByBranch(params),
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
     ...options,
   });
 }
 
 /** Get rooms with tenants for bill generation */
-export function useRoomsWithTenants(branch) {
+export function useRoomsWithTenants(branch, options = {}) {
   return useQuery({
     queryKey: queryKeys.billing.roomsWithTenants(branch),
     queryFn: () => billingApi.getRoomsWithTenants(branch),
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
+    ...options,
   });
 }
 
 /** Get billing report */
-export function useBillingReport() {
+export function useBillingReport(options = {}) {
   return useQuery({
     queryKey: queryKeys.billing.report,
     queryFn: () => billingApi.getBillingReport(),
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
+    ...options,
   });
 }
 
@@ -60,6 +82,8 @@ export function useAdminPayments(params, options = {}) {
   return useQuery({
     queryKey: queryKeys.billing.payments(params),
     queryFn: () => billingApi.getAdminPayments(params),
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
     ...options,
   });
 }

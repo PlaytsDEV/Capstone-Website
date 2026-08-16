@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import { reservationApi } from "../../api/apiClient";
 import { queryKeys } from "../../lib/queryKeys";
 
@@ -26,15 +31,15 @@ const invalidateReservationSideEffects = (qc, reservationId = null) =>
       : []),
   ]);
 
-/** Fetch all reservations — 5s freshness, socket events & mutations trigger instant refresh, 10s fallback interval */
+/** Fetch all reservations — 30s freshness, socket events & mutations trigger instant refresh */
 export function useReservations(params = {}, options = {}) {
   return useQuery({
     queryKey: queryKeys.reservations.all(params),
     queryFn: () => reservationApi.getAll(params),
-    staleTime: 5 * 1000,
-    refetchInterval: 10 * 1000,
-    refetchOnMount: true,
-    refetchOnWindowFocus: true,
+    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
+    placeholderData: keepPreviousData,
+    refetchOnWindowFocus: false,
     ...options,
   });
 }
@@ -44,8 +49,8 @@ export function useCurrentResidents(params = {}, options = {}) {
   return useQuery({
     queryKey: queryKeys.reservations.currentResidents(params),
     queryFn: () => reservationApi.getCurrentResidents(params),
-    staleTime: 30 * 1000,
-    refetchOnMount: true,
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
     ...options,
   });
 }
@@ -55,8 +60,8 @@ export function useTenantWorkspace(params = {}, options = {}) {
   return useQuery({
     queryKey: queryKeys.reservations.tenantWorkspace(params),
     queryFn: () => reservationApi.getTenantWorkspace(params),
-    staleTime: 30 * 1000,
-    refetchOnMount: true,
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
     ...options,
   });
 }
@@ -66,7 +71,8 @@ export function useTenantWorkspaceDetail(reservationId, options = {}) {
   return useQuery({
     queryKey: queryKeys.reservations.tenantWorkspaceDetail(reservationId),
     queryFn: () => reservationApi.getTenantWorkspaceById(reservationId),
-    staleTime: 30 * 1000,
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
     enabled: !!reservationId,
     ...options,
   });
@@ -78,7 +84,7 @@ export function prefetchTenantWorkspaceDetail(queryClient, reservationId) {
   return queryClient.prefetchQuery({
     queryKey: queryKeys.reservations.tenantWorkspaceDetail(reservationId),
     queryFn: () => reservationApi.getTenantWorkspaceById(reservationId),
-    staleTime: 30 * 1000,
+    staleTime: 60 * 1000,
   });
 }
 
