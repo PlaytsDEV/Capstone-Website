@@ -1,5 +1,6 @@
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../config/database');
+const { resolveRequesterBranchCode } = require('./announcement.controller');
 
 // Lazy-load socket module (shimmed by mobileRoutes.js to call emitToChatAdmins).
 let _emitToChatAdmins = null;
@@ -216,6 +217,19 @@ async function resolveTenantContext(db, user) {
   let roomBed = user?.bedId || user?.bed_id || '';
 
   if (mongoId) {
+    // resolveRequesterBranchCode() is the same authoritative 4-tier lookup
+    // (roomoccupancyhistories -> bedhistories -> reservations -> contracts)
+    // that announcement.controller.js and user.controller.js already trust.
+    // This chat controller previously only checked bedhistories then a
+    // narrower reservation status list — missing the roomoccupancyhistories
+    // and contracts tiers entirely, so a tenant whose branch only the
+    // Contract screen could resolve got "No active tenant." starting a
+    // support chat even though the rest of the app already knew their branch.
+    const authoritativeBranch = await resolveRequesterBranchCode(db, mongoId);
+    if (authoritativeBranch && VALID_BRANCHES.has(authoritativeBranch)) {
+      branch = authoritativeBranch;
+    }
+
     const bedHistory = await db.collection('bedhistories').findOne(
       { tenantId: mongoId, status: 'active' },
       { sort: { moveInDate: -1, effectiveStartDate: -1 } },
