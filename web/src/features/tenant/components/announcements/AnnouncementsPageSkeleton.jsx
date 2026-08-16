@@ -12,9 +12,11 @@ export default function AnnouncementsPageSkeleton() {
       <div className="tenant-announcements-root">
         <div className="tenant-announcements-header">
           <div className="tenant-announcements-header__text">
-            <h1>Announcements</h1>
+            <div className="tenant-announcements-header__title-row">
+              <h1>Announcements</h1>
+            </div>
             <p>
-              Stay updated with branch notices, policy versions, and required acknowledgments.
+              Stay updated with branch notices, policy guidelines, and dormitory advisories.
             </p>
           </div>
           <div

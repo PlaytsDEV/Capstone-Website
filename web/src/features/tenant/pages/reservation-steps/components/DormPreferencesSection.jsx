@@ -76,19 +76,23 @@ const DormPreferencesSection = ({
  />
  </div>
 
- {referralSource === "friend" && (
- <div className="form-group">
- <label className="form-label">
- If Personally Referred, Please Indicate the Name
- </label>
- <input
- type="text"
- className="form-input"
- value={referrerName}
- onChange={(e) => setReferrerName(e.target.value)}
- />
- </div>
- )}
+  {referralSource === "friend" && (
+    <div className="form-group" data-field="referrerName">
+      <label className="form-label" htmlFor="referrerNameInput">
+        If Personally Referred, Please Indicate the Name
+      </label>
+      <input
+        id="referrerNameInput"
+        type="text"
+        name="name"
+        autoComplete="name"
+        className="form-input"
+        placeholder="Full name of referrer"
+        value={referrerName}
+        onChange={(e) => setReferrerName(e.target.value)}
+      />
+    </div>
+  )}
 
  {/* Move-in Date */}
  <div className="form-group" data-field="targetMoveInDate">
@@ -233,37 +237,43 @@ const DormPreferencesSection = ({
  </div>
 
  {workSchedule === "others" && (
- <div className="form-group" data-field="workScheduleOther">
- <label className="form-label">
- If You Answered "Others", Please Specify Your Work Schedule Below *
- </label>
- <textarea
- className="form-textarea"
-  value={workScheduleOther}
-  onChange={(e) => {
-  setWorkScheduleOther(e.target.value);
-  validateField("workScheduleOther", e.target.value, (value) => ({
-  valid: Boolean(value?.trim()),
-  error: value?.trim() ? null : "Please describe your work schedule",
-  }));
-  }}
-  placeholder="Please describe your typical work schedule"
-  style={{
-  border: fieldErrors.workScheduleOther
-  ? "1.5px solid var(--danger)"
-  : workSchedule === "others"
-  ? errBorder(showValidationErrors, workScheduleOther)
-  : undefined,
-  }}
-  />
-  <FieldError
-  error={
-  showValidationErrors && workSchedule === "others" && !workScheduleOther
-  ? "Please describe your work schedule"
-  : fieldErrors.workScheduleOther
-  }
-  />
- </div>
+  <div className="form-group" data-field="workScheduleOther">
+    <label className="form-label" htmlFor="workScheduleOtherInput">
+      If You Answered "Others", Please Specify Your Work Schedule Below *
+    </label>
+    <textarea
+      id="workScheduleOtherInput"
+      className="form-textarea"
+      value={workScheduleOther}
+      maxLength={300}
+      onChange={(e) => {
+        setWorkScheduleOther(e.target.value);
+        validateField("workScheduleOther", e.target.value, (value) => ({
+          valid: Boolean(value?.trim()),
+          error: value?.trim() ? null : "Please describe your work schedule",
+        }));
+      }}
+      placeholder="Please describe your typical work schedule"
+      style={{
+        border: fieldErrors.workScheduleOther
+          ? "1.5px solid var(--danger)"
+          : workSchedule === "others"
+          ? errBorder(showValidationErrors, workScheduleOther)
+          : undefined,
+      }}
+      aria-invalid={Boolean(showValidationErrors && workSchedule === "others" && !workScheduleOther)}
+    />
+    <div className="rf-char-counter">
+      {workScheduleOther?.length || 0}/300
+    </div>
+    <FieldError
+      error={
+        showValidationErrors && workSchedule === "others" && !workScheduleOther
+          ? "Please describe your work schedule"
+          : fieldErrors.workScheduleOther
+      }
+    />
+  </div>
  )}
  </>
 );

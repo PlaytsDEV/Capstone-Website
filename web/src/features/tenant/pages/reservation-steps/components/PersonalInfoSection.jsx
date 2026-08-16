@@ -76,6 +76,9 @@ const PersonalInfoSection = ({
   setNickname,
   mobileNumber,
   setMobileNumber,
+  accountFirstName = "",
+  accountLastName = "",
+  accountPhone = "",
   birthday,
   setBirthday,
   gender,
@@ -121,336 +124,384 @@ const PersonalInfoSection = ({
   birthdayMin,
   birthdayMax,
   showValidationErrors,
-}) => (
-  <>
-    {/* Names — 3-column row */}
-    <div className="form-row form-row--3col">
-      <NameField
-        label="Last Name"
-        value={lastName}
-        setter={setLastName}
-        fieldKey="lastName"
-        handler={handleNameInput}
-        validate={validateField}
-        errors={fieldErrors}
-        required
-        showValidationErrors={showValidationErrors}
-      />
-      <NameField
-        label="First Name"
-        value={firstName}
-        setter={setFirstName}
-        fieldKey="firstName"
-        handler={handleNameInput}
-        validate={validateField}
-        errors={fieldErrors}
-        required
-        showValidationErrors={showValidationErrors}
-      />
-      <NameField
-        label="Middle Name"
-        value={middleName}
-        setter={setMiddleName}
-        fieldKey="middleName"
-        handler={handleNameInput}
-        validate={validateField}
-        errors={fieldErrors}
-        optional
-        showValidationErrors={showValidationErrors}
-      />
-    </div>
+}) => {
+  const showPhoneSuggestion =
+    Boolean(accountPhone) &&
+    (!mobileNumber || mobileNumber.trim() !== accountPhone.trim());
 
-    {/* Nickname, Gender, Nationality — 3-column row */}
-    <div className="form-row form-row--3col">
-      <div className="form-group" data-field="nickname">
-        <label className="form-label">
-          Nickname <span className="rf-optional-label">(Optional)</span>
-        </label>
-        <input
-          type="text"
-          className="form-input"
-          placeholder="Nickname"
-          maxLength={32}
-          value={nickname}
-          onChange={(e) => handleNameInput(e.target.value, setNickname)}
-        />
-      </div>
-      <div className="form-group" data-field="gender">
-        <label className="form-label">
-          Gender <span className="rf-required">*</span>
-        </label>
-        <select
-          className="form-select"
-          value={gender}
-          onChange={(e) => setGender(e.target.value)}
-          style={{ border: errBorder(showValidationErrors, gender) }}
-        >
-          <option value="">Select gender...</option>
-          <option value="male">Male</option>
-          <option value="female">Female</option>
-          <option value="other">Other</option>
-          <option value="prefer-not-to-say">Prefer not to say</option>
-        </select>
-        <FieldError
-          error={
-            showValidationErrors && !gender ? "Gender is required" : null
-          }
-        />
-      </div>
-      <div className="form-group" data-field="nationality">
-        <label className="form-label">
-          Nationality <span className="rf-required">*</span>
-        </label>
-        <select
-          className="form-select"
-          value={nationality}
-          onChange={(e) => setNationality(e.target.value)}
-          style={{ border: errBorder(showValidationErrors, nationality) }}
-        >
-          <option value="">Select nationality...</option>
-          <option value="Filipino">Filipino</option>
-          <option value="American">American</option>
-          <option value="Chinese">Chinese</option>
-          <option value="Japanese">Japanese</option>
-          <option value="Korean">Korean</option>
-          <option value="Indian">Indian</option>
-          <option value="Other">Other</option>
-        </select>
-        <FieldError
-          error={
-            showValidationErrors && !nationality
-              ? "Nationality is required"
-              : null
-          }
-        />
-      </div>
-    </div>
-
-    {/* Phone & Birthday — 2-column row */}
-    <div className="form-row">
-      <div className="form-group" data-field="mobileNumber">
-        <label className="form-label">
-          Mobile Number <span className="rf-required">*</span>
-        </label>
-        <PhoneInput
-          value={mobileNumber}
-          onChange={(e164) => setMobileNumber(e164)}
-          onBlur={() =>
-            validateField("mobileNumber", mobileNumber, (value) => {
-              const valid = /^\+\d{10,15}$/.test(value || "");
-              return {
-                valid,
-                error: valid ? null : "Please enter a valid mobile number",
-              };
-            })
-          }
-          hasError={showValidationErrors && !mobileNumber}
+  return (
+    <>
+      {/* Names — 3-column row */}
+      <div className="form-row form-row--3col">
+        <NameField
+          label="Last Name"
+          value={lastName}
+          setter={setLastName}
+          fieldKey="lastName"
+          handler={handleNameInput}
+          validate={validateField}
+          errors={fieldErrors}
+          autoComplete="family-name"
+          suggestion={accountLastName}
           required
+          showValidationErrors={showValidationErrors}
         />
-        <FieldError
-          error={
-            showValidationErrors && !mobileNumber
-              ? "Mobile number is required"
-              : fieldErrors.mobileNumber
-          }
+        <NameField
+          label="First Name"
+          value={firstName}
+          setter={setFirstName}
+          fieldKey="firstName"
+          handler={handleNameInput}
+          validate={validateField}
+          errors={fieldErrors}
+          autoComplete="given-name"
+          suggestion={accountFirstName}
+          required
+          showValidationErrors={showValidationErrors}
+        />
+        <NameField
+          label="Middle Name"
+          value={middleName}
+          setter={setMiddleName}
+          fieldKey="middleName"
+          handler={handleNameInput}
+          validate={validateField}
+          errors={fieldErrors}
+          autoComplete="additional-name"
+          optional
+          showValidationErrors={showValidationErrors}
         />
       </div>
-      <BirthdaySelectField
-        birthday={birthday}
-        setBirthday={setBirthday}
-        birthdayMin={birthdayMin}
-        birthdayMax={birthdayMax}
+
+      {/* Nickname, Gender, Nationality — 3-column row */}
+      <div className="form-row form-row--3col">
+        <div className="form-group" data-field="nickname">
+          <label className="form-label" htmlFor="nicknameInput">
+            Nickname <span className="rf-optional-label">(Optional)</span>
+          </label>
+          <input
+            id="nicknameInput"
+            type="text"
+            className="form-input"
+            placeholder="Nickname"
+            maxLength={32}
+            autoComplete="nickname"
+            value={nickname}
+            onChange={(e) => handleNameInput(e.target.value, setNickname)}
+          />
+        </div>
+        <div className="form-group" data-field="gender">
+          <label className="form-label" htmlFor="genderSelect">
+            Gender <span className="rf-required">*</span>
+          </label>
+          <select
+            id="genderSelect"
+            className="form-select"
+            value={gender}
+            onChange={(e) => setGender(e.target.value)}
+            style={{ border: errBorder(showValidationErrors, gender) }}
+            aria-invalid={showValidationErrors && !gender}
+          >
+            <option value="">Select gender...</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+            <option value="other">Other</option>
+            <option value="prefer-not-to-say">Prefer not to say</option>
+          </select>
+          <FieldError
+            error={
+              showValidationErrors && !gender ? "Gender is required" : null
+            }
+          />
+        </div>
+        <div className="form-group" data-field="nationality">
+          <label className="form-label" htmlFor="nationalitySelect">
+            Nationality <span className="rf-required">*</span>
+          </label>
+          <select
+            id="nationalitySelect"
+            className="form-select"
+            value={nationality}
+            onChange={(e) => setNationality(e.target.value)}
+            style={{ border: errBorder(showValidationErrors, nationality) }}
+            aria-invalid={showValidationErrors && !nationality}
+          >
+            <option value="">Select nationality...</option>
+            <option value="Filipino">Filipino</option>
+            <option value="American">American</option>
+            <option value="Chinese">Chinese</option>
+            <option value="Japanese">Japanese</option>
+            <option value="Korean">Korean</option>
+            <option value="Indian">Indian</option>
+            <option value="Other">Other</option>
+          </select>
+          <FieldError
+            error={
+              showValidationErrors && !nationality
+                ? "Nationality is required"
+                : null
+            }
+          />
+        </div>
+      </div>
+
+      {/* Phone & Birthday — 2-column row */}
+      <div className="form-row">
+        <div className="form-group" data-field="mobileNumber">
+          <label className="form-label">
+            Mobile Number <span className="rf-required">*</span>
+          </label>
+          <PhoneInput
+            value={mobileNumber}
+            onChange={(e164) => setMobileNumber(e164)}
+            onBlur={() =>
+              validateField("mobileNumber", mobileNumber, (value) => {
+                const valid = /^\+\d{10,15}$/.test(value || "");
+                return {
+                  valid,
+                  error: valid ? null : "Please enter a valid mobile number",
+                };
+              })
+            }
+            hasError={showValidationErrors && !mobileNumber}
+            autoComplete="tel"
+            required
+          />
+          {showPhoneSuggestion && (
+            <div className="rf-suggestion-row">
+              <button
+                type="button"
+                className="rf-suggestion-chip"
+                onClick={() => setMobileNumber(accountPhone)}
+                title="Click to use your account profile phone number"
+              >
+                <span className="rf-suggestion-chip__icon" aria-hidden="true">💡</span>
+                <span>Use profile phone: <strong>{accountPhone}</strong></span>
+              </button>
+            </div>
+          )}
+          <FieldError
+            error={
+              showValidationErrors && !mobileNumber
+                ? "Mobile number is required"
+                : fieldErrors.mobileNumber
+            }
+          />
+        </div>
+        <BirthdaySelectField
+          birthday={birthday}
+          setBirthday={setBirthday}
+          birthdayMin={birthdayMin}
+          birthdayMax={birthdayMax}
+          validateField={validateField}
+          fieldErrors={fieldErrors}
+          showValidationErrors={showValidationErrors}
+        />
+      </div>
+
+      {/* Marital Status & Education — 2-column row */}
+      <div className="form-row">
+        <div className="form-group" data-field="maritalStatus">
+          <label className="form-label" htmlFor="maritalStatusSelect">
+            Marital Status <span className="rf-required">*</span>
+          </label>
+          <select
+            id="maritalStatusSelect"
+            className="form-select"
+            value={maritalStatus}
+            onChange={(e) => setMaritalStatus(e.target.value)}
+            style={{ border: errBorder(showValidationErrors, maritalStatus) }}
+            aria-invalid={showValidationErrors && !maritalStatus}
+          >
+            <option value="">Select status...</option>
+            <option value="single">Single</option>
+            <option value="married">Married</option>
+            <option value="widowed">Widowed</option>
+            <option value="separated">Separated</option>
+          </select>
+          <FieldError
+            error={
+              showValidationErrors && !maritalStatus
+                ? "Marital status is required"
+                : null
+            }
+          />
+        </div>
+        <div className="form-group" data-field="educationLevel">
+          <label className="form-label" htmlFor="educationLevelSelect">
+            Educational Attainment <span className="rf-required">*</span>
+          </label>
+          <select
+            id="educationLevelSelect"
+            className="form-select"
+            value={educationLevel}
+            onChange={(e) => setEducationLevel(e.target.value)}
+            style={{ border: errBorder(showValidationErrors, educationLevel) }}
+            aria-invalid={showValidationErrors && !educationLevel}
+          >
+            <option value="">Select level...</option>
+            <option value="elementary">Elementary</option>
+            <option value="highschool">High School</option>
+            <option value="vocational">Vocational</option>
+            <option value="college">College</option>
+            <option value="graduate">Graduate / Post-Graduate</option>
+          </select>
+          <FieldError
+            error={
+              showValidationErrors && !educationLevel
+                ? "Education level is required"
+                : null
+            }
+          />
+        </div>
+      </div>
+
+      {/* ── Permanent Address (PSGC Cascading Dropdowns) ──────── */}
+      <div className="rf-address-heading-wrap">
+        <h4 className="rf-address-heading">Permanent Address</h4>
+        <p className="rf-address-hint">
+          Select your region first — province, city, and barangay will load
+          automatically. You may change any level at any time.
+        </p>
+      </div>
+
+      <AddressCascadeFields
+        addressUnitHouseNo={addressUnitHouseNo}
+        setAddressUnitHouseNo={setAddressUnitHouseNo}
+        addressStreet={addressStreet}
+        setAddressStreet={setAddressStreet}
+        addressRegion={addressRegion}
+        setAddressRegion={setAddressRegion}
+        addressBarangay={addressBarangay}
+        setAddressBarangay={setAddressBarangay}
+        addressCity={addressCity}
+        setAddressCity={setAddressCity}
+        addressProvince={addressProvince}
+        setAddressProvince={setAddressProvince}
+        handleGeneralInput={handleGeneralInput}
         validateField={validateField}
         fieldErrors={fieldErrors}
         showValidationErrors={showValidationErrors}
       />
-    </div>
 
-    {/* Marital Status & Education — 2-column row */}
-    <div className="form-row">
-      <div className="form-group" data-field="maritalStatus">
-        <label className="form-label">
-          Marital Status <span className="rf-required">*</span>
+      {/* ID & document uploads */}
+      <div className="form-group" data-field="validIDType">
+        <label className="form-label" htmlFor="validIDTypeSelect">
+          ID Type <span className="rf-required">*</span>
         </label>
         <select
+          id="validIDTypeSelect"
           className="form-select"
-          value={maritalStatus}
-          onChange={(e) => setMaritalStatus(e.target.value)}
-          style={{ border: errBorder(showValidationErrors, maritalStatus) }}
+          value={validIDType}
+          onChange={(e) => setValidIDType(e.target.value)}
+          style={{ border: errBorder(showValidationErrors, validIDType) }}
+          aria-invalid={showValidationErrors && !validIDType}
         >
-          <option value="">Select status...</option>
-          <option value="single">Single</option>
-          <option value="married">Married</option>
-          <option value="widowed">Widowed</option>
-          <option value="separated">Separated</option>
+          <option value="">Select ID type...</option>
+          <option value="national_id">National ID</option>
+          <option value="drivers_license">Driver's License</option>
+          <option value="passport">Passport</option>
+          <option value="sss_id">SSS ID</option>
+          <option value="umid">UMID</option>
+          <option value="school_id">School ID</option>
+          <option value="other">Other Government-issued ID</option>
         </select>
         <FieldError
           error={
-            showValidationErrors && !maritalStatus
-              ? "Marital status is required"
-              : null
+            showValidationErrors && !validIDType ? "ID type is required" : null
           }
         />
       </div>
-      <div className="form-group" data-field="educationLevel">
-        <label className="form-label">
-          Educational Attainment <span className="rf-required">*</span>
-        </label>
-        <select
-          className="form-select"
-          value={educationLevel}
-          onChange={(e) => setEducationLevel(e.target.value)}
-          style={{ border: errBorder(showValidationErrors, educationLevel) }}
-        >
-          <option value="">Select level...</option>
-          <option value="elementary">Elementary</option>
-          <option value="highschool">High School</option>
-          <option value="vocational">Vocational</option>
-          <option value="college">College</option>
-          <option value="graduate">Graduate / Post-Graduate</option>
-        </select>
-        <FieldError
-          error={
-            showValidationErrors && !educationLevel
-              ? "Education level is required"
-              : null
-          }
-        />
-      </div>
-    </div>
 
-    {/* ── Permanent Address (PSGC Cascading Dropdowns) ──────── */}
-    <div className="rf-address-heading-wrap">
-      <h4 className="rf-address-heading">Permanent Address</h4>
-      <p className="rf-address-hint">
-        Select your region first — province, city, and barangay will load
-        automatically.
-      </p>
-    </div>
-
-    <AddressCascadeFields
-      addressUnitHouseNo={addressUnitHouseNo}
-      setAddressUnitHouseNo={setAddressUnitHouseNo}
-      addressStreet={addressStreet}
-      setAddressStreet={setAddressStreet}
-      addressRegion={addressRegion}
-      setAddressRegion={setAddressRegion}
-      addressBarangay={addressBarangay}
-      setAddressBarangay={setAddressBarangay}
-      addressCity={addressCity}
-      setAddressCity={setAddressCity}
-      addressProvince={addressProvince}
-      setAddressProvince={setAddressProvince}
-      handleGeneralInput={handleGeneralInput}
-      validateField={validateField}
-      fieldErrors={fieldErrors}
-      showValidationErrors={showValidationErrors}
-    />
-
-    {/* ID & document uploads */}
-    <div className="form-group" data-field="validIDType">
-      <label className="form-label">
-        ID Type <span className="rf-required">*</span>
-      </label>
-      <select
-        className="form-select"
-        value={validIDType}
-        onChange={(e) => setValidIDType(e.target.value)}
-        style={{ border: errBorder(showValidationErrors, validIDType) }}
-      >
-        <option value="">Select ID type...</option>
-        <option value="national_id">National ID</option>
-        <option value="drivers_license">Driver's License</option>
-        <option value="passport">Passport</option>
-        <option value="sss_id">SSS ID</option>
-        <option value="umid">UMID</option>
-        <option value="school_id">School ID</option>
-        <option value="other">Other Government-issued ID</option>
-      </select>
-      <FieldError
-        error={
-          showValidationErrors && !validIDType ? "ID type is required" : null
-        }
-      />
-    </div>
-
-    {Boolean(validIDType) && (
-      <>
-        <div data-field="validIDFront">
-          <FileUploadField
-            label={`${ID_TYPE_LABELS[validIDType] || "Valid ID"} (Front)`}
-            value={validIDFront}
-            onChange={setValidIDFront}
-            documentType="valid-id-front"
-            hint={`${ID_TYPE_LABELS[validIDType] || "Valid ID"} (Front side)`}
-            hasError={showValidationErrors && !validIDFront}
-            required
-          />
-        </div>
-        <div data-field="validIDBack">
-          <FileUploadField
-            label={`${ID_TYPE_LABELS[validIDType] || "Valid ID"} (Back)`}
-            value={validIDBack}
-            onChange={setValidIDBack}
-            documentType="valid-id-back"
-            hint={`${ID_TYPE_LABELS[validIDType] || "Valid ID"} (Back side)`}
-            hasError={showValidationErrors && !validIDBack}
-            required
-          />
-        </div>
-      </>
-    )}
-
-    <div data-field="nbiClearance">
-      <FileUploadField
-        label="NBI Clearance (If unable, upload another valid ID)"
-        value={nbiClearance}
-        onChange={setNbiClearance}
-        documentType="nbi-clearance"
-        hint="NBI Clearance or additional valid ID"
-        hasError={showValidationErrors && !nbiClearance && !nbiReason}
-      />
-    </div>
-
-    <div className="form-group" data-field="nbiReason">
-      <label className="form-label">
-        If not yet available, please indicate reason below{" "}
-        {!nbiClearance && <span className="rf-required">*</span>}
-      </label>
-      <textarea
-        className="form-textarea"
-        value={nbiReason}
-        onChange={(e) => setNbiReason(e.target.value)}
-        placeholder={
-          nbiClearance
-            ? "Optional (NBI Clearance uploaded)"
-            : "Reason why NBI Clearance is not yet available"
-        }
-        style={{
-          border: !nbiClearance
-            ? errBorder(showValidationErrors, nbiReason)
-            : undefined,
-        }}
-      />
-      {showValidationErrors && !nbiClearance && !nbiReason && (
-        <FieldError error="Please upload NBI Clearance or provide a reason" />
+      {Boolean(validIDType) && (
+        <>
+          <div data-field="validIDFront">
+            <FileUploadField
+              label={`${ID_TYPE_LABELS[validIDType] || "Valid ID"} (Front)`}
+              value={validIDFront}
+              onChange={setValidIDFront}
+              documentType="valid-id-front"
+              hint={`${ID_TYPE_LABELS[validIDType] || "Valid ID"} (Front side)`}
+              hasError={showValidationErrors && !validIDFront}
+              required
+            />
+          </div>
+          <div data-field="validIDBack">
+            <FileUploadField
+              label={`${ID_TYPE_LABELS[validIDType] || "Valid ID"} (Back)`}
+              value={validIDBack}
+              onChange={setValidIDBack}
+              documentType="valid-id-back"
+              hint={`${ID_TYPE_LABELS[validIDType] || "Valid ID"} (Back side)`}
+              hasError={showValidationErrors && !validIDBack}
+              required
+            />
+          </div>
+        </>
       )}
-    </div>
 
-    {/* Notes */}
-    <div className="form-group">
-      <label className="form-label">
-        Other Notes (Only for corporate accounts)
-      </label>
-      <textarea
-        className="form-textarea"
-        value={personalNotes}
-        onChange={(e) => setPersonalNotes(e.target.value)}
-        maxLength={500}
-      />
-    </div>
-  </>
-);
+      <div data-field="nbiClearance">
+        <FileUploadField
+          label="NBI Clearance (If unable, upload another valid ID)"
+          value={nbiClearance}
+          onChange={setNbiClearance}
+          documentType="nbi-clearance"
+          hint="NBI Clearance or additional valid ID"
+          hasError={showValidationErrors && !nbiClearance && !nbiReason}
+        />
+      </div>
+
+      <div className="form-group" data-field="nbiReason">
+        <label className="form-label" htmlFor="nbiReasonInput">
+          If not yet available, please indicate reason below{" "}
+          {!nbiClearance && <span className="rf-required">*</span>}
+        </label>
+        <textarea
+          id="nbiReasonInput"
+          className="form-textarea"
+          value={nbiReason}
+          onChange={(e) => setNbiReason(e.target.value)}
+          maxLength={300}
+          placeholder={
+            nbiClearance
+              ? "Optional (NBI Clearance uploaded)"
+              : "Reason why NBI Clearance is not yet available"
+          }
+          style={{
+            border: !nbiClearance
+              ? errBorder(showValidationErrors, nbiReason)
+              : undefined,
+          }}
+          aria-invalid={showValidationErrors && !nbiClearance && !nbiReason}
+        />
+        <div className="rf-char-counter">
+          {nbiReason?.length || 0}/300
+        </div>
+        {showValidationErrors && !nbiClearance && !nbiReason && (
+          <FieldError error="Please upload NBI Clearance or provide a reason" />
+        )}
+      </div>
+
+      {/* Notes */}
+      <div className="form-group">
+        <label className="form-label" htmlFor="personalNotesInput">
+          Other Notes (Only for corporate accounts)
+        </label>
+        <textarea
+          id="personalNotesInput"
+          className="form-textarea"
+          value={personalNotes}
+          onChange={(e) => setPersonalNotes(e.target.value)}
+          maxLength={500}
+          placeholder="(Optional) Any additional notes or corporate sponsorship details"
+        />
+        <div className="rf-char-counter">
+          {personalNotes?.length || 0}/500
+        </div>
+      </div>
+    </>
+  );
+};
 
 // ─── Shared sub-components ───────────────────────────────────
 
@@ -503,8 +554,6 @@ const BirthdaySelectField = ({
     if (nextBirthday) {
       validateField("birthday", nextBirthday, validateBirthday);
     } else {
-      // Incomplete date — clear stale error but don't mark as valid
-      // (submission validation will catch the missing birthday)
       validateField("birthday", "", () => ({ valid: false, error: null }));
     }
   };
@@ -522,6 +571,7 @@ const BirthdaySelectField = ({
           value={parts.month}
           onChange={(e) => handlePartChange("month", e.target.value)}
           aria-label="Birth month"
+          autoComplete="bday-month"
         >
           <option value="">Month</option>
           {MONTH_OPTIONS.map((month) => (
@@ -535,6 +585,7 @@ const BirthdaySelectField = ({
           value={parts.day}
           onChange={(e) => handlePartChange("day", e.target.value)}
           aria-label="Birth day"
+          autoComplete="bday-day"
         >
           <option value="">Day</option>
           {dayOptions.map((day) => (
@@ -548,6 +599,7 @@ const BirthdaySelectField = ({
           value={parts.year}
           onChange={(e) => handlePartChange("year", e.target.value)}
           aria-label="Birth year"
+          autoComplete="bday-year"
         >
           <option value="">Year</option>
           {yearOptions.map((year) => (
@@ -577,50 +629,78 @@ const NameField = ({
   handler,
   validate,
   errors,
+  autoComplete,
+  suggestion = "",
   required,
   optional,
   showValidationErrors,
-}) => (
-  <div className="form-group" data-field={fieldKey}>
-    <label className="form-label">
-      {label} {required && <span className="rf-required">*</span>}
-      {optional && <span className="rf-optional-label">(Optional)</span>}
-    </label>
-    <input
-      type="text"
-      className="form-input"
-      placeholder={label}
-      maxLength={32}
-      value={value}
-      onChange={(e) => handler(e.target.value, setter)}
-      onBlur={() =>
-        validate(fieldKey, value, (v) => {
-          const trimmed = String(v || "").trim();
-          if (!required && !trimmed) {
-            return { valid: true, error: null };
-          }
-          const valid = trimmed.length >= 2;
-          return {
-            valid,
-            error: valid ? null : `${label} must be at least 2 characters`,
-          };
-        })
-      }
-      style={{
-        border:
-          (showValidationErrors && required && !value) || errors[fieldKey]
-            ? "1.5px solid var(--danger)"
-            : undefined,
-      }}
-    />
-    <FieldError
-      error={
-        showValidationErrors && required && !value
-          ? `${label} is required`
-          : errors[fieldKey]
-      }
-    />
-  </div>
-);
+}) => {
+  const normalizedValue = String(value || "").trim();
+  const normalizedSuggestion = String(suggestion || "").trim();
+  const showSuggestion =
+    Boolean(normalizedSuggestion) &&
+    (!normalizedValue || normalizedValue.toLowerCase() !== normalizedSuggestion.toLowerCase());
+
+  return (
+    <div className="form-group" data-field={fieldKey}>
+      <label className="form-label" htmlFor={`${fieldKey}Input`}>
+        {label} {required && <span className="rf-required">*</span>}
+        {optional && <span className="rf-optional-label">(Optional)</span>}
+      </label>
+      <input
+        id={`${fieldKey}Input`}
+        type="text"
+        className="form-input"
+        placeholder={label}
+        maxLength={32}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={(e) => handler(e.target.value, setter)}
+        onBlur={() =>
+          validate(fieldKey, value, (v) => {
+            const trimmed = String(v || "").trim();
+            if (!required && !trimmed) {
+              return { valid: true, error: null };
+            }
+            const valid = trimmed.length >= 2;
+            return {
+              valid,
+              error: valid ? null : `${label} must be at least 2 characters`,
+            };
+          })
+        }
+        style={{
+          border:
+            (showValidationErrors && required && !value) || errors[fieldKey]
+              ? "1.5px solid var(--danger)"
+              : undefined,
+        }}
+        aria-invalid={Boolean((showValidationErrors && required && !value) || errors[fieldKey])}
+      />
+
+      {showSuggestion && (
+        <div className="rf-suggestion-row">
+          <button
+            type="button"
+            className="rf-suggestion-chip"
+            onClick={() => handler(normalizedSuggestion, setter)}
+            title={`Click to use ${label} from profile`}
+          >
+            <span className="rf-suggestion-chip__icon" aria-hidden="true">💡</span>
+            <span>Use profile: <strong>{normalizedSuggestion}</strong></span>
+          </button>
+        </div>
+      )}
+
+      <FieldError
+        error={
+          showValidationErrors && required && !value
+            ? `${label} is required`
+            : errors[fieldKey]
+        }
+      />
+    </div>
+  );
+};
 
 export default PersonalInfoSection;

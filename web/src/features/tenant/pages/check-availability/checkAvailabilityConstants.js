@@ -112,9 +112,11 @@ export const mapRoomType = (type) => {
 };
 
 export const mapBranchLabel = (branch) => {
- if (branch === "gil-puyat") return "Gil Puyat";
- if (branch === "guadalupe") return "Guadalupe";
- return "Unknown";
+  if (!branch) return "Unknown";
+  const b = String(branch).toLowerCase().replace(/[-_]/g, " ").trim();
+  if (b.includes("gil") || b.includes("puyat")) return "Gil Puyat";
+  if (b.includes("guadalupe")) return "Guadalupe";
+  return "Unknown";
 };
 
 export const getPrimaryImage = (type) => {

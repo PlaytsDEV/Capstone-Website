@@ -3610,3 +3610,83 @@ html[data-theme="dark"] .rf-policy-ack-box.is-checked .rf-policy-custom-check { 
 html[data-theme="dark"] .rf-policy-label,
 html[data-theme="dark"] .rf-policy-label strong,
 html[data-theme="dark"] .rf-policy-ack-box.is-checked .rf-policy-label { color: var(--text-inverse); }
+
+/* ============ SECTION TITLE & COMPLETION BADGES ============ */
+.rf-app-section__title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rf-section-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
+.rf-section-badge--done {
+  background: color-mix(in srgb, var(--success, #16a34a) 14%, transparent);
+  color: var(--success, #16a34a);
+  border: 1px solid color-mix(in srgb, var(--success, #16a34a) 32%, transparent);
+}
+
+/* ============ SMART SUGGESTION CHIPS ============ */
+.rf-suggestion-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.rf-suggestion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--foreground);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.rf-suggestion-chip:hover {
+  background: color-mix(in srgb, var(--primary) 20%, transparent);
+  border-color: var(--primary);
+  color: var(--foreground);
+}
+
+.rf-suggestion-chip strong {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.rf-suggestion-chip__icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* ============ LIVE CHARACTER COUNTER ============ */
+.rf-char-counter {
+  font-size: 11px;
+  color: var(--neutral, var(--muted-foreground));
+  font-weight: 500;
+  text-align: right;
+  margin-top: 3px;
+  user-select: none;
+}
+

@@ -99,7 +99,7 @@ html {
 
   /* ── Focus Ring ────────────────────────────────────────────── */
   --focus-ring: 0 0 0 1.5px rgba(10, 22, 40, 0.07);
-  --focus-outline: 2px solid rgba(212, 175, 55, 0.52);
+  --focus-outline: 1.5px solid rgba(15, 23, 42, 0.45);
 
   --chart-gold: var(--color-accent);
 --success: var(--color-success);
@@ -158,13 +158,14 @@ section[id] {
   a,
   button,
   [role="button"],
-  input,
-  select,
-  textarea,
   summary
 ):focus-visible {
   outline: var(--focus-outline);
-  outline-offset: 3px;
+  outline-offset: 2px;
+}
+
+:where(input, select, textarea):focus-visible {
+  outline: none;
 }
 
 :where(button, input, select, textarea) {

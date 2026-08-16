@@ -8,7 +8,6 @@ import { ArrowUp } from "lucide-react";
  */
 export default function ScrollToTopButton() {
   const [visible, setVisible] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     const onScroll = () => {
@@ -33,32 +32,38 @@ export default function ScrollToTopButton() {
             transform: translateY(0) scale(1);
           }
         }
+
+        .scroll-to-top-btn {
+          background-color: var(--lp-bg-card, #ffffff);
+          color: var(--lp-text, #0A1628);
+          border: 1.5px solid var(--lp-border, #E6D9B2);
+          box-shadow: 0 2px 8px rgba(10, 22, 40, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+        }
+
+        .scroll-to-top-btn:hover {
+          background-color: var(--lp-bg-alt, #FAF9F5);
+          color: var(--lp-accent, #D4AF37);
+          border-color: var(--lp-accent, #D4AF37);
+          box-shadow: 0 6px 18px rgba(212, 175, 55, 0.22), 0 2px 6px rgba(10, 22, 40, 0.06);
+          transform: translateY(-3px) scale(1.05);
+        }
+
+        .scroll-to-top-btn:active {
+          transform: translateY(-1px) scale(0.96);
+        }
       `}</style>
       <button
         type="button"
         onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
         aria-label="Back to top"
         title="Back to top"
-        className="fixed z-[980] flex items-center justify-center rounded-full transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:ring-offset-2 active:scale-95 group"
+        className="fixed z-[980] flex items-center justify-center rounded-full transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:ring-offset-2 group scroll-to-top-btn"
         style={{
           bottom: "96px",
           right: "32px",
           width: "40px",
           height: "40px",
-          backgroundColor: isHovered
-            ? "var(--lp-navy, #0A1628)"
-            : "var(--lp-bg-card, #ffffff)",
-          color: isHovered ? "var(--lp-accent, #D4AF37)" : "var(--lp-text, #0A1628)",
-          border: isHovered
-            ? "1px solid var(--lp-accent, #D4AF37)"
-            : "1px solid var(--lp-border, #E6D9B2)",
-          boxShadow: isHovered
-            ? "0 6px 16px rgba(10, 22, 40, 0.16)"
-            : "0 2px 8px rgba(10, 22, 40, 0.08)",
           animation: "scrollToTopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards",
-          transform: isHovered ? "translateY(-3px) scale(1.05)" : "translateY(0) scale(1)",
         }}
       >
         <ArrowUp size={18} className="transition-transform duration-200 group-hover:-translate-y-0.5" />

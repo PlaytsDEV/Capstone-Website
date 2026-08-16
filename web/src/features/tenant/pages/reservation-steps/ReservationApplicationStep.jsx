@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { ChevronDown, Loader2, User } from "lucide-react";
+import { ChevronDown, Loader2, User, CheckCircle2 } from "lucide-react";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import FormScrollArrows from "../../../../shared/components/FormScrollArrows";
 import {
@@ -51,6 +51,7 @@ const CollapsibleSection = React.memo(
     title,
     sectionKey,
     isOpen,
+    isCompleted,
     onToggle,
     sectionRef,
     children,
@@ -66,7 +67,14 @@ const CollapsibleSection = React.memo(
           aria-controls={`section-${sectionKey}-panel`}
         >
           <span className="rf-app-section__num">{number}</span>
-          <span className="rf-app-section__title">{title}</span>
+          <span className="rf-app-section__title-wrap">
+            <span className="rf-app-section__title">{title}</span>
+            {isCompleted && (
+              <span className="rf-section-badge rf-section-badge--done" title="Section complete">
+                <CheckCircle2 size={13} aria-hidden="true" /> Complete
+              </span>
+            )}
+          </span>
         </button>
 
         <button
@@ -90,6 +98,11 @@ const CollapsibleSection = React.memo(
 
 const ReservationApplicationStep = ({
   billingEmail,
+  setBillingEmail,
+  accountEmail,
+  accountPhone,
+  accountFirstName,
+  accountLastName,
   selfiePhoto,
   setSelfiePhoto,
   lastName,
@@ -216,6 +229,69 @@ const ReservationApplicationStep = ({
   const isCheckingDocuments = Object.values(runningDocumentChecks || {}).some(Boolean);
   const submitDisabled = saveStatus === "saving" || isCheckingDocuments || isSubmittingApplication;
 
+  // Section completion checks
+  const isEmailValid = (val) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(val || "").trim());
+  const section1Complete = Boolean(billingEmail && isEmailValid(billingEmail) && selfiePhoto);
+  const section2Complete = Boolean(
+    lastName?.trim() &&
+      firstName?.trim() &&
+      mobileNumber &&
+      birthday &&
+      gender &&
+      maritalStatus &&
+      nationality &&
+      educationLevel &&
+      addressUnitHouseNo?.trim() &&
+      addressStreet?.trim() &&
+      addressRegion &&
+      addressCity &&
+      addressBarangay &&
+      validIDType &&
+      validIDFront &&
+      validIDBack &&
+      (nbiClearance || nbiReason?.trim())
+  );
+  const section3Complete = Boolean(
+    emergencyContactName?.trim() &&
+      emergencyRelationship &&
+      emergencyContactNumber &&
+      healthConcerns?.trim()
+  );
+  const section4Complete = Boolean(
+    employerSchool?.trim() &&
+      employerAddress?.trim() &&
+      occupation?.trim() &&
+      (companyID || companyIDReason?.trim())
+  );
+  const section5Complete = Boolean(
+    referralSource &&
+      targetMoveInDate &&
+      estimatedMoveInTime &&
+      leaseDuration &&
+      workSchedule &&
+      (workSchedule !== "others" || workScheduleOther?.trim())
+  );
+  const section6Complete = Boolean(agreedToPrivacy && agreedToCertification);
+
+  const sectionCompletionMap = useMemo(
+    () => ({
+      photo: section1Complete,
+      personal: section2Complete,
+      emergency: section3Complete,
+      employment: section4Complete,
+      dorm: section5Complete,
+      agreements: section6Complete,
+    }),
+    [
+      section1Complete,
+      section2Complete,
+      section3Complete,
+      section4Complete,
+      section5Complete,
+      section6Complete,
+    ]
+  );
+
   useEffect(() => {
     if (!showValidationErrors) return;
     setOpenSections(buildOpenSectionState(true));
@@ -326,28 +402,228 @@ const ReservationApplicationStep = ({
       )}
 
       <div className="rf-app-sections">
-        <CollapsibleSection number={1} title="Email & Photo" sectionKey="photo" isOpen={openSections.photo} onToggle={() => toggleSection("photo")} sectionRef={(el) => { sectionRefs.current.photo = el; }} contentClassName={readonlyContentClass}>
-          <PhotoEmailSection billingEmail={billingEmail} selfiePhoto={selfiePhoto} setSelfiePhoto={setSelfiePhoto} showValidationErrors={showValidationErrors} />
+        <CollapsibleSection
+          number={1}
+          title="Email & Photo"
+          sectionKey="photo"
+          isOpen={openSections.photo}
+          isCompleted={sectionCompletionMap.photo}
+          onToggle={() => toggleSection("photo")}
+          sectionRef={(el) => { sectionRefs.current.photo = el; }}
+          contentClassName={readonlyContentClass}
+        >
+          <PhotoEmailSection
+            billingEmail={billingEmail}
+            setBillingEmail={setBillingEmail}
+            accountEmail={accountEmail}
+            selfiePhoto={selfiePhoto}
+            setSelfiePhoto={setSelfiePhoto}
+            showValidationErrors={showValidationErrors}
+            fieldErrors={fieldErrors}
+            validateField={validateField}
+          />
         </CollapsibleSection>
 
-        <CollapsibleSection number={2} title="Personal Information" sectionKey="personal" isOpen={openSections.personal} onToggle={() => toggleSection("personal")} sectionRef={(el) => { sectionRefs.current.personal = el; }} contentClassName={readonlyContentClass}>
-          <PersonalInfoSection {...{ lastName, setLastName, firstName, setFirstName, middleName, setMiddleName, nickname, setNickname, mobileNumber, setMobileNumber, birthday, setBirthday, gender, setGender, maritalStatus, setMaritalStatus, nationality, setNationality, educationLevel, setEducationLevel, addressUnitHouseNo, setAddressUnitHouseNo, addressStreet, setAddressStreet, addressRegion, setAddressRegion, addressBarangay, setAddressBarangay, addressCity, setAddressCity, addressProvince, setAddressProvince, validIDFront, setValidIDFront, validIDBack, setValidIDBack, validIDType, setValidIDType, documentPrechecks, runningDocumentChecks, onRunDocumentPrecheck, nbiClearance, setNbiClearance, nbiReason, setNbiReason, personalNotes, setPersonalNotes, handleNameInput, handleGeneralInput, validateField, fieldErrors, clearFieldError, birthdayMin, birthdayMax, showValidationErrors }} />
+        <CollapsibleSection
+          number={2}
+          title="Personal Information"
+          sectionKey="personal"
+          isOpen={openSections.personal}
+          isCompleted={sectionCompletionMap.personal}
+          onToggle={() => toggleSection("personal")}
+          sectionRef={(el) => { sectionRefs.current.personal = el; }}
+          contentClassName={readonlyContentClass}
+        >
+          <PersonalInfoSection
+            {...{
+              lastName,
+              setLastName,
+              firstName,
+              setFirstName,
+              middleName,
+              setMiddleName,
+              nickname,
+              setNickname,
+              mobileNumber,
+              setMobileNumber,
+              accountFirstName,
+              accountLastName,
+              accountPhone,
+              birthday,
+              setBirthday,
+              gender,
+              setGender,
+              maritalStatus,
+              setMaritalStatus,
+              nationality,
+              setNationality,
+              educationLevel,
+              setEducationLevel,
+              addressUnitHouseNo,
+              setAddressUnitHouseNo,
+              addressStreet,
+              setAddressStreet,
+              addressRegion,
+              setAddressRegion,
+              addressBarangay,
+              setAddressBarangay,
+              addressCity,
+              setAddressCity,
+              addressProvince,
+              setAddressProvince,
+              validIDFront,
+              setValidIDFront,
+              validIDBack,
+              setValidIDBack,
+              validIDType,
+              setValidIDType,
+              documentPrechecks,
+              runningDocumentChecks,
+              onRunDocumentPrecheck,
+              nbiClearance,
+              setNbiClearance,
+              nbiReason,
+              setNbiReason,
+              personalNotes,
+              setPersonalNotes,
+              handleNameInput,
+              handleGeneralInput,
+              validateField,
+              fieldErrors,
+              clearFieldError,
+              birthdayMin,
+              birthdayMax,
+              showValidationErrors,
+            }}
+          />
         </CollapsibleSection>
 
-        <CollapsibleSection number={3} title="Emergency Contact" sectionKey="emergency" isOpen={openSections.emergency} onToggle={() => toggleSection("emergency")} sectionRef={(el) => { sectionRefs.current.emergency = el; }} contentClassName={readonlyContentClass}>
-          <EmergencyContactSection {...{ emergencyContactName, setEmergencyContactName, emergencyRelationship, setEmergencyRelationship, emergencyContactNumber, setEmergencyContactNumber, healthConcerns, setHealthConcerns, validateField, fieldErrors, showValidationErrors }} />
+        <CollapsibleSection
+          number={3}
+          title="Emergency Contact"
+          sectionKey="emergency"
+          isOpen={openSections.emergency}
+          isCompleted={sectionCompletionMap.emergency}
+          onToggle={() => toggleSection("emergency")}
+          sectionRef={(el) => { sectionRefs.current.emergency = el; }}
+          contentClassName={readonlyContentClass}
+        >
+          <EmergencyContactSection
+            {...{
+              emergencyContactName,
+              setEmergencyContactName,
+              emergencyRelationship,
+              setEmergencyRelationship,
+              emergencyContactNumber,
+              setEmergencyContactNumber,
+              healthConcerns,
+              setHealthConcerns,
+              validateField,
+              fieldErrors,
+              showValidationErrors,
+            }}
+          />
         </CollapsibleSection>
 
-        <CollapsibleSection number={4} title="Employment / School" sectionKey="employment" isOpen={openSections.employment} onToggle={() => toggleSection("employment")} sectionRef={(el) => { sectionRefs.current.employment = el; }} contentClassName={readonlyContentClass}>
-          <EmploymentSection {...{ employerSchool, setEmployerSchool, employerAddress, setEmployerAddress, employerContact, setEmployerContact, startDate, setStartDate, occupation, setOccupation, previousEmployment, setPreviousEmployment, companyID, setCompanyID, companyIDReason, setCompanyIDReason, documentPrechecks, runningDocumentChecks, onRunDocumentPrecheck, handleGeneralInput, validateField, fieldErrors, clearFieldError, showValidationErrors }} />
+        <CollapsibleSection
+          number={4}
+          title="Employment / School"
+          sectionKey="employment"
+          isOpen={openSections.employment}
+          isCompleted={sectionCompletionMap.employment}
+          onToggle={() => toggleSection("employment")}
+          sectionRef={(el) => { sectionRefs.current.employment = el; }}
+          contentClassName={readonlyContentClass}
+        >
+          <EmploymentSection
+            {...{
+              employerSchool,
+              setEmployerSchool,
+              employerAddress,
+              setEmployerAddress,
+              employerContact,
+              setEmployerContact,
+              startDate,
+              setStartDate,
+              occupation,
+              setOccupation,
+              previousEmployment,
+              setPreviousEmployment,
+              companyID,
+              setCompanyID,
+              companyIDReason,
+              setCompanyIDReason,
+              documentPrechecks,
+              runningDocumentChecks,
+              onRunDocumentPrecheck,
+              handleGeneralInput,
+              validateField,
+              fieldErrors,
+              clearFieldError,
+              showValidationErrors,
+            }}
+          />
         </CollapsibleSection>
 
-        <CollapsibleSection number={5} title="Dorm Preferences" sectionKey="dorm" isOpen={openSections.dorm} onToggle={() => toggleSection("dorm")} sectionRef={(el) => { sectionRefs.current.dorm = el; }} contentClassName={readonlyContentClass}>
-          <DormPreferencesSection {...{ referralSource, setReferralSource, referrerName, setReferrerName, targetMoveInDate, setTargetMoveInDate, estimatedMoveInTime, setEstimatedMoveInTime, leaseDuration, setLeaseDuration, workSchedule, setWorkSchedule, workScheduleOther, setWorkScheduleOther, handleTargetDateInput, handleTimeInput, readOnly, moveInMin, moveInMax, fieldErrors, validateField, showValidationErrors }} />
+        <CollapsibleSection
+          number={5}
+          title="Dorm Preferences"
+          sectionKey="dorm"
+          isOpen={openSections.dorm}
+          isCompleted={sectionCompletionMap.dorm}
+          onToggle={() => toggleSection("dorm")}
+          sectionRef={(el) => { sectionRefs.current.dorm = el; }}
+          contentClassName={readonlyContentClass}
+        >
+          <DormPreferencesSection
+            {...{
+              referralSource,
+              setReferralSource,
+              referrerName,
+              setReferrerName,
+              targetMoveInDate,
+              setTargetMoveInDate,
+              estimatedMoveInTime,
+              setEstimatedMoveInTime,
+              leaseDuration,
+              setLeaseDuration,
+              workSchedule,
+              setWorkSchedule,
+              workScheduleOther,
+              setWorkScheduleOther,
+              handleTargetDateInput,
+              handleTimeInput,
+              readOnly,
+              moveInMin,
+              moveInMax,
+              fieldErrors,
+              validateField,
+              showValidationErrors,
+            }}
+          />
         </CollapsibleSection>
 
-        <CollapsibleSection number={6} title="Agreements & Consent" sectionKey="agreements" isOpen={openSections.agreements} onToggle={() => toggleSection("agreements")} sectionRef={(el) => { sectionRefs.current.agreements = el; }} contentClassName={readonlyContentClass}>
-          <AgreementsSection {...{ agreedToPrivacy, setAgreedToPrivacy, agreedToCertification, setAgreedToCertification, showValidationErrors }} onShowPolicies={() => setShowPoliciesModal(true)} onShowPrivacy={() => setShowPrivacyModal(true)} />
+        <CollapsibleSection
+          number={6}
+          title="Agreements & Consent"
+          sectionKey="agreements"
+          isOpen={openSections.agreements}
+          isCompleted={sectionCompletionMap.agreements}
+          onToggle={() => toggleSection("agreements")}
+          sectionRef={(el) => { sectionRefs.current.agreements = el; }}
+          contentClassName={readonlyContentClass}
+        >
+          <AgreementsSection
+            {...{
+              agreedToPrivacy,
+              setAgreedToPrivacy,
+              agreedToCertification,
+              setAgreedToCertification,
+              showValidationErrors,
+            }}
+            onShowPolicies={() => setShowPoliciesModal(true)}
+            onShowPrivacy={() => setShowPrivacyModal(true)}
+          />
         </CollapsibleSection>
       </div>
 

@@ -4,3 +4,8 @@ export { default as TenantDashboard } from "./pages/CheckAvailabilityPage"; // L
 export { default as ProfilePage } from "./pages/ProfilePage";
 export { default as ContractsPage } from "./pages/ContractsPage";
 export { default as ReservationFlowPage } from "./pages/ReservationFlowPage";
+
+// Tenant AI Assistant (Phase 2)
+export * from "./components/assistant";
+export * from "./api/tenantAssistantApi";
+

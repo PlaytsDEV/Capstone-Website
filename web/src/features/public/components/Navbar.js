@@ -12,6 +12,7 @@ export function Navigation({ type } = {}) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState("");
+  const [hoveredSection, setHoveredSection] = useState(null);
   const { user, isAuthenticated, loading } = useAuth();
   const { theme } = useTheme();
 
@@ -74,8 +75,6 @@ export function Navigation({ type } = {}) {
 
   // Colors adapt: transparent hero = always white text; scrolled = theme-aware
   const textColor = isScrolled ? "var(--lp-text)" : (isDark ? "rgba(255,255,255,0.9)" : "var(--lp-navy)");
-  const textHoverColor = isScrolled ? "var(--lp-accent)" : (isDark ? "white" : "var(--lp-accent)");
-  const linkHoverBg = isScrolled ? "var(--lp-icon-bg)" : (isDark ? "rgba(255,255,255,0.08)" : "rgba(10,22,40,0.06)");
 
   // Ghost button styles for Sign In
   const ghostBtnStyle = {
@@ -148,7 +147,7 @@ export function Navigation({ type } = {}) {
 
           {/* Desktop Nav Links — absolutely centered */}
           <div
-            className="hidden md:flex items-center gap-1"
+            className="hidden md:flex items-center gap-2"
             style={{
               position: "absolute",
               left: "50%",
@@ -157,6 +156,9 @@ export function Navigation({ type } = {}) {
           >
             {navLinks.map((link) => {
               const isActive = activeSection === link.id;
+              const isHovered = hoveredSection === link.id;
+              const isHighlighted = isActive || isHovered;
+
               return (
                 <a
                   key={link.href}
@@ -164,43 +166,36 @@ export function Navigation({ type } = {}) {
                   className="no-underline"
                   aria-current={isActive ? "true" : undefined}
                   style={{
-                    color: isActive
-                      ? (isScrolled ? "var(--lp-accent)" : (isDark ? "white" : "var(--lp-navy)"))
-                      : textColor,
+                    color: isScrolled
+                      ? "var(--lp-text)"
+                      : (isDark ? "white" : "var(--lp-navy)"),
                     fontSize: "15px",
-                    fontWeight: isActive ? "500" : "400",
-                    padding: "10px 18px",
-                    borderRadius: "8px",
+                    fontWeight: isHighlighted ? "500" : "400",
+                    padding: "8px 16px",
+                    borderRadius: "6px",
                     position: "relative",
-                    transition: "color 0.2s ease, background-color 0.2s ease, font-weight 0.2s ease",
+                    backgroundColor: "transparent",
+                    transition: "color 0.2s ease, font-weight 0.2s ease",
                   }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.color = textHoverColor;
-                      e.currentTarget.style.backgroundColor = linkHoverBg;
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.color = textColor;
-                    }
-                    e.currentTarget.style.backgroundColor = "transparent";
-                  }}
+                  onMouseEnter={() => setHoveredSection(link.id)}
+                  onMouseLeave={() => setHoveredSection(null)}
                 >
                   {link.label}
-                  {/* Active indicator underline */}
+                  {/* Active & Hover indicator underline */}
                   <span
+                    aria-hidden="true"
                     style={{
                       position: "absolute",
-                      bottom: "4px",
+                      bottom: "2px",
                       left: "50%",
-                      transform: `translateX(-50%) scaleX(${isActive ? 1 : 0})`,
-                      width: "20px",
+                      transform: `translateX(-50%) scaleX(${isHighlighted ? 1 : 0})`,
+                      width: "24px",
                       height: "2px",
                       backgroundColor: "var(--lp-accent)",
                       borderRadius: "2px",
-                      transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                      transition: "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease",
                       transformOrigin: "center",
+                      opacity: isHighlighted ? 1 : 0,
                     }}
                   />
                 </a>

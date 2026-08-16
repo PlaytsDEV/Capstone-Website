@@ -285,18 +285,52 @@ function CheckAvailabilityPage() {
  longTermLeaseMinMonths: typeof room.longTermLeaseMinMonths === "number" ? room.longTermLeaseMinMonths : 6,
  };
  }),
- [rawRooms],
- );
+  [rawRooms],
+  );
 
- // ── Query param filters ────────────────────────────────────
- useEffect(() => {
- const branch = searchParams.get("branch");
- const roomType = searchParams.get("roomType");
- if (branch) setSelectedBranch(branch);
- if (roomType) setSelectedRoomType(roomType);
- }, [searchParams]);
+  // ── Query param filters (robust normalizer) ───────────────────
+  useEffect(() => {
+    const rawBranch = searchParams.get("branch");
+    const rawRoomType = searchParams.get("roomType") || searchParams.get("type");
+    const rawLease = searchParams.get("leaseTerm") || searchParams.get("stayType") || searchParams.get("leaseType");
+    const rawQuery = searchParams.get("q") || searchParams.get("search");
 
- // ── Capacity validation (dev-only debug removed) ─────────
+    if (rawBranch) {
+      const cleanBranch = String(rawBranch).toLowerCase().replace(/[-_]/g, " ").trim();
+      if (cleanBranch.includes("guadalupe")) setSelectedBranch("Guadalupe");
+      else if (cleanBranch.includes("gil") || cleanBranch.includes("puyat")) setSelectedBranch("Gil Puyat");
+      else if (cleanBranch === "all") setSelectedBranch("All");
+    }
+
+    if (rawRoomType) {
+      const cleanType = String(rawRoomType).toLowerCase().replace(/[-_]/g, " ").trim();
+      if (cleanType.includes("quad")) setSelectedRoomType("Quadruple");
+      else if (cleanType.includes("double") || cleanType.includes("share")) setSelectedRoomType("Shared");
+      else if (cleanType.includes("priv")) setSelectedRoomType("Private");
+      else if (cleanType === "all") setSelectedRoomType("All");
+    }
+
+    if (rawLease) {
+      const cleanLease = String(rawLease).toLowerCase().replace(/[-_]/g, "").trim();
+      if (cleanLease.includes("long")) setSelectedLeaseTermFilter("longTerm");
+      else if (cleanLease.includes("short")) setSelectedLeaseTermFilter("shortTerm");
+      else if (cleanLease === "all") setSelectedLeaseTermFilter("All");
+    }
+
+    if (rawQuery) {
+      setSearchQuery(rawQuery);
+      setDebouncedSearchQuery(rawQuery);
+    }
+  }, [searchParams]);
+
+  // Ensure selected room type is valid for selected branch (Guadalupe only has Quadruple)
+  useEffect(() => {
+    if (selectedBranch === "Guadalupe" && selectedRoomType !== "All" && selectedRoomType !== "Quadruple") {
+      setSelectedRoomType("All");
+    }
+  }, [selectedBranch, selectedRoomType]);
+
+  // ── Capacity validation (dev-only debug removed) ─────────
 
   // ── Filtering ──────────────────────────────────────────────
   const availableRoomTypes = useMemo(() => {

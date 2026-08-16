@@ -463,16 +463,17 @@ export default function useReservationFlow() {
     }
   }, [currentStage, draftRecoveryMessage, showNotification]);
 
+  const profileNameInitializedRef = useRef(false);
   useEffect(() => {
+    if (profileNameInitializedRef.current) return;
     if (!profileName.firstName && !profileName.lastName) return;
     if (!firstName && profileName.firstName) setFirstName(profileName.firstName);
     if (!lastName && profileName.lastName) setLastName(profileName.lastName);
+    profileNameInitializedRef.current = true;
   }, [
     user?.firstName,
     user?.lastName,
     user?.displayName,
-    firstName,
-    lastName,
     profileName.firstName,
     profileName.lastName,
   ]);
@@ -703,6 +704,7 @@ export default function useReservationFlow() {
     if (r.middleName) setMiddleName(r.middleName);
     if (r.nickname) setNickname(r.nickname);
     if (r.mobileNumber) setMobileNumber(r.mobileNumber);
+    if (r.billingEmail) setBillingEmail(r.billingEmail);
     if (r.birthday) {
       const b = new Date(r.birthday);
       if (!isNaN(b)) setBirthday(b.toISOString().split("T")[0]);
@@ -807,6 +809,7 @@ export default function useReservationFlow() {
     setStringField("middleName", setMiddleName);
     setStringField("nickname", setNickname);
     setStringField("mobileNumber", setMobileNumber);
+    setStringField("billingEmail", setBillingEmail);
     setStringField("birthday", setBirthday);
     setStringField("gender", setGender);
     setStringField("maritalStatus", setMaritalStatus);
@@ -918,6 +921,7 @@ export default function useReservationFlow() {
       if (!firstName && profileName.firstName) setFirstName(profileName.firstName);
       if (!lastName && profileName.lastName) setLastName(profileName.lastName);
       if (!mobileNumber && profile.phone) setMobileNumber(profile.phone);
+      if (!billingEmail && profile.email) setBillingEmail(profile.email);
       if (!birthday && profile.dateOfBirth) {
         const b = new Date(profile.dateOfBirth);
         if (!isNaN(b)) setBirthday(b.toISOString().split("T")[0]);
@@ -2134,6 +2138,7 @@ export default function useReservationFlow() {
         middleName,
         nickname,
         mobileNumber,
+        billingEmail,
         birthday,
         gender,
         maritalStatus,
@@ -2202,6 +2207,7 @@ export default function useReservationFlow() {
       middleName,
       nickname,
       mobileNumber,
+      billingEmail,
       birthday,
       gender,
       maritalStatus,
@@ -2426,6 +2432,7 @@ export default function useReservationFlow() {
           // 09XXXXXXXXX format ΓÇö matches backend normalization and new input constraint.
           const isValidPhone = (value) => validatePHPhoneLocal(value).valid;
           const requiredFields = [
+            { key: "billingEmail", label: "Billing Email", isMissing: !hasText(billingEmail) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(billingEmail).trim()), message: "Please enter a valid billing email address to continue." },
             { key: "selfiePhoto", label: "Selfie Photo", isMissing: !selfiePhoto },
             { key: "lastName", label: "Last Name", isMissing: !hasText(lastName) },
             { key: "firstName", label: "First Name", isMissing: !hasText(firstName) },
@@ -2569,6 +2576,7 @@ export default function useReservationFlow() {
             middleName,
             nickname,
             mobileNumber,
+            billingEmail,
             birthday,
             gender,
             maritalStatus,
@@ -2801,6 +2809,8 @@ export default function useReservationFlow() {
     targetMoveInDate, setTargetMoveInDate,
     leaseDuration, setLeaseDuration,
     billingEmail, setBillingEmail,
+    userAccountEmail: user?.email || "",
+    userProfilePhone: user?.phone || "",
 
     // Stage 2
     viewingType, setViewingType,

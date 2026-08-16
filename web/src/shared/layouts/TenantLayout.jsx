@@ -7,6 +7,10 @@ import ApplicantTopBar from "../components/ApplicantTopBar";
 import RouteTransitionBoundary from "../components/RouteTransitionBoundary";
 import AccountBlockedBanner from "../components/AccountBlockedBanner";
 import { useRouteFlash } from "../hooks/useRouteFlash";
+import {
+  TenantAssistantLauncher,
+  TenantAssistantDrawer,
+} from "../../features/tenant/components/assistant";
 import "./TenantLayout.css";
 
 const TenantLayout = ({ children }) => {
@@ -16,6 +20,7 @@ const TenantLayout = ({ children }) => {
   useRouteFlash();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const content = children ?? <Outlet />;
   const contentRef = useRef(null);
 
@@ -59,8 +64,19 @@ const TenantLayout = ({ children }) => {
           </RouteTransitionBoundary>
         </main>
       </div>
+
+      {/* Lilycrest Resident AI Assistant (Phase 2) */}
+      <TenantAssistantLauncher
+        onClick={() => setIsAssistantOpen(true)}
+        isOpen={isAssistantOpen}
+      />
+      <TenantAssistantDrawer
+        isOpen={isAssistantOpen}
+        onClose={() => setIsAssistantOpen(false)}
+      />
     </div>
   );
 };
 
 export default TenantLayout;
+

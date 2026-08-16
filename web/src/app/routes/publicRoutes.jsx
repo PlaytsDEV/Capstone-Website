@@ -18,16 +18,13 @@ import {
   PublicStayVerificationPage,
 } from "../lazyPages";
 
-import LandingPageSkeleton from "../../features/public/components/LandingPageSkeleton";
-import PublicPageSkeleton from "../../shared/components/PublicPageSkeleton";
-
 export function PublicRoutes() {
   return (
     <>
       <Route
         path="/verify-stay/:referenceId"
         element={
-          <RouteShell name="PublicStayVerification" fallback={<PublicPageSkeleton />}>
+          <RouteShell name="PublicStayVerification" fallback={<GlobalLoading />}>
             <PublicStayVerificationPage />
           </RouteShell>
         }
@@ -37,7 +34,7 @@ export function PublicRoutes() {
           path="/"
           element={
             <ProtectedRoute requiredRole="applicant" requireAuth={false}>
-              <RouteShell name="LandingPage" fallback={<LandingPageSkeleton />}>
+              <RouteShell name="LandingPage" fallback={<GlobalLoading />}>
                 <LandingPage />
               </RouteShell>
             </ProtectedRoute>
@@ -46,7 +43,7 @@ export function PublicRoutes() {
         <Route
           path="/privacy-policy"
           element={
-            <RouteShell name="PrivacyPolicy" fallback={<PublicPageSkeleton />}>
+            <RouteShell name="PrivacyPolicy" fallback={<GlobalLoading />}>
               <PrivacyPolicyPage />
             </RouteShell>
           }
@@ -54,7 +51,7 @@ export function PublicRoutes() {
         <Route
           path="/terms-of-service"
           element={
-            <RouteShell name="TermsOfService" fallback={<PublicPageSkeleton />}>
+            <RouteShell name="TermsOfService" fallback={<GlobalLoading />}>
               <TermsOfServicePage />
             </RouteShell>
           }
@@ -102,7 +99,7 @@ export function PublicRoutes() {
         <Route
           path="/auth-action"
           element={
-            <RouteShell name="AuthAction" fallback={<PublicPageSkeleton />}>
+            <RouteShell name="AuthAction" fallback={<GlobalLoading />}>
               <AuthAction />
             </RouteShell>
           }
@@ -110,7 +107,7 @@ export function PublicRoutes() {
         <Route
           path="/auth_action"
           element={
-            <RouteShell name="AuthActionUnderscoreAlias" fallback={<PublicPageSkeleton />}>
+            <RouteShell name="AuthActionUnderscoreAlias" fallback={<GlobalLoading />}>
               <AuthAction />
             </RouteShell>
           }
@@ -128,7 +125,7 @@ export function PublicRoutes() {
         <Route
           path="/verify-email"
           element={
-            <RouteShell name="AuthActionLegacyAlias" fallback={<PublicPageSkeleton />}>
+            <RouteShell name="AuthActionLegacyAlias" fallback={<GlobalLoading />}>
               <AuthAction />
             </RouteShell>
           }

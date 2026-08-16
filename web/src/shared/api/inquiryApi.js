@@ -23,7 +23,11 @@ export const inquiryApi = {
   /**
    * Get inquiry statistics (admin only)
    */
-  getStats: () => authFetch("/inquiries/stats"),
+  getStats: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    const url = queryString ? `/inquiries/stats?${queryString}` : "/inquiries/stats";
+    return authFetch(url);
+  },
 
   /**
    * Create new inquiry (supports both authenticated users and public guests)

@@ -1,25 +1,13 @@
 import { useMemo } from "react";
 import { Menu, Moon, Sun } from "lucide-react";
-import { useLocation } from "react-router-dom";
 import NotificationBell from "./NotificationBell";
 import ProfileAvatar, { getProfileInitials } from "./ProfileAvatar";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../../features/public/context/ThemeContext";
-import { getApplicantPageMeta } from "./applicantShellMeta.mjs";
 
 export default function ApplicantTopBar({ onOpenSidebar }) {
   const { user } = useAuth();
-  const location = useLocation();
   const { theme, toggleTheme } = useTheme();
-
-  const pageMeta = getApplicantPageMeta(
-    location.pathname,
-    location.search,
-    location.state,
-  );
-  const portalLabel = user?.role === "tenant" ? "Tenant" : "Applicant";
-  const breadcrumbs = user?.role === "tenant" ? [portalLabel, pageMeta.title] : [pageMeta.title];
-  const currentCrumb = pageMeta.title;
 
   const displayName = useMemo(() => {
     if (!user) return "User";
@@ -31,8 +19,7 @@ export default function ApplicantTopBar({ onOpenSidebar }) {
   }, [user]);
 
   const roleLabel = useMemo(() => {
-    if (user?.role === "tenant") return "Tenant";
-    return "Applicant";
+    return user?.role === "tenant" ? "Tenant" : "Applicant";
   }, [user]);
 
   const initials = useMemo(() => getProfileInitials(user, "U"), [user]);
@@ -56,32 +43,18 @@ export default function ApplicantTopBar({ onOpenSidebar }) {
           <Menu className="h-5 w-5" />
         </button>
 
-        <nav
-          aria-label="Breadcrumb"
-          className="hidden min-w-0 items-center gap-2 overflow-hidden text-sm text-[var(--text-muted)] md:flex"
-        >
-          {breadcrumbs.map((crumb, index) => {
-            const isLast = index === breadcrumbs.length - 1;
-            return (
-              <div key={`${crumb}-${index}`} className="flex min-w-0 items-center gap-2">
-                {index > 0 && <span className="text-[var(--text-muted)]/70">/</span>}
-                <span
-                  className={`min-w-0 truncate ${
-                    isLast ? "font-semibold text-[var(--text-primary)]" : ""
-                  }`}
-                >
-                  {crumb}
-                </span>
-              </div>
-            );
-          })}
-        </nav>
+        {/* Clean Portal Identifier (Desktop) */}
+        <div className="hidden items-center gap-2 md:flex">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            Lilycrest Portal
+          </span>
+        </div>
 
+        {/* Clean Mobile Brand */}
         <div className="min-w-0 md:hidden">
           <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
-            {currentCrumb}
+            Lilycrest
           </div>
-          <div className="text-xs text-[var(--text-muted)]">Lilycrest</div>
         </div>
       </div>
 

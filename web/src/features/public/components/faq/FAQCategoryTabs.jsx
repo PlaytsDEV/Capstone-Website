@@ -13,7 +13,7 @@ export const FAQ_CATEGORIES = [
  * FAQCategoryTabs
  *
  * Tab bar switcher for categorized FAQ items.
- * Enforces solid HSL tokens, 1px crisp borders, and zero gradients.
+ * Enforces solid HSL tokens, 1px crisp borders, responsive wrapping, and zero gradients.
  */
 export function FAQCategoryTabs({
   activeCategory = "all",
@@ -24,8 +24,7 @@ export function FAQCategoryTabs({
     <div
       role="tablist"
       aria-label="FAQ Categories"
-      className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none no-scrollbar"
-      style={{ scrollbarWidth: "none" }}
+      className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 w-full max-w-4xl"
     >
       {FAQ_CATEGORIES.map((cat) => {
         const Icon = cat.icon;
@@ -40,7 +39,7 @@ export function FAQCategoryTabs({
             aria-selected={isActive}
             aria-controls={`faq-panel-${cat.id}`}
             onClick={() => onSelectCategory(cat.id)}
-            className="flex items-center gap-2 py-2 px-3.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer focus:outline-none flex-shrink-0"
+            className="group flex items-center gap-2 py-2 px-3.5 sm:px-4 rounded-full text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 select-none flex-shrink-0"
             style={{
               backgroundColor: isActive
                 ? "var(--lp-navy, #0A1628)"
@@ -53,18 +52,24 @@ export function FAQCategoryTabs({
             }}
           >
             <Icon
-              className="w-3.5 h-3.5"
-              style={{ color: isActive ? "var(--lp-accent, #D4AF37)" : "var(--lp-text-muted, #64748B)" }}
+              className="w-3.5 h-3.5 transition-colors"
+              style={{
+                color: isActive
+                  ? "var(--lp-accent, #D4AF37)"
+                  : "var(--lp-text-muted, #64748B)",
+              }}
             />
             <span>{cat.label}</span>
             {count > 0 && (
               <span
-                className="text-[10px] px-1.5 py-0.2 rounded-full font-bold"
+                className="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full font-bold ml-0.5 transition-colors"
                 style={{
                   backgroundColor: isActive
                     ? "rgba(212, 175, 55, 0.25)"
                     : "var(--lp-icon-bg, rgba(212, 175, 55, 0.12))",
-                  color: isActive ? "var(--lp-accent, #D4AF37)" : "var(--lp-text-muted, #64748B)",
+                  color: isActive
+                    ? "var(--lp-accent, #D4AF37)"
+                    : "var(--lp-text-muted, #64748B)",
                 }}
               >
                 {count}
@@ -78,3 +83,4 @@ export function FAQCategoryTabs({
 }
 
 export default FAQCategoryTabs;
+

@@ -317,6 +317,11 @@ function ReservationFlowPage() {
               <ReservationApplicationStep
                 {...{
                   billingEmail: flow.billingEmail,
+                  setBillingEmail: flow.setBillingEmail,
+                  accountEmail: flow.userAccountEmail || flow.user?.email || "",
+                  accountPhone: flow.userProfilePhone || flow.user?.phone || "",
+                  accountFirstName: flow.user?.firstName || "",
+                  accountLastName: flow.user?.lastName || "",
                   selfiePhoto: flow.selfiePhoto,
                   setSelfiePhoto: flow.setSelfiePhoto,
                   lastName: flow.lastName,

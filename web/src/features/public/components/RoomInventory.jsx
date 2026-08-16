@@ -18,6 +18,7 @@ const DEFAULT_ROOM_LISTINGS = [
     popular: false,
     image: hero1,
     inclusions: ['Max 2 Pax', 'Private Restroom', 'Kitchenette', 'Lounge Area Access', 'Fully Furnished'],
+    linkUrl: '/applicant/check-availability?branch=Gil%20Puyat&roomType=Private',
   },
   {
     id: 2,
@@ -29,6 +30,7 @@ const DEFAULT_ROOM_LISTINGS = [
     popular: true,
     image: hero3,
     inclusions: ['Max 2 Pax', 'Double Decker Bed', 'Shared Floor Amenities', 'Common Bathroom', 'Fully Furnished'],
+    linkUrl: '/applicant/check-availability?branch=Gil%20Puyat&roomType=Shared',
   },
   {
     id: 3,
@@ -40,6 +42,7 @@ const DEFAULT_ROOM_LISTINGS = [
     popular: false,
     image: hero2,
     inclusions: ['Max 4 Pax', 'Double Decker Beds', 'Shared Floor Amenities', 'Common Bathroom', 'Aircon'],
+    linkUrl: '/applicant/check-availability?roomType=Quadruple',
   },
 ];
 
@@ -74,9 +77,15 @@ export function RoomInventory() {
       const priceVal = popularRoom.monthlyPrice || popularRoom.price || 0;
       const formattedPrice = `₱${Number(priceVal).toLocaleString()}`;
       const defaultHero = idx === 0 ? hero1 : idx === 1 ? hero3 : hero2;
-      const displayImg = (popularRoom.images && popularRoom.images.length > 0)
-        ? popularRoom.images[0]
-        : defaultHero;
+      const mapTypeParam = (t) => {
+        if (t === "private") return "Private";
+        if (t === "double-sharing") return "Shared";
+        if (t === "quadruple-sharing") return "Quadruple";
+        return "All";
+      };
+      const branchParam = popularRoom.branch === "guadalupe" ? "Guadalupe" : "Gil Puyat";
+      const typeParam = mapTypeParam(type);
+      const computedLinkUrl = `/applicant/check-availability?branch=${encodeURIComponent(branchParam)}&roomType=${encodeURIComponent(typeParam)}`;
 
       return {
         id: popularRoom._id || idx + 1,
@@ -90,6 +99,7 @@ export function RoomInventory() {
         inclusions: popularRoom.amenities && popularRoom.amenities.length > 0
           ? popularRoom.amenities
           : DEFAULT_ROOM_LISTINGS[idx].inclusions,
+        linkUrl: computedLinkUrl,
       };
     });
 
@@ -217,7 +227,7 @@ export function RoomInventory() {
 
                 {/* CTA Button — improved ghost contrast */}
                 <Link
-                  to="/applicant/check-availability"
+                  to={room.linkUrl || "/applicant/check-availability"}
                   className="flex items-center justify-center gap-2 w-full py-4 rounded-full text-sm font-medium transition-all duration-300"
                   style={
                     room.popular

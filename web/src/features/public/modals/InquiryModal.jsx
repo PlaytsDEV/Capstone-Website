@@ -225,6 +225,7 @@ function InquiryModal({ isOpen, onClose, defaultBranch = "general", roomData = n
                       type="text"
                       id="name"
                       name="name"
+                      autoComplete="name"
                       placeholder="Enter your full name"
                       value={formData.name}
                       onChange={handleInputChange}
@@ -243,6 +244,8 @@ function InquiryModal({ isOpen, onClose, defaultBranch = "general", roomData = n
                       type="email"
                       id="email"
                       name="email"
+                      autoComplete="email"
+                      inputMode="email"
                       placeholder="your.email@example.com"
                       value={formData.email}
                       onChange={handleInputChange}
@@ -261,6 +264,8 @@ function InquiryModal({ isOpen, onClose, defaultBranch = "general", roomData = n
                       type="tel"
                       id="phone"
                       name="phone"
+                      autoComplete="tel"
+                      inputMode="tel"
                       placeholder="+63 917 123 4567"
                       value={formData.phone}
                       onChange={handlePhoneInputChange}

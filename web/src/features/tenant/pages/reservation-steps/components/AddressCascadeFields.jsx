@@ -307,73 +307,81 @@ const AddressCascadeFields = ({
 
  return (
  <>
- {/* Unit / House No. */}
- <div className="form-group" data-field="addressUnitHouseNo">
- <label className="form-label">
- Unit / House No. <span className="rf-required">*</span>
- </label>
- <input
- type="text"
- className="form-input"
- placeholder="e.g., 123-A"
- maxLength={64}
- value={addressUnitHouseNo}
- onChange={(e) => {
- handleGeneralInput(e.target.value, setAddressUnitHouseNo, 64);
- validateField("addressUnitHouseNo", e.target.value, (v) =>
-  requiredValidator(v, "Unit / House No. is required"),
- );
- }}
- onBlur={() =>
- validateField("addressUnitHouseNo", addressUnitHouseNo, (v) => ({
- valid: Boolean(v?.trim()),
- error: v?.trim() ? null : "This field is required",
- }))
- }
- style={{ border: errBorder(showValidationErrors, addressUnitHouseNo) }}
- />
- {((showValidationErrors && !addressUnitHouseNo) || fieldErrors.addressUnitHouseNo) ? (
- <div className="rf-field-error">
- {showValidationErrors && !addressUnitHouseNo
- ? "Unit / House No. is required"
- : fieldErrors.addressUnitHouseNo}
- </div>
- ) : null}
- </div>
+  {/* Unit / House No. */}
+  <div className="form-group" data-field="addressUnitHouseNo">
+    <label className="form-label" htmlFor="addressUnitHouseNoInput">
+      Unit / House No. <span className="rf-required">*</span>
+    </label>
+    <input
+      id="addressUnitHouseNoInput"
+      type="text"
+      name="address-line2"
+      autoComplete="address-line2"
+      className="form-input"
+      placeholder="e.g., 123-A"
+      maxLength={64}
+      value={addressUnitHouseNo}
+      onChange={(e) => {
+        handleGeneralInput(e.target.value, setAddressUnitHouseNo, 64);
+        validateField("addressUnitHouseNo", e.target.value, (v) =>
+          requiredValidator(v, "Unit / House No. is required"),
+        );
+      }}
+      onBlur={() =>
+        validateField("addressUnitHouseNo", addressUnitHouseNo, (v) => ({
+          valid: Boolean(v?.trim()),
+          error: v?.trim() ? null : "This field is required",
+        }))
+      }
+      style={{ border: errBorder(showValidationErrors, addressUnitHouseNo) }}
+      aria-invalid={Boolean((showValidationErrors && !addressUnitHouseNo) || fieldErrors.addressUnitHouseNo)}
+    />
+    {((showValidationErrors && !addressUnitHouseNo) || fieldErrors.addressUnitHouseNo) ? (
+      <div className="rf-field-error">
+        {showValidationErrors && !addressUnitHouseNo
+          ? "Unit / House No. is required"
+          : fieldErrors.addressUnitHouseNo}
+      </div>
+    ) : null}
+  </div>
 
- {/* Street */}
- <div className="form-group" data-field="addressStreet">
- <label className="form-label">
- Street <span className="rf-required">*</span>
- </label>
- <input
- type="text"
- className="form-input"
- placeholder="e.g., Rizal Street"
- maxLength={64}
- value={addressStreet}
- onChange={(e) => {
- handleGeneralInput(e.target.value, setAddressStreet, 64);
- validateField("addressStreet", e.target.value, (v) =>
-  requiredValidator(v, "Street is required"),
- );
- }}
- onBlur={() =>
- validateField("addressStreet", addressStreet, (v) => ({
- valid: Boolean(v?.trim()),
- error: v?.trim() ? null : "This field is required",
- }))
- }
- style={{ border: errBorder(showValidationErrors, addressStreet) }}
- />
- {((showValidationErrors && !addressStreet) || fieldErrors.addressStreet) ? (
- <div className="rf-field-error">
- {showValidationErrors && !addressStreet
- ? "Street is required"
- : fieldErrors.addressStreet}
- </div>
- ) : null}
- </div>
+  {/* Street */}
+  <div className="form-group" data-field="addressStreet">
+    <label className="form-label" htmlFor="addressStreetInput">
+      Street <span className="rf-required">*</span>
+    </label>
+    <input
+      id="addressStreetInput"
+      type="text"
+      name="address-line1"
+      autoComplete="address-line1"
+      className="form-input"
+      placeholder="e.g., Rizal Street"
+      maxLength={64}
+      value={addressStreet}
+      onChange={(e) => {
+        handleGeneralInput(e.target.value, setAddressStreet, 64);
+        validateField("addressStreet", e.target.value, (v) =>
+          requiredValidator(v, "Street is required"),
+        );
+      }}
+      onBlur={() =>
+        validateField("addressStreet", addressStreet, (v) => ({
+          valid: Boolean(v?.trim()),
+          error: v?.trim() ? null : "This field is required",
+        }))
+      }
+      style={{ border: errBorder(showValidationErrors, addressStreet) }}
+      aria-invalid={Boolean((showValidationErrors && !addressStreet) || fieldErrors.addressStreet)}
+    />
+    {((showValidationErrors && !addressStreet) || fieldErrors.addressStreet) ? (
+      <div className="rf-field-error">
+        {showValidationErrors && !addressStreet
+          ? "Street is required"
+          : fieldErrors.addressStreet}
+      </div>
+    ) : null}
+  </div>
 
  {/* Region */}
  <div className="form-group" data-field="addressRegion">
