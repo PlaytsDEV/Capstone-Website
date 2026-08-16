@@ -31,7 +31,7 @@ import {
   AnalyticsBarChart,
   AnalyticsLineChart,
 } from "../components/shared";
-import { AdminDashboardSkeleton } from "../components/AdminContentSkeletons";
+import { AdminAnalyticsSkeleton } from "../components/AdminContentSkeletons";
 import {
   ANALYTICS_DETAILS_PATH,
   buildAnalyticsDetailsHref,
@@ -53,8 +53,7 @@ import AnalyticsConsolidatedTab from "./AnalyticsConsolidatedTab";
 import AnalyticsFinancialsTab from "./AnalyticsFinancialsTab";
 import AnalyticsMonitoringTab from "./AnalyticsMonitoringTab";
 import AnalyticsDemographicsTab from "./AnalyticsDemographicsTab";
-import MarketingSourceReport from "../components/MarketingSourceReport";
-import InquiryPipelineBoard from "../components/InquiryPipelineBoard";
+import AnalyticsAcquisitionTab from "./AnalyticsAcquisitionTab";
 
 function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const { user } = useAuth();
@@ -231,7 +230,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     (operationsQuery.isLoading && !operationsData);
 
   if (isInitialLoading) {
-    return <AdminDashboardSkeleton />;
+    return <AdminAnalyticsSkeleton activeTab={activeTab} isOwner={isOwner} />;
   }
 
   const occupancyDelta = occupancyKpis?.comparison?.occupancyRate || {
@@ -403,11 +402,11 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
             Demographics
           </button>
           <button
-            className={`analytics-tab ${activeTab === "marketing-roi" ? "active" : ""}`}
-            onClick={() => handleTabChange("marketing-roi")}
+            className={`analytics-tab ${activeTab === "acquisition" || activeTab === "marketing-roi" ? "active" : ""}`}
+            onClick={() => handleTabChange("acquisition")}
           >
             <Target className="analytics-tab-icon" />
-            Marketing ROI
+            Lead Acquisition
           </button>
           {isOwner && (
             <button
@@ -697,11 +696,8 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
             <AnalyticsOperationsTab {...detailSharedProps} />
           )}
           {activeTab === "demographics" && <AnalyticsDemographicsTab {...detailSharedProps} />}
-          {activeTab === "marketing-roi" && (
-            <div className="pt-2 flex flex-col gap-6">
-              <InquiryPipelineBoard />
-              <MarketingSourceReport />
-            </div>
+          {(activeTab === "acquisition" || activeTab === "marketing-roi") && (
+            <AnalyticsAcquisitionTab {...detailSharedProps} />
           )}
           {activeTab === "consolidated" && <AnalyticsConsolidatedTab {...detailSharedProps} />}
         </main>

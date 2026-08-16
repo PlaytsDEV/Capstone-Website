@@ -15,6 +15,7 @@ test("branch admins only get branch-safe tabs", () => {
     "billing",
     "operations",
     "demographics",
+    "acquisition",
   ]);
 });
 
@@ -24,10 +25,24 @@ test("owners get owner-only tabs", () => {
     "billing",
     "operations",
     "demographics",
+    "acquisition",
     "consolidated",
     "financials",
     "monitoring",
   ]);
+});
+
+test("marketing-roi alias resolves to acquisition tab", () => {
+  const state = normalizeAnalyticsState({
+    requestedTab: "marketing-roi",
+    requestedRange: "30d",
+    requestedBranch: "all",
+    isOwner: false,
+    userBranch: "gil-puyat",
+  });
+
+  assert.equal(state.activeTab, "acquisition");
+  assert.equal(state.range, "30d");
 });
 
 test("detailed analytics defaults to occupancy when no tab is provided", () => {
@@ -123,4 +138,36 @@ test("legacy redirects point to the detailed analytics workspace", () => {
     financials: "/admin/analytics/details?tab=financials",
     monitoring: "/admin/analytics/details?tab=monitoring",
   });
+});
+
+test("supports 365d and custom day range like 346d in summary and detailed states", () => {
+  const summary365 = normalizeAnalyticsSummaryState({
+    requestedRange: "365d",
+    requestedBranch: "all",
+    isOwner: true,
+  });
+  assert.equal(summary365.range, "365d");
+
+  const summaryCustom = normalizeAnalyticsSummaryState({
+    requestedRange: "346d",
+    requestedBranch: "all",
+    isOwner: true,
+  });
+  assert.equal(summaryCustom.range, "346d");
+
+  const detailCustom = normalizeAnalyticsState({
+    requestedTab: "occupancy",
+    requestedRange: "346d",
+    requestedBranch: "all",
+    isOwner: true,
+  });
+  assert.equal(detailCustom.range, "346d");
+
+  const billingCustom = normalizeAnalyticsState({
+    requestedTab: "billing",
+    requestedRange: "346d",
+    requestedBranch: "all",
+    isOwner: true,
+  });
+  assert.equal(billingCustom.range, "12m");
 });

@@ -1,8 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { analyticsApi } from "../../api/apiClient";
 import { queryKeys } from "../../lib/queryKeys";
 
 const DEFAULT_OPTIONS = {
+  placeholderData: keepPreviousData,
+  staleTime: 60 * 1000,
   retry: 2,
   retryDelay: 1000,
 };

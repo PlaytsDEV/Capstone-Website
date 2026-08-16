@@ -46,6 +46,10 @@ const DASHBOARD_RANGE_DAYS = Object.freeze({
   "30d": 30,
   "60d": 60,
   "90d": 90,
+  "180d": 180,
+  "365d": 365,
+  "1y": 365,
+  "1year": 365,
 });
 
 const DASHBOARD_BILLING_RANGE_MONTHS = Object.freeze({
@@ -53,18 +57,29 @@ const DASHBOARD_BILLING_RANGE_MONTHS = Object.freeze({
   "30d": 3,
   "60d": 6,
   "90d": 12,
+  "180d": 6,
+  "365d": 12,
+  "1y": 12,
+  "1year": 12,
 });
 
 const REPORT_DAY_RANGES = Object.freeze({
   "30d": 30,
   "60d": 60,
   "90d": 90,
+  "180d": 180,
+  "365d": 365,
+  "1y": 365,
+  "1year": 365,
 });
 
 const REPORT_MONTH_RANGES = Object.freeze({
   "3m": 3,
   "6m": 6,
   "12m": 12,
+  "24m": 24,
+  "1y": 12,
+  "2y": 24,
 });
 
 const TABLE_PAGE_DEFAULT_LIMIT = 10;
@@ -193,10 +208,30 @@ const formatBranchLabel = (value) =>
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
 
-const parseRangeDays = (value) => DASHBOARD_RANGE_DAYS[value] || DASHBOARD_RANGE_DAYS["30d"];
-const parseReportDays = (value) => REPORT_DAY_RANGES[value] || REPORT_DAY_RANGES["30d"];
-const parseReportMonths = (value) =>
-  REPORT_MONTH_RANGES[value] || REPORT_MONTH_RANGES["3m"];
+const parseCustomDays = (value) => {
+  if (!value) return null;
+  const str = String(value).trim().toLowerCase();
+  if (DASHBOARD_RANGE_DAYS[str]) return DASHBOARD_RANGE_DAYS[str];
+  const match = str.match(/^(\d+)d$/i) || str.match(/^(\d+)$/);
+  if (match) {
+    const num = Number.parseInt(match[1], 10);
+    if (Number.isFinite(num) && num > 0) {
+      return Math.min(Math.max(num, 1), 1095);
+    }
+  }
+  return null;
+};
+
+const parseRangeDays = (value) => parseCustomDays(value) || DASHBOARD_RANGE_DAYS["30d"];
+const parseReportDays = (value) => parseCustomDays(value) || REPORT_DAY_RANGES["30d"];
+const parseReportMonths = (value) => {
+  if (REPORT_MONTH_RANGES[value]) return REPORT_MONTH_RANGES[value];
+  const customDays = parseCustomDays(value);
+  if (customDays) {
+    return Math.min(Math.max(Math.ceil(customDays / 30), 1), 24);
+  }
+  return REPORT_MONTH_RANGES["3m"];
+};
 
 const formatMonthLabel = (value) =>
   dayjs(value).format("MMM YYYY");
@@ -587,7 +622,12 @@ const buildOccupancyTrend = ({ rooms, reservations, days }) => {
     return acc;
   }, {});
   const roomTypeById = new Map(rooms.map((room) => [String(room._id), room.type]));
-  const timeline = buildDailyTimeline(days);
+  const rawTimeline = buildDailyTimeline(days);
+  const step = days > 180 ? 7 : days > 90 ? 3 : 1;
+  const timeline =
+    step > 1
+      ? rawTimeline.filter((_, idx) => idx % step === 0 || idx === rawTimeline.length - 1)
+      : rawTimeline;
 
   return timeline.map((cursor) => {
     const windowStart = cursor.startOf("day");
@@ -2182,7 +2222,9 @@ export const getDashboardAnalytics = async (req, res, next) => {
     const sinceDate = dayjs().subtract(rangeDays, "day").startOf("day").toDate();
     const billingTrendMonths =
       DASHBOARD_BILLING_RANGE_MONTHS[rangeKey] ||
-      DASHBOARD_BILLING_RANGE_MONTHS["30d"];
+      (parseCustomDays(rangeKey)
+        ? Math.min(Math.max(Math.ceil(parseCustomDays(rangeKey) / 30), 1), 24)
+        : DASHBOARD_BILLING_RANGE_MONTHS["30d"]);
     const billingSinceMonth = dayjs()
       .subtract(billingTrendMonths - 1, "month")
       .startOf("month")

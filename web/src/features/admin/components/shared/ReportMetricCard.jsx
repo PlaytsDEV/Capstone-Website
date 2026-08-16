@@ -83,9 +83,9 @@ export default function ReportMetricCard({
 
   return (
     <article
-      className={`bg-card rounded-[10px] border border-border p-4 transition-all duration-150 flex flex-col justify-between ${
+      className={`bg-card rounded-[10px] border border-border p-4 transition-all duration-150 flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5 ${
         clickable
-          ? "cursor-pointer hover:border-primary/40 hover:bg-muted/30 active:scale-[0.99]"
+          ? "cursor-pointer active:scale-[0.99]"
           : ""
       } ${className}`}
       onClick={clickable ? onClick : undefined}

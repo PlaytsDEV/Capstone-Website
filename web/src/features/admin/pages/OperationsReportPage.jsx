@@ -30,6 +30,7 @@ const RANGE_OPTIONS = [
  { value: "30d", label: "Last 30 days" },
  { value: "60d", label: "Last 60 days" },
  { value: "90d", label: "Last 90 days" },
+ { value: "365d", label: "Last 1 year" },
 ];
 
 const MAINTENANCE_COLUMNS = [

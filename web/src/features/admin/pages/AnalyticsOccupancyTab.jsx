@@ -19,6 +19,7 @@ import {
   DataTable,
   ReportChartPanel,
 } from "../components/shared";
+import { AdminAnalyticsDetailSkeleton } from "../components/AdminContentSkeletons";
 import { buildRangeLabel, formatBranch } from "./reportCommon";
 import {
   AnalyticsInsightSection,
@@ -175,6 +176,16 @@ export default function AnalyticsOccupancyTab({
   const { data: forecast } = useOccupancyForecast(forecastParams);
   const { data: historyData } = useOccupancyRateHistory(historyParams);
 
+  const {
+    data: insightData,
+    isLoading: isInsightLoading,
+    isError: isInsightError,
+  } = useReportInsights({
+    reportType: "occupancy",
+    range,
+    branch: isOwner ? branch : undefined,
+  });
+
   const kpis = data?.kpis || {};
   const series = data?.series || {};
   const trend = (trendData?.series || series).occupancyTrend || [];
@@ -208,14 +219,9 @@ export default function AnalyticsOccupancyTab({
     });
   }, [inventory, searchQuery, typeFilter, statusFilter]);
 
-  const insightData = useMemo(
-    () => ({ kpis, series, tables: data?.tables }),
-    [kpis, series, data?.tables],
-  );
-  const { isInsightLoading, isInsightError } = useReportInsights(
-    "occupancy",
-    insightData,
-  );
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="occupancy" isOwner={isOwner} />;
+  }
 
   const occupancyDelta = kpis.comparison?.occupancyRate || {
     label: "+0 pp",

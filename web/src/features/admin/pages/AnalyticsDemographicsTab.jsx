@@ -16,6 +16,7 @@ import {
   DetailDrawer,
   ReportChartPanel,
 } from "../components/shared";
+import { AdminAnalyticsDetailSkeleton } from "../components/AdminContentSkeletons";
 import { buildRangeLabel, formatBranch } from "./reportCommon";
 import {
   AnalyticsInsightSection,
@@ -69,6 +70,7 @@ export default function AnalyticsDemographicsTab({
     [branch, isOwner, range],
   );
   const { data, isLoading, isError } = useDemographicsReport(params);
+
   const {
     data: insightData,
     isLoading: isInsightLoading,
@@ -119,6 +121,10 @@ export default function AnalyticsDemographicsTab({
       (row.roomType && String(row.roomType).toLowerCase().includes(drilldownSearch.toLowerCase()))
     );
   }, [drilldown?.rows, drilldownSearch]);
+
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="demographics" isOwner={isOwner} />;
+  }
 
   const openDrilldown = (title, rows, subtitle) => {
     setDrilldown({ title, rows: rows || [], subtitle });

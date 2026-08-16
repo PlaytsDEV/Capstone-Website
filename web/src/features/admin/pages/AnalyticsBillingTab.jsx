@@ -16,6 +16,7 @@ import {
   PeriodComparisonCard,
   ReportChartPanel,
 } from "../components/shared";
+import { AdminAnalyticsDetailSkeleton } from "../components/AdminContentSkeletons";
 import {
   buildRangeLabel,
   formatBranch,
@@ -126,6 +127,7 @@ export default function AnalyticsBillingTab({
   const { data, isLoading, isError } = useBillingReport(params);
   const { data: revenueData } = useBillingReport(revenueParams);
   const { data: financialsData } = useFinancialsAnalytics(params);
+
   const {
     data: insightData,
     isLoading: isInsightLoading,
@@ -157,6 +159,10 @@ export default function AnalyticsBillingTab({
       return matchSearch && matchStatus;
     });
   }, [overdueAccounts, searchQuery, statusFilter]);
+
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="billing" isOwner={isOwner} />;
+  }
 
   const collectedStr = data?.kpis?.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0";
   const billedStr = data?.kpis?.billedAmountLabel?.replace("PHP ", "₱") || "₱0";

@@ -11,6 +11,7 @@ import {
  DataTable,
  ReportChartPanel,
 } from "../components/shared";
+import { AdminAnalyticsDetailSkeleton } from "../components/AdminContentSkeletons";
 import { buildRangeLabel, formatBranch, formatDate, formatDateTime } from "./reportCommon";
 import {
  AnalyticsInsightSection,
@@ -49,6 +50,7 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
 
  const params = useMemo(() => ({ branch, range }), [branch, range]);
  const { data, isLoading, isError } = useAuditAnalytics(params);
+
  const {
  data: insightData,
  isLoading: isInsightLoading,
@@ -79,6 +81,10 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
    return matchSearch && matchSeverity;
   });
  }, [recentSecurityEvents, searchQuery, severityFilter]);
+
+ if (isLoading && !data) {
+  return <AdminAnalyticsDetailSkeleton tab="monitoring" />;
+ }
 
   const metricCards = [
     { icon: ShieldAlert, label: "Failed Logins", value: kpis.failedLogins || 0, tone: "rose", trend: "Authentication failures" },

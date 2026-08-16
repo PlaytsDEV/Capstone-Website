@@ -1158,4 +1158,48 @@ describe("analyticsController", () => {
       }),
     );
   });
+
+  test("handles 365d and custom day range like 346d without error", async () => {
+    getUserBranchInfo.mockResolvedValue({
+      role: "owner",
+      branch: "gil-puyat",
+      isOwner: true,
+    });
+    roomFind.mockReturnValue(
+      createLeanChain([
+        { _id: "room-1", branch: "gil-puyat", type: "private", capacity: 2, currentOccupancy: 1 },
+      ]),
+    );
+    reservationFind.mockReturnValue(
+      createLeanChain([
+        {
+          _id: "res-custom",
+          roomId: { _id: "room-1", branch: "gil-puyat", type: "private" },
+          status: "active",
+          createdAt: "2026-01-01T08:00:00.000Z",
+          moveInDate: "2026-01-01T08:00:00.000Z",
+        },
+      ]),
+    );
+    billFind.mockReturnValue(createLeanChain([]));
+    maintenanceFind.mockReturnValue(createLeanChain([]));
+
+    const req = { user: { uid: "firebase-owner-custom", owner: true }, query: { range: "346d", branch: "all" } };
+    const res = { req };
+
+    await getOccupancyReport(req, res, jest.fn());
+
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          range: "346d",
+        }),
+        series: expect.objectContaining({
+          occupancyTrend: expect.any(Array),
+        }),
+      }),
+    );
+  });
 });
+

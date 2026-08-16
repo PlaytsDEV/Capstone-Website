@@ -1,10 +1,26 @@
 import { useMemo, useState, useRef, useEffect } from "react";
-import { Download, FileDown, Search, Filter, RotateCcw, ChevronDown, FileSpreadsheet, FileText, LoaderCircle, Sparkles } from "lucide-react";
+import {
+  Download,
+  FileDown,
+  Search,
+  Filter,
+  RotateCcw,
+  ChevronDown,
+  FileSpreadsheet,
+  FileText,
+  LoaderCircle,
+  Sparkles,
+  Calendar,
+  CalendarDays,
+  X,
+  Check,
+} from "lucide-react";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { exportReportPdf } from "../../../shared/utils/reportPdf";
 import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
 import { useAnalyticsInsights } from "../../../shared/hooks/queries/useAnalyticsReports";
 import { AnalyticsInsightPanel, ReportChartPanel, ReportMetricCard } from "../components/shared";
+import { buildRangeLabel } from "./reportCommon";
 
 /**
  * Reusable table filter toolbar for Analytics tables.
@@ -95,6 +111,7 @@ export const RANGE_OPTIONS_SHORT = [
   { value: "30d", label: "Last 30 days" },
   { value: "60d", label: "Last 60 days" },
   { value: "90d", label: "Last 90 days" },
+  { value: "365d", label: "Last 1 year" },
 ];
 
 export const RANGE_OPTIONS_LONG = [
@@ -341,32 +358,291 @@ export function buildInsightPdfSections(insightData, title = "AI Summary") {
   ];
 }
 
+export function calculateRangeDays(startDate, endDate) {
+  if (!startDate || !endDate) return null;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  const diffTime = end.getTime() - start.getTime();
+  if (diffTime < 0) return null;
+  // Inclusive day calculation (e.g. Jan 1 to Jan 2 = 2 days, Jan 1 to Dec 12 = 346 days)
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  return diffDays;
+}
+
+export function CustomDateRangeModal({
+  isOpen,
+  onClose,
+  onApply,
+  initialDays = 30,
+}) {
+  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const defaultStartStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - (Number.isFinite(initialDays) && initialDays > 0 ? initialDays - 1 : 29));
+    return d.toISOString().split("T")[0];
+  }, [initialDays]);
+
+  const [startDate, setStartDate] = useState(defaultStartStr);
+  const [endDate, setEndDate] = useState(todayStr);
+
+  useEffect(() => {
+    if (isOpen) {
+      setEndDate(todayStr);
+      const d = new Date();
+      d.setDate(d.getDate() - (Number.isFinite(initialDays) && initialDays > 0 ? initialDays - 1 : 29));
+      setStartDate(d.toISOString().split("T")[0]);
+    }
+  }, [isOpen, initialDays, todayStr]);
+
+  const diffDays = useMemo(() => calculateRangeDays(startDate, endDate), [startDate, endDate]);
+  const isInvalidRange = !startDate || !endDate || !diffDays || diffDays <= 0;
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    }
+    if (isOpen) {
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const handlePreset = (days) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - (days - 1));
+    setStartDate(start.toISOString().split("T")[0]);
+    setEndDate(end.toISOString().split("T")[0]);
+  };
+
+  const handleYtd = () => {
+    const end = new Date();
+    const start = new Date(end.getFullYear(), 0, 1);
+    setStartDate(start.toISOString().split("T")[0]);
+    setEndDate(end.toISOString().split("T")[0]);
+  };
+
+  const handleConfirm = () => {
+    if (isInvalidRange) return;
+    onApply(diffDays, { startDate, endDate });
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-card border border-border p-6 shadow-2xl transition-all"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="flex items-center justify-between pb-3 mb-4 border-b border-border">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+              <CalendarDays size={18} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-foreground">Custom Date Range</h3>
+              <p className="text-[11px] text-muted-foreground">Count days between chosen dates</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+            aria-label="Close modal"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <button
+            type="button"
+            onClick={() => handlePreset(30)}
+            className="px-2.5 py-1 text-[11px] font-medium bg-muted/60 hover:bg-muted text-foreground rounded-md border border-border transition-colors cursor-pointer"
+          >
+            Last 30 days
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePreset(60)}
+            className="px-2.5 py-1 text-[11px] font-medium bg-muted/60 hover:bg-muted text-foreground rounded-md border border-border transition-colors cursor-pointer"
+          >
+            Last 60 days
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePreset(90)}
+            className="px-2.5 py-1 text-[11px] font-medium bg-muted/60 hover:bg-muted text-foreground rounded-md border border-border transition-colors cursor-pointer"
+          >
+            Last 90 days
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePreset(365)}
+            className="px-2.5 py-1 text-[11px] font-medium bg-muted/60 hover:bg-muted text-foreground rounded-md border border-border transition-colors cursor-pointer"
+          >
+            Last 1 year
+          </button>
+          <button
+            type="button"
+            onClick={handleYtd}
+            className="px-2.5 py-1 text-[11px] font-medium bg-muted/60 hover:bg-muted text-foreground rounded-md border border-border transition-colors cursor-pointer"
+          >
+            Year to Date
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-4">
+          <div>
+            <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+              Start Date
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full px-3 py-2 text-xs font-medium bg-background text-foreground border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+              End Date
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full px-3 py-2 text-xs font-medium bg-background text-foreground border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+        </div>
+
+        <div className="mb-5 p-3 rounded-xl bg-muted/40 border border-border">
+          {diffDays ? (
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">Calculated duration:</span>
+              <span className="text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/20">
+                {diffDays} {diffDays === 1 ? "day" : "days"}
+              </span>
+            </div>
+          ) : (
+            <div className="text-xs font-medium text-destructive">
+              End date must be on or after start date.
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2.5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={isInvalidRange}
+            onClick={handleConfirm}
+            className="px-4 py-2 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none rounded-xl transition-all cursor-pointer shadow-xs"
+          >
+            Apply Range ({diffDays || 0} {diffDays === 1 ? "day" : "days"})
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function CardFilterSelect({
   value,
   onChange,
   options = RANGE_OPTIONS_SHORT,
   label = null,
   className = "",
+  allowCustom = true,
 }) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const currentDays = useMemo(() => {
+    const match = String(value || "").match(/^(\d+)d$/i);
+    return match ? parseInt(match[1], 10) : 30;
+  }, [value]);
+
+  const computedOptions = useMemo(() => {
+    const list = [...options];
+    const hasCurrent = list.some((opt) => opt.value === value);
+    if (!hasCurrent && value) {
+      list.push({
+        value,
+        label: buildRangeLabel(value),
+      });
+    }
+    if (allowCustom && !list.some((opt) => opt.value === "__custom__")) {
+      list.push({
+        value: "__custom__",
+        label: "Custom range...",
+      });
+    }
+    return list;
+  }, [options, value, allowCustom]);
+
+  const handleSelectChange = (e) => {
+    const selected = e.target.value;
+    if (selected === "__custom__") {
+      setIsModalOpen(true);
+    } else {
+      onChange(selected);
+    }
+  };
+
+  const handleCustomApply = (days) => {
+    onChange(`${days}d`);
+  };
+
   return (
-    <div className={`flex items-center gap-1.5 ${className}`}>
-      {label && (
-        <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">
-          {label}
-        </span>
+    <>
+      <div className={`flex items-center gap-1.5 ${className}`}>
+        {label && (
+          <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">
+            {label}
+          </span>
+        )}
+        <select
+          value={value}
+          onChange={handleSelectChange}
+          onClick={(e) => e.stopPropagation()}
+          className="px-2 py-1 text-xs font-semibold bg-background text-foreground border border-border/80 rounded-md shadow-xs hover:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary transition-all cursor-pointer"
+        >
+          {computedOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {allowCustom && (
+        <CustomDateRangeModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onApply={handleCustomApply}
+          initialDays={currentDays}
+        />
       )}
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onClick={(e) => e.stopPropagation()}
-        className="px-2 py-1 text-xs font-semibold bg-background text-foreground border border-border/80 rounded-md shadow-xs hover:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary transition-all cursor-pointer"
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </div>
+    </>
   );
 }

@@ -48,13 +48,24 @@ export const formatBranch = (value) =>
  .join(" ") || "-";
 
 export const buildRangeLabel = (range) => {
- const labels = {
- "30d": "Last 30 days",
- "60d": "Last 60 days",
- "90d": "Last 90 days",
- "3m": "Last 3 months",
- "6m": "Last 6 months",
- "12m": "Last 12 months",
- };
- return labels[range] || range;
+  const labels = {
+    "7d": "Last 7 days",
+    "30d": "Last 30 days",
+    "60d": "Last 60 days",
+    "90d": "Last 90 days",
+    "180d": "Last 180 days",
+    "365d": "Last 1 year",
+    "1y": "Last 1 year",
+    "3m": "Last 3 months",
+    "6m": "Last 6 months",
+    "12m": "Last 12 months",
+    "24m": "Last 24 months",
+  };
+  if (labels[range]) return labels[range];
+  const match = String(range || "").match(/^(\d+)d$/i);
+  if (match) {
+    const days = parseInt(match[1], 10);
+    return `${days} ${days === 1 ? "day" : "days"}`;
+  }
+  return range || "-";
 };

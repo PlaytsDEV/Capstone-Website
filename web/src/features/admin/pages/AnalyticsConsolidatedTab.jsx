@@ -24,6 +24,7 @@ import {
   AnalyticsToolbar,
   ReportChartPanel,
 } from "../components/shared";
+import { AdminAnalyticsDetailSkeleton } from "../components/AdminContentSkeletons";
 import {
   buildAnalyticsDetailsHref,
   getSummaryDetailRange,
@@ -132,6 +133,16 @@ export default function AnalyticsConsolidatedTab({
   const billingData = billingQuery.data;
   const operationsData = operationsQuery.data;
   const financialsData = financialsQuery.data;
+
+  const isInitialLoading =
+    (dashboardQuery.isLoading && !dashboardData) ||
+    (occupancyQuery.isLoading && !occupancyData) ||
+    (billingQuery.isLoading && !billingData) ||
+    (operationsQuery.isLoading && !operationsData);
+
+  if (isInitialLoading) {
+    return <AdminAnalyticsDetailSkeleton tab="consolidated" isOwner={isOwner} />;
+  }
 
   const branchRows = mergeBranchRows(
     dashboardData?.branchComparison,

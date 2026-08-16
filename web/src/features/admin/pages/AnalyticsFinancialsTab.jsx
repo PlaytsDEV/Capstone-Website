@@ -9,6 +9,7 @@ import {
   DataTable,
   ReportChartPanel,
 } from "../components/shared";
+import { AdminAnalyticsDetailSkeleton } from "../components/AdminContentSkeletons";
 import { buildRangeLabel, formatBranch, formatPeso } from "./reportCommon";
 import {
   AnalyticsInsightSection,
@@ -43,6 +44,7 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
 
   const params = useMemo(() => ({ branch, range }), [branch, range]);
   const { data, isLoading, isError } = useFinancialsAnalytics(params);
+
   const {
     data: insightData,
     isLoading: isInsightLoading,
@@ -73,6 +75,10 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
       return matchSearch && matchExposure;
     });
   }, [overdueRooms, searchQuery, exposureFilter]);
+
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="financials" />;
+  }
 
   const metricCards = [
     {

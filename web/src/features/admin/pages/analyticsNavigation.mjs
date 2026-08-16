@@ -1,23 +1,31 @@
 export const ANALYTICS_SUMMARY_PATH = "/admin/analytics";
 export const ANALYTICS_DETAILS_PATH = "/admin/analytics/details";
 
-export const ANALYTICS_SUMMARY_RANGES = ["30d", "60d", "90d"];
-export const BASE_ANALYTICS_TABS = ["occupancy", "billing", "operations", "demographics"];
+export const ANALYTICS_SUMMARY_RANGES = ["30d", "60d", "90d", "365d"];
+export const BASE_ANALYTICS_TABS = ["occupancy", "billing", "operations", "demographics", "acquisition"];
 export const OWNER_ANALYTICS_TABS = ["consolidated", "financials", "monitoring"];
 export const TAB_RANGE_OPTIONS = {
-  occupancy: ["30d", "60d", "90d"],
+  occupancy: ["30d", "60d", "90d", "365d"],
   billing: ["3m", "6m", "12m"],
-  operations: ["30d", "60d", "90d"],
+  operations: ["30d", "60d", "90d", "365d"],
   demographics: ["3m", "6m", "12m"],
-  consolidated: ["30d", "60d", "90d"],
+  acquisition: ["30d", "60d", "90d", "365d"],
+  consolidated: ["30d", "60d", "90d", "365d"],
   financials: ["3m", "6m", "12m"],
-  monitoring: ["30d", "60d", "90d"],
+  monitoring: ["30d", "60d", "90d", "365d"],
 };
+export const TAB_ALIASES = Object.freeze({
+  "marketing-roi": "acquisition",
+  marketing: "acquisition",
+  leads: "acquisition",
+});
 export const OWNER_BRANCH_OPTIONS = ["all", "gil-puyat", "guadalupe"];
 export const SUMMARY_TO_MONTH_RANGE = {
   "30d": "3m",
   "60d": "6m",
   "90d": "12m",
+  "365d": "12m",
+  "1y": "12m",
 };
 export const MONTH_TO_SUMMARY_RANGE = {
   "3m": "30d",
@@ -42,16 +50,44 @@ export function getAllowedSummaryRanges() {
   return [...ANALYTICS_SUMMARY_RANGES];
 }
 
+export function isValidCustomDayRange(range) {
+  return Boolean(range && /^(\d+)d$/i.test(String(range).trim()));
+}
+
 export function getAnalyticsDetailsRange(tab, requestedRange) {
   const allowedRanges = TAB_RANGE_OPTIONS[tab] || TAB_RANGE_OPTIONS.occupancy;
-  return allowedRanges.includes(requestedRange)
-    ? requestedRange
-    : allowedRanges[0];
+  if (allowedRanges.includes(requestedRange)) {
+    return requestedRange;
+  }
+  const isMonthTab = tab === "billing" || tab === "financials" || tab === "demographics";
+  if (isMonthTab) {
+    if (SUMMARY_TO_MONTH_RANGE[requestedRange]) {
+      return SUMMARY_TO_MONTH_RANGE[requestedRange];
+    }
+    if (isValidCustomDayRange(requestedRange)) {
+      const days = parseInt(requestedRange.match(/^(\d+)d$/i)[1], 10);
+      const months = Math.min(Math.max(Math.ceil(days / 30), 1), 24);
+      return `${months}m`;
+    }
+    return allowedRanges[0];
+  }
+  if (isValidCustomDayRange(requestedRange)) {
+    return requestedRange;
+  }
+  return allowedRanges[0];
 }
 
 export function getSummaryDetailRange(tab, summaryRange) {
   if (tab === "billing" || tab === "financials" || tab === "demographics") {
-    return SUMMARY_TO_MONTH_RANGE[summaryRange] || SUMMARY_TO_MONTH_RANGE["30d"];
+    if (SUMMARY_TO_MONTH_RANGE[summaryRange]) {
+      return SUMMARY_TO_MONTH_RANGE[summaryRange];
+    }
+    if (isValidCustomDayRange(summaryRange)) {
+      const days = parseInt(summaryRange.match(/^(\d+)d$/i)[1], 10);
+      const months = Math.min(Math.max(Math.ceil(days / 30), 1), 24);
+      return `${months}m`;
+    }
+    return SUMMARY_TO_MONTH_RANGE["30d"];
   }
 
   return getAnalyticsDetailsRange(tab, summaryRange);
@@ -63,9 +99,10 @@ export function normalizeAnalyticsSummaryState({
   isOwner,
   userBranch = "gil-puyat",
 }) {
-  const range = ANALYTICS_SUMMARY_RANGES.includes(requestedRange)
-    ? requestedRange
-    : ANALYTICS_SUMMARY_RANGES[0];
+  const isAllowed =
+    ANALYTICS_SUMMARY_RANGES.includes(requestedRange) ||
+    isValidCustomDayRange(requestedRange);
+  const range = isAllowed ? requestedRange : ANALYTICS_SUMMARY_RANGES[0];
 
   const branch = isOwner
     ? OWNER_BRANCH_OPTIONS.includes(requestedBranch)
@@ -87,8 +124,9 @@ export function normalizeAnalyticsState({
   isOwner,
   userBranch = "gil-puyat",
 }) {
+  const normalizedRequestedTab = TAB_ALIASES[requestedTab] || requestedTab;
   const allowedTabs = getAllowedAnalyticsTabs(isOwner);
-  const activeTab = allowedTabs.includes(requestedTab) ? requestedTab : allowedTabs[0];
+  const activeTab = allowedTabs.includes(normalizedRequestedTab) ? normalizedRequestedTab : allowedTabs[0];
   const allowedRanges = TAB_RANGE_OPTIONS[activeTab] || TAB_RANGE_OPTIONS.occupancy;
   const range = getAnalyticsDetailsRange(activeTab, requestedRange);
 

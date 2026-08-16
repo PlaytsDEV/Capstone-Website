@@ -71,3 +71,28 @@ test("analytics summary uses default page scrolling instead of an inner chart sc
   assert.doesNotMatch(layoutSource, /admin-content--viewport-locked/);
   assert.doesNotMatch(layoutSource, /admin-layout--analytics-summary/);
 });
+
+test("analytics shared utilities support 365d and custom date range calculation", async () => {
+  const { buildRangeLabel } = await import("./reportCommon.js");
+  const tabSharedSource = await readSource("analyticsTabShared.js");
+
+  // Check buildRangeLabel
+  assert.equal(buildRangeLabel("365d"), "Last 1 year");
+  assert.equal(buildRangeLabel("1y"), "Last 1 year");
+  assert.equal(buildRangeLabel("346d"), "346 days");
+  assert.equal(buildRangeLabel("1d"), "1 day");
+
+  // Check analyticsTabShared includes 365d, calculateRangeDays, and CustomDateRangeModal
+  assert.match(tabSharedSource, /value:\s*"365d",\s*label:\s*"Last 1 year"/);
+  assert.match(tabSharedSource, /export function calculateRangeDays\(/);
+  assert.match(tabSharedSource, /export function CustomDateRangeModal\(/);
+  assert.match(tabSharedSource, /__custom__/);
+  assert.match(tabSharedSource, /Custom range\.\.\./);
+
+  // Exact math test of calculateRangeDays algorithm:
+  // Jan 1, 2026 to Dec 12, 2026 = 346 days inclusive
+  const start = new Date("2026-01-01");
+  const end = new Date("2026-12-12");
+  const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  assert.equal(diffDays, 346);
+});

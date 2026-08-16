@@ -21,6 +21,7 @@ import {
   PeriodComparisonCard,
   ReportChartPanel,
 } from "../components/shared";
+import { AdminAnalyticsDetailSkeleton } from "../components/AdminContentSkeletons";
 import { buildRangeLabel, formatBranch, formatDate, formatDateTime } from "./reportCommon";
 import {
   AnalyticsInsightSection,
@@ -201,6 +202,7 @@ export default function AnalyticsOperationsTab({
   const { data, isLoading, isError } = useOperationsReport(params);
   const { data: resData } = useOperationsReport(resParams);
   const { data: providerRawData, isLoading: isProvidersLoading } = useMaintenanceProviderReport(params);
+
   const providerData = providerRawData?.data || providerRawData || {};
   const providersList = Array.isArray(providerData?.providers) ? providerData.providers : [];
 
@@ -238,6 +240,10 @@ export default function AnalyticsOperationsTab({
       return matchSearch && matchSla && matchUrgency;
     });
   }, [maintenanceIssues, searchQuery, slaFilter, urgencyFilter]);
+
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="operations" isOwner={isOwner} />;
+  }
 
   const resCount = data?.kpis?.reservations || 0;
   const inqCount = data?.kpis?.inquiries || 0;
