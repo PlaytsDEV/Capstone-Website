@@ -122,6 +122,16 @@ export function toMobilePaymentMethodLabel(rawMethod) {
  * copy accurate instead of a permanent false contradiction against a
  * bill that already shows "Paid" (the bug this bridge exists to prevent).
  *
+ * billReleaseDate deliberately uses the bill-level bill.releasedAt (the
+ * authoritative release lifecycle — see models/Bill.js and
+ * services/billing/billingPolicy.js syncBillAmounts()), the SAME value used
+ * for top-level release_date below, not the per-utility entry.issuedAt/
+ * publishedAt. A bill is released once, as one document — electricity and
+ * water intentionally share this one release timestamp, while their
+ * finalDueDate/meterReadingDate stay independent per-utility values. Never
+ * falls back to billingCycleStart, createdAt, or any meter-reading/period
+ * date — a utility with no genuine release evidence shows "—", not a guess.
+ *
  * @param {Object} bill - canonical Bill (Mongoose document or plain object)
  * @param {{electricity: number, water: number}} charges - visible charges
  * @returns {Object} keyed by utility type, only for genuinely-dispatched charges
@@ -133,7 +143,7 @@ function mobileUtilityDeadlines(bill, charges = {}) {
     const entry = getUtilityDispatchEntry(bill, utilityType);
     if (entry.state !== "sent") continue;
     deadlines[utilityType] = {
-      billReleaseDate: entry.issuedAt || null,
+      billReleaseDate: bill.releasedAt || null,
       finalDueDate: entry.dueDate || null,
       meterReadingDate: entry.publishedAt || null,
     };
@@ -181,7 +191,16 @@ export function toMobileBill(bill) {
     billing_period: billingPeriod,
     billing_type: "consolidated",
     due_date: visible.dueDate,
-    release_date: bill.billingCycleStart || visible.issuedAt || null,
+    // The authoritative bill-release lifecycle timestamp (models/Bill.js
+    // releasedAt, written once by syncBillAmounts() — see billingPolicy.js).
+    // Deliberately NEVER falls back to bill.billingCycleStart (a billing-
+    // PERIOD boundary, not a release event) or visible.issuedAt (a
+    // per-charge "current issue date" that can legitimately move forward
+    // as new utility charges publish, and is used for due-date math, not
+    // for "when was this bill first shown to the tenant"). A bill with no
+    // trustworthy release evidence yet correctly reports null here, which
+    // the mobile frontend renders as "—" rather than a fabricated date.
+    release_date: bill.releasedAt || null,
     status: mobileStatus,
     status_label: mobileBillStatusLabel(mobileStatus),
     rent: charges.rent || 0,

@@ -307,7 +307,17 @@ export async function ensureCurrentCycleRentBill({
     }
 
     try {
-      await notify.billGenerated(userId, monthLabel, bill.totalAmount, dueDateLabel);
+      // billId/billType/actionUrl were previously omitted here, so the cron-
+      // generated rent bill's push payload carried an empty billing_id — the
+      // mobile app's resolveNotificationRoute() falls back to the generic
+      // Billing tab instead of the specific bill on tap (see
+      // controllers/billing/_helpers.js::deliverBillNotification for the
+      // pattern this now matches).
+      await notify.billGenerated(userId, monthLabel, bill.totalAmount, dueDateLabel, {
+        billId: bill._id,
+        billType: "rent",
+        actionUrl: `/bill-details?billId=${String(bill._id)}`,
+      });
       delivery.notification.status = "sent";
       delivery.notification.sentAt = new Date();
     } catch (error) {

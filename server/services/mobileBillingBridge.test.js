@@ -204,14 +204,30 @@ describe("toMobileBill utility_deadlines", () => {
   test("a bill with a dispatched (sent) electricity charge carries a populated utility_deadlines entry", () => {
     const issuedAt = new Date("2026-05-10");
     const dueDate = new Date("2026-05-20");
+    const releasedAt = new Date("2026-05-11");
     const mobileBill = toMobileBill(makeBill({
+      releasedAt,
       utilityDispatch: { electricity: { state: "sent", issuedAt, dueDate, publishedAt: issuedAt } },
     }));
     expect(mobileBill.utility_deadlines.electricity).toEqual({
-      billReleaseDate: issuedAt,
+      // billReleaseDate is the bill-level authoritative releasedAt, not the
+      // per-utility issuedAt (a due-date-calculation concept — see
+      // mobileUtilityDeadlines()'s doc comment).
+      billReleaseDate: releasedAt,
       finalDueDate: dueDate,
       meterReadingDate: issuedAt,
     });
+  });
+
+  test("a dispatched electricity charge with no bill-level releasedAt yet reports billReleaseDate: null, not a guess", () => {
+    const issuedAt = new Date("2026-05-10");
+    const dueDate = new Date("2026-05-20");
+    const mobileBill = toMobileBill(makeBill({
+      releasedAt: null,
+      utilityDispatch: { electricity: { state: "sent", issuedAt, dueDate, publishedAt: issuedAt } },
+    }));
+    expect(mobileBill.utility_deadlines.electricity.billReleaseDate).toBeNull();
+    expect(mobileBill.utility_deadlines.electricity.finalDueDate).toEqual(dueDate);
   });
 
   test("a bill with a still-draft (undispatched) electricity charge carries no utility_deadlines entry for it — not a fabricated null-dated one", () => {
@@ -229,15 +245,51 @@ describe("toMobileBill utility_deadlines", () => {
   test("a paid bill with a dispatched electricity charge is simultaneously 'paid' and has a released utility schedule — never a contradiction", () => {
     const issuedAt = new Date("2026-05-10");
     const dueDate = new Date("2026-05-20");
+    const releasedAt = new Date("2026-05-11");
     const mobileBill = toMobileBill(makeBill({
       status: "paid",
       remainingAmount: 0,
       paidAmount: 5400,
+      releasedAt,
       utilityDispatch: { electricity: { state: "sent", issuedAt, dueDate } },
     }));
     expect(mobileBill.status).toBe("paid");
-    expect(mobileBill.utility_deadlines.electricity.billReleaseDate).toEqual(issuedAt);
+    expect(mobileBill.utility_deadlines.electricity.billReleaseDate).toEqual(releasedAt);
     expect(mobileBill.utility_deadlines.electricity.finalDueDate).toEqual(dueDate);
+  });
+});
+
+describe("toMobileBill release_date (authoritative release lifecycle)", () => {
+  test("release_date reflects bill.releasedAt directly", () => {
+    const releasedAt = new Date("2026-05-11T10:00:00.000Z");
+    const mobileBill = toMobileBill(makeBill({ releasedAt }));
+    expect(mobileBill.release_date).toEqual(releasedAt);
+  });
+
+  test("release_date is null (not billingCycleStart) when releasedAt is not yet set", () => {
+    const mobileBill = toMobileBill(makeBill({ releasedAt: null, billingCycleStart: new Date("2026-05-01") }));
+    expect(mobileBill.release_date).toBeNull();
+  });
+
+  test("release_date never falls back to createdAt", () => {
+    const mobileBill = toMobileBill(makeBill({ releasedAt: null, createdAt: new Date("2026-05-01") }));
+    expect(mobileBill.release_date).toBeNull();
+  });
+
+  test("electricity and water utility_deadlines share the same bill-level release_date", () => {
+    const releasedAt = new Date("2026-05-11T10:00:00.000Z");
+    const mobileBill = toMobileBill(makeBill({
+      releasedAt,
+      utilityDispatch: {
+        electricity: { state: "sent", issuedAt: new Date("2026-05-10"), dueDate: new Date("2026-05-20") },
+        water: { state: "sent", issuedAt: new Date("2026-05-12"), dueDate: new Date("2026-05-22") },
+      },
+    }));
+    expect(mobileBill.utility_deadlines.electricity.billReleaseDate).toEqual(releasedAt);
+    expect(mobileBill.utility_deadlines.water.billReleaseDate).toEqual(releasedAt);
+    expect(mobileBill.release_date).toEqual(releasedAt);
+    // Period/reading fields stay independent per utility.
+    expect(mobileBill.utility_deadlines.electricity.finalDueDate).not.toEqual(mobileBill.utility_deadlines.water.finalDueDate);
   });
 });
 

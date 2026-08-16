@@ -246,6 +246,29 @@ const billSchema = new mongoose.Schema(
       index: true,
     },
 
+    /**
+     * releasedAt — the immutable timestamp of this bill's first-ever
+     * transition out of "draft" (the moment it first became tenant-
+     * visible). Set exactly once, by syncBillAmounts(), and never
+     * overwritten afterward regardless of how many times syncBillAmounts
+     * subsequently runs (payment updates, resends, additional utility
+     * publishes, overdue processing all call the same function). Distinct
+     * from:
+     *   - issuedAt/sentAt: the "current" issue date, which can legitimately
+     *     move forward as new utility charges are published on top of an
+     *     already-released bill — see getVisibleBillIssuedAt().
+     *   - publicationState above: a draft/published flag that is not
+     *     actually enforced as a tenant-visibility gate anywhere (`status`
+     *     is); kept for backward compatibility, not authoritative here.
+     *   - createdAt/billingCycleStart/dueDate/meter-reading dates: separate
+     *     lifecycle events — never used as a fallback for this field.
+     */
+    releasedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
     /** Payment progress state — independent of whether the bill is overdue. */
     paymentState: {
       type: String,
