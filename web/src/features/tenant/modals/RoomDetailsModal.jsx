@@ -687,6 +687,29 @@ export default function RoomDetailsModal({
                           ₱{securityDepositAmount.toLocaleString()}
                         </span>
                       </div>
+
+                      {/* Prominent Estimated Upfront Move-In Total Card */}
+                      <div
+                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                        style={{
+                          backgroundColor: "var(--primary)",
+                          color: "var(--primary-foreground)",
+                        }}
+                      >
+                        <div>
+                          <p className="text-[11px] font-bold tracking-wider uppercase opacity-90">
+                            Estimated Upfront Move-In Total
+                          </p>
+                          <p className="text-[11px] opacity-85 mt-0.5">
+                            Includes 1st Month Rent + Refundable Deposit{applianceFeesAmount > 0 ? " + Appliances" : ""}
+                          </p>
+                        </div>
+                        <div className="sm:text-right">
+                          <span className="text-2xl font-extrabold tracking-tight tabular-nums">
+                            ₱{calculatedUpfrontTotal.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
                     {totalSavingsAmount > 0 && (
