@@ -1,5 +1,3 @@
-import { jsPDF } from "jspdf";
-
 // ─────────────────────────────────────────────────────────────
 // UNIT SYSTEM  (all mm unless noted)
 // jsPDF text: baseline is BOTTOM of cap-height.
@@ -93,7 +91,7 @@ export async function exportReportPdf({
 } = {}) {
 
   const logoData = await loadImageAsDataURL(logo);
-
+  const { jsPDF } = await import("jspdf");
   const doc = new jsPDF("p", "mm", "a4");
   const W   = doc.internal.pageSize.getWidth();    // 210 mm
   const H   = doc.internal.pageSize.getHeight();   // 297 mm

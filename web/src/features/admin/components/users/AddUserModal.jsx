@@ -1,7 +1,44 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { Sparkles, Copy, Check } from "lucide-react";
 import BaseModal from "../../../../shared/components/BaseModal";
 import PasswordVisibilityButton from "../../../../shared/components/PasswordVisibilityButton";
 import { BRANCH_OPTIONS } from "../../../../shared/utils/constants";
+import { showNotification } from "../../../../shared/utils/notification";
+
+function generateSecurePassword() {
+  const lowercase = "abcdefghjkmnpqrstuvwxyz";
+  const uppercase = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const numbers = "23456789";
+  const symbols = "!@#$%^&*()_+-=";
+  const all = lowercase + uppercase + numbers + symbols;
+
+  let pwd = "";
+  pwd += lowercase[Math.floor(Math.random() * lowercase.length)];
+  pwd += uppercase[Math.floor(Math.random() * uppercase.length)];
+  pwd += numbers[Math.floor(Math.random() * numbers.length)];
+  pwd += symbols[Math.floor(Math.random() * symbols.length)];
+
+  for (let i = 4; i < 12; i++) {
+    pwd += all[Math.floor(Math.random() * all.length)];
+  }
+
+  // Shuffle characters
+  return pwd.split("").sort(() => 0.5 - Math.random()).join("");
+}
+
+function getPasswordStrength(pwd) {
+  if (!pwd) return { score: 0, label: "", color: "transparent" };
+  let score = 0;
+  if (pwd.length >= 6) score += 1;
+  if (pwd.length >= 10) score += 1;
+  if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score += 1;
+  if (/\d/.test(pwd)) score += 1;
+  if (/[^A-Za-z0-9]/.test(pwd)) score += 1;
+
+  if (score <= 2) return { score: 1, label: "Weak", color: "var(--danger)" };
+  if (score <= 4) return { score: 2, label: "Moderate", color: "var(--warning)" };
+  return { score: 3, label: "Strong", color: "var(--success)" };
+}
 
 export default function AddUserModal({
   addForm,
@@ -13,8 +50,20 @@ export default function AddUserModal({
   onClose,
 }) {
   const [showPassword, setShowPassword] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [touched, setTouched] = useState({});
+  const usernameInputRef = useRef(null);
 
   const isBranchRequired = addForm.role === "branch_admin";
+  const passwordStrength = getPasswordStrength(addForm.password);
+
+  useEffect(() => {
+    usernameInputRef.current?.focus();
+  }, []);
+
+  const handleBlur = (field) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+  };
 
   const handlePhoneChange = (e) => {
     let val = e.target.value;
@@ -31,111 +80,182 @@ export default function AddUserModal({
     onFormChange("phone", val);
   };
 
+  const handleGeneratePassword = (e) => {
+    e.preventDefault();
+    const newPassword = generateSecurePassword();
+    onFormChange("password", newPassword);
+    setShowPassword(true);
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(newPassword).then(() => {
+        setCopied(true);
+        showNotification("Strong password generated & copied to clipboard", "info", 3000);
+        setTimeout(() => setCopied(false), 2500);
+      }).catch(() => {});
+    }
+  };
+
+  const handleSafeClose = () => {
+    const isDirty =
+      addForm.username ||
+      addForm.email ||
+      addForm.firstName ||
+      addForm.lastName ||
+      addForm.password ||
+      addForm.phone;
+
+    if (isDirty) {
+      if (window.confirm("You have unsaved changes. Are you sure you want to discard them?")) {
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
   return (
     <BaseModal
       isOpen={true}
-      onClose={onClose}
+      onClose={handleSafeClose}
       title="Add New User"
       subtitle="Create a new user account in the system"
       variant="primary"
       size="md"
       onConfirm={onSubmit}
-      confirmText={isCreating ? "Creating..." : "Create User"}
+      confirmText={isCreating ? "Creating Account..." : "Create User"}
       cancelText="Cancel"
       loading={isCreating}
     >
       <form onSubmit={onSubmit} className="modal-form" style={{ display: "grid", gap: 14 }}>
         <div className="form-row">
-          <div className={`form-group ${addFormErrors.username ? "has-error" : ""}`}>
-            <label>Username *</label>
+          <div className={`form-group ${touched.username && addFormErrors.username ? "has-error" : ""}`}>
+            <div className="flex items-center justify-between">
+              <label>Username *</label>
+              <span className="text-[11px] text-muted-foreground">
+                {(addForm.username || "").length}/30
+              </span>
+            </div>
             <input
+              ref={usernameInputRef}
               type="text"
               value={addForm.username}
               onChange={(e) => onFormChange("username", e.target.value)}
+              onBlur={() => handleBlur("username")}
               required
               maxLength={30}
-              placeholder="john_doe"
+              placeholder="e.g. john_doe"
             />
-            {addFormErrors.username && (
+            {touched.username && addFormErrors.username && (
               <span className="field-error">{addFormErrors.username}</span>
             )}
           </div>
-          <div className={`form-group ${addFormErrors.email ? "has-error" : ""}`}>
-            <label>Email *</label>
+          <div className={`form-group ${touched.email && addFormErrors.email ? "has-error" : ""}`}>
+            <div className="flex items-center justify-between">
+              <label>Email Address *</label>
+              <span className="text-[11px] text-muted-foreground">
+                {(addForm.email || "").length}/100
+              </span>
+            </div>
             <input
               type="email"
               value={addForm.email}
               onChange={(e) => onFormChange("email", e.target.value)}
+              onBlur={() => handleBlur("email")}
               required
               maxLength={100}
               placeholder="user@example.com"
             />
-            {addFormErrors.email && (
+            {touched.email && addFormErrors.email && (
               <span className="field-error">{addFormErrors.email}</span>
             )}
           </div>
         </div>
 
         <div className="form-row">
-          <div className={`form-group ${addFormErrors.firstName ? "has-error" : ""}`}>
-            <label>First Name *</label>
+          <div className={`form-group ${touched.firstName && addFormErrors.firstName ? "has-error" : ""}`}>
+            <div className="flex items-center justify-between">
+              <label>First Name *</label>
+              <span className="text-[11px] text-muted-foreground">
+                {(addForm.firstName || "").length}/50
+              </span>
+            </div>
             <input
               type="text"
               value={addForm.firstName}
               onChange={(e) => onFormChange("firstName", e.target.value)}
+              onBlur={() => handleBlur("firstName")}
               required
               maxLength={50}
               placeholder="John"
             />
-            {addFormErrors.firstName && (
+            {touched.firstName && addFormErrors.firstName && (
               <span className="field-error">{addFormErrors.firstName}</span>
             )}
           </div>
-          <div className={`form-group ${addFormErrors.lastName ? "has-error" : ""}`}>
-            <label>Last Name *</label>
+          <div className={`form-group ${touched.lastName && addFormErrors.lastName ? "has-error" : ""}`}>
+            <div className="flex items-center justify-between">
+              <label>Last Name *</label>
+              <span className="text-[11px] text-muted-foreground">
+                {(addForm.lastName || "").length}/50
+              </span>
+            </div>
             <input
               type="text"
               value={addForm.lastName}
               onChange={(e) => onFormChange("lastName", e.target.value)}
+              onBlur={() => handleBlur("lastName")}
               required
               maxLength={50}
               placeholder="Doe"
             />
-            {addFormErrors.lastName && (
+            {touched.lastName && addFormErrors.lastName && (
               <span className="field-error">{addFormErrors.lastName}</span>
             )}
           </div>
         </div>
 
         <div className="form-row">
-          <div className={`form-group ${addFormErrors.phone ? "has-error" : ""}`}>
-            <label>Phone</label>
+          <div className={`form-group ${touched.phone && addFormErrors.phone ? "has-error" : ""}`}>
+            <label>Mobile Number</label>
             <input
               type="tel"
               inputMode="numeric"
               value={addForm.phone || ""}
               onChange={handlePhoneChange}
-              placeholder="e.g. 09171234567 or 9171234567"
+              onBlur={() => handleBlur("phone")}
+              placeholder="e.g. 0917 123 4567"
               maxLength={addForm.phone?.startsWith("+") ? 13 : addForm.phone?.startsWith("0") ? 11 : 10}
             />
             {!addFormErrors.phone && (
-              <span style={{ fontSize: "11px", color: "#6b7280", marginTop: "3px", display: "block" }}>
-                Format: 10 digits starting with 9, or 11 digits starting with 09
+              <span style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: "2px", display: "block" }}>
+                11 digits starting with 09 (or 10 digits starting with 9)
               </span>
             )}
-            {addFormErrors.phone && (
+            {touched.phone && addFormErrors.phone && (
               <span className="field-error">{addFormErrors.phone}</span>
             )}
           </div>
-          <div className={`form-group ${addFormErrors.password ? "has-error" : ""}`}>
-            <label>Password *</label>
+
+          <div className={`form-group ${touched.password && addFormErrors.password ? "has-error" : ""}`}>
+            <div className="flex items-center justify-between">
+              <label>Password *</label>
+              <button
+                type="button"
+                onClick={handleGeneratePassword}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              >
+                {copied ? <Check className="h-3 w-3 text-success" /> : <Sparkles className="h-3 w-3" />}
+                {copied ? "Copied!" : "Generate Strong"}
+              </button>
+            </div>
             <div className="password-field-wrapper" style={{ position: "relative" }}>
               <input
                 type={showPassword ? "text" : "password"}
                 value={addForm.password}
                 onChange={(e) => onFormChange("password", e.target.value)}
+                onBlur={() => handleBlur("password")}
                 required
-                placeholder="Enter a password"
+                placeholder="Enter or generate password"
                 minLength={6}
                 maxLength={100}
                 autoComplete="new-password"
@@ -156,7 +276,26 @@ export default function AddUserModal({
                 onToggle={() => setShowPassword((prev) => !prev)}
               />
             </div>
-            {addFormErrors.password && (
+
+            {/* Password strength indicator */}
+            {addForm.password && (
+              <div className="flex items-center gap-2 mt-1">
+                <div className="flex-1 h-1 rounded-full overflow-hidden bg-muted flex gap-0.5">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: passwordStrength.score === 1 ? "33%" : passwordStrength.score === 2 ? "66%" : "100%",
+                      backgroundColor: passwordStrength.color,
+                    }}
+                  />
+                </div>
+                <span className="text-[10px] font-semibold" style={{ color: passwordStrength.color }}>
+                  {passwordStrength.label}
+                </span>
+              </div>
+            )}
+
+            {touched.password && addFormErrors.password && (
               <span className="field-error">{addFormErrors.password}</span>
             )}
           </div>
@@ -164,7 +303,7 @@ export default function AddUserModal({
 
         <div className="form-row">
           <div className="form-group">
-            <label>Role *</label>
+            <label>Assigned Role *</label>
             <select
               value={addForm.role}
               onChange={(e) => onFormChange("role", e.target.value)}
@@ -174,7 +313,7 @@ export default function AddUserModal({
               {isOwner && <option value="branch_admin">Branch Admin</option>}
             </select>
           </div>
-          <div className={`form-group ${addFormErrors.branch ? "has-error" : ""}`}>
+          <div className={`form-group ${touched.branch && addFormErrors.branch ? "has-error" : ""}`}>
             <label>
               Branch {isBranchRequired ? "*" : "(Optional)"}
             </label>
@@ -182,6 +321,7 @@ export default function AddUserModal({
               <select
                 value={addForm.branch || ""}
                 onChange={(e) => onFormChange("branch", e.target.value)}
+                onBlur={() => handleBlur("branch")}
                 required={isBranchRequired}
               >
                 <option value="">
@@ -198,7 +338,7 @@ export default function AddUserModal({
                 {addForm.branch ? addForm.branch : "Auto-assigned to your branch"}
               </div>
             )}
-            {addFormErrors.branch && (
+            {touched.branch && addFormErrors.branch && (
               <span className="field-error">{addFormErrors.branch}</span>
             )}
           </div>
@@ -208,14 +348,14 @@ export default function AddUserModal({
         <div
           className="rounded-lg p-3 text-xs flex items-center gap-2 mt-1"
           style={{
-            backgroundColor: "var(--card-secondary, rgba(255,255,255,0.04))",
-            border: "1px solid var(--color-border-default)",
+            backgroundColor: "var(--muted)",
+            border: "1px solid var(--border)",
             borderRadius: "6px",
           }}
         >
-          <span style={{ fontSize: "15px" }}>✉️</span>
-          <span style={{ color: "var(--color-text-secondary)" }}>
-            A welcome email with a password setup link will be automatically sent to the user's inbox upon creation.
+          <span style={{ fontSize: "14px" }}>✉️</span>
+          <span style={{ color: "var(--muted-foreground)" }}>
+            A welcome notification with account credentials and sign-in instructions will be sent to the user's registered email address.
           </span>
         </div>
       </form>

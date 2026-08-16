@@ -2,6 +2,7 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
+import { PDFDocument } from "pdf-lib";
 import { transitionContract } from "./contractService.js";
 import { validateSignedDocumentUpload } from "./contractSigningService.js";
 
@@ -237,4 +238,105 @@ export const rejectNotarizedContract = async ({
   contract.notarizedMimeType = null;
   await contract.save();
   return contract;
+};
+
+export const uploadAndFinalizeNotarizedContract = async ({
+  contract, file, actorId, replacementReason = "", preparedDocumentVersion,
+  notarialDetails = {}, notes = "",
+}) => {
+  // 1. Upload the notarized copy into notarizedDocuments[]
+  const document = await uploadNotarizedContract({
+    contract,
+    file,
+    actorId,
+    replacementReason,
+    preparedDocumentVersion: preparedDocumentVersion || contract.generatedVersion,
+    notarialDetails,
+  });
+
+  // 2. Count pages from the uploaded file
+  let pageCount = 1;
+  try {
+    const pdfDoc = await PDFDocument.load(file.buffer, { updateMetadata: false });
+    pageCount = pdfDoc.getPageCount();
+  } catch (_) {
+    pageCount = 1;
+  }
+
+  // 3. Mark the notarized document verified immediately
+  const now = new Date();
+  document.verifiedAt = now;
+  document.verifiedBy = actorId;
+  document.verificationNotes = clean(notes, 2000) || "Auto-verified upon single-action final notarized upload";
+  document.verificationChecklist = {
+    contractNumberMatches: true,
+    tenantLegalNameMatches: true,
+    assignmentMatches: true,
+    leaseDatesMatch: true,
+    currentPreparedContractUsed: true,
+    tenantWetSignatureVisible: true,
+    lessorWetSignatureVisible: true,
+    witnessSignaturesVisible: true,
+    acknowledgmentCompleted: true,
+    notarySignatureVisible: true,
+    notarialSealVisible: true,
+    notarizationDateVisible: true,
+    notarizationPlaceVisible: true,
+    documentNumberCompleted: true,
+    pageNumberCompleted: true,
+    bookNumberCompleted: true,
+    seriesCompleted: true,
+    allPagesPresent: true,
+    scanReadable: true,
+    noPageCropped: true,
+    noPageMissing: true,
+    legalWordingUnchanged: true,
+    noUnauthorizedAlteration: true,
+  };
+
+  contract.notarizationVerifiedAt = now;
+  contract.notarizationVerifiedBy = actorId;
+  contract.notarizationVerificationNotes = document.verificationNotes;
+  contract.notarizationVerificationChecklist = document.verificationChecklist;
+
+  // 4. Establish finalDocument
+  contract.finalDocument = {
+    storageKey: document.storageKey,
+    fileName: document.fileName,
+    fileHash: document.fileHash,
+    fileSize: document.fileSize,
+    mimeType: document.mimeType,
+    pageCount,
+    sourceType: "notarized",
+    sourceVersion: document.version,
+    sourceUploadedAt: document.uploadedAt,
+    sourceVerifiedAt: now,
+    sourceVerifiedBy: actorId,
+    publishedAt: now,
+    publishedBy: actorId,
+    tenantVisible: true,
+  };
+  contract.finalStorageKey = document.storageKey;
+  contract.publishedAt = now;
+  contract.publishedBy = actorId;
+  contract.publicationNotes = clean(notes, 2000) || "Published via simplified final notarized contract upload";
+  contract.tenantVisible = true;
+  contract.isCanonical = contract.duplicateOfContractId ? false : true;
+  contract.publicationStatus = "published";
+  contract.readyForPublicationAt = now;
+  contract.readyForPublicationBy = actorId;
+
+  // 5. Transition to active status
+  await transitionContract(
+    contract,
+    "active",
+    actorId,
+    "Final signed and notarized Contract uploaded and activated for tenant access",
+  );
+
+  return {
+    contract,
+    document,
+    finalDocument: contract.finalDocument,
+  };
 };

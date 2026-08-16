@@ -94,10 +94,29 @@ router.get("/contracts/:contractId/documents/final", mobileTenant, asyncRoute(as
 router.get("/documents/contract", mobileTenant, asyncRoute(async (req, res) => {
   const contract = await ownedCurrentContract(req.mobileTenant._id);
   if (!contract) return res.status(404).json({ detail: "Contract is being prepared." });
+
+  // If finalDocument is available and verified, stream the final notarized PDF
+  if (contract.finalDocument && Boolean(contract.notarizationVerifiedAt)) {
+    try {
+      const resolved = await resolvePublishedFinalDocument(contract);
+      const download = req.query.download === "1";
+      res.setHeader("Content-Type", resolved.finalDocument.mimeType || "application/pdf");
+      res.setHeader("Content-Length", resolved.finalDocument.fileSize);
+      res.setHeader("Content-Disposition", `${download ? "attachment" : "inline"}; filename="${resolved.finalDocument.fileName.replaceAll('"', "")}"`);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("Pragma", "no-cache");
+      return fs.createReadStream(resolved.absolutePath).pipe(res);
+    } catch (_) {
+      // Fall through to prepared document if final fails to resolve
+    }
+  }
+
+  // Otherwise stream the current prepared draft
   const { document, size, createReadStream } = await resolveCurrentPreparedDocument(contract);
+  const disposition = req.query.download === "1" ? "attachment" : "inline";
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Length", size);
-  res.setHeader("Content-Disposition", `attachment; filename="${document.fileName.replaceAll('"', "")}"`);
+  res.setHeader("Content-Disposition", `${disposition}; filename="${document.fileName.replaceAll('"', "")}"`);
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("Pragma", "no-cache");
   return createReadStream().pipe(res);

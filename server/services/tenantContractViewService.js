@@ -1,3 +1,7 @@
+import { resolveContractDisplayLifecycle } from "./contractPublicationService.js";
+import { selectCurrentPreparedDocument } from "./preparedContractDocumentService.js";
+import { resolveTenantContractDocument } from "./tenantContractDocumentResolver.js";
+
 const STATUS_LABELS = Object.freeze({
   draft: "Contract is being prepared.",
   incomplete: "Contract is being prepared.",
@@ -40,6 +44,7 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
     && contract.tenantVisible === true
     && Boolean(contract.finalDocument);
   const displayLifecycle = resolveContractDisplayLifecycle(contract, now);
+  const resolvedTenantDoc = resolveTenantContractDocument(contract);
 
   const id = String(contract._id || contract.id);
   const preparedDocument = {
@@ -140,6 +145,28 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
     preparedDocumentFileName: preparedDocument.fileName,
     preparedDocumentFileSize: preparedDocument.fileSize,
     preparedDocumentPageCount: preparedDocument.pageCount,
+    tenantDocument: {
+      available: resolvedTenantDoc.available,
+      type: resolvedTenantDoc.type,
+      label: resolvedTenantDoc.label,
+      isFinal: resolvedTenantDoc.isFinal,
+      version: resolvedTenantDoc.version,
+      fileName: resolvedTenantDoc.fileName,
+      fileSize: resolvedTenantDoc.fileSize,
+      pageCount: resolvedTenantDoc.pageCount,
+      generatedAt: resolvedTenantDoc.generatedAt,
+      publishedAt: resolvedTenantDoc.publishedAt,
+      viewUrl: resolvedTenantDoc.available
+        ? (resolvedTenantDoc.type === "final_notarized"
+            ? `${documentBasePath}/${id}/documents/final`
+            : `${documentBasePath}/${id}/documents/prepared`)
+        : null,
+      downloadUrl: resolvedTenantDoc.available
+        ? (resolvedTenantDoc.type === "final_notarized"
+            ? `${documentBasePath}/${id}/documents/final?download=1`
+            : `${documentBasePath}/${id}/documents/prepared?download=1`)
+        : null,
+    },
     finalDocument: {
       available: finalPublished,
       publishedAt: finalPublished ? contract.finalDocument.publishedAt || contract.publishedAt || null : null,
@@ -164,5 +191,3 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
       })),
   };
 };
-import { resolveContractDisplayLifecycle } from "./contractPublicationService.js";
-import { selectCurrentPreparedDocument } from "./preparedContractDocumentService.js";

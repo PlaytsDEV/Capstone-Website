@@ -163,6 +163,13 @@ router.post(
   maintenanceController.suggestAdminMaintenanceProvider,
 );
 router.post(
+  "/admin/:requestId/rate-provider",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.rateAdminMaintenanceProvider,
+);
+router.post(
   "/admin/:requestId/attachments",
   verifyAdmin,
   filterByBranch,

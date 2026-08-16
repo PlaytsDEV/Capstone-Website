@@ -388,8 +388,8 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
     if (!file) return;
     const replacing = (contract?.notarizedDocuments?.length || 0) > 0;
     showWorkflow({
-      title: replacing ? "Replace Signed and Notarized Copy" : "Upload Signed and Notarized Copy",
-      message: "Optional notarial details must be copied only from the physical paper.",
+      title: replacing ? "Replace Final Notarized Copy" : "Upload Final Notarized Contract",
+      message: "Upload the completed physical contract signed by all parties and notarized by the notary public. This will immediately establish the official Final Contract.",
       fields: [
         ...(replacing ? [{ key: "replacementReason", label: "Replacement reason", type: "textarea", required: true }] : []),
         { key: "notarizedAt", label: "Notarization date", type: "date" },
@@ -398,13 +398,13 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
         { key: "documentNumber", label: "Doc. No." }, { key: "pageNumber", label: "Page No." },
         { key: "bookNumber", label: "Book No." }, { key: "seriesYear", label: "Series year", type: "number" },
       ],
-      checks: [{ key: "confirmed", label: "I selected the scan that corresponds to the current prepared Contract." }],
-      submitLabel: replacing ? "Replace Copy" : "Upload Copy",
+      checks: [{ key: "confirmed", label: "I confirm that this document is physically signed and officially notarized." }],
+      submitLabel: replacing ? "Replace Final Contract" : "Upload Final Contract",
       onSubmit: (values) => {
         const { replacementReason, confirmed: _confirmed, ...notarialDetails } = values;
-        return runAction("notarized-upload", () => contractApi.uploadNotarizedContract(
+        return runAction("notarized-upload", () => contractApi.uploadFinalNotarizedContract(
           contractId, file, currentVersion, replacementReason?.trim(), notarialDetails,
-        ), "Signed-and-notarized Contract copy uploaded for verification.");
+        ), "Final signed and notarized Contract uploaded and activated.");
       },
     });
   };
@@ -664,10 +664,10 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
             {["generated", "awaiting_signatures", "partially_signed", "signed", "awaiting_notarization"]
               .includes(contract.status) && <>
               <input ref={notarizedInput} hidden type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={uploadNotarized}/>
-              <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => notarizedInput.current?.click()}>
-                <Upload size={16}/>{currentNotarized ? "Replace Signed and Notarized Copy" : "Upload Signed and Notarized Copy"}
+              <button className="contract-button" disabled={busy} onClick={() => notarizedInput.current?.click()}>
+                <Upload size={16}/>{contract.finalDocument ? "Replace Final Notarized Contract" : currentNotarized ? "Replace Signed and Notarized Copy" : "Upload Signed and Notarized Copy"}
               </button>
-              {currentNotarized && <>
+              {currentNotarized && !contract.finalDocument && <>
                 <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => openNotarized(false)}><Eye size={16}/>Preview</button>
                 <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => openNotarized(true)}><Download size={16}/>Download</button>
                 <button className="contract-button" disabled={busy} onClick={verifyNotarized}><FileCheck2 size={16}/>Verify Signed and Notarized Copy</button>

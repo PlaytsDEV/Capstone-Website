@@ -29,9 +29,13 @@ import { validate } from "../validation/validate.js";
 import { createInquirySchema } from "../validation/schemas.js";
 import {
   getInquiryStats,
+  getKanbanBoard,
+  getMarketingRoi,
   getInquiriesByBranch,
   getInquiries,
   getInquiryById,
+  convertToApplication,
+  scheduleViewing,
   createInquiry,
   updateInquiry,
   deleteInquiry,
@@ -40,7 +44,7 @@ import {
 const router = express.Router();
 
 // ============================================================================
-// STATISTICS ENDPOINT (must be before /:id route)
+// DEDICATED ADMIN REPORT & KANBAN ENDPOINTS (must be before /:id route)
 // ============================================================================
 
 /**
@@ -51,6 +55,24 @@ const router = express.Router();
  * Access: Admin (filtered by branch) | Owner (all branches)
  */
 router.get("/stats", verifyToken, verifyAdmin, filterByBranch, getInquiryStats);
+
+/**
+ * GET /api/inquiries/kanban
+ *
+ * Get inquiry kanban board grouped into stages (new, viewing, converted).
+ *
+ * Access: Admin (filtered by branch) | Owner (all branches)
+ */
+router.get("/kanban", verifyToken, verifyAdmin, filterByBranch, getKanbanBoard);
+
+/**
+ * GET /api/inquiries/marketing-roi
+ *
+ * Get lead generation and conversion ROI metrics grouped by marketing channel.
+ *
+ * Access: Admin (filtered by branch) | Owner (all branches)
+ */
+router.get("/marketing-roi", verifyToken, verifyAdmin, filterByBranch, getMarketingRoi);
 
 // ============================================================================
 // GET INQUIRIES BY BRANCH (Owner only)
@@ -86,6 +108,28 @@ router.get("/branch/:branch", verifyToken, verifyOwner, getInquiriesByBranch);
  * - order: Sort order (asc/desc, default: desc)
  */
 router.get("/", verifyToken, verifyAdmin, filterByBranch, getInquiries);
+
+// ============================================================================
+// CONVERT INQUIRY TO APPLICATION (Must be before /:id generic handler)
+// ============================================================================
+
+/**
+ * POST /api/inquiries/:id/convert
+ *
+ * Convert an inquiry into a tenant reservation application.
+ *
+ * Access: Admin (must be from their branch) | Owner (any inquiry)
+ */
+router.post("/:id/convert", verifyToken, verifyAdmin, filterByBranch, convertToApplication);
+
+/**
+ * POST /api/inquiries/:id/viewing
+ *
+ * Schedule or update viewing date/time for an inquiry.
+ *
+ * Access: Admin (must be from their branch) | Owner (any inquiry)
+ */
+router.post("/:id/viewing", verifyToken, verifyAdmin, filterByBranch, scheduleViewing);
 
 // ============================================================================
 // GET SINGLE INQUIRY

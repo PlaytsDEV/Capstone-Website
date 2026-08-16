@@ -35,6 +35,7 @@ import {
   AdminDashboardSkeleton,
   AdminTablePageSkeleton,
   AdminCardGridSkeleton,
+  AdminMaintenanceSkeleton,
   AdminFormPageSkeleton,
   AdminChatSkeleton,
 } from "../../features/admin/components/AdminContentSkeletons";
@@ -139,7 +140,7 @@ export function AdminRoutes() {
       <Route
         path="maintenance"
         element={
-          <RouteShell name="AdminMaintenance" fallback={<AdminCardGridSkeleton />}>
+          <RouteShell name="AdminMaintenance" fallback={<AdminMaintenanceSkeleton />}>
             <MaintenancePage />
           </RouteShell>
         }

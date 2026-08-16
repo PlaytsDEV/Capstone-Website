@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import { Coins, Save } from "lucide-react";
 import { showNotification } from "../../../../../shared/utils/notification";
 import { useUpdateMaintenanceCost } from "../../../../../shared/hooks/queries/useMaintenance";
-import { getMaintenanceApiErrorMessage, sanitizeAmountInput } from "../maintenanceUtils";
+import {
+  getMaintenanceApiErrorMessage,
+  MAX_MAINTENANCE_ITEM_COST,
+  sanitizeAmountInput,
+} from "../maintenanceUtils";
 
 export function CostAttributionCard({ request, disabled = false }) {
   const updateCostMutation = useUpdateMaintenanceCost();
@@ -33,11 +37,20 @@ export function CostAttributionCard({ request, disabled = false }) {
     }
   }, [request]);
 
-  const numLabor = Math.max(0, Number(laborCost) || 0);
-  const numMaterials = Math.max(0, Number(materialsCost) || 0);
+  const numLabor = Math.min(MAX_MAINTENANCE_ITEM_COST, Math.max(0, Number(laborCost) || 0));
+  const numMaterials = Math.min(MAX_MAINTENANCE_ITEM_COST, Math.max(0, Number(materialsCost) || 0));
   const totalCost = numLabor + numMaterials;
 
   const handleSaveCost = async () => {
+    if (numLabor > MAX_MAINTENANCE_ITEM_COST || numMaterials > MAX_MAINTENANCE_ITEM_COST) {
+      showNotification({
+        title: "Invalid Amount",
+        message: `Maximum allowable cost per item is PHP ${MAX_MAINTENANCE_ITEM_COST.toLocaleString("en-PH")}.`,
+        type: "error",
+      });
+      return;
+    }
+
     try {
       await updateCostMutation.mutateAsync({
         requestId: request.request_id,
@@ -45,13 +58,13 @@ export function CostAttributionCard({ request, disabled = false }) {
           laborCost: numLabor,
           materialsCost: numMaterials,
           isTenantChargeable,
-          chargeReason: isTenantChargeable ? chargeReason.trim() : null,
+          chargeReason: isTenantChargeable ? chargeReason.trim().slice(0, 250) : null,
         },
       });
 
       showNotification({
         title: "Cost Saved",
-        message: `Maintenance cost recorded at PHP ${totalCost.toLocaleString("en-PH", { minimumFractionDigits: 2 })}.`,
+        message: `Maintenance cost recorded at PHP ${totalCost.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`,
         type: "success",
       });
     } catch (err) {
@@ -88,40 +101,50 @@ export function CostAttributionCard({ request, disabled = false }) {
       <div className="grid grid-cols-3 gap-2.5 items-end">
         {/* Labor Cost */}
         <div className="space-y-1">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Labor Cost
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Labor Cost
+            </label>
+            <span className="text-[10px] text-slate-400">Max 500k</span>
+          </div>
           <div className="relative rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition">
             <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-xs font-bold text-slate-400">
               ₱
             </span>
             <input
               type="text"
+              inputMode="decimal"
+              maxLength={9}
               value={laborCost}
               onChange={(e) => setLaborCost(sanitizeAmountInput(e.target.value))}
               disabled={disabled || updateCostMutation.isPending}
               placeholder="0.00"
-              className="h-9 w-full rounded-lg bg-transparent pl-6 pr-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none disabled:opacity-50"
+              className="h-9 w-full rounded-lg bg-transparent pl-6 pr-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 font-mono"
             />
           </div>
         </div>
 
         {/* Materials Cost */}
         <div className="space-y-1">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Materials Cost
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Materials Cost
+            </label>
+            <span className="text-[10px] text-slate-400">Max 500k</span>
+          </div>
           <div className="relative rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition">
             <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-xs font-bold text-slate-400">
               ₱
             </span>
             <input
               type="text"
+              inputMode="decimal"
+              maxLength={9}
               value={materialsCost}
               onChange={(e) => setMaterialsCost(sanitizeAmountInput(e.target.value))}
               disabled={disabled || updateCostMutation.isPending}
               placeholder="0.00"
-              className="h-9 w-full rounded-lg bg-transparent pl-6 pr-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none disabled:opacity-50"
+              className="h-9 w-full rounded-lg bg-transparent pl-6 pr-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 font-mono"
             />
           </div>
         </div>
@@ -131,10 +154,10 @@ export function CostAttributionCard({ request, disabled = false }) {
           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
             Total Expense
           </label>
-          <div className="flex h-9 items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-2.5">
-            <span className="text-[9px] font-bold text-slate-400 uppercase">Total</span>
-            <span className="text-xs font-bold text-slate-900 dark:text-slate-100 font-mono truncate">
-              PHP {totalCost.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <div className="flex h-9 items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-2.5 min-w-0">
+            <span className="text-[9px] font-bold text-slate-400 uppercase shrink-0">PHP</span>
+            <span className="text-xs font-bold text-slate-900 dark:text-slate-100 font-mono truncate text-right ml-1">
+              ₱{totalCost.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
         </div>
@@ -169,11 +192,15 @@ export function CostAttributionCard({ request, disabled = false }) {
 
         {isTenantChargeable && (
           <div className="space-y-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-            <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-              Reason for resident damage charge
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                Reason for resident damage charge
+              </label>
+              <span className="text-[10px] text-slate-400">{chargeReason.length}/250</span>
+            </div>
             <input
               type="text"
+              maxLength={250}
               value={chargeReason}
               onChange={(e) => setChargeReason(e.target.value)}
               disabled={disabled || updateCostMutation.isPending}
@@ -186,3 +213,4 @@ export function CostAttributionCard({ request, disabled = false }) {
     </div>
   );
 }
+

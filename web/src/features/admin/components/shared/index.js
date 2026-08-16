@@ -18,3 +18,4 @@ export { default as AnalyticsLineChart } from "./AnalyticsLineChart";
 export { default as AnalyticsBarChart } from "./AnalyticsBarChart";
 export { default as AnalyticsDonutChart } from "./AnalyticsDonutChart";
 export { default as AnalyticsComparisonChart } from "./AnalyticsComparisonChart";
+export { default as PeriodComparisonCard } from "./PeriodComparisonCard";

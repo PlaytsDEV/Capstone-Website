@@ -20,6 +20,7 @@ import {
   useSendMaintenanceTenantSummary,
   useServiceProviders,
   useSuggestMaintenanceProvider,
+  useRateMaintenanceProvider,
   useUpdateMaintenanceRequest,
 } from "../../../../../shared/hooks/queries/useMaintenance";
 import { maintenanceApi } from "../../../../../shared/api/maintenanceApi";
@@ -281,6 +282,7 @@ export function useMaintenanceData() {
   const generateReportMutation = useGenerateMaintenanceReport();
   const sendTenantSummaryMutation = useSendMaintenanceTenantSummary();
   const suggestProviderMutation = useSuggestMaintenanceProvider();
+  const rateProviderMutation = useRateMaintenanceProvider();
 
   const requests = requestsData?.requests || [];
   const summaryRequests = summaryData?.requests || requests;
@@ -520,5 +522,6 @@ export function useMaintenanceData() {
     generateReportMutation,
     sendTenantSummaryMutation,
     suggestProviderMutation,
+    rateProviderMutation,
   };
 }

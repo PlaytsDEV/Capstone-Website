@@ -26,7 +26,7 @@ const ERROR_MAP = [
 
   // MongoDB / database
   [/E11000|duplicate\s*key/i, "This record already exists. Please use different details."],
-  [/cast\s*to\s*objectid/i, "The requested item could not be found."],
+  [/cast\s*to\s*objectid|invalid.*id|invalid.*identifier/i, "The requested item could not be found or has an invalid identifier."],
   [/validation\s*failed/i, "Some required information is missing. Please check your input."],
 
   // Not found

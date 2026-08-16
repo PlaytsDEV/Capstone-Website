@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useEffect } from "react";
-import { Download, FileDown, Search, Filter, RotateCcw, ChevronDown, FileSpreadsheet, FileText, LoaderCircle } from "lucide-react";
+import { Download, FileDown, Search, Filter, RotateCcw, ChevronDown, FileSpreadsheet, FileText, LoaderCircle, Sparkles } from "lucide-react";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { exportReportPdf } from "../../../shared/utils/reportPdf";
 import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
@@ -190,12 +190,17 @@ export function ExportButtons({ onCsv, onPdf, disabled = false, loading = false,
 
 export function MetricGrid({ items }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
       {items.map((item) => (
         <ReportMetricCard
           key={item.label}
+          icon={item.icon}
           label={item.label}
           value={item.value}
+          trend={item.trend}
+          change={item.change}
+          changeType={item.changeType}
+          note={item.note}
           tone={item.tone}
           onClick={item.onClick}
         />
@@ -203,6 +208,7 @@ export function MetricGrid({ items }) {
     </div>
   );
 }
+
 
 export function buildBranchControl({ isOwner, branch, onChange }) {
   if (!isOwner) return null;
@@ -241,19 +247,72 @@ export function AnalyticsInsightSection({
   isLoading,
   isError,
 }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const insight = data?.insight;
+
+  if (!isLoading && !isError && !insight) {
+    return null;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="mb-6 p-3.5 rounded-xl bg-card border border-border flex items-center gap-3 text-xs text-muted-foreground">
+        <LoaderCircle size={14} className="animate-spin text-primary" />
+        <span>Synthesizing AI analysis for this {reportLabel} report...</span>
+      </div>
+    );
+  }
+
+  if (isError || !insight) return null;
+
   return (
-    <ReportChartPanel
-      title="AI summary"
-      subtitle={`AI-generated insight for this ${reportLabel} report`}
-    >
-      <AnalyticsInsightPanel
-        title={summaryTitle}
-        subtitle="AI-generated report insight"
-        data={data}
-        isLoading={isLoading}
-        isError={isError}
-      />
-    </ReportChartPanel>
+    <div className="mb-6 rounded-xl bg-card border border-border overflow-hidden transition-all shadow-xs">
+      <div
+        className="px-4 py-3 bg-muted/40 flex items-center justify-between cursor-pointer border-b border-border"
+        onClick={() => setCollapsed((prev) => !prev)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setCollapsed((prev) => !prev);
+          }
+        }}
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="w-6 h-6 rounded-md bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
+            <Sparkles size={13} />
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold text-foreground tracking-tight">
+              {summaryTitle || "Executive AI Summary"}
+            </h3>
+            <p className="text-[11px] text-muted-foreground line-clamp-1">
+              {insight.headline || `Key performance observations for ${reportLabel}`}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <span>{collapsed ? "Show Details" : "Hide"}</span>
+          <ChevronDown
+            size={14}
+            className={`transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`}
+          />
+        </div>
+      </div>
+
+      {!collapsed && (
+        <div className="p-4">
+          <AnalyticsInsightPanel
+            title={summaryTitle}
+            subtitle={`AI evaluation • ${insight.confidence || "standard"} confidence`}
+            data={data}
+            isLoading={false}
+            isError={false}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 

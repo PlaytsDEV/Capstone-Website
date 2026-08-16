@@ -209,6 +209,12 @@ export const maintenanceApi = {
       body: JSON.stringify({}),
     }),
 
+  rateAdminProvider: (requestId, payload = {}) =>
+    authFetch(`/maintenance/admin/${requestId}/rate-provider`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
   getServiceProviders: (filters = {}) =>
     authFetch(`/service-providers${buildQueryString(filters)}`),
 

@@ -1047,6 +1047,17 @@ export const serializeMaintenanceRequest = (
     assignedBy: includeInternal ? request.assignedBy ?? null : null,
     assignedByName: includeInternal ? request.assignedByName ?? null : null,
     assignedByRole: includeInternal ? request.assignedByRole ?? null : null,
+    providerRating: includeInternal && request.providerRating?.rating
+      ? {
+          rating: request.providerRating.rating,
+          feedback: request.providerRating.feedback || null,
+          tags: Array.isArray(request.providerRating.tags) ? request.providerRating.tags : [],
+          ratedAt: request.providerRating.ratedAt || null,
+          ratedBy: request.providerRating.ratedBy || null,
+          ratedByName: request.providerRating.ratedByName || null,
+          ratedByRole: request.providerRating.ratedByRole || null,
+        }
+      : null,
     workLog,
     work_log: workLog,
     conversation: includeInternal && Array.isArray(request.conversation)

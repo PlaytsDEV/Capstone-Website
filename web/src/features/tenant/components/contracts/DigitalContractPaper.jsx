@@ -2,8 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import dayjs from "dayjs";
 import advancedFormat from "dayjs/plugin/advancedFormat";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import {
   Download,
   Printer,
@@ -294,6 +292,12 @@ export default function DigitalContractPaper({
         throw new Error("Contract PDF print template not mounted.");
       }
 
+      // Dynamically load html2canvas and jsPDF on demand
+      const [{ default: html2canvas }, jsPdfModule] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+
       // Capture single page at 2x Retina Resolution
       const canvas = await html2canvas(legalPage, {
         scale: 2,
@@ -303,7 +307,7 @@ export default function DigitalContractPaper({
       });
 
       // Create Philippine Legal standard document (8.5in x 13in = 215.9mm x 330.2mm)
-      const DocClass = jsPDF.jsPDF || jsPDF;
+      const DocClass = jsPdfModule.jsPDF || jsPdfModule.default || jsPdfModule;
       const pdf = new DocClass({
         orientation: "portrait",
         unit: "mm",

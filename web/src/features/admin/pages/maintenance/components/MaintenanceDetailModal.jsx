@@ -51,6 +51,7 @@ import { showNotification } from "../../../../../shared/utils/notification";
 import { maintenanceApi } from "../../../../../shared/api/maintenanceApi";
 import { useSaveMaintenanceProof } from "../../../../../shared/hooks/queries/useMaintenance";
 import { ServiceProviderAssignmentPanel } from "./ServiceProviderAssignmentPanel";
+import { ProviderRatingCard } from "./ProviderRatingCard";
 import { CostAttributionCard } from "./CostAttributionCard";
 import { MaintenanceProofInspector } from "./MaintenanceProofInspector";
 import { MaintenanceTimeline } from "./MaintenanceTimeline";
@@ -93,8 +94,10 @@ export function MaintenanceDetailModal({
   onAssignProvider,
   onSuggestProvider,
   onUseProviderSuggestion,
+  onRateProvider,
   isAssigningProvider = false,
   isSuggestingProvider = false,
+  isRatingProvider = false,
   onQuickStatusChange,
   onRemoveAttachment,
   canRemoveAttachments = false,
@@ -575,6 +578,14 @@ export function MaintenanceDetailModal({
                       onAssign={onAssignProvider}
                       onSuggest={onSuggestProvider}
                       onUseSuggestion={onUseProviderSuggestion}
+                    />
+
+                    {/* Contractor Performance Rating Card */}
+                    <ProviderRatingCard
+                      request={request}
+                      isSubmitting={isRatingProvider}
+                      onSubmitRating={onRateProvider}
+                      disabled={isLocked && Boolean(request?.providerRating?.rating)}
                     />
                   </div>
                 </div>

@@ -1198,11 +1198,22 @@ export const updateAdminMaintenanceCost = async (req, res, next) => {
     ensureAdminAccess(request, req);
     const adminUser = await getDbUser(req.user.uid);
 
-    const laborCost = Math.max(0, Number(req.body?.laborCost) || 0);
-    const materialsCost = Math.max(0, Number(req.body?.materialsCost) || 0);
+    const rawLabor = Number(req.body?.laborCost);
+    const rawMaterials = Number(req.body?.materialsCost);
+
+    if (
+      (req.body?.laborCost !== undefined && (isNaN(rawLabor) || rawLabor < 0 || rawLabor > 500000)) ||
+      (req.body?.materialsCost !== undefined && (isNaN(rawMaterials) || rawMaterials < 0 || rawMaterials > 500000))
+    ) {
+      return sendError(res, 400, "Cost amounts must be non-negative and cannot exceed PHP 500,000.00.");
+    }
+
+    const laborCost = Math.min(500000, Math.max(0, rawLabor || 0));
+    const materialsCost = Math.min(500000, Math.max(0, rawMaterials || 0));
     const totalCost = laborCost + materialsCost;
     const isTenantChargeable = Boolean(req.body?.isTenantChargeable);
-    const chargeReason = toOptionalText(req.body?.chargeReason);
+    const rawReason = toOptionalText(req.body?.chargeReason);
+    const chargeReason = rawReason ? rawReason.slice(0, 300) : null;
 
     request.estimatedCost = totalCost;
     request.actualCost = totalCost;
@@ -1407,6 +1418,112 @@ export const finalizeAdminMaintenanceReport = async (req, res, next) => {
         request.toObject(),
         serializeTenantSummary(tenantUser, request),
       ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/rate-provider
+ * Admin rates an assigned service provider (1-5 stars) and optionally leaves feedback.
+ * Updates the provider's running average internal rating and usage count.
+ */
+export const rateAdminMaintenanceProvider = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    if (request.isArchived) {
+      throw new AppError(
+        "Archived maintenance requests cannot be rated.",
+        409,
+        "REQUEST_ARCHIVED",
+      );
+    }
+
+    const providerName = request.assignedProviderName || request.assigned_to;
+    if (!providerName && !request.assignedProviderId) {
+      throw new AppError(
+        "Cannot rate provider because no contractor is assigned to this request.",
+        400,
+        "NO_ASSIGNED_PROVIDER",
+        [{ field: "rating", message: "Assign a service provider before submitting a rating." }],
+      );
+    }
+
+    const rawRating = Number(req.body?.rating);
+    if (!Number.isFinite(rawRating) || rawRating < 1 || rawRating > 5) {
+      throw new AppError(
+        "Please provide a valid rating between 1 and 5 stars.",
+        400,
+        "INVALID_RATING",
+        [{ field: "rating", message: "Rating must be between 1 and 5 stars." }],
+      );
+    }
+
+    const rating = Math.round(rawRating * 10) / 10;
+    const feedback = toOptionalText(req.body?.feedback || req.body?.comment);
+    const tags = normalizeTextList(req.body?.tags || []);
+    const adminUser = await getDbUser(req.user.uid);
+    const actor = buildActorSnapshot(adminUser);
+    const ratedAt = new Date();
+
+    request.providerRating = {
+      rating,
+      feedback,
+      tags,
+      ratedAt,
+      ratedBy: actor.actor_id,
+      ratedByName: actor.actor_name,
+      ratedByRole: actor.actor_role,
+    };
+
+    appendStatusHistory(request, {
+      event: "provider_rated",
+      status: request.status,
+      ...actor,
+      note: `Rated service provider "${providerName || "Assigned Contractor"}" ${rating} / 5 stars.${feedback ? ` Feedback: ${feedback}` : ""}`,
+      timestamp: ratedAt,
+    });
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    // If assigned provider is registered in directory, update aggregate statistics
+    if (request.assignedProviderId && mongoose.Types.ObjectId.isValid(request.assignedProviderId)) {
+      const providerDoc = await ServiceProvider.findById(request.assignedProviderId);
+      if (providerDoc) {
+        const nextRatingCount = (providerDoc.ratingCount || 0) + 1;
+        const nextTotalPoints = (providerDoc.totalRatingPoints || 0) + rating;
+        const newAverage = Math.round((nextTotalPoints / nextRatingCount) * 10) / 10;
+        const nextUsageCount = (providerDoc.usageCount || 0) + 1;
+
+        providerDoc.ratingCount = nextRatingCount;
+        providerDoc.totalRatingPoints = nextTotalPoints;
+        providerDoc.internalRating = newAverage;
+        providerDoc.usageCount = nextUsageCount;
+        if (feedback) {
+          providerDoc.internalFeedback = normalizeTextList([
+            ...(providerDoc.internalFeedback || []),
+            feedback,
+          ]);
+        }
+        await providerDoc.save();
+      }
+    }
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      message: `Rating of ${rating} stars recorded for ${providerName || "service provider"}.`,
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+      providerRating: request.providerRating,
     });
   } catch (error) {
     next(error);

@@ -1,4 +1,10 @@
 import { useMemo, useState } from "react";
+import {
+  AlertCircle,
+  PhilippinePeso,
+  Receipt,
+  TrendingUp,
+} from "lucide-react";
 import { useBillingReport, useFinancialsAnalytics } from "../../../shared/hooks/queries/useAnalyticsReports";
 import {
   AnalyticsBarChart,
@@ -7,6 +13,7 @@ import {
   AnalyticsTabLayout,
   AnalyticsToolbar,
   DataTable,
+  PeriodComparisonCard,
   ReportChartPanel,
 } from "../components/shared";
 import {
@@ -17,6 +24,7 @@ import {
 } from "./reportCommon";
 import {
   AnalyticsInsightSection,
+  AnalyticsTableToolbar,
   buildInsightPdfSections,
   buildBranchControl,
   CardFilterSelect,
@@ -129,9 +137,6 @@ export default function AnalyticsBillingTab({
   });
 
   const overdueAccounts = unwrapTableRows(data?.tables?.overdueAccounts);
-  const unpaidBalances = Array.isArray(data?.tables?.unpaidBalances)
-    ? data?.tables?.unpaidBalances
-    : [];
   const revenueByMonth = (revenueData || data)?.series?.revenueByMonth || [];
   const statusDistribution = data?.series?.statusDistribution || [];
   const overdueAging = data?.series?.overdueAging || [];
@@ -153,32 +158,70 @@ export default function AnalyticsBillingTab({
     });
   }, [overdueAccounts, searchQuery, statusFilter]);
 
+  const collectedStr = data?.kpis?.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0";
+  const billedStr = data?.kpis?.billedAmountLabel?.replace("PHP ", "₱") || "₱0";
+  const overdueStr = data?.kpis?.outstandingBalanceLabel?.replace("PHP ", "₱") || "₱0";
+  const rateStr = data?.kpis?.collectionRateLabel || "0%";
+
+  const revenueDelta = data?.kpis?.comparison?.collectedRevenue || {
+    label: "+0%",
+    changeType: "neutral",
+    text: "vs prev period",
+  };
+  const billedDelta = data?.kpis?.comparison?.billedAmount || {
+    label: "+0%",
+    changeType: "neutral",
+    text: "vs prev period",
+  };
+  const rateDelta = data?.kpis?.comparison?.collectionRate || {
+    label: "+0 pp",
+    changeType: "neutral",
+    text: "vs prev period",
+  };
+  const balanceDelta = data?.kpis?.comparison?.outstandingBalance || {
+    label: "0%",
+    changeType: "neutral",
+    text: "vs prev period",
+  };
+
   const metricCards = [
     {
-      label: "Collected Revenue",
-      value: data?.kpis?.collectedRevenueLabel || "PHP 0",
+      icon: PhilippinePeso,
       tone: "green",
+      label: "Revenue Collected",
+      value: collectedStr,
+      trend: revenueDelta.text || `${revenueDelta.label || "+0%"} vs prev period`,
+      changeType: revenueDelta.changeType || "neutral",
     },
     {
-      label: "Billed Amount",
-      value: data?.kpis?.billedAmountLabel || "PHP 0",
-      tone: "blue",
+      icon: Receipt,
+      tone: "teal",
+      label: "Total Billed",
+      value: billedStr,
+      trend: billedDelta.text || `${billedDelta.label || "+0%"} vs prev period`,
+      changeType: billedDelta.changeType || "neutral",
     },
     {
-      label: "Outstanding Overdue",
-      value: data?.kpis?.outstandingBalanceLabel || "PHP 0",
+      icon: AlertCircle,
       tone: "rose",
+      label: "Outstanding Balance",
+      value: overdueStr,
+      trend: balanceDelta.text || `${balanceDelta.label || "0%"} vs prev period`,
+      changeType: balanceDelta.changeType === "up" ? "down" : balanceDelta.changeType === "down" ? "up" : "neutral",
     },
     {
-      label: "Collection Rate",
-      value: data?.kpis?.collectionRateLabel || "0%",
+      icon: TrendingUp,
       tone: "amber",
+      label: "Collection Rate",
+      value: rateStr,
+      trend: rateDelta.text || `${rateDelta.label || "+0 pp"} vs prev period`,
+      changeType: rateDelta.changeType || "neutral",
     },
   ];
 
   const exportCsv = () => {
     handleCsvExport(
-      overdueAccounts,
+      filteredOverdue,
       [
         { key: "tenantName", label: "Tenant" },
         { key: "roomName", label: "Room" },
@@ -201,7 +244,7 @@ export default function AnalyticsBillingTab({
       kpis: metricCards.map((item, i) => ({
         label: item.label,
         value: item.value,
-        sub: "",
+        sub: item.trend,
         highlight: i === 0,
       })),
       aiInsight: {
@@ -242,7 +285,7 @@ export default function AnalyticsBillingTab({
           title: "Top Overdue Accounts",
           type: "table",
           headers: ["Tenant", "Room", "Branch", "Balance", "Days Overdue"],
-          rows: overdueAccounts.slice(0, 10).map((item) => ({
+          rows: filteredOverdue.slice(0, 10).map((item) => ({
             Tenant: item.tenantName || "-",
             Room: item.roomName || "-",
             Branch: formatBranch(item.branch),
@@ -254,57 +297,74 @@ export default function AnalyticsBillingTab({
     });
   };
 
+  const periodComparisonRows = [
+    {
+      label: "Revenue collected",
+      sublabel: "vs previous period",
+      value: collectedStr,
+      change: revenueDelta.label,
+      changeType: revenueDelta.changeType || "neutral",
+    },
+    {
+      label: "Total billed",
+      sublabel: "vs previous period",
+      value: billedStr,
+      change: billedDelta.label,
+      changeType: billedDelta.changeType || "neutral",
+    },
+    {
+      label: "Collection rate",
+      sublabel: "vs previous period",
+      value: rateStr,
+      change: rateDelta.label,
+      changeType: rateDelta.changeType || "neutral",
+    },
+    {
+      label: "Outstanding balance",
+      sublabel: "vs previous period",
+      value: overdueStr,
+      change: balanceDelta.label,
+      changeType: balanceDelta.changeType === "up" ? "down" : balanceDelta.changeType === "down" ? "up" : "neutral",
+    },
+  ];
+
   return (
-    <AnalyticsTabLayout
-      header={
-        <AnalyticsToolbar
-          title="Billing & Revenue Analytics"
-          subtitle={`Scope: ${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`}
-          branch={buildBranchControl({
-            isOwner,
-            branch,
-            onChange: (value) => {
-              setPage(1);
-              onBranchChange(value);
-            },
-          })}
-          actions={<ExportButtons onCsv={exportCsv} onPdf={exportPdf} />}
-        />
-      }
-    >
+    <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       <MetricGrid items={metricCards} />
 
       <AnalyticsInsightSection
         reportLabel="billing"
-        summaryTitle="Billing & Financial Summary"
+        summaryTitle="Billing & Financial Intelligence"
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
       />
 
       {isOwner && branchComparison.length > 0 && (
-        <ReportChartPanel title="Branch financial comparison" subtitle="Collections, overdue exposure, and collection rate by branch">
-          <AnalyticsComparisonChart
-            data={branchComparison.map((item) => ({
-              label: item.label,
-              collected: item.collectedRevenue,
-              overdue: item.overdueAmount,
-            }))}
-            bars={[
-              { key: "collected", label: "Collected", color: "#2563eb" },
-              { key: "overdue", label: "Overdue", color: "#dc2626" },
-            ]}
-            valueFormatter={(value) => formatPeso(value)}
-            emptyTitle="No branch comparison data"
-            emptyDescription="Branch financial comparison will appear once billing records are available."
-          />
-        </ReportChartPanel>
+        <div className="mb-5">
+          <ReportChartPanel title="Branch financial comparison" subtitle="Collections, overdue exposure, and collection rate by branch">
+            <AnalyticsComparisonChart
+              data={branchComparison.map((item) => ({
+                label: item.label,
+                collected: item.collectedRevenue,
+                overdue: item.overdueAmount,
+              }))}
+              bars={[
+                { key: "collected", label: "Collected", color: "#16a34a" },
+                { key: "overdue", label: "Overdue", color: "#dc2626" },
+              ]}
+              valueFormatter={(value) => formatPeso(value)}
+              emptyTitle="No branch comparison data"
+              emptyDescription="Branch financial comparison will appear once billing records are available."
+            />
+          </ReportChartPanel>
+        </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
         <ReportChartPanel
-          title="Revenue by month"
-          subtitle="Collected vs billed revenue across time"
+          title="Revenue collections"
+          subtitle="Billed vs collected — monthly"
           actions={
             <CardFilterSelect
               value={activeRevenueRange}
@@ -320,8 +380,8 @@ export default function AnalyticsBillingTab({
               billed: item.billedAmount,
             }))}
             bars={[
-              { key: "collected", label: "Collected", color: "#0f766e" },
-              { key: "billed", label: "Billed", color: "#2563eb" },
+              { key: "collected", label: "Collected", color: "#16a34a" },
+              { key: "billed", label: "Billed", color: "#0f766e" },
             ]}
             valueFormatter={(val) => formatPeso(val)}
             emptyTitle="No revenue data"
@@ -345,81 +405,68 @@ export default function AnalyticsBillingTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
         <ReportChartPanel title="Overdue aging" subtitle="Unpaid balances bucketed by delay">
           <AnalyticsBarChart
             data={overdueAging.map((item) => ({
               label: item.label,
               amount: item.amount,
             }))}
-            bars={[{ key: "amount", label: "Overdue Amount", color: "#f97316" }]}
+            bars={[{ key: "amount", label: "Overdue Amount", color: "#f59e0b" }]}
             valueFormatter={(val) => formatPeso(val)}
             emptyTitle="No overdue aging data"
             emptyDescription="Overdue aging distribution will appear when overdue bills exist."
           />
         </ReportChartPanel>
 
-        <ReportChartPanel title="Net position summary" subtitle="Collected revenue versus overdue exposure">
-          <div className="admin-reports__meta-grid">
-            <div className="admin-reports__meta-card">
-              <span className="admin-reports__meta-label">Total Billed</span>
-              <div className="admin-reports__meta-value">
-                {data?.kpis?.billedAmountLabel || "PHP 0"}
-              </div>
-            </div>
-            <div className="admin-reports__meta-card">
-              <span className="admin-reports__meta-label">Total Collected</span>
-              <div className="admin-reports__meta-value">
-                {data?.kpis?.collectedRevenueLabel || "PHP 0"}
-              </div>
-            </div>
-          </div>
-        </ReportChartPanel>
+        <PeriodComparisonCard
+          title="Period comparison"
+          subtitle="Current vs previous period"
+          rows={periodComparisonRows}
+        />
       </div>
 
-      <ReportChartPanel title="Overdue accounts table" subtitle="Tenants with outstanding unpaid balances">
-        <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
-          <input
-            type="text"
-            placeholder="Search tenant or room..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setPage(1);
-            }}
-            style={{
-              fontSize: "12px",
-              padding: "6px 12px",
-              border: "1px solid var(--border, #e2e8f0)",
-              borderRadius: "6px",
-              width: "180px",
-              outline: "none",
-            }}
-          />
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(1);
-            }}
-            style={{
-              fontSize: "12px",
-              padding: "6px 10px",
-              border: "1px solid var(--border, #e2e8f0)",
-              borderRadius: "6px",
-              background: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            <option value="all">All Statuses</option>
-            <option value="overdue">Overdue</option>
-            <option value="unpaid">Unpaid</option>
-            <option value="partial">Partial</option>
-          </select>
-          <span style={{ fontSize: "12px", color: "var(--muted-foreground, #64748b)", marginLeft: "auto" }}>
-            Showing {filteredOverdue.length} of {overdueAccounts.length} accounts
-          </span>
-        </div>
+      <ReportChartPanel
+        title="Overdue Accounts Ledger"
+        subtitle="Active tenant accounts with outstanding balances and aging brackets"
+        actions={<ExportButtons onCsv={exportCsv} onPdf={exportPdf} />}
+      >
+        <AnalyticsTableToolbar
+          searchQuery={searchQuery}
+          onSearchChange={(val) => {
+            setSearchQuery(val);
+            setPage(1);
+          }}
+          searchPlaceholder="Search tenant or room..."
+          filters={[
+            {
+              key: "statusFilter",
+              label: "Status",
+              value: statusFilter,
+              onChange: (val) => {
+                setStatusFilter(val);
+                setPage(1);
+              },
+              options: [
+                { value: "all", label: "All Statuses" },
+                { value: "overdue", label: "Overdue" },
+                { value: "unpaid", label: "Unpaid" },
+                { value: "partial", label: "Partial" },
+              ],
+            },
+          ]}
+          hasActiveFilters={Boolean(searchQuery || statusFilter !== "all")}
+          onResetFilters={() => {
+            setSearchQuery("");
+            setStatusFilter("all");
+            setPage(1);
+          }}
+          extraActions={
+            <span className="text-xs font-medium text-muted-foreground">
+              Showing {filteredOverdue.length} of {overdueAccounts.length} accounts
+            </span>
+          }
+        />
 
         <DataTable
           columns={OVERDUE_COLUMNS}
@@ -440,6 +487,6 @@ export default function AnalyticsBillingTab({
           }}
         />
       </ReportChartPanel>
-    </AnalyticsTabLayout>
+    </div>
   );
 }

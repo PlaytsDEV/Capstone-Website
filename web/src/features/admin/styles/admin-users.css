@@ -14,8 +14,8 @@
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #D4AF37 0%, #B88A1A 100%);
-  color: #0F172A;
+  background: var(--muted);
+  color: var(--foreground);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -23,7 +23,7 @@
   font-weight: 700;
   flex-shrink: 0;
   letter-spacing: 0.02em;
-  border: 1.5px solid rgba(184, 138, 26, 0.26);
+  border: 1px solid var(--border);
 }
 
 .user-cell__info {
@@ -385,7 +385,7 @@
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, var(--muted) 0%, var(--card) 100%);
+  background: var(--card);
   margin-bottom: 16px;
 }
 

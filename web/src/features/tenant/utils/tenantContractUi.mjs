@@ -48,6 +48,20 @@ export const getTenantContractMessage = (contract) => {
     title: "Contract Not Available Yet",
     message: "Your official contract or digital proof of stay has not been published yet. Once your stay is confirmed, you can view your lease details and download your official document here.",
   };
+  if (contract.tenantDocument?.type === "final_notarized") {
+    return {
+      title: "Final Notarized Contract Available",
+      message: "Your official wet-signed and notarized lease agreement is finalized and verified.",
+      nextAction: "You can view, print, or download your official notarized document below.",
+    };
+  }
+  if (contract.tenantDocument?.type === "generated_draft") {
+    return {
+      title: "Generated Draft — For Signing",
+      message: "Your contract has been generated and is ready for in-person signing. The final notarized copy will replace this document once uploaded by the admin.",
+      nextAction: "You can review and download the generated draft to check terms before signing.",
+    };
+  }
   if (contract.stayProofAvailable || contract.status === "active") {
     return {
       title: "Verified Active Stay",

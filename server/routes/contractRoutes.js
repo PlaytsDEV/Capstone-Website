@@ -14,7 +14,7 @@ import {
   markPrinted, updateTenantSignature, updateLessorSignature, updateWitnessSignatures,
   uploadSignedDocument, streamSignedDocument, verifySignedDocument, rejectSignedDocument,
   approveGenerationPricing,
-  uploadNotarizedDocument, streamNotarizedDocument, verifyNotarizedDocument,
+  uploadNotarizedDocument, uploadFinalNotarizedContract, streamNotarizedDocument, verifyNotarizedDocument,
   rejectNotarizedDocument,
   readyContractForPublication, publishContract, streamFinalContract,
   streamMyFinalContract, streamMySignedContract,
@@ -72,6 +72,7 @@ router.get("/:id/documents/signed/:version?", streamSignedDocument);
 router.post("/:id/documents/signed/verify", verifySignedDocument);
 router.post("/:id/documents/signed/reject", rejectSignedDocument);
 router.post("/:id/documents/notarized", signedUpload.single("file"), uploadNotarizedDocument);
+router.post("/:id/documents/final-notarized", signedUpload.single("file"), uploadFinalNotarizedContract);
 router.get("/:id/documents/notarized/:version?", streamNotarizedDocument);
 router.post("/:id/documents/notarized/verify", verifyNotarizedDocument);
 router.post("/:id/documents/notarized/reject", rejectNotarizedDocument);
