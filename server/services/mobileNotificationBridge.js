@@ -10,13 +10,26 @@
  * neither a bridge nor the vendored mobile router (server/mobile/routes)
  * defines /notifications, so it would 404 against this backend today even
  * though it's an ACTIVE, frequently-used mobile feature (home feed +
- * AuthContext unread-count polling). This is a direct behavioral port of the
- * currently-live standalone mobile backend's controllers/notification.controller.js
- * + services/notificationService.js (sanitizeStoredNotification/normalizePriority),
- * reading the SAME shared `notifications`/`announcements`/`notification_reads`/
- * `notification_read_state` collections (confirmed shared MongoDB cluster) —
- * not new business logic, so there is no data-shape risk versus what the
- * standalone backend already writes/reads.
+ * AuthContext unread-count polling). This was ported as a direct behavioral
+ * copy of the standalone mobile backend's controllers/notification.controller.js
+ * (sanitizeStoredNotification/normalizePriority), on the assumption that the
+ * `notifications` collection is written in that same `user_id`/`body`/`read`
+ * shape here too.
+ *
+ * BUG FOUND (bill-release notification audit): that assumption doesn't hold
+ * for this canonical backend's OWN notification writer. models/Notification.js
+ * + services/notifications/notificationService.js persist documents shaped
+ * `{ userId: <ObjectId ref User>, message, isRead, actionUrl, entityId, ... }`
+ * — every field name this bridge's `find({ user_id: userId })` query and
+ * sanitizeStoredNotification() expected was wrong for that writer. Since
+ * `userId` there is a Mongo _id (not the tenant's business `user_id` string),
+ * this was a filter-VALUE mismatch as well as a field-NAME mismatch: the
+ * query matched zero documents, so the mobile app's unread badge count
+ * (and any bill-released/payment/etc. notification the canonical backend
+ * creates) never appeared, no matter how correctly it was created and
+ * pushed. Fixed by matching EITHER shape (buildOwnerFilter/readBothShapes
+ * below) rather than assuming one is authoritative — safe regardless of
+ * whether anything still writes the legacy shape.
  *
  * Deliberately uses the raw MongoDB driver (mongoose.connection.db), matching
  * every other mobile bridge in this codebase, since `notifications` is not a
@@ -45,6 +58,37 @@ function sanitizePayload(data = {}) {
 
 function isHexObjectId(val) {
   return typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val.trim());
+}
+
+// Matches a stored notification document to its tenant owner regardless of
+// which writer produced it: the legacy standalone-backend shape (user_id:
+// <string business id>) or this canonical backend's own Notification model
+// shape (userId: <Mongo ObjectId>). See the header comment for why both are
+// needed — this is the actual fix for the "tenant never sees a notification"
+// bug, not a redesign of either shape.
+function buildOwnerFilter(userIdString, userMongoId) {
+  const clauses = [];
+  if (userIdString) clauses.push({ user_id: userIdString });
+  if (userMongoId) clauses.push({ userId: userMongoId });
+  if (!clauses.length) return { _id: null }; // no identity supplied — match nothing, never everything
+  return clauses.length === 1 ? clauses[0] : { $or: clauses };
+}
+
+// Canonical Notification documents (models/Notification.js) don't set a
+// `category` field at all — only `type`. Infer the mobile app's expected
+// category vocabulary (see app/(tabs)/announcements.jsx getCategoryColor)
+// from the canonical type enum so a bill-release notification is labeled
+// "billing" instead of the generic default.
+function inferCategoryFromType(type) {
+  const value = normalizeString(type).toLowerCase();
+  if (value.startsWith("bill_") || value === "penalty_applied" || value === "payment_approved" || value === "payment_rejected") {
+    return "billing";
+  }
+  if (value.startsWith("reservation_") || value === "grace_period_warning" || value === "move_in_reminder") return "reservation";
+  if (value.startsWith("contract_")) return "account";
+  if (value.startsWith("account_")) return "account";
+  if (value === "maintenance_update") return "maintenance";
+  return "";
 }
 
 function resolveAuthorName(doc = {}, authorNameMap = new Map(), defaultFallback = "LilyCrest Admin") {
@@ -85,25 +129,33 @@ function resolveAuthorName(doc = {}, authorNameMap = new Map(), defaultFallback 
 
 function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
   const authorName = resolveAuthorName(doc, authorNameMap, "LilyCrest System");
+  const type = normalizeString(doc.type || "notification") || "notification";
+  // entityId/entityType are how the canonical Notification model attaches a
+  // bill reference (models/Notification.js + notificationService.js); the
+  // legacy shape used billing_id/data.billing_id/data.bill_id instead.
+  const isCanonicalBillEntity = normalizeString(doc.entityType).toLowerCase() === "bill" && doc.entityId;
   return {
     notification_id: doc.notification_id || doc._id?.toString?.() || "",
     title: normalizeString(doc.title) || "Notification",
-    body: normalizeString(doc.body || doc.content || ""),
-    content: normalizeString(doc.content || doc.body || ""),
-    category: normalizeString(doc.category) || "General",
+    body: normalizeString(doc.body || doc.content || doc.message || ""),
+    content: normalizeString(doc.content || doc.body || doc.message || ""),
+    category: normalizeString(doc.category) || inferCategoryFromType(type) || "General",
     priority: normalizePriority(doc.priority),
     is_urgent: doc.is_urgent === true || normalizePriority(doc.priority) === "high",
     author_name: authorName,
     source_label: authorName,
     created_at: doc.created_at || doc.createdAt || doc.updated_at || doc.updatedAt || new Date(),
     updated_at: doc.updated_at || doc.updatedAt || doc.created_at || doc.createdAt || new Date(),
-    type: normalizeString(doc.type || "notification") || "notification",
+    type,
     source: normalizeString(doc.source || "system") || "system",
     data: sanitizePayload(doc.data),
-    url: normalizeString(doc.url || doc.data?.url || ""),
-    read: doc.read === true,
+    url: normalizeString(doc.url || doc.data?.url || doc.actionUrl || ""),
+    read: doc.read === true || doc.isRead === true,
     announcement_id: normalizeString(doc.announcement_id || doc.data?.announcement_id || ""),
-    billing_id: normalizeString(doc.billing_id || doc.data?.billing_id || doc.data?.bill_id || ""),
+    billing_id: normalizeString(
+      doc.billing_id || doc.data?.billing_id || doc.data?.bill_id
+        || (isCanonicalBillEntity ? String(doc.entityId) : ""),
+    ),
     request_id: normalizeString(doc.request_id || doc.data?.request_id || ""),
     session_id: normalizeString(doc.session_id || doc.data?.session_id || ""),
     reservation_id: normalizeString(doc.reservation_id || doc.data?.reservation_id || ""),
@@ -196,32 +248,42 @@ const ACTIVE_FILTER = {
 };
 const NOT_ARCHIVED_FILTER = { isArchived: { $ne: true } };
 
-function visibilityFilter(userId) {
+// `userId` here matches an announcement's OWN private-recipient field, which
+// (like the notifications collection) may be stored as either the tenant's
+// business `user_id` string or a Mongo `userId` ObjectId depending on which
+// writer created it — pass both identity values, matched against their own
+// correctly-typed field, not the same raw value against both field names.
+function visibilityFilter(userIdString, userMongoId) {
   return {
     $or: [
       { is_private: { $ne: true }, isPrivate: { $ne: true } },
-      { is_private: true, user_id: userId },
-      { isPrivate: true, userId },
+      ...(userIdString ? [{ is_private: true, user_id: userIdString }] : []),
+      ...(userMongoId ? [{ isPrivate: true, userId: userMongoId }] : []),
     ],
   };
 }
 
 /**
  * List the authenticated tenant's merged notifications (stored notifications
- * + visible announcements), with read-state applied. Identity is derived
- * exclusively from `userId` (the caller passes req.mobileTenant.user_id,
- * server-resolved from the session) — never from client input.
+ * + visible announcements), with read-state applied. Identity is server-
+ * resolved (req.mobileTenant.user_id / ._id) — never from client input.
+ *
+ * userId: the tenant's business `user_id` string (legacy/standalone-backend
+ * notification shape). userMongoId: the tenant's Mongo `_id` ObjectId (this
+ * canonical backend's own Notification model shape — see buildOwnerFilter).
+ * Both are matched so a notification is found regardless of which writer
+ * created it.
  */
-async function listUserNotifications(db, userId) {
+async function listUserNotifications(db, userId, userMongoId) {
   const storedNotifications = await db.collection("notifications")
-    .find({ user_id: userId })
-    .sort({ created_at: -1, updated_at: -1 })
+    .find(buildOwnerFilter(userId, userMongoId))
+    .sort({ created_at: -1, updated_at: -1, createdAt: -1 })
     .limit(120)
     .toArray()
     .catch(() => []);
 
   const announcements = await db.collection("announcements")
-    .find({ $and: [ACTIVE_FILTER, NOT_ARCHIVED_FILTER, visibilityFilter(userId)] })
+    .find({ $and: [ACTIVE_FILTER, NOT_ARCHIVED_FILTER, visibilityFilter(userId, userMongoId)] })
     .sort({ created_at: -1, createdAt: -1 })
     .limit(80)
     .toArray()
@@ -314,18 +376,18 @@ async function listUserNotifications(db, userId) {
  * stored notifications/visible announcements, never a raw client-supplied
  * collection lookup) read.
  */
-async function markNotificationRead(db, userId, notificationKeyRaw) {
+async function markNotificationRead(db, userId, notificationKeyRaw, userMongoId) {
   const notificationKey = normalizeString(notificationKeyRaw);
   if (!notificationKey) return { status: 400, detail: "notificationId is required." };
 
-  const stored = await db.collection("notifications").find({ user_id: userId }).limit(200).toArray();
+  const stored = await db.collection("notifications").find(buildOwnerFilter(userId, userMongoId)).limit(200).toArray();
   let ownedNotification = stored
     .map((doc) => sanitizeStoredNotification(doc))
     .find((item) => buildNotificationKey(item) === notificationKey || item.notification_id === notificationKey);
 
   if (!ownedNotification) {
     const announcements = await db.collection("announcements").find({
-      $and: [ACTIVE_FILTER, NOT_ARCHIVED_FILTER, visibilityFilter(userId)],
+      $and: [ACTIVE_FILTER, NOT_ARCHIVED_FILTER, visibilityFilter(userId, userMongoId)],
     }).limit(200).toArray();
     ownedNotification = announcements
       .map((doc) => normalizeAnnouncementNotification(doc))
@@ -335,6 +397,9 @@ async function markNotificationRead(db, userId, notificationKeyRaw) {
   if (!ownedNotification) return { status: 404, detail: "Notification not found." };
 
   const ownedKey = buildNotificationKey(ownedNotification);
+  // Read-state bookkeeping (notification_reads/notification_read_state) is
+  // private to this bridge — always written and read keyed by the string
+  // user_id, so no dual-shape handling is needed here.
   await db.collection("notification_reads").updateOne(
     { user_id: userId, notification_key: ownedKey },
     { $set: { read_at: new Date() }, $setOnInsert: { created_at: new Date() } },
@@ -343,14 +408,20 @@ async function markNotificationRead(db, userId, notificationKeyRaw) {
   return { status: 200, value: { status: "read", notification_id: ownedKey } };
 }
 
-async function markAllNotificationsRead(db, userId) {
+async function markAllNotificationsRead(db, userId, userMongoId) {
   const now = new Date();
   await db.collection("notification_read_state").updateOne(
     { user_id: userId },
     { $set: { all_read_at: now, updated_at: now }, $setOnInsert: { created_at: now } },
     { upsert: true },
   );
-  await db.collection("notifications").updateMany({ user_id: userId }, { $set: { read: true, read_at: now } });
+  // Best-effort direct flag on the source documents too (belt-and-suspenders
+  // alongside the read-state record above, which is what listUserNotifications
+  // actually relies on for correctness regardless of document shape).
+  await db.collection("notifications").updateMany(
+    buildOwnerFilter(userId, userMongoId),
+    { $set: { read: true, isRead: true, read_at: now, readAt: now } },
+  );
   return { status: "all_read", read_at: now };
 }
 
@@ -358,6 +429,7 @@ export {
   sanitizeStoredNotification,
   normalizeAnnouncementNotification,
   buildNotificationKey,
+  buildOwnerFilter,
   listUserNotifications,
   markNotificationRead,
   markAllNotificationsRead,

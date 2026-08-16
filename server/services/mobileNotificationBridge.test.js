@@ -158,3 +158,169 @@ describe("mobileNotificationBridge", () => {
     expect(db.updates.notificationsUpdateMany[0].filter.user_id).toBe("tenant-a");
   });
 });
+
+// Regression coverage for the bill-release notification audit: the mobile
+// bridge's `notifications` query previously only matched documents shaped
+// { user_id: <string> } (the legacy standalone-backend shape). This
+// backend's OWN Notification model (models/Notification.js, written by
+// services/notifications/notificationService.js — the actual writer behind
+// every bill-release/payment/etc. notification) persists documents shaped
+// { userId: <Mongo ObjectId> } instead. The old query matched zero of them,
+// so no bill-release notification (or any canonical notification) ever
+// reached the mobile app's unread badge — regardless of how correctly it
+// was created or pushed. Unlike the tests above, this fake db actually
+// evaluates the Mongo-shaped filter (including $or) against the fixture
+// documents, so it can prove the match/no-match behavior directly rather
+// than merely asserting on the filter object's shape.
+import { ObjectId } from "mongodb";
+import { buildOwnerFilter } from "./mobileNotificationBridge.js";
+
+function matchesMongoFilter(doc, filter) {
+  if (!filter || typeof filter !== "object") return true;
+  return Object.entries(filter).every(([key, condition]) => {
+    if (key === "$or") return condition.some((sub) => matchesMongoFilter(doc, sub));
+    if (key === "$and") return condition.every((sub) => matchesMongoFilter(doc, sub));
+    const actual = doc[key];
+    if (condition && typeof condition === "object" && condition._bsontype === undefined && !(condition instanceof ObjectId)) {
+      if ("$ne" in condition) return actual !== condition.$ne;
+      if ("$exists" in condition) return condition.$exists ? actual !== undefined : actual === undefined;
+      return true;
+    }
+    if (condition instanceof ObjectId) {
+      return actual instanceof ObjectId ? actual.equals(condition) : String(actual) === condition.toHexString();
+    }
+    return actual === condition;
+  });
+}
+
+function filteringFakeDb({ notifications = [] } = {}) {
+  const updates = { notificationsUpdateMany: [] };
+  return {
+    updates,
+    collection(name) {
+      if (name === "notifications") {
+        return {
+          find: (filter) => {
+            const matched = notifications.filter((doc) => matchesMongoFilter(doc, filter));
+            return {
+              sort: () => ({ limit: () => ({ toArray: async () => matched, catch: () => matched }) }),
+              limit: () => ({ toArray: async () => matched }),
+            };
+          },
+          updateMany: async (filter, update) => {
+            updates.notificationsUpdateMany.push({ filter, update });
+            const matched = notifications.filter((doc) => matchesMongoFilter(doc, filter));
+            matched.forEach((doc) => Object.assign(doc, update.$set));
+          },
+        };
+      }
+      if (name === "announcements") {
+        return { find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => [], catch: () => [] }) }) }) };
+      }
+      if (name === "notification_reads") {
+        return { find: () => ({ project: () => ({ toArray: async () => [], catch: () => [] }) }) };
+      }
+      if (name === "notification_read_state") {
+        return { findOne: async () => null, updateOne: async () => {} };
+      }
+      throw new Error(`unexpected collection: ${name}`);
+    },
+  };
+}
+
+describe("mobileNotificationBridge — canonical Notification model compatibility (bill-release notification fix)", () => {
+  const tenantMongoId = new ObjectId();
+  const tenantUserId = "tenant-a";
+
+  test("buildOwnerFilter matches the legacy user_id-string shape when only the string identity is given", () => {
+    expect(buildOwnerFilter(tenantUserId, null)).toEqual({ user_id: tenantUserId });
+  });
+
+  test("buildOwnerFilter matches the canonical userId-ObjectId shape when only the Mongo id is given", () => {
+    expect(buildOwnerFilter(null, tenantMongoId)).toEqual({ userId: tenantMongoId });
+  });
+
+  test("buildOwnerFilter matches either shape via $or when both identities are given", () => {
+    expect(buildOwnerFilter(tenantUserId, tenantMongoId)).toEqual({
+      $or: [{ user_id: tenantUserId }, { userId: tenantMongoId }],
+    });
+  });
+
+  test("a canonical-shaped Notification document (userId: ObjectId, message, isRead) — exactly what notificationService.js writes for a bill release — is now found and correctly mapped", async () => {
+    const billId = new ObjectId();
+    const db = filteringFakeDb({
+      notifications: [{
+        _id: new ObjectId(),
+        userId: tenantMongoId,
+        type: "bill_generated",
+        title: "New Bill Available",
+        message: "Your rent bill is now available",
+        actionUrl: `/bill-details?billId=${billId.toHexString()}`,
+        entityType: "bill",
+        entityId: billId.toHexString(),
+        isRead: false,
+        readAt: null,
+        createdAt: new Date("2026-08-16T10:00:00.000Z"),
+        updatedAt: new Date("2026-08-16T10:00:00.000Z"),
+      }],
+    });
+
+    const result = await listUserNotifications(db, tenantUserId, tenantMongoId);
+
+    expect(result.length).toBe(1);
+    expect(result[0].title).toBe("New Bill Available");
+    expect(result[0].body).toBe("Your rent bill is now available");
+    expect(result[0].read).toBe(false);
+    expect(result[0].category).toBe("billing");
+    expect(result[0].billing_id).toBe(billId.toHexString());
+  });
+
+  test("a legacy-shaped notification document (user_id: string, body, read) is still found — the fix is additive, not a breaking rename", async () => {
+    const db = filteringFakeDb({
+      notifications: [{
+        notification_id: "legacy-1",
+        user_id: tenantUserId,
+        title: "Legacy notice",
+        body: "Still works",
+        read: false,
+        created_at: new Date("2026-08-16T09:00:00.000Z"),
+      }],
+    });
+
+    const result = await listUserNotifications(db, tenantUserId, tenantMongoId);
+
+    expect(result.length).toBe(1);
+    expect(result[0].title).toBe("Legacy notice");
+  });
+
+  test("a notification belonging to a DIFFERENT tenant (different userId/user_id) is never returned — tenant isolation preserved by the dual-shape fix", async () => {
+    const otherTenantMongoId = new ObjectId();
+    const db = filteringFakeDb({
+      notifications: [{
+        _id: new ObjectId(),
+        userId: otherTenantMongoId,
+        type: "bill_generated",
+        title: "Someone else's bill",
+        message: "Not yours",
+        isRead: false,
+        createdAt: new Date(),
+      }],
+    });
+
+    const result = await listUserNotifications(db, tenantUserId, tenantMongoId);
+
+    expect(result.length).toBe(0);
+  });
+
+  test("markAllNotificationsRead sets both read and isRead so the flag applies regardless of document shape", async () => {
+    const db = filteringFakeDb({
+      notifications: [{ _id: new ObjectId(), userId: tenantMongoId, isRead: false, createdAt: new Date() }],
+    });
+
+    await markAllNotificationsRead(db, tenantUserId, tenantMongoId);
+
+    const call = db.updates.notificationsUpdateMany[0];
+    expect(call.update.$set.read).toBe(true);
+    expect(call.update.$set.isRead).toBe(true);
+  });
+});

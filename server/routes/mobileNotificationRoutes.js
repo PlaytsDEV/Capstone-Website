@@ -40,21 +40,26 @@ const asyncRoute = (handler) => (req, res, next) =>
 // router.use() at the router level — see the identical note in
 // routes/mobileBillingRoutes.js.
 
+// Both identity values are server-resolved off req.mobileTenant (the full
+// user document mobileTenantAuth loaded from the session) — never client
+// input. userMongoId (the Mongo _id) is required to find notifications
+// written by this backend's own Notification model (userId: ObjectId), as
+// opposed to the legacy user_id-string shape — see mobileNotificationBridge.js.
 router.get("/notifications", mobileTenantAuth, asyncRoute(async (req, res) => {
   const db = mongoose.connection.db;
-  const notifications = await listUserNotifications(db, req.mobileTenant.user_id);
+  const notifications = await listUserNotifications(db, req.mobileTenant.user_id, req.mobileTenant._id);
   res.json(notifications);
 }));
 
 router.patch("/notifications/read-all", mobileTenantAuth, asyncRoute(async (req, res) => {
   const db = mongoose.connection.db;
-  const result = await markAllNotificationsRead(db, req.mobileTenant.user_id);
+  const result = await markAllNotificationsRead(db, req.mobileTenant.user_id, req.mobileTenant._id);
   res.json(result);
 }));
 
 router.patch("/notifications/:notificationId/read", mobileTenantAuth, asyncRoute(async (req, res) => {
   const db = mongoose.connection.db;
-  const result = await markNotificationRead(db, req.mobileTenant.user_id, req.params.notificationId);
+  const result = await markNotificationRead(db, req.mobileTenant.user_id, req.params.notificationId, req.mobileTenant._id);
   if (result.status !== 200) {
     return res.status(result.status).json({ detail: result.detail });
   }

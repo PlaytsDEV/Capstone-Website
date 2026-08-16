@@ -353,6 +353,12 @@ const notify = {
       }),
     ),
 
+  // NOTE: previously used createNotification() (DB record + realtime socket
+  // event only, no push) and never attached entityId/billId at all. Every
+  // electricity/water bill release silently produced no OS push notification
+  // and no deep-linkable reference to the specific bill — the root cause of
+  // "tenant does not receive a notification" for utility bills specifically.
+  // Now mirrors billGenerated()'s createNotificationWithPush + billId pattern.
   utilityChargeAvailable: (
     userId,
     utilityType,
@@ -360,14 +366,35 @@ const notify = {
     utilityAmount,
     totalAmount,
     dueDate,
-  ) =>
-    createNotification(
+    options = {},
+  ) => {
+    const billId = options.billId || null;
+    const title = `${utilityType === "water" ? "Water" : "Electricity"} Charge Available`;
+    const message = `Your ${utilityType} charge for ${billingMonth} is ₱${utilityAmount}. Current bill total: ₱${totalAmount}. Due by ${dueDate}.`;
+
+    return createNotificationWithPush(
       userId,
       "bill_generated",
-      `${utilityType === "water" ? "Water" : "Electricity"} Charge Available`,
-      `Your ${utilityType} charge for ${billingMonth} is ₱${utilityAmount}. Current bill total: ₱${totalAmount}. Due by ${dueDate}.`,
-      { entityType: "bill", actionUrl: "/tenant/account?tab=billing" },
-    ),
+      title,
+      message,
+      {
+        entityType: "bill",
+        entityId: billId ? String(billId) : null,
+        actionUrl: billId ? `/bill-details?billId=${String(billId)}` : "/tenant/account?tab=billing",
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "bill_generated",
+            billing_id: billId ? String(billId) : "",
+            screen: "billing",
+            url: billId ? `/bill-details?billId=${String(billId)}` : "/(tabs)/billing",
+          },
+        }),
+    );
+  },
 
   overdueMoveIn: (userId, reservationCode, roomName, tenantName, daysOverdue) => {
     const code = formatCode(reservationCode);

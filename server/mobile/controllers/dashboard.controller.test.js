@@ -125,6 +125,12 @@ describe('dashboard.controller getDashboard — billing effective status', () =>
   test('a bill with a fully released electricity charge carries utility_deadlines — matching Billing History, never a permanent "not released" contradiction', async () => {
     const issuedAt = new Date('2026-08-01');
     const dueDate = new Date('2026-08-15');
+    // billReleaseDate now reflects the bill-level authoritative releasedAt
+    // (the release lifecycle — see models/Bill.js and
+    // services/billing/billingPolicy.js syncBillAmounts()), not the
+    // per-utility issuedAt (a due-date-calculation concept). See
+    // services/mobileBillingBridge.js mobileUtilityDeadlines().
+    const releasedAt = new Date('2026-08-02');
     mockGetDb.mockReturnValue(makeDb({
       bills: [{
         _id: 'bill1',
@@ -133,6 +139,7 @@ describe('dashboard.controller getDashboard — billing effective status', () =>
         status: 'paid',
         dueDate: new Date(),
         billingMonth: new Date(),
+        releasedAt,
         utilityDispatch: { electricity: { state: 'sent', issuedAt, dueDate } },
       }],
     }));
@@ -140,7 +147,7 @@ describe('dashboard.controller getDashboard — billing effective status', () =>
     const res = response();
     await getDashboard(req, res);
     expect(res.body.billing[0].status).toBe('paid');
-    expect(res.body.billing[0].utility_deadlines.electricity.billReleaseDate).toEqual(issuedAt);
+    expect(res.body.billing[0].utility_deadlines.electricity.billReleaseDate).toEqual(releasedAt);
     expect(res.body.billing[0].utility_deadlines.electricity.finalDueDate).toEqual(dueDate);
   });
 });
