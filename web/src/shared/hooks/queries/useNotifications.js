@@ -83,12 +83,30 @@ export const useMarkAsRead = () => {
 
   return useMutation({
     mutationFn: (notificationId) => notificationApi.markAsRead(notificationId),
-    onSuccess: (_, notificationId) => {
-      useNotificationStore.getState().markAsRead(notificationId);
+    onMutate: async (notificationId) => {
+      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: KEYS.all });
+
+      // Optimistically update list queries
+      queryClient.setQueriesData({ queryKey: KEYS.all }, (oldData) => {
+        if (!oldData || !oldData.notifications) return oldData;
+        return {
+          ...oldData,
+          notifications: oldData.notifications.map((n) =>
+            (n._id === notificationId || n.id === notificationId)
+              ? { ...n, isRead: true }
+              : n
+          ),
+        };
+      });
+
+      // Optimistically decrement unread count
       queryClient.setQueryData(KEYS.unread(scope), (current) => ({
         unreadCount: Math.max(0, (current?.unreadCount ?? 0) - 1),
       }));
-      // Invalidate both the list and the unread count
+    },
+    onSuccess: (_, notificationId) => {
+      useNotificationStore.getState().markAsRead(notificationId);
       queryClient.invalidateQueries({ queryKey: KEYS.all });
       queryClient.invalidateQueries({ queryKey: KEYS.unread(scope) });
     },
@@ -105,11 +123,25 @@ export const useMarkAllAsRead = () => {
 
   return useMutation({
     mutationFn: () => notificationApi.markAllAsRead(),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: KEYS.all });
+
+      // Optimistically mark all notifications as read
+      queryClient.setQueriesData({ queryKey: KEYS.all }, (oldData) => {
+        if (!oldData || !oldData.notifications) return oldData;
+        return {
+          ...oldData,
+          notifications: oldData.notifications.map((n) => ({ ...n, isRead: true })),
+        };
+      });
+
+      queryClient.setQueryData(KEYS.unread(scope), { unreadCount: 0 });
+    },
     onSuccess: () => {
       useNotificationStore.getState().markAllAsRead();
-      queryClient.setQueryData(KEYS.unread(scope), { unreadCount: 0 });
       queryClient.invalidateQueries({ queryKey: KEYS.all });
       queryClient.invalidateQueries({ queryKey: KEYS.unread(scope) });
     },
   });
 };
+

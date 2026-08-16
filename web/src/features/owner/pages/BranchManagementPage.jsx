@@ -13,7 +13,6 @@ import {
   DoorClosed,
   Hammer,
   MessageSquare,
-  RotateCw,
   TrendingUp,
   UserCog,
   Users,
@@ -75,11 +74,14 @@ const formatSyncTime = (isoString) => {
 
 export default function BranchManagementPage() {
   const { authFetch } = useApiClient();
-  const { data, error, isLoading, isFetching, refetch, dataUpdatedAt } =
+  const { data, error, isLoading, isFetching, dataUpdatedAt } =
     useQuery({
       queryKey: ["branches", "summary"],
       queryFn: () => authFetch("/branches/summary"),
-      staleTime: 60_000,
+      staleTime: 30_000,
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
     });
 
   const branches = useMemo(() => {
@@ -157,24 +159,20 @@ export default function BranchManagementPage() {
         </div>
         <div className="sa-branches-header-actions">
           {lastSyncFormatted && (
-            <span className="sa-branches-sync-indicator">
-              <span className="sa-branches-sync-dot" />
-              Synced at {lastSyncFormatted}
+            <span
+              className="sa-branches-sync-indicator"
+              title="Automatically synchronized in the background"
+            >
+              <span
+                className={`sa-branches-sync-dot ${
+                  isFetching ? "sa-branches-sync-dot--syncing" : ""
+                }`}
+              />
+              <span>
+                {isFetching ? "Syncing..." : `Synced at ${lastSyncFormatted}`}
+              </span>
             </span>
           )}
-          <button
-            type="button"
-            className="sa-branches-refresh-btn"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            title="Synchronize branch statistics"
-          >
-            <RotateCw
-              size={15}
-              className={isFetching ? "sa-branches-state-spinner" : ""}
-            />
-            <span>{isFetching ? "Synchronizing..." : "Synchronize"}</span>
-          </button>
         </div>
       </div>
 
@@ -213,16 +211,16 @@ export default function BranchManagementPage() {
           </span>
         </article>
 
-        <article
-          className={`sa-branches-overview-card ${
-            comparisonSummary.overdueBillingCount > 0
-              ? "sa-branches-overview-card--alert"
-              : ""
-          }`}
-        >
+        <article className="sa-branches-overview-card">
           <div className="sa-branches-overview-top">
             <span className="sa-branches-overview-label">Overdue Billing</span>
-            <div className="sa-branches-overview-icon-badge sa-branches-overview-icon-badge--danger">
+            <div
+              className={`sa-branches-overview-icon-badge ${
+                comparisonSummary.overdueBillingCount > 0
+                  ? "sa-branches-overview-icon-badge--danger"
+                  : ""
+              }`}
+            >
               <CreditCard size={16} />
             </div>
           </div>
@@ -236,16 +234,16 @@ export default function BranchManagementPage() {
           </span>
         </article>
 
-        <article
-          className={`sa-branches-overview-card ${
-            comparisonSummary.unresolvedWorkloadCount > 0
-              ? "sa-branches-overview-card--warning"
-              : ""
-          }`}
-        >
+        <article className="sa-branches-overview-card">
           <div className="sa-branches-overview-top">
             <span className="sa-branches-overview-label">Open Workload</span>
-            <div className="sa-branches-overview-icon-badge sa-branches-overview-icon-badge--warning">
+            <div
+              className={`sa-branches-overview-icon-badge ${
+                comparisonSummary.unresolvedWorkloadCount > 0
+                  ? "sa-branches-overview-icon-badge--warning"
+                  : ""
+              }`}
+            >
               <Clock size={16} />
             </div>
           </div>

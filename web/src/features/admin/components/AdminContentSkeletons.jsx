@@ -6,6 +6,7 @@ import "../styles/permission-editor.css";
 import "../../owner/styles/owner-branches.css";
 import "../../owner/styles/owner-settings.css";
 import "../styles/admin-backup.css";
+import "../styles/admin-reports.css";
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
 
@@ -321,7 +322,7 @@ export function AdminMaintenanceSkeleton() {
               <SkeletonPulse variant="text" width="80%" height="12px" />
               <SkeletonPulse variant="text" width="55%" height="10px" />
             </div>
-            {/* Urgency & SLA */}
+            {/* Urgency & Timeline */}
             <div style={{ width: "14%", display: "flex", flexDirection: "column", gap: "4px" }}>
               <SkeletonPulse width="60px" height="18px" borderRadius="4px" />
               <SkeletonPulse variant="text" width="70%" height="10px" />
@@ -1083,4 +1084,411 @@ export function AdminSystemBackupSkeleton() {
     </div>
   );
 }
+
+// ─── Analytics AI Insight Skeleton ──────────────────────────────────────────
+function SkelAnalyticsInsight() {
+  return (
+    <div
+      style={{
+        borderRadius: "12px",
+        border: "1px solid var(--border, #e2e8f0)",
+        background: "var(--card, #fff)",
+        overflow: "hidden",
+        marginBottom: "24px",
+      }}
+    >
+      <div
+        style={{
+          padding: "12px 16px",
+          background: "var(--muted, #f8fafc)",
+          borderBottom: "1px solid var(--border, #e2e8f0)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <SkeletonPulse width="24px" height="24px" borderRadius="6px" />
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <SkeletonPulse variant="text" width="160px" height="14px" />
+            <SkeletonPulse variant="text" width="280px" height="11px" />
+          </div>
+        </div>
+        <SkeletonPulse width="50px" height="14px" borderRadius="4px" />
+      </div>
+      <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+        <SkeletonPulse variant="text" width="90%" height="13px" />
+        <SkeletonPulse variant="text" width="75%" height="13px" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px", marginTop: "4px" }}>
+          <div style={{ padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--border, #e2e8f0)", background: "var(--background, #f8fafc)" }}>
+            <SkeletonPulse variant="text" width="100px" height="11px" style={{ marginBottom: "6px" }} />
+            <SkeletonPulse variant="text" width="90%" height="12px" />
+          </div>
+          <div style={{ padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--border, #e2e8f0)", background: "var(--background, #f8fafc)" }}>
+            <SkeletonPulse variant="text" width="110px" height="11px" style={{ marginBottom: "6px" }} />
+            <SkeletonPulse variant="text" width="85%" height="12px" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Analytics Table Skeleton ───────────────────────────────────────────────
+function SkelAnalyticsTable({
+  columns = ["20%", "15%", "15%", "15%", "15%", "10%"],
+  searchPlaceholderWidth = "220px",
+  filterCount = 2,
+  rows = 5,
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: "10px",
+        border: "1px solid var(--border, #e2e8f0)",
+        background: "var(--card, #fff)",
+        overflow: "hidden",
+      }}
+    >
+      {/* Table Header / Title */}
+      <div style={{ padding: "16px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+          <SkeletonPulse variant="text" width="180px" height="16px" />
+          <SkeletonPulse variant="text" width="320px" height="12px" />
+        </div>
+        <SkeletonPulse width="80px" height="32px" borderRadius="8px" />
+      </div>
+
+      <div style={{ padding: "16px 20px" }}>
+        {/* Table Filter Toolbar */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            marginBottom: "16px",
+            padding: "12px",
+            background: "var(--muted, #f8fafc)",
+            border: "1px solid var(--border, #e2e8f0)",
+            borderRadius: "10px",
+          }}
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", flex: 1 }}>
+            <SkeletonPulse width={searchPlaceholderWidth} height="32px" borderRadius="8px" />
+            {Array.from({ length: filterCount }).map((_, i) => (
+              <SkeletonPulse key={i} width="140px" height="32px" borderRadius="8px" />
+            ))}
+          </div>
+          <SkeletonPulse variant="text" width="110px" height="12px" />
+        </div>
+
+        {/* Data Table */}
+        <div style={{ borderRadius: "8px", border: "1px solid var(--border, #e2e8f0)", overflow: "hidden" }}>
+          {/* Column headers */}
+          <div
+            style={{
+              padding: "12px 16px",
+              background: "var(--muted, #f8fafc)",
+              borderBottom: "1px solid var(--border, #e2e8f0)",
+              display: "flex",
+              alignItems: "center",
+              gap: "16px",
+            }}
+          >
+            {columns.map((colWidth, idx) => (
+              <SkeletonPulse key={idx} variant="text" width={colWidth} height="11px" />
+            ))}
+          </div>
+          {/* Rows */}
+          {Array.from({ length: rows }).map((_, rIdx) => (
+            <div
+              key={rIdx}
+              style={{
+                padding: "14px 16px",
+                borderBottom: rIdx < rows - 1 ? "1px solid var(--border, #e2e8f0)" : "none",
+                display: "flex",
+                alignItems: "center",
+                gap: "16px",
+              }}
+            >
+              {columns.map((colWidth, cIdx) => (
+                <div key={cIdx} style={{ width: colWidth, display: "flex", alignItems: "center" }}>
+                  {cIdx === columns.length - 1 ? (
+                    <SkeletonPulse width="50px" height="20px" borderRadius="10px" />
+                  ) : (
+                    <SkeletonPulse variant="text" width="70%" height="12px" />
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        {/* Pagination Bar */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "14px", paddingTop: "4px" }}>
+          <SkeletonPulse variant="text" width="120px" height="12px" />
+          <div style={{ display: "flex", gap: "6px" }}>
+            <SkeletonPulse width="28px" height="28px" borderRadius="6px" />
+            <SkeletonPulse width="28px" height="28px" borderRadius="6px" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Analytics Tab Content Detail Skeleton ──────────────────────────────────
+export function AdminAnalyticsDetailSkeleton({ tab = "occupancy", isOwner = false }) {
+  if (tab === "overview") {
+    return (
+      <div className="analytics-tab-content active" aria-busy="true" aria-live="polite">
+        {/* 4 KPI stat cards */}
+        <div className="analytics-kpi-grid">
+          {[
+            { labelW: "85px", valW: "65px", changeW: "120px" },
+            { labelW: "105px", valW: "90px", changeW: "110px" },
+            { labelW: "75px", valW: "45px", changeW: "115px" },
+            { labelW: "80px", valW: "45px", changeW: "115px" },
+          ].map((kpi, i) => (
+            <div key={i} className="analytics-kpi-card" style={{ pointerEvents: "none" }}>
+              <SkeletonPulse width="30px" height="30px" borderRadius="6px" style={{ marginBottom: "12px" }} />
+              <SkeletonPulse variant="text" width={kpi.labelW} height="11px" style={{ marginBottom: "6px" }} />
+              <SkeletonPulse variant="text" width={kpi.valW} height="24px" style={{ marginBottom: "6px" }} />
+              <SkeletonPulse variant="text" width={kpi.changeW} height="11px" />
+            </div>
+          ))}
+        </div>
+
+        {/* 4 Chart Cards Grid (2x2) */}
+        <div className="analytics-charts-grid">
+          {/* Card 1: Occupancy Trend */}
+          <div className="analytics-chart-card">
+            <div className="analytics-chart-card-header">
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <SkeletonPulse variant="text" width="120px" height="15px" />
+                <SkeletonPulse variant="text" width="150px" height="12px" />
+              </div>
+              <SkeletonPulse width="105px" height="28px" borderRadius="6px" />
+            </div>
+            <div className="analytics-chart-card-body">
+              <SkeletonPulse width="100%" height="140px" borderRadius="8px" />
+            </div>
+          </div>
+
+          {/* Card 2: Revenue Collections */}
+          <div className="analytics-chart-card">
+            <div className="analytics-chart-card-header">
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <SkeletonPulse variant="text" width="135px" height="15px" />
+                <SkeletonPulse variant="text" width="170px" height="12px" />
+              </div>
+              <SkeletonPulse width="105px" height="28px" borderRadius="6px" />
+            </div>
+            <div className="analytics-chart-card-body">
+              <SkeletonPulse width="100%" height="140px" borderRadius="8px" />
+            </div>
+          </div>
+
+          {/* Card 3: Reservation Activity */}
+          <div className="analytics-chart-card">
+            <div className="analytics-chart-card-header">
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <SkeletonPulse variant="text" width="135px" height="15px" />
+                <SkeletonPulse variant="text" width="120px" height="12px" />
+              </div>
+              <SkeletonPulse width="105px" height="28px" borderRadius="6px" />
+            </div>
+            <div className="analytics-chart-card-body">
+              <SkeletonPulse width="100%" height="140px" borderRadius="8px" />
+            </div>
+          </div>
+
+          {/* Card 4: Period Comparison */}
+          <div className="analytics-chart-card">
+            <div className="analytics-chart-card-header">
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <SkeletonPulse variant="text" width="130px" height="15px" />
+                <SkeletonPulse variant="text" width="145px" height="12px" />
+              </div>
+            </div>
+            <div className="analytics-chart-card-body">
+              {[
+                { labelW: "100px", valW: "45px", changeW: "50px" },
+                { labelW: "115px", valW: "75px", changeW: "45px" },
+                { labelW: "90px", valW: "35px", changeW: "40px" },
+                { labelW: "95px", valW: "35px", changeW: "40px" },
+              ].map((row, i) => (
+                <div key={i} className="analytics-metric-row">
+                  <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                    <SkeletonPulse variant="text" width={row.labelW} height="13px" />
+                    <SkeletonPulse variant="text" width="80px" height="10px" />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "3px" }}>
+                    <SkeletonPulse variant="text" width={row.valW} height="15px" />
+                    <SkeletonPulse variant="text" width={row.changeW} height="11px" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Detailed tab skeleton (Occupancy, Billing, Operations, Demographics, Consolidated, Financials, Monitoring)
+  return (
+    <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1" aria-busy="true" aria-live="polite">
+      {/* 4 Metric Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            style={{
+              borderRadius: "12px",
+              border: "1px solid var(--border, #e2e8f0)",
+              background: "var(--card, #fff)",
+              padding: "16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <SkeletonPulse variant="text" width="60%" height="11px" />
+              <SkeletonPulse width="28px" height="28px" borderRadius="6px" />
+            </div>
+            <SkeletonPulse variant="text" width="45%" height="22px" />
+            <SkeletonPulse variant="text" width="75%" height="10px" />
+          </div>
+        ))}
+      </div>
+
+      {/* AI Insight Section */}
+      {tab !== "acquisition" && <SkelAnalyticsInsight />}
+
+      {/* 2x2 Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-2">
+        {/* Panel 1 */}
+        <div
+          style={{
+            borderRadius: "10px",
+            border: "1px solid var(--border, #e2e8f0)",
+            background: "var(--card, #fff)",
+            overflow: "hidden",
+            padding: "16px",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <SkeletonPulse variant="text" width="130px" height="15px" />
+              <SkeletonPulse variant="text" width="180px" height="11px" />
+            </div>
+            <SkeletonPulse width="90px" height="26px" borderRadius="6px" />
+          </div>
+          <SkeletonPulse width="100%" height="160px" borderRadius="8px" />
+        </div>
+
+        {/* Panel 2 */}
+        <div
+          style={{
+            borderRadius: "10px",
+            border: "1px solid var(--border, #e2e8f0)",
+            background: "var(--card, #fff)",
+            overflow: "hidden",
+            padding: "16px",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <SkeletonPulse variant="text" width="120px" height="15px" />
+              <SkeletonPulse variant="text" width="160px" height="11px" />
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "160px" }}>
+            <SkeletonPulse variant="circle" width="120px" />
+          </div>
+        </div>
+      </div>
+
+      {/* Secondary 2-col or Table depending on tab */}
+      <SkelAnalyticsTable
+        columns={
+          tab === "occupancy"
+            ? ["15%", "15%", "15%", "12%", "12%", "12%", "10%"]
+            : tab === "billing" || tab === "revenue" || tab === "financials"
+            ? ["20%", "15%", "15%", "15%", "15%", "10%"]
+            : ["18%", "18%", "14%", "14%", "14%", "12%"]
+        }
+        searchPlaceholderWidth={
+          tab === "occupancy"
+            ? "240px"
+            : tab === "billing" || tab === "revenue"
+            ? "220px"
+            : "200px"
+        }
+        filterCount={tab === "occupancy" ? 2 : 1}
+      />
+    </div>
+  );
+}
+
+// ─── Main AdminAnalyticsSkeleton (Full Page matching AnalyticsPage) ──────────
+export function AdminAnalyticsSkeleton({ activeTab = "overview", isOwner = false }) {
+  const tabs = [
+    { key: "overview", labelW: "60px" },
+    { key: "occupancy", labelW: "70px" },
+    { key: "revenue", labelW: "105px" },
+    { key: "operations", labelW: "75px" },
+    { key: "demographics", labelW: "85px" },
+    { key: "acquisition", labelW: "105px" },
+    ...(isOwner ? [{ key: "consolidated", labelW: "80px" }] : []),
+  ];
+
+  return (
+    <div
+      className="analytics-container"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label="Loading analytics workspace"
+    >
+      {/* Top Bar matching .analytics-topbar */}
+      <div className="analytics-topbar">
+        <div className="analytics-topbar-row">
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <SkeletonPulse variant="text" width="120px" height="22px" />
+            <SkeletonPulse variant="text" width="220px" height="13px" />
+          </div>
+          <div className="analytics-topbar-actions">
+            <SkeletonPulse width="90px" height="34px" borderRadius="8px" />
+          </div>
+        </div>
+
+        {/* Segmented Navigation Tabs matching .analytics-tabs */}
+        <div className="analytics-tabs">
+          {tabs.map((t) => (
+            <div
+              key={t.key}
+              className="analytics-tab"
+              style={{ pointerEvents: "none", borderBottomColor: "transparent", background: "transparent" }}
+            >
+              <SkeletonPulse variant="circle" width="15px" />
+              <SkeletonPulse variant="text" width={t.labelW} height="13px" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Content Layout */}
+      <div className="analytics-layout">
+        <main className="analytics-main">
+          <AdminAnalyticsDetailSkeleton tab={activeTab} isOwner={isOwner} />
+        </main>
+      </div>
+    </div>
+  );
+}
+
 

@@ -12,15 +12,18 @@ import {
   ChevronDown,
   MoreVertical,
   Check,
+  CheckCircle2,
+  Clock,
+  Sparkles,
   X as XIcon,
   ArrowLeft,
 } from "lucide-react";
 import PageShell from "../components/shared/PageShell";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
-import { useInquiries } from "../../../shared/hooks/queries/useInquiries";
+import { useInquiries, useInquiryStats } from "../../../shared/hooks/queries/useInquiries";
 import { useAuth } from "../../../shared/hooks/useAuth";
-import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { ListSkeleton, StatGridSkeleton } from "../../../shared/components/LoadingSkeletons";
 import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import Pagination from "../../../shared/components/Pagination";
 import InquiryDetailsModal from "../components/InquiryDetailsModal";
@@ -61,8 +64,6 @@ function fmtDate(dateStr) {
   });
 }
 
-const SUMMARY_FILTERS = ["", "pending", "resolved"];
-
 function InquiriesPage({ isEmbedded = false }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -94,9 +95,64 @@ function InquiriesPage({ isEmbedded = false }) {
     sortBy,
   });
 
+  const {
+    data: statsData,
+    isLoading: statsLoading,
+  } = useInquiryStats(
+    branchFilter ? { branch: branchFilter } : {},
+    { refetchInterval: 5000, refetchOnWindowFocus: true }
+  );
+
   const inquiries = Array.isArray(data) ? data : (data?.inquiries || []);
   const total = data?.pagination?.totalItems ?? data?.total ?? inquiries.length;
   const totalPages = data?.pagination?.totalPages ?? (Math.ceil(total / limit) || 1);
+
+  const pendingCount = (statsData?.byStatus?.pending || 0) + (statsData?.byStatus?.new || 0);
+  const resolvedCount = (statsData?.byStatus?.resolved || 0) + (statsData?.byStatus?.["in-progress"] || 0);
+  const totalCount = statsData?.total ?? total;
+  const recentCount = statsData?.recentCount ?? 0;
+
+  const kpiItems = useMemo(
+    () => [
+      {
+        key: "all",
+        statusKey: "",
+        label: "Total Inquiries",
+        value: totalCount,
+        icon: MessageSquare,
+        color: "blue",
+        subtext: "Total lead volume",
+      },
+      {
+        key: "pending",
+        statusKey: "pending",
+        label: "New / Pending",
+        value: pendingCount,
+        icon: Clock,
+        color: "orange",
+        subtext: "Awaiting staff response",
+      },
+      {
+        key: "resolved",
+        statusKey: "resolved",
+        label: "Responded",
+        value: resolvedCount,
+        icon: CheckCircle2,
+        color: "teal",
+        subtext: "Answered & resolved",
+      },
+      {
+        key: "recent",
+        statusKey: null,
+        label: "Recent (7 Days)",
+        value: recentCount,
+        icon: Sparkles,
+        color: "emerald",
+        subtext: "Received this week",
+      },
+    ],
+    [totalCount, pendingCount, resolvedCount, recentCount],
+  );
 
   const handleExportCSV = useCallback(() => {
     handleExportInquiriesCSV({
@@ -110,10 +166,10 @@ function InquiriesPage({ isEmbedded = false }) {
       await handleExportInquiriesPDF({
         inquiries,
         counts: {
-          total,
-          pending: data?.counts?.pending,
-          resolved: data?.counts?.resolved,
-          converted: data?.counts?.converted,
+          total: totalCount,
+          pending: pendingCount,
+          resolved: resolvedCount,
+          recent: recentCount,
         },
         branchFilter: branchFilter || "all",
         statusFilter,
@@ -122,7 +178,7 @@ function InquiriesPage({ isEmbedded = false }) {
     } catch (error) {
       console.error("[InquiriesExport] PDF generation failed:", error);
     }
-  }, [inquiries, total, data?.counts, branchFilter, statusFilter, searchTerm]);
+  }, [inquiries, totalCount, pendingCount, resolvedCount, recentCount, branchFilter, statusFilter, searchTerm]);
 
   const handleBack = () => {
     if (window.history.state && window.history.state.idx > 0) {
@@ -162,6 +218,102 @@ function InquiriesPage({ isEmbedded = false }) {
                 Review, filter, and respond to applicant & tenant inquiries across acquisition channels.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* KPI Summary Cards Grid */}
+        {statsLoading && !statsData ? (
+          <StatGridSkeleton count={4} className="mb-4" />
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4" role="list" aria-label="Inquiry Statistics">
+            {kpiItems.map((item) => {
+              const Icon = item.icon;
+              const isClickable = item.statusKey !== null;
+              const isActive =
+                item.key === "all"
+                  ? statusFilter === ""
+                  : item.statusKey
+                  ? statusFilter === item.statusKey
+                  : false;
+
+              const getIconStyle = () => {
+                if (item.color === "blue") return "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400";
+                if (item.color === "orange") return "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400";
+                if (item.color === "teal") return "bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400";
+                return "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400";
+              };
+
+              const getActiveStyle = () => {
+                if (!isActive) return "";
+                if (item.color === "blue") return "border-blue-500 ring-2 ring-inset ring-blue-500/20 bg-blue-50/30 dark:bg-blue-950/20";
+                if (item.color === "orange") return "border-amber-500 ring-2 ring-inset ring-amber-500/20 bg-amber-50/30 dark:bg-amber-950/20";
+                if (item.color === "teal") return "border-teal-500 ring-2 ring-inset ring-teal-500/20 bg-teal-50/30 dark:bg-teal-950/20";
+                return "border-emerald-500 ring-2 ring-inset ring-emerald-500/20 bg-emerald-50/30 dark:bg-emerald-950/20";
+              };
+
+              const handleClick = () => {
+                if (!isClickable) return;
+                if (item.key === "all") {
+                  setStatusFilter("");
+                } else if (statusFilter === item.statusKey) {
+                  setStatusFilter("");
+                } else {
+                  setStatusFilter(item.statusKey);
+                }
+                setPage(1);
+              };
+
+              return (
+                <div
+                  key={item.key}
+                  onClick={handleClick}
+                  onKeyDown={(e) => {
+                    if (isClickable && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      handleClick();
+                    }
+                  }}
+                  role={isClickable ? "button" : "listitem"}
+                  tabIndex={isClickable ? 0 : undefined}
+                  aria-pressed={isClickable ? isActive : undefined}
+                  style={{
+                    backgroundColor: "var(--bg-card)",
+                    borderColor: isActive ? undefined : "var(--border-light)",
+                    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.02)",
+                  }}
+                  className={`group relative flex flex-col justify-between min-h-[108px] rounded-xl border p-4 transition-all duration-150 ${
+                    isClickable
+                      ? "cursor-pointer select-none hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                      : ""
+                  } ${getActiveStyle()}`}
+                  title={
+                    isClickable
+                      ? isActive
+                        ? `Active filter: ${item.label}. Click to clear filter.`
+                        : `Click to filter by ${item.label}`
+                      : item.subtext
+                  }
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">
+                      {item.label}
+                    </span>
+                    <div className={`p-2 rounded-lg ${getIconStyle()}`}>
+                      <Icon className="w-4 h-4" strokeWidth={2} />
+                    </div>
+                  </div>
+
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-2xl font-bold tracking-tight text-foreground leading-none tabular-nums">
+                      {item.value}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground font-medium truncate ml-2">
+                      {item.subtext}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 

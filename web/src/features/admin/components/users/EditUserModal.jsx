@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import useBodyScrollLock from "../../../../shared/hooks/useBodyScrollLock";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 import { LoaderCircle } from "lucide-react";
@@ -26,18 +27,24 @@ export default function EditUserModal({
     setTouched((prev) => ({ ...prev, [field]: true }));
   };
 
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
   const handleSafeClose = () => {
     const isDirty = JSON.stringify(editForm) !== initialFormRef.current;
     if (isDirty) {
-      if (window.confirm("You have unsaved changes. Are you sure you want to discard them?")) {
-        onClose();
-      }
+      setShowDiscardConfirm(true);
     } else {
       onClose();
     }
   };
 
-  useEscapeClose(true, handleSafeClose);
+  useEscapeClose(true, () => {
+    if (showDiscardConfirm) {
+      setShowDiscardConfirm(false);
+    } else {
+      handleSafeClose();
+    }
+  });
 
   if (typeof document === "undefined") return null;
 
@@ -64,13 +71,15 @@ export default function EditUserModal({
     return val.slice(0, 10);
   };
 
-  return createPortal(
-    <div
-      className="modal-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleSafeClose();
-      }}
-    >
+  return (
+    <>
+      {createPortal(
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) handleSafeClose();
+          }}
+        >
       <div
         className="modal-content"
         role="dialog"
@@ -411,5 +420,20 @@ export default function EditUserModal({
       </div>
     </div>,
     document.body,
+  )}
+  <ConfirmModal
+    isOpen={showDiscardConfirm}
+    onClose={() => setShowDiscardConfirm(false)}
+    onConfirm={() => {
+      setShowDiscardConfirm(false);
+      onClose();
+    }}
+    title="Discard Changes"
+    message="You have unsaved changes. Are you sure you want to discard them and close this form?"
+    confirmText="Discard"
+    cancelText="Keep Editing"
+    variant="warning"
+  />
+  </>
   );
 }

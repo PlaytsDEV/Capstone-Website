@@ -1125,7 +1125,7 @@ function ReservationsPage() {
                   borderColor: "var(--border-light)",
                   boxShadow: "0 1px 2px rgba(0, 0, 0, 0.02)",
                 }}
-                className="border rounded-xl p-4 transition-colors"
+                className="border rounded-xl p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">

@@ -227,15 +227,19 @@ function RoomAvailabilityPage() {
               const bedsInMaintenance = (room.beds || []).filter(
                 (b) => b.status === "maintenance",
               ).length;
+              if (roomStatusFilter === "maintenance") {
+                return bedsInMaintenance > 0 || room.status === "maintenance";
+              }
+
               const roomLevelMaintenance =
                 bedsInMaintenance === room.capacity && room.capacity > 0;
               const effectiveCapacity = roomLevelMaintenance
                 ? 0
-                : room.capacity - bedsInMaintenance;
+                : Math.max(0, (room.capacity || 0) - bedsInMaintenance);
 
               const occupiedCount = getEffectiveOccupancy(room);
               let displayStatus = "available";
-              if (roomLevelMaintenance) displayStatus = "maintenance";
+              if (roomLevelMaintenance || effectiveCapacity === 0) displayStatus = "maintenance";
               else if (
                 occupiedCount >= effectiveCapacity &&
                 effectiveCapacity > 0
@@ -667,7 +671,7 @@ function RoomAvailabilityPage() {
       {/* Stats Cards */}
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <div
-              className="rounded-lg p-3"
+              className="rounded-lg p-3 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
               style={{
                 backgroundColor: "var(--card)",
                 border: "1px solid var(--border)",
@@ -684,10 +688,9 @@ function RoomAvailabilityPage() {
               </div>
             </div>
             <div
-              className="rounded-lg p-3"
+              className="rounded-lg p-3 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
               style={{
                 backgroundColor: "var(--card)",
-
                 border: "1px solid var(--border)",
               }}
             >
@@ -700,10 +703,9 @@ function RoomAvailabilityPage() {
               </div>
             </div>
             <div
-              className="rounded-lg p-3"
+              className="rounded-lg p-3 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
               style={{
                 backgroundColor: "var(--card)",
-
                 border: "1px solid var(--border)",
               }}
             >
@@ -716,7 +718,7 @@ function RoomAvailabilityPage() {
               </div>
             </div>
             <div
-              className="rounded-lg p-3"
+              className="rounded-lg p-3 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
               style={{
                 backgroundColor: "var(--card)",
                 border: "1px solid var(--border)",
@@ -731,7 +733,7 @@ function RoomAvailabilityPage() {
               </div>
             </div>
             <div
-              className="rounded-lg p-3"
+              className="rounded-lg p-3 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
               style={{
                 backgroundColor: "var(--card)",
                 border: "1px solid var(--border)",
@@ -748,10 +750,9 @@ function RoomAvailabilityPage() {
               </div>
             </div>
             <div
-              className="rounded-lg p-3"
+              className="rounded-lg p-3 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
               style={{
                 backgroundColor: "var(--card)",
-
                 border: "1px solid var(--border)",
               }}
             >

@@ -32,7 +32,7 @@ export default function AdminLayoutSkeleton() {
       {/* ── Sidebar skeleton ──────────────────────────────────── */}
       <aside
         style={{
-          width: "256px",
+          width: "280px",
           flexShrink: 0,
           height: "100vh",
           borderRight: "1px solid var(--border-light, #e5e7eb)",
@@ -63,7 +63,7 @@ export default function AdminLayoutSkeleton() {
 
         {/* Nav items */}
         <div style={{ padding: "0 12px", display: "flex", flexDirection: "column", gap: "4px" }}>
-          {[1, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6].map((opacity, i) => (
+          {Array.from({ length: 8 }).map((_, i) => (
             <div
               key={i}
               style={{
@@ -72,8 +72,7 @@ export default function AdminLayoutSkeleton() {
                 gap: "10px",
                 padding: "10px 10px",
                 borderRadius: "8px",
-                background: i === 0 ? "var(--skeleton-base, rgba(0,0,0,0.06))" : "transparent",
-                opacity,
+                background: "transparent",
               }}
             >
               <SkeletonPulse variant="circle" width="18px" />
@@ -88,7 +87,7 @@ export default function AdminLayoutSkeleton() {
         </div>
 
         <div style={{ padding: "0 12px", display: "flex", flexDirection: "column", gap: "4px" }}>
-          {[0.6, 0.6, 0.6, 0.6].map((opacity, i) => (
+          {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
               style={{
@@ -97,7 +96,7 @@ export default function AdminLayoutSkeleton() {
                 gap: "10px",
                 padding: "10px 10px",
                 borderRadius: "8px",
-                opacity,
+                background: "transparent",
               }}
             >
               <SkeletonPulse variant="circle" width="18px" />

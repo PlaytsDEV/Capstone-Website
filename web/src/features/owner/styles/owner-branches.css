@@ -38,53 +38,22 @@
   border-radius: 50%;
   background: var(--success, #16a34a);
   display: inline-block;
+  transition: background-color var(--duration-fast, 150ms) ease;
 }
 
-/* ── Refresh / Sync Button ── */
-.sa-branches-refresh-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--border, #cbd5e1);
-  border-radius: var(--radius-full, 999px);
-  background: #ffffff;
-  color: var(--foreground, #0f172a);
-  font-size: var(--font-size-sm, 13px);
-  font-weight: 700;
-  padding: 8px 16px;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition:
-    border-color var(--duration-fast, 150ms) var(--ease-out, ease-out),
-    background-color var(--duration-fast, 150ms) var(--ease-out, ease-out),
-    box-shadow var(--duration-fast, 150ms) var(--ease-out, ease-out),
-    transform var(--duration-fast, 150ms) var(--ease-out, ease-out);
+.sa-branches-sync-dot--syncing {
+  background: var(--primary, #2563eb);
+  animation: sa-branches-dot-pulse 1.2s ease-in-out infinite;
 }
 
-.sa-branches-refresh-btn:hover:not(:disabled) {
-  border-color: #0f172a;
-  background: #f8fafc;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px);
-}
-
-.sa-branches-refresh-btn:disabled {
-  background: #f1f5f9;
-  border-color: #e2e8f0;
-  color: #94a3b8;
-  cursor: wait;
-}
-
-.sa-branches-state-spinner {
-  animation: sa-spin 0.85s linear infinite;
-}
-
-@keyframes sa-spin {
-  from {
-    transform: rotate(0deg);
+@keyframes sa-branches-dot-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
   }
-  to {
-    transform: rotate(360deg);
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
   }
 }
 
@@ -109,14 +78,6 @@
 
 .sa-branches-overview-card:hover {
   border-color: #94a3b8;
-}
-
-.sa-branches-overview-card--alert {
-  border-color: color-mix(in srgb, var(--danger, #dc2626) 35%, var(--border, #e2e8f0));
-}
-
-.sa-branches-overview-card--warning {
-  border-color: color-mix(in srgb, var(--warning, #d97706) 35%, var(--border, #e2e8f0));
 }
 
 .sa-branches-overview-top {

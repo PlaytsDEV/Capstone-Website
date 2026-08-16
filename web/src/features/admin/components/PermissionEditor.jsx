@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
-  Shield, Save, Loader,
+  Shield, Save, Loader2,
   CalendarCheck, Users, Receipt, BedDouble,
   Wrench, Megaphone, BarChart2, KeyRound,
-  CheckCircle2, Sparkles, AlertCircle, RotateCcw
+  CheckCircle2, Sparkles, AlertCircle, RotateCcw,
+  CheckSquare, Square
 } from "lucide-react";
 import ToggleSwitch from "../../../shared/components/ToggleSwitch";
 import "../styles/permission-editor.css";
@@ -185,6 +186,21 @@ export default function PermissionEditor({
     if (onChange) onChange(presetKeys);
   };
 
+  const handleCategoryBatchToggle = (categoryPerms, grantAll) => {
+    if (isOwnerTarget) return;
+    const catKeys = categoryPerms.map((p) => p.key);
+    let updated;
+    if (grantAll) {
+      const merged = new Set([...localPermissions, ...catKeys]);
+      updated = Array.from(merged);
+    } else {
+      updated = localPermissions.filter((k) => !catKeys.includes(k));
+    }
+    setLocalPermissions(updated);
+    setHasChanges(true);
+    if (onChange) onChange(updated);
+  };
+
   const handleSave = () => {
     if (onSave) onSave(localPermissions);
     setHasChanges(false);
@@ -205,9 +221,9 @@ export default function PermissionEditor({
             <Shield size={18} />
           </div>
           <div>
-            <h4 className="pe-title">Access Control & Permissions</h4>
+            <h4 className="pe-title">Access Control & Capabilities</h4>
             <p className="pe-subtitle">
-              Configure granular system capabilities assigned to this account
+              Configure granular administrative privileges assigned to this branch administrator account.
             </p>
           </div>
         </div>
@@ -219,7 +235,7 @@ export default function PermissionEditor({
         ) : (
           <div className="pe-active-indicator">
             <span className="pe-count-badge">
-              <strong>{activeCount}</strong> / {ALL_PERMISSION_KEYS.length} Granted
+              <strong>{activeCount}</strong> / {ALL_PERMISSION_KEYS.length} Capabilities Granted
             </span>
           </div>
         )}
@@ -228,26 +244,29 @@ export default function PermissionEditor({
       {/* Quick Role Presets Toolbar */}
       {!isOwnerTarget && (
         <div className="pe-presets-bar">
-          <span className="pe-presets-label">
-            <Sparkles size={14} /> Quick Presets:
-          </span>
-          <div className="pe-preset-chips">
-            {PRESET_DEFINITIONS.map((preset) => {
-              const isSelected = activePresetId === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  className={`pe-preset-chip ${
-                    preset.danger ? "pe-preset-chip-danger" : ""
-                  } ${isSelected ? "pe-preset-chip--active" : ""}`}
-                  onClick={() => applyPreset(preset.keys)}
-                >
-                  {preset.label}
-                  {isSelected && <span className="pe-preset-dot" />}
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-2">
+            <span className="pe-presets-label">
+              <Sparkles size={13} /> Quick Presets:
+            </span>
+            <div className="pe-preset-chips">
+              {PRESET_DEFINITIONS.map((preset) => {
+                const isSelected = activePresetId === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={`pe-preset-chip ${
+                      preset.danger ? "pe-preset-chip-danger" : ""
+                    } ${isSelected ? "pe-preset-chip--active" : ""}`}
+                    onClick={() => applyPreset(preset.keys)}
+                    title={`Apply ${preset.label} preset`}
+                  >
+                    <span>{preset.label}</span>
+                    {isSelected && <span className="pe-preset-dot" />}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -259,19 +278,58 @@ export default function PermissionEditor({
           const categoryActiveCount = category.permissions.filter(
             (p) => isOwnerTarget || localPermissions.includes(p.key)
           ).length;
+          const isAllCategoryActive =
+            categoryActiveCount === category.permissions.length;
 
           return (
             <div key={category.id} className="pe-category-group">
               <div className="pe-category-header">
                 <div className="pe-category-title flex items-center gap-2">
-                  <CategoryIcon size={16} className="pe-category-icon" />
-                  <h5>{category.title}</h5>
+                  <div className="pe-category-icon-box">
+                    <CategoryIcon size={15} />
+                  </div>
+                  <div>
+                    <h5>{category.title}</h5>
+                    <p className="pe-category-desc">{category.description}</p>
+                  </div>
                 </div>
-                <span className="pe-category-badge">
-                  {categoryActiveCount} of {category.permissions.length} active
-                </span>
+
+                <div className="flex items-center gap-2">
+                  <span className="pe-category-badge">
+                    {categoryActiveCount} of {category.permissions.length} active
+                  </span>
+
+                  {!isOwnerTarget && (
+                    <button
+                      type="button"
+                      className="pe-category-batch-btn"
+                      onClick={() =>
+                        handleCategoryBatchToggle(
+                          category.permissions,
+                          !isAllCategoryActive
+                        )
+                      }
+                      title={
+                        isAllCategoryActive
+                          ? `Revoke all ${category.title} permissions`
+                          : `Grant all ${category.title} permissions`
+                      }
+                    >
+                      {isAllCategoryActive ? (
+                        <>
+                          <Square size={12} />
+                          <span>Clear Section</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckSquare size={12} />
+                          <span>Grant Section</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
-              <p className="pe-category-desc">{category.description}</p>
 
               <div className="pe-grid">
                 {category.permissions.map((perm) => {
@@ -288,6 +346,13 @@ export default function PermissionEditor({
                       onClick={() => handleToggle(perm.key)}
                       role="button"
                       tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleToggle(perm.key);
+                        }
+                      }}
+                      aria-label={`${perm.label}: ${isActive ? "Granted" : "Restricted"}`}
                     >
                       <div className="pe-item-icon">
                         <PermIcon size={16} />
@@ -334,19 +399,22 @@ export default function PermissionEditor({
               <span>Pending unsaved permission changes</span>
             </div>
           ) : (
-            <span className="pe-clean-text">All account permissions are synchronized</span>
+            <span className="pe-clean-text">
+              All administrative permissions are synchronized and up to date.
+            </span>
           )}
 
           <div className="pe-footer-actions">
             {hasChanges && (
               <button
                 type="button"
-                className="pe-cancel-btn flex items-center gap-1.5"
+                className="pe-cancel-btn"
                 onClick={handleReset}
                 disabled={saving}
+                title="Discard pending changes and restore original permissions"
               >
                 <RotateCcw size={13} />
-                Discard
+                <span>Discard Changes</span>
               </button>
             )}
             <button
@@ -354,16 +422,23 @@ export default function PermissionEditor({
               onClick={handleSave}
               disabled={!hasChanges || saving}
               type="button"
+              title={
+                !hasChanges
+                  ? "No unsaved permission changes to save"
+                  : saving
+                  ? "Saving changes…"
+                  : "Save permission updates"
+              }
             >
               {saving ? (
                 <>
-                  <Loader size={14} className="pe-spinner" />
-                  Saving Changes…
+                  <Loader2 size={14} className="pe-spinner" />
+                  <span>Saving Changes…</span>
                 </>
               ) : (
                 <>
                   <Save size={14} />
-                  Save Permissions
+                  <span>Save Permissions</span>
                 </>
               )}
             </button>

@@ -33,7 +33,7 @@ html:has(.admin-layout) body {
 /* Content shifts based on sidebar state */
 .admin-layout-main {
   flex: 1;
-  margin-left: 256px;
+  margin-left: 280px;
   display: flex;
   flex-direction: column;
   will-change: margin-left;

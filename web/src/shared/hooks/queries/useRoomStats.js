@@ -51,21 +51,30 @@ export function useRoomStats(rooms) {
       return sum + available;
     }, 0);
 
-    const full = safeRooms.filter(
-      (r) => getEffectiveOccupancy(r) >= r.capacity && r.capacity > 0
-    ).length;
+    const full = safeRooms.filter((r) => {
+      const mBeds = (r.beds || []).filter((b) => b.status === "maintenance").length;
+      const effCap = Math.max(0, (r.capacity || 0) - mBeds);
+      const effOcc = getEffectiveOccupancy(r);
+      return effOcc >= effCap && effCap > 0;
+    }).length;
 
-    const partial = safeRooms.filter(
-      (r) =>
-        getEffectiveOccupancy(r) > 0 &&
-        getEffectiveOccupancy(r) < r.capacity
-    ).length;
+    const partial = safeRooms.filter((r) => {
+      const mBeds = (r.beds || []).filter((b) => b.status === "maintenance").length;
+      const effCap = Math.max(0, (r.capacity || 0) - mBeds);
+      const effOcc = getEffectiveOccupancy(r);
+      return effOcc > 0 && effOcc < effCap;
+    }).length;
 
-    const available = safeRooms.filter((r) => getEffectiveOccupancy(r) === 0).length;
+    const available = safeRooms.filter((r) => {
+      const mBeds = (r.beds || []).filter((b) => b.status === "maintenance").length;
+      const effCap = Math.max(0, (r.capacity || 0) - mBeds);
+      const effOcc = getEffectiveOccupancy(r);
+      return effOcc < effCap && effCap > 0;
+    }).length;
 
     const maintenance = safeRooms.filter((r) => {
       const mBeds = (r.beds || []).filter((b) => b.status === "maintenance").length;
-      return mBeds > 0 && mBeds === r.capacity && r.capacity > 0;
+      return mBeds > 0 || r.status === "maintenance";
     }).length;
 
     const rate =

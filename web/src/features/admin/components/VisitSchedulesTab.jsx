@@ -248,7 +248,7 @@ function VisitSchedulesTab() {
     onConfirm: null,
   });
   const [selectedSchedule, setSelectedSchedule] = useState(null);
-  const [activeFilter, setActiveFilter] = useState(0);
+  const [statusFilter, setStatusFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   // Branch admins see only their branch — owners can filter across all branches
   const [branchFilter, setBranchFilter] = useState(isOwner ? "all" : (user?.branch || "all"));
@@ -511,12 +511,11 @@ function VisitSchedulesTab() {
 
   const displayData = useMemo(() => {
     let base;
-    if (activeFilter === 0) base = schedules;
-    else if (activeFilter === 1) base = awaitingVisit;
-    else if (activeFilter === 2) base = completed;
-    else if (activeFilter === 3) base = noShows;
-    else if (activeFilter === 4) base = rejected;
-    else if (activeFilter === 5) base = cancelled;
+    if (statusFilter === "awaiting_visit") base = awaitingVisit;
+    else if (statusFilter === "completed") base = completed;
+    else if (statusFilter === "no_show") base = noShows;
+    else if (statusFilter === "rejected") base = rejected;
+    else if (statusFilter === "cancelled") base = cancelled;
     else base = schedules;
 
     const query = searchTerm.trim().toLowerCase();
@@ -551,7 +550,6 @@ function VisitSchedulesTab() {
 
     return result;
   }, [
-    activeFilter,
     awaitingVisit,
     branchFilter,
     cancelled,
@@ -561,6 +559,7 @@ function VisitSchedulesTab() {
     schedules,
     searchTerm,
     sortBy,
+    statusFilter,
   ]);
 
   const totalPages = Math.max(1, Math.ceil(displayData.length / itemsPerPage));
@@ -575,7 +574,7 @@ function VisitSchedulesTab() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeFilter, searchTerm, branchFilter, sortBy]);
+  }, [branchFilter, searchTerm, sortBy, statusFilter]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -583,7 +582,18 @@ function VisitSchedulesTab() {
     }
   }, [currentPage, totalPages]);
 
-  const activeFilterLabel = summaryItems[activeFilter]?.label || "All Visits";
+  const activeFilterLabel =
+    statusFilter === "awaiting_visit"
+      ? "Awaiting Visit"
+      : statusFilter === "completed"
+      ? "Completed Visits"
+      : statusFilter === "no_show"
+      ? "No-Shows"
+      : statusFilter === "rejected"
+      ? "Rejected Visits"
+      : statusFilter === "cancelled"
+      ? "Cancelled Visits"
+      : "All Visits";
 
   const handleExportCSV = useCallback(() => {
     handleExportVisitSchedulesCSV({
@@ -633,9 +643,8 @@ function VisitSchedulesTab() {
   return (
     <div className="space-y-6">
       <div className="grid grid-flow-col auto-cols-[minmax(150px,1fr)] gap-3 overflow-x-auto pb-1">
-        {summaryItems.map((item, index) => {
+        {summaryItems.map((item) => {
           const Icon = item.icon;
-          const isActive = activeFilter === index;
 
           const colorClass =
             item.color === "blue"
@@ -649,15 +658,12 @@ function VisitSchedulesTab() {
           return (
             <div
               key={item.label}
-              onClick={() => setActiveFilter(index)}
               style={{
                 backgroundColor: "var(--bg-card)",
-                borderColor: isActive
-                  ? "color-mix(in srgb, var(--primary) 55%, var(--border-light))"
-                  : "var(--border-light)",
-                boxShadow: isActive ? "0 6px 16px rgba(2,6,23,0.06)" : "0 2px 8px rgba(2,6,23,0.03)",
+                borderColor: "var(--border-light)",
+                boxShadow: "0 2px 8px rgba(2,6,23,0.03)",
               }}
-              className="border rounded-xl p-4 cursor-pointer min-h-[108px]"
+              className="border rounded-xl p-4 min-h-[108px] transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
             >
               <div className="flex items-center gap-3 mb-3">
                 <Icon className={`${colorClass} w-5 h-5 flex-shrink-0 mr-2`} />
@@ -712,6 +718,23 @@ function VisitSchedulesTab() {
                 <option value="Guadalupe">Guadalupe</option>
               </select>
             )}
+
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              style={{
+                backgroundColor: "var(--input-background)",
+                borderColor: "var(--border-light)",
+              }}
+              className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+            >
+              <option value="all">All Statuses</option>
+              <option value="awaiting_visit">Awaiting Visit</option>
+              <option value="completed">Completed</option>
+              <option value="no_show">No-Show</option>
+              <option value="rejected">Rejected</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
 
             <select
               value={sortBy}

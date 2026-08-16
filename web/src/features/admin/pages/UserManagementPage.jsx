@@ -1215,7 +1215,7 @@ function UserManagementPage() {
           return (
             <div
               key={item.id}
-              className="rounded-lg p-4 text-left relative overflow-hidden bg-card"
+              className="rounded-lg p-4 text-left relative overflow-hidden bg-card transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
               style={{
                 border: "1px solid var(--border)",
               }}

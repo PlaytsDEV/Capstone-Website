@@ -28,7 +28,6 @@ import {
   ANALYTICS_DETAILS_PATH,
   LEGACY_ANALYTICS_REDIRECTS,
 } from "../../features/admin/pages/analyticsNavigation.mjs";
-import AdminLayoutSkeleton from "../../features/admin/components/AdminLayoutSkeleton";
 import RequirePermission from "../../shared/guards/RequirePermission";
 import GlobalLoading from "../../shared/components/GlobalLoading";
 import {
@@ -36,6 +35,7 @@ import {
   AdminTablePageSkeleton,
   AdminCardGridSkeleton,
   AdminMaintenanceSkeleton,
+  AdminAnalyticsSkeleton,
   AdminFormPageSkeleton,
   AdminRolePermissionsSkeleton,
   AdminChatSkeleton,
@@ -49,8 +49,8 @@ export function AdminRoutes() {
     <Route
       path="/admin"
       element={
-        <ProtectedRoute requiredRole="branch_admin" loadingFallback={<AdminLayoutSkeleton />}>
-          <RouteShell name="AdminLayout" fallback={<AdminLayoutSkeleton />}>
+        <ProtectedRoute requiredRole="branch_admin" loadingFallback={<GlobalLoading />}>
+          <RouteShell name="AdminLayout" fallback={<GlobalLoading />}>
             <AdminLayout />
           </RouteShell>
         </ProtectedRoute>
@@ -152,7 +152,7 @@ export function AdminRoutes() {
       <Route
         path="analytics"
         element={
-          <RouteShell name="Analytics" fallback={<AdminDashboardSkeleton />}>
+          <RouteShell name="Analytics" fallback={<AdminAnalyticsSkeleton />}>
             <AnalyticsPage />
           </RouteShell>
         }
@@ -160,7 +160,7 @@ export function AdminRoutes() {
       <Route
         path="analytics/details"
         element={
-          <RouteShell name="AnalyticsDetails" fallback={<AdminDashboardSkeleton />}>
+          <RouteShell name="AnalyticsDetails" fallback={<AdminAnalyticsSkeleton />}>
             <AnalyticsDetailsPage />
           </RouteShell>
         }

@@ -21,12 +21,14 @@ export function useInquiries(params, options = {}) {
 }
 
 /** Fetch inquiry statistics */
-export function useInquiryStats(options = {}) {
+export function useInquiryStats(params, options = {}) {
   return useQuery({
-    queryKey: queryKeys.inquiries.stats,
-    queryFn: () => inquiryApi.getStats(),
-    staleTime: 60 * 1000,
+    queryKey: queryKeys.inquiries.stats(params),
+    queryFn: () => inquiryApi.getStats(params),
+    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
     placeholderData: keepPreviousData,
+    refetchOnWindowFocus: false,
     ...options,
   });
 }

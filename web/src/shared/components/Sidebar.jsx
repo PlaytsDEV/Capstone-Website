@@ -228,7 +228,7 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
     <>
       <div className="sidebar-header">
         <Link to="/" className="sidebar-brand">
-          <div className="sidebar-brand-mark" style={{ width: 28, height: 28, borderRadius: 6, overflow: "hidden" }}>
+          <div className="sidebar-brand-mark">
             <img src={logo} alt="Lilycrest logo" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
           </div>
           <span className="sidebar-brand-name">Lilycrest</span>
@@ -316,9 +316,16 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
       </nav>
 
       <div className="sidebar-footer">
-        <button type="button" className="sidebar-logout" onClick={handleLogout} disabled={isLoggingOut} title="Sign Out">
-          <LogOut size={17} />
-          <span>{isLoggingOut ? "Signing out…" : "Sign Out"}</span>
+        <button
+          type="button"
+          className="sidebar-logout"
+          onClick={handleLogout}
+          disabled={isLoggingOut}
+          title={isCollapsed && !isMobile ? "Sign Out" : undefined}
+          aria-label="Sign Out"
+        >
+          <LogOut size={17} className="sidebar-nav-icon" />
+          <span className="sidebar-nav-label">{isLoggingOut ? "Signing out…" : "Sign Out"}</span>
         </button>
       </div>
     </>

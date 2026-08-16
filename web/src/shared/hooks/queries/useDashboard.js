@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { analyticsApi } from "../../api/apiClient";
 import { queryKeys } from "../../lib/queryKeys";
 
@@ -9,6 +9,7 @@ export function useDashboardData(params = { range: "30d" }) {
   return useQuery({
     queryKey: queryKeys.dashboard.admin(params),
     queryFn: () => analyticsApi.getDashboard(params),
+    placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
     retry: 2,

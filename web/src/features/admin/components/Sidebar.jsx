@@ -229,10 +229,12 @@ export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }
  <button
  className="sb-signout"
  onClick={confirmLogout}
+ title={collapsed ? "Sign Out" : undefined}
+ aria-label="Sign Out"
  onMouseEnter={() => collapsed && setHoveredItem("__signout")}
  onMouseLeave={() => setHoveredItem(null)}
  >
- <LogOut size={16} />
+ <LogOut size={16} style={{ flexShrink: 0 }} />
  {!collapsed && <span>Sign Out</span>}
  {collapsed && hoveredItem === "__signout" && (
  <span className="sb-tooltip">Sign Out</span>

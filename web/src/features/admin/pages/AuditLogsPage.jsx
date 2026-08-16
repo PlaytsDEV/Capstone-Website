@@ -552,20 +552,7 @@ const AuditLogsPage = () => {
     },
   ];
 
-  const securityActiveIndex =
-    securitySubTab === "failed_logins"
-      ? 0
-      : securitySubTab === "suspicious_ips"
-        ? 1
-        : securitySubTab === "targeted_accounts"
-          ? 2
-          : -1;
 
-  const handleSecuritySummaryClick = (index) => {
-    if (index === 0) setSecuritySubTab("failed_logins");
-    else if (index === 1) setSecuritySubTab("suspicious_ips");
-    else if (index === 2) setSecuritySubTab("targeted_accounts");
-  };
 
   const auditColumns = [
     {
@@ -1167,16 +1154,6 @@ const AuditLogsPage = () => {
             currentTab === SECURITY_SIGNALS_TAB
               ? securitySummaryItems
               : auditSummaryItems
-          }
-          onItemClick={
-            currentTab === SECURITY_SIGNALS_TAB
-              ? handleSecuritySummaryClick
-              : undefined
-          }
-          activeIndex={
-            currentTab === SECURITY_SIGNALS_TAB
-              ? securityActiveIndex
-              : undefined
           }
         />
       </PageShell.Summary>

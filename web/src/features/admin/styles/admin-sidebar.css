@@ -8,7 +8,7 @@
 .admin-sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 256px;
+  width: 280px;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -35,7 +35,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 18px;
+  padding: 0 20px;
   height: 64px;
   min-height: 64px;
   max-height: 64px;
@@ -49,15 +49,15 @@
 .admin-sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   text-decoration: none;
   overflow: hidden;
   min-width: 0;
 }
 
 .admin-sidebar-brand-mark {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -65,11 +65,19 @@
   flex-shrink: 0;
 }
 
+.admin-sidebar-brand-mark svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
 .admin-sidebar-brand-name {
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 1.32rem;
+  line-height: 1.2;
   color: var(--foreground);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   white-space: nowrap;
   overflow: hidden;
   opacity: 1;
@@ -357,10 +365,31 @@
   outline: none;
 }
 
-.admin-sidebar-logout .admin-sidebar-nav-label {
+.admin-sidebar-logout .admin-sidebar-nav-icon,
+.admin-sidebar-logout svg {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-sidebar-logout .admin-sidebar-nav-label,
+.admin-sidebar-logout span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition:
     opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1),
     transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.admin-sidebar.admin-sidebar-collapsed .admin-sidebar-logout span {
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
 }
 
 .admin-sidebar-logout:focus-visible {

@@ -57,7 +57,7 @@ export const queryKeys = {
   // ── Inquiries ──
   inquiries: {
     all: (params) => ["inquiries", "list", params || {}],
-    stats: ["inquiries", "stats"],
+    stats: (params) => ["inquiries", "stats", params || {}],
   },
 
   // ── Users / Tenants ──

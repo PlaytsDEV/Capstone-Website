@@ -602,7 +602,7 @@ export default function TenantsWorkspacePage() {
         )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4">
+          <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-blue-100 rounded-lg">
                 <Users className="w-5 h-5 text-blue-600" />
@@ -617,7 +617,7 @@ export default function TenantsWorkspacePage() {
               </div>
             </div>
           </div>
-          <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4">
+          <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-green-100 rounded-lg">
                 <UserRoundCheck className="w-5 h-5 text-green-600" />
@@ -632,7 +632,7 @@ export default function TenantsWorkspacePage() {
               </div>
             </div>
           </div>
-          <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4">
+          <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-amber-100 rounded-lg">
                 <Clock3 className="w-5 h-5 text-amber-500" />
@@ -647,7 +647,7 @@ export default function TenantsWorkspacePage() {
               </div>
             </div>
           </div>
-          <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4">
+          <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-red-100 rounded-lg">
                 <AlertTriangle className="w-5 h-5 text-red-500" />
@@ -869,13 +869,6 @@ export default function TenantsWorkspacePage() {
                   actionTenantDetail?.leaseInfo?.leaseEndDate;
                 const defaultStart = new Date(currentLeaseEnd || Date.now());
                 defaultStart.setDate(defaultStart.getDate() + 1);
-                if (
-                  !window.confirm(
-                    "Confirm extending this stay? This will preserve the current stay history and update the stay end date.",
-                  )
-                ) {
-                  return null;
-                }
                 return reservationApi.renew(actionState.tenant.reservationId, {
                   newLeaseStartDate:
                     payload.newLeaseStartDate || toDateInputValue(defaultStart),

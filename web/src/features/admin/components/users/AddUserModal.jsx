@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Sparkles, Copy, Check } from "lucide-react";
 import BaseModal from "../../../../shared/components/BaseModal";
+import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import PasswordVisibilityButton from "../../../../shared/components/PasswordVisibilityButton";
 import { BRANCH_OPTIONS } from "../../../../shared/utils/constants";
 import { showNotification } from "../../../../shared/utils/notification";
@@ -94,6 +95,8 @@ export default function AddUserModal({
     }
   };
 
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
   const handleSafeClose = () => {
     const isDirty =
       addForm.username ||
@@ -104,28 +107,27 @@ export default function AddUserModal({
       addForm.phone;
 
     if (isDirty) {
-      if (window.confirm("You have unsaved changes. Are you sure you want to discard them?")) {
-        onClose();
-      }
+      setShowDiscardConfirm(true);
     } else {
       onClose();
     }
   };
 
   return (
-    <BaseModal
-      isOpen={true}
-      onClose={handleSafeClose}
-      title="Add New User"
-      subtitle="Create a new user account in the system"
-      variant="primary"
-      size="md"
-      onConfirm={onSubmit}
-      confirmText={isCreating ? "Creating Account..." : "Create User"}
-      cancelText="Cancel"
-      loading={isCreating}
-    >
-      <form onSubmit={onSubmit} className="modal-form" style={{ display: "grid", gap: 14 }}>
+    <>
+      <BaseModal
+        isOpen={true}
+        onClose={handleSafeClose}
+        title="Add New User"
+        subtitle="Create a new user account in the system"
+        variant="primary"
+        size="md"
+        onConfirm={onSubmit}
+        confirmText={isCreating ? "Creating Account..." : "Create User"}
+        cancelText="Cancel"
+        loading={isCreating}
+      >
+        <form onSubmit={onSubmit} className="modal-form" style={{ display: "grid", gap: 14 }}>
         <div className="form-row">
           <div className={`form-group ${touched.username && addFormErrors.username ? "has-error" : ""}`}>
             <div className="flex items-center justify-between">
@@ -360,6 +362,20 @@ export default function AddUserModal({
         </div>
       </form>
     </BaseModal>
+    <ConfirmModal
+      isOpen={showDiscardConfirm}
+      onClose={() => setShowDiscardConfirm(false)}
+      onConfirm={() => {
+        setShowDiscardConfirm(false);
+        onClose();
+      }}
+      title="Discard Changes"
+      message="You have unsaved changes. Are you sure you want to discard them and close this form?"
+      confirmText="Discard"
+      cancelText="Keep Editing"
+      variant="warning"
+    />
+    </>
   );
 }
 

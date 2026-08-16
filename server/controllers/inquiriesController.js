@@ -16,10 +16,11 @@ import {
 export const getInquiryStats = async (req, res, next) => {
   try {
     const matchQuery = { isArchived: { $ne: true } };
-    if (req.branchFilter) {
+    const targetBranch = req.branchFilter || req.query?.branch;
+    if (targetBranch && targetBranch !== "all") {
       matchQuery.$or = [
-        { preferredBranch: req.branchFilter },
-        { branch: req.branchFilter },
+        { preferredBranch: targetBranch },
+        { branch: targetBranch },
       ];
     }
 

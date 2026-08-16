@@ -33,7 +33,7 @@ export default function DataTable({
   onSortChange,
   serverPagination = false,
   disableRowInteraction = false,
-  density = "compact",
+  density = "comfortable",
 }) {
   // Ensure data is always an array
   const safeData = Array.isArray(data) ? data : [];
@@ -83,9 +83,29 @@ export default function DataTable({
       : sortedData.slice((currentPage - 1) * pageSize, currentPage * pageSize)
     : sortedData;
 
-  const isCompact = density === "compact";
-  const headerPadding = isCompact ? "px-3 py-2.5" : "px-4 py-3";
-  const cellPadding = isCompact ? "px-3 py-2.5 text-xs font-medium" : "px-4 py-4 text-sm";
+  const paddingConfig = useMemo(() => {
+    switch (density) {
+      case "compact":
+        return {
+          header: "px-3.5 py-2.5 text-[11px]",
+          cell: "px-3.5 py-2.5 text-xs font-medium",
+        };
+      case "spacious":
+        return {
+          header: "px-6 py-4 text-xs",
+          cell: "px-6 py-5 text-sm font-normal",
+        };
+      case "comfortable":
+      default:
+        return {
+          header: "px-5 py-3.5 text-xs",
+          cell: "px-5 py-4 text-sm font-normal",
+        };
+    }
+  }, [density]);
+
+  const headerPadding = paddingConfig.header;
+  const cellPadding = paddingConfig.cell;
 
   if (!loading && safeData.length === 0 && emptyState) {
     return (

@@ -78,7 +78,7 @@ export default function AdminSidebar({
       <div className="admin-sidebar-header">
         <Link to="/admin/dashboard" className="admin-sidebar-brand">
           <div className="admin-sidebar-brand-mark">
-            <LilycrestLogo className="h-7 w-7" aria-hidden="true" />
+            <LilycrestLogo className="w-full h-full object-contain" aria-hidden="true" />
           </div>
           <span className="admin-sidebar-brand-name">
             {brandMeta.title}

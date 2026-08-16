@@ -178,6 +178,7 @@ export default function Dashboard() {
   );
 
   const { data, isLoading, isError } = useDashboardData(queryParams);
+  const showSkeleton = isLoading && !data;
 
   const reservations = data?.recentReservations || [];
   const inquiryItems = data?.recentInquiries || [];
@@ -359,7 +360,9 @@ export default function Dashboard() {
                 >
                   <option value="7d">Last 7 Days</option>
                   <option value="30d">Last 30 Days</option>
+                  <option value="60d">Last 60 Days</option>
                   <option value="90d">Last 90 Days</option>
+                  <option value="365d">Last 1 Year</option>
                   <option value="12m">Last 12 Months</option>
                 </select>
               </div>
@@ -378,7 +381,7 @@ export default function Dashboard() {
               {error}
             </div>
           )}
-          {!isLoading && (
+          {!showSkeleton && (
             <AlertBanner
               activeTickets={kpis.activeTickets || 0}
               pendingReservations={reservationStatus.pending || 0}
@@ -387,7 +390,7 @@ export default function Dashboard() {
           )}
 
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            {isLoading
+            {showSkeleton
               ? Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
               : summaryItems.map((item) => {
                   const Icon = item.icon;
@@ -453,7 +456,7 @@ export default function Dashboard() {
                   >
                     Recent Inquiries
                   </h2>
-                  {isLoading ? (
+                  {showSkeleton ? (
                     <SkeletonPulse variant="text" width="200px" height="11px" style={{ marginTop: "4px" }} />
                   ) : (
                     <p
@@ -476,7 +479,7 @@ export default function Dashboard() {
               </div>
 
               <div className="space-y-3">
-                {isLoading ? (
+                {showSkeleton ? (
                   Array.from({ length: 4 }).map((_, i) => <RowSkeleton key={i} />)
                 ) : recentInquiries.length > 0 ? (
                   recentInquiries.map((inq) => (
@@ -574,7 +577,7 @@ export default function Dashboard() {
                 >
                   Reservation Status
                 </h2>
-                {isLoading ? (
+                {showSkeleton ? (
                   <SkeletonPulse variant="text" width="180px" height="11px" style={{ marginTop: "4px" }} />
                 ) : (
                   <p
@@ -589,7 +592,7 @@ export default function Dashboard() {
               </div>
 
               <div className="mb-6 flex justify-center py-4">
-                {isLoading ? (
+                {showSkeleton ? (
                   <SkeletonPulse variant="circle" width="180px" />
                 ) : (
                   <svg
@@ -643,7 +646,7 @@ export default function Dashboard() {
               </div>
 
               <div className="space-y-3">
-                {isLoading ? (
+                {showSkeleton ? (
                   ["65%", "50%", "40%"].map((w, i) => (
                     <div key={i} className="flex items-center justify-between">
                       <SkeletonPulse variant="text" width={w} height="13px" />
@@ -713,7 +716,7 @@ export default function Dashboard() {
           </div>
 
           <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {isLoading ? (
+            {showSkeleton ? (
               <>
                 <div
                   className="rounded-xl border p-6 shadow-sm"
@@ -755,7 +758,7 @@ export default function Dashboard() {
                 >
                   Recent Reservations
                 </h2>
-                {isLoading ? (
+                {showSkeleton ? (
                   <SkeletonPulse variant="text" width="240px" height="11px" style={{ marginTop: "4px" }} />
                 ) : (
                   <p
@@ -778,7 +781,7 @@ export default function Dashboard() {
               </Link>
             </div>
 
-            {isLoading ? (
+            {showSkeleton ? (
               <div className="overflow-x-auto -mx-6">
                 <table className="w-full min-w-[800px]">
                   <tbody className="divide-y" style={{ borderColor: "var(--border-light)" }}>

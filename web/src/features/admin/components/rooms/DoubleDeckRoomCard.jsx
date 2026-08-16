@@ -142,7 +142,10 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
               Room {roomNumber}
             </span>
             {bedsInMaintenance > 0 && (
-              <span title={`${bedsInMaintenance} bed(s) in maintenance`} className="text-amber-500">
+              <span
+                title={`${bedsInMaintenance} of ${capacity} bed(s) in maintenance`}
+                className="text-amber-500 inline-flex items-center"
+              >
                 <Wrench className="w-3.5 h-3.5" />
               </span>
             )}
@@ -156,8 +159,19 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
           <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
             {statusStyle.label}
           </span>
-          <span className="text-[11px] font-semibold text-muted-foreground">
-            {isPrivate ? `${Math.min(1, effectiveOccupancy)}/1` : `${effectiveOccupancy}/${capacity}`} Beds
+          <span
+            className="text-[11px] font-semibold text-muted-foreground"
+            title={
+              bedsInMaintenance > 0
+                ? `${effectiveOccupancy}/${effectiveCapacity} usable beds (${bedsInMaintenance} in maintenance)`
+                : `${effectiveOccupancy}/${capacity} beds occupied`
+            }
+          >
+            {isPrivate
+              ? `${Math.min(1, effectiveOccupancy)}/1`
+              : bedsInMaintenance > 0 && !roomLevelMaintenance
+              ? `${effectiveOccupancy}/${capacity} Beds (${bedsInMaintenance} Maint)`
+              : `${effectiveOccupancy}/${capacity} Beds`}
           </span>
         </div>
       </div>

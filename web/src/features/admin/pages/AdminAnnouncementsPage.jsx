@@ -847,7 +847,7 @@ export default function AdminAnnouncementsPage() {
         ].map(({ label, value, icon: Icon }) => (
           <div
             key={label}
-            className="flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-colors hover:border-border/90"
+            className="flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
           >
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</p>

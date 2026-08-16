@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-test("AdminContentSkeletons exports bespoke skeletons for Branches, Settings, and Backups", () => {
+test("AdminContentSkeletons exports bespoke skeletons for Branches, Settings, Backups, and Analytics", () => {
   const skeletonsFile = fs.readFileSync(
     path.join(__dirname, "AdminContentSkeletons.jsx"),
     "utf8"
@@ -16,6 +16,8 @@ test("AdminContentSkeletons exports bespoke skeletons for Branches, Settings, an
   assert.match(skeletonsFile, /export function AdminBranchesSkeleton/);
   assert.match(skeletonsFile, /export function AdminPoliciesSettingsSkeleton/);
   assert.match(skeletonsFile, /export function AdminSystemBackupSkeleton/);
+  assert.match(skeletonsFile, /export function AdminAnalyticsSkeleton/);
+  assert.match(skeletonsFile, /export function AdminAnalyticsDetailSkeleton/);
 });
 
 test("AdminBranchesSkeleton includes required UI sections and aria accessibility", () => {
@@ -68,4 +70,56 @@ test("adminRoutes uses bespoke skeletons as route fallbacks", () => {
   assert.match(routesFile, /fallback=\{<AdminBranchesSkeleton \/>\}/);
   assert.match(routesFile, /fallback=\{<AdminPoliciesSettingsSkeleton \/>\}/);
   assert.match(routesFile, /fallback=\{<AdminSystemBackupSkeleton \/>\}/);
+  assert.match(routesFile, /fallback=\{<AdminAnalyticsSkeleton \/>\}/);
 });
+
+test("AdminAnalyticsSkeleton includes topbar, tabs, 4 KPI cards, and charts grid", () => {
+  const skeletonsFile = fs.readFileSync(
+    path.join(__dirname, "AdminContentSkeletons.jsx"),
+    "utf8"
+  );
+
+  assert.match(skeletonsFile, /analytics-container/);
+  assert.match(skeletonsFile, /analytics-topbar/);
+  assert.match(skeletonsFile, /analytics-tabs/);
+  assert.match(skeletonsFile, /analytics-kpi-grid/);
+  assert.match(skeletonsFile, /analytics-charts-grid/);
+  assert.match(skeletonsFile, /analytics-chart-card/);
+});
+
+test("AnalyticsPage uses AdminAnalyticsSkeleton instead of AdminDashboardSkeleton", () => {
+  const analyticsPageFile = fs.readFileSync(
+    path.join(__dirname, "../pages/AnalyticsPage.jsx"),
+    "utf8"
+  );
+
+  assert.match(analyticsPageFile, /AdminAnalyticsSkeleton/);
+  assert.doesNotMatch(analyticsPageFile, /AdminDashboardSkeleton/);
+});
+
+test("adminRoutes uses GlobalLoading spinner for root admin reload and layout fallbacks", () => {
+  const routesFile = fs.readFileSync(
+    path.join(__dirname, "../../../app/routes/adminRoutes.jsx"),
+    "utf8"
+  );
+
+  assert.match(routesFile, /loadingFallback=\{<GlobalLoading \/>\}/);
+  assert.match(routesFile, /RouteShell name="AdminLayout" fallback=\{<GlobalLoading \/>\}/);
+});
+
+test("AdminAnalyticsSkeleton and DetailSkeleton avoid colored icon classes and active tab highlights in skeleton loading", () => {
+  const skeletonsFile = fs.readFileSync(
+    path.join(__dirname, "AdminContentSkeletons.jsx"),
+    "utf8"
+  );
+
+  // Ensure no colored icon wrapper classes (e.g. analytics-kpi-icon blue/green/amber/purple) are used in skeleton
+  assert.doesNotMatch(skeletonsFile, /analytics-kpi-icon (?:blue|green|amber|purple)/);
+  assert.doesNotMatch(skeletonsFile, /iconBg:\s*["'](?:blue|green|amber|purple)["']/);
+
+  // Ensure navigation tabs do not have active class highlights or underlines during loading
+  assert.doesNotMatch(skeletonsFile, /analytics-tab\s+\$\{isActive/);
+});
+
+
+

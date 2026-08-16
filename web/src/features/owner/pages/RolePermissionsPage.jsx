@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
 import {
-  Shield, UserCog, GitBranch, Info, Search, Filter,
+  Shield, Building2, Info, Search, Filter,
   CheckCircle2, Sliders, Users, ChevronDown, ChevronsUpDown,
-  X, SlidersHorizontal, AlertCircle, RefreshCw
+  X, AlertCircle, RefreshCw
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import PermissionEditor from "../../admin/components/PermissionEditor";
@@ -16,11 +16,17 @@ import "../styles/owner-dashboard.css";
 import "../styles/owner-permissions.css";
 
 const formatBranch = (branch) => {
-  if (!branch) return "Unassigned";
+  if (!branch) return "Unassigned Branch";
   return branch
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+};
+
+const getInitials = (firstName = "", lastName = "") => {
+  const f = firstName.trim().charAt(0) || "";
+  const l = lastName.trim().charAt(0) || "";
+  return (f + l).toUpperCase() || "BA";
 };
 
 export default function RolePermissionsPage({ isEmbedded = false }) {
@@ -131,7 +137,9 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
     });
   };
 
-  const allExpanded = filteredUsers.length > 0 && filteredUsers.every((u) => expandedCardIds.has(String(u._id)));
+  const allExpanded =
+    filteredUsers.length > 0 &&
+    filteredUsers.every((u) => expandedCardIds.has(String(u._id)));
 
   const handleToggleAll = () => {
     if (allExpanded) {
@@ -141,18 +149,30 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
     }
   };
 
+  const handleClearFilters = () => {
+    setSearchTerm("");
+    setSelectedBranch("all");
+    setAccessFilter("all");
+  };
+
+  const hasActiveFilters =
+    searchTerm !== "" || selectedBranch !== "all" || accessFilter !== "all";
+
   if (isLoading && !usersResponse) {
     return <AdminRolePermissionsSkeleton />;
   }
 
   return (
     <div className={isEmbedded ? "sa-perm-embedded" : "sa2"}>
-      {/* Page Header */}
+      {/* Page / Context Header */}
       {!isEmbedded ? (
         <div className="sa2-header flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <p className="sa2-eyebrow">Owner Controls</p>
             <h1 className="sa2-title">Role Permissions Workspace</h1>
+            <p className="text-xs text-muted-foreground mt-1">
+              Configure granular feature permissions and administrative access switches for branch administrators.
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -161,26 +181,42 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
               className="sa-perm-header-btn flex items-center gap-1.5"
               onClick={() => refetch()}
               disabled={isRefetching}
-              title="Refresh permissions list"
+              title="Synchronize and refresh permissions list"
             >
-              <RefreshCw size={14} className={isRefetching ? "animate-spin" : ""} />
-              <span>{isRefetching ? "Syncing…" : "Refresh"}</span>
+              <RefreshCw
+                size={14}
+                className={isRefetching ? "animate-spin" : ""}
+              />
+              <span>{isRefetching ? "Synchronizing…" : "Refresh"}</span>
             </button>
           </div>
         </div>
       ) : (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            Configure granular feature permissions and administrative access switches for branch administrators.
-          </p>
+        <div className="sa-perm-context-bar flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg mb-2">
+          <div className="flex items-center gap-2.5">
+            <div className="sa-perm-context-icon">
+              <Shield size={16} />
+            </div>
+            <div>
+              <h2 className="text-xs font-bold text-foreground tracking-tight">
+                Granular Role Permissions Configuration
+              </h2>
+              <p className="text-[11px] text-muted-foreground">
+                Assign module-level capabilities and operational scopes across branch administrator accounts.
+              </p>
+            </div>
+          </div>
           <button
             type="button"
-            className="sa-perm-header-btn flex items-center gap-1.5 self-start sm:self-auto"
+            className="sa-perm-header-btn flex items-center gap-1.5 self-start sm:self-auto flex-shrink-0"
             onClick={() => refetch()}
             disabled={isRefetching}
-            title="Refresh permissions list"
+            title="Synchronize and refresh permissions list"
           >
-            <RefreshCw size={14} className={isRefetching ? "animate-spin" : ""} />
+            <RefreshCw
+              size={13}
+              className={isRefetching ? "animate-spin" : ""}
+            />
             <span>{isRefetching ? "Syncing…" : "Refresh"}</span>
           </button>
         </div>
@@ -189,12 +225,15 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
       {/* Summary KPI Banner (Static Informational Cards) */}
       <div className="sa-perm-metrics-grid">
         <div className="sa-metric-card">
-          <div className="sa-metric-icon sa-icon-blue">
+          <div className="sa-metric-icon sa-icon-navy">
             <Users size={20} />
           </div>
-          <div className="text-left">
-            <span className="sa-metric-label">Branch Admins</span>
-            <h3 className="sa-metric-value">{totalAdmins}</h3>
+          <div className="sa-metric-info">
+            <span className="sa-metric-label">Branch Administrators</span>
+            <div className="flex items-baseline gap-2">
+              <h3 className="sa-metric-value">{totalAdmins}</h3>
+              <span className="sa-metric-subtext">Total active accounts</span>
+            </div>
           </div>
         </div>
 
@@ -202,9 +241,16 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
           <div className="sa-metric-icon sa-icon-green">
             <CheckCircle2 size={20} />
           </div>
-          <div className="text-left">
+          <div className="sa-metric-info">
             <span className="sa-metric-label">Full Access Accounts</span>
-            <h3 className="sa-metric-value">{fullAccessAdmins}</h3>
+            <div className="flex items-baseline gap-2">
+              <h3 className="sa-metric-value">{fullAccessAdmins}</h3>
+              <span className="sa-metric-subtext">
+                {totalAdmins > 0
+                  ? `${Math.round((fullAccessAdmins / totalAdmins) * 100)}% of total (8/8)`
+                  : "8/8 modules"}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -212,180 +258,217 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
           <div className="sa-metric-icon sa-icon-amber">
             <Sliders size={20} />
           </div>
-          <div className="text-left">
+          <div className="sa-metric-info">
             <span className="sa-metric-label">Customized Access</span>
-            <h3 className="sa-metric-value">{customAccessAdmins}</h3>
+            <div className="flex items-baseline gap-2">
+              <h3 className="sa-metric-value">{customAccessAdmins}</h3>
+              <span className="sa-metric-subtext">
+                {restrictedAdmins > 0
+                  ? `${restrictedAdmins} restricted (0/8)`
+                  : "Tailored policies"}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Main Workspace Card */}
-      <div className="sa2-card">
-        <div className="sa2-section-head flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h2 className="sa2-card-title">
-              <Shield
-                size={18}
-                style={{ marginRight: 8, verticalAlign: "middle" }}
-              />
-              Branch Admin Granular Access
-            </h2>
-            <p className="sa2-subtle">
+      <div className="sa2-card sa-perm-main-card">
+        {/* Workspace Card Header */}
+        <div className="sa-perm-section-head">
+          <div className="sa-perm-section-info">
+            <div className="flex items-center gap-2">
+              <div className="sa-perm-title-icon">
+                <Shield size={16} />
+              </div>
+              <h2 className="sa-perm-section-title">
+                Branch Admin Granular Access
+              </h2>
+            </div>
+            <p className="sa-perm-section-subtitle">
               Toggle feature access switches and assign capabilities for each branch admin.
             </p>
             {hasFocusedUser && (
               <p className="sa-perm-focus-note mt-2">
-                <Info
-                  size={13}
-                  style={{
-                    display: "inline",
-                    marginRight: 5,
-                    verticalAlign: "middle",
-                  }}
-                />
-                Focused on selected admin account.
+                <Info size={13} />
+                Focused on selected branch admin account.
               </p>
             )}
           </div>
 
-          {filteredUsers.length > 0 && (
-            <button
-              type="button"
-              className="sa-perm-expand-toggle-btn flex items-center gap-1.5"
-              onClick={handleToggleAll}
-              title={allExpanded ? "Collapse all admin cards" : "Expand all admin cards"}
-            >
-              <ChevronsUpDown size={14} />
-              <span>{allExpanded ? "Collapse All" : "Expand All"}</span>
-            </button>
-          )}
-        </div>
-
-        {/* Dedicated Separate Filter Toolbar */}
-        <div className="sa-perm-filter-section">
-          <div className="sa-perm-filter-row">
-            <div className="sa-perm-filter-inputs">
-              {/* Search Box */}
-              <div className="sa-search-box">
-                <Search size={15} className="sa-search-icon" />
-                <input
-                  type="text"
-                  placeholder="Search admin name or email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="sa-search-input"
-                />
-                {searchTerm && (
-                  <button
-                    type="button"
-                    className="sa-search-clear-btn"
-                    onClick={() => setSearchTerm("")}
-                    aria-label="Clear search query"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
-
-              {/* Branch Filter Dropdown */}
-              {uniqueBranches.length > 0 && (
-                <div className="sa-filter-box">
-                  <Filter size={14} className="sa-filter-icon" />
-                  <select
-                    value={selectedBranch}
-                    onChange={(e) => setSelectedBranch(e.target.value)}
-                    className="sa-filter-select"
-                  >
-                    <option value="all">All Branches</option>
-                    {uniqueBranches.map((b) => (
-                      <option key={b} value={b}>
-                        {formatBranch(b)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Access Scope Dropdown */}
-              <div className="sa-filter-box">
-                <SlidersHorizontal size={14} className="sa-filter-icon" />
-                <select
-                  value={accessFilter}
-                  onChange={(e) => setAccessFilter(e.target.value)}
-                  className="sa-filter-select"
-                >
-                  <option value="all">All Access Scopes</option>
-                  <option value="full">Full Access (8/8)</option>
-                  <option value="custom">Custom Scope (1-7/8)</option>
-                  <option value="restricted">Restricted (0/8)</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Scope Quick Filter Pills */}
-            <div className="sa-perm-scope-pills">
+          <div className="sa-perm-section-actions">
+            {filteredUsers.length > 0 && (
               <button
                 type="button"
-                className={`sa-perm-scope-pill-btn ${accessFilter === "all" ? "sa-perm-scope-pill-btn--active" : ""}`}
-                onClick={() => setAccessFilter("all")}
+                className="sa-perm-expand-toggle-btn"
+                onClick={handleToggleAll}
+                title={allExpanded ? "Collapse all admin panels" : "Expand all admin panels"}
               >
-                All
-                <span className="sa-perm-scope-pill-count">{totalAdmins}</span>
+                <ChevronsUpDown size={14} />
+                <span>
+                  {allExpanded
+                    ? `Collapse All (${filteredUsers.length})`
+                    : `Expand All (${filteredUsers.length})`}
+                </span>
               </button>
-              <button
-                type="button"
-                className={`sa-perm-scope-pill-btn ${accessFilter === "full" ? "sa-perm-scope-pill-btn--active" : ""}`}
-                onClick={() => setAccessFilter("full")}
-              >
-                Full Access (8/8)
-                <span className="sa-perm-scope-pill-count">{fullAccessAdmins}</span>
-              </button>
-              <button
-                type="button"
-                className={`sa-perm-scope-pill-btn ${accessFilter === "custom" ? "sa-perm-scope-pill-btn--active" : ""}`}
-                onClick={() => setAccessFilter("custom")}
-              >
-                Custom Scope
-                <span className="sa-perm-scope-pill-count">{customAccessAdmins}</span>
-              </button>
-              {restrictedAdmins > 0 && (
-                <button
-                  type="button"
-                  className={`sa-perm-scope-pill-btn ${accessFilter === "restricted" ? "sa-perm-scope-pill-btn--active" : ""}`}
-                  onClick={() => setAccessFilter("restricted")}
-                >
-                  Restricted
-                  <span className="sa-perm-scope-pill-count">{restrictedAdmins}</span>
-                </button>
-              )}
-            </div>
+            )}
           </div>
         </div>
 
-        {/* Active Filter Pill indicator if filtered */}
-        {(accessFilter !== "all" || selectedBranch !== "all" || searchTerm) && (
-          <div className="sa-perm-active-filter-bar flex items-center gap-2">
-            <span className="sa-perm-filter-label">Active Filter:</span>
+        {/* Consolidated Streamlined Filter Toolbar */}
+        <div className="sa-perm-filter-toolbar">
+          <div className="sa-perm-filter-left">
+            {/* Search Box */}
+            <div className="sa-search-box">
+              <Search size={15} className="sa-search-icon" />
+              <input
+                type="text"
+                placeholder="Search admin name or email…"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="sa-search-input"
+                aria-label="Search administrators by name or email"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  className="sa-search-clear-btn"
+                  onClick={() => setSearchTerm("")}
+                  aria-label="Clear search text"
+                  title="Clear search"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            {/* Branch Filter Dropdown */}
+            {uniqueBranches.length > 0 && (
+              <div className="sa-filter-box">
+                <Building2 size={14} className="sa-filter-icon" />
+                <select
+                  value={selectedBranch}
+                  onChange={(e) => setSelectedBranch(e.target.value)}
+                  className="sa-filter-select"
+                  aria-label="Filter by branch location"
+                >
+                  <option value="all">All Branches</option>
+                  {uniqueBranches.map((b) => (
+                    <option key={b} value={b}>
+                      {formatBranch(b)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Scope Segmented Filter Pills */}
+          <div className="sa-perm-scope-pills" role="tablist" aria-label="Filter by access scope">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={accessFilter === "all"}
+              className={`sa-perm-scope-pill-btn ${
+                accessFilter === "all" ? "sa-perm-scope-pill-btn--active" : ""
+              }`}
+              onClick={() => setAccessFilter("all")}
+            >
+              <span>All</span>
+              <span className="sa-perm-scope-pill-count">{totalAdmins}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={accessFilter === "full"}
+              className={`sa-perm-scope-pill-btn ${
+                accessFilter === "full" ? "sa-perm-scope-pill-btn--active" : ""
+              }`}
+              onClick={() => setAccessFilter("full")}
+            >
+              <CheckCircle2 size={12} className="opacity-80" />
+              <span>Full Access (8/8)</span>
+              <span className="sa-perm-scope-pill-count">{fullAccessAdmins}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={accessFilter === "custom"}
+              className={`sa-perm-scope-pill-btn ${
+                accessFilter === "custom" ? "sa-perm-scope-pill-btn--active" : ""
+              }`}
+              onClick={() => setAccessFilter("custom")}
+            >
+              <Sliders size={12} className="opacity-80" />
+              <span>Custom Scope</span>
+              <span className="sa-perm-scope-pill-count">{customAccessAdmins}</span>
+            </button>
+            {restrictedAdmins > 0 && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={accessFilter === "restricted"}
+                className={`sa-perm-scope-pill-btn sa-perm-scope-pill-btn--danger ${
+                  accessFilter === "restricted"
+                    ? "sa-perm-scope-pill-btn--danger-active"
+                    : ""
+                }`}
+                onClick={() => setAccessFilter("restricted")}
+              >
+                <AlertCircle size={12} className="opacity-80" />
+                <span>Restricted</span>
+                <span className="sa-perm-scope-pill-count">{restrictedAdmins}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Active Filters Summary Bar */}
+        {hasActiveFilters && (
+          <div className="sa-perm-active-filter-bar">
+            <span className="sa-perm-filter-label">Active Filters:</span>
             {accessFilter !== "all" && (
               <span className="sa-perm-filter-tag">
-                Scope: {accessFilter === "full" ? "Full Access" : accessFilter === "custom" ? "Custom Access" : "Restricted"}
-                <button type="button" onClick={() => setAccessFilter("all")}>
+                Scope:{" "}
+                <strong>
+                  {accessFilter === "full"
+                    ? "Full Access"
+                    : accessFilter === "custom"
+                    ? "Custom Access"
+                    : "Restricted"}
+                </strong>
+                <button
+                  type="button"
+                  onClick={() => setAccessFilter("all")}
+                  title="Remove scope filter"
+                  aria-label="Remove scope filter"
+                >
                   <X size={11} />
                 </button>
               </span>
             )}
             {selectedBranch !== "all" && (
               <span className="sa-perm-filter-tag">
-                Branch: {formatBranch(selectedBranch)}
-                <button type="button" onClick={() => setSelectedBranch("all")}>
+                Branch: <strong>{formatBranch(selectedBranch)}</strong>
+                <button
+                  type="button"
+                  onClick={() => setSelectedBranch("all")}
+                  title="Remove branch filter"
+                  aria-label="Remove branch filter"
+                >
                   <X size={11} />
                 </button>
               </span>
             )}
             {searchTerm && (
               <span className="sa-perm-filter-tag">
-                Search: "{searchTerm}"
-                <button type="button" onClick={() => setSearchTerm("")}>
+                Query: <strong>"{searchTerm}"</strong>
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm("")}
+                  title="Clear search query"
+                  aria-label="Clear search query"
+                >
                   <X size={11} />
                 </button>
               </span>
@@ -393,98 +476,97 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
             <button
               type="button"
               className="sa-perm-reset-filters-btn"
-              onClick={() => {
-                setAccessFilter("all");
-                setSelectedBranch("all");
-                setSearchTerm("");
-              }}
+              onClick={handleClearFilters}
             >
-              Reset All
+              Reset All Filters
             </button>
           </div>
         )}
 
-        {/* Loading / Error States */}
-        {isLoading ? (
+        {/* Loading Skeletons */}
+        {isLoading && (
           <div className="sa-perm-list">
-            <div className="sa2-card sa-perm-card sa-perm-card--open">
-              <div className="sa-perm-card-header">
-                <div className="sa-perm-user-info">
-                  <SkeletonPulse width="40px" height="40px" borderRadius="8px" />
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <SkeletonPulse variant="text" width="140px" height="14px" />
-                    <SkeletonPulse variant="text" width="190px" height="12px" />
+            {[1, 2].map((idx) => (
+              <div key={idx} className="sa-perm-card sa-perm-card--collapsed">
+                <div className="sa-perm-card-header">
+                  <div className="sa-perm-user-info">
+                    <SkeletonPulse width="42px" height="42px" borderRadius="8px" />
+                    <div className="flex flex-col gap-1.5">
+                      <SkeletonPulse variant="text" width="160px" height="15px" />
+                      <SkeletonPulse variant="text" width="210px" height="12px" />
+                    </div>
+                  </div>
+                  <div className="sa-perm-meta flex items-center gap-2">
+                    <SkeletonPulse width="100px" height="26px" borderRadius="9999px" />
+                    <SkeletonPulse width="120px" height="26px" borderRadius="9999px" />
+                    <SkeletonPulse width="95px" height="26px" borderRadius="9999px" />
+                    <SkeletonPulse width="20px" height="20px" borderRadius="4px" />
                   </div>
                 </div>
-                <div className="sa-perm-meta flex items-center gap-2">
-                  <SkeletonPulse width="110px" height="24px" borderRadius="9999px" />
-                  <SkeletonPulse width="115px" height="24px" borderRadius="9999px" />
-                  <SkeletonPulse width="90px" height="24px" borderRadius="9999px" />
-                  <SkeletonPulse width="18px" height="18px" borderRadius="4px" />
-                </div>
               </div>
-            </div>
-            <div className="sa2-card sa-perm-card sa-perm-card--collapsed">
-              <div className="sa-perm-card-header">
-                <div className="sa-perm-user-info">
-                  <SkeletonPulse width="40px" height="40px" borderRadius="8px" />
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <SkeletonPulse variant="text" width="130px" height="14px" />
-                    <SkeletonPulse variant="text" width="180px" height="12px" />
-                  </div>
-                </div>
-                <div className="sa-perm-meta flex items-center gap-2">
-                  <SkeletonPulse width="100px" height="24px" borderRadius="9999px" />
-                  <SkeletonPulse width="115px" height="24px" borderRadius="9999px" />
-                  <SkeletonPulse width="90px" height="24px" borderRadius="9999px" />
-                  <SkeletonPulse width="18px" height="18px" borderRadius="4px" />
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
-        ) : null}
-        {!isLoading && error ? (
-          <p className="sa2-empty">Failed to load permissions data.</p>
-        ) : null}
-        {!isLoading && !error && filteredUsers.length === 0 ? (
+        )}
+
+        {/* Error State */}
+        {!isLoading && error && (
           <div className="sa2-empty-state">
-            <Shield size={32} className="text-muted-foreground opacity-40 mb-2" />
+            <AlertCircle size={36} className="text-danger mb-2" />
+            <h3 className="text-sm font-bold text-foreground">
+              Failed to load administrators
+            </h3>
+            <p className="sa2-empty">
+              An error occurred while fetching role permissions data.
+            </p>
+            <button
+              type="button"
+              className="sa-perm-reset-filters-btn mt-3"
+              onClick={() => refetch()}
+            >
+              Retry Connection
+            </button>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!isLoading && !error && filteredUsers.length === 0 && (
+          <div className="sa2-empty-state">
+            <Shield size={36} className="text-muted-foreground opacity-40 mb-2" />
+            <h3 className="text-sm font-bold text-foreground">
+              No matching branch administrators
+            </h3>
             <p className="sa2-empty">
               {users.length === 0
-                ? "No branch admin accounts found."
-                : "No branch admin accounts match your search filters."}
+                ? "No branch administrator accounts are currently registered."
+                : "No branch administrator accounts match your active search filters."}
             </p>
-            {(accessFilter !== "all" || selectedBranch !== "all" || searchTerm) && (
+            {hasActiveFilters && (
               <button
                 type="button"
                 className="sa-perm-reset-filters-btn mt-3"
-                onClick={() => {
-                  setAccessFilter("all");
-                  setSelectedBranch("all");
-                  setSearchTerm("");
-                }}
+                onClick={handleClearFilters}
               >
-                Clear all filters
+                Clear All Search Filters
               </button>
             )}
           </div>
-        ) : null}
+        )}
 
-        {/* Branch Admin Cards List with Accordion */}
-        {!isLoading && !error && filteredUsers.length > 0 ? (
+        {/* Branch Admin Cards Accordion List */}
+        {!isLoading && !error && filteredUsers.length > 0 && (
           <div className="sa-perm-list">
             {filteredUsers.map((user) => {
               const permCount = (user.permissions || []).length;
               const isExpanded = expandedCardIds.has(String(user._id));
+              const isFocused = String(user._id) === String(focusedUserId);
+              const initials = getInitials(user.firstName, user.lastName);
 
               return (
                 <section
                   key={user._id}
                   id={`sa-perm-card-${user._id}`}
-                  className={`sa2-card sa-perm-card ${
-                    String(user._id) === String(focusedUserId)
-                      ? "sa-perm-card--focused"
-                      : ""
+                  className={`sa-perm-card ${
+                    isFocused ? "sa-perm-card--focused" : ""
                   } ${isExpanded ? "sa-perm-card--open" : "sa-perm-card--collapsed"}`}
                 >
                   <header
@@ -499,56 +581,80 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
                       }
                     }}
                     aria-expanded={isExpanded}
+                    aria-controls={`sa-perm-body-${user._id}`}
+                    title={isExpanded ? "Click to collapse permissions panel" : "Click to expand permissions configuration"}
                   >
+                    {/* User Profile Block */}
                     <div className="sa-perm-user-info">
-                      <div className="sa-perm-avatar">
-                        <UserCog size={18} />
+                      <div className="sa-perm-avatar" title={`Branch Admin: ${user.firstName} ${user.lastName}`}>
+                        {initials}
                       </div>
-                      <div>
-                        <h3 className="sa-perm-user-name">
-                          {user.firstName} {user.lastName}
-                        </h3>
-                        <div className="sa-perm-user-email">{user.email}</div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="sa-perm-user-name">
+                            {user.firstName} {user.lastName}
+                          </h3>
+                          {isFocused && (
+                            <span className="sa-perm-focused-badge">
+                              Selected
+                            </span>
+                          )}
+                        </div>
+                        <div className="sa-perm-user-email truncate">
+                          {user.email}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="sa-perm-meta flex items-center gap-2">
-                      <span className="sa-perm-branch">
-                        <GitBranch size={11} />
-                        {formatBranch(user.branch)}
+                    {/* Metadata & Scope Badges */}
+                    <div className="sa-perm-meta">
+                      {/* Branch Location */}
+                      <span className="sa-perm-branch" title={`Assigned Branch: ${formatBranch(user.branch)}`}>
+                        <Building2 size={12} className="opacity-75" />
+                        <span>{formatBranch(user.branch)}</span>
                       </span>
 
                       {/* Access Scope Status Pill */}
                       {permCount >= 8 ? (
-                        <span className="sa-perm-scope-badge sa-perm-scope-full">
+                        <span className="sa-perm-scope-badge sa-perm-scope-full" title="All 8 system capabilities granted">
                           <CheckCircle2 size={12} />
-                          8/8 Full Access
+                          <span>8/8 Full Access</span>
                         </span>
                       ) : permCount > 0 ? (
-                        <span className="sa-perm-scope-badge sa-perm-scope-custom">
+                        <span className="sa-perm-scope-badge sa-perm-scope-custom" title={`${permCount} of 8 system capabilities granted`}>
                           <Sliders size={12} />
-                          {permCount}/8 Custom Scope
+                          <span>{permCount}/8 Custom Scope</span>
                         </span>
                       ) : (
-                        <span className="sa-perm-scope-badge sa-perm-scope-restricted">
+                        <span className="sa-perm-scope-badge sa-perm-scope-restricted" title="No system capabilities granted">
                           <AlertCircle size={12} />
-                          0/8 Restricted
+                          <span>0/8 Restricted</span>
                         </span>
                       )}
 
-                      <span className="sa-perm-role-pill">Branch Admin</span>
+                      {/* Role Pill */}
+                      <span className="sa-perm-role-pill">
+                        Branch Admin
+                      </span>
 
+                      {/* Expand / Collapse Chevron */}
                       <div className="sa-perm-chevron-wrapper">
                         <ChevronDown
                           size={18}
-                          className={`sa-perm-chevron ${isExpanded ? "sa-perm-chevron--open" : ""}`}
+                          className={`sa-perm-chevron ${
+                            isExpanded ? "sa-perm-chevron--open" : ""
+                          }`}
                         />
                       </div>
                     </div>
                   </header>
 
+                  {/* Expanded Permission Editor Body */}
                   {isExpanded && (
-                    <div className="sa-perm-card-body">
+                    <div
+                      id={`sa-perm-body-${user._id}`}
+                      className="sa-perm-card-body"
+                    >
                       <PermissionEditor
                         permissions={user.permissions || []}
                         saving={
@@ -556,7 +662,10 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
                           updatePermissions.variables?.userId === user._id
                         }
                         onSave={(permissions) =>
-                          updatePermissions.mutate({ userId: user._id, permissions })
+                          updatePermissions.mutate({
+                            userId: user._id,
+                            permissions,
+                          })
                         }
                       />
                     </div>
@@ -565,7 +674,7 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
               );
             })}
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   );
