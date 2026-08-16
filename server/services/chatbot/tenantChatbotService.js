@@ -1,0 +1,336 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "dummy-key");
+const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+function getSystemPrompt(contextSnapshot) {
+  const branchName = contextSnapshot?.branch || "Lilycrest Residence";
+  const roomNumber = contextSnapshot?.roomNumber || "304";
+  const bedPosition = contextSnapshot?.bedPosition || "Bed 1";
+
+  return `You are the official Lilycrest Resident Copilot, an intelligent authenticated assistant for Lilycrest Dormitory Management System (Lilycrest DMS).
+You assist resident tenants at the ${branchName} branch (assigned to Room ${roomNumber}, ${bedPosition}).
+
+STRICT OPERATIONAL GUIDELINES:
+1. Warm Hospitality & Tone: Answer with polite, formal Filipino hospitality (English, Tagalog, or natural Taglish with respectful "po" and "opo" when prompted in Tagalog).
+2. Grounded Facts: Answer strictly using the RESIDENT CONTEXT JSON below. NEVER invent unlisted bills, contracts, or repair records.
+3. Pro-Rata Utilities: Electricity is metered per room and shared pro-rata among room occupants. Water and Wi-Fi are 100% free and included in monthly base rent.
+4. House Rules: Building gates lock at 11:00 PM and open at 5:00 AM (24/7 late entry is permitted for night-shift workers and students with valid ID).
+5. Read-Only Safety: You are an informational assistant. You cannot alter invoice totals, approve fee waivers, or cancel contracts. Direct disputes or special requests to Branch Admin.
+
+RESIDENT CONTEXT:
+${JSON.stringify(contextSnapshot, null, 2)}
+`;
+}
+
+export function detectTenantWidgetIntent(message = "") {
+  const lower = String(message || "").toLowerCase();
+
+  if (
+    lower.match(/\b(maintenance|ticket|tickets|repair|repairs|plumbing|aircon|air-con|electrician|leak|faucet|outlet|ayos|sira|gawain)\b/) ||
+    lower.includes("active tickets") ||
+    lower.includes("report issue") ||
+    lower.includes("technician")
+  ) {
+    return "maintenance_status";
+  }
+
+  if (
+    lower.match(/\b(bill|billing|rent|electricity|kuryente|tubig|water|appliance|appliances|charges|bayad|bayarin|penalty|discount|total)\b/) ||
+    lower.includes("electricity math") ||
+    lower.includes("due date") ||
+    lower.includes("payment")
+  ) {
+    return "billing_breakdown";
+  }
+
+  if (
+    lower.match(/\b(contract|lease|deposit|security deposit|move-out|move out|clearance|expiration|expire|renew|renewal|kontrata)\b/) ||
+    lower.includes("lease expiration") ||
+    lower.includes("renew contract") ||
+    lower.includes("deposit refund")
+  ) {
+    return "lease_timeline";
+  }
+
+  return null;
+}
+
+export function determineTenantSuggestedActions(message = "", botReply = "", contextSnapshot = null) {
+  const combined = `${message} ${botReply}`.toLowerCase();
+  const widget = detectTenantWidgetIntent(combined);
+  const actions = [];
+
+  if (widget === "maintenance_status" || combined.includes("maintenance") || combined.includes("repair")) {
+    actions.push(
+      { label: "Report New Repair", prompt: "How do I submit an urgent plumbing or air-conditioning issue?" },
+      { label: "Technician Hours", prompt: "What are the available hours for on-site technician repairs?" },
+      { label: "Chat with Admin", action: "open_escalate_modal" },
+    );
+  } else if (widget === "billing_breakdown" || combined.includes("bill") || combined.includes("kuryente")) {
+    actions.push(
+      { label: "Electricity Math", prompt: "How was my submetered electricity share computed this month?" },
+      { label: "Payment Due Date", prompt: "When is my current bill due and how do I settle it?" },
+      { label: "Dispute / Admin Help", action: "open_escalate_modal" },
+    );
+  } else if (widget === "lease_timeline" || combined.includes("lease") || combined.includes("contract")) {
+    actions.push(
+      { label: "Renew Lease", prompt: "What are the steps to request a lease renewal?" },
+      { label: "Deposit Refund", prompt: "How does the security deposit refund and move-out clearance work?" },
+      { label: "Chat with Admin", action: "open_escalate_modal" },
+    );
+  } else {
+    actions.push(
+      { label: "Check Maintenance", prompt: "Do I have any active maintenance tickets scheduled?" },
+      { label: "Monthly Bill", prompt: "Can you show my current monthly bill breakdown?" },
+      { label: "Lease Timeline", prompt: "How many days are left on my lease agreement?" },
+    );
+  }
+
+  return actions;
+}
+
+/**
+ * Deterministic rule-based fallback when Gemini API is unconfigured or unreachable.
+ */
+export function getTenantRuleBasedFallback(message = "", contextSnapshot = null) {
+  const lower = String(message || "").toLowerCase();
+  const tenantName = contextSnapshot?.tenantName || "Resident";
+  const roomNumber = contextSnapshot?.roomNumber || "304";
+  const branch = contextSnapshot?.branch || "Lilycrest";
+
+  const isTagalog = /(po\b|opo\b|magkano|ano\b|kailan|paano|meron|may\b|sira|kuryente|tubig|bayad|kontrata)/i.test(lower);
+
+  // 1. Maintenance & Repair Status
+  if (
+    lower.includes("maintenance") ||
+    lower.includes("ticket") ||
+    lower.includes("repair") ||
+    lower.includes("sira") ||
+    lower.includes("ayos") ||
+    lower.includes("technician") ||
+    lower.includes("plumbing") ||
+    lower.includes("aircon")
+  ) {
+    const tickets = contextSnapshot?.activeMaintenance || [];
+    if (tickets.length > 0) {
+      const ticketList = tickets
+        .map(
+          (t, i) =>
+            `${i + 1}. **Ticket #${t.ticketCode}** (${t.category})\n   • Status: **${t.status.toUpperCase()}**\n   • Urgency: ${t.urgency}\n   • Note: ${t.description}`,
+        )
+        .join("\n\n");
+
+      if (isTagalog) {
+        return `Mayroon po kayong **${tickets.length} active maintenance request(s)** para sa Room ${roomNumber}:\n\n${ticketList}\n\nMaaari po ninyong i-check ang live updates o mag-follow up sa ating Maintenance Portal.`;
+      }
+      return `Here is the current status of your maintenance requests for **Room ${roomNumber}**:\n\n${ticketList}\n\nYou can track real-time progress or submit additional photos directly on the Maintenance page.`;
+    }
+
+    if (isTagalog) {
+      return `Wala po kayong active o pending maintenance tickets sa kasalukuyan para sa **Room ${roomNumber}**.\n\nKung may kailangan pong ayusin (tubig, kuryente, aircon, o lock), maaari po kayong mag-file ng bagong request sa pamamagitan ng **[New Request]** sa Maintenance page.`;
+    }
+    return `You currently have **no active or scheduled maintenance requests** for **Room ${roomNumber}**.\n\nIf you are experiencing any facility issues (such as plumbing leaks, aircon maintenance, or electrical concerns), you can submit a repair request anytime from your Maintenance Portal.`;
+  }
+
+  // 2. Billing & Utilities Breakdown
+  if (
+    lower.includes("bill") ||
+    lower.includes("rent") ||
+    lower.includes("kuryente") ||
+    lower.includes("electric") ||
+    lower.includes("tubig") ||
+    lower.includes("water") ||
+    lower.includes("appliance") ||
+    lower.includes("bayad") ||
+    lower.includes("due")
+  ) {
+    const bill = contextSnapshot?.currentBill;
+    if (bill) {
+      const formatNum = (n) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+      const dueDateStr = bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "15th of the month";
+
+      return `Here is the itemized summary of your statement for **Room ${roomNumber}**:\n\n• **Base Rent**: ${formatNum(bill.rentAmount)}${bill.proRataDays ? ` (${bill.proRataDays} days pro-rata)` : ""}\n• **Electricity Share**: ${formatNum(bill.electricityAmount)} (Submetered room share)\n• **Water & Wi-Fi**: **FREE** (₱0.00 included in rent)\n${bill.applianceAmount > 0 ? `• **Appliance Fees**: ${formatNum(bill.applianceAmount)}\n` : ""}${bill.penaltyAmount > 0 ? `• **Late Penalty**: ${formatNum(bill.penaltyAmount)}\n` : ""}• **Total Amount Due**: **${formatNum(bill.totalAmount)}** (Due on **${dueDateStr}**)\n\nYou can settle this balance via online bank transfer or GCash through the Billing tab.`;
+    }
+
+    return `You currently have no pending unpaid invoices on record for **Room ${roomNumber}**. Water and high-speed Wi-Fi remain complimentary with your stay.`;
+  }
+
+  // 3. Lease & Contract Timeline
+  if (
+    lower.includes("contract") ||
+    lower.includes("lease") ||
+    lower.includes("deposit") ||
+    lower.includes("expire") ||
+    lower.includes("renew") ||
+    lower.includes("clearance") ||
+    lower.includes("move-out") ||
+    lower.includes("move out")
+  ) {
+    const contract = contextSnapshot?.contract;
+    if (contract) {
+      const endStr = contract.endDate ? new Date(contract.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Contract Term End";
+      const days = contract.daysRemaining !== null ? `${contract.daysRemaining} days remaining` : "Active term";
+      const formatNum = (n) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+
+      return `Your lease agreement for **Room ${roomNumber} (${contract.bedPosition})** at ${branch} is **${contract.status.toUpperCase()}**.\n\n• **Expiration Date**: ${endStr} (${days})\n• **Monthly Base Rate**: ${formatNum(contract.monthlyRate)}\n• **Security Deposit Held**: ${formatNum(contract.depositAmount)} (Refundable upon move-out clearance)\n\nTo request a lease renewal or submit move-out clearance, visit the Contracts & Agreements tab.`;
+    }
+
+    return `Your stay records show an active resident status at **${branch}**, Room ${roomNumber}. You can inspect signed contracts and deposit receipts under the Contracts tab.`;
+  }
+
+  // 4. Curfew & Gate Policy
+  if (lower.includes("curfew") || lower.includes("oras") || lower.includes("gate") || lower.includes("late")) {
+    return `At Lilycrest ${branch}, building security locks the main entrance from **11:00 PM to 5:00 AM**. 24/7 late entry is permitted for residents with night-shift work or class schedules upon presenting a valid company/school ID to the front desk guard.`;
+  }
+
+  // 5. Default Greeting & Assistance
+  return `Mabuhay, ${tenantName}! I am your **Lilycrest Resident Copilot** for Room ${roomNumber} at ${branch}.\n\nI can help you with:\n1. Explaining your monthly bill & pro-rata electricity computation\n2. Tracking active maintenance and repair requests\n3. Checking lease expiration dates and security deposit refund steps\n\nHow may I assist you today?`;
+}
+
+export async function streamTenantGeminiChatbot({
+  message,
+  conversationHistory = [],
+  contextSnapshot,
+  onToken,
+  onWidget,
+  onActions,
+  onDone,
+  onError,
+  signal,
+}) {
+  const trimmedMessage = (message || "").trim();
+  const widget = detectTenantWidgetIntent(trimmedMessage);
+  if (widget && typeof onWidget === "function") {
+    try {
+      onWidget(widget);
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey || apiKey === "dummy-key") {
+    const fallbackReply = getTenantRuleBasedFallback(trimmedMessage, contextSnapshot);
+    await simulateStreamTokens(fallbackReply, { onToken, signal });
+    const actions = determineTenantSuggestedActions(trimmedMessage, fallbackReply, contextSnapshot);
+    if (actions.length > 0) onActions?.(actions);
+    onDone?.({ fullReply: fallbackReply, widget, actions, contextSnapshot });
+    return;
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: MODEL_NAME,
+      systemInstruction: getSystemPrompt(contextSnapshot),
+    });
+
+    const formattedHistory = (conversationHistory || []).map((msg) => ({
+      role: msg.role === "user" ? "user" : "model",
+      parts: [{ text: msg.content || msg.text || "" }],
+    }));
+
+    const chat = model.startChat({
+      history: formattedHistory,
+    });
+
+    const result = await chat.sendMessageStream(trimmedMessage, { signal });
+    let fullReply = "";
+
+    for await (const chunk of result.stream) {
+      if (signal?.aborted) break;
+      const chunkText = chunk.text();
+      fullReply += chunkText;
+      onToken?.(chunkText);
+    }
+
+    if (signal?.aborted) return;
+
+    const detectedWidget = detectTenantWidgetIntent(trimmedMessage) || detectTenantWidgetIntent(fullReply);
+    if (detectedWidget && typeof onWidget === "function") {
+      onWidget(detectedWidget);
+    }
+
+    const actions = determineTenantSuggestedActions(trimmedMessage, fullReply, contextSnapshot);
+    if (actions.length > 0 && typeof onActions === "function") {
+      onActions(actions);
+    }
+
+    onDone?.({ fullReply, widget: detectedWidget, actions, contextSnapshot });
+  } catch (error) {
+    if (signal?.aborted) return;
+    console.warn("Gemini AI Streaming fallback invoked:", error?.message);
+    const fallbackReply = getTenantRuleBasedFallback(trimmedMessage, contextSnapshot);
+    await simulateStreamTokens(fallbackReply, { onToken, signal });
+    const detectedWidget = detectTenantWidgetIntent(trimmedMessage);
+    if (detectedWidget && typeof onWidget === "function") {
+      onWidget(detectedWidget);
+    }
+    const actions = determineTenantSuggestedActions(trimmedMessage, fallbackReply, contextSnapshot);
+    if (actions.length > 0 && typeof onActions === "function") {
+      onActions(actions);
+    }
+    onDone?.({ fullReply: fallbackReply, widget: detectedWidget, actions, contextSnapshot });
+  }
+}
+
+export async function queryTenantGeminiChatbot({ message, conversationHistory = [], contextSnapshot }) {
+  const trimmedMessage = (message || "").trim();
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey || apiKey === "dummy-key") {
+    const fallbackReply = getTenantRuleBasedFallback(trimmedMessage, contextSnapshot);
+    const widget = detectTenantWidgetIntent(trimmedMessage);
+    const suggestedActions = determineTenantSuggestedActions(trimmedMessage, fallbackReply, contextSnapshot);
+    return { reply: fallbackReply, widget, suggestedActions, contextSnapshot };
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: MODEL_NAME,
+      systemInstruction: getSystemPrompt(contextSnapshot),
+    });
+
+    const formattedHistory = (conversationHistory || []).map((msg) => ({
+      role: msg.role === "user" ? "user" : "model",
+      parts: [{ text: msg.content || msg.text || "" }],
+    }));
+
+    const chat = model.startChat({
+      history: formattedHistory,
+    });
+
+    const result = await chat.sendMessage(trimmedMessage);
+    const reply = result.response.text();
+    const widget = detectTenantWidgetIntent(trimmedMessage) || detectTenantWidgetIntent(reply);
+    const suggestedActions = determineTenantSuggestedActions(trimmedMessage, reply, contextSnapshot);
+
+    return { reply, widget, suggestedActions, contextSnapshot };
+  } catch (error) {
+    console.warn("Gemini AI Query fallback invoked:", error?.message);
+    const fallbackReply = getTenantRuleBasedFallback(trimmedMessage, contextSnapshot);
+    const widget = detectTenantWidgetIntent(trimmedMessage);
+    const suggestedActions = determineTenantSuggestedActions(trimmedMessage, fallbackReply, contextSnapshot);
+
+    return { reply: fallbackReply, widget, suggestedActions, contextSnapshot };
+  }
+}
+
+/**
+ * Simulates a word-by-word streaming effect for fallback responses.
+ */
+async function simulateStreamTokens(text = "", { onToken, signal }) {
+  if (!text) return;
+  const words = text.match(/\S+|\s+/g) || [text];
+  const delay = process.env.NODE_ENV === "test" ? 0 : 10;
+
+  for (const token of words) {
+    if (signal?.aborted) break;
+    onToken?.(token);
+    if (delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
