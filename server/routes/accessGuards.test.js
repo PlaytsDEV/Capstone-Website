@@ -81,6 +81,7 @@ await jest.unstable_mockModule("../controllers/authController.js", () => ({
   updateBranch: noop,
   setRole: noop,
   logPasswordReset: noop,
+  notifyPasswordChanged: noop,
 }));
 await jest.unstable_mockModule("../controllers/reservationsController.js", () => ({
   getReservations: noop,

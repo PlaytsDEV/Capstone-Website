@@ -36,34 +36,73 @@ export const validateEmail = (email) => {
   return null; // Valid
 };
 
-/** Password strength calculator */
+/** Password strength calculator and rules definition */
 const SPECIAL_CHARS_REGEX = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>?/]/;
 
-export const calculatePasswordStrength = (password) => {
+export const PASSWORD_RULES = [
+  { id: "length", label: "At least 8 characters", test: (value) => typeof value === "string" && value.length >= 8 },
+  { id: "uppercase", label: "At least 1 uppercase letter", test: (value) => /[A-Z]/.test(value || "") },
+  { id: "lowercase", label: "At least 1 lowercase letter", test: (value) => /[a-z]/.test(value || "") },
+  { id: "number", label: "At least 1 number", test: (value) => /\d/.test(value || "") },
+  { id: "special", label: "At least 1 special character", test: (value) => SPECIAL_CHARS_REGEX.test(value || "") || /[^A-Za-z0-9]/.test(value || "") },
+  { id: "no-spaces", label: "No spaces allowed", test: (value) => typeof value === "string" && value.length > 0 && !/\s/.test(value) },
+];
+
+export const evaluatePasswordRules = (password = "") => {
+  const results = PASSWORD_RULES.map((rule) => ({
+    ...rule,
+    passed: rule.test(password),
+  }));
+  const allPassed = results.every((r) => r.passed);
+  return { results, allPassed };
+};
+
+export const calculatePasswordStrength = (password = "") => {
   const requirements = {
-    length: password.length >= 8,
-    uppercase: /[A-Z]/.test(password),
-    lowercase: /[a-z]/.test(password),
-    number: /\d/.test(password),
-    special: SPECIAL_CHARS_REGEX.test(password),
+    length: typeof password === "string" && password.length >= 8,
+    uppercase: /[A-Z]/.test(password || ""),
+    lowercase: /[a-z]/.test(password || ""),
+    number: /\d/.test(password || ""),
+    special: SPECIAL_CHARS_REGEX.test(password || "") || /[^A-Za-z0-9]/.test(password || ""),
+    noSpaces: typeof password === "string" && password.length > 0 && !/\s/.test(password),
   };
 
   const metRequirements = Object.values(requirements).filter(Boolean).length;
   let score = 0;
   let level = "weak";
+  let label = "Weak";
 
-  if (metRequirements >= 5) {
+  if (!password) {
+    score = 0;
+    level = "none";
+    label = "Empty";
+  } else if (!requirements.length) {
+    score = Math.min(25, metRequirements * 8);
+    level = "weak";
+    label = "Weak";
+  } else if (metRequirements >= 6 && password.length >= 12) {
     score = 100;
     level = "strong";
-  } else if (metRequirements >= 3) {
-    score = 60;
+    label = "Very Strong";
+  } else if (metRequirements >= 6) {
+    score = 85;
+    level = "strong";
+    label = "Strong";
+  } else if (metRequirements >= 5) {
+    score = 65;
     level = "medium";
-  } else if (metRequirements >= 1) {
-    score = 30;
+    label = "Good";
+  } else if (metRequirements >= 3) {
+    score = 40;
+    level = "fair";
+    label = "Fair";
+  } else {
+    score = 20;
     level = "weak";
+    label = "Weak";
   }
 
-  return { score, level, requirements };
+  return { score, level, label, metRequirements, requirements };
 };
 
 /**

@@ -4,13 +4,14 @@ import fs from "node:fs";
 
 const source = fs.readFileSync(new URL("./PersonalDetailsTab.jsx", import.meta.url), "utf8");
 
-test("approved tenant application details are presented as read-only", () => {
-  assert.match(source, /applicationDetailsLocked = profileData\.role === "tenant"/);
-  assert.match(source, /These details came from your approved application form and cannot be edited here/);
-  assert.match(source, /If you need to request a correction, please contact the admin/);
+test("profile details and profile image have editing affordances enabled", () => {
+  assert.match(source, /handleStartEditing/);
+  assert.match(source, /Edit Profile/);
+  assert.match(source, /handleFileSelect/);
 });
 
-test("tenant edit and add affordances are suppressed for locked fields", () => {
-  assert.match(source, /!applicationDetailsLocked \? \(\s*<button onClick=\{handleStartEditing\}/);
-  assert.match(source, /onAdd=\{applicationDetailsLocked \? undefined : handleStartEditing\}/);
+test("profile image upload is always accessible via avatar click and camera badge", () => {
+  assert.match(source, /fileInputRef\.current\?\.click\(\)/);
+  assert.match(source, /accept="image\/\*"/);
 });
+

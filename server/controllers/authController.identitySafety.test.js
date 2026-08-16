@@ -14,7 +14,7 @@ class UserModel {
 await jest.unstable_mockModule("../models/index.js", () => ({
   User: UserModel, UserSession: session, LoginLog: { logEvent: jest.fn() }, Reservation: {}, Stay: {},
 }));
-await jest.unstable_mockModule("../config/email.js", () => ({ sendLoginOtpEmail: jest.fn() }));
+await jest.unstable_mockModule("../config/email.js", () => ({ sendLoginOtpEmail: jest.fn(), sendPasswordChangedEmail: jest.fn() }));
 await jest.unstable_mockModule("../config/firebase.js", () => ({ getAuth: jest.fn() }));
 await jest.unstable_mockModule("../middleware/logger.js", () => ({ default: logger }));
 await jest.unstable_mockModule("../middleware/validation.js", () => ({

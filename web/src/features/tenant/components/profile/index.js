@@ -14,3 +14,4 @@ export { default as StaysTab } from "./StaysTab";
 export { default as MaintenanceTab } from "./MaintenanceTab";
 export { default as AnnouncementsTab } from "./AnnouncementsTab";
 export { default as MoveInSettlementCard } from "./MoveInSettlementCard";
+export { default as ChangePasswordForm } from "./ChangePasswordForm";

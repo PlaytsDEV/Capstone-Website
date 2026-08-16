@@ -4,21 +4,18 @@ import {
   TENANT_APPLICATION_LOCKED_PROFILE_FIELDS,
 } from "./authController.js";
 
-describe("tenant application-derived profile protection", () => {
-  test("tenant legal, contact, emergency, and employment fields are locked", () => {
-    const attempted = Object.fromEntries(
-      TENANT_APPLICATION_LOCKED_PROFILE_FIELDS.map((field) => [field, "changed"]),
-    );
-    expect(findLockedTenantProfileFields(attempted, "tenant"))
-      .toEqual(TENANT_APPLICATION_LOCKED_PROFILE_FIELDS);
+describe("tenant application profile updates", () => {
+  test("tenant may update profile details and profile image directly", () => {
+    const attempted = {
+      firstName: "UpdatedName",
+      lastName: "UpdatedLast",
+      occupation: "Engineer",
+      profileImage: "https://example.test/photo.jpg",
+    };
+    expect(findLockedTenantProfileFields(attempted, "tenant")).toEqual([]);
   });
 
-  test("tenant may update a non-legal profile image without changing source data", () => {
-    expect(findLockedTenantProfileFields({ profileImage: "https://example.test/photo.jpg" }, "tenant"))
-      .toEqual([]);
-  });
-
-  test("admin profile behavior is not restricted by the tenant-only rule", () => {
+  test("admin profile behavior is not restricted", () => {
     expect(findLockedTenantProfileFields({ firstName: "Admin" }, "admin")).toEqual([]);
   });
 });

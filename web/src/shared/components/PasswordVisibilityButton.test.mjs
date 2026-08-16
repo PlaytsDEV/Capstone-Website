@@ -89,7 +89,7 @@ test("every password surface uses the standardized current-state convention", ()
     ["src/features/tenant/pages/SignIn.jsx", 1],
     ["src/features/public/pages/SignUp.jsx", 2],
     ["src/features/tenant/pages/ResetPassword.jsx", 1],
-    ["src/features/tenant/components/profile/SettingsTab.jsx", 3],
+    ["src/features/tenant/components/profile/ChangePasswordForm.jsx", 3],
     ["src/features/admin/components/users/AddUserModal.jsx", 1],
   ];
 

@@ -36,7 +36,7 @@ await jest.unstable_mockModule("../services/firstVerifiedLoginService.js", () =>
   claimFirstVerifiedLoginSession,
   cleanupFailedFirstVerifiedLoginSession,
 }));
-await jest.unstable_mockModule("../config/email.js", () => ({ sendLoginOtpEmail }));
+await jest.unstable_mockModule("../config/email.js", () => ({ sendLoginOtpEmail, sendPasswordChangedEmail: jest.fn() }));
 await jest.unstable_mockModule("../config/firebase.js", () => ({ getAuth: jest.fn() }));
 await jest.unstable_mockModule("../middleware/logger.js", () => ({
   default: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },

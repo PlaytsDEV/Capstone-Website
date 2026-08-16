@@ -335,7 +335,7 @@ export const validateProfileUpdateInput = (body) => {
       errors.push("First name cannot be empty");
     } else {
       const firstName = sanitizeName(body.firstName);
-      if (!firstName) {
+      if (!firstName || firstName.length < 2) {
         errors.push(
           "First name must be 2-50 characters, letters/spaces/hyphens/apostrophes only",
         );
@@ -351,7 +351,7 @@ export const validateProfileUpdateInput = (body) => {
       errors.push("Last name cannot be empty");
     } else {
       const lastName = sanitizeName(body.lastName);
-      if (!lastName) {
+      if (!lastName || lastName.length < 2) {
         errors.push(
           "Last name must be 2-50 characters, letters/spaces/hyphens/apostrophes only",
         );
@@ -387,6 +387,55 @@ export const validateProfileUpdateInput = (body) => {
     }
   }
 
+  // Validate civilStatus (optional)
+  if (body.civilStatus !== undefined) {
+    const validCivilStatuses = ["single", "married", "widowed", "separated", "divorced", ""];
+    if (!validCivilStatuses.includes(body.civilStatus)) {
+      errors.push("Civil status must be one of: single, married, widowed, separated, divorced");
+    } else {
+      data.civilStatus = body.civilStatus;
+    }
+  }
+
+  // Validate nationality (optional, max 50 chars, letters/hyphens/spaces/apostrophes only)
+  if (body.nationality !== undefined) {
+    if (body.nationality === null || body.nationality === "") {
+      data.nationality = "";
+    } else if (typeof body.nationality !== "string") {
+      errors.push("Nationality must be text");
+    } else {
+      const trimmed = body.nationality.trim();
+      if (trimmed.length > 50) {
+        errors.push("Nationality must be 50 characters or less");
+      } else if (!/^[a-zA-Z\s\-']+$/.test(trimmed)) {
+        errors.push("Nationality can only contain letters, spaces, hyphens, and apostrophes");
+      } else {
+        data.nationality = trimmed;
+      }
+    }
+  }
+
+  // Validate occupation (optional, max 60 chars)
+  if (body.occupation !== undefined) {
+    if (body.occupation === null || body.occupation === "") {
+      data.occupation = "";
+    } else if (typeof body.occupation !== "string") {
+      errors.push("Occupation must be text");
+    } else {
+      const sanitized = sanitizeText(body.occupation);
+      if (sanitized.length > 60) {
+        errors.push("Occupation must be 60 characters or less");
+      } else {
+        data.occupation = sanitized;
+      }
+    }
+  }
+
+  // Validate profileImage (optional)
+  if (body.profileImage !== undefined) {
+    data.profileImage = body.profileImage;
+  }
+
   // Validate address (optional, max 200 chars)
   if (body.address !== undefined) {
     if (body.address.length > 200) {
@@ -405,7 +454,7 @@ export const validateProfileUpdateInput = (body) => {
     }
   }
 
-  // Validate dateOfBirth (optional, must be valid date in the past)
+  // Validate dateOfBirth (optional, must be valid date, at least 18 years old, max 100 years)
   if (body.dateOfBirth !== undefined) {
     if (body.dateOfBirth === null || body.dateOfBirth === "") {
       data.dateOfBirth = null;
@@ -413,10 +462,26 @@ export const validateProfileUpdateInput = (body) => {
       const dob = new Date(body.dateOfBirth);
       if (isNaN(dob.getTime())) {
         errors.push("Date of birth must be a valid date");
-      } else if (dob > new Date()) {
-        errors.push("Date of birth cannot be in the future");
       } else {
-        data.dateOfBirth = dob;
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const birthYear = dob.getFullYear();
+
+        let age = currentYear - birthYear;
+        const monthDiff = today.getMonth() - dob.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+          age--;
+        }
+
+        if (dob > today) {
+          errors.push("Date of birth cannot be in the future");
+        } else if (age < 18) {
+          errors.push("Must be at least 18 years old");
+        } else if (age > 100) {
+          errors.push("Date of birth must be within the last 100 years");
+        } else {
+          data.dateOfBirth = dob;
+        }
       }
     }
   }

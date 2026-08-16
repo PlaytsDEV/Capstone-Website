@@ -11,7 +11,7 @@ import {
   SESSION_ASSURANCE_METHODS,
   isSessionAuthorizedForRole,
 } from "../config/sessionAssurance.js";
-import { sendLoginOtpEmail } from "../config/email.js";
+import { sendLoginOtpEmail, sendPasswordChangedEmail } from "../config/email.js";
 import { getAuth } from "../config/firebase.js";
 import {
   AppError
@@ -910,18 +910,9 @@ export const getProfile = async (req, res, next) => {
 
 
 
-export const TENANT_APPLICATION_LOCKED_PROFILE_FIELDS = Object.freeze([
-  "firstName", "middleName", "lastName", "phone", "dateOfBirth", "gender",
-  "civilStatus", "maritalStatus", "nationality", "address", "city", "province",
-  "zipCode", "emergencyContact", "emergencyPhone", "emergencyRelationship",
-  "occupation", "employer", "school", "studentId", "yearLevel",
-]);
+export const TENANT_APPLICATION_LOCKED_PROFILE_FIELDS = Object.freeze([]);
 
-export const findLockedTenantProfileFields = (body = {}, role = "") =>
-  String(role).toLowerCase() === "tenant"
-    ? TENANT_APPLICATION_LOCKED_PROFILE_FIELDS.filter((field) =>
-      Object.prototype.hasOwnProperty.call(body, field))
-    : [];
+export const findLockedTenantProfileFields = (body = {}, role = "") => [];
 
 export const updateProfile = async (req, res, next) => {
   try {
@@ -939,11 +930,16 @@ export const updateProfile = async (req, res, next) => {
       });
     }
     // Sanitize input — core fields
-    const firstName = req.body.firstName
-      ? sanitizeName(req.body.firstName)
+    const source = req.sanitizedData || req.body || {};
+    const firstName = source.firstName !== undefined
+      ? (req.sanitizedData?.firstName || sanitizeName(req.body.firstName))
       : null;
-    const lastName = req.body.lastName ? sanitizeName(req.body.lastName) : null;
-    const phone = req.body.phone ? sanitizePhone(req.body.phone) : undefined;
+    const lastName = source.lastName !== undefined
+      ? (req.sanitizedData?.lastName || sanitizeName(req.body.lastName))
+      : null;
+    const phone = source.phone !== undefined
+      ? (req.sanitizedData?.phone !== undefined ? req.sanitizedData.phone : sanitizePhone(req.body.phone))
+      : undefined;
     const profileImage =
       req.body.profileImage !== undefined ? req.body.profileImage : undefined;
 
@@ -973,21 +969,21 @@ export const updateProfile = async (req, res, next) => {
     }
 
     // Sanitize input — extended profile fields
-    const gender = req.body.gender !== undefined ? req.body.gender : undefined;
-    const civilStatus = req.body.civilStatus !== undefined ? req.body.civilStatus : undefined;
-    const nationality = req.body.nationality !== undefined ? sanitizeText(req.body.nationality) : undefined;
-    const occupation = req.body.occupation !== undefined ? sanitizeText(req.body.occupation) : undefined;
-    const address = req.body.address !== undefined ? sanitizeText(req.body.address) : undefined;
-    const city = req.body.city !== undefined ? sanitizeText(req.body.city) : undefined;
-    const province = req.body.province !== undefined ? sanitizeText(req.body.province) : undefined;
-    const zipCode = req.body.zipCode !== undefined ? sanitizeText(req.body.zipCode) : undefined;
-    const dateOfBirth = req.body.dateOfBirth !== undefined ? req.body.dateOfBirth : undefined;
-    const emergencyContact = req.body.emergencyContact !== undefined ? sanitizeText(req.body.emergencyContact) : undefined;
-    const emergencyPhone = req.body.emergencyPhone !== undefined ? sanitizePhone(req.body.emergencyPhone) : undefined;
-    const emergencyRelationship = req.body.emergencyRelationship !== undefined ? sanitizeText(req.body.emergencyRelationship) : undefined;
-    const studentId = req.body.studentId !== undefined ? sanitizeText(req.body.studentId) : undefined;
-    const school = req.body.school !== undefined ? sanitizeText(req.body.school) : undefined;
-    const yearLevel = req.body.yearLevel !== undefined ? sanitizeText(req.body.yearLevel) : undefined;
+    const gender = source.gender !== undefined ? source.gender : undefined;
+    const civilStatus = source.civilStatus !== undefined ? source.civilStatus : undefined;
+    const nationality = source.nationality !== undefined ? (req.sanitizedData?.nationality !== undefined ? req.sanitizedData.nationality : sanitizeText(req.body.nationality)) : undefined;
+    const occupation = source.occupation !== undefined ? (req.sanitizedData?.occupation !== undefined ? req.sanitizedData.occupation : sanitizeText(req.body.occupation)) : undefined;
+    const address = source.address !== undefined ? (req.sanitizedData?.address !== undefined ? req.sanitizedData.address : sanitizeText(req.body.address)) : undefined;
+    const city = source.city !== undefined ? (req.sanitizedData?.city !== undefined ? req.sanitizedData.city : sanitizeText(req.body.city)) : undefined;
+    const province = source.province !== undefined ? (req.sanitizedData?.province !== undefined ? req.sanitizedData.province : sanitizeText(req.body.province)) : undefined;
+    const zipCode = source.zipCode !== undefined ? (req.sanitizedData?.zipCode !== undefined ? req.sanitizedData.zipCode : sanitizeText(req.body.zipCode)) : undefined;
+    const dateOfBirth = source.dateOfBirth !== undefined ? source.dateOfBirth : undefined;
+    const emergencyContact = source.emergencyContact !== undefined ? (req.sanitizedData?.emergencyContact !== undefined ? req.sanitizedData.emergencyContact : sanitizeText(req.body.emergencyContact)) : undefined;
+    const emergencyPhone = source.emergencyPhone !== undefined ? (req.sanitizedData?.emergencyPhone !== undefined ? req.sanitizedData.emergencyPhone : sanitizePhone(req.body.emergencyPhone)) : undefined;
+    const emergencyRelationship = source.emergencyRelationship !== undefined ? (req.sanitizedData?.emergencyRelationship !== undefined ? req.sanitizedData.emergencyRelationship : sanitizeText(req.body.emergencyRelationship)) : undefined;
+    const studentId = source.studentId !== undefined ? (req.sanitizedData?.studentId !== undefined ? req.sanitizedData.studentId : sanitizeText(req.body.studentId)) : undefined;
+    const school = source.school !== undefined ? (req.sanitizedData?.school !== undefined ? req.sanitizedData.school : sanitizeText(req.body.school)) : undefined;
+    const yearLevel = source.yearLevel !== undefined ? (req.sanitizedData?.yearLevel !== undefined ? req.sanitizedData.yearLevel : sanitizeText(req.body.yearLevel)) : undefined;
 
     // Build update object with only provided fields
     const updateData = {};
@@ -1314,5 +1310,91 @@ export const logPasswordReset = async (req, res, next) => {
     logger.error({ err: error, requestId: req.id }, "Failed to log password reset");
     // Don't break the flow — just acknowledge
     res.json({ message: "Logged" });
+  }
+};
+
+/**
+ * POST /api/auth/notify-password-changed
+ *
+ * Authenticated endpoint called after the user successfully updates their password.
+ * Dispatches security notification email, optionally invalidates other active sessions,
+ * and logs a security audit trail entry.
+ *
+ * @requires Firebase token in Authorization header
+ * @body { revokeOtherSessions?: boolean }
+ * @returns { success: true, message: string, sessionCleanupComplete: boolean }
+ */
+export const notifyPasswordChanged = async (req, res, next) => {
+  try {
+    const user = await User.findOne({ firebaseUid: req.user.uid });
+    if (!user) {
+      return res.status(404).json({
+        error: "User profile not found",
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    const { revokeOtherSessions } = req.body || {};
+    let sessionCleanupComplete = true;
+
+    if (revokeOtherSessions) {
+      try {
+        const invalidation = await invalidateUserSessions({
+          user,
+          reason: "password_changed_revoke_others",
+          req,
+        });
+        sessionCleanupComplete = !invalidation?.failures?.length;
+      } catch (err) {
+        logger.error({ err, userId: user._id }, "Failed to revoke other sessions on password change");
+        sessionCleanupComplete = false;
+      }
+    }
+
+    // Dispatch security notification email asynchronously
+    const ipAddress = req.headers["x-forwarded-for"] || req.connection?.remoteAddress || "Unknown";
+    const timestamp = new Date().toLocaleString("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+
+    sendPasswordChangedEmail({
+      to: user.email,
+      name: user.firstName || user.username || "there",
+      timestamp,
+      ipAddress,
+    }).catch((emailErr) => {
+      logger.error({ err: emailErr, userId: user._id }, "Failed to dispatch password changed security email");
+    });
+
+    // Record security audit trail
+    await auditLogger.log({
+      req,
+      type: "security",
+      action: "Password changed",
+      severity: "info",
+      userId: user._id,
+      userName: `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username || user.email,
+      userRole: user.role || "unknown",
+      userEmail: user.email,
+      ipAddress,
+      userAgent: req.headers["user-agent"],
+      metadata: {
+        event: "password_change_success",
+        revokeOtherSessions: Boolean(revokeOtherSessions),
+        sessionCleanupComplete,
+        timestamp: new Date().toISOString(),
+      },
+    }).catch((auditErr) => {
+      logger.error({ err: auditErr, userId: user._id }, "Failed to log password change audit event");
+    });
+
+    return res.json({
+      success: true,
+      message: "Password change recorded and security notification dispatched.",
+      sessionCleanupComplete,
+    });
+  } catch (error) {
+    next(error);
   }
 };

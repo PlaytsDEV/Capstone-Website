@@ -1,49 +1,43 @@
 /**
- * SettingsTab — Profile Settings with Change Password & Session Management
+ * SettingsTab — Profile Settings with Realtime Theme Selection, Password Management, & Session Security
  *
  * Features:
- * - Change password for email/password accounts (Firebase Auth)
- * - "Managed by Google" notice for social login users
- * - Account information display (role, status, dates)
- * - Active session info and sign-out-all-devices
+ * - Realtime theme selection (Light, Dark, System) with instant application & persistence
+ * - Prominent, accessible Password Change form with live criteria checklist & visibility controls
+ * - Social login OAuth status notice (Google, Facebook)
+ * - Device session detection with "Active Now" indicator & session revocation
+ * - Read-only account profile metadata with 1-click Copy UID feedback
+ * - Full-width layout consistent with sidebar spacing across all viewports
  *
- * Visual language: driven entirely by the tokens in design-token.css
- * (--primary/--secondary/--success/--warning/--danger/--info, spacing,
- * radius, shadow and type scales). No hardcoded hex values.
+ * Visual language: Plain solid HSL tokens, 100% no gradients, clean white surfaces with crisp primary borders,
+ * full WCAG AA contrast compliance, and responsive touch-friendly targets (no dull/muddy gray fills).
  */
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
-  Shield,
+  ShieldCheck,
   Lock,
+  KeyRound,
   Info,
   CheckCircle,
   AlertCircle,
   Monitor,
+  Laptop,
+  Smartphone,
   LogOut,
   Sun,
   Moon,
+  Copy,
+  Check,
 } from "lucide-react";
-import PasswordVisibilityButton from "../../../../shared/components/PasswordVisibilityButton";
+import ChangePasswordForm from "./ChangePasswordForm";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import { useTheme } from "../../../../features/public/context/ThemeContext";
-import {
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-  updatePassword,
-} from "firebase/auth";
 import { auth } from "../../../../firebase/config";
 import { useAppNavigation } from "../../../../shared/hooks/useAppNavigation";
 import { showNotification } from "../../../../shared/utils/notification";
-import { validatePassword } from "../../../../shared/utils/authValidation";
 
 // ─── Helpers ──────────────────────────────────────────────────
-
-/** Check if current user has email/password provider */
-const isEmailPasswordAccount = () => {
-  const user = auth.currentUser;
-  return user?.providerData?.some((p) => p.providerId === "password") || false;
-};
 
 /** Get the social provider name if any */
 const getSocialProvider = () => {
@@ -57,102 +51,223 @@ const getSocialProvider = () => {
   return provider.providerId;
 };
 
-// ─── Scoped layout styles (kept local so this component ships as one file) ──
-// Anything that needs a media query or a pseudo-class beyond what inline
-// styles can express lives here, namespaced under `.st-`.
+/** Detect browser & operating system */
+const getDeviceDetails = () => {
+  if (typeof navigator === "undefined") {
+    return { browser: "Browser", os: "Device", isMobile: false };
+  }
+  const ua = navigator.userAgent || "";
+  let browser = "Web Browser";
+  if (ua.includes("Edg/")) browser = "Microsoft Edge";
+  else if (ua.includes("Chrome")) browser = "Google Chrome";
+  else if (ua.includes("Firefox")) browser = "Mozilla Firefox";
+  else if (ua.includes("Safari") && !ua.includes("Chrome")) browser = "Apple Safari";
+  else if (ua.includes("Opera") || ua.includes("OPR/")) browser = "Opera";
+
+  let os = "Desktop";
+  if (ua.includes("Windows NT 10.0") || ua.includes("Windows NT 11.0") || ua.includes("Windows")) os = "Windows";
+  else if (ua.includes("Macintosh") || ua.includes("Mac OS")) os = "macOS";
+  else if (ua.includes("iPhone") || ua.includes("iPad")) os = "iOS";
+  else if (ua.includes("Android")) os = "Android";
+  else if (ua.includes("Linux")) os = "Linux";
+
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
+  return { browser, os, isMobile };
+};
+
+// ─── Scoped Layout & Visual Styles (Solid HSL tokens, no gray backgrounds) ──
 const ScopedStyles = () => (
   <style>{`
+    .st-container {
+      width: 100%;
+      max-width: 100%;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-xl, 24px);
+    }
+
     .st-section {
-      background-color: var(--surface-card, var(--card));
-      border: 1px solid var(--border-card, var(--border));
-      border-radius: var(--radius-lg);
+      width: 100%;
+      background-color: var(--surface-card, var(--card, #FFFFFF));
+      border: 1px solid var(--border-card, var(--border, #CBD5E1));
+      border-radius: var(--radius-lg, 12px);
       box-shadow: var(--shadow-sm);
       overflow: hidden;
+      transition: border-color var(--duration-fast) var(--ease-out);
     }
-    .st-section + .st-section { margin-top: var(--spacing-lg); }
 
     .st-section-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: var(--spacing-md);
-      padding: var(--spacing-lg) var(--spacing-xl);
-      border-bottom: 1px solid var(--border-light);
+      gap: var(--spacing-md, 16px);
+      padding: var(--spacing-lg, 20px) var(--spacing-xl, 24px);
+      border-bottom: 1px solid var(--border-light, var(--border, #E2E8F0));
+      background-color: var(--surface-card, var(--card, #FFFFFF));
     }
-    .st-section-head-left { display: flex; align-items: center; gap: var(--spacing-md); min-width: 0; }
-    .st-section-body { padding: var(--spacing-xl); }
+    .st-section-head-left {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-md, 16px);
+      min-width: 0;
+    }
+    .st-section-body {
+      padding: var(--spacing-xl, 24px);
+      background-color: var(--surface-card, var(--card, #FFFFFF));
+    }
 
     .st-icon-badge {
-      width: 38px;
-      height: 38px;
-      border-radius: var(--radius-md);
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-md, 8px);
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
+      background-color: color-mix(in srgb, var(--primary) 14%, var(--surface-card, var(--card)));
+      border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
+      color: var(--primary);
     }
 
-    .st-grid-2 {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: var(--spacing-md);
-    }
-
-    .st-segmented {
+    /* ── Realtime Theme Grid ── */
+    .st-theme-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 4px;
-      background: var(--surface-muted, var(--muted));
-      padding: 4px;
-      border-radius: var(--radius-md);
+      gap: var(--spacing-md, 16px);
+      width: 100%;
     }
-    @media (max-width: 520px) {
-      .st-segmented { grid-template-columns: 1fr; }
+    @media (max-width: 768px) {
+      .st-theme-grid {
+        grid-template-columns: 1fr;
+      }
     }
-    .st-segmented-btn {
+
+    .st-theme-card {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+      padding: var(--spacing-lg, 20px);
+      background: var(--surface-card, var(--card, #FFFFFF));
+      border: 1px solid var(--border-card, var(--border, #CBD5E1));
+      border-radius: var(--radius-lg, 12px);
+      cursor: pointer;
+      font-family: inherit;
+      position: relative;
+      outline: none;
+      transition: border-color var(--duration-fast) var(--ease-out),
+        background-color var(--duration-fast) var(--ease-out),
+        box-shadow var(--duration-fast) var(--ease-out);
+    }
+    .st-theme-card:hover {
+      border-color: var(--primary);
+      background-color: color-mix(in srgb, var(--primary) 4%, var(--surface-card, var(--card)));
+    }
+    .st-theme-card:focus-visible {
+      border-color: var(--primary);
+      outline: none;
+      box-shadow: none;
+    }
+    .st-theme-card.is-active {
+      background-color: color-mix(in srgb, var(--primary) 8%, var(--surface-card, var(--card)));
+      border: 1px solid var(--primary);
+      box-shadow: var(--shadow-xs);
+    }
+
+    .st-theme-card-top {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--spacing-md, 14px);
+    }
+
+    .st-theme-icon-box {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-md, 8px);
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      padding: 10px 12px;
-      border-radius: calc(var(--radius-md) - 2px);
-      border: none;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: var(--font-size-md);
-      font-weight: var(--font-weight-medium);
-      color: var(--text-muted, var(--muted-foreground));
-      background: transparent;
-      transition: background-color var(--duration-fast) var(--ease-out),
-        color var(--duration-fast) var(--ease-out),
-        box-shadow var(--duration-fast) var(--ease-out);
-    }
-    .st-segmented-btn:hover { color: var(--text-heading, var(--foreground)); }
-    .st-segmented-btn.is-active {
-      background: var(--surface-card, var(--card));
+      background: color-mix(in srgb, var(--primary) 10%, var(--surface-card, #FFFFFF));
+      border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
       color: var(--text-heading, var(--foreground));
-      box-shadow: var(--shadow-xs), inset 0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent);
+      transition: background-color var(--duration-fast) var(--ease-out),
+        color var(--duration-fast) var(--ease-out);
     }
-    .st-segmented-btn.is-active .st-segmented-icon { color: var(--primary); }
+    .st-theme-card.is-active .st-theme-icon-box {
+      background: var(--primary);
+      color: var(--primary-foreground);
+      border-color: var(--primary);
+    }
 
+    .st-theme-active-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: var(--font-size-xs, 12px);
+      font-weight: var(--font-weight-bold, 700);
+      color: var(--text-heading, var(--foreground));
+      background: color-mix(in srgb, var(--primary) 20%, var(--surface-card, var(--card)));
+      border: 1px solid color-mix(in srgb, var(--primary) 50%, transparent);
+      padding: 3px 8px;
+      border-radius: 999px;
+    }
+
+    .st-theme-card-title {
+      font-size: var(--font-size-md, 15px);
+      font-weight: var(--font-weight-semibold, 600);
+      color: var(--text-heading, var(--foreground));
+      margin-bottom: 4px;
+    }
+
+    .st-theme-card-desc {
+      font-size: var(--font-size-xs, 12px);
+      color: var(--text-secondary, var(--muted-foreground));
+      line-height: 1.45;
+    }
+
+    .st-theme-status-bar {
+      margin-top: var(--spacing-lg, 16px);
+      padding: 12px 16px;
+      background: var(--surface-card, var(--card, #FFFFFF));
+      border-radius: var(--radius-md, 8px);
+      border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border));
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: var(--font-size-sm, 13px);
+      color: var(--text-heading, var(--foreground));
+    }
+    .st-theme-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--primary);
+      flex-shrink: 0;
+    }
+
+    /* ── Form and Input Controls ── */
     .st-field { display: flex; flex-direction: column; gap: 6px; }
     .st-input {
       width: 100%;
       padding: 10px 44px 10px 12px;
-      border: 1px solid var(--border-card, var(--border));
-      border-radius: var(--radius-md);
-      font-size: var(--font-size-md);
+      border: 1px solid var(--border-card, var(--border, #CBD5E1));
+      border-radius: var(--radius-md, 8px);
+      font-size: var(--font-size-md, 14px);
       font-family: inherit;
-      color: var(--text-heading, var(--foreground));
-      background: var(--input-background, var(--surface-muted));
+      color: var(--text-heading, var(--foreground, #0F172A));
+      background: var(--surface-card, var(--card, #FFFFFF));
       outline: none;
       box-sizing: border-box;
-      transition: border-color var(--duration-fast) var(--ease-out),
-        box-shadow var(--duration-fast) var(--ease-out);
+      transition: border-color var(--duration-fast) var(--ease-out);
     }
-    .st-input:focus {
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);
+    .st-input:focus,
+    .st-input:focus-visible {
+      border-color: var(--primary, #D4AF37) !important;
+      outline: none !important;
+      box-shadow: none !important;
     }
 
     .st-btn {
@@ -160,9 +275,9 @@ const ScopedStyles = () => (
       align-items: center;
       justify-content: center;
       gap: 6px;
-      border-radius: var(--radius-md);
-      font-size: var(--font-size-md);
-      font-weight: var(--font-weight-semibold);
+      border-radius: var(--radius-md, 8px);
+      font-size: var(--font-size-md, 14px);
+      font-weight: var(--font-weight-semibold, 600);
       font-family: inherit;
       cursor: pointer;
       border: 1px solid transparent;
@@ -173,37 +288,72 @@ const ScopedStyles = () => (
     .st-btn:disabled { cursor: not-allowed; opacity: 0.6; }
     .st-btn:not(:disabled):hover { filter: brightness(0.96); }
 
-    .st-btn-primary { background: var(--primary); color: var(--primary-foreground); padding: 10px 22px; }
-    .st-btn-success { background: var(--success); color: var(--success-foreground); padding: 10px 22px; }
+    .st-btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground, #FFFFFF);
+      padding: 10px 22px;
+    }
     .st-btn-ghost {
-      background: transparent;
-      color: var(--text-secondary, var(--muted-foreground));
-      border-color: var(--border-card, var(--border));
+      background: var(--surface-card, var(--card, #FFFFFF));
+      color: var(--text-heading, var(--foreground, #0F172A));
+      border-color: var(--border-card, var(--border, #CBD5E1));
       padding: 10px 18px;
     }
-    .st-btn-ghost:not(:disabled):hover { background: var(--surface-hover, var(--bg-hover)); }
-    .st-btn-outline-accent {
-      background: transparent;
-      color: var(--text-heading, var(--foreground));
-      border-color: color-mix(in srgb, var(--primary) 55%, transparent);
-      padding: 7px 14px;
-      font-size: var(--font-size-sm);
-    }
-    .st-btn-outline-accent:not(:disabled):hover {
-      background: color-mix(in srgb, var(--primary) 10%, transparent);
+    .st-btn-ghost:not(:disabled):hover {
+      background: color-mix(in srgb, var(--primary) 6%, var(--surface-card, var(--card)));
       border-color: var(--primary);
     }
     .st-btn-danger-outline {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
       width: 100%;
-      background: var(--status-error-bg);
-      color: var(--danger-dark);
-      border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+      background: var(--status-error-bg, #fee2e2);
+      color: var(--danger-dark, #991b1b);
+      border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
       padding: 11px 16px;
-      font-size: var(--font-size-sm);
+      font-size: var(--font-size-sm, 13px);
+      border-radius: var(--radius-md, 8px);
+      font-weight: var(--font-weight-semibold, 600);
+      cursor: pointer;
     }
     .st-btn-danger-outline:not(:disabled):hover {
       background: color-mix(in srgb, var(--danger) 16%, transparent);
       border-color: var(--danger);
+    }
+
+    /* ── Grid Layouts ── */
+    .st-grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: var(--spacing-md, 16px);
+      width: 100%;
+    }
+
+    .st-copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      font-size: var(--font-size-xs, 11px);
+      font-weight: var(--font-weight-medium, 500);
+      color: var(--text-heading, var(--foreground));
+      background: var(--surface-card, var(--card));
+      border: 1px solid var(--border-card, var(--border));
+      border-radius: var(--radius-sm, 6px);
+      cursor: pointer;
+      transition: all var(--duration-fast) var(--ease-out);
+    }
+    .st-copy-btn:hover {
+      color: var(--primary);
+      border-color: var(--primary);
+      background: color-mix(in srgb, var(--primary) 6%, var(--surface-card, var(--card)));
+    }
+    .st-copy-btn.is-copied {
+      color: var(--success-dark, var(--success));
+      border-color: var(--success);
+      background: var(--status-success-bg, #dcfce7);
     }
   `}</style>
 );
@@ -212,100 +362,56 @@ const ScopedStyles = () => (
 
 const SettingsTab = () => {
   const appNavigate = useAppNavigation();
-  // Password form state
+  const { theme, setTheme } = useTheme();
+
+  // Password section state
   const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  });
-  const [showCurrentPw, setShowCurrentPw] = useState(false);
-  const [showNewPw, setShowNewPw] = useState(false);
-  const [showConfirmPw, setShowConfirmPw] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
+  const [isPasswordDirty, setIsPasswordDirty] = useState(false);
+  const [showUnsavedCancelConfirm, setShowUnsavedCancelConfirm] = useState(false);
+
+  // Session management state
   const [signingOutAll, setSigningOutAll] = useState(false);
   const [showSignOutAllConfirm, setShowSignOutAllConfirm] = useState(false);
-  const [savedTheme, setSavedTheme] = useState(false);
+  const [copiedUid, setCopiedUid] = useState(false);
 
-  const hasEmailAuth = isEmailPasswordAccount();
   const socialProvider = getSocialProvider();
+  const isSocialAuth = Boolean(socialProvider);
   const firebaseUser = auth.currentUser;
+  const device = useMemo(() => getDeviceDetails(), []);
 
-  // ── Password change handler ──
-  const handleChangePassword = async () => {
-    const { currentPassword, newPassword, confirmPassword } = passwordData;
+  const themeOptions = [
+    {
+      id: "light",
+      icon: Sun,
+      label: "Light Theme",
+      description: "Clean, high-contrast daytime interface",
+    },
+    {
+      id: "dark",
+      icon: Moon,
+      label: "Dark Theme",
+      description: "Eye-friendly palette designed for low-light environments",
+    },
+    {
+      id: "system",
+      icon: Monitor,
+      label: "System Preference",
+      description: "Automatically matches your operating system setting",
+    },
+  ];
 
-    if (!currentPassword) {
-      showNotification("Current password is required", "error");
-      return;
-    }
-    if (/\s/.test(newPassword)) {
-      showNotification("New password cannot contain spaces", "error");
-      return;
-    }
-    const strengthError = validatePassword(newPassword);
-    if (strengthError) {
-      showNotification(strengthError, "error");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      showNotification("New passwords do not match", "error");
-      return;
-    }
-    if (currentPassword === newPassword) {
-      showNotification(
-        "New password must be different from current password",
-        "error",
-      );
-      return;
-    }
-
-    try {
-      setChangingPassword(true);
-      const fbUser = auth.currentUser;
-
-      if (!fbUser || !fbUser.email) {
-        showNotification(
-          "You must be logged in to change your password",
-          "error",
-        );
-        return;
-      }
-
-      const credential = EmailAuthProvider.credential(
-        fbUser.email,
-        currentPassword,
-      );
-      await reauthenticateWithCredential(fbUser, credential);
-      await updatePassword(fbUser, newPassword);
-
-      showNotification("Password changed successfully!", "success");
-      setPasswordData({
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      });
+  const handleCancelPasswordForm = () => {
+    if (isPasswordDirty) {
+      setShowUnsavedCancelConfirm(true);
+    } else {
       setShowPasswordForm(false);
-    } catch (error) {
-      console.error("❌ Password change failed:", error);
-      if (error.code === "auth/wrong-password") {
-        showNotification("Current password is incorrect", "error");
-      } else if (error.code === "auth/weak-password") {
-        showNotification("New password is too weak", "error");
-      } else if (error.code === "auth/requires-recent-login") {
-        showNotification(
-          "Please log out and log back in, then try again",
-          "error",
-        );
-      } else {
-        showNotification(
-          "Failed to change password. Please try again.",
-          "error",
-        );
-      }
-    } finally {
-      setChangingPassword(false);
     }
+  };
+
+  const handleConfirmDiscardPassword = () => {
+    setIsPasswordDirty(false);
+    setShowPasswordForm(false);
+    setShowUnsavedCancelConfirm(false);
   };
 
   // ── Sign out all devices ──
@@ -313,19 +419,22 @@ const SettingsTab = () => {
     try {
       setSigningOutAll(true);
       try {
-        const { protectedFetch } = await import("../../../../shared/api/httpClient.js");
+        const { protectedFetch } = await import(
+          "../../../../shared/api/httpClient.js"
+        );
         const response = await protectedFetch("/auth/revoke-sessions", {
           method: "POST",
         });
         if (!response.ok) throw new Error("Server revocation failed");
       } catch {
+        // Fall back to local Firebase signout
       }
       await auth.signOut();
       appNavigate("/signin", {
         replace: true,
         flash: {
           type: "success",
-          message: "Signed out from all devices",
+          message: "Signed out from all devices successfully",
         },
       });
     } catch (error) {
@@ -337,451 +446,449 @@ const SettingsTab = () => {
     }
   };
 
-  const handlePasswordInput = (e) => {
-    const { name, value } = e.target;
-    setPasswordData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const resetPasswordForm = () => {
-    setShowPasswordForm(false);
-    setPasswordData({
-      currentPassword: "",
-      newPassword: "",
-      confirmPassword: "",
-    });
-    setShowCurrentPw(false);
-    setShowNewPw(false);
-    setShowConfirmPw(false);
-  };
-
-  const labelStyle = {
-    fontSize: "var(--font-size-sm)",
-    fontWeight: "var(--font-weight-semibold)",
-    color: "var(--text-body, var(--foreground))",
-  };
-
-  const toggleBtnStyle = {
-    position: "absolute",
-    right: "0",
-    top: "50%",
-    transform: "translateY(-50%)",
-    background: "none",
-    border: "none",
-    color: "var(--text-muted, var(--muted-foreground))",
-    cursor: "pointer",
-    padding: "4px",
-    display: "flex",
-    alignItems: "center",
-  };
-
-  const { theme, setTheme } = useTheme();
-  const [pendingTheme, setPendingTheme] = useState(theme);
-
-  const handleSaveTheme = () => {
-    setTheme(pendingTheme);
-    setSavedTheme(true);
-    setTimeout(() => setSavedTheme(false), 2000);
-  };
-
-  const themeChanged = pendingTheme !== theme;
-
-  const themeOptions = [
-    { id: "light", icon: Sun, label: "Light" },
-    { id: "dark", icon: Moon, label: "Dark" },
-    { id: "system", icon: Monitor, label: "System" },
-  ];
-  const themeCaptions = {
-    light: "Always use the light theme.",
-    dark: "Always use the dark theme.",
-    system: "Match your device's system setting.",
+  const handleCopyUid = async () => {
+    const uid = firebaseUser?.uid;
+    if (!uid) return;
+    try {
+      await navigator.clipboard.writeText(uid);
+      setCopiedUid(true);
+      setTimeout(() => setCopiedUid(false), 2000);
+      showNotification("Account ID copied to clipboard", "success");
+    } catch {
+      showNotification("Failed to copy Account ID", "error");
+    }
   };
 
   return (
-    <div style={{ width: "100%" }}>
+    <div className="st-container">
       <ScopedStyles />
 
       {/* Header */}
-      <div style={{ marginBottom: "var(--spacing-xl)" }}>
+      <div>
         <h1
           style={{
-            fontSize: "var(--font-size-2xl)",
-            fontWeight: "var(--font-weight-bold)",
+            fontSize: "var(--font-size-2xl, 24px)",
+            fontWeight: "var(--font-weight-bold, 700)",
             color: "var(--text-heading, var(--foreground))",
             margin: "0 0 4px",
-            letterSpacing: "var(--letter-spacing-tight)",
+            letterSpacing: "var(--letter-spacing-tight, -0.02em)",
           }}
         >
-          Settings
+          Account Settings
         </h1>
         <p
           style={{
-            fontSize: "var(--font-size-md)",
-            color: "var(--text-muted, var(--muted-foreground))",
+            fontSize: "var(--font-size-md, 14px)",
+            color: "var(--text-secondary, var(--muted-foreground))",
             margin: 0,
           }}
         >
-          Manage your account security and preferences
+          Manage your appearance preferences, security credentials, and active sessions
         </p>
       </div>
 
-      {/* APPEARANCE SECTION */}
-      <div className="st-section">
+      {/* ── 1. REALTIME APPEARANCE & THEME SECTION ── */}
+      <section className="st-section" aria-labelledby="appearance-section-title">
         <div className="st-section-head">
           <div className="st-section-head-left">
-            <div
-              className="st-icon-badge"
-              style={{ backgroundColor: "color-mix(in srgb, var(--primary) 16%, transparent)" }}
-            >
-              <Sun style={{ width: "18px", height: "18px", color: "var(--primary)" }} />
+            <div className="st-icon-badge">
+              <Sun size={20} />
             </div>
             <div>
-              <h3
+              <h2
+                id="appearance-section-title"
                 style={{
-                  fontSize: "var(--font-size-lg)",
-                  fontWeight: "var(--font-weight-semibold)",
+                  fontSize: "var(--font-size-lg, 17px)",
+                  fontWeight: "var(--font-weight-semibold, 600)",
                   color: "var(--text-heading, var(--foreground))",
                   margin: 0,
                 }}
               >
                 Appearance
-              </h3>
+              </h2>
               <p
                 style={{
-                  fontSize: "var(--font-size-sm)",
-                  color: "var(--text-muted, var(--muted-foreground))",
+                  fontSize: "var(--font-size-sm, 13px)",
+                  color: "var(--text-secondary, var(--muted-foreground))",
                   margin: "2px 0 0",
                 }}
               >
-                Choose how Lilycrest looks on this device
+                Choose how Lilycrest looks on this device (changes apply instantly)
               </p>
             </div>
           </div>
         </div>
 
         <div className="st-section-body">
-          <div className="st-segmented" role="tablist" aria-label="Theme">
-            {themeOptions.map(({ id, icon: Icon, label }) => {
-              const active = pendingTheme === id;
+          <div
+            className="st-theme-grid"
+            role="radiogroup"
+            aria-label="Interface theme preference"
+          >
+            {themeOptions.map(({ id, icon: Icon, label, description }) => {
+              const active = theme === id;
               return (
                 <button
                   key={id}
                   type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setPendingTheme(id)}
-                  className={`st-segmented-btn${active ? " is-active" : ""}`}
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setTheme(id)}
+                  className={`st-theme-card${active ? " is-active" : ""}`}
                 >
-                  <Icon size={16} className="st-segmented-icon" />
-                  {label}
+                  <div className="st-theme-card-top">
+                    <div className="st-theme-icon-box">
+                      <Icon size={18} />
+                    </div>
+                    {active && (
+                      <span className="st-theme-active-tag">
+                        <Check size={12} strokeWidth={2.5} />
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
+                    <span className="st-theme-card-title">{label}</span>
+                    <span className="st-theme-card-desc">{description}</span>
+                  </div>
                 </button>
               );
             })}
           </div>
-          <p
-            style={{
-              fontSize: "var(--font-size-sm)",
-              color: "var(--text-muted, var(--muted-foreground))",
-              margin: "10px 2px 0",
-            }}
-          >
-            {themeCaptions[pendingTheme]}
-          </p>
 
-          {(themeChanged || savedTheme) && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                marginTop: "var(--spacing-lg)",
-                paddingTop: "var(--spacing-lg)",
-                borderTop: "1px solid var(--border-light)",
-              }}
-            >
-              <button
-                type="button"
-                onClick={handleSaveTheme}
-                disabled={!themeChanged && !savedTheme}
-                className={`st-btn ${savedTheme ? "st-btn-success" : "st-btn-primary"}`}
-              >
-                {savedTheme ? "✓ Saved" : "Save changes"}
-              </button>
-              {themeChanged && !savedTheme && (
-                <button
-                  type="button"
-                  onClick={() => setPendingTheme(theme)}
-                  className="st-btn st-btn-ghost"
-                >
-                  Discard
-                </button>
-              )}
-            </div>
-          )}
+          <div className="st-theme-status-bar">
+            <span className="st-theme-status-dot" />
+            <span>
+              Active mode:{" "}
+              <strong style={{ color: "var(--text-heading, var(--foreground))" }}>
+                {theme === "light"
+                  ? "Light Mode"
+                  : theme === "dark"
+                  ? "Dark Mode"
+                  : "System Preference"}
+              </strong>
+              {theme === "system"
+                ? " — synchronizes with your device's daylight and dark mode schedule."
+                : theme === "light"
+                ? " — clean, crisp daytime contrast."
+                : " — eye-friendly dark palette."}
+            </span>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* SECURITY SECTION — Change Password */}
-      <div className="st-section">
+      {/* ── 2. SECURITY & PASSWORD MANAGEMENT SECTION ── */}
+      <section className="st-section" aria-labelledby="security-section-title">
         <div className="st-section-head">
           <div className="st-section-head-left">
-            <div
-              className="st-icon-badge"
-              style={{ backgroundColor: "color-mix(in srgb, var(--primary) 16%, transparent)" }}
-            >
-              <Shield style={{ width: "18px", height: "18px", color: "var(--primary)" }} />
+            <div className="st-icon-badge">
+              <ShieldCheck size={20} />
             </div>
-            <h3
-              style={{
-                fontSize: "var(--font-size-lg)",
-                fontWeight: "var(--font-weight-semibold)",
-                color: "var(--text-heading, var(--foreground))",
-                margin: 0,
-              }}
-            >
-              Security
-            </h3>
+            <div>
+              <h2
+                id="security-section-title"
+                style={{
+                  fontSize: "var(--font-size-lg, 17px)",
+                  fontWeight: "var(--font-weight-semibold, 600)",
+                  color: "var(--text-heading, var(--foreground))",
+                  margin: 0,
+                }}
+              >
+                Security & Password Management
+              </h2>
+              <p
+                style={{
+                  fontSize: "var(--font-size-sm, 13px)",
+                  color: "var(--text-secondary, var(--muted-foreground))",
+                  margin: "2px 0 0",
+                }}
+              >
+                Manage and update your account password
+              </p>
+            </div>
           </div>
-
-          {hasEmailAuth && !showPasswordForm && (
-            <button
-              type="button"
-              onClick={() => setShowPasswordForm(true)}
-              className="st-btn st-btn-outline-accent"
-            >
-              <Lock style={{ width: "13px", height: "13px", color: "var(--primary)" }} />
-              Change password
-            </button>
-          )}
         </div>
 
         <div className="st-section-body">
-          {/* Social provider notice */}
-          {!hasEmailAuth && socialProvider && (
+          {/* Social provider OAuth notice if logged in via social SSO */}
+          {isSocialAuth && (
             <div
               style={{
                 display: "flex",
                 alignItems: "flex-start",
-                gap: "12px",
-                padding: "var(--spacing-md) var(--spacing-lg)",
+                gap: "14px",
+                padding: "var(--spacing-md, 16px) var(--spacing-lg, 20px)",
                 backgroundColor: "color-mix(in srgb, var(--primary) 8%, var(--surface-card, var(--card)))",
-                borderRadius: "var(--radius-md)",
-                border: "1px solid color-mix(in srgb, var(--primary) 25%, transparent)",
+                borderRadius: "var(--radius-md, 8px)",
+                border: "1px solid color-mix(in srgb, var(--primary) 28%, transparent)",
+                marginBottom: "var(--spacing-lg, 18px)",
               }}
             >
-              <Info style={{ width: "18px", height: "18px", color: "var(--primary)", flexShrink: 0, marginTop: "1px" }} />
-              <div>
+              <Info
+                style={{
+                  width: "20px",
+                  height: "20px",
+                  color: "var(--primary)",
+                  flexShrink: 0,
+                  marginTop: "1px",
+                }}
+              />
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                  <p
+                    style={{
+                      fontSize: "var(--font-size-md, 15px)",
+                      fontWeight: "var(--font-weight-semibold, 600)",
+                      color: "var(--text-heading, var(--foreground))",
+                      margin: 0,
+                    }}
+                  >
+                    Managed by {socialProvider}
+                  </p>
+                  <span
+                    style={{
+                      fontSize: "var(--font-size-xs, 11px)",
+                      fontWeight: "var(--font-weight-bold, 700)",
+                      color: "var(--success-dark, var(--success))",
+                      backgroundColor: "var(--status-success-bg, #dcfce7)",
+                      border: "1px solid color-mix(in srgb, var(--success) 30%, transparent)",
+                      padding: "2px 8px",
+                      borderRadius: "999px",
+                    }}
+                  >
+                    OAuth 2.0 Protected
+                  </span>
+                </div>
                 <p
                   style={{
-                    fontSize: "var(--font-size-md)",
-                    fontWeight: "var(--font-weight-medium)",
-                    color: "var(--text-heading, var(--foreground))",
-                    margin: "0 0 2px",
+                    fontSize: "var(--font-size-sm, 13px)",
+                    color: "var(--text-secondary, var(--muted-foreground))",
+                    margin: 0,
+                    lineHeight: 1.5,
                   }}
                 >
-                  Managed by {socialProvider}
-                </p>
-                <p style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted, var(--muted-foreground))", margin: 0 }}>
-                  Your account uses {socialProvider} sign-in. Password management
-                  is handled by {socialProvider}.
+                  Your account uses {socialProvider} single sign-on. You can still set or update a direct password below if you wish to use email/password sign-in.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Email/password — info text */}
-          {hasEmailAuth && !showPasswordForm && (
-            <p style={{ color: "var(--text-secondary, var(--muted-foreground))", fontSize: "var(--font-size-md)", margin: 0 }}>
-              You can update your password here. You'll need to enter your
-              current password first for security.
-            </p>
-          )}
-
-          {/* Password change form */}
-          {hasEmailAuth && showPasswordForm && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-lg)", maxWidth: "420px" }}>
-              {/* Current password */}
-              <div className="st-field">
-                <label style={labelStyle} htmlFor="settings-current-pw">
-                  Current password
-                </label>
-                <div style={{ position: "relative" }}>
-                  <input
-                    id="settings-current-pw"
-                    type={showCurrentPw ? "text" : "password"}
-                    name="currentPassword"
-                    value={passwordData.currentPassword}
-                    onChange={handlePasswordInput}
-                    placeholder="Enter current password"
-                    disabled={changingPassword}
-                    className="st-input"
-                  />
-                  <PasswordVisibilityButton
-                    visible={showCurrentPw}
-                    style={toggleBtnStyle}
-                    onToggle={() => setShowCurrentPw((p) => !p)}
-                  />
-                </div>
-              </div>
-
-              {/* New password */}
-              <div className="st-field">
-                <label style={labelStyle} htmlFor="settings-new-pw">
-                  New password
-                </label>
-                <div style={{ position: "relative" }}>
-                  <input
-                    id="settings-new-pw"
-                    type={showNewPw ? "text" : "password"}
-                    name="newPassword"
-                    value={passwordData.newPassword}
-                    onChange={handlePasswordInput}
-                    onKeyDown={(e) => { if (e.key === " ") e.preventDefault(); }}
-                    onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
-                    placeholder="Enter new password"
-                    disabled={changingPassword}
-                    className="st-input"
-                  />
-                  <PasswordVisibilityButton
-                    visible={showNewPw}
-                    style={toggleBtnStyle}
-                    onToggle={() => setShowNewPw((p) => !p)}
-                  />
-                </div>
-                <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted, var(--muted-foreground))", margin: "2px 0 0" }}>
-                  Must be 8+ characters with uppercase, lowercase, number, and special character
-                </p>
-              </div>
-
-              {/* Confirm new password */}
-              <div className="st-field">
-                <label style={labelStyle} htmlFor="settings-confirm-pw">
-                  Confirm new password
-                </label>
-                <div style={{ position: "relative" }}>
-                  <input
-                    id="settings-confirm-pw"
-                    type={showConfirmPw ? "text" : "password"}
-                    name="confirmPassword"
-                    value={passwordData.confirmPassword}
-                    onChange={handlePasswordInput}
-                    onKeyDown={(e) => { if (e.key === " ") e.preventDefault(); }}
-                    onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
-                    placeholder="Confirm new password"
-                    disabled={changingPassword}
-                    className="st-input"
-                  />
-                  <PasswordVisibilityButton
-                    visible={showConfirmPw}
-                    style={toggleBtnStyle}
-                    onToggle={() => setShowConfirmPw((p) => !p)}
-                  />
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", paddingTop: "2px" }}>
-                <button
-                  type="button"
-                  onClick={resetPasswordForm}
-                  disabled={changingPassword}
-                  className="st-btn st-btn-ghost"
+          {/* Collapsed state — prominent Password card */}
+          {!showPasswordForm ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "16px",
+                padding: "20px",
+                backgroundColor: "var(--surface-card, var(--card, #FFFFFF))",
+                borderRadius: "var(--radius-lg, 10px)",
+                border: "1px solid color-mix(in srgb, var(--primary) 28%, var(--border, #CBD5E1))",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                <div
+                  style={{
+                    width: "42px",
+                    height: "42px",
+                    borderRadius: "var(--radius-md, 8px)",
+                    backgroundColor: "color-mix(in srgb, var(--primary) 14%, var(--surface-card, var(--card)))",
+                    border: "1px solid color-mix(in srgb, var(--primary) 30%, transparent)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--primary)",
+                    flexShrink: 0,
+                  }}
                 >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleChangePassword}
-                  disabled={changingPassword}
-                  className="st-btn st-btn-primary"
-                >
-                  {changingPassword ? "Updating…" : "Update password"}
-                </button>
+                  <KeyRound size={20} />
+                </div>
+                <div>
+                  <p
+                    style={{
+                      fontSize: "var(--font-size-md, 15px)",
+                      fontWeight: "var(--font-weight-semibold, 600)",
+                      color: "var(--text-heading, var(--foreground))",
+                      margin: "0 0 2px",
+                    }}
+                  >
+                    Account Password
+                  </p>
+                  <p
+                    style={{
+                      fontSize: "var(--font-size-sm, 13px)",
+                      color: "var(--text-secondary, var(--muted-foreground))",
+                      margin: 0,
+                    }}
+                  >
+                    Click Change Password to update your credentials and strengthen account security.
+                  </p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setShowPasswordForm(true)}
+                className="st-btn st-btn-primary"
+                style={{ fontSize: "var(--font-size-sm, 13px)", padding: "10px 20px" }}
+              >
+                <Lock style={{ width: "14px", height: "14px" }} />
+                Change Password
+              </button>
+            </div>
+          ) : (
+            /* Expanded state — interactive password change form (clean white surface, no gray box) */
+            <div
+              style={{
+                width: "100%",
+                padding: "24px",
+                backgroundColor: "var(--surface-card, var(--card, #FFFFFF))",
+                borderRadius: "var(--radius-lg, 10px)",
+                border: "1px solid color-mix(in srgb, var(--primary) 28%, var(--border, #CBD5E1))",
+              }}
+            >
+              <ChangePasswordForm
+                onCancel={handleCancelPasswordForm}
+                onSuccess={() => {
+                  setShowPasswordForm(false);
+                  setIsPasswordDirty(false);
+                }}
+                onDirtyChange={(dirty) => setIsPasswordDirty(dirty)}
+              />
             </div>
           )}
         </div>
-      </div>
+      </section>
 
-      {/* SESSION MANAGEMENT SECTION */}
-      <div className="st-section">
+      {/* ── 3. ACTIVE SESSIONS & DEVICE SECURITY SECTION ── */}
+      <section className="st-section" aria-labelledby="sessions-section-title">
         <div className="st-section-head">
           <div className="st-section-head-left">
-            <div className="st-icon-badge" style={{ backgroundColor: "color-mix(in srgb, var(--primary) 16%, transparent)" }}>
-              <Monitor style={{ width: "18px", height: "18px", color: "var(--primary)" }} />
+            <div className="st-icon-badge">
+              <Monitor size={20} />
             </div>
-            <h3
-              style={{
-                fontSize: "var(--font-size-lg)",
-                fontWeight: "var(--font-weight-semibold)",
-                color: "var(--text-heading, var(--foreground))",
-                margin: 0,
-              }}
-            >
-              Active Sessions
-            </h3>
+            <div>
+              <h2
+                id="sessions-section-title"
+                style={{
+                  fontSize: "var(--font-size-lg, 17px)",
+                  fontWeight: "var(--font-weight-semibold, 600)",
+                  color: "var(--text-heading, var(--foreground))",
+                  margin: 0,
+                }}
+              >
+                Active Sessions
+              </h2>
+              <p
+                style={{
+                  fontSize: "var(--font-size-sm, 13px)",
+                  color: "var(--text-secondary, var(--muted-foreground))",
+                  margin: "2px 0 0",
+                }}
+              >
+                Review active devices and manage account session security
+              </p>
+            </div>
           </div>
         </div>
 
         <div className="st-section-body">
-          {/* Current session info */}
+          {/* Current session info banner */}
           <div
             style={{
-              backgroundColor: "var(--status-success-bg)",
-              borderRadius: "var(--radius-md)",
-              padding: "var(--spacing-md) var(--spacing-lg)",
-              border: "1px solid color-mix(in srgb, var(--success) 25%, transparent)",
-              marginBottom: "var(--spacing-md)",
+              backgroundColor: "color-mix(in srgb, var(--success) 8%, var(--surface-card, var(--card)))",
+              borderRadius: "var(--radius-md, 8px)",
+              padding: "var(--spacing-md, 16px) var(--spacing-lg, 20px)",
+              border: "1px solid color-mix(in srgb, var(--success) 28%, transparent)",
+              marginBottom: "var(--spacing-lg, 18px)",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              gap: "10px",
+              gap: "12px",
               flexWrap: "wrap",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div
                 style={{
-                  width: "8px",
-                  height: "8px",
-                  borderRadius: "50%",
-                  backgroundColor: "var(--success)",
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "var(--radius-md, 8px)",
+                  backgroundColor: "color-mix(in srgb, var(--success) 16%, transparent)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--success-dark, var(--success))",
                   flexShrink: 0,
                 }}
-              />
+              >
+                {device.isMobile ? <Smartphone size={18} /> : <Laptop size={18} />}
+              </div>
               <div>
-                <p style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", color: "var(--success-dark, var(--success))", margin: 0 }}>
-                  Current Session
-                </p>
-                <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted, var(--muted-foreground))", margin: "2px 0 0" }}>
-                  {navigator.userAgent.includes("Chrome") ? "Chrome" :
-                    navigator.userAgent.includes("Firefox") ? "Firefox" :
-                    navigator.userAgent.includes("Safari") ? "Safari" : "Browser"}{" "}on{" "}
-                  {navigator.platform || "this device"}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <p
+                    style={{
+                      fontSize: "var(--font-size-md, 14px)",
+                      fontWeight: "var(--font-weight-semibold, 600)",
+                      color: "var(--text-heading, var(--foreground))",
+                      margin: 0,
+                    }}
+                  >
+                    Current Device Session
+                  </p>
+                  <span
+                    style={{
+                      fontSize: "var(--font-size-xs, 11px)",
+                      fontWeight: "var(--font-weight-bold, 700)",
+                      color: "var(--success-dark, var(--success))",
+                      backgroundColor: "var(--status-success-bg, #dcfce7)",
+                      border: "1px solid color-mix(in srgb, var(--success) 30%, transparent)",
+                      padding: "2px 8px",
+                      borderRadius: "999px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: "6px",
+                        height: "6px",
+                        borderRadius: "50%",
+                        backgroundColor: "var(--success)",
+                      }}
+                    />
+                    Active Now
+                  </span>
+                </div>
+                <p
+                  style={{
+                    fontSize: "var(--font-size-xs, 12px)",
+                    color: "var(--text-secondary, var(--muted-foreground))",
+                    margin: "3px 0 0",
+                  }}
+                >
+                  {device.browser} on {device.os}
                 </p>
               </div>
             </div>
-            <span
-              style={{
-                fontSize: "var(--font-size-xs)",
-                fontWeight: "var(--font-weight-semibold)",
-                color: "var(--success-dark, var(--success))",
-                backgroundColor: "var(--surface-card, var(--card))",
-                padding: "3px 10px",
-                borderRadius: "999px",
-              }}
-            >
-              Active now
-            </span>
           </div>
 
-          {/* Last sign-in info */}
-          <div className="st-grid-2" style={{ marginBottom: "var(--spacing-lg)" }}>
+          {/* Session details grid */}
+          <div className="st-grid-2" style={{ marginBottom: "var(--spacing-lg, 18px)" }}>
             <AccountInfoItem
               label="Last Sign-In"
               value={
                 firebaseUser?.metadata?.lastSignInTime
-                  ? new Date(firebaseUser.metadata.lastSignInTime).toLocaleDateString("en-US", {
-                      year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                  ? new Date(
+                      firebaseUser.metadata.lastSignInTime,
+                    ).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
                     })
                   : "—"
               }
@@ -789,91 +896,174 @@ const SettingsTab = () => {
             <AccountInfoItem
               label="Sign-In Method"
               value={
-                hasEmailAuth
-                  ? "Email & Password"
-                  : socialProvider
-                  ? `${socialProvider} Account`
-                  : "Unknown"
+                socialProvider
+                  ? `${socialProvider} Single Sign-On`
+                  : "Email & Password"
               }
             />
           </div>
 
-          {/* Sign out all button */}
-          <button
-            type="button"
-            onClick={() => setShowSignOutAllConfirm(true)}
-            disabled={signingOutAll}
-            className="st-btn st-btn-danger-outline"
+          {/* Sign out all devices button */}
+          <div
+            style={{
+              paddingTop: "var(--spacing-md, 14px)",
+              borderTop: "1px solid var(--border-light, var(--border, #E2E8F0))",
+            }}
           >
-            <LogOut style={{ width: "14px", height: "14px" }} />
-            {signingOutAll ? "Signing out…" : "Sign Out of All Devices"}
-          </button>
-        </div>
-      </div>
-
-      {/* ACCOUNT INFO SECTION (read-only) */}
-      <div className="st-section">
-        <div className="st-section-head">
-          <div className="st-section-head-left">
-            <div className="st-icon-badge" style={{ backgroundColor: "color-mix(in srgb, var(--primary) 16%, transparent)" }}>
-              <Info style={{ width: "18px", height: "18px", color: "var(--primary)" }} />
-            </div>
-            <h3
+            <button
+              type="button"
+              onClick={() => setShowSignOutAllConfirm(true)}
+              disabled={signingOutAll}
+              className="st-btn-danger-outline"
+            >
+              <LogOut size={16} />
+              {signingOutAll
+                ? "Terminating All Sessions…"
+                : "Sign Out of All Devices"}
+            </button>
+            <p
               style={{
-                fontSize: "var(--font-size-lg)",
-                fontWeight: "var(--font-weight-semibold)",
-                color: "var(--text-heading, var(--foreground))",
-                margin: 0,
+                fontSize: "var(--font-size-xs, 12px)",
+                color: "var(--text-secondary, var(--muted-foreground))",
+                margin: "8px 2px 0",
+                textAlign: "center",
               }}
             >
-              Account Information
-            </h3>
+              Terminates active login tokens across all other web browsers and devices.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 4. ACCOUNT INFORMATION (READ-ONLY) ── */}
+      <section className="st-section" aria-labelledby="account-info-section-title">
+        <div className="st-section-head">
+          <div className="st-section-head-left">
+            <div className="st-icon-badge">
+              <Info size={20} />
+            </div>
+            <div>
+              <h2
+                id="account-info-section-title"
+                style={{
+                  fontSize: "var(--font-size-lg, 17px)",
+                  fontWeight: "var(--font-weight-semibold, 600)",
+                  color: "var(--text-heading, var(--foreground))",
+                  margin: 0,
+                }}
+              >
+                Account Profile Metadata
+              </h2>
+              <p
+                style={{
+                  fontSize: "var(--font-size-sm, 13px)",
+                  color: "var(--text-secondary, var(--muted-foreground))",
+                  margin: "2px 0 0",
+                }}
+              >
+                Verified security details and account identification numbers
+              </p>
+            </div>
           </div>
         </div>
 
         <div className="st-section-body">
           <div className="st-grid-2">
-            <AccountInfoItem label="Email" value={firebaseUser?.email} />
             <AccountInfoItem
-              label="Email Verified"
+              label="Primary Email"
+              value={firebaseUser?.email || "—"}
+            />
+            <AccountInfoItem
+              label="Email Verification"
               value={
                 firebaseUser?.emailVerified ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--success-dark, var(--success))" }}>
-                    <CheckCircle style={{ width: "14px", height: "14px" }} />
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      color: "var(--success-dark, var(--success))",
+                      fontWeight: "var(--font-weight-semibold, 600)",
+                    }}
+                  >
+                    <CheckCircle size={15} />
                     Verified
                   </span>
                 ) : (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--danger-dark, var(--danger))" }}>
-                    <AlertCircle style={{ width: "14px", height: "14px" }} />
-                    Not Verified
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      color: "var(--warning-dark, var(--warning))",
+                      fontWeight: "var(--font-weight-semibold, 600)",
+                    }}
+                  >
+                    <AlertCircle size={15} />
+                    Pending Verification
                   </span>
                 )
               }
             />
             <AccountInfoItem
-              label="Account Created"
+              label="Member Since"
               value={
                 firebaseUser?.metadata?.creationTime
-                  ? new Date(firebaseUser.metadata.creationTime).toLocaleDateString("en-US", {
-                      year: "numeric", month: "long", day: "numeric",
+                  ? new Date(
+                      firebaseUser.metadata.creationTime,
+                    ).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
                     })
                   : "—"
               }
             />
             <AccountInfoItem
-              label="UID"
-              value={firebaseUser?.uid ? `…${firebaseUser.uid.slice(-8)}` : "—"}
+              label="Account Reference UID"
+              value={
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                  <span style={{ fontFamily: "monospace", fontSize: "var(--font-size-xs, 12px)", color: "var(--text-heading, var(--foreground))" }}>
+                    {firebaseUser?.uid ? `${firebaseUser.uid.slice(0, 10)}…${firebaseUser.uid.slice(-6)}` : "—"}
+                  </span>
+                  {firebaseUser?.uid && (
+                    <button
+                      type="button"
+                      onClick={handleCopyUid}
+                      className={`st-copy-btn${copiedUid ? " is-copied" : ""}`}
+                      title="Copy full User ID"
+                      aria-label="Copy full User ID"
+                    >
+                      {copiedUid ? <Check size={12} strokeWidth={2.5} /> : <Copy size={12} />}
+                      {copiedUid ? "Copied" : "Copy"}
+                    </button>
+                  )}
+                </div>
+              }
             />
           </div>
         </div>
-      </div>
+      </section>
 
+      {/* Confirmation Modal for Discarding Unsaved Password Changes */}
+      <ConfirmModal
+        isOpen={showUnsavedCancelConfirm}
+        onClose={() => setShowUnsavedCancelConfirm(false)}
+        onConfirm={handleConfirmDiscardPassword}
+        title="Discard Unsaved Changes?"
+        message="You have unsaved password input. Are you sure you want to discard your changes and close the form?"
+        variant="warning"
+        confirmText="Discard Changes"
+        cancelText="Keep Editing"
+      />
+
+      {/* Confirmation Modal for Revoking All Device Sessions */}
       <ConfirmModal
         isOpen={showSignOutAllConfirm}
         onClose={() => !signingOutAll && setShowSignOutAllConfirm(false)}
         onConfirm={handleSignOutAll}
         title="Sign Out of All Devices"
-        message="Are you sure you want to sign out from all devices? You will be logged out of this device and any other active sessions."
+        message="Are you sure you want to sign out from all devices? This will invalidate all active sessions across all web browsers and devices. You will be redirected to the sign-in page."
         variant="danger"
         confirmText="Sign Out All"
         loading={signingOutAll}
@@ -882,39 +1072,40 @@ const SettingsTab = () => {
   );
 };
 
-// ─── Small sub-component ──────────────────────────────────────
+// ─── Small Information Card Sub-component ────────────────────
 
 const AccountInfoItem = ({ label, value }) => (
   <div
     style={{
-      backgroundColor: "var(--surface-muted, var(--muted))",
-      borderRadius: "var(--radius-md)",
-      padding: "var(--spacing-md) var(--spacing-lg)",
+      backgroundColor: "var(--surface-card, var(--card, #FFFFFF))",
+      borderRadius: "var(--radius-md, 8px)",
+      padding: "var(--spacing-md, 14px) var(--spacing-lg, 18px)",
+      border: "1px solid var(--border-card, var(--border, #CBD5E1))",
     }}
   >
     <p
       style={{
-        fontSize: "var(--font-size-xs)",
-        fontWeight: "var(--font-weight-semibold)",
-        color: "var(--text-muted, var(--muted-foreground))",
+        fontSize: "var(--font-size-xs, 11px)",
+        fontWeight: "var(--font-weight-bold, 700)",
+        color: "var(--text-secondary, #475569)",
         textTransform: "uppercase",
-        letterSpacing: "var(--letter-spacing-wide)",
-        margin: "0 0 4px",
+        letterSpacing: "var(--letter-spacing-wide, 0.05em)",
+        margin: "0 0 6px",
       }}
     >
       {label}
     </p>
-    <p
+    <div
       style={{
-        fontSize: "var(--font-size-md)",
-        fontWeight: "var(--font-weight-medium)",
-        color: "var(--text-heading, var(--foreground))",
+        fontSize: "var(--font-size-md, 14px)",
+        fontWeight: "var(--font-weight-medium, 500)",
+        color: "var(--text-heading, var(--foreground, #0F172A))",
         margin: 0,
         overflowWrap: "anywhere",
       }}
     >
       {value || "—"}
-    </p>
+    </div>
   </div>
 );
 

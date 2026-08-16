@@ -315,7 +315,7 @@ const NotificationsTab = () => {
 	};
 
 	return (
-		<div style={{ maxWidth: "1200px" }}>
+		<div style={{ width: "100%", maxWidth: "100%" }}>
 			{/* Header */}
 			<div
 				style={{

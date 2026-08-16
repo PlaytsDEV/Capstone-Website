@@ -37,6 +37,7 @@ import {
   updateBranch,
   setRole,
   logPasswordReset,
+  notifyPasswordChanged,
 } from "../controllers/authController.js";
 import {
   clearEmailVerificationCapability,
@@ -233,6 +234,18 @@ router.post("/finalize-password-reset", authLimiter, verifyToken, async (req, re
     return res.json({ message: "Password reset finalized", sessionCleanupComplete: !invalidation?.failures?.length });
   } catch (error) { return next(error); }
 });
+
+/**
+ * POST /api/auth/notify-password-changed
+ *
+ * Dispatches a security notification email, optionally invalidates other active sessions,
+ * and logs a security audit trail entry when the user updates their password in settings.
+ *
+ * @requires Firebase token in Authorization header
+ * @body { revokeOtherSessions?: boolean }
+ * @returns { success: true, message: string, sessionCleanupComplete: boolean }
+ */
+router.post("/notify-password-changed", authLimiter, verifyToken, notifyPasswordChanged);
 
 /**
  * POST /api/auth/revoke-sessions

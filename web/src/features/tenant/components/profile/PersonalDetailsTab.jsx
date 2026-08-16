@@ -12,128 +12,183 @@ import {
   Phone,
   Home,
   CalendarDays,
+  Mail,
+  MapPin,
+  Heart,
+  Users,
+  Building2,
+  Layers,
+  Shield,
+  Loader2,
 } from "lucide-react";
-import { fmtDate } from "../../../../shared/utils/formatDate";
+import { fmtDate, formatBranch } from "../../../../shared/utils/formatDate";
 import { showNotification } from "../../../../shared/utils/notification";
 
-/* ─────────────────────────────────────────────────────────────────────────────
- VALIDATION
-───────────────────────────────────────────────────────────────────────────── */
-const validateField = (field, value) => {
-  if (!value || !value.trim()) return null;
-  switch (field) {
-    case "firstName":
-    case "lastName":
-      if (value.trim().length < 2) return "At least 2 characters";
-      if (value.trim().length > 50) return "50 characters max";
-      if (!/^[a-zA-Z\s\-']+$/.test(value.trim())) return "Letters only";
-      return null;
-    case "dateOfBirth": {
-      const dob = new Date(value);
-      if (isNaN(dob.getTime())) return "Invalid date";
-      if (dob > new Date()) return "Cannot be in the future";
-      return null;
-    }
-    default:
-      return null;
-  }
+import {
+  toTitleCase,
+  formatBed,
+  MONTH_OPTIONS,
+  parseDateParts,
+  getDaysInMonth,
+  composeDate,
+  buildYearOptions,
+  validateField,
+} from "./personalDetailsValidation";
+
+export {
+  toTitleCase,
+  formatBed,
+  MONTH_OPTIONS,
+  parseDateParts,
+  getDaysInMonth,
+  composeDate,
+  buildYearOptions,
+  validateField,
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
- STYLES — everything below reads from design-tokens.css, nothing hardcoded
+ STYLES — Solid HSL tokens, no gradients, clean 1px borders
 ───────────────────────────────────────────────────────────────────────────── */
 const s = {
-  container: { width: "100%" },
-
-  heading: { marginBottom: 20 },
-  title: {
-    fontSize: "var(--font-size-2xl)",
-    fontWeight: "var(--font-weight-bold)",
-    color: "var(--foreground)",
+  container: {
+    width: "100%",
+    maxWidth: "100%",
     margin: 0,
   },
+
+  heading: {
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: "var(--font-size-2xl, 24px)",
+    fontWeight: "var(--font-weight-bold, 700)",
+    color: "var(--foreground)",
+    margin: 0,
+    letterSpacing: "var(--letter-spacing-tight, -0.02em)",
+  },
   subtitle: {
-    fontSize: "var(--font-size-base)",
+    fontSize: "var(--font-size-base, 14px)",
     color: "var(--muted-foreground)",
     marginTop: 4,
+    marginBottom: 0,
   },
 
-  /* ── Header card (replaces the old navy hero banner) ── */
+  /* ── Header Summary Card ── */
   headerCard: {
     background: "var(--card)",
-    borderRadius: "var(--radius-xl)",
+    borderRadius: "var(--radius-xl, 12px)",
     border: "1px solid var(--border)",
-    boxShadow: "var(--shadow-sm)",
+    boxShadow: "var(--shadow-sm, 0 1px 2px 0 rgba(0,0,0,0.05))",
     padding: "22px 24px",
     marginBottom: 16,
     display: "flex",
-    alignItems: "flex-start",
-    gap: 18,
+    alignItems: "center",
+    gap: 20,
     flexWrap: "wrap",
   },
+  avatarWrap: {
+    position: "relative",
+    cursor: "pointer",
+    flexShrink: 0,
+  },
   avatar: {
-    width: 64,
-    height: 64,
+    width: 72,
+    height: 72,
     borderRadius: "50%",
     overflow: "hidden",
     flexShrink: 0,
-    border: "1px solid var(--border)",
+    border: "2px solid var(--border)",
+    background: "var(--muted)",
   },
   avatarFallback: {
-    width: 64,
-    height: 64,
+    width: 72,
+    height: 72,
     borderRadius: "50%",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     background: "var(--accent)",
     color: "var(--primary-foreground)",
-    fontSize: 20,
-    fontWeight: "var(--font-weight-bold)",
+    fontSize: 24,
+    fontWeight: "var(--font-weight-bold, 700)",
     letterSpacing: "0.5px",
     flexShrink: 0,
-    border: "1px solid var(--border)",
+    border: "2px solid var(--border)",
   },
-  profileMeta: { flex: 1, minWidth: 200 },
+  avatarBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: "50%",
+    background: "var(--primary)",
+    border: "2px solid var(--card)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.1))",
+    cursor: "pointer",
+  },
+  avatarOverlay: {
+    position: "absolute",
+    inset: 0,
+    borderRadius: "50%",
+    background: "rgba(0,0,0,0.55)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    transition: "opacity var(--duration-normal, 200ms)",
+  },
+  profileMeta: {
+    flex: 1,
+    minWidth: 220,
+  },
   profileName: {
-    fontSize: "var(--font-size-lg)",
-    fontWeight: "var(--font-weight-bold)",
+    fontSize: "var(--font-size-xl, 18px)",
+    fontWeight: "var(--font-weight-bold, 700)",
     color: "var(--foreground)",
-    margin: "0 0 2px",
+    margin: "0 0 4px",
+    letterSpacing: "var(--letter-spacing-tight, -0.01em)",
   },
   profileEmail: {
-    fontSize: "var(--font-size-base)",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: "var(--font-size-sm, 13px)",
     color: "var(--muted-foreground)",
-    margin: 0,
+    margin: "0 0 10px",
   },
   profileChips: {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    marginTop: 8,
     flexWrap: "wrap",
   },
   chip: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
-    fontSize: "var(--font-size-xs)",
-    fontWeight: "var(--font-weight-medium)",
+    gap: 5,
+    fontSize: "var(--font-size-xs, 12px)",
+    fontWeight: "var(--font-weight-medium, 500)",
     color: "var(--muted-foreground)",
     background: "var(--muted)",
-    borderRadius: 999,
-    padding: "3px 9px",
+    border: "1px solid var(--border-light, var(--border))",
+    borderRadius: "var(--radius-full, 999px)",
+    padding: "3px 10px",
   },
   chipPrimary: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
-    fontSize: "var(--font-size-xs)",
-    fontWeight: "var(--font-weight-semibold)",
+    gap: 5,
+    fontSize: "var(--font-size-xs, 12px)",
+    fontWeight: "var(--font-weight-semibold, 600)",
     color: "var(--primary-foreground)",
     background: "var(--primary)",
-    borderRadius: 999,
-    padding: "3px 9px",
+    borderRadius: "var(--radius-full, 999px)",
+    padding: "3px 11px",
   },
   completionWrap: {
     display: "flex",
@@ -143,79 +198,83 @@ const s = {
     maxWidth: 360,
   },
   completionTrack: {
-    height: 5,
+    height: 6,
     flex: 1,
     minWidth: 100,
     background: "var(--muted)",
-    borderRadius: 999,
+    borderRadius: "var(--radius-full, 999px)",
     overflow: "hidden",
   },
   completionFill: {
     height: "100%",
     background: "var(--primary)",
-    borderRadius: 999,
+    borderRadius: "var(--radius-full, 999px)",
     transition: "width 0.2s ease",
   },
   completionText: {
-    fontSize: "var(--font-size-xs)",
-    fontWeight: "var(--font-weight-medium)",
+    fontSize: "var(--font-size-xs, 12px)",
+    fontWeight: "var(--font-weight-medium, 500)",
     color: "var(--muted-foreground)",
     whiteSpace: "nowrap",
   },
 
-  actionWrap: { display: "flex", gap: 8, flexShrink: 0 },
-  editBtn: {
+  actionWrap: {
     display: "flex",
+    gap: 8,
+    flexShrink: 0,
+  },
+  editBtn: {
+    display: "inline-flex",
     alignItems: "center",
     gap: 6,
     padding: "9px 16px",
     border: "1px solid var(--border)",
-    borderRadius: "var(--radius-md)",
+    borderRadius: "var(--radius-md, 8px)",
     background: "var(--card)",
-    fontSize: "var(--font-size-base)",
-    fontWeight: "var(--font-weight-semibold)",
+    fontSize: "var(--font-size-sm, 13px)",
+    fontWeight: "var(--font-weight-semibold, 600)",
     color: "var(--foreground)",
     cursor: "pointer",
-    transition: "all var(--duration-fast)",
+    transition: "all var(--duration-fast, 150ms)",
     whiteSpace: "nowrap",
   },
   saveBtn: {
-    display: "flex",
+    display: "inline-flex",
     alignItems: "center",
     gap: 6,
     padding: "9px 18px",
     border: "none",
-    borderRadius: "var(--radius-md)",
+    borderRadius: "var(--radius-md, 8px)",
     background: "var(--success)",
-    fontSize: "var(--font-size-base)",
-    fontWeight: "var(--font-weight-semibold)",
+    fontSize: "var(--font-size-sm, 13px)",
+    fontWeight: "var(--font-weight-semibold, 600)",
     color: "var(--success-foreground)",
     cursor: "pointer",
-    transition: "all var(--duration-fast)",
+    transition: "all var(--duration-fast, 150ms)",
     whiteSpace: "nowrap",
   },
   cancelBtn: {
-    display: "flex",
+    display: "inline-flex",
     alignItems: "center",
     gap: 6,
     padding: "9px 14px",
     border: "1px solid var(--border)",
-    borderRadius: "var(--radius-md)",
+    borderRadius: "var(--radius-md, 8px)",
     background: "var(--card)",
-    fontSize: "var(--font-size-base)",
-    fontWeight: "var(--font-weight-medium)",
+    fontSize: "var(--font-size-sm, 13px)",
+    fontWeight: "var(--font-weight-medium, 500)",
     color: "var(--muted-foreground)",
     cursor: "pointer",
-    transition: "all var(--duration-fast)",
+    transition: "all var(--duration-fast, 150ms)",
     whiteSpace: "nowrap",
   },
 
-  /* ── Info cards ── */
+  /* ── Info Cards ── */
   infoCard: {
     background: "var(--card)",
-    borderRadius: "var(--radius-xl)",
+    borderRadius: "var(--radius-xl, 12px)",
     border: "1px solid var(--border)",
-    boxShadow: "var(--shadow-sm)",
+    boxShadow: "var(--shadow-sm, 0 1px 2px 0 rgba(0,0,0,0.05))",
     overflow: "hidden",
   },
   sectionHeader: {
@@ -225,9 +284,9 @@ const s = {
     padding: "16px 22px",
   },
   sectionIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: "var(--radius-sm)",
+    width: 32,
+    height: 32,
+    borderRadius: "var(--radius-md, 8px)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -235,56 +294,79 @@ const s = {
     background: "var(--accent)",
   },
   sectionTitle: {
-    fontSize: "var(--font-size-base)",
-    fontWeight: "var(--font-weight-bold)",
+    fontSize: "var(--font-size-base, 15px)",
+    fontWeight: "var(--font-weight-bold, 700)",
     color: "var(--foreground)",
     margin: 0,
     flex: 1,
   },
-  divider: { height: 1, background: "var(--border-light)", margin: "0 22px" },
-  sectionBody: { padding: "20px 22px 22px" },
+  divider: {
+    height: 1,
+    background: "var(--border-light, var(--border))",
+    margin: "0 22px",
+  },
+  sectionBody: {
+    padding: "20px 22px 24px",
+  },
 
-  /* ── Field grid ── */
-  grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px 28px" },
-  grid3: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "18px 24px" },
-  rowSep: { height: 1, background: "var(--border-light)", margin: "18px 0" },
+  /* ── Unified Grid System ── */
+  grid3: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: 16,
+  },
 
-  subHeader: {
+  /* ── Structured Field Tile ── */
+  fieldTile: {
+    background: "var(--input-background, var(--card))",
+    border: "1px solid var(--border-light, var(--border))",
+    borderRadius: "var(--radius-md, 8px)",
+    padding: "12px 14px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    minHeight: 64,
+    boxSizing: "border-box",
+  },
+  fieldHeader: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 4,
+    gap: 6,
   },
-
-  /* ── Field atoms ── */
   fieldLabel: {
-    fontSize: "var(--font-size-xs)",
-    fontWeight: "var(--font-weight-bold)",
+    fontSize: "11px",
+    fontWeight: "var(--font-weight-bold, 700)",
     color: "var(--muted-foreground)",
     textTransform: "uppercase",
-    letterSpacing: "var(--letter-spacing-wide)",
-    marginBottom: 5,
+    letterSpacing: "var(--letter-spacing-wide, 0.05em)",
   },
   fieldValue: {
-    fontSize: "var(--font-size-md)",
-    fontWeight: "var(--font-weight-medium)",
+    fontSize: "var(--font-size-base, 14px)",
+    fontWeight: "var(--font-weight-semibold, 600)",
     color: "var(--foreground)",
     margin: 0,
     lineHeight: 1.4,
+    wordBreak: "break-word",
   },
   fieldEmpty: {
-    fontSize: "var(--font-size-md)",
+    fontSize: "var(--font-size-sm, 13px)",
     color: "var(--muted-foreground)",
     fontStyle: "italic",
     margin: 0,
   },
-  emptyLine: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  emptyLine: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    marginTop: 2,
+  },
   addNowBtn: {
     border: "none",
     background: "transparent",
     padding: 0,
-    fontSize: "var(--font-size-sm)",
-    fontWeight: "var(--font-weight-bold)",
+    fontSize: "var(--font-size-xs, 12px)",
+    fontWeight: "var(--font-weight-bold, 700)",
     color: "var(--primary)",
     cursor: "pointer",
   },
@@ -292,32 +374,50 @@ const s = {
   /* ── Inputs ── */
   input: {
     width: "100%",
-    padding: "9px 12px",
-    fontSize: "var(--font-size-md)",
+    padding: "8px 10px",
+    fontSize: "var(--font-size-sm, 13px)",
     border: "1.5px solid var(--border)",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-sm, 6px)",
     color: "var(--foreground)",
-    background: "var(--input-background)",
+    background: "var(--card)",
     outline: "none",
-    transition: "border-color var(--duration-fast), box-shadow var(--duration-fast)",
+    transition: "border-color var(--duration-fast, 150ms), box-shadow var(--duration-fast, 150ms)",
     boxSizing: "border-box",
     lineHeight: 1.4,
+    marginTop: 2,
   },
   inputFocus: {
-    borderColor: "var(--ring)",
-    boxShadow: "0 0 0 3px color-mix(in srgb, var(--ring) 15%, transparent)",
+    borderColor: "var(--ring, var(--primary))",
+    boxShadow: "0 0 0 2px color-mix(in srgb, var(--ring, var(--primary)) 20%, transparent)",
   },
   inputError: {
     borderColor: "var(--danger)",
-    boxShadow: "0 0 0 3px color-mix(in srgb, var(--danger) 10%, transparent)",
+    boxShadow: "0 0 0 2px color-mix(in srgb, var(--danger) 15%, transparent)",
+  },
+  charCounter: {
+    fontSize: "10px",
+    fontWeight: "var(--font-weight-medium, 500)",
+    color: "var(--muted-foreground)",
+    marginLeft: "auto",
+  },
+  helperText: {
+    fontSize: "11px",
+    color: "var(--muted-foreground)",
+    marginTop: 4,
+    lineHeight: 1.3,
   },
   inputLocked: {
     background: "var(--muted)",
     color: "var(--muted-foreground)",
     cursor: "not-allowed",
-    border: "1.5px solid var(--border-light)",
+    border: "1.5px solid var(--border-light, var(--border))",
   },
-  errorText: { fontSize: "var(--font-size-xs)", color: "var(--danger)", marginTop: 3 },
+  errorText: {
+    fontSize: "11px",
+    color: "var(--danger)",
+    marginTop: 3,
+    lineHeight: 1.3,
+  },
 
   /* ── Note banner ── */
   noteBanner: {
@@ -325,13 +425,13 @@ const s = {
     alignItems: "flex-start",
     gap: 10,
     background: "var(--accent)",
-    border: "1px solid var(--border-light)",
-    borderRadius: "var(--radius-md)",
-    padding: "10px 14px",
-    marginTop: 20,
+    border: "1px solid var(--border-light, var(--border))",
+    borderRadius: "var(--radius-md, 8px)",
+    padding: "12px 16px",
+    marginTop: 18,
   },
   noteText: {
-    fontSize: "var(--font-size-sm)",
+    fontSize: "var(--font-size-sm, 13px)",
     color: "var(--accent-foreground)",
     lineHeight: 1.5,
     margin: 0,
@@ -343,29 +443,76 @@ const s = {
 ───────────────────────────────────────────────────────────────────────────── */
 
 const Field = ({
-  label, value, field, type = "text", editing, editData, setEditData,
-  errors, onBlur, required, locked, onAdd,
+  icon: Icon,
+  label,
+  value,
+  field,
+  type = "text",
+  colSpan,
+  editing,
+  editData,
+  setEditData,
+  errors,
+  onBlur,
+  required,
+  locked,
+  onAdd,
+  maxLength,
+  autoCapitalizeWords,
 }) => {
   const [focused, setFocused] = useState(false);
   const hasError = errors?.[field];
+  const currentVal = editData?.[field] !== undefined && editData?.[field] !== null ? String(editData[field]) : "";
+
+  const handleChange = (e) => {
+    let val = e.target.value;
+    if (maxLength && val.length > maxLength) {
+      val = val.slice(0, maxLength);
+    }
+    setEditData({ ...editData, [field]: val });
+  };
+
+  const handleInputBlur = () => {
+    setFocused(false);
+    let val = editData?.[field] !== undefined && editData?.[field] !== null ? String(editData[field]).trim() : "";
+    if (autoCapitalizeWords && val) {
+      val = toTitleCase(val);
+      setEditData((prev) => ({ ...prev, [field]: val }));
+    }
+    onBlur?.(field, val);
+  };
 
   return (
-    <div>
-      <div style={s.fieldLabel}>
-        {label}
-        {required && editing && <span style={{ color: "var(--danger)", marginLeft: 2 }}>*</span>}
+    <div style={{ ...s.fieldTile, ...(colSpan ? { gridColumn: `span ${colSpan}` } : {}) }}>
+      <div style={s.fieldHeader}>
+        {Icon && <Icon size={13} color="var(--muted-foreground)" style={{ flexShrink: 0 }} />}
+        <span style={s.fieldLabel}>
+          {label}
+          {required && editing && <span style={{ color: "var(--danger)", marginLeft: 2 }}>*</span>}
+        </span>
+        {editing && !locked && maxLength && focused && (
+          <span style={s.charCounter}>
+            {currentVal.length}/{maxLength}
+          </span>
+        )}
       </div>
       {editing ? (
         locked ? (
-          <input type={type} value={value || ""} readOnly style={{ ...s.input, ...s.inputLocked }} />
+          <input
+            type={type}
+            value={value || ""}
+            readOnly
+            style={{ ...s.input, ...s.inputLocked }}
+          />
         ) : (
           <div>
             <input
               type={type}
-              value={editData?.[field] || ""}
-              onChange={(e) => setEditData({ ...editData, [field]: e.target.value })}
+              value={currentVal}
+              maxLength={maxLength}
+              onChange={handleChange}
               onFocus={() => setFocused(true)}
-              onBlur={() => { setFocused(false); onBlur?.(field); }}
+              onBlur={handleInputBlur}
               style={{
                 ...s.input,
                 ...(focused && !hasError ? s.inputFocus : {}),
@@ -373,7 +520,7 @@ const Field = ({
               }}
               placeholder={`Enter ${label.toLowerCase()}`}
             />
-            {hasError && <div style={s.errorText}>{errors[field]}</div>}
+            {hasError && <div style={s.errorText}>{hasError}</div>}
           </div>
         )
       ) : value && value !== "Not provided" ? (
@@ -381,42 +528,298 @@ const Field = ({
       ) : (
         <div style={s.emptyLine}>
           <p style={s.fieldEmpty}>Not provided</p>
-          {onAdd && <button type="button" style={s.addNowBtn} onClick={onAdd}>Add now</button>}
+          {onAdd && (
+            <button type="button" style={s.addNowBtn} onClick={onAdd}>
+              + Add now
+            </button>
+          )}
         </div>
       )}
     </div>
   );
 };
 
-const SelectField = ({ label, field, options, editing, editData, setEditData, value, onAdd }) => {
+const BirthdayField = ({
+  icon: Icon,
+  label = "Date of Birth",
+  value,
+  field = "dateOfBirth",
+  colSpan,
+  editing,
+  editData,
+  setEditData,
+  errors,
+  onBlur,
+  onAdd,
+}) => {
+  const [focusedPart, setFocusedPart] = useState(null);
+  const hasError = errors?.[field];
+  const currentDate = editData?.[field] || "";
+  const parts = parseDateParts(currentDate);
+
+  const daysCount = useMemo(
+    () => getDaysInMonth(parts.year, parts.month),
+    [parts.year, parts.month],
+  );
+
+  const dayOptions = useMemo(
+    () => Array.from({ length: daysCount }, (_, i) => String(i + 1).padStart(2, "0")),
+    [daysCount],
+  );
+
+  const yearOptions = useMemo(() => buildYearOptions(18, 100), []);
+
+  const handlePartChange = (part, partValue) => {
+    const nextParts = { ...parts, [part]: partValue };
+    if (nextParts.month && nextParts.day) {
+      const maxDays = getDaysInMonth(nextParts.year, nextParts.month);
+      if (Number(nextParts.day) > maxDays) {
+        nextParts.day = String(maxDays).padStart(2, "0");
+      }
+    }
+    const nextDate = composeDate(nextParts);
+    setEditData((prev) => ({ ...prev, [field]: nextDate }));
+    if (nextParts.year && nextParts.month && nextParts.day) {
+      onBlur?.(field, nextDate);
+    }
+  };
+
+  return (
+    <div style={{ ...s.fieldTile, ...(colSpan ? { gridColumn: `span ${colSpan}` } : {}) }}>
+      <div style={s.fieldHeader}>
+        {Icon && <Icon size={13} color="var(--muted-foreground)" style={{ flexShrink: 0 }} />}
+        <span style={s.fieldLabel}>{label}</span>
+      </div>
+      {editing ? (
+        <div style={{ marginTop: 2 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {/* Month Select */}
+            <div style={{ position: "relative", flex: 1.4 }}>
+              <select
+                value={parts.month}
+                onChange={(e) => handlePartChange("month", e.target.value)}
+                onFocus={() => setFocusedPart("month")}
+                onBlur={() => {
+                  setFocusedPart(null);
+                  onBlur?.(field);
+                }}
+                aria-label="Birth month"
+                style={{
+                  ...s.input,
+                  appearance: "none",
+                  paddingRight: 24,
+                  cursor: "pointer",
+                  marginTop: 0,
+                  fontSize: "12px",
+                  padding: "7px 8px",
+                  ...(focusedPart === "month" && !hasError ? s.inputFocus : {}),
+                  ...(hasError ? s.inputError : {}),
+                }}
+              >
+                <option value="">Month</option>
+                {MONTH_OPTIONS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={12}
+                color="var(--muted-foreground)"
+                style={{
+                  position: "absolute",
+                  right: 6,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  pointerEvents: "none",
+                }}
+              />
+            </div>
+
+            {/* Day Select */}
+            <div style={{ position: "relative", flex: 0.9 }}>
+              <select
+                value={parts.day}
+                onChange={(e) => handlePartChange("day", e.target.value)}
+                onFocus={() => setFocusedPart("day")}
+                onBlur={() => {
+                  setFocusedPart(null);
+                  onBlur?.(field);
+                }}
+                aria-label="Birth day"
+                style={{
+                  ...s.input,
+                  appearance: "none",
+                  paddingRight: 20,
+                  cursor: "pointer",
+                  marginTop: 0,
+                  fontSize: "12px",
+                  padding: "7px 8px",
+                  ...(focusedPart === "day" && !hasError ? s.inputFocus : {}),
+                  ...(hasError ? s.inputError : {}),
+                }}
+              >
+                <option value="">Day</option>
+                {dayOptions.map((d) => (
+                  <option key={d} value={d}>
+                    {Number(d)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={12}
+                color="var(--muted-foreground)"
+                style={{
+                  position: "absolute",
+                  right: 6,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  pointerEvents: "none",
+                }}
+              />
+            </div>
+
+            {/* Year Select */}
+            <div style={{ position: "relative", flex: 1.1 }}>
+              <select
+                value={parts.year}
+                onChange={(e) => handlePartChange("year", e.target.value)}
+                onFocus={() => setFocusedPart("year")}
+                onBlur={() => {
+                  setFocusedPart(null);
+                  onBlur?.(field);
+                }}
+                aria-label="Birth year"
+                style={{
+                  ...s.input,
+                  appearance: "none",
+                  paddingRight: 22,
+                  cursor: "pointer",
+                  marginTop: 0,
+                  fontSize: "12px",
+                  padding: "7px 8px",
+                  ...(focusedPart === "year" && !hasError ? s.inputFocus : {}),
+                  ...(hasError ? s.inputError : {}),
+                }}
+              >
+                <option value="">Year</option>
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={12}
+                color="var(--muted-foreground)"
+                style={{
+                  position: "absolute",
+                  right: 6,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  pointerEvents: "none",
+                }}
+              />
+            </div>
+          </div>
+          <div style={s.helperText}>Must be at least 18 years old</div>
+          {hasError && <div style={s.errorText}>{hasError}</div>}
+        </div>
+      ) : value && value !== "Not provided" ? (
+        <p style={s.fieldValue}>{fmtDate(value)}</p>
+      ) : (
+        <div style={s.emptyLine}>
+          <p style={s.fieldEmpty}>Not provided</p>
+          {onAdd && (
+            <button type="button" style={s.addNowBtn} onClick={onAdd}>
+              + Add now
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SelectField = ({
+  icon: Icon,
+  label,
+  field,
+  options,
+  colSpan,
+  editing,
+  editData,
+  setEditData,
+  value,
+  errors,
+  onBlur,
+  onAdd,
+}) => {
+  const [focused, setFocused] = useState(false);
+  const hasError = errors?.[field];
   const currentValue = editData?.[field] || "";
   const displayValue = editing ? currentValue : value || currentValue;
   const readLabel = options.find((o) => o.value === displayValue)?.label;
+
   return (
-    <div>
-      <div style={s.fieldLabel}>{label}</div>
+    <div style={{ ...s.fieldTile, ...(colSpan ? { gridColumn: `span ${colSpan}` } : {}) }}>
+      <div style={s.fieldHeader}>
+        {Icon && <Icon size={13} color="var(--muted-foreground)" style={{ flexShrink: 0 }} />}
+        <span style={s.fieldLabel}>{label}</span>
+      </div>
       {editing ? (
         <div style={{ position: "relative" }}>
           <select
             value={currentValue}
-            onChange={(e) => setEditData({ ...editData, [field]: e.target.value })}
-            style={{ ...s.input, appearance: "none", paddingRight: 32, cursor: "pointer" }}
+            onChange={(e) => {
+              const nextVal = e.target.value;
+              setEditData({ ...editData, [field]: nextVal });
+              onBlur?.(field, nextVal);
+            }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => {
+              setFocused(false);
+              onBlur?.(field);
+            }}
+            style={{
+              ...s.input,
+              appearance: "none",
+              paddingRight: 30,
+              cursor: "pointer",
+              ...(focused && !hasError ? s.inputFocus : {}),
+              ...(hasError ? s.inputError : {}),
+            }}
           >
             <option value="">— Select —</option>
-            {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            {options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
           </select>
           <ChevronDown
             size={14}
             color="var(--muted-foreground)"
-            style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+            style={{
+              position: "absolute",
+              right: 10,
+              top: "50%",
+              transform: "translateY(-50%)",
+              pointerEvents: "none",
+            }}
           />
+          {hasError && <div style={s.errorText}>{hasError}</div>}
         </div>
       ) : displayValue ? (
-        <p style={s.fieldValue}>{readLabel || displayValue}</p>
+        <p style={s.fieldValue}>{readLabel || toTitleCase(displayValue)}</p>
       ) : (
         <div style={s.emptyLine}>
           <p style={s.fieldEmpty}>Not provided</p>
-          {onAdd && <button type="button" style={s.addNowBtn} onClick={onAdd}>Add now</button>}
+          {onAdd && (
+            <button type="button" style={s.addNowBtn} onClick={onAdd}>
+              + Add now
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -427,7 +830,7 @@ const SectionHeader = ({ icon: Icon, title }) => (
   <>
     <div style={s.sectionHeader}>
       <div style={s.sectionIconWrap}>
-        <Icon size={15} color="var(--accent-foreground)" />
+        <Icon size={16} color="var(--accent-foreground)" />
       </div>
       <h3 style={s.sectionTitle}>{title}</h3>
     </div>
@@ -447,15 +850,22 @@ const resolveOccupancyLabel = ({ role, tenantStatus }) => {
 };
 
 const PersonalDetailsTab = ({
-  profileData, editData, setEditData, fullName,
-  isEditingProfile, setIsEditingProfile, saving, onSave, onCancel,
+  profileData,
+  editData,
+  setEditData,
+  fullName,
+  isEditingProfile,
+  setIsEditingProfile,
+  saving,
+  onSave,
+  onCancel,
 }) => {
   const [errors, setErrors] = useState({});
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
   const [localPreviewUrl, setLocalPreviewUrl] = useState(null);
-  const applicationDetailsLocked = profileData.role === "tenant";
+  const [hoveringAvatar, setHoveringAvatar] = useState(false);
 
   const initials = useMemo(() => {
     const f = (profileData.firstName || "").charAt(0).toUpperCase();
@@ -482,68 +892,115 @@ const PersonalDetailsTab = ({
     const completed = items.filter(Boolean).length;
     return { completed, total: items.length, percent: Math.round((completed / items.length) * 100) };
   }, [
-    profileData.firstName, profileData.lastName, profileData.dateOfBirth,
-    profileData.gender, profileData.civilStatus, profileData.nationality,
-    profileData.occupation, profileData.profileImage,
+    profileData.firstName,
+    profileData.lastName,
+    profileData.dateOfBirth,
+    profileData.gender,
+    profileData.civilStatus,
+    profileData.nationality,
+    profileData.occupation,
+    profileData.profileImage,
   ]);
 
   const handleStartEditing = () => setIsEditingProfile(true);
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
-    const blobUrl = URL.createObjectURL(file);
-    setPendingFile(file);
-    setLocalPreviewUrl(blobUrl);
     e.target.value = "";
+
+    // If editing mode is active, stage preview for batch save
+    if (isEditingProfile) {
+      if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
+      const blobUrl = URL.createObjectURL(file);
+      setPendingFile(file);
+      setLocalPreviewUrl(blobUrl);
+      return;
+    }
+
+    // If not in edit mode, upload and save photo immediately
+    setUploading(true);
+    try {
+      const { uploadToFirebaseStorage } = await import(
+        "../../../../shared/utils/firebaseStorageUpload"
+      );
+      const { downloadUrl: imageUrl } = await uploadToFirebaseStorage(file, {
+        documentType: "profile-photo",
+      });
+      if (imageUrl) {
+        setEditData((prev) => ({ ...prev, profileImage: imageUrl }));
+        await onSave({ ...profileData, profileImage: imageUrl });
+      }
+    } catch {
+      showNotification("Failed to upload photo. Please try again.", "error", 3000);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const hasChanges = useMemo(() => {
     if (pendingFile) return true;
     if (!editData) return false;
+
+    const normEditDob = editData.dateOfBirth ? composeDate(parseDateParts(editData.dateOfBirth)) : "";
+    const normProfileDob = profileData.dateOfBirth ? composeDate(parseDateParts(profileData.dateOfBirth)) : "";
+
     return (
-      editData.firstName !== (profileData.firstName || "") ||
-      editData.lastName !== (profileData.lastName || "") ||
-      editData.dateOfBirth !== (profileData.dateOfBirth || "") ||
-      editData.gender !== (profileData.gender || "") ||
-      editData.civilStatus !== (profileData.civilStatus || "") ||
-      editData.nationality !== (profileData.nationality || "") ||
-      editData.occupation !== (profileData.occupation || "")
+      (editData.firstName || "").trim() !== (profileData.firstName || "").trim() ||
+      (editData.lastName || "").trim() !== (profileData.lastName || "").trim() ||
+      normEditDob !== normProfileDob ||
+      (editData.gender || "") !== (profileData.gender || "") ||
+      (editData.civilStatus || "") !== (profileData.civilStatus || "") ||
+      (editData.nationality || "").trim() !== (profileData.nationality || "").trim() ||
+      (editData.occupation || "").trim() !== (profileData.occupation || "").trim()
     );
   }, [editData, profileData, pendingFile]);
 
-  const handleBlur = (field) => {
-    if (field === "firstName" || field === "lastName") {
-      if (!editData[field]?.trim()) {
-        setErrors((p) => ({ ...p, [field]: `${field === "firstName" ? "First" : "Last"} name is required` }));
-        return;
-      }
-    }
-    const err = validateField(field, editData[field]);
-    setErrors((p) => { const n = { ...p }; if (err) n[field] = err; else delete n[field]; return n; });
+  const handleBlur = (field, customVal) => {
+    const val = customVal !== undefined ? customVal : editData?.[field];
+    const err = validateField(field, val);
+    setErrors((p) => {
+      const n = { ...p };
+      if (err) n[field] = err;
+      else delete n[field];
+      return n;
+    });
   };
 
   const handleSaveWithValidation = async () => {
     const newErrors = {};
-    if (!editData.firstName?.trim()) newErrors.firstName = "Required";
-    else { const e = validateField("firstName", editData.firstName); if (e) newErrors.firstName = e; }
-    if (!editData.lastName?.trim()) newErrors.lastName = "Required";
-    else { const e = validateField("lastName", editData.lastName); if (e) newErrors.lastName = e; }
-    if (editData.dateOfBirth) {
-      const e = validateField("dateOfBirth", editData.dateOfBirth);
-      if (e) newErrors.dateOfBirth = e;
+    const fieldsToValidate = ["firstName", "lastName", "dateOfBirth", "gender", "civilStatus", "nationality", "occupation"];
+    for (const f of fieldsToValidate) {
+      const val = editData[f];
+      const e = validateField(f, val);
+      if (e) newErrors[f] = e;
     }
+
     setErrors(newErrors);
-    if (Object.keys(newErrors).length > 0) return;
+    if (Object.keys(newErrors).length > 0) {
+      showNotification("Please correct the errors in the form before saving.", "warning", 3500);
+      return;
+    }
+
+    let payload = {
+      ...editData,
+      firstName: (editData.firstName || "").trim(),
+      lastName: (editData.lastName || "").trim(),
+      nationality: (editData.nationality || "").trim(),
+      occupation: (editData.occupation || "").trim(),
+    };
 
     if (pendingFile) {
       setUploading(true);
       try {
-        const { uploadToFirebaseStorage } = await import("../../../../shared/utils/firebaseStorageUpload");
-        const { downloadUrl: imageUrl } = await uploadToFirebaseStorage(pendingFile, { documentType: "profile-photo" });
+        const { uploadToFirebaseStorage } = await import(
+          "../../../../shared/utils/firebaseStorageUpload"
+        );
+        const { downloadUrl: imageUrl } = await uploadToFirebaseStorage(pendingFile, {
+          documentType: "profile-photo",
+        });
         if (imageUrl) {
-          editData.profileImage = imageUrl;
+          payload.profileImage = imageUrl;
           setEditData((prev) => ({ ...prev, profileImage: imageUrl }));
         }
       } catch {
@@ -556,7 +1013,7 @@ const PersonalDetailsTab = ({
     setPendingFile(null);
     if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
     setLocalPreviewUrl(null);
-    onSave();
+    onSave(payload);
   };
 
   const handleCancel = () => {
@@ -567,185 +1024,224 @@ const PersonalDetailsTab = ({
     onCancel();
   };
 
+  const hasValidationErrors = Object.keys(errors).length > 0;
   const fp = { editing: isEditingProfile, editData, setEditData, errors, onBlur: handleBlur };
 
   return (
     <div style={s.container}>
-      {/* ── Page heading ── */}
+      {/* ── Page Heading ── */}
       <div style={s.heading}>
         <h1 style={s.title}>Personal Details</h1>
-        <p style={s.subtitle}>Your identity information — who you are</p>
+        <p style={s.subtitle}>Your identity information, contact records, and profile details</p>
       </div>
 
-      {/* ── Header card ── */}
+      {/* ── Profile Summary Header Card ── */}
       <div style={s.headerCard}>
-        {/* Avatar */}
+        {/* Avatar with always-accessible photo upload */}
         <div
-          onClick={() => isEditingProfile && !uploading && fileInputRef.current?.click()}
-          style={{ position: "relative", cursor: isEditingProfile ? "pointer" : "default", flexShrink: 0 }}
-          title={isEditingProfile ? "Click to change photo" : undefined}
-          onMouseEnter={(e) => {
-            if (!isEditingProfile) return;
-            const ov = e.currentTarget.querySelector("[data-overlay]");
-            if (ov) ov.style.opacity = "1";
-          }}
-          onMouseLeave={(e) => {
-            if (!isEditingProfile || uploading) return;
-            const ov = e.currentTarget.querySelector("[data-overlay]");
-            if (ov) ov.style.opacity = "0";
-          }}
+          style={s.avatarWrap}
+          title="Click to change profile photo"
+          onClick={() => !uploading && fileInputRef.current?.click()}
+          onMouseEnter={() => setHoveringAvatar(true)}
+          onMouseLeave={() => setHoveringAvatar(false)}
         >
           {(() => {
-            const img = localPreviewUrl || (isEditingProfile ? editData?.profileImage : null) || profileData.profileImage;
+            const img =
+              localPreviewUrl ||
+              (isEditingProfile ? editData?.profileImage : null) ||
+              profileData.profileImage;
             return img ? (
               <div style={s.avatar}>
-                <img src={img} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img
+                  src={img}
+                  alt="Profile"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
               </div>
             ) : (
               <div style={s.avatarFallback}>{initials}</div>
             );
           })()}
 
-          {isEditingProfile && (
-            <>
-              <div
-                data-overlay
-                style={{
-                  position: "absolute", inset: 0, borderRadius: "50%",
-                  background: uploading ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.45)",
-                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
-                  opacity: uploading ? 1 : 0, transition: "opacity var(--duration-normal)",
-                }}
-              >
-                {uploading ? (
-                  <>
-                    <div style={{
-                      width: 20, height: 20,
-                      border: "3px solid rgba(255,255,255,0.25)",
-                      borderTop: "3px solid var(--primary)",
-                      borderRadius: "50%",
-                      animation: "spin 0.8s linear infinite",
-                    }} />
-                    <span style={{ color: "#fff", fontSize: 9, fontWeight: 600, marginTop: 2 }}>Uploading</span>
-                    <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-                  </>
-                ) : (
-                  <>
-                    <Camera size={13} color="#fff" />
-                    <span style={{ color: "#fff", fontSize: 9, fontWeight: 600 }}>Change</span>
-                  </>
-                )}
-              </div>
-              <div style={{
-                position: "absolute", bottom: 0, right: 0,
-                width: 20, height: 20, borderRadius: "50%",
-                background: "var(--primary)", border: "2px solid var(--card)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}>
-                <Camera size={10} color="var(--primary-foreground)" />
-              </div>
-            </>
+          {/* Hover / Uploading Overlay */}
+          <div
+            style={{
+              ...s.avatarOverlay,
+              opacity: uploading || hoveringAvatar ? 1 : 0,
+              pointerEvents: "none",
+            }}
+          >
+            {uploading ? (
+              <>
+                <Loader2 size={20} color="#fff" style={{ animation: "spin 1s linear infinite" }} />
+                <span style={{ color: "#fff", fontSize: 9, fontWeight: 700, marginTop: 2 }}>
+                  Uploading…
+                </span>
+              </>
+            ) : (
+              <>
+                <Camera size={16} color="#fff" />
+                <span style={{ color: "#fff", fontSize: 10, fontWeight: 700 }}>Change</span>
+              </>
+            )}
+          </div>
+
+          {/* Camera Badge indicator */}
+          {!uploading && (
+            <div style={s.avatarBadge} title="Change photo">
+              <Camera size={12} color="var(--primary-foreground)" />
+            </div>
           )}
 
-          <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileSelect} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleFileSelect}
+          />
         </div>
 
-        {/* Name + meta */}
+        {/* Name + Meta Chips */}
         <div style={s.profileMeta}>
           <h2 style={s.profileName}>{fullName}</h2>
-          <p style={s.profileEmail}>{profileData.email}</p>
+          <div style={s.profileEmail}>
+            <Mail size={13} color="var(--muted-foreground)" />
+            <span>{profileData.email}</span>
+          </div>
           <div style={s.profileChips}>
-            <span style={s.chipPrimary}><User size={10} />{occupancyLabel}</span>
-            {profileData.occupation && <span style={s.chip}><Briefcase size={10} />{profileData.occupation}</span>}
-            {profileData.nationality && <span style={s.chip}><Globe size={10} />{profileData.nationality}</span>}
+            <span style={s.chipPrimary}>
+              <User size={11} />
+              {occupancyLabel}
+            </span>
+            {profileData.occupation && (
+              <span style={s.chip}>
+                <Briefcase size={11} />
+                {profileData.occupation}
+              </span>
+            )}
+            {profileData.nationality && (
+              <span style={s.chip}>
+                <Globe size={11} />
+                {profileData.nationality}
+              </span>
+            )}
             {profileData.gender && (
               <span style={s.chip}>
-                {profileData.gender.charAt(0).toUpperCase() + profileData.gender.slice(1).replace(/-/g, " ")}
+                <Users size={11} />
+                {toTitleCase(profileData.gender)}
               </span>
             )}
           </div>
-          <div style={s.completionWrap} aria-label={`Profile completeness: ${completeness.completed} of ${completeness.total} details completed`}>
+          <div
+            style={s.completionWrap}
+            aria-label={`Profile completeness: ${completeness.completed} of ${completeness.total} details completed`}
+          >
             <div style={s.completionTrack}>
               <div style={{ ...s.completionFill, width: `${completeness.percent}%` }} />
             </div>
-            <span style={s.completionText}>{completeness.completed}/{completeness.total} complete</span>
+            <span style={s.completionText}>
+              {completeness.completed}/{completeness.total} complete
+            </span>
           </div>
         </div>
 
-        {/* Buttons */}
+        {/* Action Buttons */}
         <div style={s.actionWrap}>
           {isEditingProfile ? (
             <>
-              <button onClick={handleCancel} style={s.cancelBtn}>
+              <button onClick={handleCancel} style={s.cancelBtn} type="button">
                 <X size={14} /> Discard
               </button>
               <button
                 onClick={handleSaveWithValidation}
-                disabled={saving || uploading || !hasChanges}
+                disabled={saving || uploading || !hasChanges || hasValidationErrors}
+                type="button"
                 style={{
                   ...s.saveBtn,
-                  opacity: saving || uploading || !hasChanges ? 0.55 : 1,
-                  cursor: saving || uploading || !hasChanges ? "not-allowed" : "pointer",
+                  opacity: saving || uploading || !hasChanges || hasValidationErrors ? 0.55 : 1,
+                  cursor: saving || uploading || !hasChanges || hasValidationErrors ? "not-allowed" : "pointer",
                 }}
+                title={
+                  hasValidationErrors
+                    ? "Please fix validation errors before saving"
+                    : !hasChanges
+                    ? "No changes to save"
+                    : "Save Changes"
+                }
               >
                 <Save size={14} />
                 {uploading ? "Uploading…" : saving ? "Saving…" : "Save Changes"}
               </button>
             </>
-          ) : !applicationDetailsLocked ? (
-            <button onClick={handleStartEditing} style={s.editBtn}>
+          ) : (
+            <button onClick={handleStartEditing} style={s.editBtn} type="button">
               <Edit2 size={14} /> Edit Profile
             </button>
-          ) : null}
+          )}
         </div>
       </div>
 
-      {/* ── Identity Info Card ── */}
+      {/* ── Section 1: Identity Information ── */}
       <div style={s.infoCard}>
-        <SectionHeader icon={User} title="Identity Information" />
+        <SectionHeader icon={User} title="Personal & Identity Information" />
         <div style={s.sectionBody}>
-          {/* Row 1 — name */}
-          <div style={s.grid2}>
-            {isEditingProfile ? (
-              <>
-                <Field label="First Name" field="firstName" required {...fp} />
-                <Field label="Last Name" field="lastName" required {...fp} />
-              </>
-            ) : (
-              <>
-                <Field label="Full Name" field="firstName" value={fullName}
-                  onAdd={applicationDetailsLocked ? undefined : handleStartEditing} {...fp} />
-                <Field label="Email Address" field="email" value={profileData.email} {...fp} />
-              </>
-            )}
-          </div>
-
-          {isEditingProfile && (
-            <div style={{ ...s.grid2, marginTop: 18 }}>
-              <Field label="Email Address" field="email" value={profileData.email}
-                locked editing={true} editData={editData} setEditData={setEditData}
-                errors={errors} onBlur={handleBlur} />
-            </div>
-          )}
-
-          <div style={s.rowSep} />
-
-          {/* Row 2 — demographics, always 3 equal columns, same position in both modes */}
           <div style={s.grid3}>
-            <Field label="Date of Birth" field="dateOfBirth" type="date"
-              value={isEditingProfile ? (editData?.dateOfBirth || "") : profileData.dateOfBirth}
-              onAdd={applicationDetailsLocked ? undefined : handleStartEditing} {...fp} />
-            <SelectField label="Gender" field="gender"
+            {/* Structured Names */}
+            <Field
+              icon={User}
+              label="First Name"
+              field="firstName"
+              value={profileData.firstName}
+              required
+              maxLength={50}
+              autoCapitalizeWords
+              onAdd={handleStartEditing}
+              {...fp}
+            />
+            <Field
+              icon={User}
+              label="Last Name"
+              field="lastName"
+              value={profileData.lastName}
+              required
+              maxLength={50}
+              autoCapitalizeWords
+              onAdd={handleStartEditing}
+              {...fp}
+            />
+            <BirthdayField
+              icon={CalendarDays}
+              label="Date of Birth"
+              field="dateOfBirth"
+              value={isEditingProfile ? editData?.dateOfBirth || "" : profileData.dateOfBirth}
+              onAdd={handleStartEditing}
+              {...fp}
+            />
+
+            {/* Demographics */}
+            <SelectField
+              icon={Users}
+              label="Gender"
+              field="gender"
               options={[
                 { value: "male", label: "Male" },
                 { value: "female", label: "Female" },
                 { value: "other", label: "Other" },
                 { value: "prefer-not-to-say", label: "Prefer not to say" },
               ]}
-              editing={isEditingProfile} editData={editData} setEditData={setEditData}
+              editing={isEditingProfile}
+              editData={editData}
+              setEditData={setEditData}
               value={profileData.gender}
-              onAdd={applicationDetailsLocked ? undefined : handleStartEditing} />
-            <SelectField label="Civil Status" field="civilStatus"
+              errors={errors}
+              onBlur={handleBlur}
+              onAdd={handleStartEditing}
+            />
+            <SelectField
+              icon={Heart}
+              label="Civil Status"
+              field="civilStatus"
               options={[
                 { value: "single", label: "Single" },
                 { value: "married", label: "Married" },
@@ -753,83 +1249,165 @@ const PersonalDetailsTab = ({
                 { value: "separated", label: "Separated" },
                 { value: "divorced", label: "Divorced" },
               ]}
-              editing={isEditingProfile} editData={editData} setEditData={setEditData}
+              editing={isEditingProfile}
+              editData={editData}
+              setEditData={setEditData}
               value={profileData.civilStatus}
-              onAdd={applicationDetailsLocked ? undefined : handleStartEditing} />
-          </div>
+              errors={errors}
+              onBlur={handleBlur}
+              onAdd={handleStartEditing}
+            />
+            <Field
+              icon={Globe}
+              label="Nationality"
+              field="nationality"
+              value={isEditingProfile ? editData?.nationality || "" : profileData.nationality}
+              maxLength={50}
+              autoCapitalizeWords
+              onAdd={handleStartEditing}
+              {...fp}
+            />
 
-          <div style={s.rowSep} />
-
-          {/* Row 3 — nationality + occupation */}
-          <div style={s.grid2}>
-            <Field label="Nationality" field="nationality"
-              value={isEditingProfile ? (editData?.nationality || "") : profileData.nationality}
-              onAdd={applicationDetailsLocked ? undefined : handleStartEditing} {...fp} />
-            <Field label="Occupation / Profession" field="occupation"
-              value={isEditingProfile ? (editData?.occupation || "") : profileData.occupation}
-              onAdd={applicationDetailsLocked ? undefined : handleStartEditing} {...fp} />
+            {/* Occupation */}
+            <Field
+              icon={Briefcase}
+              label="Occupation / Profession"
+              field="occupation"
+              value={isEditingProfile ? editData?.occupation || "" : profileData.occupation}
+              maxLength={60}
+              autoCapitalizeWords
+              onAdd={handleStartEditing}
+              {...fp}
+            />
           </div>
 
           <div style={s.noteBanner}>
-            <Sparkles size={14} color="var(--accent-foreground)" style={{ flexShrink: 0, marginTop: 1 }} />
+            <Sparkles
+              size={15}
+              color="var(--accent-foreground)"
+              style={{ flexShrink: 0, marginTop: 1 }}
+            />
             <p style={s.noteText}>
-              {applicationDetailsLocked
-                ? "These details came from your approved application form and cannot be edited here. If you need to request a correction, please contact the admin."
-                : "Contact details and emergency contacts are collected during reservation applications."}
+              You can update your personal details and profile photo anytime. Changes will be saved and reflected immediately.
             </p>
           </div>
         </div>
       </div>
 
-      {/* ── Contact Information ── */}
+      {/* ── Section 2: Contact Information ── */}
       <div style={{ ...s.infoCard, marginTop: 16 }}>
         <SectionHeader icon={Phone} title="Contact Information" />
         <div style={s.sectionBody}>
-          <div style={s.grid2}>
-            <Field label="Contact Number" field="phone" value={profileData.phone} locked />
-            <Field label="Current Address" field="address" value={profileData.address} locked />
+          <div style={s.grid3}>
+            <Field
+              icon={Phone}
+              label="Contact Number"
+              field="phone"
+              value={profileData.phone}
+              locked
+            />
+            <Field
+              icon={Mail}
+              label="Email Address"
+              field="email"
+              value={profileData.email}
+              locked
+            />
+            <Field
+              icon={MapPin}
+              label="Current Address"
+              field="address"
+              value={profileData.address}
+              locked
+            />
           </div>
         </div>
       </div>
 
-      {/* ── Emergency Contact ── */}
+      {/* ── Section 3: Emergency Contact ── */}
       <div style={{ ...s.infoCard, marginTop: 16 }}>
-        <SectionHeader icon={User} title="Emergency Contact" />
+        <SectionHeader icon={Shield} title="Emergency Contact" />
         <div style={s.sectionBody}>
           <div style={s.grid3}>
-            <Field label="Name" field="emergencyContact" value={profileData.emergencyContact} locked />
-            <Field label="Relationship" field="emergencyRelationship" value={profileData.emergencyRelationship} locked />
-            <Field label="Contact Number" field="emergencyPhone" value={profileData.emergencyPhone} locked />
+            <Field
+              icon={User}
+              label="Contact Person"
+              field="emergencyContact"
+              value={profileData.emergencyContact}
+              locked
+            />
+            <Field
+              icon={Users}
+              label="Relationship"
+              field="emergencyRelationship"
+              value={toTitleCase(profileData.emergencyRelationship)}
+              locked
+            />
+            <Field
+              icon={Phone}
+              label="Contact Number"
+              field="emergencyPhone"
+              value={profileData.emergencyPhone}
+              locked
+            />
           </div>
         </div>
       </div>
 
-      {/* ── Current Stay (tenants only) ── */}
+      {/* ── Section 4: Current Stay & Lease Details (Tenants Only) ── */}
       {profileData.role === "tenant" && (
         <div style={{ ...s.infoCard, marginTop: 16 }}>
-          <SectionHeader icon={Home} title="Current Stay" />
+          <SectionHeader icon={Home} title="Current Stay & Accommodation" />
           <div style={s.sectionBody}>
             <div style={s.grid3}>
-              <Field label="Branch" field="branch" value={profileData.occupancy?.branch} locked />
-              <Field label="Room" field="room" value={profileData.occupancy?.room} locked />
-              <Field label="Bed" field="bed" value={profileData.occupancy?.bed} locked />
-            </div>
-            <div style={{ ...s.grid2, marginTop: 18 }}>
-              <Field label="Move-in Date" field="moveInDate"
-                value={profileData.occupancy?.moveInDate ? fmtDate(profileData.occupancy.moveInDate) : ""} locked />
-            </div>
-
-            <div style={s.rowSep} />
-
-            <div style={s.subHeader}>
-              <CalendarDays size={15} color="var(--primary)" />
-              <h3 style={s.sectionTitle}>Lease Information</h3>
-            </div>
-            <div style={{ ...s.grid2, marginTop: 12 }}>
-              <Field label="Lease Start" field="leaseStart"
-                value={profileData.lease?.startDate ? fmtDate(profileData.lease.startDate) : ""} locked />
-              <Field label="Lease End" field="leaseEnd"
-                value={profileData.lease?.endDate ? fmtDate(profileData.lease.endDate) : ""} locked />
+              <Field
+                icon={Building2}
+                label="Branch"
+                field="branch"
+                value={formatBranch(profileData.occupancy?.branch || profileData.branch)}
+                locked
+              />
+              <Field
+                icon={Home}
+                label="Room"
+                field="room"
+                value={profileData.occupancy?.room || profileData.room}
+                locked
+              />
+              <Field
+                icon={Layers}
+                label="Bed"
+                field="bed"
+                value={formatBed(profileData.occupancy?.bed || profileData.bed)}
+                locked
+              />
+              <Field
+                icon={CalendarDays}
+                label="Move-In Date"
+                field="moveInDate"
+                value={
+                  profileData.occupancy?.moveInDate
+                    ? fmtDate(profileData.occupancy.moveInDate)
+                    : ""
+                }
+                locked
+              />
+              <Field
+                icon={CalendarDays}
+                label="Lease Start"
+                field="leaseStart"
+                value={
+                  profileData.lease?.startDate ? fmtDate(profileData.lease.startDate) : ""
+                }
+                locked
+              />
+              <Field
+                icon={CalendarDays}
+                label="Lease End"
+                field="leaseEnd"
+                value={profileData.lease?.endDate ? fmtDate(profileData.lease.endDate) : ""}
+                locked
+              />
             </div>
           </div>
         </div>

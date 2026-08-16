@@ -57,6 +57,18 @@ const ProfileCompletionCard = ({ profileData, onGoToPersonal }) => {
         padding: "20px 24px",
         marginBottom: 0,
         boxShadow: "0 4px 14px rgba(15, 23, 42, 0.04)",
+        cursor: "default",
+        transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease, border-color 0.2s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = "0 6px 18px rgba(15, 23, 42, 0.08)";
+        e.currentTarget.style.borderColor = "var(--border-subtle, #CBD5E1)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "none";
+        e.currentTarget.style.boxShadow = "0 4px 14px rgba(15, 23, 42, 0.04)";
+        e.currentTarget.style.borderColor = "var(--border-card, #E2E8F0)";
       }}
     >
       {/* Header */}

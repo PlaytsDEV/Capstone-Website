@@ -208,6 +208,16 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
  onClick={onClick}
  role={onClick ? "button" : undefined}
  tabIndex={onClick ? 0 : undefined}
+ onMouseEnter={(e) => {
+   e.currentTarget.style.transform = "translateY(-2px)";
+   e.currentTarget.style.boxShadow = "0 6px 18px rgba(15, 23, 42, 0.08)";
+   e.currentTarget.style.borderColor = "var(--border-subtle, #CBD5E1)";
+ }}
+ onMouseLeave={(e) => {
+   e.currentTarget.style.transform = "none";
+   e.currentTarget.style.boxShadow = "0 4px 14px rgba(15, 23, 42, 0.04)";
+   e.currentTarget.style.borderColor = "var(--border-card, #E2E8F0)";
+ }}
  >
  <div style={S.headerShell}>
  <div style={S.roomSection}>

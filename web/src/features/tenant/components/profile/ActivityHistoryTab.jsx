@@ -862,6 +862,18 @@ const ActivityHistoryTab = ({ reservations = [], isLoading = false }) => {
               flexDirection: "column",
               justifyContent: "space-between",
               gap: 8,
+              cursor: "default",
+              transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease, border-color 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = "0 4px 14px rgba(0, 0, 0, 0.05)";
+              e.currentTarget.style.borderColor = "var(--border-subtle, #CBD5E1)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "none";
+              e.currentTarget.style.boxShadow = "none";
+              e.currentTarget.style.borderColor = "var(--border-card, #E8EBF0)";
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>

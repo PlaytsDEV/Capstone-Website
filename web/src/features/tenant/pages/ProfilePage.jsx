@@ -308,36 +308,37 @@ const ProfilePage = () => {
  [reservations],
  );
 
- const handleSaveProfile = async () => {
- setSaving(true);
- const imageChanged =
- editData.profileImage && editData.profileImage !== profileData.profileImage;
+  const handleSaveProfile = async (overrideData) => {
+    setSaving(true);
+    const dataToSave = overrideData || editData;
+    const imageChanged =
+      dataToSave.profileImage && dataToSave.profileImage !== profileData.profileImage;
 
- try {
- const updatedUser = await authFetch("/auth/profile", {
- method: "PUT",
- body: JSON.stringify(editData),
- });
+    try {
+      const updatedUser = await authFetch("/auth/profile", {
+        method: "PUT",
+        body: JSON.stringify(dataToSave),
+      });
 
- setProfileData((prev) => ({ ...prev, ...updatedUser.user }));
- setIsEditingProfile(false);
- if (updateUser) updateUser(updatedUser.user);
- queryClient.invalidateQueries({ queryKey: ["users", "currentUser"] });
+      setProfileData((prev) => ({ ...prev, ...updatedUser.user }));
+      setIsEditingProfile(false);
+      if (updateUser) updateUser(updatedUser.user);
+      queryClient.invalidateQueries({ queryKey: ["users", "currentUser"] });
 
- showNotification(
- imageChanged
- ? "Profile photo updated successfully!"
- : "Profile updated successfully!",
- "success",
- 3000,
- );
- } catch (error) {
- console.error("Error updating profile:", error);
- showNotification("Failed to update profile. Please try again.", "error", 4000);
- } finally {
- setSaving(false);
- }
- };
+      showNotification(
+        imageChanged
+          ? "Profile photo updated successfully!"
+          : "Profile updated successfully!",
+        "success",
+        3000,
+      );
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      showNotification(error?.message || "Failed to update profile. Please try again.", "error", 4000);
+    } finally {
+      setSaving(false);
+    }
+  };
 
  const handleCancelEdit = () => {
  setEditData({

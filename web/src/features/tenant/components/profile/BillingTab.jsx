@@ -827,7 +827,7 @@ const StatementLedgerHero = ({
       <div className="statement-ledger-hero__chips" style={dash.chipsContainer}>
         <div className="statement-ledger-hero__chip-item" style={dash.chipItem}>
           <Home size={15} color="#0A1628" />
-          <span>Rent & Fees:</span>
+          <span>Rent:</span>
           <strong style={{ color: "#0A1628", fontWeight: 700 }}>{fmt(unpaidRent)}</strong>
         </div>
         <div style={dash.chipDivider} />
@@ -873,7 +873,7 @@ const StatementLedgerHero = ({
               )}
 
               <HeroCategoryCard
-                title="Rent & Move-In Statements"
+                title="Rent Statements"
                 icon={Home}
                 bills={rentBills}
                 unpaidTotal={unpaidRent}
@@ -980,7 +980,7 @@ const StatementFilters = ({
 
   const categoryOptions = [
     { value: "all", label: "All Kinds", count: bills.length },
-    { value: "rent", label: "Rent & Move-In", icon: Home, count: rentCount },
+    { value: "rent", label: "Rent", icon: Home, count: rentCount },
     { value: "electricity", label: "Electricity", icon: Zap, count: elecCount },
     ...(hasWaterBilling ? [{ value: "water", label: "Water", icon: Droplets, count: waterCount }] : []),
   ];
@@ -1992,7 +1992,7 @@ export default function BillingTab() {
           <CreditCard size={40} color="#D1D5DB" />
           <h3 style={{ fontSize: 15, fontWeight: 600, color: "#374151", margin: "16px 0 8px" }}>
             {categoryFilter !== "all"
-              ? `No ${categoryFilter === "rent" ? "Rent & Move-In" : categoryFilter === "electricity" ? "Electricity" : "Water"} statements found`
+              ? `No ${categoryFilter === "rent" ? "Rent" : categoryFilter === "electricity" ? "Electricity" : "Water"} statements found`
               : statusFilter === "unpaid"
                 ? "No unpaid statements found"
                 : statusFilter === "paid"

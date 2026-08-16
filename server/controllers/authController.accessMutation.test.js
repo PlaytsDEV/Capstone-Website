@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 const findById = jest.fn(); const setCustomUserClaims = jest.fn(); const invalidateUserSessions = jest.fn();
 await jest.unstable_mockModule('../models/index.js', () => ({ User: { findById }, LoginLog: {}, Reservation: {}, Stay: {}, UserSession: {} }));
 await jest.unstable_mockModule('../config/firebase.js', () => ({ getAuth: () => ({ setCustomUserClaims }) }));
-await jest.unstable_mockModule('../config/email.js', () => ({ sendLoginOtpEmail: jest.fn() }));
+await jest.unstable_mockModule('../config/email.js', () => ({ sendLoginOtpEmail: jest.fn(), sendPasswordChangedEmail: jest.fn() }));
 await jest.unstable_mockModule('../middleware/errorHandler.js', () => ({ AppError: class AppError extends Error {} }));
 await jest.unstable_mockModule('../middleware/logger.js', () => ({ default: { info: jest.fn(), warn: jest.fn(), error: jest.fn() } }));
 await jest.unstable_mockModule('../middleware/validation.js', () => ({ sanitizeName: (v) => v, sanitizePhone: (v) => v, sanitizeText: (v) => v }));

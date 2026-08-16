@@ -166,6 +166,11 @@ export const authApi = {
   clearEmailVerificationCapability: () =>
     verificationRequest("/auth/email-verification/clear"),
   finalizePasswordReset: () => authRequest("/auth/finalize-password-reset", { method: "POST" }),
+  notifyPasswordChanged: (params = {}) =>
+    authRequest("/auth/notify-password-changed", {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
 
   /**
    * Request a backend-generated, Lilycrest-branded password reset email.

@@ -307,38 +307,40 @@
   color: #ef4444;
 }
 
-.form-actions {
+.profile-page .form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 1rem;
-  margin-top: 2rem;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
 }
 
-.btn {
+.profile-page .btn {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  border: none;
+  padding: 0.5rem 1rem;
+  border: 1px solid transparent;
   border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 500;
+  font-size: 0.875rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
-.btn-primary {
-  background: var(--text-heading);
+.profile-page .btn-primary {
+  background: var(--text-heading, #0A1628);
   color: white;
+  border-color: var(--text-heading, #0A1628);
 }
 
-.btn-primary:hover:not(:disabled) {
-  background: #092d4f;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(10, 22, 40, 0.3);
+.profile-page .btn-primary:hover:not(:disabled) {
+  background: #1e293b;
+  border-color: #1e293b;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(10, 22, 40, 0.15);
 }
 
-.btn:disabled {
+.profile-page .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

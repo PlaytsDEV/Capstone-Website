@@ -431,6 +431,21 @@ export const sendPasswordResetLinkEmail = async ({ to, name, resetLink }) =>
   });
 
 // =============================================================================
+// PASSWORD CHANGED SECURITY NOTIFICATION EMAIL
+// =============================================================================
+
+export const sendPasswordChangedEmail = async ({ to, name, timestamp, ipAddress }) =>
+  sendLilycrestEmail({
+    to,
+    templateKey: "PASSWORD_CHANGED",
+    variables: {
+      USER_NAME: name || "there",
+      TIMESTAMP: timestamp || new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }),
+      IP_ADDRESS: ipAddress || "Unknown",
+    },
+  });
+
+// =============================================================================
 // LOGIN OTP EMAIL
 // =============================================================================
 

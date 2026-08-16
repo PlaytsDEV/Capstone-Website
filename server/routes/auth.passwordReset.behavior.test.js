@@ -47,7 +47,7 @@ await jest.unstable_mockModule('../services/sessionInvalidationService.js', () =
     audit: async (event) => state.audits.push(event),
   }),
 }));
-await jest.unstable_mockModule('../controllers/authController.js', () => ({ register: pass, login: pass, verifyLoginOtp: pass, resendLoginOtp: pass, logout: pass, getProfile: pass, updateProfile: pass, updateBranch: pass, setRole: pass, logPasswordReset: pass }));
+await jest.unstable_mockModule('../controllers/authController.js', () => ({ register: pass, login: pass, verifyLoginOtp: pass, resendLoginOtp: pass, logout: pass, getProfile: pass, updateProfile: pass, updateBranch: pass, setRole: pass, logPasswordReset: pass, notifyPasswordChanged: pass }));
 
 const { default: authRoutes } = await import('./authRoutes.js');
 

@@ -328,7 +328,9 @@ export default function AnnouncementsTab() {
       <div className="tenant-announcements-root">
         <div className="tenant-announcements-header">
           <div className="tenant-announcements-header__text">
-            <h1>Announcements</h1>
+            <div className="tenant-announcements-header__title-row">
+              <h1>Announcements</h1>
+            </div>
             <p>
               Stay updated with branch notices, policy guidelines, and dormitory advisories.
             </p>
@@ -347,7 +349,14 @@ export default function AnnouncementsTab() {
       {/* ── Top Header & Actions ── */}
       <div className="tenant-announcements-header">
         <div className="tenant-announcements-header__text">
-          <h1>Announcements</h1>
+          <div className="tenant-announcements-header__title-row">
+            <h1>Announcements</h1>
+            {stats.unread > 0 && (
+              <span className="tenant-announcements-unread-badge">
+                {stats.unread} {stats.unread === 1 ? "Unread" : "Unread"}
+              </span>
+            )}
+          </div>
           <p>
             Stay updated with branch notices, policy guidelines, and dormitory advisories.
           </p>
@@ -359,7 +368,7 @@ export default function AnnouncementsTab() {
             className="tenant-announcements-btn-secondary"
             onClick={handleMarkAllRead}
             disabled={stats.unread === 0 || isMarkingAllRead}
-            title={stats.unread === 0 ? "No unread announcements" : "Mark all as read"}
+            title={stats.unread === 0 ? "All announcements are marked as read" : "Mark all as read"}
           >
             {isMarkingAllRead ? (
               <>

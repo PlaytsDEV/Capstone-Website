@@ -169,36 +169,48 @@ const StayCard = ({ stay, isCurrent }) => {
 
 // ── Stat Card ───────────────────────────────────────────────
 const StatCard = ({ icon: Icon, iconColor, iconBg, label, value }) => (
- <div
- style={{
- backgroundColor: "#fff",
- borderRadius: 12,
- border: "1px solid #E8EBF0",
- padding: "20px",
- display: "flex",
- alignItems: "center",
- gap: 14,
- }}
- >
- <div
- style={{
- width: 42,
- height: 42,
- borderRadius: 10,
- backgroundColor: iconBg,
- display: "flex",
- alignItems: "center",
- justifyContent: "center",
- flexShrink: 0,
- }}
- >
- <Icon size={20} style={{ color: iconColor }} />
- </div>
- <div>
- <p style={{ fontSize: 20, fontWeight: 700, color: "#0A1628", margin: 0 }}>{value}</p>
- <p style={{ fontSize: 12, color: "#94A3B8", margin: "2px 0 0", fontWeight: 500 }}>{label}</p>
- </div>
- </div>
+  <div
+    style={{
+      backgroundColor: "#fff",
+      borderRadius: 12,
+      border: "1px solid #E8EBF0",
+      padding: "20px",
+      display: "flex",
+      alignItems: "center",
+      gap: 14,
+      cursor: "default",
+      transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease, border-color 0.2s ease",
+    }}
+    onMouseEnter={(e) => {
+      e.currentTarget.style.transform = "translateY(-2px)";
+      e.currentTarget.style.boxShadow = "0 4px 14px rgba(0, 0, 0, 0.05)";
+      e.currentTarget.style.borderColor = "#CBD5E1";
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.transform = "none";
+      e.currentTarget.style.boxShadow = "none";
+      e.currentTarget.style.borderColor = "#E8EBF0";
+    }}
+  >
+    <div
+      style={{
+        width: 42,
+        height: 42,
+        borderRadius: 10,
+        backgroundColor: iconBg,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      <Icon size={20} style={{ color: iconColor }} />
+    </div>
+    <div>
+      <p style={{ fontSize: 20, fontWeight: 700, color: "#0A1628", margin: 0 }}>{value}</p>
+      <p style={{ fontSize: 12, color: "#94A3B8", margin: "2px 0 0", fontWeight: 500 }}>{label}</p>
+    </div>
+  </div>
 );
 
 // ── Main Component ──────────────────────────────────────────
@@ -207,7 +219,7 @@ const StaysTab = () => {
 
  if (isLoading) {
  return (
- <div style={{ maxWidth: 1200 }}>
+ <div style={{ width: "100%", maxWidth: "100%" }}>
  <div style={{ marginBottom: 24 }}>
  <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1F2937", margin: "0 0 4px" }}>My Stays</h1>
  <p style={{ fontSize: 14, color: "#94A3B8", margin: 0 }}>Your room history and stay statistics</p>
@@ -222,7 +234,7 @@ const StaysTab = () => {
  const hasAnyStays = currentStays.length > 0 || pastStays.length > 0;
 
  return (
- <div style={{ maxWidth: 1200 }}>
+ <div style={{ width: "100%", maxWidth: "100%" }}>
  {/* Header */}
  <div style={{ marginBottom: 24 }}>
  <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1F2937", margin: "0 0 4px" }}>

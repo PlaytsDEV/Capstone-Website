@@ -58,6 +58,7 @@ await jest.unstable_mockModule("../controllers/authController.js", () => ({
   updateBranch: pass,
   setRole: pass,
   logPasswordReset,
+  notifyPasswordChanged: pass,
 }));
 await jest.unstable_mockModule("../controllers/emailVerificationController.js", () => ({
   clearEmailVerificationCapability: pass,
