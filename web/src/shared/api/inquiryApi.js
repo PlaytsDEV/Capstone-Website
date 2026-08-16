@@ -70,6 +70,14 @@ export const inquiryApi = {
     }),
 
   /**
+   * Retry email dispatch for an inquiry response (admin only)
+   */
+  retryEmail: (inquiryId) =>
+    authFetch(`/inquiries/${inquiryId}/retry-email`, {
+      method: "POST",
+    }),
+
+  /**
    * Get Kanban board categorized by status (admin only)
    */
   getKanbanBoard: (params = {}) => {

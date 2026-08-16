@@ -35,6 +35,20 @@ export function useMarkAnnouncementRead() {
   });
 }
 
+/** Mark all announcements as read (batch) */
+export function useMarkAllAnnouncementsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (announcementIds = []) => {
+      const results = await Promise.allSettled(
+        announcementIds.map((id) => announcementApi.markAsRead(id)),
+      );
+      return results;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["announcements"] }),
+  });
+}
+
 /** Acknowledge announcement */
 export function useAcknowledgeAnnouncement() {
   const qc = useQueryClient();

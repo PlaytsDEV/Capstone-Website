@@ -144,6 +144,7 @@ export function RoomInventory() {
                   src={room.image}
                   alt={room.title}
                   priority={cardIdx === 0}
+                  optimizerOpts={{ width: 480, quality: 75 }}
                   style={{ height: '100%', objectFit: 'cover' }}
                   className="group-hover:scale-105 transition-transform duration-500"
                 />

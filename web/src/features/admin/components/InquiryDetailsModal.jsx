@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { inquiryApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
+import getFriendlyError from "../../../shared/utils/friendlyError";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 import "../styles/inquiry-details-modal.css";
@@ -13,20 +14,29 @@ const STATUS_LABEL = {
   "in-progress": "In Progress",
   pending: "Pending",
   new: "New Inquiry",
+  closed: "Closed",
 };
 
 const CANNED_RESPONSES = [
   {
     label: "Room Available",
-    text: "Hello! We currently have available rooms at this branch. Would you like to schedule a viewing?",
+    text: "Hello! We currently have available rooms at this branch. Would you like to schedule an on-site viewing tour?",
   },
   {
     label: "Schedule Viewing",
-    text: "Hi! We would be glad to arrange a room tour for you. Please let us know your preferred date and time.",
+    text: "Hi! We would be glad to arrange a dormitory tour for you. Please let us know your preferred date and time.",
   },
   {
-    label: "Rates & Info",
-    text: "Hi! You can view complete room rates, included amenities, and payment options on our official website.",
+    label: "Rates & Inclusions",
+    text: "Hi! Our monthly rates include air conditioning, high-speed Wi-Fi, 24/7 security, study lounge, and submetered utilities. Complete details are on our official website.",
+  },
+  {
+    label: "Requirements & Terms",
+    text: "Hello! To secure a reservation, we require a valid government/student ID, 1-month advance, and 1-month security deposit.",
+  },
+  {
+    label: "Waitlist Notice",
+    text: "Hello! Currently this room type is fully occupied, but we have added your name to our priority waitlist and will notify you as soon as a slot opens.",
   },
 ];
 
@@ -41,6 +51,15 @@ const formatDateTime = (dateString) => {
   });
 };
 
+const formatDateOnly = (dateString) => {
+  if (!dateString) return null;
+  return new Date(dateString).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
+
 const formatBranchName = (branchStr) => {
   if (!branchStr) return "General Branch";
   return branchStr
@@ -49,128 +68,290 @@ const formatBranchName = (branchStr) => {
     .join(" ") + " Branch";
 };
 
+const formatRoomType = (typeStr) => {
+  if (!typeStr) return null;
+  const map = {
+    quadruple_sharing: "Quadruple Sharing",
+    double_sharing: "Double Sharing",
+    private_room: "Private Room",
+  };
+  return map[typeStr] || typeStr.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const formatChannelLabel = (source) => {
+  if (!source) return "Website";
+  const map = {
+    website: "Website",
+    facebook: "Facebook",
+    tiktok: "TikTok",
+    instagram: "Instagram",
+    text_message: "SMS / Text",
+    walk_in: "Walk-in",
+    building_signage: "Signage",
+    referral: "Referral",
+    other: "Other",
+  };
+  return map[source] || source.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const getInquiryCategory = (inquiry) => {
+  if (inquiry?.preferredRoomType) {
+    return formatRoomType(inquiry.preferredRoomType);
+  }
+  if (inquiry?.subject) {
+    const parts = inquiry.subject.split(/[:—–-]/);
+    if (parts[0] && parts[0].trim()) {
+      return parts[0].trim();
+    }
+  }
+  return "General";
+};
+
 export default function InquiryDetailsModal({ inquiry, onClose, onUpdate }) {
   const [currentInquiry, setCurrentInquiry] = useState(inquiry);
   const [response, setResponse] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRetryingEmail, setIsRetryingEmail] = useState(false);
   const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
   const [copiedField, setCopiedField] = useState(null);
-  const timerRef = useRef(null);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const textareaRef = useRef(null);
 
   // Sync prop changes
   useEffect(() => {
     setCurrentInquiry(inquiry);
   }, [inquiry]);
 
-  // Cancel pending timer if unmounted
-  useEffect(() => () => clearTimeout(timerRef.current), []);
+  const isResolved =
+    currentInquiry?.status === "resolved" ||
+    currentInquiry?.status === "responded" ||
+    Boolean(currentInquiry?.response || currentInquiry?.adminResponse);
+
+  const isEmailUndelivered =
+    isResolved && currentInquiry?.emailDeliveryStatus === "failed";
+
+  const isEmailDelivered =
+    isResolved && currentInquiry?.emailDeliveryStatus === "sent";
+
+  // Auto-focus textarea when opening pending inquiry
+  useEffect(() => {
+    if (!isResolved && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [isResolved]);
+
+  const handleRequestClose = () => {
+    if (response.trim() && !isResolved) {
+      setShowDiscardConfirm(true);
+    } else {
+      onClose();
+    }
+  };
 
   useBodyScrollLock(!!inquiry);
-  useEscapeClose(!!inquiry, onClose);
+
+  // Global Keyboard Shortcuts (Escape to exit/cancel, Ctrl+Enter to send)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (showDiscardConfirm) {
+          setShowDiscardConfirm(false);
+        } else {
+          handleRequestClose();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [showDiscardConfirm, response, isResolved]);
 
   if (!inquiry || !currentInquiry) return null;
 
-  const MAX_WORDS = 200;
   const MAX_CHARS = 1000;
-
-  const countWords = (text) => {
-    const trimmed = text.trim();
-    return trimmed ? trimmed.split(/\s+/).length : 0;
-  };
 
   const handleCopy = (text, fieldName) => {
     if (!text) return;
     navigator.clipboard.writeText(text);
     setCopiedField(fieldName);
+    showNotification(`Copied ${fieldName} to clipboard`, "info");
     setTimeout(() => setCopiedField(null), 2000);
   };
 
   const handleApplyCanned = (cannedText) => {
-    // Directly REPLACE textarea content instead of appending
     setResponse(cannedText);
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
   };
 
   const handleTextareaChange = (e) => {
     const newText = e.target.value;
-    const wordCount = countWords(newText);
-
-    // Enforce max word limit and char limit, but allow backspace/deletion
-    if (newText.length <= MAX_CHARS && wordCount <= MAX_WORDS) {
-      setResponse(newText);
-    } else if (newText.length < response.length) {
+    if (newText.length <= MAX_CHARS) {
       setResponse(newText);
     }
   };
 
-  const handleSubmitResponse = async (e) => {
-    e?.preventDefault();
-    const sentText = response.trim();
-    if (!sentText) return;
+  const handleKeyDown = (e) => {
+    // Ctrl+Enter or Cmd+Enter to submit
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      if (response.trim() && !isSubmitting) {
+        handleSubmitResponse();
+      }
+    }
+  };
 
+  const handleSubmitResponse = async (e) => {
+    if (e && typeof e.preventDefault === "function") {
+      e.preventDefault();
+    }
+    if (!response.trim() || isSubmitting) return;
+
+    const sentText = response.trim();
     setIsSubmitting(true);
     setError(null);
 
     try {
       const result = await inquiryApi.respond(currentInquiry._id, sentText);
-      setSuccess(true);
+      const emailSent = result?.emailSent;
 
-      // Immediately transform local inquiry state to Responded form
-      const updatedObj = result?.inquiry || {
-        ...currentInquiry,
-        status: "responded",
-        response: sentText,
-        respondedAt: new Date().toISOString(),
-      };
-      setCurrentInquiry(updatedObj);
-      setResponse("");
-
-      if (result?.emailSent === false) {
-        const detail = result?.emailError || "Email could not be delivered to customer's Gmail address.";
-        setError(`Response saved in system, but automated email failed: ${detail}`);
-        showNotification("Response saved, but email could not be delivered.", "warning");
+      if (emailSent === false) {
+        showNotification(
+          `Response saved, but email to ${currentInquiry.email || "recipient"} could not be delivered.`,
+          "warning",
+        );
+      } else {
+        showNotification(
+          `Official response sent to ${currentInquiry.email || "customer"} successfully!`,
+          "success",
+        );
       }
 
       onUpdate?.();
-
-      // Dismiss success popup overlay after 1.8s; modal remains open in Responded form
-      timerRef.current = setTimeout(() => {
-        setSuccess(false);
-      }, 1800);
+      onClose();
     } catch (err) {
-      console.error(err);
-      setError("Failed to send response. Please try again.");
-      showNotification("Failed to send response. Please try again.", "error");
+      console.error("[InquiryResponse] Submission error:", err);
+      const friendlyMsg = getFriendlyError(
+        err,
+        "We were unable to send your response at this moment. Please try again in a moment.",
+      );
+      setError(friendlyMsg);
+      showNotification(friendlyMsg, "error");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const currentWordCount = countWords(response);
-  const isResolved =
-    currentInquiry.status === "resolved" ||
-    currentInquiry.status === "responded" ||
-    Boolean(currentInquiry.response);
+  const handleRetryEmail = async () => {
+    if (isRetryingEmail || !currentInquiry?._id) return;
+    setIsRetryingEmail(true);
+    setError(null);
+
+    try {
+      const result = await inquiryApi.retryEmail(currentInquiry._id);
+      if (result?.inquiry) {
+        setCurrentInquiry(result.inquiry);
+      } else if (result?.emailSent) {
+        setCurrentInquiry((prev) => ({
+          ...prev,
+          emailDeliveryStatus: "sent",
+          emailDeliveryError: null,
+          emailLastAttemptAt: new Date().toISOString(),
+        }));
+      } else {
+        setCurrentInquiry((prev) => ({
+          ...prev,
+          emailDeliveryStatus: "failed",
+          emailDeliveryError:
+            result?.emailError ||
+            "Automated email could not be delivered to the recipient address.",
+          emailLastAttemptAt: new Date().toISOString(),
+        }));
+      }
+
+      if (result?.emailSent) {
+        showNotification(
+          "Official response email dispatched successfully!",
+          "success",
+        );
+      } else {
+        showNotification(
+          "Email retry did not dispatch. Please verify recipient email or credentials.",
+          "warning",
+        );
+      }
+
+      onUpdate?.();
+    } catch (err) {
+      console.error("[InquiryRetryEmail] Error:", err);
+      const friendlyMsg = getFriendlyError(
+        err,
+        "Unable to retry email delivery right now. Please try again in a moment.",
+      );
+      showNotification(friendlyMsg, "error");
+    } finally {
+      setIsRetryingEmail(false);
+    }
+  };
+
+  const currentCharCount = response.length;
+  const preferredRoom = formatRoomType(currentInquiry.preferredRoomType);
+  const targetMoveIn = formatDateOnly(currentInquiry.targetMoveInDate);
+  const categoryLabel = getInquiryCategory(currentInquiry);
+  const channelLabel = formatChannelLabel(currentInquiry.source);
+
+  const statusBadgeLabel = isEmailUndelivered
+    ? "Email Undelivered"
+    : (STATUS_LABEL[currentInquiry.status] ?? (currentInquiry.status || "Pending"));
+
+  const statusBadgeClass = isEmailUndelivered
+    ? "undelivered"
+    : (currentInquiry.status || "pending");
 
   return createPortal(
-    <div className="inquiry-details-modal-overlay" onClick={onClose}>
+    <div className="inquiry-details-modal-overlay" onClick={handleRequestClose}>
       <div
         className="inquiry-details-modal"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Success Popup Card Overlay */}
-        {success && !error && (
+        {/* Unsaved Changes Confirmation Modal Overlay */}
+        {showDiscardConfirm && (
           <div className="inquiry-details-modal-popup-overlay">
             <div className="inquiry-details-modal-popup-card">
-              <div className="inquiry-details-modal-popup-icon">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5">
-                  <polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round"/>
+              <div className="inquiry-details-modal-discard-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
                 </svg>
               </div>
-              <h3 className="inquiry-details-modal-popup-title">Response Sent!</h3>
+              <h3 className="inquiry-details-modal-popup-title">Discard Draft Response?</h3>
               <p className="inquiry-details-modal-popup-text">
-                Your response has been saved and emailed to the customer.
+                You have an unsaved response draft. Closing now will discard your typed text.
               </p>
+              <div className="inquiry-details-modal-discard-actions">
+                <button
+                  type="button"
+                  className="inquiry-details-modal-btn-secondary"
+                  onClick={() => setShowDiscardConfirm(false)}
+                  title="Keep editing (Esc)"
+                >
+                  Keep Editing
+                  <span className="inquiry-details-modal-kbd">Esc</span>
+                </button>
+                <button
+                  type="button"
+                  className="inquiry-details-modal-btn-danger"
+                  onClick={() => {
+                    setShowDiscardConfirm(false);
+                    onClose();
+                  }}
+                >
+                  Discard & Close
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -179,16 +360,23 @@ export default function InquiryDetailsModal({ inquiry, onClose, onUpdate }) {
         <div className="inquiry-details-modal-header">
           <div className="inquiry-details-modal-header-left">
             <h2 className="inquiry-details-modal-title">Inquiry Details</h2>
-            <span className={`inquiry-details-modal-status-badge ${currentInquiry.status || "pending"}`}>
-              {STATUS_LABEL[currentInquiry.status] ?? currentInquiry.status}
+            <span className={`inquiry-details-modal-status-badge ${statusBadgeClass}`}>
+              {statusBadgeLabel}
             </span>
-            <span className="inquiry-details-modal-category-pill">General</span>
+            <span className="inquiry-details-modal-category-pill" title="Category / Topic">
+              {categoryLabel}
+            </span>
+            <span className="inquiry-details-modal-channel-pill" title="Acquisition Channel">
+              {channelLabel}
+            </span>
           </div>
 
           <button
             className="inquiry-details-modal-close"
-            onClick={onClose}
-            aria-label="Close modal"
+            onClick={handleRequestClose}
+            aria-label="Close modal (Esc)"
+            title="Close (Esc)"
+            type="button"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <path
@@ -203,7 +391,7 @@ export default function InquiryDetailsModal({ inquiry, onClose, onUpdate }) {
 
         {/* Scrollable Modal Body */}
         <div className="inquiry-details-modal-body">
-          {/* Error Alert */}
+          {/* Fatal Error Alert (Connection / Server down) */}
           {error && (
             <div className="inquiry-details-modal-alert error">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -215,48 +403,54 @@ export default function InquiryDetailsModal({ inquiry, onClose, onUpdate }) {
             </div>
           )}
 
-          {/* Compact Customer Strip */}
+          {/* Customer Sender Card */}
           <div className="inquiry-details-modal-sender-strip">
             <div className="inquiry-details-modal-avatar">
-              {currentInquiry.name?.charAt(0).toUpperCase() || "U"}
+              {(currentInquiry.name || currentInquiry.fullName || "U").charAt(0).toUpperCase()}
             </div>
             <div className="inquiry-details-modal-sender-info">
               <div className="inquiry-details-modal-sender-top">
-                <h3 className="inquiry-details-modal-sender-name">{currentInquiry.name}</h3>
+                <h3 className="inquiry-details-modal-sender-name">
+                  {currentInquiry.name || currentInquiry.fullName || "Unknown Customer"}
+                </h3>
                 <span className="inquiry-details-modal-branch-tag">
-                  {formatBranchName(currentInquiry.branch)}
+                  {formatBranchName(currentInquiry.branch || currentInquiry.preferredBranch)}
                 </span>
               </div>
 
               <div className="inquiry-details-modal-contact-chips">
                 {/* Email Chip */}
-                <div className="inquiry-details-modal-chip">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                    <polyline points="22,6 12,13 2,6"/>
-                  </svg>
-                  <a href={`mailto:${currentInquiry.email}`} className="inquiry-details-modal-chip-link">
-                    {currentInquiry.email}
-                  </a>
-                  <button
-                    className="inquiry-details-modal-copy-btn"
-                    onClick={() => handleCopy(currentInquiry.email, "email")}
-                    title="Copy Email"
-                  >
-                    {copiedField === "email" ? "Copied!" : "Copy"}
-                  </button>
-                </div>
+                {currentInquiry.email && (
+                  <div className="inquiry-details-modal-chip">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                      <polyline points="22,6 12,13 2,6"/>
+                    </svg>
+                    <a href={`mailto:${currentInquiry.email}`} className="inquiry-details-modal-chip-link">
+                      {currentInquiry.email}
+                    </a>
+                    <button
+                      type="button"
+                      className="inquiry-details-modal-copy-btn"
+                      onClick={() => handleCopy(currentInquiry.email, "email")}
+                      title="Copy Email"
+                    >
+                      {copiedField === "email" ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                )}
 
                 {/* Phone Chip */}
-                {currentInquiry.phone && (
+                {(currentInquiry.phone || currentInquiry.contactNumber) && currentInquiry.phone !== "N/A" && (
                   <div className="inquiry-details-modal-chip">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
                     </svg>
-                    <span>{currentInquiry.phone}</span>
+                    <span>{currentInquiry.phone || currentInquiry.contactNumber}</span>
                     <button
+                      type="button"
                       className="inquiry-details-modal-copy-btn"
-                      onClick={() => handleCopy(currentInquiry.phone, "phone")}
+                      onClick={() => handleCopy(currentInquiry.phone || currentInquiry.contactNumber, "phone")}
                       title="Copy Phone"
                     >
                       {copiedField === "phone" ? "Copied!" : "Copy"}
@@ -271,6 +465,32 @@ export default function InquiryDetailsModal({ inquiry, onClose, onUpdate }) {
                   <span>{formatDateTime(currentInquiry.createdAt)}</span>
                 </div>
               </div>
+
+              {/* Lead Preferences Strip (if room preference / move-in date available) */}
+              {(preferredRoom || targetMoveIn || currentInquiry.expectedLengthOfStay) && (
+                <div className="inquiry-details-modal-preferences-strip">
+                  {preferredRoom && (
+                    <div className="inquiry-details-modal-pref-pill">
+                      <span className="inquiry-details-modal-pref-label">Room Interest:</span>
+                      <strong className="inquiry-details-modal-pref-value">{preferredRoom}</strong>
+                    </div>
+                  )}
+                  {targetMoveIn && (
+                    <div className="inquiry-details-modal-pref-pill">
+                      <span className="inquiry-details-modal-pref-label">Target Move-in:</span>
+                      <strong className="inquiry-details-modal-pref-value">{targetMoveIn}</strong>
+                    </div>
+                  )}
+                  {currentInquiry.expectedLengthOfStay && (
+                    <div className="inquiry-details-modal-pref-pill">
+                      <span className="inquiry-details-modal-pref-label">Length of Stay:</span>
+                      <strong className="inquiry-details-modal-pref-value">
+                        {currentInquiry.expectedLengthOfStay} {currentInquiry.expectedLengthOfStay === 1 ? "month" : "months"}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -286,21 +506,76 @@ export default function InquiryDetailsModal({ inquiry, onClose, onUpdate }) {
             </div>
           </div>
 
-          {/* Previous Response (if responded) */}
-          {currentInquiry.response && (
+          {/* Official Response (if responded) */}
+          {(currentInquiry.response || currentInquiry.adminResponse) && (
             <div className="inquiry-details-modal-section">
               <div className="inquiry-details-modal-section-header">
-                <span className="inquiry-details-modal-section-title">Previous Response</span>
+                <span className="inquiry-details-modal-section-title">Official Response</span>
               </div>
-              <div className="inquiry-details-modal-previous-response-box">
-                <p className="inquiry-details-modal-message-text">{currentInquiry.response}</p>
+              <div
+                className={`inquiry-details-modal-previous-response-box ${
+                  isEmailUndelivered ? "undelivered-border" : ""
+                }`}
+              >
+                <p className="inquiry-details-modal-message-text">
+                  {currentInquiry.response || currentInquiry.adminResponse}
+                </p>
                 <div className="inquiry-details-modal-responded-meta">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" strokeLinecap="round"/>
                     <polyline points="22 4 12 14.01 9 11.01"/>
                   </svg>
-                  <span>Sent on {formatDateTime(currentInquiry.respondedAt)}</span>
+                  <span>
+                    Recorded on {formatDateTime(currentInquiry.respondedAt || currentInquiry.updatedAt)}
+                    {currentInquiry.respondedBy?.firstName ? ` by ${currentInquiry.respondedBy.firstName} ${currentInquiry.respondedBy.lastName || ""}` : ""}
+                  </span>
                 </div>
+
+                {/* Email Delivery Failure Alert & Retry CTA */}
+                {isEmailUndelivered && (
+                  <div className="inquiry-details-modal-delivery-alert">
+                    <div className="inquiry-details-modal-delivery-alert-left">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                      <span>Automated email was not delivered to <strong>{currentInquiry.email}</strong></span>
+                    </div>
+                    <button
+                      type="button"
+                      className="inquiry-details-modal-btn-retry"
+                      onClick={handleRetryEmail}
+                      disabled={isRetryingEmail || !currentInquiry.email}
+                      title="Re-attempt sending automated email"
+                    >
+                      {isRetryingEmail ? (
+                        <>
+                          <span className="inquiry-details-modal-spinner" />
+                          <span>Retrying...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                            <polyline points="23 4 23 10 17 10"/>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                          </svg>
+                          <span>Retry Email</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Email Delivery Confirmed Tag */}
+                {isEmailDelivered && (
+                  <div className="inquiry-details-modal-delivery-success-tag">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5">
+                      <polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span>Automated email delivered to {currentInquiry.email}</span>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -321,7 +596,7 @@ export default function InquiryDetailsModal({ inquiry, onClose, onUpdate }) {
                     type="button"
                     className="inquiry-details-modal-canned-chip"
                     onClick={() => handleApplyCanned(chip.text)}
-                    disabled={isSubmitting || success}
+                    disabled={isSubmitting}
                   >
                     + {chip.label}
                   </button>
@@ -329,22 +604,34 @@ export default function InquiryDetailsModal({ inquiry, onClose, onUpdate }) {
               </div>
 
               {/* Reply Text Area */}
-              <form id="inquiry-response-form" onSubmit={handleSubmitResponse}>
+              <form
+                id="inquiry-response-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSubmitResponse(e);
+                }}
+              >
                 <textarea
+                  ref={textareaRef}
                   className="inquiry-details-modal-response-textarea"
-                  placeholder="Type your official response to customer here..."
+                  placeholder="Type your official response to customer here... (Press Ctrl + Enter to send)"
                   value={response}
                   onChange={handleTextareaChange}
+                  onKeyDown={handleKeyDown}
+                  maxLength={MAX_CHARS}
                   rows={4}
-                  disabled={isSubmitting || success}
+                  disabled={isSubmitting}
                 />
                 <div className="inquiry-details-modal-counter-row">
+                  <span className="inquiry-details-modal-shortcut-hint">
+                    Shortcuts: <code>Ctrl + Enter</code> to send • <code>Esc</code> to exit
+                  </span>
                   <span
                     className={`inquiry-details-modal-word-counter ${
-                      currentWordCount >= MAX_WORDS ? "limit-reached" : ""
+                      currentCharCount >= MAX_CHARS ? "limit-reached" : ""
                     }`}
                   >
-                    {currentWordCount} / {MAX_WORDS} words
+                    {currentCharCount} / {MAX_CHARS} characters
                   </span>
                 </div>
               </form>
@@ -357,17 +644,22 @@ export default function InquiryDetailsModal({ inquiry, onClose, onUpdate }) {
           <button
             type="button"
             className="inquiry-details-modal-btn-secondary"
-            onClick={onClose}
+            onClick={handleRequestClose}
+            title="Exit dialog (Esc)"
           >
             {isResolved ? "Close" : "Cancel"}
+            <span className="inquiry-details-modal-kbd">Esc</span>
           </button>
 
           {!isResolved && (
             <button
-              type="submit"
-              form="inquiry-response-form"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                handleSubmitResponse(e);
+              }}
               className="inquiry-details-modal-btn-primary"
-              disabled={!response.trim() || isSubmitting || success}
+              disabled={!response.trim() || isSubmitting}
             >
               {isSubmitting ? (
                 <>

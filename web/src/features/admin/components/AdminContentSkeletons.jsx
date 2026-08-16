@@ -1,10 +1,10 @@
 import React from "react";
 import SkeletonPulse from "../../../shared/components/SkeletonPulse";
-import "../../super-admin/styles/superadmin-dashboard.css";
-import "../../super-admin/styles/superadmin-permissions.css";
+import "../../owner/styles/owner-dashboard.css";
+import "../../owner/styles/owner-permissions.css";
 import "../styles/permission-editor.css";
-import "../../super-admin/styles/superadmin-branches.css";
-import "../../super-admin/styles/superadmin-settings.css";
+import "../../owner/styles/owner-branches.css";
+import "../../owner/styles/owner-settings.css";
 import "../styles/admin-backup.css";
 
 // ─── Shared primitives ────────────────────────────────────────────────────────

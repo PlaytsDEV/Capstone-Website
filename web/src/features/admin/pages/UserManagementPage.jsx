@@ -48,7 +48,7 @@ import {
   StatusBadge,
 } from "../components/shared";
 import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
-import RolePermissionsPage from "../../super-admin/pages/RolePermissionsPage";
+import RolePermissionsPage from "../../owner/pages/RolePermissionsPage";
 import AdminTabs from "../../../shared/components/AdminTabs";
 import { ExportButtons } from "./analyticsTabShared.js";
 import {

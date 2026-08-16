@@ -203,15 +203,31 @@ export function AnnouncementListSkeleton({ count = 3, className = "", style }) {
       aria-busy="true"
       aria-label="Loading announcements"
     >
-      {/* Filter chips placeholder row */}
-      <div className="sk-announcements__filters">
-        {["52px", "68px", "76px", "98px", "64px", "58px"].map((width, i) => (
-          <Shimmer
-            key={i}
-            className="sk-announcements__chip"
-            style={{ width, height: "30px", borderRadius: "20px" }}
-          />
-        ))}
+      {/* Toolbar placeholder */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          padding: "14px 16px",
+          background: "var(--card)",
+          border: "1px solid var(--border)",
+          borderRadius: "12px",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+          <Shimmer style={{ height: "36px", flex: 1, minWidth: "200px", borderRadius: "8px" }} />
+          <Shimmer style={{ height: "36px", width: "240px", borderRadius: "8px" }} />
+        </div>
+        <div className="sk-announcements__filters" style={{ marginBottom: 0 }}>
+          {["52px", "68px", "76px", "98px", "64px", "58px"].map((width, i) => (
+            <Shimmer
+              key={i}
+              className="sk-announcements__chip"
+              style={{ width, height: "28px", borderRadius: "20px" }}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Cards list */}
@@ -224,7 +240,7 @@ export function AnnouncementListSkeleton({ count = 3, className = "", style }) {
                 <Shimmer
                   style={{
                     width: i === 0 ? "55%" : i === 1 ? "42%" : "64%",
-                    height: "15px",
+                    height: "16px",
                     borderRadius: "4px",
                   }}
                 />
@@ -263,27 +279,26 @@ export function AnnouncementListSkeleton({ count = 3, className = "", style }) {
                   borderRadius: "4px",
                 }}
               />
-              <Shimmer
-                style={{
-                  width: i % 2 === 0 ? "46%" : "68%",
-                  height: "11px",
-                  borderRadius: "4px",
-                }}
-              />
             </div>
 
-            {/* Optional action row */}
-            {i === 0 && (
-              <div className="sk-announcement-card__action">
-                <Shimmer
-                  style={{
-                    width: "115px",
-                    height: "28px",
-                    borderRadius: "6px",
-                  }}
-                />
+            {/* Action row */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                paddingTop: "8px",
+                borderTop: "1px solid var(--border)",
+              }}
+            >
+              <Shimmer style={{ width: "120px", height: "14px", borderRadius: "4px" }} />
+              <div style={{ display: "flex", gap: "8px" }}>
+                <Shimmer style={{ width: "90px", height: "28px", borderRadius: "6px" }} />
+                {i === 0 && (
+                  <Shimmer style={{ width: "110px", height: "28px", borderRadius: "6px" }} />
+                )}
               </div>
-            )}
+            </div>
           </div>
         ))}
       </div>
