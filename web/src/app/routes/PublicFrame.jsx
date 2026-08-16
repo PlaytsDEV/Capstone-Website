@@ -2,6 +2,7 @@ import React from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import RouteTransitionBoundary from "../../shared/components/RouteTransitionBoundary";
 import { useRouteFlash } from "../../shared/hooks/useRouteFlash";
+import { PublicChatbotLauncher } from "../../features/public/components/chatbot/PublicChatbotLauncher";
 
 export function PublicFrame() {
   const location = useLocation();
@@ -14,6 +15,8 @@ export function PublicFrame() {
       >
         <Outlet />
       </RouteTransitionBoundary>
+      <PublicChatbotLauncher />
     </div>
   );
 }
+

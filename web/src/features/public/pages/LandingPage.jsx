@@ -7,6 +7,7 @@ import { RoomInventory } from "../components/RoomInventory";
 import { FacilitiesSection } from "../components/FacilitiesSection";
 import { LocationSection } from "../components/LocationSection";
 import { RulesSection } from "../components/RulesSection";
+import { FAQSection } from "../components/faq/FAQSection";
 import { StorytellingSection } from "../components/StorytellingSection";
 import { InquiryForm } from "../components/InquiryForm";
 import { CTASection } from "../components/CTASection";
@@ -140,13 +141,24 @@ function LandingPageContent() {
       </div>
 
       {/* 8. TRANSPARENCY — House rules */}
-      <ScrollReveal variant="fade">
-        <RouteErrorBoundary name="RulesSection" fallback={<SectionFallback name="Rules" />}>
-          <RulesSection />
-        </RouteErrorBoundary>
-      </ScrollReveal>
+      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+        <ScrollReveal variant="fade">
+          <RouteErrorBoundary name="RulesSection" fallback={<SectionFallback name="Rules" />}>
+            <RulesSection />
+          </RouteErrorBoundary>
+        </ScrollReveal>
+      </div>
 
-      {/* 9. ACTION — Convert the visitor */}
+      {/* 9. FAQ — Instant answers & knowledge base */}
+      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+        <ScrollReveal variant="fade-up">
+          <RouteErrorBoundary name="FAQSection" fallback={<SectionFallback name="FAQs" />}>
+            <FAQSection />
+          </RouteErrorBoundary>
+        </ScrollReveal>
+      </div>
+
+      {/* 10. ACTION — Convert the visitor */}
       <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
         <ScrollReveal variant="fade-up">
           <RouteErrorBoundary name="InquiryForm" fallback={<SectionFallback name="Inquiry Form" />}>

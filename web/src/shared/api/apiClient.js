@@ -38,6 +38,7 @@ export { financialApi } from "./financialApi.js";
 export { analyticsApi } from "./analyticsApi.js";
 export { chatApi } from "./chatApi.js";
 export { contractApi } from "./contractApi.js";
+export { chatbotApi } from "./chatbotApi.js";
 
 // =============================================================================
 // DEFAULT EXPORT (backward compatibility)
@@ -59,6 +60,7 @@ import { financialApi } from "./financialApi.js";
 import { analyticsApi } from "./analyticsApi.js";
 import { chatApi } from "./chatApi.js";
 import { contractApi } from "./contractApi.js";
+import { chatbotApi } from "./chatbotApi.js";
 import { useApiClient } from "./httpClient.js";
 
 const apiClient = {
@@ -78,6 +80,7 @@ const apiClient = {
   analyticsApi,
   chatApi,
   contractApi,
+  chatbotApi,
   useApiClient,
 };
 
