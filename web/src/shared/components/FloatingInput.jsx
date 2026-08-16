@@ -28,6 +28,8 @@ const FloatingInput = ({
  onChange,
  onBlur: externalBlur,
  onPaste,
+ onKeyDown,
+ onKeyUp,
  disabled = false,
  error = null,
  valid = false,
@@ -35,6 +37,7 @@ const FloatingInput = ({
  endAdornment,
  inputMode,
  maxLength,
+ ...rest
 }) => {
  const [focused, setFocused] = useState(false);
  const hasValue = value.length > 0;
@@ -67,10 +70,13 @@ const FloatingInput = ({
  onFocus={() => setFocused(true)}
  onBlur={handleBlur}
  onPaste={onPaste}
+ onKeyDown={onKeyDown}
+ onKeyUp={onKeyUp}
  disabled={disabled}
  autoComplete={autoComplete}
  inputMode={inputMode}
  maxLength={maxLength}
+ {...rest}
  className="floating-field__input"
  placeholder=" "
  aria-invalid={!!error}

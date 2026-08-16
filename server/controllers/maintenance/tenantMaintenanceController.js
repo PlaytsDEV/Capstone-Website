@@ -39,6 +39,7 @@ import {
 import { buildLegacyDescription } from "../../utils/maintenanceMigration.js";
 import { notify } from "../../utils/notificationService.js";
 import { resolveUploadBranch } from "../../services/attachmentUploadService.js";
+import auditLogger from "../../utils/auditLogger.js";
 
 const DUPLICATE_REQUEST_WINDOW_HOURS = 12;
 
@@ -248,6 +249,16 @@ export const createRequest = async (req, res, next) => {
 
     await request.save();
 
+    await auditLogger.logModification(
+      req,
+      "maintenance",
+      request._id,
+      null,
+      request.toObject(),
+      `Submitted Maintenance Request (${request.request_type || requestType} - ${request.urgency || urgency})`,
+      `Tenant submitted maintenance request #${request.request_id || request._id}: ${request.description?.slice(0, 80)}`,
+    );
+
     try {
       const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
       notify
@@ -393,6 +404,16 @@ export const cancelMyRequest = async (req, res, next) => {
       timestamp: request.cancelled_at,
     });
     await request.save();
+
+    await auditLogger.logModification(
+      req,
+      "maintenance",
+      request._id,
+      { status: "pending" },
+      { status: "cancelled" },
+      "Cancelled Maintenance Request",
+      `Tenant cancelled maintenance request #${request.request_id || request._id}`,
+    );
 
     sendSuccess(res, {
       request: serializeMaintenanceRequest(

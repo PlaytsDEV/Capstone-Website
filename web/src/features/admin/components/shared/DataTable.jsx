@@ -184,11 +184,12 @@ export default function DataTable({
       </div>
 
       {/* Pagination */}
-      {pagination && (total > 0 || pageCount > 1) && (
+      {pagination && (total > 0 || pageCount >= 1) && (
         <div className="mt-auto flex flex-wrap items-center justify-between gap-3 px-2 py-1 text-xs text-muted-foreground">
           <div className="flex items-center gap-3">
             <span>
-              {total} result{total !== 1 ? "s" : ""}
+              {pagination.totalLabel ||
+                `${Number(total).toLocaleString()} result${total !== 1 ? "s" : ""}`}
             </span>
             {pagination.onPageSizeChange && (
               <div className="flex items-center gap-1.5">
@@ -201,7 +202,7 @@ export default function DataTable({
                   }}
                   className="rounded border border-border bg-background px-1.5 py-0.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
                 >
-                  {[5, 10, 20, 50].map((size) => (
+                  {[5, 10, 20, 50, 100].map((size) => (
                     <option key={size} value={size}>
                       {size}
                     </option>
@@ -211,29 +212,31 @@ export default function DataTable({
             )}
           </div>
 
-          {pageCount > 1 && (
-            <div className="flex items-center gap-2">
-              <button
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 transition-colors"
-                disabled={currentPage <= 1}
-                onClick={() => pagination.onPageChange(currentPage - 1)}
-                title="Previous page"
-              >
-                <ChevronLeft size={14} />
-              </button>
-              <span className="min-w-[48px] text-center text-xs font-medium text-muted-foreground">
-                {currentPage} / {pageCount}
-              </span>
-              <button
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 transition-colors"
-                disabled={currentPage >= pageCount}
-                onClick={() => pagination.onPageChange(currentPage + 1)}
-                title="Next page"
-              >
-                <ChevronRight size={14} />
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              disabled={currentPage <= 1}
+              onClick={() => pagination.onPageChange?.(currentPage - 1)}
+              title="Previous page"
+              aria-label="Previous page"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className="min-w-[48px] text-center text-xs font-medium text-muted-foreground">
+              {currentPage} / {pageCount}
+            </span>
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              disabled={currentPage >= pageCount}
+              onClick={() => pagination.onPageChange?.(currentPage + 1)}
+              title="Next page"
+              aria-label="Next page"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -3,7 +3,7 @@ import {
   Shield, Save, Loader,
   CalendarCheck, Users, Receipt, BedDouble,
   Wrench, Megaphone, BarChart2, KeyRound,
-  CheckCircle2, Sparkles, SlidersHorizontal, AlertCircle
+  CheckCircle2, Sparkles, AlertCircle, RotateCcw
 } from "lucide-react";
 import ToggleSwitch from "../../../shared/components/ToggleSwitch";
 import "../styles/permission-editor.css";
@@ -15,19 +15,19 @@ export const PERMISSION_CATEGORIES = [
   {
     id: "operations",
     title: "Operations & Occupancy",
-    description: "Manage bookings, check-ins, and room allocations",
+    description: "Manage bookings, check-ins, room inventories, and allocations",
     icon: BedDouble,
     permissions: [
       {
         key: "manageReservations",
         label: "Manage Reservations",
-        description: "View, update, approve, and cancel bookings",
+        description: "Review booking requests, approve check-ins, and manage guest stay schedules",
         icon: CalendarCheck,
       },
       {
         key: "manageRooms",
         label: "Manage Rooms & Beds",
-        description: "Edit room inventory, beds, rates, and availability",
+        description: "Configure room inventory, bed capacities, pricing rates, and maintenance lockouts",
         icon: BedDouble,
       },
     ],
@@ -35,19 +35,19 @@ export const PERMISSION_CATEGORIES = [
   {
     id: "financials",
     title: "Financials & Billing",
-    description: "Utility bills, payments, and financial insights",
+    description: "Utility billings, payment verification, and audit reports",
     icon: Receipt,
     permissions: [
       {
         key: "manageBilling",
         label: "Manage Billing & Payments",
-        description: "Generate utility bills, verify payments, apply penalties",
+        description: "Generate monthly utility billings, verify resident payment receipts, and assess penalties",
         icon: Receipt,
       },
       {
         key: "viewReports",
         label: "View Reports & Analytics",
-        description: "Access revenue, occupancy, and financial audit logs",
+        description: "Access financial revenue analytics, occupancy breakdown reports, and transaction audit logs",
         icon: BarChart2,
       },
     ],
@@ -55,19 +55,19 @@ export const PERMISSION_CATEGORIES = [
   {
     id: "maintenance",
     title: "Communications & Maintenance",
-    description: "Tenant support requests and property-wide announcements",
+    description: "Tenant repair dispatches and broadcast announcements",
     icon: Wrench,
     permissions: [
       {
         key: "manageMaintenance",
         label: "Manage Maintenance",
-        description: "Assign, update, and resolve tenant repair requests",
+        description: "Dispatch work orders, assign technicians, and track resolution statuses",
         icon: Wrench,
       },
       {
         key: "manageAnnouncements",
         label: "Manage Announcements",
-        description: "Publish and edit news broadcasts to tenants",
+        description: "Compose, publish, and schedule broadcast notices to resident portals",
         icon: Megaphone,
       },
     ],
@@ -75,28 +75,52 @@ export const PERMISSION_CATEGORIES = [
   {
     id: "admin",
     title: "Administration & Security",
-    description: "Tenant profiles and user account management",
+    description: "Resident directory and branch staff user accounts",
     icon: Users,
     permissions: [
       {
         key: "manageTenants",
         label: "Manage Tenants",
-        description: "View/edit tenant profiles, stays, and contract status",
+        description: "Access resident directories, lease agreements, emergency contacts, and move-out records",
         icon: Users,
       },
       {
         key: "manageUsers",
-        label: "Manage Users & Staff",
-        description: "Create, edit, and manage branch staff accounts",
+        label: "Manage Staff & Users",
+        description: "Create and manage operational staff credentials within the assigned branch",
         icon: KeyRound,
       },
     ],
   },
 ];
 
-const ALL_PERMISSION_KEYS = PERMISSION_CATEGORIES.flatMap((c) =>
+export const ALL_PERMISSION_KEYS = PERMISSION_CATEGORIES.flatMap((c) =>
   c.permissions.map((p) => p.key)
 );
+
+export const PRESET_DEFINITIONS = [
+  {
+    id: "full",
+    label: "Full Access",
+    keys: ALL_PERMISSION_KEYS,
+  },
+  {
+    id: "operations",
+    label: "Operations Only",
+    keys: ["manageReservations", "manageRooms", "manageMaintenance", "manageTenants"],
+  },
+  {
+    id: "financials",
+    label: "Financials Only",
+    keys: ["manageBilling", "viewReports"],
+  },
+  {
+    id: "clear",
+    label: "Clear All",
+    keys: [],
+    danger: true,
+  },
+];
 
 /**
  * PermissionEditor — Modern toggle-based workspace for admin permissions.
@@ -125,6 +149,21 @@ export default function PermissionEditor({
 
   const activeCount = useMemo(() => {
     return isOwnerTarget ? ALL_PERMISSION_KEYS.length : localPermissions.length;
+  }, [isOwnerTarget, localPermissions]);
+
+  // Compute active preset match if any
+  const activePresetId = useMemo(() => {
+    if (isOwnerTarget) return "full";
+    const currentSet = new Set(localPermissions);
+    for (const preset of PRESET_DEFINITIONS) {
+      if (
+        preset.keys.length === currentSet.size &&
+        preset.keys.every((k) => currentSet.has(k))
+      ) {
+        return preset.id;
+      }
+    }
+    return null;
   }, [isOwnerTarget, localPermissions]);
 
   const handleToggle = (key) => {
@@ -168,7 +207,7 @@ export default function PermissionEditor({
           <div>
             <h4 className="pe-title">Access Control & Permissions</h4>
             <p className="pe-subtitle">
-              Toggle specific capabilities assigned to this account
+              Configure granular system capabilities assigned to this account
             </p>
           </div>
         </div>
@@ -180,7 +219,7 @@ export default function PermissionEditor({
         ) : (
           <div className="pe-active-indicator">
             <span className="pe-count-badge">
-              <strong>{activeCount}</strong> / {ALL_PERMISSION_KEYS.length} Enabled
+              <strong>{activeCount}</strong> / {ALL_PERMISSION_KEYS.length} Granted
             </span>
           </div>
         )}
@@ -193,41 +232,22 @@ export default function PermissionEditor({
             <Sparkles size={14} /> Quick Presets:
           </span>
           <div className="pe-preset-chips">
-            <button
-              type="button"
-              className="pe-preset-chip"
-              onClick={() => applyPreset(ALL_PERMISSION_KEYS)}
-            >
-              Full Access
-            </button>
-            <button
-              type="button"
-              className="pe-preset-chip"
-              onClick={() =>
-                applyPreset([
-                  "manageReservations",
-                  "manageRooms",
-                  "manageMaintenance",
-                  "manageTenants",
-                ])
-              }
-            >
-              Operations Only
-            </button>
-            <button
-              type="button"
-              className="pe-preset-chip"
-              onClick={() => applyPreset(["manageBilling", "viewReports"])}
-            >
-              Financials Only
-            </button>
-            <button
-              type="button"
-              className="pe-preset-chip pe-preset-chip-danger"
-              onClick={() => applyPreset([])}
-            >
-              Clear All
-            </button>
+            {PRESET_DEFINITIONS.map((preset) => {
+              const isSelected = activePresetId === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className={`pe-preset-chip ${
+                    preset.danger ? "pe-preset-chip-danger" : ""
+                  } ${isSelected ? "pe-preset-chip--active" : ""}`}
+                  onClick={() => applyPreset(preset.keys)}
+                >
+                  {preset.label}
+                  {isSelected && <span className="pe-preset-dot" />}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -281,7 +301,7 @@ export default function PermissionEditor({
                               isActive ? "pill-active" : "pill-inactive"
                             }`}
                           >
-                            {isActive ? "ON" : "OFF"}
+                            {isActive ? "Granted" : "Restricted"}
                           </span>
                         </div>
                         <span className="pe-item-desc">{perm.description}</span>
@@ -311,20 +331,21 @@ export default function PermissionEditor({
           {hasChanges ? (
             <div className="pe-dirty-alert">
               <AlertCircle size={15} />
-              <span>Unsaved permission changes</span>
+              <span>Pending unsaved permission changes</span>
             </div>
           ) : (
-            <span className="pe-clean-text">All permissions up to date</span>
+            <span className="pe-clean-text">All account permissions are synchronized</span>
           )}
 
           <div className="pe-footer-actions">
             {hasChanges && (
               <button
                 type="button"
-                className="pe-cancel-btn"
+                className="pe-cancel-btn flex items-center gap-1.5"
                 onClick={handleReset}
                 disabled={saving}
               >
+                <RotateCcw size={13} />
                 Discard
               </button>
             )}
@@ -337,7 +358,7 @@ export default function PermissionEditor({
               {saving ? (
                 <>
                   <Loader size={14} className="pe-spinner" />
-                  Saving…
+                  Saving Changes…
                 </>
               ) : (
                 <>

@@ -2,6 +2,7 @@
  * Inquiry API - Domain-specific inquiry operations
  */
 
+import { auth } from "../../firebase/config";
 import { authFetch, publicFetch } from "./httpClient.js";
 
 export const inquiryApi = {
@@ -25,13 +26,24 @@ export const inquiryApi = {
   getStats: () => authFetch("/inquiries/stats"),
 
   /**
-   * Create new inquiry (public - no auth required)
+   * Create new inquiry (supports both authenticated users and public guests)
    */
-  create: (inquiryData) =>
-    publicFetch("/inquiries", {
+  create: async (inquiryData) => {
+    try {
+      if (auth.currentUser) {
+        return await authFetch("/inquiries", {
+          method: "POST",
+          body: JSON.stringify(inquiryData),
+        });
+      }
+    } catch (_err) {
+      // Fall through to public fetch if auth header/session fails
+    }
+    return publicFetch("/inquiries", {
       method: "POST",
       body: JSON.stringify(inquiryData),
-    }),
+    });
+  },
 
   /**
    * Update inquiry (admin only)

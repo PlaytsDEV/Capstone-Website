@@ -500,8 +500,6 @@ export const streamSignedDocument = async (req, res) => {
     const absolute = resolveSignedContractPath(document.storageKey);
     const stat = await fsPromises.stat(absolute).catch(() => null);
     if (!stat?.isFile()) return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
-    await auditLogger.logModification(req, "contract", contract._id, null, null,
-      `${req.query?.download === "true" ? "Downloaded" : "Previewed"} signed Contract ${contract.contractNumber} version ${document.version}, hash ${document.fileHash}`);
     res.setHeader("Content-Type", document.mimeType);
     res.setHeader("Content-Length", stat.size);
     res.setHeader("Content-Disposition", `${req.query?.download === "true" ? "attachment" : "inline"}; filename="${document.fileName.replaceAll('"', "")}"`);
@@ -607,8 +605,6 @@ export const streamNotarizedDocument = async (req, res) => {
     const absolute = resolveNotarizedContractPath(document.storageKey);
     const stat = await fsPromises.stat(absolute).catch(() => null);
     if (!stat?.isFile()) return res.status(404).json({ error: "Notarized Contract file not found.", code: "NOTARIZED_DOCUMENT_NOT_FOUND" });
-    await auditLogger.logModification(req, "contract", contract._id, null, null,
-      `${req.query?.download === "true" ? "Downloaded" : "Previewed"} notarized Contract ${contract.contractNumber} version ${document.version}, hash ${document.fileHash}`);
     res.setHeader("Content-Type", document.mimeType);
     res.setHeader("Content-Length", stat.size);
     res.setHeader("Content-Disposition", `${req.query?.download === "true" ? "attachment" : "inline"}; filename="${document.fileName.replaceAll('"', "")}"`);
@@ -730,10 +726,6 @@ export const publishContract = async (req, res) => {
 const streamFinal = async ({ req, res, contract, channel }) => {
   const resolved = await resolvePublishedFinalDocument(contract);
   const download = req.query?.download === "1" || req.query?.download === "true";
-  await publicationAudit(
-    req, contract.toObject(), contract,
-    `${download ? "Downloaded" : "Previewed"} final Contract`, channel,
-  );
   res.setHeader("Content-Type", resolved.finalDocument.mimeType);
   res.setHeader("Content-Length", resolved.finalDocument.fileSize);
   res.setHeader("Content-Disposition",
@@ -1369,8 +1361,6 @@ export const streamMySignedContract = async (req, res) => {
     if (!stat?.isFile()) {
       return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
     }
-    await auditLogger.logModification(req, "contract", contract._id, null, null,
-      `Tenant ${req.query?.download === "true" || req.query?.download === "1" ? "downloaded" : "previewed"} signed Contract ${contract.contractNumber} version ${document.version}`);
     res.setHeader("Content-Type", document.mimeType || "application/pdf");
     res.setHeader("Content-Length", stat.size);
     const isDownload = req.query?.download === "true" || req.query?.download === "1";

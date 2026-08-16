@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { auditApi } from "../../api/apiClient";
 import { queryKeys } from "../../lib/queryKeys";
 
@@ -7,6 +12,7 @@ export function useAuditLogs(params, options = {}) {
   return useQuery({
     queryKey: queryKeys.auditLogs.all(params),
     queryFn: () => auditApi.getLogs(params),
+    placeholderData: keepPreviousData,
     ...options,
   });
 }
@@ -16,6 +22,7 @@ export function usePaginatedAuditLogs(params, options = {}) {
   return useQuery({
     queryKey: queryKeys.auditLogs.paged(params),
     queryFn: () => auditApi.getLogsPage(params),
+    placeholderData: keepPreviousData,
     ...options,
   });
 }
@@ -25,6 +32,7 @@ export function useAuditStats(branch, options = {}) {
   return useQuery({
     queryKey: ["auditLogs", "stats", branch],
     queryFn: () => auditApi.getStats(branch),
+    placeholderData: keepPreviousData,
     ...options,
   });
 }
@@ -34,6 +42,7 @@ export function useFailedLoginSignals(hours = 24, options = {}) {
   return useQuery({
     queryKey: queryKeys.auditLogs.failedLogins(hours),
     queryFn: () => auditApi.getFailedLogins(hours),
+    placeholderData: keepPreviousData,
     ...options,
   });
 }
@@ -41,7 +50,12 @@ export function useFailedLoginSignals(hours = 24, options = {}) {
 /** Export audit logs */
 export function useExportAuditLogs() {
   return useMutation({
-    mutationFn: (filters) => auditApi.export(filters),
+    mutationFn: (variables) => {
+      if (variables && typeof variables === "object" && ("filters" in variables || "format" in variables)) {
+        return auditApi.export(variables.filters || {}, variables.format || "json");
+      }
+      return auditApi.export(variables || {}, "json");
+    },
   });
 }
 

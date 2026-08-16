@@ -17,13 +17,29 @@ const WHOLE_NUMBER_FIELDS = new Set([
   "stalePaymentPendingHours",
   "archiveCancelledAfterDays",
   "longTermLeaseMinMonths",
+  "checkoutLockDurationMinutes",
+  "renewalNoticeRequiredDays",
+  "depositRefundProcessingDays",
+]);
+
+const PERCENTAGE_FIELDS = new Set([
+  "maxPenaltyCapPercent",
+  "defaultLongTermDiscountPercent",
+  "quadrupleDiscountPercent",
+  "doubleDiscountPercent",
+  "privateDiscountPercent",
 ]);
 
 const FIELD_ERROR_LABELS = Object.freeze({
   reservationFeeAmount: "Reservation fee amount",
   penaltyRatePerDay: "Penalty rate per day",
+  maxPenaltyCapPercent: "Maximum late penalty cap percentage",
   defaultElectricityRatePerKwh: "Default electricity rate",
   defaultWaterRatePerUnit: "Default water rate",
+  checkoutLockDurationMinutes: "Checkout lock duration in minutes",
+  renewalNoticeRequiredDays: "Renewal notice required days",
+  rfidReplacementCharge: "RFID replacement charge",
+  depositRefundProcessingDays: "Deposit refund processing days",
   noShowGraceDays: "No-show grace days",
   stalePendingHours: "Stale pending hours",
   staleVisitPendingHours: "Stale visit pending hours",
@@ -46,8 +62,13 @@ const buildSettingsPayload = (settings) => serializeBusinessSettings(settings);
 const buildComparablePayload = (payload) => ({
   reservationFeeAmount: payload.reservationFeeAmount,
   penaltyRatePerDay: payload.penaltyRatePerDay,
+  maxPenaltyCapPercent: payload.maxPenaltyCapPercent,
   defaultElectricityRatePerKwh: payload.defaultElectricityRatePerKwh,
   defaultWaterRatePerUnit: payload.defaultWaterRatePerUnit,
+  checkoutLockDurationMinutes: payload.checkoutLockDurationMinutes,
+  renewalNoticeRequiredDays: payload.renewalNoticeRequiredDays,
+  rfidReplacementCharge: payload.rfidReplacementCharge,
+  depositRefundProcessingDays: payload.depositRefundProcessingDays,
   noShowGraceDays: payload.noShowGraceDays,
   stalePendingHours: payload.stalePendingHours,
   staleVisitPendingHours: payload.staleVisitPendingHours,
@@ -86,19 +107,64 @@ const buildChangedBy = (req) => ({
   role: resolveRequestRole(req),
 });
 
+const FIELD_LIMITS = Object.freeze({
+  reservationFeeAmount: { min: 0, max: 100000 },
+  penaltyRatePerDay: { min: 0, max: 10000 },
+  maxPenaltyCapPercent: { min: 0, max: 100 },
+  defaultElectricityRatePerKwh: { min: 0, max: 1000 },
+  defaultWaterRatePerUnit: { min: 0, max: 1000 },
+  rfidReplacementCharge: { min: 0, max: 10000 },
+  depositRefundProcessingDays: { min: 1, max: 180 },
+  longTermLeaseMinMonths: { min: 1, max: 36 },
+  defaultLongTermDiscountPercent: { min: 0, max: 100 },
+  quadrupleDiscountPercent: { min: 0, max: 100 },
+  doubleDiscountPercent: { min: 0, max: 100 },
+  privateDiscountPercent: { min: 0, max: 100 },
+  stalePaymentPendingHours: { min: 1, max: 720 },
+  noShowGraceDays: { min: 0, max: 90 },
+  checkoutLockDurationMinutes: { min: 5, max: 1440 },
+  archiveCancelledAfterDays: { min: 1, max: 365 },
+  renewalNoticeRequiredDays: { min: 1, max: 180 },
+  stalePendingHours: { min: 1, max: 720 },
+  staleVisitPendingHours: { min: 1, max: 720 },
+  visitPendingWarnDays: { min: 1, max: 90 },
+  staleVisitApprovedHours: { min: 1, max: 720 },
+  applianceFeeAmountPerUnit: { min: 0, max: 50000 },
+});
+
 const normalizeNumberField = (value, fieldKey) => {
   const parsed = Number(value);
 
   if (!Number.isFinite(parsed) || parsed < 0) {
     return {
-      error: `${FIELD_ERROR_LABELS[fieldKey]} must be a non-negative number`,
+      error: `${FIELD_ERROR_LABELS[fieldKey] || fieldKey} must be a non-negative number`,
+    };
+  }
+
+  if (PERCENTAGE_FIELDS.has(fieldKey) && parsed > 100) {
+    return {
+      error: `${FIELD_ERROR_LABELS[fieldKey] || fieldKey} must be between 0 and 100`,
     };
   }
 
   if (WHOLE_NUMBER_FIELDS.has(fieldKey) && !Number.isInteger(parsed)) {
     return {
-      error: `${FIELD_ERROR_LABELS[fieldKey]} must be a non-negative whole number`,
+      error: `${FIELD_ERROR_LABELS[fieldKey] || fieldKey} must be a non-negative whole number`,
     };
+  }
+
+  const limits = FIELD_LIMITS[fieldKey];
+  if (limits) {
+    if (parsed < limits.min) {
+      return {
+        error: `${FIELD_ERROR_LABELS[fieldKey] || fieldKey} must be at least ${limits.min}`,
+      };
+    }
+    if (parsed > limits.max) {
+      return {
+        error: `${FIELD_ERROR_LABELS[fieldKey] || fieldKey} cannot exceed ${limits.max}`,
+      };
+    }
   }
 
   return { value: parsed };

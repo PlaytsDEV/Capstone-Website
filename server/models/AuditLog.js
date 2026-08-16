@@ -132,6 +132,8 @@ const auditLogSchema = new mongoose.Schema(
         "maintenance",
         "announcement",
         "system",
+        "violation",
+        "notice",
         "",
       ],
     },
@@ -233,10 +235,14 @@ auditLogSchema.statics.getLogs = async function (filters = {}, options = {}) {
   }
 
   if (search) {
+    const escapedSearch = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     query.$or = [
-      { action: { $regex: search, $options: "i" } },
-      { user: { $regex: search, $options: "i" } },
-      { details: { $regex: search, $options: "i" } },
+      { action: { $regex: escapedSearch, $options: "i" } },
+      { user: { $regex: escapedSearch, $options: "i" } },
+      { details: { $regex: escapedSearch, $options: "i" } },
+      { ip: { $regex: escapedSearch, $options: "i" } },
+      { logId: { $regex: escapedSearch, $options: "i" } },
+      { entityId: { $regex: escapedSearch, $options: "i" } },
     ];
   }
 
@@ -352,10 +358,42 @@ auditLogSchema.statics.getFailedLogins = async function (hours = 24) {
       targetedUsers: [...new Set(attempts.map((a) => a.user))],
     }));
 
+  // Group by target user / account to analyze affected identities
+  const byUser = failedLogins.reduce((acc, log) => {
+    const user = log.user || "unknown";
+    if (!acc[user]) {
+      acc[user] = [];
+    }
+    acc[user].push(log);
+    return acc;
+  }, {});
+
+  const targetedAccounts = Object.entries(byUser)
+    .map(([user, attempts]) => ({
+      user,
+      attemptCount: attempts.length,
+      lastAttempt: attempts[0].timestamp,
+      sourceIps: [...new Set(attempts.map((a) => a.ip).filter(Boolean))],
+      latestFailureReason: attempts[0].details || "Authentication failed",
+      userRole: attempts.find((a) => a.userRole)?.userRole || null,
+    }))
+    .sort(
+      (a, b) =>
+        b.attemptCount - a.attemptCount ||
+        new Date(b.lastAttempt) - new Date(a.lastAttempt),
+    );
+
+  const uniqueTargetedAccounts = [
+    ...new Set(failedLogins.map((a) => a.user).filter(Boolean)),
+  ];
+
   return {
     totalFailedLogins: failedLogins.length,
     suspiciousIPs,
-    recentAttempts: failedLogins.slice(0, 20),
+    targetedAccounts,
+    recentAttempts: failedLogins,
+    uniqueTargetedAccountsCount: uniqueTargetedAccounts.length,
+    uniqueTargetedAccounts,
   };
 };
 

@@ -35,7 +35,7 @@ import {
   Upload,
 } from "lucide-react";
 import { backupApi } from "../../../shared/api/backupApi";
-import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
+import { AdminSystemBackupSkeleton } from "../components/AdminContentSkeletons";
 import "../styles/admin-backup.css";
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
@@ -288,7 +288,7 @@ function TypeBadge({ type }) {
 
 /* ── Main Page ────────────────────────────────────────────────────────────── */
 
-export default function SystemBackupPage() {
+export default function SystemBackupPage({ isEmbedded = false }) {
   /* State */
   const [config, setConfig] = useState(null);
   const [configLoading, setConfigLoading] = useState(true);
@@ -480,21 +480,23 @@ export default function SystemBackupPage() {
   const isAnyOperationRunning = isBackupRunning || restoreLoading || uploadLoading;
 
   if (configLoading && historyLoading && records.length === 0) {
-    return <AdminTablePageSkeleton />;
+    return <AdminSystemBackupSkeleton />;
   }
 
   return (
-    <div className="backup-page">
+    <div className={`backup-page ${isEmbedded ? "backup-page--embedded" : ""}`}>
       {/* Header */}
-      <div className="backup-page__header">
-        <h1 className="backup-page__title">
-          <Database size={24} className="backup-page__title-icon" />
-          System Backup
-        </h1>
-        <p className="backup-page__subtitle">
-          Configure automatic backups or create manual snapshots of the entire database.
-        </p>
-      </div>
+      {!isEmbedded && (
+        <div className="backup-page__header">
+          <h1 className="backup-page__title">
+            <Database size={24} className="backup-page__title-icon" />
+            System Backup
+          </h1>
+          <p className="backup-page__subtitle">
+            Configure automatic backups or create manual snapshots of the entire database.
+          </p>
+        </div>
+      )}
 
       {/* Configuration Card */}
       <div className="backup-config-card">

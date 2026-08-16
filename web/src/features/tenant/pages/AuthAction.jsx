@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { applyActionCode, checkActionCode } from "firebase/auth";
-import { AlertCircle, CheckCircle, Clock, Loader2, MailCheck } from "lucide-react";
+import { AlertCircle, CheckCircle, Clock, ExternalLink, Info, Loader2, MailCheck } from "lucide-react";
 import { auth } from "../../../firebase/config";
 import { authApi } from "../../../shared/api/authApi";
 import { normalizeVerificationErrorCode } from "../../../shared/api/apiError";
@@ -120,8 +120,13 @@ function AuthAction() {
     const oobCode = searchParams.get("oobCode");
     const apiKey = searchParams.get("apiKey");
     const exchangeToken = searchParams.get("exchange") || "";
-    const displayState = searchParams.get("state");
-    const processKey = `${mode || ""}:${oobCode || ""}:${displayState || ""}:${exchangeToken}`;
+    const rawDisplayState = (searchParams.get("state") || "").trim();
+    const normalizedDisplayState = rawDisplayState.replace(/_/g, "-").toLowerCase();
+    const isSendFailedState = ["send-failed", "sendfailed", "failed", "error"].includes(normalizedDisplayState);
+    const isSentState = ["sent", "resent", "resend", "success"].includes(normalizedDisplayState);
+
+    const displayState = rawDisplayState;
+    const processKey = `${mode || ""}:${oobCode || ""}:${normalizedDisplayState}:${exchangeToken}`;
     if (processedRef.current === processKey) return;
     processedRef.current = processKey;
 
@@ -135,17 +140,23 @@ function AuthAction() {
           setVerifiedIdentityMatchesSession(status.identityMatch === "match");
           setState(EMAIL_VERIFICATION_STATES.ALREADY_VERIFIED_ACCOUNT);
         } else {
-          setState(displayState === "send-failed"
+          setState(isSendFailedState
             ? EMAIL_VERIFICATION_STATES.VERIFICATION_EMAIL_SEND_FAILED
             : EMAIL_VERIFICATION_STATES.VERIFICATION_EMAIL_RESENT);
         }
       } catch (error) {
         applyServerDetails(error.response?.data);
-        setState(getErrorState(error));
+        if (isSendFailedState) {
+          setState(EMAIL_VERIFICATION_STATES.VERIFICATION_EMAIL_SEND_FAILED);
+        } else if (isSentState) {
+          setState(EMAIL_VERIFICATION_STATES.VERIFICATION_EMAIL_RESENT);
+        } else {
+          setState(getErrorState(error));
+        }
       }
     };
 
-    if (!mode && ["sent", "send-failed"].includes(displayState)) {
+    if (!mode && (isSentState || isSendFailedState)) {
       inspectSession();
       return;
     }
@@ -335,7 +346,45 @@ function AuthAction() {
 
   return (
     <VerificationLayout icon={icon} title={copy.title} message={copy.message} tone={copy.tone}>
-      {details.maskedEmail && <p className="text-sm text-gray-500 mb-5">Email: {details.maskedEmail}</p>}
+      {details.maskedEmail && <p className="text-sm text-gray-500 mb-4">Email: {details.maskedEmail}</p>}
+
+      {state === EMAIL_VERIFICATION_STATES.VERIFICATION_EMAIL_RESENT && (
+        <>
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-600 text-left mb-4 flex items-start gap-2.5">
+            <Info size={16} className="text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold text-slate-800">Can't find the email?</span> Please check your <strong>Spam</strong>, <strong>Junk</strong>, or <strong>Promotions</strong> folder. Verification emails usually arrive within 30–60 seconds.
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 mb-5">
+            <a
+              href="https://mail.google.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="py-2 px-2 border border-slate-200 hover:border-slate-400 bg-white rounded-lg text-xs font-medium text-slate-700 text-center transition flex items-center justify-center gap-1"
+            >
+              Gmail <ExternalLink size={11} className="text-slate-400" />
+            </a>
+            <a
+              href="https://outlook.live.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="py-2 px-2 border border-slate-200 hover:border-slate-400 bg-white rounded-lg text-xs font-medium text-slate-700 text-center transition flex items-center justify-center gap-1"
+            >
+              Outlook <ExternalLink size={11} className="text-slate-400" />
+            </a>
+            <a
+              href="https://mail.yahoo.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="py-2 px-2 border border-slate-200 hover:border-slate-400 bg-white rounded-lg text-xs font-medium text-slate-700 text-center transition flex items-center justify-center gap-1"
+            >
+              Yahoo <ExternalLink size={11} className="text-slate-400" />
+            </a>
+          </div>
+        </>
+      )}
 
       {canResend && (
         <button type="button" onClick={handleResend} disabled={resending || cooldown > 0} className="block w-full py-4 rounded-full text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed" style={{ backgroundColor: "#D4AF37" }}>

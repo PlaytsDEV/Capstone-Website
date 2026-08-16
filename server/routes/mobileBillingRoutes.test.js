@@ -65,11 +65,19 @@ describe("mobile Billing route safety", () => {
         "GET /billing/history",
         "GET /billing/history/paid",
         "GET /billing/:billingId",
+        "GET /billing/:billingId/breakdown/:utilityType",
         "GET /billing/:billingId/pdf",
         "GET /billing/:billingId/receipt",
         "POST /billing/:billingId/payment-proof",
       ]),
     );
+  });
+
+  test("the breakdown route is scoped by tenant and delegates to buildTenantUtilityBreakdown", () => {
+    const breakdownHandler = routes.split('router.get("/billing/:billingId/breakdown/:utilityType"')[1]?.split("router.")[0] || "";
+    expect(breakdownHandler.length).toBeGreaterThan(0);
+    expect(breakdownHandler).toMatch(/buildTenantUtilityBreakdown/);
+    expect(breakdownHandler).toMatch(/req\.mobileTenant\._id/);
   });
 
   // Phase: distinct Payment Receipt endpoint, separate from the Billing

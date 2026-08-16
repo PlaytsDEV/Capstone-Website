@@ -777,7 +777,6 @@ export default function RoomDetailsModal({
             </button>
           </div>
         </div>
-      </div>
-    </div>
   );
 }
+

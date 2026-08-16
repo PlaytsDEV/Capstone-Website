@@ -193,9 +193,64 @@ export const createAuditLog = async (req, res, next) => {
 export const exportAuditLogs = async (req, res, next) => {
   try {
     const filters = normalizeAuditFilters(req, req.body.filters || {});
+    const format = (req.query?.format || req.body?.format || "json").toLowerCase();
     const result = await AuditLog.getLogs(filters, { limit: 10000, offset: 0 });
 
-    const filename = `audit-logs-${new Date().toISOString().split("T")[0]}.json`;
+    const dateStr = new Date().toISOString().split("T")[0];
+
+    if (format === "csv") {
+      const filename = `audit-logs-${dateStr}.csv`;
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+      const escapeCsv = (val) => {
+        if (val === null || val === undefined) return "";
+        const str = typeof val === "object" ? JSON.stringify(val) : String(val);
+        if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+
+      const headers = [
+        "Log ID",
+        "Timestamp",
+        "Type",
+        "Action / Event",
+        "Severity",
+        "User",
+        "Role",
+        "Branch",
+        "IP Address",
+        "Entity Type",
+        "Entity ID",
+        "Details",
+      ];
+
+      const rows = result.logs.map((log) => [
+        escapeCsv(log.logId || ""),
+        escapeCsv(log.timestamp ? new Date(log.timestamp).toISOString() : ""),
+        escapeCsv(log.type || ""),
+        escapeCsv(log.action || ""),
+        escapeCsv(log.severity || ""),
+        escapeCsv(log.user || ""),
+        escapeCsv(log.userRole || ""),
+        escapeCsv(log.branch || "general"),
+        escapeCsv(log.ip || ""),
+        escapeCsv(log.entityType || ""),
+        escapeCsv(log.entityId || ""),
+        escapeCsv(log.details || ""),
+      ]);
+
+      const csvContent = [
+        headers.join(","),
+        ...rows.map((row) => row.join(",")),
+      ].join("\r\n");
+
+      return res.status(200).send(csvContent);
+    }
+
+    const filename = `audit-logs-${dateStr}.json`;
 
     res.setHeader("Content-Type", "application/json");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

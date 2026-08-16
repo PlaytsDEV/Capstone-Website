@@ -90,6 +90,14 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
   CURRENT_RESIDENT_STATUS_QUERY: ["reserved", "moveIn"],
   hasReservationStatus: jest.fn(),
 }));
+await jest.unstable_mockModule("../utils/auditLogger.js", () => ({
+  default: {
+    log: jest.fn().mockResolvedValue(undefined),
+    logModification: jest.fn().mockResolvedValue(undefined),
+    logDeletion: jest.fn().mockResolvedValue(undefined),
+    logError: jest.fn().mockResolvedValue(undefined),
+  },
+}));
 
 const {
   getAdminAll,

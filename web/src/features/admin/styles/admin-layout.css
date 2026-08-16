@@ -36,11 +36,12 @@ html:has(.admin-layout) body {
   margin-left: 256px;
   display: flex;
   flex-direction: column;
-  transition: margin-left 0.3s var(--ease-out);
+  will-change: margin-left;
+  transition: margin-left 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .admin-layout--collapsed .admin-layout-main {
-  margin-left: 64px;
+  margin-left: 72px;
 }
 
 /* ── Top bar ──────────────────────────────────────────────────────────────── */
@@ -56,7 +57,7 @@ html:has(.admin-layout) body {
   border-bottom: 1px solid var(--border-light);
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: 30;
 }
 
 .admin-topbar-left {

@@ -1,635 +1,1355 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
- AlertTriangle,
- Archive,
- Calendar,
- Clock3,
- Droplets,
- Info,
- Percent,
- Save,
- Settings2,
- UserCog,
- Zap,
+  AlertTriangle,
+  Archive,
+  Building2,
+  Calendar,
+  Clock,
+  Clock3,
+  CreditCard,
+  Database,
+  Droplets,
+  KeyRound,
+  Loader2,
+  Lock,
+  Percent,
+  RotateCcw,
+  Save,
+  Settings2,
+  ShieldAlert,
+  ShieldCheck,
+  Zap,
 } from "lucide-react";
 import "../styles/superadmin-dashboard.css";
 import "../styles/superadmin-settings.css";
 import { settingsApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
-import {
- CardSkeleton,
- StatGridSkeleton,
-} from "../../../shared/components/LoadingSkeletons";
-import { AdminFormPageSkeleton } from "../../admin/components/AdminContentSkeletons";
+import { AdminPoliciesSettingsSkeleton } from "../../admin/components/AdminContentSkeletons";
+import SystemBackupPage from "../../admin/pages/SystemBackupPage";
+import AdminTabs from "../../../shared/components/AdminTabs";
 
-const BRANCH_LABELS = {
- "gil-puyat": "Gil Puyat",
- guadalupe: "Guadalupe",
+const BRANCH_META = {
+  "gil-puyat": {
+    label: "Gil Puyat Branch",
+    tag: "gil-puyat",
+  },
+  guadalupe: {
+    label: "Guadalupe Branch",
+    tag: "guadalupe",
+  },
 };
 
 const DEFAULT_BRANCH_OVERRIDES = {
- "gil-puyat": {
- isApplianceFeeEnabled: false,
- applianceFeeAmountPerUnit: 0,
- changedBy: null,
- changedAt: null,
- },
- guadalupe: {
- isApplianceFeeEnabled: true,
- applianceFeeAmountPerUnit: 200,
- changedBy: null,
- changedAt: null,
- },
+  "gil-puyat": {
+    isApplianceFeeEnabled: false,
+    applianceFeeAmountPerUnit: 0,
+    changedBy: null,
+    changedAt: null,
+  },
+  guadalupe: {
+    isApplianceFeeEnabled: true,
+    applianceFeeAmountPerUnit: 200,
+    changedBy: null,
+    changedAt: null,
+  },
 };
 
 const DEFAULT_FORM = {
+  // Financial & Billing Rules
   reservationFeeAmount: 2000,
   penaltyRatePerDay: 50,
+  maxPenaltyCapPercent: 100,
   defaultElectricityRatePerKwh: 16,
   defaultWaterRatePerUnit: 0,
+  rfidReplacementCharge: 1000,
+  depositRefundProcessingDays: 30,
+
+  // Lease Pricing & Room Discounts
+  isDiscountEnabled: true,
   longTermLeaseMinMonths: 6,
   defaultLongTermDiscountPercent: 10,
-  isDiscountEnabled: true,
   quadrupleDiscountPercent: 10,
   doubleDiscountPercent: 20,
   privateDiscountPercent: 10,
+
+  // Reservation Lifecycle & Automation
+  stalePaymentPendingHours: 48,
   noShowGraceDays: 7,
+  checkoutLockDurationMinutes: 30,
+  archiveCancelledAfterDays: 7,
+
+  // Technical scheduler tolerances (preserved for backend compatibility)
   stalePendingHours: 2,
   staleVisitPendingHours: 336,
   visitPendingWarnDays: 12,
   staleVisitApprovedHours: 48,
-  stalePaymentPendingHours: 48,
-  archiveCancelledAfterDays: 7,
+  renewalNoticeRequiredDays: 30,
+
   branchOverrides: DEFAULT_BRANCH_OVERRIDES,
   changedBy: null,
   changedAt: null,
   updatedAt: null,
 };
 
-const BILLING_FIELDS = [
+const WHOLE_NUMBER_KEYS = new Set([
+  "noShowGraceDays",
+  "stalePaymentPendingHours",
+  "checkoutLockDurationMinutes",
+  "archiveCancelledAfterDays",
+  "longTermLeaseMinMonths",
+  "depositRefundProcessingDays",
+  "stalePendingHours",
+  "staleVisitPendingHours",
+  "visitPendingWarnDays",
+  "staleVisitApprovedHours",
+  "renewalNoticeRequiredDays",
+]);
+
+const PERCENTAGE_KEYS = new Set([
+  "maxPenaltyCapPercent",
+  "defaultLongTermDiscountPercent",
+  "quadrupleDiscountPercent",
+  "doubleDiscountPercent",
+  "privateDiscountPercent",
+]);
+
+const FIELD_LIMITS = Object.freeze({
+  reservationFeeAmount: { min: 0, max: 50000, maxDigits: 6, unit: "PHP", label: "Reservation Deposit" },
+  penaltyRatePerDay: { min: 0, max: 5000, maxDigits: 5, unit: "PHP/day", label: "Daily Late Penalty" },
+  maxPenaltyCapPercent: { min: 0, max: 100, maxDigits: 3, unit: "%", label: "Max Penalty Cap" },
+  defaultElectricityRatePerKwh: { min: 0, max: 500, maxDigits: 6, unit: "PHP/kWh", label: "Default Electricity Rate" },
+  defaultWaterRatePerUnit: { min: 0, max: 500, maxDigits: 6, unit: "PHP/unit", label: "Default Water Rate" },
+  rfidReplacementCharge: { min: 0, max: 5000, maxDigits: 5, unit: "PHP", label: "RFID Replacement Charge" },
+  depositRefundProcessingDays: { min: 1, max: 90, maxDigits: 2, unit: "days", label: "Deposit Refund Target Window" },
+  longTermLeaseMinMonths: { min: 1, max: 24, maxDigits: 2, unit: "months", label: "Long-Term Lease Threshold" },
+  defaultLongTermDiscountPercent: { min: 0, max: 100, maxDigits: 3, unit: "%", label: "Default Long-Term Discount" },
+  quadrupleDiscountPercent: { min: 0, max: 100, maxDigits: 3, unit: "%", label: "Quadruple Room Discount" },
+  doubleDiscountPercent: { min: 0, max: 100, maxDigits: 3, unit: "%", label: "Double Sharing Discount" },
+  privateDiscountPercent: { min: 0, max: 100, maxDigits: 3, unit: "%", label: "Private Room Discount" },
+  stalePaymentPendingHours: { min: 1, max: 720, maxDigits: 3, unit: "hours", label: "Payment & Hold Window" },
+  noShowGraceDays: { min: 0, max: 60, maxDigits: 2, unit: "days", label: "No-Show Grace Period" },
+  checkoutLockDurationMinutes: { min: 5, max: 120, maxDigits: 3, unit: "mins", label: "Bed Checkout Lock Window" },
+  archiveCancelledAfterDays: { min: 1, max: 180, maxDigits: 3, unit: "days", label: "Cancelled Records Archival" },
+  renewalNoticeRequiredDays: { min: 7, max: 60, maxDigits: 2, unit: "days", label: "Renewal Notice Window" },
+  stalePendingHours: { min: 1, max: 720, maxDigits: 3, unit: "hours", label: "Stale Pending Hours" },
+  staleVisitPendingHours: { min: 1, max: 720, maxDigits: 3, unit: "hours", label: "Stale Visit Pending Hours" },
+  visitPendingWarnDays: { min: 1, max: 90, maxDigits: 2, unit: "days", label: "Visit Pending Warn Days" },
+  staleVisitApprovedHours: { min: 1, max: 720, maxDigits: 3, unit: "hours", label: "Stale Visit Approved Hours" },
+  applianceFeeAmountPerUnit: { min: 0, max: 10000, maxDigits: 5, unit: "PHP", label: "Appliance Surcharge Fee" },
+});
+
+// ── 1. Financial & Billing Subgroups ──────────────────────────────────────────
+const BILLING_SUBGROUPS = [
   {
-    key: "reservationFeeAmount",
-    label: "Reservation Fee",
-    description: "Deposit required to confirm a reservation before move-in.",
-    icon: Settings2,
-    step: "100",
-    formatValue: (value) => `PHP ${Number(value || 0).toLocaleString("en-PH")}`,
+    id: "deposits",
+    title: "Security Deposits & Clearance Fees",
+    description: "Upfront deposit baselines and itemized turnover charges assessed at move-in and check-out.",
+    icon: CreditCard,
+    gridClass: "sa-settings-form-grid--3col",
+    fields: [
+      {
+        key: "reservationFeeAmount",
+        label: "Reservation Deposit",
+        description: "Upfront deposit required to hold and confirm an applicant bed slot.",
+        icon: CreditCard,
+        prefix: "₱",
+        step: "100",
+        min: 0,
+        max: 50000,
+        boundsHint: "Range: ₱0 – ₱50,000",
+        formatValue: (v) => `PHP ${Number(v || 0).toLocaleString("en-PH")}`,
+      },
+      {
+        key: "rfidReplacementCharge",
+        label: "RFID Key Replacement Fee",
+        description: "Standard charge assessed if an access RFID card is lost or unreturned.",
+        icon: KeyRound,
+        prefix: "₱",
+        step: "100",
+        min: 0,
+        max: 5000,
+        boundsHint: "Range: ₱0 – ₱5,000",
+        formatValue: (v) => `PHP ${Number(v || 0).toLocaleString("en-PH")}`,
+      },
+      {
+        key: "depositRefundProcessingDays",
+        label: "Deposit Refund Window",
+        description: "Committed business days to process outgoing tenant deposit returns.",
+        icon: Clock,
+        suffix: "Days",
+        step: "1",
+        min: 1,
+        max: 90,
+        boundsHint: "Range: 1 – 90 days",
+        formatValue: (v) => `${Number(v || 0)} business days`,
+      },
+    ],
   },
   {
-    key: "penaltyRatePerDay",
-    label: "Late Payment Penalty",
-    description: "Daily penalty added to overdue balances.",
-    icon: AlertTriangle,
-    step: "1",
-    formatValue: (value) =>
-      `PHP ${Number(value || 0).toLocaleString("en-PH")} / day`,
-  },
-  {
-    key: "defaultElectricityRatePerKwh",
-    label: "Default Electricity Rate",
-    description: "Prefill used when admins open a new electricity billing period.",
+    id: "tariffs",
+    title: "Utility Tariffs & Overdue Penalties",
+    description: "Default consumption rates applied per unit and daily compounded late surcharge ceilings.",
     icon: Zap,
-    step: "0.01",
-    formatValue: (value) =>
-      `PHP ${Number(value || 0).toLocaleString("en-PH")} / kWh`,
-  },
-  {
-    key: "defaultWaterRatePerUnit",
-    label: "Default Water Rate",
-    description: "Prefill used when admins prepare water charges.",
-    icon: Droplets,
-    step: "0.01",
-    formatValue: (value) =>
-      `PHP ${Number(value || 0).toLocaleString("en-PH")} / unit`,
+    gridClass: "sa-settings-form-grid--4col",
+    fields: [
+      {
+        key: "defaultElectricityRatePerKwh",
+        label: "Default Electricity Rate",
+        description: "Baseline electricity tariff prefilled during monthly billing cycles.",
+        icon: Zap,
+        prefix: "₱",
+        suffix: "/ kWh",
+        step: "0.01",
+        min: 0,
+        max: 500,
+        boundsHint: "Range: ₱0 – ₱500 / kWh",
+        formatValue: (v) => `PHP ${Number(v || 0).toFixed(2)} / kWh`,
+      },
+      {
+        key: "defaultWaterRatePerUnit",
+        label: "Default Water Rate",
+        description: "Baseline water tariff applied per cubic meter across shared meters.",
+        icon: Droplets,
+        prefix: "₱",
+        suffix: "/ unit",
+        step: "0.01",
+        min: 0,
+        max: 500,
+        boundsHint: "Range: ₱0 – ₱500 / unit",
+        formatValue: (v) => `PHP ${Number(v || 0).toFixed(2)} / unit`,
+      },
+      {
+        key: "penaltyRatePerDay",
+        label: "Daily Late Penalty",
+        description: "Daily surcharge added to overdue monthly tenant rent balances.",
+        icon: AlertTriangle,
+        prefix: "₱",
+        suffix: "/ day",
+        step: "1",
+        min: 0,
+        max: 5000,
+        boundsHint: "Range: ₱0 – ₱5,000 / day",
+        formatValue: (v) => `PHP ${Number(v || 0).toLocaleString("en-PH")} / day`,
+      },
+      {
+        key: "maxPenaltyCapPercent",
+        label: "Max Late Penalty Cap",
+        description: "Upper limit on compounded penalties relative to base monthly rent.",
+        icon: ShieldAlert,
+        suffix: "%",
+        step: "1",
+        min: 0,
+        max: 100,
+        boundsHint: "Range: 0% – 100% of rent",
+        formatValue: (v) => `${Number(v || 0)}% of rent`,
+      },
+    ],
   },
 ];
 
+// ── 2. Lease Pricing & Room Type Discounts Fields (Unified 4-Col Grid) ───────
 const LEASE_PRICING_FIELDS = [
   {
-    key: "quadrupleDiscountPercent",
-    label: "Quadruple Sharing Discount",
-    description: "Discount percentage for Quadruple Sharing rooms (e.g. 10%).",
-    icon: Percent,
+    key: "longTermLeaseMinMonths",
+    label: "Long-Term Lease Threshold",
+    description: "Minimum lease contract duration required to qualify for promotional room discounts.",
+    icon: Calendar,
+    suffix: "Months",
     step: "1",
-    formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")}%`,
+    min: 1,
+    max: 24,
+    boundsHint: "Range: 1 – 24 months",
+    formatValue: (v) => `${Number(v || 0)} months minimum`,
+  },
+  {
+    key: "quadrupleDiscountPercent",
+    label: "Quadruple Room Discount",
+    description: "Promotional discount percentage for 4-Bed Shared Dormitory accommodations.",
+    icon: Percent,
+    suffix: "%",
+    step: "1",
+    min: 0,
+    max: 100,
+    boundsHint: "Range: 0% – 100% off",
+    formatValue: (v) => `${Number(v || 0)}% discount`,
   },
   {
     key: "doubleDiscountPercent",
     label: "Double Sharing Discount",
-    description: "Discount percentage for Double Sharing rooms (e.g. 20%).",
+    description: "Promotional discount percentage for 2-Bed Double Dormitory accommodations.",
     icon: Percent,
+    suffix: "%",
     step: "1",
-    formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")}%`,
+    min: 0,
+    max: 100,
+    boundsHint: "Range: 0% – 100% off",
+    formatValue: (v) => `${Number(v || 0)}% discount`,
   },
   {
     key: "privateDiscountPercent",
     label: "Private Room Discount",
-    description: "Discount percentage for Private rooms (e.g. 10%).",
+    description: "Promotional discount percentage for Single/Solo Private accommodations.",
     icon: Percent,
+    suffix: "%",
     step: "1",
-    formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")}%`,
+    min: 0,
+    max: 100,
+    boundsHint: "Range: 0% – 100% off",
+    formatValue: (v) => `${Number(v || 0)}% discount`,
   },
 ];
 
+// ── 3. Reservation Lifecycle Fields (Unified 4-Col Grid) ─────────────────────
 const LIFECYCLE_FIELDS = [
- {
- key: "noShowGraceDays",
- label: "No-Show Grace Period",
- description: "Days after the move-in deadline before a reserved no-show is cancelled.",
- icon: Clock3,
- step: "1",
- formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")} days`,
- },
- {
- key: "stalePendingHours",
- label: "Pending Reservation Timeout",
- description: "Hours before an untouched `pending` reservation is expired.",
- icon: Clock3,
- step: "1",
- formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")} hours`,
- },
- {
- key: "staleVisitPendingHours",
- label: "Visit Pending Timeout",
- description: "Hours before a `visit_pending` reservation is auto-expired.",
- icon: Clock3,
- step: "1",
- formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")} hours`,
- },
- {
- key: "visitPendingWarnDays",
- label: "Visit Pending Warning Window",
- description: "Days before admins are warned that a visit request is stale.",
- icon: UserCog,
- step: "1",
- formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")} days`,
- },
- {
- key: "staleVisitApprovedHours",
- label: "Visit Approved Timeout",
- description: "Hours past the scheduled visit before a `visit_approved` record expires.",
- icon: Clock3,
- step: "1",
- formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")} hours`,
- },
- {
- key: "stalePaymentPendingHours",
- label: "Payment Pending Timeout",
- description: "Hours before a `payment_pending` reservation is auto-expired.",
- icon: Clock3,
- step: "1",
- formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")} hours`,
- },
+  {
+    key: "stalePaymentPendingHours",
+    label: "Payment & Hold Window",
+    description: "Hours granted to settle initial deposit before the selected bed slot is auto-released.",
+    icon: Clock3,
+    suffix: "Hours",
+    step: "1",
+    min: 1,
+    max: 720,
+    boundsHint: "Range: 1 – 720 hours",
+    formatValue: (v) =>
+      `${Number(v || 0)} hrs (${(Number(v || 0) / 24).toFixed(1)} days)`,
+  },
+  {
+    key: "checkoutLockDurationMinutes",
+    label: "Bed Checkout Lock Window",
+    description: "Temporary hold duration while an applicant is completing the online reservation form.",
+    icon: Lock,
+    suffix: "Mins",
+    step: "5",
+    min: 5,
+    max: 120,
+    boundsHint: "Range: 5 – 120 minutes",
+    formatValue: (v) => `${Number(v || 0)} mins lock`,
+  },
+  {
+    key: "noShowGraceDays",
+    label: "No-Show Move-In Grace Period",
+    description: "Days past scheduled check-in before an unattended reservation is auto-cancelled.",
+    icon: Calendar,
+    suffix: "Days",
+    step: "1",
+    min: 0,
+    max: 60,
+    boundsHint: "Range: 0 – 60 days",
+    formatValue: (v) => `${Number(v || 0)} grace days`,
+  },
+  {
+    key: "archiveCancelledAfterDays",
+    label: "Cancelled Records Archival",
+    description: "Days before cancelled or expired reservations are automatically archived from active views.",
+    icon: Archive,
+    suffix: "Days",
+    step: "1",
+    min: 1,
+    max: 180,
+    boundsHint: "Range: 1 – 180 days",
+    formatValue: (v) => `${Number(v || 0)} days retention`,
+  },
 ];
 
-const RETENTION_FIELDS = [
- {
- key: "archiveCancelledAfterDays",
- label: "Cancelled Record Retention",
- description: "Days before eligible cancelled reservations are archived.",
- icon: Archive,
- step: "1",
- formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")} days`,
- },
+const ALL_POLICY_FIELDS = [
+  ...BILLING_SUBGROUPS.flatMap((group) => group.fields),
+  ...LEASE_PRICING_FIELDS,
+  ...LIFECYCLE_FIELDS,
 ];
 
 const POLICY_KEYS = [
-  ...BILLING_FIELDS.map((field) => field.key),
-  ...LEASE_PRICING_FIELDS.map((field) => field.key),
-  ...LIFECYCLE_FIELDS.map((field) => field.key),
-  ...RETENTION_FIELDS.map((field) => field.key),
+  ...ALL_POLICY_FIELDS.map((f) => f.key),
+  // Technical scheduler keys preserved in background payload
+  "stalePendingHours",
+  "staleVisitPendingHours",
+  "visitPendingWarnDays",
+  "staleVisitApprovedHours",
+  "defaultLongTermDiscountPercent",
+  "renewalNoticeRequiredDays",
 ];
 
 const normalizeBranchOverrides = (branchOverrides = {}) => ({
- "gil-puyat": {
- ...DEFAULT_BRANCH_OVERRIDES["gil-puyat"],
- ...(branchOverrides["gil-puyat"] || {}),
- },
- guadalupe: {
- ...DEFAULT_BRANCH_OVERRIDES.guadalupe,
- ...(branchOverrides.guadalupe || {}),
- },
+  "gil-puyat": {
+    ...DEFAULT_BRANCH_OVERRIDES["gil-puyat"],
+    ...(branchOverrides["gil-puyat"] || {}),
+  },
+  guadalupe: {
+    ...DEFAULT_BRANCH_OVERRIDES.guadalupe,
+    ...(branchOverrides.guadalupe || {}),
+  },
 });
 
 const normalizeSettingsPayload = (payload = {}) => ({
- ...DEFAULT_FORM,
- ...payload,
- branchOverrides: normalizeBranchOverrides(payload.branchOverrides || {}),
- changedBy: payload.changedBy || null,
- changedAt: payload.changedAt || null,
- updatedAt: payload.updatedAt || null,
+  ...DEFAULT_FORM,
+  ...payload,
+  branchOverrides: normalizeBranchOverrides(payload.branchOverrides || {}),
+  changedBy: payload.changedBy || null,
+  changedAt: payload.changedAt || null,
+  updatedAt: payload.updatedAt || null,
 });
 
 const formatActor = (actor) => {
- if (!actor) return "No recorded owner change yet";
- if (actor.email) return actor.email;
- if (actor.role) return actor.role;
- if (actor.userId) return actor.userId;
- return "Unknown actor";
+  if (!actor) return "Default System Configuration";
+  if (actor.email) return actor.email;
+  if (actor.role) return `Authorized ${actor.role}`;
+  if (actor.userId) return `ID: ${actor.userId}`;
+  return "System Administrator";
 };
 
 const formatTimestamp = (value) => {
- if (!value) return "Not recorded yet";
- const date = new Date(value);
- if (Number.isNaN(date.getTime())) return "Invalid timestamp";
- return date.toLocaleString("en-PH", {
- year: "numeric",
- month: "short",
- day: "numeric",
- hour: "numeric",
- minute: "2-digit",
- });
+  if (!value) return "Standard Baseline";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Invalid timestamp";
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 };
 
-function renderFieldCard(field, form, onChange, disabled) {
- const Icon = field.icon;
-
- return (
- <article key={field.key} className="sa-settings-field-card">
- <div className="sa-settings-field-header">
- <div className="sa-setting-icon">
- <Icon size={16} />
- </div>
- <div className="sa-settings-field-heading">
- <span className="sa-setting-label">{field.label}</span>
- <span className="sa-setting-value">{field.formatValue(form[field.key])}</span>
- </div>
- </div>
- <p className="sa-setting-desc">{field.description}</p>
- <input
- className="sa-settings-input"
- type="number"
- min="0"
- step={field.step}
- value={form[field.key]}
- disabled={disabled}
- onChange={(event) => onChange(field.key, event.target.value)}
- />
- </article>
- );
-}
+const validateFieldValue = (key, rawValue) => {
+  if (rawValue === "" || rawValue === null || rawValue === undefined) {
+    return "Field value is required.";
+  }
+  const num = Number(rawValue);
+  if (!Number.isFinite(num)) {
+    return "Must be a valid number.";
+  }
+  const limits = FIELD_LIMITS[key];
+  if (limits) {
+    if (num < limits.min) {
+      return `Must be at least ${limits.min}${limits.unit === "%" ? "%" : ""}.`;
+    }
+    if (num > limits.max) {
+      return `Must not exceed ${limits.max}${limits.unit === "%" ? "%" : ""}.`;
+    }
+  } else if (num < 0) {
+    return "Must be a non-negative number.";
+  }
+  if (PERCENTAGE_KEYS.has(key) && (num < 0 || num > 100)) {
+    return "Percentage must be between 0% and 100%.";
+  }
+  if (WHOLE_NUMBER_KEYS.has(key) && !Number.isInteger(num)) {
+    return "Must be a whole number.";
+  }
+  return null;
+};
 
 export default function SystemSettingsPage() {
- const [form, setForm] = useState(DEFAULT_FORM);
- const [loading, setLoading] = useState(true);
- const [savingPolicies, setSavingPolicies] = useState(false);
- const [savingBranch, setSavingBranch] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get("tab") || "policies";
+  const validTabs = ["policies", "backups"];
+  const activeTab = validTabs.includes(rawTab) ? rawTab : "policies";
 
- useEffect(() => {
- let mounted = true;
+  const [serverBaseline, setServerBaseline] = useState(DEFAULT_FORM);
+  const [form, setForm] = useState(DEFAULT_FORM);
+  const [touched, setTouched] = useState({});
+  const [errors, setErrors] = useState({});
 
- const load = async () => {
- try {
- const data = await settingsApi.getBusinessSettings();
- if (!mounted) return;
- setForm(normalizeSettingsPayload(data));
- } catch (error) {
- showNotification("Failed to load business settings.", "error");
- } finally {
- if (mounted) setLoading(false);
- }
- };
+  const [loading, setLoading] = useState(true);
+  const [savingPolicies, setSavingPolicies] = useState(false);
+  const [savingBranch, setSavingBranch] = useState("");
 
- load();
- return () => {
- mounted = false;
- };
- }, []);
+  const [pendingTab, setPendingTab] = useState(null);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
 
- const applyServerSettings = (data) => {
- setForm(normalizeSettingsPayload(data));
- };
+  useEffect(() => {
+    let mounted = true;
 
- const updateField = (key, value) =>
- setForm((current) => ({
- ...current,
- [key]: value,
- }));
+    const load = async () => {
+      try {
+        const data = await settingsApi.getBusinessSettings();
+        if (!mounted) return;
+        const normalized = normalizeSettingsPayload(data);
+        setServerBaseline(normalized);
+        setForm(normalized);
+      } catch (error) {
+        showNotification("Failed to load business policies.", "error");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
 
- const updateBranchField = (branch, key, value) =>
- setForm((current) => ({
- ...current,
- branchOverrides: {
- ...current.branchOverrides,
- [branch]: {
- ...current.branchOverrides?.[branch],
- [key]: value,
- },
- },
- }));
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
- const savePolicySettings = async () => {
- try {
- setSavingPolicies(true);
- const payload = POLICY_KEYS.reduce((acc, key) => {
- acc[key] = Number(form[key]);
- return acc;
- }, {});
- payload.isDiscountEnabled = Boolean(form.isDiscountEnabled);
- const data = await settingsApi.updateBusinessSettings(payload);
- applyServerSettings(data);
- showNotification("Policies and defaults updated.", "success");
- } catch (error) {
- showNotification(
- error.message || "Failed to update policy settings.",
- "error",
- );
- } finally {
- setSavingPolicies(false);
- }
- };
+  // Compute dirty policy fields
+  const dirtyPolicyKeys = useMemo(() => {
+    const dirty = [];
+    for (const key of POLICY_KEYS) {
+      if (Number(form[key]) !== Number(serverBaseline[key])) {
+        dirty.push(key);
+      }
+    }
+    if (
+      Boolean(form.isDiscountEnabled) !==
+      Boolean(serverBaseline.isDiscountEnabled)
+    ) {
+      dirty.push("isDiscountEnabled");
+    }
+    return dirty;
+  }, [form, serverBaseline]);
 
- const saveBranchSettings = async (branch) => {
- try {
- setSavingBranch(branch);
- const branchSettings = form.branchOverrides?.[branch] || DEFAULT_BRANCH_OVERRIDES[branch];
- const data = await settingsApi.updateBranchSettings(branch, {
- isApplianceFeeEnabled: Boolean(branchSettings.isApplianceFeeEnabled),
- applianceFeeAmountPerUnit: Number(
- branchSettings.applianceFeeAmountPerUnit || 0,
- ),
- });
- applyServerSettings(data);
- showNotification(
- `Branch override saved for ${BRANCH_LABELS[branch] || branch}.`,
- "success",
- );
- } catch (error) {
- showNotification(
- error.message || "Failed to update branch override.",
- "error",
- );
- } finally {
- setSavingBranch("");
- }
- };
+  const isPoliciesDirty = dirtyPolicyKeys.length > 0;
 
- if (loading) {
-  return <AdminFormPageSkeleton />;
- }
+  // Compute branch dirty fields
+  const isBranchDirty = (branch) => {
+    const curr =
+      form.branchOverrides?.[branch] || DEFAULT_BRANCH_OVERRIDES[branch];
+    const base =
+      serverBaseline.branchOverrides?.[branch] ||
+      DEFAULT_BRANCH_OVERRIDES[branch];
+    return (
+      Boolean(curr.isApplianceFeeEnabled) !==
+        Boolean(base.isApplianceFeeEnabled) ||
+      Number(curr.applianceFeeAmountPerUnit || 0) !==
+        Number(base.applianceFeeAmountPerUnit || 0)
+    );
+  };
 
- return (
- <div className="sa2">
- <div className="sa2-header">
- <div>
- <p className="sa2-eyebrow">System Governance</p>
- <h1 className="sa2-title">Policies & Settings</h1>
- <p className="sa-settings-header-copy">
- Backend-configured defaults, lifecycle rules, and retention automation
- live here. Scheduler jobs consume these saved values directly.
- </p>
- </div>
- <button
- type="button"
- className="sa-settings-primary-btn"
- onClick={savePolicySettings}
- disabled={loading || savingPolicies}
- >
- <Save size={14} />
- {savingPolicies ? "Saving..." : "Save Policy Changes"}
- </button>
- </div>
+  const isAnyBranchDirty = useMemo(() => {
+    return Object.keys(BRANCH_META).some((branch) => isBranchDirty(branch));
+  }, [form.branchOverrides, serverBaseline.branchOverrides]);
 
- <div className="sa2-alert">
- <Info size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
- Every settings update is persisted in `BusinessSettings`, stamped with changer
- metadata, and recorded in the audit trail.
- </div>
+  const hasUnsavedChanges = isPoliciesDirty || isAnyBranchDirty;
 
- <section className="sa-settings-meta-bar">
- <div>
- <span className="sa-settings-meta-label">Last policy change</span>
- <strong className="sa-settings-meta-value">
- {formatActor(form.changedBy)}
- </strong>
- </div>
- <div>
- <span className="sa-settings-meta-label">Changed At</span>
- <strong className="sa-settings-meta-value">
- {formatTimestamp(form.changedAt || form.updatedAt)}
- </strong>
- </div>
- </section>
+  const settingsTabs = useMemo(
+    () => [
+      {
+        id: "policies",
+        label: "Operational Policies",
+        icon: Settings2,
+        badge: hasUnsavedChanges
+          ? dirtyPolicyKeys.length + (isAnyBranchDirty ? 1 : 0)
+          : undefined,
+        badgeVariant: "warning",
+      },
+      {
+        id: "backups",
+        label: "Database Backup & Restore",
+        icon: Database,
+      },
+    ],
+    [hasUnsavedChanges, dirtyPolicyKeys.length, isAnyBranchDirty],
+  );
 
- {loading ? (
- <div style={{ display: "grid", gap: 18 }}>
- <StatGridSkeleton count={2} />
- <CardSkeleton lines={5} height={220} />
- <CardSkeleton lines={5} height={220} />
- </div>
- ) : (
- <>
- <section className="sa2-card sa-settings-section">
- <div className="sa-settings-section-header">
- <div>
- <h2 className="sa2-card-title">Billing Defaults</h2>
- <p className="sa-settings-section-copy">
- These values drive Reservation Fees, late penalties, and default utility rates.
- </p>
- </div>
- <span className="sa-settings-section-pill">Backend Source of Truth</span>
- </div>
- <div className="sa-settings-form-grid">
- {BILLING_FIELDS.map((field) =>
- renderFieldCard(field, form, updateField, savingPolicies),
- )}
- </div>
- </section>
+  const handleTabChange = (tabKey) => {
+    if (activeTab === "policies" && hasUnsavedChanges && tabKey !== "policies") {
+      setPendingTab(tabKey);
+      setShowUnsavedModal(true);
+      return;
+    }
+    commitTabChange(tabKey);
+  };
 
-  <section className="sa2-card sa-settings-section">
-    <div className="sa-settings-section-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <div>
-        <h2 className="sa2-card-title">Lease & Pricing Policies</h2>
-        <p className="sa-settings-section-copy">
-          Configure discount percentages per room type automatically applied to room base prices for both short-term and long-term stays.
-        </p>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-muted, rgba(0,0,0,0.04))", padding: "8px 14px", borderRadius: "12px", border: "1px solid var(--border-color, #E5E7EB)" }}>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--text-heading)" }}>
-            Enable Room Discounts
+  const commitTabChange = (tabKey) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (tabKey === "policies") {
+      nextParams.delete("tab");
+    } else {
+      nextParams.set("tab", tabKey);
+    }
+    setSearchParams(nextParams, { replace: true });
+    setShowUnsavedModal(false);
+    setPendingTab(null);
+  };
+
+  const handleDiscardAndSwitch = () => {
+    setForm(serverBaseline);
+    setTouched({});
+    setErrors({});
+    if (pendingTab) {
+      commitTabChange(pendingTab);
+    }
+  };
+
+  const applyServerSettings = (data) => {
+    const normalized = normalizeSettingsPayload(data);
+    setServerBaseline(normalized);
+    setForm(normalized);
+    setTouched({});
+    setErrors({});
+  };
+
+  const updateField = (key, value) => {
+    const limits = FIELD_LIMITS[key];
+    if (limits?.maxDigits && value && String(value).length > limits.maxDigits + 3) {
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
+    setTouched((curr) => ({ ...curr, [key]: true }));
+    const err = validateFieldValue(key, value);
+    setErrors((curr) => ({ ...curr, [key]: err }));
+  };
+
+  const handleFieldBlur = (key) => {
+    setTouched((curr) => ({ ...curr, [key]: true }));
+    const err = validateFieldValue(key, form[key]);
+    setErrors((curr) => ({ ...curr, [key]: err }));
+  };
+
+  const handleResetSingleField = (key) => {
+    const baselineVal = serverBaseline[key];
+    setForm((curr) => ({ ...curr, [key]: baselineVal }));
+    setTouched((curr) => ({ ...curr, [key]: false }));
+    setErrors((curr) => ({ ...curr, [key]: null }));
+    const fieldDef = ALL_POLICY_FIELDS.find((f) => f.key === key);
+    showNotification(
+      `Reverted "${fieldDef?.label || key}" to saved configuration.`,
+      "info",
+    );
+  };
+
+  const updateBranchField = (branch, key, value) => {
+    if (key === "applianceFeeAmountPerUnit" && value && String(value).length > 8) {
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      branchOverrides: {
+        ...current.branchOverrides,
+        [branch]: {
+          ...current.branchOverrides?.[branch],
+          [key]: value,
+        },
+      },
+    }));
+  };
+
+  const handleDiscardPolicies = () => {
+    setForm((current) => ({
+      ...current,
+      ...Object.fromEntries(POLICY_KEYS.map((k) => [k, serverBaseline[k]])),
+      isDiscountEnabled: serverBaseline.isDiscountEnabled,
+    }));
+    setTouched({});
+    setErrors({});
+    showNotification("Policy changes reverted to saved defaults.", "info");
+  };
+
+  const handleDiscardBranch = (branch) => {
+    setForm((current) => ({
+      ...current,
+      branchOverrides: {
+        ...current.branchOverrides,
+        [branch]: {
+          ...serverBaseline.branchOverrides?.[branch],
+        },
+      },
+    }));
+    showNotification(
+      `Branch override for ${BRANCH_META[branch]?.label || branch} reverted.`,
+      "info",
+    );
+  };
+
+  const hasValidationErrors = useMemo(() => {
+    for (const key of ALL_POLICY_FIELDS.map((f) => f.key)) {
+      if (validateFieldValue(key, form[key])) {
+        return true;
+      }
+    }
+    return false;
+  }, [form]);
+
+  const savePolicySettings = async () => {
+    const newErrors = {};
+    let hasErr = false;
+    for (const key of ALL_POLICY_FIELDS.map((f) => f.key)) {
+      const err = validateFieldValue(key, form[key]);
+      if (err) {
+        newErrors[key] = err;
+        hasErr = true;
+      }
+    }
+    if (hasErr) {
+      setErrors(newErrors);
+      setTouched(
+        ALL_POLICY_FIELDS.reduce(
+          (acc, f) => ({ ...acc, [f.key]: true }),
+          {},
+        ),
+      );
+      showNotification(
+        "Please resolve input validation errors before saving.",
+        "error",
+      );
+      return;
+    }
+
+    try {
+      setSavingPolicies(true);
+      const payload = POLICY_KEYS.reduce((acc, key) => {
+        acc[key] = Number(form[key]);
+        return acc;
+      }, {});
+      payload.isDiscountEnabled = Boolean(form.isDiscountEnabled);
+      const data = await settingsApi.updateBusinessSettings(payload);
+      applyServerSettings(data);
+      showNotification(
+        "Operational policies and billing defaults updated successfully.",
+        "success",
+      );
+    } catch (error) {
+      showNotification(
+        error.message || "Failed to update business policies.",
+        "error",
+      );
+    } finally {
+      setSavingPolicies(false);
+    }
+  };
+
+  const saveBranchSettings = async (branch) => {
+    try {
+      setSavingBranch(branch);
+      const branchSettings =
+        form.branchOverrides?.[branch] || DEFAULT_BRANCH_OVERRIDES[branch];
+      const data = await settingsApi.updateBranchSettings(branch, {
+        isApplianceFeeEnabled: Boolean(branchSettings.isApplianceFeeEnabled),
+        applianceFeeAmountPerUnit: Number(
+          branchSettings.applianceFeeAmountPerUnit || 0,
+        ),
+      });
+      applyServerSettings(data);
+      showNotification(
+        `Branch override saved for ${BRANCH_META[branch]?.label || branch}.`,
+        "success",
+      );
+    } catch (error) {
+      showNotification(
+        error.message || "Failed to update branch override.",
+        "error",
+      );
+    } finally {
+      setSavingBranch("");
+    }
+  };
+
+  if (loading && activeTab !== "backups") {
+    return <AdminPoliciesSettingsSkeleton activeTab={activeTab} />;
+  }
+
+  function renderFieldCard(field) {
+    const Icon = field.icon;
+    const isDirty =
+      Number(form[field.key]) !== Number(serverBaseline[field.key]);
+    const isTouched = Boolean(touched[field.key]);
+    const fieldError = isTouched ? errors[field.key] : null;
+    const rawVal = form[field.key];
+    const validationErr = validateFieldValue(field.key, rawVal);
+
+    return (
+      <article
+        key={field.key}
+        className={`sa-settings-field-card ${
+          isDirty ? "sa-settings-field-card--dirty" : ""
+        } ${fieldError ? "sa-settings-field-card--error" : ""}`}
+      >
+        <div className="sa-settings-field-header">
+          <div className="sa-setting-icon">
+            <Icon size={17} />
           </div>
-          <div style={{ fontSize: "11px", color: form.isDiscountEnabled ? "#10B981" : "#F59E0B", fontWeight: "600" }}>
-            {form.isDiscountEnabled ? "Active (Promo Rates Applied)" : "Disabled (0% Discount Applied)"}
+          <div className="sa-settings-field-heading">
+            <div className="sa-setting-title-row">
+              <span className="sa-setting-label">{field.label}</span>
+              <div className="sa-setting-badge-group">
+                {isDirty && !fieldError && (
+                  <>
+                    <span className="sa-settings-dirty-badge">Modified</span>
+                    <button
+                      type="button"
+                      className="sa-setting-micro-revert"
+                      title="Reset this field to saved default"
+                      aria-label={`Reset ${field.label}`}
+                      onClick={() => handleResetSingleField(field.key)}
+                      disabled={savingPolicies}
+                    >
+                      <RotateCcw size={11} />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => updateField("isDiscountEnabled", !form.isDiscountEnabled)}
-          disabled={savingPolicies}
-          style={{
-            width: "44px",
-            height: "24px",
-            borderRadius: "12px",
-            backgroundColor: form.isDiscountEnabled ? "#D97706" : "#9CA3AF",
-            border: "none",
-            cursor: savingPolicies ? "not-allowed" : "pointer",
-            position: "relative",
-            transition: "background-color 0.2s",
-            padding: "2px",
-          }}
-        >
-          <div
-            style={{
-              width: "20px",
-              height: "20px",
-              borderRadius: "50%",
-              backgroundColor: "#FFFFFF",
-              transform: form.isDiscountEnabled ? "translateX(20px)" : "translateX(0)",
-              transition: "transform 0.2s",
-            }}
-          />
-        </button>
-      </div>
-    </div>
 
-    {!form.isDiscountEnabled && (
-      <div style={{ margin: "12px 0", padding: "12px 16px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.3)", color: "#B45309", fontSize: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-        <AlertTriangle style={{ width: 16, height: 16, flexShrink: 0 }} />
-        <span>
-          <strong>Discounts Disabled:</strong> All rooms will revert to standard base rates (0% discount applied). Tenants will pay standard monthly rent regardless of lease duration.
-        </span>
-      </div>
-    )}
+        <div className="sa-setting-preview-wrap">
+          <span
+            className={`sa-setting-live-value ${
+              validationErr ? "sa-setting-live-value--error" : ""
+            }`}
+          >
+            {validationErr ? "Invalid value" : field.formatValue(rawVal)}
+          </span>
+          <p className="sa-setting-desc">{field.description}</p>
+        </div>
 
-    <div className="sa-settings-form-grid">
-      {LEASE_PRICING_FIELDS.map((field) =>
-        renderFieldCard(field, form, updateField, savingPolicies),
+        <div>
+          <div className="sa-settings-input-group">
+            {field.prefix && (
+              <span className="sa-settings-input-affix sa-settings-input-affix--prefix">
+                {field.prefix}
+              </span>
+            )}
+            <input
+              className={`sa-settings-input ${
+                field.prefix ? "has-prefix" : ""
+              } ${field.suffix ? "has-suffix" : ""} ${
+                fieldError ? "sa-settings-input--error" : ""
+              }`}
+              type="number"
+              min={field.min ?? "0"}
+              max={field.max}
+              step={field.step}
+              value={form[field.key] ?? ""}
+              disabled={savingPolicies}
+              onChange={(event) => updateField(field.key, event.target.value)}
+              onBlur={() => handleFieldBlur(field.key)}
+            />
+            {field.suffix && (
+              <span className="sa-settings-input-affix sa-settings-input-affix--suffix">
+                {field.suffix}
+              </span>
+            )}
+          </div>
+
+          <div className="sa-settings-card-bottom">
+            {fieldError ? (
+              <span className="sa-settings-field-error">{fieldError}</span>
+            ) : (
+              <span className="sa-settings-bounds-hint">{field.boundsHint}</span>
+            )}
+          </div>
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <div className="sa2">
+      {/* ── Unsaved Changes Tab Modal ── */}
+      {showUnsavedModal && (
+        <div className="sa-modal-overlay">
+          <div className="sa-modal-dialog">
+            <div className="sa-modal-header">
+              <AlertTriangle className="h-6 w-6 text-warning" />
+              <h3>Unsaved Policy Changes</h3>
+            </div>
+            <p className="sa-modal-body">
+              You have <strong>{dirtyPolicyKeys.length} unsaved modification{dirtyPolicyKeys.length > 1 ? "s" : ""}</strong>.
+              If you leave this tab without saving, your edits will be discarded.
+            </p>
+            <div className="sa-modal-actions">
+              <button
+                type="button"
+                className="sa-settings-secondary-btn"
+                onClick={() => setShowUnsavedModal(false)}
+              >
+                Stay on Page
+              </button>
+              <button
+                type="button"
+                className="sa-settings-destructive-btn"
+                onClick={handleDiscardAndSwitch}
+              >
+                Discard & Switch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Header ── */}
+      <div className="sa2-header">
+        <div>
+          <p className="sa2-eyebrow">System Governance</p>
+          <h1 className="sa2-title">Operational Policies & Governance</h1>
+          <p className="sa-settings-header-copy">
+            System-wide billing rates, promotional discounts, branch overrides, and database governance utilities.
+          </p>
+        </div>
+      </div>
+
+      {/* ── Navigation Tabs ── */}
+      <AdminTabs
+        tabs={settingsTabs}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        ariaLabel="Operational policies and database backup navigation"
+        className="sa-settings-tabs-bar"
+      />
+
+      {/* ── Tab Content ── */}
+      {activeTab === "backups" ? (
+        <SystemBackupPage isEmbedded={true} />
+      ) : (
+        /* ══════════════════════════════════════════════════════════════════
+           OPERATIONAL POLICIES TAB (SYMMETRICAL, OPTIMIZED ALIGNMENTS)
+           ══════════════════════════════════════════════════════════════════ */
+        <>
+          {/* Metadata & Audit Strip (Inline balanced toolbar) */}
+          <section className="sa-settings-meta-bar">
+            <div className="sa-settings-meta-item">
+              <div className="sa-settings-meta-icon">
+                <ShieldCheck size={18} />
+              </div>
+              <div className="sa-settings-meta-content">
+                <span className="sa-settings-meta-label">
+                  Last Global Policy Change
+                </span>
+                <strong className="sa-settings-meta-value">
+                  {formatActor(form.changedBy)}
+                </strong>
+              </div>
+            </div>
+
+            <div className="sa-settings-meta-divider" />
+
+            <div className="sa-settings-meta-item">
+              <div className="sa-settings-meta-icon">
+                <Clock size={18} />
+              </div>
+              <div className="sa-settings-meta-content">
+                <span className="sa-settings-meta-label">
+                  Timestamp & Effective Date
+                </span>
+                <strong className="sa-settings-meta-value">
+                  {formatTimestamp(form.changedAt || form.updatedAt)}
+                </strong>
+              </div>
+            </div>
+
+            <div className="sa-settings-meta-badge">
+              <span className="sa-settings-meta-badge-dot" />
+              <span>Audit Baseline Enforced</span>
+            </div>
+          </section>
+
+          {/* Section 1: Financial & Billing Rules */}
+          <section className="sa-settings-section">
+            <div className="sa-settings-section-header">
+              <div>
+                <h2 className="sa2-card-title">Financial & Billing Rules</h2>
+                <p className="sa-settings-section-copy">
+                  Core monetary baselines governing reservation deposits, late
+                  overdue penalties, default utility tariffs, and clearance charges.
+                </p>
+              </div>
+              <span className="sa-settings-section-pill">
+                Billing Source of Truth
+              </span>
+            </div>
+
+            {BILLING_SUBGROUPS.map((subgroup) => {
+              const SubIcon = subgroup.icon;
+              return (
+                <div key={subgroup.id} className="sa-settings-subgroup">
+                  <div className="sa-settings-subgroup-header">
+                    <div className="sa-settings-subgroup-title-wrap">
+                      <SubIcon size={15} />
+                      <h3 className="sa-settings-subgroup-title">{subgroup.title}</h3>
+                    </div>
+                    <p className="sa-settings-subgroup-desc">{subgroup.description}</p>
+                  </div>
+                  <div className={`sa-settings-form-grid ${subgroup.gridClass}`}>
+                    {subgroup.fields.map((field) => renderFieldCard(field))}
+                  </div>
+                </div>
+              );
+            })}
+          </section>
+
+          {/* Section 2: Lease Pricing & Room Type Discounts */}
+          <section className="sa-settings-section">
+            <div className="sa-settings-section-header flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="sa2-card-title">
+                  Lease Pricing & Room Type Discounts
+                </h2>
+                <p className="sa-settings-section-copy">
+                  Automatic promotional discount percentages applied to standard
+                  room base prices for qualifying long-term tenant contracts.
+                </p>
+              </div>
+
+              {/* Master Discount Switch */}
+              <div className="sa-discount-toggle-card">
+                <div className="sa-discount-toggle-text">
+                  <span className="sa-discount-toggle-title">
+                    Master Promo Switch
+                  </span>
+                  <span
+                    className={`sa-discount-toggle-status ${
+                      form.isDiscountEnabled
+                        ? "sa-discount-toggle-status--active"
+                        : "sa-discount-toggle-status--disabled"
+                    }`}
+                  >
+                    {form.isDiscountEnabled
+                      ? "Discounts Active"
+                      : "Discounts Disabled (0%)"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(form.isDiscountEnabled)}
+                  aria-label="Toggle Room Discounts"
+                  onClick={() =>
+                    updateField("isDiscountEnabled", !form.isDiscountEnabled)
+                  }
+                  disabled={savingPolicies}
+                  className={`sa-switch-btn ${
+                    form.isDiscountEnabled ? "sa-switch-btn--active" : ""
+                  }`}
+                >
+                  <div className="sa-switch-thumb" />
+                </button>
+              </div>
+            </div>
+
+            {!form.isDiscountEnabled && (
+              <div className="sa-settings-warning-banner">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span>
+                  <strong>Discounts Disabled:</strong> All room types revert to
+                  100% standard base rent (0% promotional deduction applied to
+                  contracts).
+                </span>
+              </div>
+            )}
+
+            {/* Symmetrical 4-Column Row (1 Tenure Threshold + 3 Room Discounts) */}
+            <div className="sa-settings-form-grid sa-settings-form-grid--4col">
+              {LEASE_PRICING_FIELDS.map((field) => renderFieldCard(field))}
+            </div>
+          </section>
+
+          {/* Section 3: Branch Billing & Appliance Overrides */}
+          <section className="sa-settings-section">
+            <div className="sa-settings-section-header">
+              <div>
+                <h2 className="sa2-card-title">
+                  Branch Operational & Appliance Governance
+                </h2>
+                <p className="sa-settings-section-copy">
+                  Explicitly configure branch-level appliance surcharges and review
+                  inherited global utility rate policies for each facility.
+                </p>
+              </div>
+              <span className="sa-settings-section-pill">
+                Branch Overrides
+              </span>
+            </div>
+
+            <div className="sa-branch-matrix-grid">
+              {Object.entries(form.branchOverrides || {}).map(
+                ([branch, branchSettings]) => {
+                  const meta = BRANCH_META[branch] || {
+                    label: branch,
+                    tag: branch,
+                  };
+                  const dirtyBranch = isBranchDirty(branch);
+                  const isEnabled = Boolean(
+                    branchSettings?.isApplianceFeeEnabled,
+                  );
+
+                  return (
+                    <article
+                      key={branch}
+                      className={`sa-branch-matrix-card ${
+                        dirtyBranch ? "sa-branch-matrix-card--dirty" : ""
+                      }`}
+                    >
+                      <div className="sa-branch-matrix-header">
+                        <div className="sa-branch-matrix-icon">
+                          <Building2 size={18} />
+                        </div>
+                        <div className="sa-branch-matrix-title-wrap">
+                          <div className="flex items-center gap-2">
+                            <h3 className="sa-branch-matrix-title">
+                              {meta.label}
+                            </h3>
+                            {dirtyBranch && (
+                              <span className="sa-settings-dirty-badge">
+                                Modified
+                              </span>
+                            )}
+                          </div>
+                          <span className="sa-branch-matrix-tag">
+                            {meta.tag}
+                          </span>
+                        </div>
+                        <span
+                          className={`sa-branch-status-pill ${
+                            isEnabled
+                              ? "sa-branch-status-pill--active"
+                              : "sa-branch-status-pill--neutral"
+                          }`}
+                        >
+                          {isEnabled ? "Surcharge Active" : "No Surcharge"}
+                        </span>
+                      </div>
+
+                      {/* Policy Control Box */}
+                      <div className="sa-branch-matrix-body">
+                        <div className="sa-branch-control-block">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <span className="sa-setting-label">
+                                Enable Appliance Monthly Surcharge
+                              </span>
+                              <p className="sa-branch-control-sub">
+                                Applies to tenant-registered appliances (Electric Fan, Rice Cooker, Laptop).
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={isEnabled}
+                              aria-label={`Toggle appliance surcharge for ${meta.label}`}
+                              onClick={() =>
+                                updateBranchField(
+                                  branch,
+                                  "isApplianceFeeEnabled",
+                                  !isEnabled,
+                                )
+                              }
+                              disabled={savingBranch === branch}
+                              className={`sa-switch-btn ${
+                                isEnabled ? "sa-switch-btn--active" : ""
+                              } flex-shrink-0`}
+                            >
+                              <div className="sa-switch-thumb" />
+                            </button>
+                          </div>
+
+                          <div
+                            className={`sa-settings-input-group mt-3 ${
+                              !isEnabled ? "opacity-40" : ""
+                            }`}
+                          >
+                            <span className="sa-settings-input-affix sa-settings-input-affix--prefix">
+                              ₱
+                            </span>
+                            <input
+                              className="sa-settings-input has-prefix has-suffix"
+                              type="number"
+                              min="0"
+                              max="10000"
+                              step="1"
+                              value={
+                                branchSettings?.applianceFeeAmountPerUnit ?? 0
+                              }
+                              disabled={
+                                !isEnabled || savingBranch === branch
+                              }
+                              onChange={(event) =>
+                                updateBranchField(
+                                  branch,
+                                  "applianceFeeAmountPerUnit",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                            <span className="sa-settings-input-affix sa-settings-input-affix--suffix">
+                              / unit / mo
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Inherited Policies Summary */}
+                        <div className="sa-branch-inherited-strip">
+                          <span className="sa-branch-inherited-label">
+                            Inherited Network Defaults
+                          </span>
+                          <div className="sa-branch-inherited-row">
+                            <span>Electricity Rate</span>
+                            <strong>
+                              PHP{" "}
+                              {Number(
+                                form.defaultElectricityRatePerKwh || 16,
+                              ).toFixed(2)}{" "}
+                              / kWh
+                            </strong>
+                          </div>
+                          <div className="sa-branch-inherited-row">
+                            <span>Reservation Fee</span>
+                            <strong>
+                              PHP{" "}
+                              {Number(
+                                form.reservationFeeAmount || 2000,
+                              ).toLocaleString("en-PH")}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Audit Strip & Actions */}
+                      <div className="sa-branch-matrix-footer">
+                        <div className="sa-branch-matrix-audit">
+                          <span>Last Override Change</span>
+                          <strong>
+                            {formatActor(branchSettings?.changedBy)}
+                          </strong>
+                          <span>
+                            {formatTimestamp(branchSettings?.changedAt)}
+                          </span>
+                        </div>
+
+                        <div className="sa-branch-matrix-actions">
+                          {dirtyBranch && (
+                            <button
+                              type="button"
+                              className="sa-settings-secondary-btn"
+                              onClick={() => handleDiscardBranch(branch)}
+                              disabled={savingBranch === branch}
+                              title={`Discard pending modifications for ${meta.label}`}
+                              aria-label={`Discard override changes for ${meta.label}`}
+                            >
+                              <RotateCcw size={13} />
+                              Discard
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="sa-settings-primary-btn"
+                            onClick={() => saveBranchSettings(branch)}
+                            disabled={
+                              savingBranch === branch || !dirtyBranch
+                            }
+                            title={
+                              !dirtyBranch
+                                ? `No changes detected for ${meta.label}.`
+                                : savingBranch === branch
+                                ? "Saving branch override..."
+                                : `Save override settings for ${meta.label}`
+                            }
+                            aria-label={`Save override for ${meta.label}`}
+                          >
+                            {savingBranch === branch ? (
+                              <>
+                                <Loader2
+                                  size={13}
+                                  className="animate-spin"
+                                />
+                                Saving...
+                              </>
+                            ) : (
+                              <>
+                                <Save size={13} />
+                                Save Override
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                },
+              )}
+            </div>
+          </section>
+
+          {/* Section 4: Reservation Lifecycle & Automation */}
+          <section className="sa-settings-section">
+            <div className="sa-settings-section-header">
+              <div>
+                <h2 className="sa2-card-title">
+                  Reservation Lifecycle & Automation
+                </h2>
+                <p className="sa-settings-section-copy">
+                  Automated timing rules and timeout windows executed by background
+                  schedulers to release abandoned beds and archive old records.
+                </p>
+              </div>
+              <span className="sa-settings-section-pill">
+                Scheduler Enforced
+              </span>
+            </div>
+
+            {/* Symmetrical 4-Column Grid */}
+            <div className="sa-settings-form-grid sa-settings-form-grid--4col">
+              {LIFECYCLE_FIELDS.map((field) => renderFieldCard(field))}
+            </div>
+
+            {/* Bottom Audit Notice & Actions */}
+            <div className="sa-settings-footer">
+              <div className="sa-settings-footer-copy">
+                <strong>Audit Compliance Guarantee</strong>
+                <span>
+                  All modifications to business policies and branch overrides are
+                  cryptographically stamped and recorded in the immutable audit trail.
+                </span>
+              </div>
+
+              <div className="sa-settings-footer-actions">
+                {isPoliciesDirty && (
+                  <button
+                    type="button"
+                    className="sa-settings-secondary-btn"
+                    onClick={handleDiscardPolicies}
+                    disabled={savingPolicies}
+                    title="Discard all pending modifications and revert to saved baselines"
+                    aria-label="Discard all unsaved policy changes"
+                  >
+                    <RotateCcw size={13} />
+                    Discard Changes
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="sa-settings-primary-btn"
+                  onClick={savePolicySettings}
+                  disabled={
+                    loading ||
+                    savingPolicies ||
+                    !isPoliciesDirty ||
+                    hasValidationErrors
+                  }
+                  title={
+                    !isPoliciesDirty
+                      ? "No policy changes detected. Modify any value above to enable saving."
+                      : hasValidationErrors
+                      ? "Please correct invalid input values before saving."
+                      : savingPolicies
+                      ? "Saving operational policies..."
+                      : "Save operational policies to system defaults"
+                  }
+                  aria-label={
+                    isPoliciesDirty
+                      ? `Save ${dirtyPolicyKeys.length} policy changes`
+                      : "Save policies"
+                  }
+                >
+                  {savingPolicies ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" />
+                      Saving Policies...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={13} />
+                      Save Policies {isPoliciesDirty ? `(${dirtyPolicyKeys.length})` : ""}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </section>
+        </>
       )}
     </div>
-  </section>
-
- <section className="sa2-card sa-settings-section">
- <div className="sa-settings-section-header">
- <div>
- <h2 className="sa2-card-title">Branch Overrides</h2>
- <p className="sa-settings-section-copy">
- Keep branch appliance fee behavior explicit and auditable per branch.
- </p>
- </div>
- </div>
- <div className="sa-settings-override-grid">
- {Object.entries(form.branchOverrides || {}).map(([branch, branchSettings]) => (
- <article key={branch} className="sa-settings-override-card">
- <div className="sa-settings-override-header">
- <div>
- <h3>{BRANCH_LABELS[branch] || branch}</h3>
- <p>
- {branchSettings?.isApplianceFeeEnabled
- ? "Appliance fees are enabled."
- : "Appliance fees are disabled."}
- </p>
- </div>
- <span className="sa-settings-override-tag">Branch Billing Override</span>
- </div>
-
- <label className="sa-settings-toggle">
- <input
- type="checkbox"
- checked={Boolean(branchSettings?.isApplianceFeeEnabled)}
- disabled={savingBranch === branch}
- onChange={(event) =>
- updateBranchField(
- branch,
- "isApplianceFeeEnabled",
- event.target.checked,
- )
- }
- />
- <span>Enable appliance fees for this branch</span>
- </label>
-
- <label className="sa-settings-inline-field">
- <span>Appliance fee per unit</span>
- <input
- className="sa-settings-input"
- type="number"
- min="0"
- step="1"
- value={branchSettings?.applianceFeeAmountPerUnit ?? 0}
- disabled={savingBranch === branch}
- onChange={(event) =>
- updateBranchField(
- branch,
- "applianceFeeAmountPerUnit",
- event.target.value,
- )
- }
- />
- </label>
-
- <div className="sa-settings-override-meta">
- <span>Last override change</span>
- <strong>{formatActor(branchSettings?.changedBy)}</strong>
- <span>{formatTimestamp(branchSettings?.changedAt)}</span>
- </div>
-
- <button
- type="button"
- className="sa-settings-secondary-btn"
- onClick={() => saveBranchSettings(branch)}
- disabled={savingBranch === branch}
- >
- <Save size={14} />
- {savingBranch === branch ? "Saving..." : "Save Branch Override"}
- </button>
- </article>
- ))}
- </div>
- </section>
-
- <section className="sa2-card sa-settings-section">
- <div className="sa-settings-section-header">
- <div>
- <h2 className="sa2-card-title">Reservation & Lifecycle Policy</h2>
- <p className="sa-settings-section-copy">
- Scheduler-driven reservation actions read these values from the database.
- </p>
- </div>
- <span className="sa-settings-section-pill">Scheduler Backed</span>
- </div>
- <div className="sa-settings-form-grid">
- {LIFECYCLE_FIELDS.map((field) =>
- renderFieldCard(field, form, updateField, savingPolicies),
- )}
- </div>
- </section>
-
- <section className="sa2-card sa-settings-section">
- <div className="sa-settings-section-header">
- <div>
- <h2 className="sa2-card-title">Retention & Automation</h2>
- <p className="sa-settings-section-copy">
- Retention rules determine when safe-to-hide cancelled records are archived.
- </p>
- </div>
- </div>
- <div className="sa-settings-form-grid">
- {RETENTION_FIELDS.map((field) =>
- renderFieldCard(field, form, updateField, savingPolicies),
- )}
- </div>
- <div className="sa-settings-footer">
- <div className="sa-settings-footer-copy">
- <strong>Audit coverage stays on.</strong>
- <span>
- Global policy saves and branch override saves both emit configuration
- changes into `Audit & Security`.
- </span>
- </div>
- <button
- type="button"
- className="sa-settings-primary-btn"
- onClick={savePolicySettings}
- disabled={savingPolicies}
- >
- <Save size={14} />
- {savingPolicies ? "Saving..." : "Save Policy Changes"}
- </button>
- </div>
- </section>
- </>
- )}
- </div>
- );
+  );
 }

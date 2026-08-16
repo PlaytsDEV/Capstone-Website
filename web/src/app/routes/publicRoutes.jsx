@@ -108,6 +108,14 @@ export function PublicRoutes() {
           }
         />
         <Route
+          path="/auth_action"
+          element={
+            <RouteShell name="AuthActionUnderscoreAlias" fallback={<PublicPageSkeleton />}>
+              <AuthAction />
+            </RouteShell>
+          }
+        />
+        <Route
           path="/reset-password"
           element={
             <RequireNonAdmin>

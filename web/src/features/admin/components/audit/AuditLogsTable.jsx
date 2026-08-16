@@ -9,24 +9,32 @@ import {
   XCircle,
   Activity,
   FileText,
+  Copy,
 } from "lucide-react";
 import { formatTimestamp } from "../../utils/formatters";
 import { TableSkeleton } from "../../../../shared/components/LoadingSkeletons";
+import {
+  formatAuditLabel,
+  getAuditTypeBadgeClass,
+  mapAuditSeverityToBadgeStatus,
+} from "../../pages/auditLogPageConfig.mjs";
+import { StatusBadge } from "../shared";
 
 function getActivityIcon(type) {
-  switch (type) {
+  switch (String(type).toLowerCase()) {
     case "login":
-      return <LogIn size={15} />;
+      return <LogIn size={14} />;
     case "registration":
-      return <UserPlus size={15} />;
+      return <UserPlus size={14} />;
     case "data_modification":
-      return <FileEdit size={15} />;
+    case "data_modifcation":
+      return <FileEdit size={14} />;
     case "data_deletion":
-      return <Trash2 size={15} />;
+      return <Trash2 size={14} />;
     case "error":
-      return <XCircle size={15} />;
+      return <XCircle size={14} />;
     default:
-      return <Activity size={15} />;
+      return <Activity size={14} />;
   }
 }
 
@@ -51,18 +59,20 @@ export default function AuditLogsTable({ logs = [], loading = false, onRowClick 
         <thead>
           <tr>
             <th>Timestamp</th>
-            <th>Activity</th>
+            <th>Type</th>
+            <th>Event</th>
             <th>User</th>
             <th>Role</th>
             <th>Severity</th>
-            <th>Details</th>
           </tr>
         </thead>
         <tbody>
           {logs.map((log, index) => {
             const key = log.logId || log._id || index;
-            const severity = String(log.severity || "info").toLowerCase();
-            const role = String(log.userRole || "unknown").toLowerCase();
+            const role = String(log.userRole || "unknown").toLowerCase().replaceAll("-", "_");
+            const val = log.user || "System";
+            const isHash = val.startsWith("sha256:");
+            const displayVal = isHash ? val.replace("sha256:", "") : val;
 
             return (
               <tr
@@ -77,6 +87,11 @@ export default function AuditLogsTable({ logs = [], loading = false, onRowClick 
                   </div>
                 </td>
                 <td>
+                  <span className={`audit-type-badge ${getAuditTypeBadgeClass(log.type)}`}>
+                    {formatAuditLabel(log.type)}
+                  </span>
+                </td>
+                <td>
                   <div className="log-activity">
                     <div className={`log-activity-icon log-activity-icon--${log.type || "default"}`}>
                       {getActivityIcon(log.type)}
@@ -87,24 +102,27 @@ export default function AuditLogsTable({ logs = [], loading = false, onRowClick 
                 <td>
                   <div className="log-user">
                     <div className="log-user-email">
-                      <User size={13} />
-                      <span>{log.user || "System"}</span>
+                      {isHash ? (
+                        <span className="audit-user-hash-chip font-mono">
+                          #{displayVal.slice(0, 10)}
+                        </span>
+                      ) : (
+                        <span>{val}</span>
+                      )}
                     </div>
                     {log.ip && <div className="log-user-ip">{log.ip}</div>}
                   </div>
                 </td>
                 <td>
                   <span className={`role-badge role-badge--${role}`}>
-                    {log.userRole || "N/A"}
+                    {formatAuditLabel(log.userRole || "N/A")}
                   </span>
                 </td>
                 <td>
-                  <span className={`severity-badge severity-badge--${severity}`}>
-                    {log.severity || "info"}
-                  </span>
-                </td>
-                <td>
-                  <div className="log-details">{log.details || "-"}</div>
+                  <StatusBadge
+                    status={mapAuditSeverityToBadgeStatus(log.severity)}
+                    label={formatAuditLabel(log.severity, "Unknown")}
+                  />
                 </td>
               </tr>
             );
@@ -114,4 +132,3 @@ export default function AuditLogsTable({ logs = [], loading = false, onRowClick 
     </div>
   );
 }
-

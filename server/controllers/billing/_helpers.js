@@ -376,10 +376,23 @@ export async function getTenantBillForRequest(req, billId) {
 }
 
 export async function findUtilityPeriodForBill({ bill, utilityType }) {
-  if (!bill?.roomId) return null;
+  if (!bill) return null;
+  const roomId = bill.roomId?._id || bill.roomId;
+  if (!roomId) return null;
 
-  let period = await UtilityPeriod.findOne({
-    roomId: bill.roomId,
+  let period = null;
+  const dispatchPeriodId = bill?.utilityDispatch?.[utilityType]?.periodId;
+  if (dispatchPeriodId) {
+    period = await UtilityPeriod.findById(dispatchPeriodId).lean();
+    if (period) return period;
+  }
+  if (bill.utilityPeriodId) {
+    period = await UtilityPeriod.findById(bill.utilityPeriodId).lean();
+    if (period) return period;
+  }
+
+  period = await UtilityPeriod.findOne({
+    roomId,
     utilityType,
     isArchived: false,
     "tenantSummaries.billId": bill._id,
@@ -388,7 +401,7 @@ export async function findUtilityPeriodForBill({ bill, utilityType }) {
   if (period) return period;
 
   const cycleFilter = {
-    roomId: bill.roomId,
+    roomId,
     utilityType,
     isArchived: false,
   };
@@ -414,9 +427,12 @@ export async function buildTenantUtilityBreakdown({ dbUser, bill, utilityType })
     null;
 
   if (utilityType === "electricity") {
-    const activeSegments = (period.segments || []).filter((segment) =>
+    let activeSegments = (period.segments || []).filter((segment) =>
       (segment.activeTenantIds || []).some((tenantId) => String(tenantId) === String(dbUser._id)),
     );
+    if (activeSegments.length === 0 && (period.segments || []).length > 0) {
+      activeSegments = period.segments;
+    }
 
     return {
       period: {
@@ -442,11 +458,16 @@ export async function buildTenantUtilityBreakdown({ dbUser, bill, utilityType })
   }
 
   const firstSegment = (period.segments || [])[0] || null;
+  const readingFrom = firstSegment?.readingFrom ?? period.startReading ?? 0;
+  const readingTo = firstSegment?.readingTo ?? period.endReading ?? (readingFrom + (period.computedTotalUsage || 0));
+
   return {
     record: {
       id: period._id,
       cycleStart: period.startDate,
       cycleEnd: period.endDate,
+      readingFrom,
+      readingTo,
       usage: period.computedTotalUsage || 0,
       ratePerUnit: period.ratePerUnit,
       roomTotal: period.computedTotalCost || 0,

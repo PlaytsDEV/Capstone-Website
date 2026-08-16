@@ -119,6 +119,14 @@ const inquiryViewingWaiverSchema = new mongoose.Schema(
 
 const inquirySchema = new mongoose.Schema(
   {
+    // Optional reference to registered User if submitted by an authenticated account
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+
     // =========================================================================
     // LEAD CONTACT INFO (Spec §4.1)
     // =========================================================================
@@ -392,6 +400,7 @@ inquirySchema.index({ source: 1, preferredBranch: 1, createdAt: -1 });
 inquirySchema.index({ preferredBranch: 1, viewingStatus: 1, createdAt: -1 });
 
 // Dashboard queries
+inquirySchema.index({ user: 1, createdAt: -1 });
 inquirySchema.index({ assignedTo: 1, viewingStatus: 1 });
 inquirySchema.index({ viewingDate: 1, viewingStatus: 1 });
 inquirySchema.index({ isArchived: 1, viewingStatus: 1 });

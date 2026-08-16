@@ -2,7 +2,7 @@
  * Audit Log API - Domain-specific audit log operations
  */
 
-import { authFetch } from "./httpClient.js";
+import { authFetch, protectedFetch } from "./httpClient.js";
 
 /**
  * Audit Log API for viewing and managing audit logs (admin only)
@@ -40,13 +40,24 @@ export const auditApi = {
   getById: (logId) => authFetch(`/audit-logs/${logId}`),
 
   /**
-   * Export audit logs
+   * Export audit logs (JSON or CSV)
    */
-  export: (filters = {}) =>
-    authFetch("/audit-logs/export", {
+  export: async (filters = {}, format = "json") => {
+    if (format === "csv") {
+      const response = await protectedFetch("/audit-logs/export", {
+        method: "POST",
+        body: JSON.stringify({ filters, format: "csv" }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to export audit logs as CSV.");
+      }
+      return await response.text();
+    }
+    return authFetch("/audit-logs/export", {
       method: "POST",
-      body: JSON.stringify({ filters }),
-    }),
+      body: JSON.stringify({ filters, format: "json" }),
+    });
+  },
 
   /**
    * Get failed login attempts (security)

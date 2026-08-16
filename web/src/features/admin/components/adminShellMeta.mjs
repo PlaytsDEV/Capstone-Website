@@ -20,9 +20,9 @@ const PAGE_META = {
       "Create, verify, generate, and review versioned prepared Contract copies from official templates.",
   },
   "/admin/users": {
-    title: "Accounts",
+    title: "Accounts & Access",
     description:
-      "Manage access, verify account states, and resolve sign-in or lifecycle issues.",
+      "Manage user accounts, credentials, and configure granular branch admin access permissions.",
   },
   "/admin/room-availability": {
     title: "Room Management",
@@ -81,9 +81,9 @@ const PAGE_META = {
       "Adjust branch admin capabilities carefully so access stays predictable and auditable.",
   },
   "/admin/settings": {
-    title: "Policies & Settings",
+    title: "Policies & Maintenance",
     description:
-      "Control platform policies, defaults, safeguards, and shared operational behavior.",
+      "Control platform policies, defaults, branch overrides, and manage database backup and recovery.",
   },
 };
 

@@ -429,3 +429,47 @@ export const verifyResourceOwnership = (paramName = "tenantId") => {
     next();
   };
 };
+
+/**
+ * Optional Authentication Middleware
+ * Attaches decoded user and DB user to request if a valid Bearer token is provided.
+ * Continues without error (req.user = null, req.authUser = null) if unauthenticated.
+ */
+export const optionalAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      req.user = null;
+      req.authUser = null;
+      return next();
+    }
+
+    const token = authHeader.split("Bearer ")[1];
+    if (!token) {
+      req.user = null;
+      req.authUser = null;
+      return next();
+    }
+
+    const auth = getAuth();
+    if (!auth) {
+      req.user = null;
+      req.authUser = null;
+      return next();
+    }
+
+    const decodedToken = await auth.verifyIdToken(token, false);
+    const dbUser = await User.findOne({ firebaseUid: decodedToken.uid })
+      .select("_id user_id firebaseUid firstName lastName name fullName email role branch isActive isArchived")
+      .lean();
+
+    req.user = decodedToken;
+    req.authUser = dbUser || null;
+    next();
+  } catch (_err) {
+    req.user = null;
+    req.authUser = null;
+    next();
+  }
+};
+

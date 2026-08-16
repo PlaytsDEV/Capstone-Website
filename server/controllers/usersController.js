@@ -1869,13 +1869,21 @@ export const updatePermissions = async (req, res, next) => {
     targetUser.permissions = nextPermissions;
     await targetUser.save();
 
+    const oldPermissions = Array.isArray(oldData.permissions) ? oldData.permissions : [];
+    const added = nextPermissions.filter((p) => !oldPermissions.includes(p));
+    const removed = oldPermissions.filter((p) => !nextPermissions.includes(p));
+    const diffDetails = [
+      added.length ? `+${added.join(", +")}` : null,
+      removed.length ? `-${removed.join(", -")}` : null,
+    ].filter(Boolean).join(" | ");
+
     await auditLogger.logModification(
       req,
       "user",
       userId,
       oldData,
       targetUser.toObject(),
-      `Permissions updated: ${targetUser.permissions.join(", ") || "(none)"}`,
+      `Permissions updated [${diffDetails || "reordered"}]: ${targetUser.permissions.join(", ") || "(none)"}`,
     );
 
     res.json({ message: "Permissions updated successfully", user: targetUser, sessionCleanupComplete: !invalidation.failures.length });

@@ -53,6 +53,7 @@ import {
   findOverlappingRoomRequests,
 } from "./_helpers.js";
 import { notify } from "../../utils/notificationService.js";
+import auditLogger from "../../utils/auditLogger.js";
 
 const resolveArchiveFilter = (value) => {
   const archive = String(value || "active").trim().toLowerCase();
@@ -438,6 +439,16 @@ export const updateAdminRequestStatus = async (req, res, next) => {
 
     await request.save();
 
+    await auditLogger.logModification(
+      req,
+      "maintenance",
+      request._id,
+      null,
+      null,
+      "Updated Maintenance Request Status",
+      `Updated maintenance request #${request.request_id || request._id} status to ${request.status}`,
+    );
+
     const tenantUser = await User.findOne({ user_id: request.user_id })
       .select("_id user_id firstName lastName email phone branch role")
       .lean();
@@ -726,6 +737,16 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
 
     await request.save();
     await emitMaintenanceUpdated(request);
+
+    await auditLogger.logModification(
+      req,
+      "maintenance",
+      request._id,
+      null,
+      null,
+      "Assigned Maintenance Service Provider",
+      `Assigned provider ${request.assignedProviderName || "Service Provider"} to maintenance request #${request.request_id || request._id}`,
+    );
 
     const tenantUser = await User.findOne({ user_id: request.user_id })
       .select(USER_SELECT_FIELDS)
@@ -1128,6 +1149,16 @@ export const archiveAdminMaintenanceRequest = async (req, res, next) => {
       });
       await request.save();
       await emitMaintenanceUpdated(request);
+
+      await auditLogger.logModification(
+        req,
+        "maintenance",
+        request._id,
+        { isArchived: false },
+        { isArchived: true },
+        "Archived Maintenance Request",
+        `Archived maintenance request #${request.request_id || request._id}${req.body?.reason ? `. Reason: ${req.body.reason}` : ""}`,
+      );
     }
 
     const tenantUser = await User.findOne({ user_id: request.user_id })
@@ -1170,6 +1201,16 @@ export const restoreAdminMaintenanceRequest = async (req, res, next) => {
       });
       await request.save();
       await emitMaintenanceUpdated(request);
+
+      await auditLogger.logModification(
+        req,
+        "maintenance",
+        request._id,
+        { isArchived: true },
+        { isArchived: false },
+        "Restored Maintenance Request",
+        `Restored maintenance request #${request.request_id || request._id}${req.body?.reason ? `. Reason: ${req.body.reason}` : ""}`,
+      );
     }
 
     const tenantUser = await User.findOne({ user_id: request.user_id })
@@ -1241,6 +1282,16 @@ export const updateAdminMaintenanceCost = async (req, res, next) => {
 
     await request.save();
     await emitMaintenanceUpdated(request);
+
+    await auditLogger.logModification(
+      req,
+      "maintenance",
+      request._id,
+      null,
+      null,
+      "Updated Maintenance Cost",
+      `Updated cost breakdown for request #${request.request_id || request._id}: ₱${totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })} (${isTenantChargeable ? "Tenant Chargeable" : "Dormitory Absorbed"})`,
+    );
 
     const tenantUser = await User.findOne({ user_id: request.user_id })
       .select(USER_SELECT_FIELDS)

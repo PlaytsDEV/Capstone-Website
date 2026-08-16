@@ -3,9 +3,9 @@ import { useState } from "react";
 import { inquiryApi } from "../../../shared/api/apiClient";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 
-function InquiryModal({ isOpen, onClose, defaultBranch = "general" }) {
+function InquiryModal({ isOpen, onClose, defaultBranch = "general", roomData = null }) {
   useEscapeClose(isOpen, onClose);
-  const [inquiryType, setInquiryType] = useState("General Inquiry");
+  const [inquiryType, setInquiryType] = useState(roomData ? "Reservation" : "General Inquiry");
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -66,8 +66,20 @@ function InquiryModal({ isOpen, onClose, defaultBranch = "general" }) {
     setError("");
 
     try {
-      // Map inquiry type to subject
-      const subject = `${inquiryType}: ${formData.name}`;
+      // Map inquiry type to subject, including room reference if available
+      const roomContextLabel = roomData?.title ? `${roomData.title} (${roomData.type || "Room"})` : (roomData?.type || "");
+      const subject = roomContextLabel
+        ? `${inquiryType}: ${roomContextLabel} — ${formData.name.trim()}`
+        : `${inquiryType}: ${formData.name.trim()}`;
+
+      // Resolve branch: prioritize roomData branch, then defaultBranch
+      const targetBranch =
+        roomData?.branchKey ||
+        (roomData?.branch === "Guadalupe"
+          ? "guadalupe"
+          : roomData?.branch === "Gil Puyat"
+          ? "gil-puyat"
+          : defaultBranch || "general");
 
       // Prepare inquiry data for API
       const inquiryData = {
@@ -76,19 +88,19 @@ function InquiryModal({ isOpen, onClose, defaultBranch = "general" }) {
         phone: formData.phone.trim(),
         subject: subject,
         message: formData.message.trim(),
-        branch: defaultBranch, // Use the branch passed as prop or default to "general"
+        branch: targetBranch,
         source: "website",
       };
 
       // Submit to API
-      const response = await inquiryApi.create(inquiryData);
+      await inquiryApi.create(inquiryData);
       // Show success state
       setSuccess(true);
 
       // Reset form after delay
       setTimeout(() => {
         setFormData({ name: "", email: "", phone: "", message: "" });
-        setInquiryType("General Inquiry");
+        setInquiryType(roomData ? "Reservation" : "General Inquiry");
         setSuccess(false);
         onClose();
       }, 3000);

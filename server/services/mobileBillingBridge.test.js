@@ -304,3 +304,99 @@ describe("isMobileEffectivelyPaid", () => {
     ).toBe(false);
   });
 });
+
+describe("utility breakdowns formatting & bridge", () => {
+  const sampleElectricityBreakdown = {
+    period: {
+      id: "607f1f77bcf86cd799439001",
+      startDate: new Date("2026-05-01"),
+      endDate: new Date("2026-05-31"),
+    },
+    ratePerKwh: 16,
+    myTotalKwh: 50.5,
+    myBillAmount: 808,
+    segments: [
+      {
+        periodLabel: "May 1 - May 15",
+        startDate: new Date("2026-05-01"),
+        endDate: new Date("2026-05-15"),
+        readingFrom: 1000,
+        readingTo: 1060,
+        segmentTotalKwh: 60,
+        activeTenantCount: 2,
+        sharePerTenantKwh: 30,
+        sharePerTenantCost: 480,
+      },
+      {
+        periodLabel: "May 15 - May 31",
+        startDate: new Date("2026-05-15"),
+        endDate: new Date("2026-05-31"),
+        readingFrom: 1060,
+        readingTo: 1121.5,
+        segmentTotalKwh: 61.5,
+        activeTenantCount: 3,
+        sharePerTenantKwh: 20.5,
+        sharePerTenantCost: 328,
+      },
+    ],
+  };
+
+  const sampleWaterBreakdown = {
+    record: {
+      id: "607f1f77bcf86cd799439002",
+      cycleStart: new Date("2026-05-01"),
+      cycleEnd: new Date("2026-05-31"),
+      readingFrom: 20,
+      readingTo: 28,
+      usage: 8,
+      ratePerUnit: 50,
+      roomTotal: 400,
+      tenantsSharing: 2,
+      myShare: 200,
+    },
+  };
+
+  test("toMobileBill with electricityBreakdown and waterBreakdown populates mobile fields correctly", () => {
+    const mobileBill = toMobileBill(makeBill(), {
+      electricityBreakdown: sampleElectricityBreakdown,
+      waterBreakdown: sampleWaterBreakdown,
+    });
+
+    expect(Array.isArray(mobileBill.electricity_breakdown)).toBe(true);
+    expect(mobileBill.electricity_breakdown.length).toBe(2);
+    expect(mobileBill.electricity_breakdown[0]).toEqual(
+      expect.objectContaining({
+        segment_index: 1,
+        occupants: 2,
+        reading_from: 1000,
+        reading_to: 1060,
+        consumption: 60,
+        rate: 16,
+        share_per_tenant: 480,
+        share_per_tenant_kwh: 30,
+      }),
+    );
+
+    expect(mobileBill.water_breakdown).toEqual(
+      expect.objectContaining({
+        reading_from: 20,
+        reading_to: 28,
+        consumption: 8,
+        rate: 50,
+        total: 400,
+        my_share: 200,
+        tenants_sharing: 2,
+      }),
+    );
+
+    expect(mobileBill.utility_breakdowns.electricity).toEqual(sampleElectricityBreakdown);
+    expect(mobileBill.utility_breakdowns.water).toEqual(sampleWaterBreakdown);
+  });
+
+  test("toMobileBill without breakdowns leaves electricity_breakdown and water_breakdown null/empty", () => {
+    const mobileBill = toMobileBill(makeBill());
+    expect(mobileBill.electricity_breakdown).toBeNull();
+    expect(mobileBill.water_breakdown).toBeNull();
+    expect(mobileBill.utility_breakdowns).toEqual({ electricity: null, water: null });
+  });
+});
