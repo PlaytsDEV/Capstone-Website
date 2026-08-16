@@ -14,6 +14,13 @@ import {
   ChevronRight,
   MoreVertical,
   LogIn,
+  Download,
+  CheckCircle2,
+  ShieldCheck,
+  Ban,
+  Archive,
+  RotateCcw,
+  X,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
@@ -41,12 +48,60 @@ import {
   StatusBadge,
 } from "../components/shared";
 import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
+import { ExportButtons } from "./analyticsTabShared.js";
+import {
+  handleExportUsersCSV,
+  handleExportUsersPDF,
+} from "../utils/userExportUtils.js";
 import {
   normalizeBranchFilterValue,
   syncBranchSearchParam,
 } from "../../../shared/utils/branchFilterQuery.mjs";
 import "../styles/design-tokens.css";
 import "../styles/admin-users.css";
+
+function renderRoleBadge(role) {
+  switch (role) {
+    case "owner":
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary text-primary-foreground border border-primary/40">
+          Owner
+        </span>
+      );
+    case "branch_admin":
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-info-light text-info-dark border border-info/30">
+          Branch Admin
+        </span>
+      );
+    case "tenant":
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-success-light text-success-dark border border-success/30">
+          Tenant
+        </span>
+      );
+    case "applicant":
+    default:
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
+          Applicant
+        </span>
+      );
+  }
+}
+
+function formatBranch(branch) {
+  if (!branch) {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted/60 text-muted-foreground border border-border/50">
+        Unassigned
+      </span>
+    );
+  }
+  if (branch === "gil-puyat") return "Gil Puyat";
+  if (branch === "guadalupe") return "Guadalupe";
+  return branch.charAt(0).toUpperCase() + branch.slice(1);
+}
 
 function UserActionMenu({
   u,
@@ -124,13 +179,6 @@ function UserActionMenu({
   const canEditAccount =
     canManageUsers && !isArchived && (isOwner || !isPrivilegedAccount);
   const status = u.accountStatus || (u.isActive ? "active" : "suspended");
-  const canBlockAccount =
-    canManageUsers && !isCurrentUser && !isArchived && status === "active";
-  const canUnblockAccount =
-    canManageUsers &&
-    !isCurrentUser &&
-    !isArchived &&
-    (status === "suspended" || (status === "banned" && isOwner));
   const canRestoreAccount =
     canManageUsers &&
     !isCurrentUser &&
@@ -159,7 +207,7 @@ function UserActionMenu({
         <button
           onClick={() => handleEditClick(u)}
           className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          title="Edit User"
+          title="Edit User Details"
         >
           <Edit2 className="h-4 w-4" />
         </button>
@@ -167,7 +215,7 @@ function UserActionMenu({
         <button
           onClick={() => setAccessDrawerUser(u)}
           className="flex h-8 w-8 items-center justify-center rounded-lg border border-primary/30 bg-primary/5 text-primary transition-colors hover:bg-primary/10"
-          title="View Access"
+          title="View Access & Permissions"
         >
           <Shield className="h-4 w-4" />
         </button>
@@ -189,7 +237,7 @@ function UserActionMenu({
           <div
             ref={dropdownRef}
             style={menuStyle}
-            className="min-w-[170px] rounded-lg border border-border bg-card p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100"
+            className="min-w-[180px] rounded-lg border border-border bg-card p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100"
             onClick={(e) => e.stopPropagation()}
           >
             {canManagePermissions && (
@@ -272,6 +320,7 @@ function UserManagementPage() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [accessDrawerUser, setAccessDrawerUser] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isUpdatingUser, setIsUpdatingUser] = useState(false);
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
   const [isHardDeleteModalOpen, setIsHardDeleteModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -280,6 +329,7 @@ function UserManagementPage() {
     user: null,
   });
   const [optimisticStatuses, setOptimisticStatuses] = useState({});
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState(
     () => searchParams.get("search") || "",
@@ -347,24 +397,24 @@ function UserManagementPage() {
   ]);
 
   const AVATAR_COLORS = [
-  "#e11d48", // rose
-  "#d97706", // amber
-  "#16a34a", // green
-  "#2563eb", // blue
-  "#7c3aed", // violet
-  "#db2777", // pink
-  "#0891b2", // cyan
-  "#ea580c", // orange
-];
+    "#e11d48", // rose
+    "#d97706", // amber
+    "#16a34a", // green
+    "#2563eb", // blue
+    "#7c3aed", // violet
+    "#db2777", // pink
+    "#0891b2", // cyan
+    "#ea580c", // orange
+  ];
 
-function getAvatarColor(user) {
-  const seed = user._id || user.id || user.email || user.username || "x";
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  function getAvatarColor(userData) {
+    const seed = userData._id || userData.id || userData.email || userData.username || "x";
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
   }
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
 
   const [editFormErrors, setEditFormErrors] = useState({});
   const [editForm, setEditForm] = useState({
@@ -474,7 +524,6 @@ function getAvatarColor(user) {
   const handleAddFormChange = (field, value) => {
     setAddForm((prev) => {
       const updated = { ...prev, [field]: value };
-      // Re-validate field and branch if role changed
       if (field === "role" && value !== "branch_admin") {
         setAddFormErrors((errs) => ({ ...errs, branch: "" }));
       }
@@ -632,6 +681,7 @@ function getAvatarColor(user) {
       return;
     }
 
+    setIsUpdatingUser(true);
     try {
       await authFetch(`/users/${selectedUser._id}`, {
         method: "PUT",
@@ -663,6 +713,8 @@ function getAvatarColor(user) {
       } else {
         showNotification(msg || "Failed to update user", "error", 4000);
       }
+    } finally {
+      setIsUpdatingUser(false);
     }
   };
 
@@ -797,7 +849,7 @@ function getAvatarColor(user) {
         }),
       });
       showNotification(
-        `${createdUserLabel} was added successfully. Welcome email sent.`,
+        `${createdUserLabel} was added successfully. Welcome notification sent.`,
         "success",
         4000,
       );
@@ -859,7 +911,7 @@ function getAvatarColor(user) {
           body: JSON.stringify({ reason }),
         });
         showNotification(
-          `${actionUserLabel} was blocked successfully.`,
+          `${actionUserLabel} was restricted successfully.`,
           "success",
           3000,
         );
@@ -912,38 +964,88 @@ function getAvatarColor(user) {
   const summaryItems = useMemo(
     () => [
       {
+        id: "total",
         label: "Total Accounts",
         value: stats?.total || totalUsers,
-        color: "blue",
+        icon: Users,
+        color: "var(--foreground)",
       },
       {
-        label: "Active",
+        id: "active",
+        label: "Active Accounts",
         value: Math.max(0, (stats?.activeCount || 0) + activeDelta),
-        color: "green",
+        icon: CheckCircle2,
+        color: "var(--color-success, #059669)",
       },
       {
+        id: "admin",
         label: "Admin Accounts",
         value: (stats?.byRole?.branch_admin || 0) + (stats?.byRole?.owner || 0),
-        color: "blue",
+        icon: ShieldCheck,
+        color: "var(--info-dark, #0284c7)",
       },
       {
-        label: "Blocked",
+        id: "blocked",
+        label: "Suspended / Blocked",
         value: Math.max(
           0,
           (stats?.byAccountStatus?.suspended || 0) +
             (stats?.byAccountStatus?.banned || 0) +
             suspendedDelta,
         ),
-        color: "orange",
+        icon: Ban,
+        color: "var(--color-warning, #d97706)",
       },
       {
-        label: "Archived",
+        id: "archived",
+        label: "Archived Accounts",
         value: stats?.archivedCount || 0,
-        color: "red",
+        icon: Archive,
+        color: "var(--color-danger, #e11d48)",
       },
     ],
     [stats, totalUsers, activeDelta, suspendedDelta],
   );
+
+  const handleExportCSV = () => {
+    handleExportUsersCSV({
+      users,
+      branchFilter: isOwner ? branchFilter : (user?.branch || "all"),
+    });
+  };
+
+  const handleExportPDF = async () => {
+    setIsExportingPdf(true);
+    try {
+      await handleExportUsersPDF({
+        users,
+        stats: stats || {},
+        branchFilter: isOwner ? branchFilter : (user?.branch || "all"),
+        roleFilter,
+        statusFilter,
+        searchTerm: searchQuery,
+      });
+    } catch (error) {
+      console.error("[UserManagement] PDF export failed:", error);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  const hasActiveFilters = Boolean(
+    searchQuery ||
+      roleFilter !== "all" ||
+      statusFilter !== "all" ||
+      (isOwner && branchFilter !== "all")
+  );
+
+  const handleResetFilters = () => {
+    setSearchQuery("");
+    setRoleFilter("all");
+    setStatusFilter("all");
+    if (isOwner) setBranchFilter("all");
+    setCurrentPage(1);
+  };
 
   const filters = [
     {
@@ -981,9 +1083,9 @@ function getAvatarColor(user) {
     {
       key: "status",
       options: [
-        { value: "all", label: "All Status" },
+        { value: "all", label: "All Statuses" },
         { value: "active", label: "Active" },
-        { value: "restricted", label: "Blocked (All)" },
+        { value: "restricted", label: "Suspended / Blocked" },
         { value: "suspended", label: "Inactive" },
         { value: "banned", label: "Blocked account" },
         { value: "pending_verification", label: "Pending Verification" },
@@ -997,176 +1099,6 @@ function getAvatarColor(user) {
     },
   ];
 
-  const columns = [
-    {
-      key: "name",
-      label: "User",
-      sortable: true,
-      render: (row) => (
-        <div className="user-cell">
-          <div className="user-cell__avatar">
-            {(row.firstName?.charAt(0) || "").toUpperCase()}
-            {(row.lastName?.charAt(0) || "").toUpperCase()}
-          </div>
-          <div className="user-cell__info">
-            <span className="user-cell__name">
-              {row.firstName} {row.lastName}
-            </span>
-            <span className="user-cell__email">{row.email}</span>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "role",
-      label: "Role",
-      sortable: true,
-      render: (row) => <span className="user-role-badge">{row.role}</span>,
-    },
-    {
-      key: "branch",
-      label: "Branch",
-      sortable: true,
-      render: (row) => row.branch || "—",
-    },
-    {
-      key: "accountStatus",
-      label: "Status",
-      render: (row) => {
-        const isCurrentUser = row._id === (user?._id || user?.uid);
-        const isArchived = row.isArchived === true;
-        const isPrivilegedAccount = ["branch_admin", "owner"].includes(row.role);
-        const effectiveStatus = row.accountStatus || (row.isActive ? "active" : "suspended");
-        const isActive = row.isActive !== false && effectiveStatus === "active";
-        const canToggle = canManageUsers && !isCurrentUser && !isArchived && (isOwner || !isPrivilegedAccount);
-
-        return (
-          <div className="flex items-center gap-2.5 shrink-0">
-            <ToggleSwitch
-              checked={isActive}
-              disabled={!canToggle}
-              size="sm"
-              ariaLabel={`Toggle status for ${row.firstName || row.username}`}
-              onChange={async (nextActive) => {
-                try {
-                  const userLabel = formatUserLabel(row);
-                  if (nextActive) {
-                    await authFetch(`/users/${row._id}/reactivate`, { method: "PATCH" });
-                    showNotification(`${userLabel} activated successfully`, "success", 2500);
-                  } else {
-                    await authFetch(`/users/${row._id}/suspend`, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ reason: "Deactivated via status switch" }),
-                    });
-                    showNotification(`${userLabel} deactivated successfully`, "success", 2500);
-                  }
-                  refetchAll();
-                } catch (err) {
-                  showNotification(err.message || "Failed to update status", "error", 3000);
-                }
-              }}
-            />
-            <StatusBadge
-              status={effectiveStatus}
-              label={
-                effectiveStatus === "banned"
-                  ? "Blocked account"
-                  : effectiveStatus === "suspended"
-                  ? "Inactive"
-                  : undefined
-              }
-            />
-          </div>
-        );
-      },
-    },
-    {
-      key: "actions",
-      label: "",
-      width: "360px",
-      align: "right",
-      render: (row) => {
-        const isCurrentUser = row._id === (user?._id || user?.uid);
-        const isArchived = row.isArchived === true;
-        const isPrivilegedAccount = ["branch_admin", "owner"].includes(
-          row.role,
-        );
-        const status =
-          row.accountStatus || (row.isActive ? "active" : "suspended");
-        const canManagePermissions =
-          isOwner && row.role === "branch_admin" && !isArchived;
-        const canBlock =
-          canManageUsers &&
-          !isCurrentUser &&
-          !isArchived &&
-          status === "active";
-        const canUnblock =
-          canManageUsers &&
-          !isCurrentUser &&
-          !isArchived &&
-          (status === "suspended" || (status === "banned" && isOwner));
-        const canRestore =
-          canManageUsers &&
-          !isCurrentUser &&
-          isArchived &&
-          (isOwner || !isPrivilegedAccount);
-        const canHardDelete =
-          canManageUsers &&
-          !isCurrentUser &&
-          (isArchived || isOwner) &&
-          (!isPrivilegedAccount || isOwner);
-
-        return (
-          <AccountRowActions
-            canViewAccess
-            canManagePermissions={canManagePermissions}
-            canEdit={
-              canManageUsers && !isArchived && (isOwner || !isPrivilegedAccount)
-            }
-            canBlock={canBlock}
-            canUnblock={canUnblock}
-            canRestore={canRestore}
-            canHardDelete={canHardDelete}
-            onViewAccess={() => setAccessDrawerUser(row)}
-            onManagePermissions={() => handleOpenPermissions(row)}
-            onEdit={() => handleEditClick(row)}
-            onBlock={() => setAccountAction({ type: "ban", user: row })}
-            onUnblock={() =>
-              setAccountAction({ type: "reactivate", user: row })
-            }
-            onRestore={() => setAccountAction({ type: "restore", user: row })}
-            onHardDelete={() => handleHardDeleteClick(row)}
-          />
-        );
-      },
-    },
-  ];
-
-  const actions = isOwner
-    ? [
-        {
-          label: "Add User",
-          icon: UserPlus,
-          onClick: () => {
-            setAddForm({
-              username: "",
-              firstName: "",
-              lastName: "",
-              email: "",
-              phone: "",
-              role: "applicant",
-              branch: "",
-              password: "",
-            });
-            setAddFormErrors({});
-            setIsAddModalOpen(true);
-          },
-          variant: "primary",
-        },
-      ]
-    : [];
-
   if (loading && !usersData) {
     return <AdminTablePageSkeleton />;
   }
@@ -1174,77 +1106,28 @@ function getAvatarColor(user) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1
-          className="mb-2 text-2xl font-semibold"
-          style={{ color: "var(--color-text-primary)" }}
-        >
-          Accounts
-        </h1>
-        <p className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
-          Manage access, verify account states, and resolve sign-in or lifecycle
-          issues
-        </p>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {summaryItems.map((item) => (
-          <div
-            key={item.label}
-            className="rounded-lg p-6"
-            style={{
-              backgroundColor: "var(--card)",
-              border: "1px solid var(--color-border-default)",
-            }}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1
+            className="mb-1 text-2xl font-semibold"
+            style={{ color: "var(--foreground)" }}
           >
-            <div
-              className="text-4xl mb-2 font-semibold"
-              style={{ color: "var(--color-text-primary)" }}
-            >
-              {item.value}
-            </div>
-            <div
-              className="text-sm uppercase tracking-wide"
-              style={{ color: "var(--color-text-secondary)" }}
-            >
-              {item.label}
-            </div>
-          </div>
-        ))}
-      </div>
+            Accounts
+          </h1>
+          <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
+            Manage access credentials, verify account states, and resolve sign-in or lifecycle issues
+          </p>
+        </div>
 
-      {/* Filters and Search */}
-      <div
-        className="rounded-lg p-6 space-y-4"
-        style={{
-          backgroundColor: "var(--card)",
-          border: "1px solid var(--color-border-default)",
-        }}
-      >
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-          <div className="relative flex-1 max-w-md w-full">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
-              style={{ color: "var(--muted-foreground)" }}
-            />
-            <input
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder="Search users..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-lg focus:outline-none h-11"
-              style={{
-                backgroundColor: "var(--input-background)",
-                border: "1px solid var(--color-border-default)",
-                color: "var(--color-text-primary)",
-              }}
-            />
-          </div>
+        <div className="flex items-center gap-2.5">
+          <ExportButtons
+            onCsv={handleExportCSV}
+            onPdf={handleExportPDF}
+            loading={isExportingPdf}
+            disabled={loading}
+          />
 
-          <div className="flex items-center gap-3">
+          {isOwner && (
             <button
               id="btn-add-user"
               onClick={() => {
@@ -1261,7 +1144,7 @@ function getAvatarColor(user) {
                 setAddFormErrors({});
                 setIsAddModalOpen(true);
               }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
               style={{
                 backgroundColor: "var(--primary)",
                 color: "var(--primary-foreground)",
@@ -1270,32 +1153,129 @@ function getAvatarColor(user) {
               <UserPlus className="h-4 w-4" />
               Add User
             </button>
-          </div>
+          )}
         </div>
+      </div>
 
-        <div className="flex flex-wrap gap-3">
-          {filters.map((f) => (
-            <div key={f.key}>
-              {f.component || (
-                <select
-                  value={f.value || "all"}
-                  onChange={(e) => f.onChange(e.target.value)}
-                  className="px-4 py-2 rounded-lg"
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        {summaryItems.map((item) => {
+          const IconComponent = item.icon;
+          return (
+            <div
+              key={item.id}
+              className="rounded-lg p-4 text-left relative overflow-hidden bg-card"
+              style={{
+                border: "1px solid var(--border)",
+              }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span
+                  className="text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  {item.label}
+                </span>
+                <div
+                  className="h-8 w-8 rounded-lg flex items-center justify-center"
                   style={{
-                    backgroundColor: "var(--card)",
-                    border: "1px solid var(--color-border-default)",
-                    color: "var(--color-text-primary)",
+                    backgroundColor: "var(--muted)",
+                    color: item.color,
                   }}
                 >
-                  {f.options?.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              )}
+                  <IconComponent className="h-4 w-4" />
+                </div>
+              </div>
+
+              <div
+                className="text-3xl font-bold tracking-tight"
+                style={{ color: "var(--foreground)" }}
+              >
+                {item.value}
+              </div>
             </div>
-          ))}
+          );
+        })}
+      </div>
+
+      {/* Filters and Search Toolbar */}
+      <div
+        className="rounded-lg p-4 space-y-3"
+        style={{
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
+          <div className="relative flex-1 max-w-md w-full">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
+              style={{ color: "var(--muted-foreground)" }}
+            />
+            <input
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder="Search by name, email, or username..."
+              className="w-full pl-9 pr-8 py-2 rounded-lg text-sm focus:outline-none transition-colors"
+              style={{
+                backgroundColor: "var(--input-background, var(--card))",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
+              }}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setCurrentPage(1);
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {filters.map((f) => (
+              <div key={f.key}>
+                {f.component || (
+                  <select
+                    value={f.value || "all"}
+                    onChange={(e) => f.onChange(e.target.value)}
+                    className="px-3 py-2 rounded-lg text-xs font-medium focus:outline-none"
+                    style={{
+                      backgroundColor: "var(--card)",
+                      border: "1px solid var(--border)",
+                      color: "var(--foreground)",
+                    }}
+                  >
+                    {f.options?.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ))}
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted border border-border transition-colors"
+                title="Clear all active search and filter criteria"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1304,52 +1284,52 @@ function getAvatarColor(user) {
         className="rounded-lg overflow-hidden"
         style={{
           backgroundColor: "var(--card)",
-          border: "1px solid var(--color-border-default)",
+          border: "1px solid var(--border)",
         }}
       >
         <div className="overflow-x-auto">
           <table className="w-full table-fixed">
             <colgroup>
-              <col style={{ width: "28%" }} />
-              <col style={{ width: "17%" }} />
-              <col style={{ width: "17%" }} />
-              <col style={{ width: "23%" }} />
-              <col style={{ width: "15%" }} />
+              <col style={{ width: "30%" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "22%" }} />
+              <col style={{ width: "16%" }} />
             </colgroup>
             <thead>
               <tr
                 style={{
                   borderBottom: "1px solid var(--border)",
-                  backgroundColor: "var(--background)",
+                  backgroundColor: "var(--muted)",
                 }}
               >
                 <th
-                  className="text-left px-6 py-4 text-sm uppercase tracking-wider"
-                  style={{ color: "var(--color-text-secondary)" }}
+                  className="text-left px-5 py-3.5 text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--muted-foreground)" }}
                 >
-                  User
+                  User Account
                 </th>
                 <th
-                  className="text-left px-6 py-4 text-sm uppercase tracking-wider"
-                  style={{ color: "var(--color-text-secondary)" }}
+                  className="text-left px-5 py-3.5 text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--muted-foreground)" }}
                 >
                   Role
                 </th>
                 <th
-                  className="text-left px-6 py-4 text-sm uppercase tracking-wider"
-                  style={{ color: "var(--color-text-secondary)" }}
+                  className="text-left px-5 py-3.5 text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--muted-foreground)" }}
                 >
                   Branch
                 </th>
                 <th
-                  className="text-left px-6 py-4 text-sm uppercase tracking-wider"
-                  style={{ color: "var(--color-text-secondary)" }}
+                  className="text-left px-5 py-3.5 text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--muted-foreground)" }}
                 >
-                  Status
+                  Account Status
                 </th>
                 <th
-                  className="text-right px-6 py-4 text-sm uppercase tracking-wider"
-                  style={{ color: "var(--color-text-secondary)" }}
+                  className="text-right px-5 py-3.5 text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--muted-foreground)" }}
                 >
                   Actions
                 </th>
@@ -1360,213 +1340,220 @@ function getAvatarColor(user) {
                 <tr>
                   <td colSpan={5} className="py-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
                         <Users className="h-6 w-6 text-muted-foreground" />
                       </div>
-                      <p className="text-sm font-semibold" style={{ color: "var(--color-text-primary)" }}>
-                        No users found
+                      <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                        No user accounts found
                       </p>
-                      <p className="text-xs max-w-sm mx-auto" style={{ color: "var(--color-text-secondary)" }}>
-                        {searchQuery || roleFilter !== "all" || statusFilter !== "all" || branchFilter !== "all"
-                          ? "No user accounts match your active search or filters. Try adjusting your search criteria."
+                      <p className="text-xs max-w-sm mx-auto" style={{ color: "var(--muted-foreground)" }}>
+                        {hasActiveFilters
+                          ? "No user accounts match your active search or filters. Click 'Reset' to clear your criteria."
                           : "There are currently no user accounts registered in this section."}
                       </p>
+                      {hasActiveFilters && (
+                        <button
+                          type="button"
+                          onClick={handleResetFilters}
+                          className="mt-2 text-xs font-medium text-primary hover:underline"
+                        >
+                          Reset all filters
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
               ) : (
                 users.map((u) => (
-                <tr
-                  key={u._id || u.id}
-                  className="hover:bg-muted/10 transition-colors"
-                  onClick={() => setAccessDrawerUser(u)}
-                >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-10 h-10 flex-none rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-semibold leading-none"
-                        style={{ backgroundColor: getAvatarColor(u) }}
-                      >
-                        {(u.firstName && u.lastName
-                          ? `${u.firstName[0]}${u.lastName[0]}`
-                          : u.initials || "NA"
-                        ).toUpperCase()}
-                      </div>
-                      <div>
+                  <tr
+                    key={u._id || u.id}
+                    className="hover:bg-muted/30 transition-colors"
+                    onClick={() => setAccessDrawerUser(u)}
+                  >
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-3">
                         <div
-                          className="text-sm font-medium"
-                          style={{ color: "var(--color-text-primary)" }}
+                          className="w-9 h-9 flex-none rounded-full flex items-center justify-center text-white text-xs font-bold leading-none shadow-sm"
+                          style={{ backgroundColor: getAvatarColor(u) }}
                         >
-                          {u.fullName ||
-                            `${u.firstName} ${u.lastName}` ||
-                            u.username}
+                          {(u.firstName && u.lastName
+                            ? `${u.firstName[0]}${u.lastName[0]}`
+                            : u.initials || "NA"
+                          ).toUpperCase()}
                         </div>
-                        <div
-                          className="text-xs"
-                          style={{ color: "var(--color-text-secondary)" }}
-                        >
-                          {u.email}
+                        <div className="min-w-0">
+                          <div
+                            className="text-sm font-semibold truncate"
+                            style={{ color: "var(--foreground)" }}
+                          >
+                            {u.fullName ||
+                              `${u.firstName || ""} ${u.lastName || ""}`.trim() ||
+                              u.username}
+                          </div>
+                          <div
+                            className="text-xs truncate"
+                            style={{ color: "var(--muted-foreground)" }}
+                          >
+                            {u.email}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full bg-muted text-foreground text-sm">
-                      {u.role}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-muted-foreground">
-                    {u.branch || "—"}
-                  </td>
-                  <td className="px-6 py-4">
-                    {(() => {
-                      const userId = String(u._id || u.id);
-                      const isCurrentUser = u._id === (user?._id || user?.uid);
-                      const isArchived = u.isArchived === true;
-                      const isPrivilegedAccount = ["branch_admin", "owner"].includes(u.role);
-                      const optStatus = optimisticStatuses[userId];
-                      const status =
-                        isArchived
-                          ? "archived"
-                          : optStatus ||
-                            u.accountStatus ||
-                            (u.isActive ? "active" : "suspended");
-                      const isActive = optStatus
-                        ? optStatus === "active"
-                        : u.isActive !== false && status === "active";
-                      const canToggle =
-                        canManageUsers &&
-                        !isCurrentUser &&
-                        !isArchived &&
-                        (isOwner || !isPrivilegedAccount);
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {renderRoleBadge(u.role)}
+                    </td>
+                    <td className="px-5 py-3.5 text-sm font-medium" style={{ color: "var(--foreground)" }}>
+                      {formatBranch(u.branch)}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {(() => {
+                        const userId = String(u._id || u.id);
+                        const isCurrentUser = u._id === (user?._id || user?.uid);
+                        const isArchived = u.isArchived === true;
+                        const isPrivilegedAccount = ["branch_admin", "owner"].includes(u.role);
+                        const optStatus = optimisticStatuses[userId];
+                        const status =
+                          isArchived
+                            ? "archived"
+                            : optStatus ||
+                              u.accountStatus ||
+                              (u.isActive ? "active" : "suspended");
+                        const isActive = optStatus
+                          ? optStatus === "active"
+                          : u.isActive !== false && status === "active";
+                        const canToggle =
+                          canManageUsers &&
+                          !isCurrentUser &&
+                          !isArchived &&
+                          (isOwner || !isPrivilegedAccount);
 
-                      const statusMeta = {
-                        active: {
-                          label: "Active",
-                          color: "var(--color-success)",
-                        },
-                        pending_verification: {
-                          label: "Pending",
-                          color: "var(--color-warning)",
-                        },
-                        suspended: {
-                          label: "Inactive",
-                          color: "var(--color-warning)",
-                        },
-                        banned: {
-                          label: "Blocked account",
-                          color: "var(--color-danger)",
-                        },
-                        archived: {
-                          label: "Archived",
-                          color: "var(--color-danger)",
-                        },
-                      }[status] || {
-                        label: isActive ? "Active" : "Inactive",
-                        color: isActive
-                          ? "var(--color-success)"
-                          : "var(--color-warning)",
-                      };
+                        const statusMeta = {
+                          active: {
+                            label: "Active",
+                            color: "var(--color-success, #059669)",
+                          },
+                          pending_verification: {
+                            label: "Pending",
+                            color: "var(--color-warning, #d97706)",
+                          },
+                          suspended: {
+                            label: "Inactive",
+                            color: "var(--color-warning, #d97706)",
+                          },
+                          banned: {
+                            label: "Blocked",
+                            color: "var(--color-danger, #e11d48)",
+                          },
+                          archived: {
+                            label: "Archived",
+                            color: "var(--color-danger, #e11d48)",
+                          },
+                        }[status] || {
+                          label: isActive ? "Active" : "Inactive",
+                          color: isActive
+                            ? "var(--color-success, #059669)"
+                            : "var(--color-warning, #d97706)",
+                        };
 
-                      return (
-                        <div
-                          className="inline-flex items-center gap-2.5"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <ToggleSwitch
-                            checked={isActive}
-                            disabled={!canToggle}
-                            size="sm"
-                            ariaLabel={`Toggle status for ${u.firstName || u.username}`}
-                            onChange={async (nextActive) => {
-                              const nextStatus = nextActive ? "active" : "suspended";
-                              setOptimisticStatuses((prev) => ({
-                                ...prev,
-                                [userId]: nextStatus,
-                              }));
-                              try {
+                        return (
+                          <div
+                            className="inline-flex items-center gap-2.5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <ToggleSwitch
+                              checked={isActive}
+                              disabled={!canToggle}
+                              size="sm"
+                              ariaLabel={`Toggle status for ${u.firstName || u.username}`}
+                              onChange={async (nextActive) => {
+                                const userLabel = formatUserLabel(u);
                                 if (nextActive) {
-                                  await authFetch(`/users/${userId}/reactivate`, { method: "PATCH" });
+                                  // Instant reactivation
+                                  setOptimisticStatuses((prev) => ({
+                                    ...prev,
+                                    [userId]: "active",
+                                  }));
+                                  try {
+                                    await authFetch(`/users/${userId}/reactivate`, { method: "PATCH" });
+                                    showNotification(`${userLabel} was reactivated successfully.`, "success", 2500);
+                                    await refetchAll();
+                                  } catch (err) {
+                                    setOptimisticStatuses((prev) => {
+                                      const copy = { ...prev };
+                                      delete copy[userId];
+                                      return copy;
+                                    });
+                                    showNotification(err.message || "Failed to reactivate user", "error", 3000);
+                                  }
                                 } else {
-                                  await authFetch(`/users/${userId}/suspend`, {
-                                    method: "PATCH",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ reason: "Deactivated via status switch" }),
-                                  });
+                                  // Deactivation confirmation guard with reason chips
+                                  setSelectedUser(u);
+                                  setAccountAction({ type: "suspend", user: u });
                                 }
-                                await refetchAll();
-                              } catch (err) {
-                                setOptimisticStatuses((prev) => {
-                                  const copy = { ...prev };
-                                  delete copy[userId];
-                                  return copy;
-                                });
-                                showNotification(err.message || "Failed to update status", "error", 3000);
-                              }
-                            }}
-                          />
-                          <span className="inline-flex items-center gap-1.5 text-sm">
-                            <span
-                              className="w-2 h-2 rounded-full inline-block flex-shrink-0"
-                              style={{ backgroundColor: statusMeta.color }}
+                              }}
                             />
-                            <span style={{ color: statusMeta.color }}>
-                              {statusMeta.label}
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold">
+                              <span
+                                className="w-2 h-2 rounded-full inline-block flex-shrink-0"
+                                style={{ backgroundColor: statusMeta.color }}
+                              />
+                              <span style={{ color: statusMeta.color }}>
+                                {statusMeta.label}
+                              </span>
                             </span>
-                          </span>
-                        </div>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end">
-                      <UserActionMenu
-                        u={u}
-                        user={user}
-                        setAccessDrawerUser={setAccessDrawerUser}
-                        handleOpenPermissions={handleOpenPermissions}
-                        handleEditClick={handleEditClick}
-                        handleArchiveClick={handleArchiveClick}
-                        handleHardDeleteClick={handleHardDeleteClick}
-                        canManageUsers={canManageUsers}
-                        isOwner={isOwner}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              )))}
+                          </div>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-5 py-3.5 text-right">
+                      <div className="flex items-center justify-end">
+                        <UserActionMenu
+                          u={u}
+                          user={user}
+                          setAccessDrawerUser={setAccessDrawerUser}
+                          handleOpenPermissions={handleOpenPermissions}
+                          handleEditClick={handleEditClick}
+                          setSelectedUser={setSelectedUser}
+                          setAccountAction={setAccountAction}
+                          handleArchiveClick={handleArchiveClick}
+                          handleHardDeleteClick={handleHardDeleteClick}
+                          canManageUsers={canManageUsers}
+                          isOwner={isOwner}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
         {/* Pagination */}
         <div
-          className="flex items-center justify-between px-6 py-4"
-          style={{ borderTop: "1px solid var(--color-border-default)" }}
+          className="flex items-center justify-between px-5 py-3.5"
+          style={{ borderTop: "1px solid var(--border)" }}
         >
           <div
-            className="text-sm"
-            style={{ color: "var(--color-text-secondary)" }}
+            className="text-xs font-medium"
+            style={{ color: "var(--muted-foreground)" }}
           >
-            {totalUsers || users.length} results
+            Showing {users.length} of {totalUsers || users.length} accounts
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               disabled={currentPage === 1}
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-foreground"
-              style={{
-                border: "1px solid var(--color-border-default)",
-                color: "var(--color-text-primary)",
-              }}
+              className="p-1.5 rounded-lg border border-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted text-foreground"
+              title="Previous Page"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
             <span
-              className="text-sm px-3"
-              style={{ color: "var(--color-text-primary)" }}
+              className="text-xs font-semibold px-2.5"
+              style={{ color: "var(--foreground)" }}
             >
-              {currentPage} /{" "}
+              Page {currentPage} of{" "}
               {Math.max(
                 1,
                 Math.ceil((totalUsers || users.length) / ITEMS_PER_PAGE),
@@ -1578,11 +1565,8 @@ function getAvatarColor(user) {
                 Math.ceil((totalUsers || users.length) / ITEMS_PER_PAGE)
               }
               onClick={() => setCurrentPage((p) => p + 1)}
-              className="p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-foreground"
-              style={{
-                border: "1px solid var(--color-border-default)",
-                color: "var(--color-text-primary)",
-              }}
+              className="p-1.5 rounded-lg border border-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted text-foreground"
+              title="Next Page"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -1590,7 +1574,7 @@ function getAvatarColor(user) {
         </div>
       </div>
 
-      {/* Modals & drawers (preserve existing logic) */}
+      {/* Modals & drawers */}
       {isEditModalOpen && (
         <EditUserModal
           editForm={editForm}
@@ -1599,6 +1583,7 @@ function getAvatarColor(user) {
           onFormChange={handleEditFormChange}
           onSubmit={handleUpdateUser}
           onClose={() => setIsEditModalOpen(false)}
+          isUpdating={isUpdatingUser}
         />
       )}
       {isAddModalOpen && (
