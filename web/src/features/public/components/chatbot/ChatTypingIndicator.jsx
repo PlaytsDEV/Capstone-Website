@@ -13,7 +13,7 @@ export function ChatTypingIndicator() {
       className="flex items-start gap-2.5 my-2"
       role="status"
       aria-live="polite"
-      aria-label="Lilycrest AI is formulating a response"
+      aria-label="Lilycrest AI Chatbot is formulating a response"
       style={{
         animation: "typingBubbleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards",
       }}
@@ -44,14 +44,19 @@ export function ChatTypingIndicator() {
 
       {/* Bot Icon Badge */}
       <div
-        className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-white select-none shadow-xs"
+        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 select-none shadow-xs overflow-hidden"
         style={{
-          backgroundColor: "var(--lp-navy, #0A1628)",
-          border: "1px solid var(--lp-accent, #D4AF37)",
+          backgroundColor: "#ffffff",
+          border: "1.5px solid var(--lp-accent, #D4AF37)",
+          padding: "3.5px",
         }}
         aria-hidden="true"
       >
-        <Bot className="w-3.5 h-3.5" style={{ color: "var(--lp-accent, #D4AF37)" }} />
+        <img
+          src="/lilycrest-logo.png"
+          alt="Lilycrest Logo"
+          className="w-full h-full object-contain"
+        />
       </div>
 
       {/* Bubble with 3 pulsing dots */}

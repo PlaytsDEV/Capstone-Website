@@ -4,51 +4,61 @@ import {
   X,
   RotateCcw,
   Send,
-  Building2,
-  ChevronDown,
-  PhoneCall,
-  Sparkles,
+  Headphones,
   ShieldCheck,
-  Info,
+  Sparkles,
 } from "lucide-react";
 import ChatMessageList from "./ChatMessageList";
 import ChatLeadEscalationForm from "./ChatLeadEscalationForm";
+import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import { chatbotApi } from "../../../../shared/api/chatbotApi";
 
 const STORAGE_KEY = "lc_chatbot_history_v1";
+const LAST_ACTIVE_KEY = "lc_chatbot_last_active_v1";
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes of inactivity
 
 const INITIAL_MESSAGE = {
   id: "welcome-msg",
   role: "assistant",
-  text: "Hello! I am the **Lilycrest Digital Receptionist**. I can provide instant information on room rates, branch locations (*Gil Puyat* & *Guadalupe*), house policies, curfews, and reservation steps.\n\nHow can I help you today?",
+  text: "Hello! I am the **Lilycrest AI Chatbot**. I can assist you with our room types, branch locations (*Gil Puyat* & *Guadalupe*), house rules, curfews, utility billing, and checking live room availability.\n\nHow can I help you today?",
   timestamp: Date.now(),
   suggestedActions: [
-    { label: "Quadruple Sharing Rates", prompt: "What are the rates for Quadruple Sharing rooms?" },
-    { label: "Curfew & Visitors", prompt: "What are the curfew hours and visitor rules?" },
-    { label: "Book a Viewing", action: "open_escalation_form" },
+    { label: "Check Room Availability", url: "/applicant/check-availability" },
+    { label: "Room Types & Amenities", prompt: "What are your room types and amenities for Gil Puyat and Guadalupe?" },
+    { label: "Check ID Requirements", action: "open_kyc_widget" },
+    { label: "Curfew & Policies", prompt: "What are the building curfew hours and visitor policies?" },
   ],
-};
-
-const BRANCH_LABELS = {
-  all: "All Branches",
-  gil_puyat: "Gil Puyat (Pasay)",
-  guadalupe: "Guadalupe (Makati)",
 };
 
 /**
  * PublicChatbotModal
  *
  * 380px x 560px (desktop) / full-screen (mobile < 640px) conversational modal.
- * Built with solid HSL tokens, 1px crisp borders, and zero gradients.
+ * Built with solid HSL tokens, 1px crisp borders, zero gradients, and real-time SSE streaming.
  */
-export function PublicChatbotModal({ isOpen, onClose, initialPrompt = "" }) {
+export function PublicChatbotModal({
+  isOpen,
+  onClose,
+  initialPrompt = "",
+  onClearInitialPrompt,
+}) {
   const [messages, setMessages] = useState(() => {
     try {
+      const lastActive = sessionStorage.getItem(LAST_ACTIVE_KEY);
+      if (lastActive) {
+        const lastActiveTime = parseInt(lastActive, 10);
+        if (!isNaN(lastActiveTime) && Date.now() - lastActiveTime > INACTIVITY_TIMEOUT_MS) {
+          sessionStorage.removeItem(STORAGE_KEY);
+          sessionStorage.removeItem(LAST_ACTIVE_KEY);
+          return [INITIAL_MESSAGE];
+        }
+      }
       const saved = sessionStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          // Clear any leftover streaming flags from previous session
+          return parsed.map((m) => ({ ...m, isStreaming: false }));
         }
       }
     } catch {
@@ -59,71 +69,85 @@ export function PublicChatbotModal({ isOpen, onClose, initialPrompt = "" }) {
 
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [branchFocus, setBranchFocus] = useState("all");
-  const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
   const [isEscalating, setIsEscalating] = useState(false);
   const [escalationContext, setEscalationContext] = useState("");
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const inputRef = useRef(null);
-  const branchMenuRef = useRef(null);
+  const abortControllerRef = useRef(null);
+  const lastProcessedPromptRef = useRef(null);
 
-  // Save messages to sessionStorage
-  useEffect(() => {
+  const touchActivity = useCallback(() => {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+      sessionStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
     } catch {
-      // Ignore quota errors
+      // Ignore
     }
-  }, [messages]);
+  }, []);
 
-  // Focus input on open
-  useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => {
-        if (inputRef.current && !isEscalating) {
-          inputRef.current.focus();
-        }
-      }, 100);
+  // Direct local widget injection handler (e.g. clicking widget suggestion chips)
+  const handleOpenWidget = useCallback((widgetDescriptor) => {
+    const widgetType = widgetDescriptor?.type || widgetDescriptor;
+    let descriptionText = "Here is the interactive tool you requested:";
+    let defaultActions = [];
+
+    if (widgetType === "budget_estimator") {
+      descriptionText = "You can use our **Monthly Budget Estimator** below to calculate your estimated accommodation and pro-rata utility expenses:";
+      defaultActions = [
+        { label: "Quadruple Sharing Rates", prompt: "What are the rates for Quadruple Sharing rooms?" },
+        { label: "Check ID Requirements", action: "open_kyc_widget" },
+        { label: "Request Front Desk Assistance", action: "open_escalation_form" },
+      ];
+    } else if (widgetType === "viewing_booking") {
+      descriptionText = "Please fill in your preferred schedule and contact details below to schedule an in-person tour of our dormitory facilities:";
+      defaultActions = [
+        { label: "Check ID Requirements", action: "open_kyc_widget" },
+        { label: "Quadruple Sharing Rates", prompt: "What are the rates for Quadruple Sharing rooms?" },
+      ];
+    } else if (widgetType === "kyc_checklist") {
+      descriptionText = "Here is the official checklist of accepted Philippine Government IDs and documentation required for tenant verification:";
+      defaultActions = [
+        { label: "Browse Available Rooms", url: "/applicant/check-availability" },
+        { label: "Request Front Desk Assistance", action: "open_escalation_form" },
+      ];
+    } else if (widgetType === "room_showcase") {
+      descriptionText = "Here is an overview of our dormitory room features and starting monthly rental rates:";
+      defaultActions = [
+        { label: "Check ID Requirements", action: "open_kyc_widget" },
+        { label: "Browse Available Rooms", url: "/applicant/check-availability" },
+      ];
     }
-  }, [isOpen, isEscalating]);
 
-  // Escape key closes modal
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
+    const injectedMessage = {
+      id: `bot-widget-${Date.now()}`,
+      role: "assistant",
+      text: descriptionText,
+      timestamp: Date.now(),
+      isStreaming: false,
+      richWidgets: [
+        {
+          type: widgetType,
+          data: widgetDescriptor?.data || {},
+        },
+      ],
+      suggestedActions: defaultActions,
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
 
-  // Close branch dropdown on click outside
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (branchMenuRef.current && !branchMenuRef.current.contains(e.target)) {
-        setIsBranchMenuOpen(false);
-      }
-    };
-    if (isBranchMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [isBranchMenuOpen]);
+    setMessages((prev) => [...prev, injectedMessage]);
+  }, []);
 
-  // Handle initial external prompt if provided
-  useEffect(() => {
-    if (initialPrompt && isOpen) {
-      handleSendMessage(initialPrompt);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPrompt, isOpen]);
-
-  // Send message handler
+  // Send message handler with SSE Streaming support
   const handleSendMessage = useCallback(
     async (textToSend) => {
       const queryText = (textToSend || input).trim();
       if (!queryText || isTyping) return;
+
+      // Abort any ongoing stream
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
 
       const userMessage = {
         id: `user-${Date.now()}`,
@@ -132,64 +156,222 @@ export function PublicChatbotModal({ isOpen, onClose, initialPrompt = "" }) {
         timestamp: Date.now(),
       };
 
-      const updatedHistory = [...messages, userMessage];
-      setMessages(updatedHistory);
+      const botMessageId = `bot-${Date.now()}`;
+      const placeholderBotMessage = {
+        id: botMessageId,
+        role: "assistant",
+        text: "",
+        timestamp: Date.now(),
+        isStreaming: true,
+        richWidgets: [],
+        suggestedActions: [],
+      };
+
+      // Optimistic message list update
+      setMessages((prev) => [...prev, userMessage, placeholderBotMessage]);
       setInput("");
       setIsTyping(true);
+      touchActivity();
+
+      // Format conversation history for backend context (last 10 turns)
+      const conversationHistory = messages
+        .slice(-10)
+        .filter((m) => m.text && !m.isError)
+        .map((m) => ({
+          role: m.role,
+          text: m.text,
+        }));
 
       try {
-        // Format history for backend contract: [{ role, text }]
-        const apiHistory = updatedHistory
-          .filter((m) => !m.isError)
-          .map((m) => ({
-            role: m.role === "user" ? "user" : "assistant",
-            text: m.text,
-          }));
-
-        const response = await chatbotApi.queryPublicChatbot({
+        await chatbotApi.streamPublicChatbot({
           message: queryText,
-          conversationHistory: apiHistory.slice(-8), // Send last 8 turns for context
-          branchFocus,
+          conversationHistory,
+          branchFocus: "all",
+          signal: abortController.signal,
+          onToken: (token) => {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === botMessageId
+                  ? {
+                      ...msg,
+                      text: msg.text + token,
+                      isStreaming: true,
+                    }
+                  : msg
+              )
+            );
+          },
+          onWidget: (widget) => {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === botMessageId
+                  ? {
+                      ...msg,
+                      richWidgets: msg.richWidgets?.some((w) => w.type === widget.type)
+                        ? msg.richWidgets
+                        : [...(msg.richWidgets || []), widget],
+                    }
+                  : msg
+              )
+            );
+          },
+          onActions: (actions) => {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === botMessageId
+                  ? {
+                      ...msg,
+                      suggestedActions: actions,
+                    }
+                  : msg
+              )
+            );
+          },
+          onDone: (finalResult) => {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === botMessageId
+                  ? {
+                      ...msg,
+                      text: msg.text || finalResult?.text || "",
+                      richWidgets:
+                        msg.richWidgets?.length > 0
+                          ? msg.richWidgets
+                          : finalResult?.widget
+                          ? Array.isArray(finalResult.widget)
+                            ? finalResult.widget
+                            : [finalResult.widget]
+                          : [],
+                      suggestedActions:
+                        msg.suggestedActions?.length > 0
+                          ? msg.suggestedActions
+                          : finalResult?.actions || [],
+                      isStreaming: false,
+                    }
+                  : msg
+              )
+            );
+            setIsTyping(false);
+            touchActivity();
+          },
+          onError: (err) => {
+            console.error("Public Chatbot stream error:", err);
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === botMessageId
+                  ? {
+                      ...msg,
+                      text: msg.text || "We encountered an issue connecting to the AI assistant. You can retry or request front desk assistance.",
+                      isError: true,
+                      isStreaming: false,
+                      suggestedActions: [
+                        { label: "Request Front Desk Assistance", action: "open_escalation_form" },
+                      ],
+                    }
+                  : msg
+              )
+            );
+            setIsTyping(false);
+          },
         });
-
-        const botReplyText =
-          response?.reply ||
-          response?.data?.reply ||
-          "I'm sorry, I couldn't retrieve that information. Please try contacting our admin team directly.";
-
-        const botActions =
-          response?.suggestedActions ||
-          response?.data?.suggestedActions ||
-          [];
-
-        const botMessage = {
-          id: `bot-${Date.now()}`,
-          role: "assistant",
-          text: botReplyText,
-          timestamp: Date.now(),
-          suggestedActions: botActions,
-        };
-
-        setMessages((prev) => [...prev, botMessage]);
       } catch (err) {
-        console.error("Chatbot query error:", err);
-        const errorMessage = {
-          id: `bot-err-${Date.now()}`,
-          role: "assistant",
-          text: "We encountered an issue connecting to our receptionist system. Please try again or request a callback.",
-          timestamp: Date.now(),
-          isError: true,
-          suggestedActions: [
-            { label: "Request Staff Callback", action: "open_escalation_form" },
-          ],
-        };
-        setMessages((prev) => [...prev, errorMessage]);
-      } finally {
-        setIsTyping(false);
+        if (err.name !== "AbortError") {
+          console.error("Chatbot submission caught error:", err);
+          setIsTyping(false);
+        }
       }
     },
-    [input, isTyping, messages, branchFocus]
+    [input, isTyping, messages, touchActivity]
   );
+
+  // Save messages to sessionStorage and update last active timestamp
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+      sessionStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
+    } catch {
+      // Ignore quota errors
+    }
+  }, [messages]);
+
+  // Periodic and focus-based inactivity timeout watcher (30 minutes)
+  useEffect(() => {
+    const checkInactivity = () => {
+      try {
+        const lastActive = sessionStorage.getItem(LAST_ACTIVE_KEY);
+        if (lastActive) {
+          const lastActiveTime = parseInt(lastActive, 10);
+          if (!isNaN(lastActiveTime) && Date.now() - lastActiveTime > INACTIVITY_TIMEOUT_MS) {
+            // Auto-reset conversation to initial greeting
+            const resetMsg = [
+              {
+                ...INITIAL_MESSAGE,
+                id: `welcome-${Date.now()}`,
+                timestamp: Date.now(),
+              },
+            ];
+            setMessages(resetMsg);
+            setIsEscalating(false);
+            sessionStorage.removeItem(STORAGE_KEY);
+            sessionStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
+          }
+        }
+      } catch {
+        // Ignore
+      }
+    };
+
+    const interval = setInterval(checkInactivity, 30000);
+    window.addEventListener("focus", checkInactivity);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", checkInactivity);
+    };
+  }, []);
+
+  // Focus input and touch activity on open
+  useEffect(() => {
+    if (isOpen) {
+      touchActivity();
+      setTimeout(() => {
+        if (inputRef.current && !isEscalating) {
+          inputRef.current.focus();
+        }
+      }, 100);
+    }
+  }, [isOpen, isEscalating, touchActivity]);
+
+  // Escape key closes modal (when confirmation modal is not open)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape" && isOpen && !showClearConfirm) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose, showClearConfirm]);
+
+  // Cleanup active stream on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Handle initial external prompt if provided (consumed once per trigger)
+  useEffect(() => {
+    if (initialPrompt && isOpen && lastProcessedPromptRef.current !== initialPrompt) {
+      lastProcessedPromptRef.current = initialPrompt;
+      handleSendMessage(initialPrompt);
+      if (typeof onClearInitialPrompt === "function") {
+        onClearInitialPrompt();
+      }
+    }
+  }, [initialPrompt, isOpen, handleSendMessage, onClearInitialPrompt]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -199,26 +381,38 @@ export function PublicChatbotModal({ isOpen, onClose, initialPrompt = "" }) {
   };
 
   const handleClearHistory = () => {
-    if (window.confirm("Are you sure you want to clear this conversation?")) {
-      const reset = [
-        {
-          ...INITIAL_MESSAGE,
-          id: `welcome-${Date.now()}`,
-          timestamp: Date.now(),
-        },
-      ];
-      setMessages(reset);
-      setIsEscalating(false);
-      try {
-        sessionStorage.removeItem(STORAGE_KEY);
-      } catch {
-        // Ignore
-      }
+    setShowClearConfirm(true);
+  };
+
+  const handleConfirmClear = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
+    lastProcessedPromptRef.current = null;
+    if (typeof onClearInitialPrompt === "function") {
+      onClearInitialPrompt();
+    }
+    const reset = [
+      {
+        ...INITIAL_MESSAGE,
+        id: `welcome-${Date.now()}`,
+        timestamp: Date.now(),
+      },
+    ];
+    setMessages(reset);
+    setIsEscalating(false);
+    setIsTyping(false);
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
+    } catch {
+      // Ignore
+    }
+    setShowClearConfirm(false);
   };
 
   const handleOpenEscalation = (action) => {
-    setEscalationContext(action?.prompt || input || "Public inquiry from AI chat");
+    setEscalationContext(action?.prompt || input || "Assistance request from AI chat");
     setIsEscalating(true);
   };
 
@@ -267,252 +461,224 @@ export function PublicChatbotModal({ isOpen, onClose, initialPrompt = "" }) {
           transformOrigin: "bottom right",
         }}
       >
-        {/* ── HEADER ── */}
+        {/* Header */}
         <div
-          className="px-3.5 py-3 flex items-center justify-between flex-shrink-0 text-white select-none"
+          className="px-3.5 py-3 flex items-center justify-between flex-shrink-0 select-none"
           style={{
-            backgroundColor: "var(--lp-navy, #0A1628)",
-            borderBottom: "1px solid var(--lp-accent, #D4AF37)",
+            backgroundColor: "var(--lp-bg, #ffffff)",
+            borderBottom: "1px solid var(--lp-border, #E6D9B2)",
           }}
         >
           {/* Left: Avatar + Title */}
           <div className="flex items-center gap-2.5 min-w-0">
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 select-none shadow-xs overflow-hidden"
               style={{
-                backgroundColor: "rgba(212, 175, 55, 0.18)",
-                border: "1px solid var(--lp-accent, #D4AF37)",
+                backgroundColor: "#ffffff",
+                border: "1.5px solid var(--lp-accent, #D4AF37)",
+                padding: "3.5px",
               }}
             >
-              <Bot className="w-4 h-4 text-amber-400" />
+              <img
+                src="/lilycrest-logo.png"
+                alt="Lilycrest Logo"
+                className="w-full h-full object-contain"
+              />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <h3
                   id="chatbot-header-title"
-                  className="text-xs sm:text-sm font-bold tracking-tight text-white truncate"
+                  className="text-xs sm:text-sm font-bold tracking-tight truncate"
+                  style={{ color: "var(--lp-text, #162f53)" }}
                 >
-                  Lilycrest AI Receptionist
+                  Lilycrest AI Chatbot
                 </h3>
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-300">
+              <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
                 <span className="w-2 h-2 rounded-full bg-emerald-500 lc-live-dot flex-shrink-0" />
                 <span className="truncate">Online • 24/7 Digital Assistant</span>
               </div>
             </div>
           </div>
 
-          {/* Right: Actions (Branch Toggle, Clear, Close) */}
+          {/* Right: Actions (Staff Assistance, Clear, Close) */}
           <div className="flex items-center gap-1 flex-shrink-0">
-          {/* Branch Selector Dropdown */}
-          <div className="relative" ref={branchMenuRef}>
+            {/* Request Staff Assistance Shortcut */}
             <button
               type="button"
-              onClick={() => setIsBranchMenuOpen(!isBranchMenuOpen)}
-              title="Filter response by branch"
-              aria-label="Filter branch"
-              className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors flex items-center gap-1 text-[11px] font-medium"
+              onClick={() => setIsEscalating(!isEscalating)}
+              title="Request Front Desk Assistance"
+              aria-label="Request Front Desk Assistance"
+              className="p-1.5 rounded-lg text-slate-600 hover:text-amber-700 hover:bg-amber-50 dark:text-slate-300 dark:hover:text-amber-400 dark:hover:bg-amber-950/30 transition-colors"
             >
-              <Building2 className="w-3.5 h-3.5 text-amber-400" />
-              <ChevronDown className="w-3 h-3" />
+              <Headphones className="w-3.5 h-3.5" />
             </button>
 
-            {isBranchMenuOpen && (
-              <div
-                className="absolute right-0 top-full mt-1.5 w-44 rounded-xl shadow-lg py-1 z-50 text-xs text-left"
-                style={{
-                  backgroundColor: "var(--lp-bg-card, #ffffff)",
-                  border: "1px solid var(--lp-border, #E6D9B2)",
-                  color: "var(--lp-text, #162f53)",
-                }}
-              >
-                <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-800">
-                  Focus Branch
-                </div>
-                {Object.entries(BRANCH_LABELS).map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      setBranchFocus(key);
-                      setIsBranchMenuOpen(false);
-                    }}
-                    className={`w-full px-3 py-1.5 text-left text-xs transition-colors flex items-center justify-between ${
-                      branchFocus === key
-                        ? "font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30"
-                        : "hover:bg-slate-50 dark:hover:bg-slate-800"
-                    }`}
-                  >
-                    <span>{label}</span>
-                    {branchFocus === key && <span className="text-[10px]">✓</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Clear History */}
-          <button
-            type="button"
-            onClick={handleClearHistory}
-            title="Reset conversation"
-            aria-label="Reset conversation"
-            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Close Modal */}
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close chatbot"
-            aria-label="Close chatbot window"
-            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Branch Active Filter Banner (if not 'all') */}
-      {branchFocus !== "all" && (
-        <div
-          className="px-3 py-1 text-[11px] flex items-center justify-between border-b select-none"
-          style={{
-            backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.1))",
-            borderColor: "var(--lp-border, #E6D9B2)",
-            color: "var(--lp-text, #162f53)",
-          }}
-        >
-          <span className="flex items-center gap-1.5 font-medium">
-            <Building2 className="w-3 h-3 text-amber-500" />
-            Filtered to: <strong>{BRANCH_LABELS[branchFocus]}</strong>
-          </span>
-          <button
-            type="button"
-            onClick={() => setBranchFocus("all")}
-            className="text-[10px] underline hover:text-amber-600"
-          >
-            Clear
-          </button>
-        </div>
-      )}
-
-      {/* ── BODY ── */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ backgroundColor: "var(--lp-bg, #ffffff)" }}>
-        {isEscalating ? (
-          <div className="flex-1 overflow-y-auto p-2">
-            <ChatLeadEscalationForm
-              initialBranch={branchFocus === "all" ? "any" : branchFocus}
-              initialMessage={escalationContext}
-              onCancel={() => setIsEscalating(false)}
-              onSuccessSubmitted={() => {
-                // Add system message indicating successful inquiry
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: `bot-lead-${Date.now()}`,
-                    role: "assistant",
-                    text: "Thank you! Your callback request has been logged. A member of our staff will reach out to you shortly.",
-                    timestamp: Date.now(),
-                  },
-                ]);
-              }}
-            />
-          </div>
-        ) : (
-          <ChatMessageList
-            messages={messages}
-            isTyping={isTyping}
-            showQuickPrompts={messages.length <= 2}
-            onSelectPrompt={(p) => handleSendMessage(p)}
-            onOpenEscalation={handleOpenEscalation}
-            onRetryLastMessage={() => {
-              const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
-              if (lastUserMsg) {
-                handleSendMessage(lastUserMsg.text);
-              }
-            }}
-          />
-        )}
-      </div>
-
-      {/* ── FOOTER & INPUT AREA ── */}
-      {!isEscalating && (
-        <div
-          className="p-2.5 border-t flex-shrink-0"
-          style={{
-            backgroundColor: "var(--lp-bg-card, #ffffff)",
-            borderColor: "var(--lp-border, #E6D9B2)",
-          }}
-        >
-          {/* Quick Staff Escalation Strip */}
-          <div className="flex items-center justify-between pb-2 mb-1.5 px-0.5 border-b border-dashed border-slate-200 dark:border-slate-800 text-[11px]">
-            <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3 text-emerald-500" />
-              Verified Dormitory Policies
-            </span>
+            {/* Clear History */}
             <button
               type="button"
-              onClick={() => handleOpenEscalation({ prompt: input })}
-              className="text-amber-600 dark:text-amber-400 font-semibold hover:underline flex items-center gap-1"
+              onClick={handleClearHistory}
+              title="Reset conversation"
+              aria-label="Reset conversation"
+              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 transition-colors"
             >
-              <PhoneCall className="w-3 h-3" />
-              Talk to Staff
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Close Modal */}
+            <button
+              type="button"
+              onClick={onClose}
+              title="Close chatbot"
+              aria-label="Close chatbot window"
+              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-4 h-4" />
             </button>
           </div>
+        </div>
 
-          {/* Form Input Bar */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSendMessage();
-            }}
-            className="flex items-end gap-1.5"
-          >
-            <div className="relative flex-1">
-              <textarea
-                ref={inputRef}
-                rows={1}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask about rates, curfew, requirements..."
-                disabled={isTyping}
-                maxLength={400}
-                aria-label="Ask Lilycrest AI a question"
-                className="w-full text-xs py-2 pl-3 pr-2 rounded-xl border outline-none resize-none transition-all disabled:opacity-50"
-                style={{
-                  backgroundColor: "var(--surface-input, #f8fafc)",
-                  borderColor: "var(--lp-border, #E6D9B2)",
-                  color: "var(--lp-text, #162f53)",
-                  minHeight: "36px",
-                  maxHeight: "80px",
+        {/* Body / Active View */}
+        <div className="flex-1 overflow-hidden flex flex-col relative" style={{ backgroundColor: "var(--lp-bg, #ffffff)" }}>
+          {isEscalating ? (
+            <div className="flex-1 overflow-y-auto px-2 py-1.5">
+              <ChatLeadEscalationForm
+                initialBranch="all"
+                initialMessage={escalationContext}
+                onCancel={() => setIsEscalating(false)}
+                onSuccessSubmitted={() => {
+                  touchActivity();
                 }}
               />
             </div>
+          ) : (
+            <>
+              {/* Message List */}
+              <div className="flex-1 overflow-hidden flex flex-col">
+                <ChatMessageList
+                  messages={messages}
+                  isTyping={isTyping}
+                  onSelectPrompt={handleSendMessage}
+                  onOpenEscalation={handleOpenEscalation}
+                  onOpenWidget={handleOpenWidget}
+                  onRetry={() => {
+                    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+                    if (lastUserMsg) {
+                      handleSendMessage(lastUserMsg.text);
+                    }
+                  }}
+                />
+              </div>
 
-            <button
-              type="submit"
-              disabled={!input.trim() || isTyping}
-              aria-label="Send message"
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-white transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 shadow-sm focus:outline-none"
-              style={{
-                backgroundColor: "var(--lp-navy, #0A1628)",
-                border: "1px solid var(--lp-accent, #D4AF37)",
-              }}
-            >
-              <Send className="w-4 h-4 text-amber-400" />
-            </button>
-          </form>
+              {/* Quick Actions Bar */}
+              <div
+                className="px-3 py-1.5 border-t flex items-center gap-1.5 overflow-x-auto no-scrollbar select-none text-[11px] flex-shrink-0"
+                style={{
+                  backgroundColor: "var(--lp-bg, #ffffff)",
+                  borderColor: "var(--lp-border, #E6D9B2)",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleOpenWidget("kyc_checklist")}
+                  className="flex-shrink-0 inline-flex items-center gap-1 py-1 px-2 rounded-lg font-medium transition-colors hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                  style={{
+                    color: "var(--lp-text, #162f53)",
+                    border: "1px solid var(--lp-border, #E6D9B2)",
+                  }}
+                >
+                  <ShieldCheck className="w-3 h-3 text-amber-600" />
+                  <span>ID Requirements</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEscalating(true)}
+                  className="flex-shrink-0 inline-flex items-center gap-1 py-1 px-2 rounded-lg font-medium transition-colors hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                  style={{
+                    color: "var(--lp-text, #162f53)",
+                    border: "1px solid var(--lp-border, #E6D9B2)",
+                  }}
+                >
+                  <Headphones className="w-3 h-3 text-amber-600" />
+                  <span>Front Desk Assistance</span>
+                </button>
+              </div>
 
-          <p className="text-[9px] text-center mt-1.5 text-slate-400 select-none">
-            Enter to send • Shift+Enter for new line • AI responses grounded in official policies
-          </p>
+              {/* Input Bar */}
+              <div
+                className="p-2.5 border-t flex-shrink-0"
+                style={{
+                  backgroundColor: "var(--lp-bg, #ffffff)",
+                  borderColor: "var(--lp-border, #E6D9B2)",
+                }}
+              >
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }}
+                  className="flex items-center gap-1.5"
+                >
+                  <div className="flex-1 relative flex items-center">
+                    <textarea
+                      ref={inputRef}
+                      rows={1}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Ask about rates, curfews, or locations..."
+                      disabled={isTyping}
+                      className="w-full text-xs py-2 px-3 pr-8 rounded-xl border outline-none resize-none transition-all focus:border-amber-500 disabled:opacity-60"
+                      style={{
+                        backgroundColor: "var(--surface-input, #f8fafc)",
+                        borderColor: "var(--lp-border, #E6D9B2)",
+                        color: "var(--lp-text, #162f53)",
+                        maxHeight: "80px",
+                      }}
+                    />
+                  </div>
+
+                  {/* Send Button */}
+                  <button
+                    type="submit"
+                    disabled={!input.trim() || isTyping}
+                    title="Send message"
+                    aria-label="Send message"
+                    className="p-2 rounded-xl text-white transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center shadow-xs focus:outline-none active:scale-95 flex-shrink-0"
+                    style={{
+                      backgroundColor: "var(--lp-navy, #0A1628)",
+                      border: "1px solid var(--lp-navy, #0A1628)",
+                    }}
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+
+                <div className="flex items-center justify-between mt-1 px-1 text-[10px]" style={{ color: "var(--lp-text-muted, #94A3B8)" }}>
+                  <span>Press Enter to send</span>
+                  <span className="flex items-center gap-1">
+                    <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+                    <span>Gemini 2.5 AI</span>
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
-      )}
-    </div>
+      </div>
+
+      {/* Confirmation Modal for Resetting Conversation */}
+      <ConfirmModal
+        isOpen={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        onConfirm={handleConfirmClear}
+        title="Clear Conversation"
+        message="Are you sure you want to clear this conversation? This will reset your current chat history and start a fresh session."
+        confirmText="Clear Chat"
+        cancelText="Cancel"
+        variant="warning"
+      />
     </>
   );
 }

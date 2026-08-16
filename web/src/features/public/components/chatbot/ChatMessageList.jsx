@@ -14,6 +14,7 @@ export function ChatMessageList({
   showQuickPrompts = true,
   onSelectPrompt,
   onOpenEscalation,
+  onOpenWidget,
   onRetryLastMessage,
 }) {
   const scrollRef = useRef(null);
@@ -59,9 +60,11 @@ export function ChatMessageList({
           message={msg}
           onSelectPrompt={onSelectPrompt}
           onOpenEscalation={onOpenEscalation}
+          onOpenWidget={onOpenWidget}
           onRetry={onRetryLastMessage}
         />
       ))}
+
 
       {/* Typing Indicator */}
       {isTyping && <ChatTypingIndicator />}
