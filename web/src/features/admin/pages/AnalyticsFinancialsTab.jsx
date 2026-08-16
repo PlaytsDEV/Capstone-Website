@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { AlertCircle, PhilippinePeso, Receipt, TrendingUp } from "lucide-react";
 import { useFinancialsAnalytics } from "../../../shared/hooks/queries/useAnalyticsReports";
 import {
   AnalyticsBarChart,
@@ -74,10 +75,35 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
   }, [overdueRooms, searchQuery, exposureFilter]);
 
   const metricCards = [
-    { label: "Collected", value: data?.kpis?.collectedRevenueLabel || "PHP 0", tone: "green" },
-    { label: "Outstanding", value: data?.kpis?.outstandingBalanceLabel || "PHP 0", tone: "rose" },
-    { label: "Overdue", value: data?.kpis?.overdueAmountLabel || "PHP 0", tone: "amber" },
-    { label: "Collection Rate", value: data?.kpis?.collectionRateLabel || "0%", tone: "blue" },
+    {
+      icon: PhilippinePeso,
+      label: "Collected",
+      value: (data?.kpis?.collectedRevenueLabel || "PHP 0").replace("PHP ", "₱"),
+      tone: "green",
+      trend: "Total collected",
+    },
+    {
+      icon: AlertCircle,
+      label: "Outstanding",
+      value: (data?.kpis?.outstandingBalanceLabel || "PHP 0").replace("PHP ", "₱"),
+      tone: "rose",
+      trend: "Pending dues",
+      changeType: "down",
+    },
+    {
+      icon: Receipt,
+      label: "Overdue",
+      value: (data?.kpis?.overdueAmountLabel || "PHP 0").replace("PHP ", "₱"),
+      tone: "amber",
+      trend: "Late payments",
+    },
+    {
+      icon: TrendingUp,
+      label: "Collection Rate",
+      value: data?.kpis?.collectionRateLabel || "0%",
+      tone: "blue",
+      trend: "Target: > 90%",
+    },
   ];
 
   const exportCsv = () => {
@@ -158,33 +184,12 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
   };
 
   return (
-    <AnalyticsTabLayout
-      header={
-        <AnalyticsToolbar
-          title="Financial Analytics"
-          subtitle={`Scope: ${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`}
-          range={{ value: range, onChange: (value) => { setPage(1); onRangeChange(value); }, options: RANGE_OPTIONS_LONG }}
-          branch={{
-            value: branch,
-            onChange: (value) => {
-              setPage(1);
-              onBranchChange(value);
-            },
-            options: [
-              { value: "all", label: "All Branches" },
-              { value: "gil-puyat", label: "Gil Puyat" },
-              { value: "guadalupe", label: "Guadalupe" },
-            ],
-          }}
-          actions={<ExportButtons onCsv={exportCsv} onPdf={exportPdf} />}
-        />
-      }
-    >
+    <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       <MetricGrid items={metricCards} />
 
       <AnalyticsInsightSection
         reportLabel="financials"
-        summaryTitle="Financial Summary"
+        summaryTitle="Financial Summary & Projections"
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
@@ -284,31 +289,34 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
             setExposureFilter("all");
             setPage(1);
           }}
-          extraActions={
-            <span className="text-xs font-medium text-muted-foreground">
-              Showing {filteredOverdueRooms.length} of {overdueRooms.length} rooms
-            </span>
-          }
-        />
-        <DataTable
-          columns={OVERDUE_ROOM_COLUMNS}
-          data={filteredOverdueRooms}
-          loading={isLoading}
-          pagination={{
-            page,
-            pageSize,
-            total: filteredOverdueRooms.length,
-            onPageChange: setPage,
-            onPageSizeChange: setPageSize,
-          }}
-          emptyState={{
-            title: isError ? "Financial overview unavailable" : "No overdue rooms",
-            description: isError
-              ? "The financial overview could not be loaded."
-              : "No overdue room exposure was found for the selected filter.",
-          }}
-        />
-      </ReportChartPanel>
-    </AnalyticsTabLayout>
-  );
-}
+            extraActions={
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
+                  Showing {filteredOverdueRooms.length} of {overdueRooms.length} rooms
+                </span>
+                <ExportButtons onCsv={exportCsv} onPdf={exportPdf} />
+              </div>
+            }
+          />
+          <DataTable
+            columns={OVERDUE_ROOM_COLUMNS}
+            data={filteredOverdueRooms}
+            loading={isLoading}
+            pagination={{
+              page,
+              pageSize,
+              total: filteredOverdueRooms.length,
+              onPageChange: setPage,
+              onPageSizeChange: setPageSize,
+            }}
+            emptyState={{
+              title: isError ? "Financial overview unavailable" : "No overdue rooms",
+              description: isError
+                ? "The financial overview could not be loaded."
+                : "No overdue room exposure was found for the selected filter.",
+            }}
+          />
+        </ReportChartPanel>
+      </div>
+    );
+  }

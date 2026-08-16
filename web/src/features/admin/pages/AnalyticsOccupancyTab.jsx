@@ -1,5 +1,11 @@
 import { useMemo, useState } from "react";
 import {
+  Bed,
+  Building,
+  DoorOpen,
+  Users,
+} from "lucide-react";
+import {
   useOccupancyForecast,
   useOccupancyReport,
   useOccupancyRateHistory,
@@ -77,33 +83,33 @@ function ForecastCards({ forecast }) {
 
   if (!forecast?.sufficientHistory) {
     return (
-      <p className="text-sm text-muted-foreground italic py-4">
+      <p className="text-xs text-muted-foreground italic py-4">
         {forecast?.insights?.headline || "Insufficient history to forecast occupancy."}
       </p>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4 py-2">
+    <div className="flex flex-col gap-3.5 py-1">
       {forecast.insights?.headline && (
-        <p className="text-sm font-medium text-card-foreground">{forecast.insights.headline}</p>
+        <p className="text-xs font-medium text-foreground">{forecast.insights.headline}</p>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
         {projectedMonths.map((item) => (
-          <div key={item.month} className="bg-muted rounded-xl p-3.5 border border-border flex flex-col gap-1">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{item.label}</span>
-            <div className="text-2xl font-bold text-foreground">{item.projectedOccupancyRate}%</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Baseline <span className="font-medium text-card-foreground">{item.baselineRate}%</span> • Seasonal <span className="font-medium text-card-foreground">{item.seasonalMultiplier}x</span>
+          <div key={item.month} className="bg-muted/40 rounded-lg p-3 border border-border flex flex-col gap-0.5">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{item.label}</span>
+            <div className="text-[20px] font-bold text-foreground">{item.projectedOccupancyRate}%</div>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Baseline <span className="font-medium text-foreground">{item.baselineRate}%</span> • Seasonal <span className="font-medium text-foreground">{item.seasonalMultiplier}x</span>
             </p>
           </div>
         ))}
       </div>
-      <div className="mt-2 flex flex-col gap-2">
+      <div className="mt-1 flex flex-col gap-1.5">
         {recommendations.slice(0, 2).map((item, idx) => (
-          <div key={idx} className="flex items-start gap-2.5 bg-blue-50/50 p-3 rounded-lg border border-blue-100/50">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5" />
-            <p className="text-sm text-card-foreground leading-relaxed">{item}</p>
+          <div key={idx} className="flex items-start gap-2 bg-blue-50/60 dark:bg-blue-950/40 p-2.5 rounded-lg border border-blue-100 dark:border-blue-900/60">
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+            <p className="text-xs text-foreground leading-relaxed">{item}</p>
           </div>
         ))}
       </div>
@@ -211,26 +217,41 @@ export default function AnalyticsOccupancyTab({
     insightData,
   );
 
+  const occupancyDelta = kpis.comparison?.occupancyRate || {
+    label: "+0 pp",
+    changeType: "neutral",
+    text: "vs prev period",
+  };
+
   const metricCards = [
     {
+      icon: Bed,
+      tone: "blue",
       label: "Occupancy Rate",
       value: kpis.occupancyRateLabel || "0%",
-      note: "Beds occupied",
+      trend: occupancyDelta.text || `${occupancyDelta.label || "+0 pp"} vs prev period`,
+      changeType: occupancyDelta.changeType || "neutral",
     },
     {
+      icon: Users,
+      tone: "green",
       label: "Occupied Beds",
       value: kpis.occupiedBeds || 0,
-      note: "Active tenants",
+      trend: "Active residents",
     },
     {
+      icon: DoorOpen,
+      tone: "amber",
       label: "Available Beds",
       value: kpis.availableBeds || 0,
-      note: "Ready for move-in",
+      trend: "Ready for move-in",
     },
     {
+      icon: Building,
+      tone: "purple",
       label: "Total Beds",
       value: kpis.totalCapacity || 0,
-      note: "Total inventory",
+      trend: "Total room inventory",
     },
   ];
 
@@ -240,39 +261,23 @@ export default function AnalyticsOccupancyTab({
       subtitle: `${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`,
       metrics: metricCards,
       insights: buildInsightPdfSections(insightData?.insights),
-      tables: [{ title: "Inventory", columns: INVENTORY_COLUMNS, rows: inventory }],
+      tables: [{ title: "Inventory", columns: INVENTORY_COLUMNS, rows: filteredInventory }],
     });
-  const exportCsv = () => handleCsvExport("occupancy_inventory.csv", inventory);
+  const exportCsv = () => handleCsvExport("occupancy_inventory.csv", filteredInventory);
 
   return (
-    <AnalyticsTabLayout
-      header={
-        <AnalyticsToolbar
-          title="Occupancy Analytics"
-          subtitle={`Scope: ${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`}
-          branch={buildBranchControl({
-            isOwner,
-            branch,
-            onChange: (value) => {
-              setPage(1);
-              onBranchChange(value);
-            },
-          })}
-          actions={<ExportButtons onCsv={exportCsv} onPdf={exportPdf} />}
-        />
-      }
-    >
+    <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       <MetricGrid items={metricCards} />
 
       <AnalyticsInsightSection
         reportLabel="occupancy"
-        summaryTitle="Occupancy Summary"
+        summaryTitle="Occupancy Summary & Intelligence"
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel
           title="Occupancy trend"
           subtitle="Daily occupancy rate over the selected period"
@@ -314,7 +319,7 @@ export default function AnalyticsOccupancyTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
         <ReportChartPanel
           title="Forecast panel"
           subtitle="Projected occupancy compared with recent baseline"
@@ -337,7 +342,6 @@ export default function AnalyticsOccupancyTab({
           />
         </ReportChartPanel>
 
-
         <ReportChartPanel
           title="Forecast insights"
           subtitle="Deterministic 3-month occupancy projection"
@@ -346,7 +350,7 @@ export default function AnalyticsOccupancyTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
         <ReportChartPanel
           title="Historical Monthly Occupancy & Turnaround"
           subtitle="Bed-day utilization rate by month, stay length, and turnaround efficiency"
@@ -357,26 +361,26 @@ export default function AnalyticsOccupancyTab({
             />
           }
         >
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "10px", marginBottom: "16px" }}>
-            <div className="admin-reports__meta-card">
-              <span className="admin-reports__meta-label">Avg Length of Stay</span>
-              <div className="admin-reports__meta-value">{historyKpis.averageStayMonths || 0} mos</div>
-              <p className="admin-reports__hint">Mean tenant tenure</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3.5">
+            <div className="bg-muted/40 border border-border rounded-lg p-2.5">
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Avg Stay</span>
+              <div className="text-[16px] font-semibold text-foreground mt-0.5">{historyKpis.averageStayMonths || 0} mos</div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Mean tenure</p>
             </div>
-            <div className="admin-reports__meta-card">
-              <span className="admin-reports__meta-label">Turnaround Time</span>
-              <div className="admin-reports__meta-value">{historyKpis.averageTurnaroundDays || 0} days</div>
-              <p className="admin-reports__hint">Vacancy gap between tenants</p>
+            <div className="bg-muted/40 border border-border rounded-lg p-2.5">
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Turnaround</span>
+              <div className="text-[16px] font-semibold text-foreground mt-0.5">{historyKpis.averageTurnaroundDays || 0} days</div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Vacancy gap</p>
             </div>
-            <div className="admin-reports__meta-card">
-              <span className="admin-reports__meta-label">Peak Occupancy</span>
-              <div className="admin-reports__meta-value">{historyKpis.peakMonth?.month || "N/A"}</div>
-              <p className="admin-reports__hint">{historyKpis.peakMonth?.rate ?? 0}% bed utilization</p>
+            <div className="bg-muted/40 border border-border rounded-lg p-2.5">
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Peak Month</span>
+              <div className="text-[16px] font-semibold text-foreground mt-0.5">{historyKpis.peakMonth?.month || "N/A"}</div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{historyKpis.peakMonth?.rate ?? 0}% utilization</p>
             </div>
-            <div className="admin-reports__meta-card">
-              <span className="admin-reports__meta-label">Off-Peak Season</span>
-              <div className="admin-reports__meta-value">{historyKpis.offPeakMonth?.month || "N/A"}</div>
-              <p className="admin-reports__hint">{historyKpis.offPeakMonth?.rate ?? 0}% bed utilization</p>
+            <div className="bg-muted/40 border border-border rounded-lg p-2.5">
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Off-Peak</span>
+              <div className="text-[16px] font-semibold text-foreground mt-0.5">{historyKpis.offPeakMonth?.month || "N/A"}</div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{historyKpis.offPeakMonth?.rate ?? 0}% utilization</p>
             </div>
           </div>
 
@@ -409,8 +413,9 @@ export default function AnalyticsOccupancyTab({
       </div>
 
       <ReportChartPanel
-        title="Inventory table"
-        subtitle="Current room capacity, occupancy, and unavailable inventory"
+        title="Room Inventory & Capacity"
+        subtitle="Individual room unit status, bed allocation, and utilization rates"
+        actions={<ExportButtons onCsv={exportCsv} onPdf={exportPdf} />}
       >
         <AnalyticsTableToolbar
           searchQuery={searchQuery}
@@ -486,7 +491,6 @@ export default function AnalyticsOccupancyTab({
           }}
         />
       </ReportChartPanel>
-    </AnalyticsTabLayout>
+    </div>
   );
 }
-

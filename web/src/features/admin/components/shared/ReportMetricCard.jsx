@@ -1,44 +1,138 @@
+import React from "react";
+import {
+  Bed,
+  CheckCircle2,
+  Clock,
+  DollarSign,
+  PhilippinePeso,
+  TrendingDown,
+  TrendingUp,
+  Users,
+  Wrench,
+} from "lucide-react";
+
+/**
+ * ReportMetricCard - Standardized KPI card across all Analytics tabs.
+ * Adheres strictly to the Lilycrest DMS Overview design:
+ * - Rounded square icon badge with soft tint background
+ * - Uppercase tracked label (11px, muted slate)
+ * - High-contrast bold stat numeral (24px, foreground)
+ * - Semantic delta indicator (↑ 5.2% vs prev period) or supporting note
+ */
 export default function ReportMetricCard({
- label,
- value,
- trend = null,
- tone = "blue",
- onClick = null,
+  icon: CustomIcon = null,
+  label,
+  value,
+  trend = null,
+  change = null,
+  changeType = null,
+  note = null,
+  tone = "blue",
+  onClick = null,
+  className = "",
 }) {
- const toneStyles = {
- blue: { text: "text-blue-600", dot: "bg-blue-500" },
- green: { text: "text-emerald-600", dot: "bg-emerald-500" },
- violet: { text: "text-violet-600", dot: "bg-violet-500" },
- amber: { text: "text-amber-500", dot: "bg-amber-500" },
- rose: { text: "text-rose-500", dot: "bg-rose-500" },
- };
+  const toneClasses = {
+    blue: {
+      badge: "bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400",
+      defaultIcon: Bed,
+    },
+    green: {
+      badge: "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400",
+      defaultIcon: PhilippinePeso,
+    },
+    amber: {
+      badge: "bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400",
+      defaultIcon: Clock,
+    },
+    purple: {
+      badge: "bg-purple-100 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400",
+      defaultIcon: Wrench,
+    },
+    teal: {
+      badge: "bg-teal-100 text-teal-700 dark:bg-teal-950/60 dark:text-teal-400",
+      defaultIcon: CheckCircle2,
+    },
+    rose: {
+      badge: "bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400",
+      defaultIcon: TrendingDown,
+    },
+    indigo: {
+      badge: "bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400",
+      defaultIcon: Users,
+    },
+  };
 
- const style = toneStyles[tone] || { text: "text-foreground", dot: "bg-slate-300" };
- const clickable = typeof onClick === "function";
+  const currentTone = toneClasses[tone] || toneClasses.blue;
+  const IconComponent = CustomIcon || currentTone.defaultIcon;
+  const clickable = typeof onClick === "function";
 
- return (
+  // Determine trend / change content
+  const displayChange = change || trend || note;
+  const isUp =
+    changeType === "up" ||
+    (typeof displayChange === "string" &&
+      (displayChange.includes("↑") || displayChange.includes("+")));
+  const isDown =
+    changeType === "down" ||
+    (typeof displayChange === "string" &&
+      (displayChange.includes("↓") || displayChange.includes("-")));
+
+  let changeColor = "text-muted-foreground";
+  if (isUp) changeColor = "text-emerald-600 dark:text-emerald-400 font-medium";
+  if (isDown) changeColor = "text-rose-600 dark:text-rose-400 font-medium";
+
+  return (
     <article
-      className={`bg-card rounded-xl border border-border/80 shadow-sm p-4 hover:shadow-md transition-all duration-200 flex flex-col justify-between group ${clickable ? "cursor-pointer hover:border-primary/50 active:scale-[0.98]" : ""}`}
+      className={`bg-card rounded-[10px] border border-border p-4 transition-all duration-150 flex flex-col justify-between ${
+        clickable
+          ? "cursor-pointer hover:border-primary/40 hover:bg-muted/30 active:scale-[0.99]"
+          : ""
+      } ${className}`}
       onClick={clickable ? onClick : undefined}
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : undefined}
-      onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
     >
-      <div className="flex items-center gap-2 mb-2">
-        <div className={`w-2 h-2 rounded-full ${style.dot} opacity-80 group-hover:opacity-100 transition-opacity`} />
-        <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-[0.05em]">{label}</span>
-        {clickable && (
-          <span className="ml-auto text-[11px] font-medium text-muted-foreground/60 group-hover:text-primary transition-colors uppercase tracking-wide">View list →</span>
-        )}
-      </div>
       <div>
-        <strong className={`text-[24px] leading-none font-medium text-foreground tracking-tight`}>{value}</strong>
-        {trend ? (
-          <div className="text-[11px] font-normal text-muted-foreground mt-2 pt-2 border-t border-border/40 flex items-center gap-1.5">
-            {trend}
-          </div>
-        ) : null}
+        {/* Top-left rounded icon badge */}
+        <div
+          className={`w-7 h-7 rounded-[6px] mb-2.5 flex items-center justify-center text-sm ${currentTone.badge}`}
+        >
+          {React.isValidElement(IconComponent) ? (
+            IconComponent
+          ) : (
+            <IconComponent size={15} strokeWidth={1.75} />
+          )}
+        </div>
+
+        {/* Label */}
+        <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-[0.05em] mb-1.5 line-clamp-1">
+          {label}
+        </div>
+
+        {/* Value */}
+        <div className="text-[24px] font-semibold text-foreground tracking-tight leading-none mb-1">
+          {value ?? "—"}
+        </div>
       </div>
+
+      {/* Sub-metric Delta / Note */}
+      {displayChange ? (
+        <div className={`text-[11px] flex items-center gap-1 mt-1 ${changeColor}`}>
+          {typeof displayChange === "object" && displayChange.text
+            ? displayChange.text
+            : displayChange}
+        </div>
+      ) : null}
     </article>
- );
+  );
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink } from "lucide-react";
+import { AlertTriangle, ExternalLink, Globe, KeyRound, ShieldAlert } from "lucide-react";
 import { useAuditAnalytics } from "../../../shared/hooks/queries/useAnalyticsReports";
 import {
  AnalyticsBarChart,
@@ -80,12 +80,12 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
   });
  }, [recentSecurityEvents, searchQuery, severityFilter]);
 
- const metricCards = [
- { label: "Failed Logins", value: kpis.failedLogins || 0, tone: "rose" },
- { label: "Critical Events", value: kpis.criticalEvents || 0, tone: "amber" },
- { label: "Access Overrides", value: kpis.accessOverrides || 0, tone: "blue" },
- { label: "Unique IPs", value: kpis.uniqueFailedLoginIps || 0, tone: "green" },
- ];
+  const metricCards = [
+    { icon: ShieldAlert, label: "Failed Logins", value: kpis.failedLogins || 0, tone: "rose", trend: "Authentication failures" },
+    { icon: AlertTriangle, label: "Critical Events", value: kpis.criticalEvents || 0, tone: "amber", trend: "High priority alerts" },
+    { icon: KeyRound, label: "Access Overrides", value: kpis.accessOverrides || 0, tone: "blue", trend: "Permission changes" },
+    { icon: Globe, label: "Unique IPs", value: kpis.uniqueFailedLoginIps || 0, tone: "green", trend: "Origin addresses" },
+  ];
 
  const exportCsv = () => {
  handleCsvExport(
@@ -164,47 +164,17 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
  });
  };
 
- return (
- <AnalyticsTabLayout
- header={
- <AnalyticsToolbar
- title="System Monitoring"
- subtitle={`Scope: ${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`}
- range={{
- value: range,
- onChange: (value) => {
- setEventPage(1);
- setIpPage(1);
- onRangeChange(value);
- },
- options: RANGE_OPTIONS_SHORT,
- }}
- branch={{
- value: branch,
- onChange: (value) => {
- setEventPage(1);
- setIpPage(1);
- onBranchChange(value);
- },
- options: [
- { value: "all", label: "All Branches" },
- { value: "gil-puyat", label: "Gil Puyat" },
- { value: "guadalupe", label: "Guadalupe" },
- ],
- }}
- actions={<ExportButtons onCsv={exportCsv} onPdf={exportPdf} />}
- />
- }
- >
- <MetricGrid items={metricCards} />
+  return (
+    <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
+      <MetricGrid items={metricCards} />
 
- <AnalyticsInsightSection
- reportLabel="security"
- summaryTitle="Security Summary"
- data={insightData}
- isLoading={isInsightLoading}
- isError={isInsightError}
- />
+      <AnalyticsInsightSection
+        reportLabel="security"
+        summaryTitle="Security & System Audit Intelligence"
+        data={insightData}
+        isLoading={isInsightLoading}
+        isError={isInsightError}
+      />
 
  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
  <ReportChartPanel title="Severity distribution" subtitle="Security and audit events by severity">
@@ -269,9 +239,12 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
        setEventPage(1);
      }}
      extraActions={
-       <span className="text-xs font-medium text-muted-foreground">
-         Showing {filteredSecurityEvents.length} of {recentSecurityEvents.length} events
-       </span>
+       <div className="flex items-center gap-2">
+         <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
+           Showing {filteredSecurityEvents.length} of {recentSecurityEvents.length} events
+         </span>
+         <ExportButtons onCsv={exportCsv} onPdf={exportPdf} />
+       </div>
      }
    />
 
@@ -325,6 +298,6 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
   />
  </ReportChartPanel>
  </div>
- </AnalyticsTabLayout>
+    </div>
  );
 }

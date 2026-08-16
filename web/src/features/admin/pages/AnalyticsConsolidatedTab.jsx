@@ -1,6 +1,12 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink } from "lucide-react";
+import {
+  AlertCircle,
+  Bed,
+  ExternalLink,
+  PhilippinePeso,
+  Wrench,
+} from "lucide-react";
 import { useDashboardData } from "../../../shared/hooks/queries/useDashboard";
 import {
   useAnalyticsInsightsHub,
@@ -77,10 +83,10 @@ function DrilldownLink({ tab, range, branch, label }) {
   return (
     <Link
       to={buildAnalyticsDetailsHref({ tab, range, branch, isOwner: true })}
-      className="admin-reports__link"
+      className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
     >
-      {label}
-      <ExternalLink size={14} />
+      <span>{label}</span>
+      <ExternalLink size={12} />
     </Link>
   );
 }
@@ -150,24 +156,33 @@ export default function AnalyticsConsolidatedTab({
 
   const metricCards = [
     {
-      label: "Occupancy Rate",
-      value: occupancyData?.kpis?.occupancyRateLabel || dashboardData?.kpis?.occupancyRateLabel || "0%",
+      icon: Bed,
       tone: "blue",
+      label: "Consolidated Occupancy",
+      value: occupancyData?.kpis?.occupancyRateLabel || dashboardData?.kpis?.occupancyRateLabel || "0%",
+      trend: "Cross-branch average",
     },
     {
-      label: "Collected",
-      value: billingData?.kpis?.collectedRevenueLabel || dashboardData?.kpis?.revenueLabel || "PHP 0",
+      icon: PhilippinePeso,
       tone: "green",
+      label: "Consolidated Revenue",
+      value: (billingData?.kpis?.collectedRevenueLabel || dashboardData?.kpis?.revenueLabel || "PHP 0").replace("PHP ", "₱"),
+      trend: "Total collections",
     },
     {
-      label: "Outstanding",
-      value: financialsData?.kpis?.outstandingBalanceLabel || billingData?.kpis?.outstandingBalanceLabel || "PHP 0",
+      icon: AlertCircle,
       tone: "rose",
+      label: "Overdue Exposure",
+      value: (financialsData?.kpis?.outstandingBalanceLabel || billingData?.kpis?.outstandingBalanceLabel || "PHP 0").replace("PHP ", "₱"),
+      trend: "Pending balance",
+      changeType: "down",
     },
     {
-      label: "Open Maintenance",
+      icon: Wrench,
+      tone: "purple",
+      label: "Active Work Orders",
       value: dashboardData?.kpis?.activeTickets ?? operationsData?.kpis?.maintenanceRequests ?? 0,
-      tone: "amber",
+      trend: "All branches",
     },
   ];
 
@@ -255,23 +270,9 @@ export default function AnalyticsConsolidatedTab({
   };
 
   return (
-    <AnalyticsTabLayout
-      header={
-        <AnalyticsToolbar
-          title="Consolidated Reports"
-          subtitle={`Owner view: ${formatBranch(scopeBranch)} - ${buildRangeLabel(range)}`}
-          range={{ value: range, onChange: onRangeChange, options: RANGE_OPTIONS_SHORT }}
-          branch={buildBranchControl({
-            isOwner,
-            branch,
-            onChange: onBranchChange,
-          })}
-          actions={<ExportButtons onCsv={exportCsv} onPdf={exportPdf} />}
-        />
-      }
-    >
+    <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       {isError ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-900 px-4 py-3 text-xs font-medium text-amber-800 dark:text-amber-300 mb-2">
           Some consolidated report sections could not be loaded. Available sections still show live data.
         </div>
       ) : null}
@@ -288,7 +289,7 @@ export default function AnalyticsConsolidatedTab({
         isError={insightsQuery.isError}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
         <ReportChartPanel
           title="Branch performance"
           subtitle="Occupancy, collections, and maintenance pressure by branch"
@@ -303,8 +304,8 @@ export default function AnalyticsConsolidatedTab({
             }))}
             bars={[
               { key: "occupancy", label: "Occupancy %", color: "#2563eb" },
-              { key: "collection", label: "Collection %", color: "#0f766e" },
-              { key: "maintenance", label: "Open maintenance", color: "#f97316" },
+              { key: "collection", label: "Collection %", color: "#16a34a" },
+              { key: "maintenance", label: "Open maintenance", color: "#f59e0b" },
             ]}
             emptyTitle="No branch comparison data"
             emptyDescription="Branch comparisons will appear once branch-scoped activity exists."
@@ -323,8 +324,8 @@ export default function AnalyticsConsolidatedTab({
               billed: item.billedAmount,
             }))}
             bars={[
-              { key: "collected", label: "Collected", color: "#0f766e" },
-              { key: "billed", label: "Billed", color: "#2563eb" },
+              { key: "collected", label: "Collected", color: "#16a34a" },
+              { key: "billed", label: "Billed", color: "#0f766e" },
             ]}
             valueFormatter={(value) => formatPeso(value)}
             emptyTitle="No collection trend"
@@ -333,7 +334,7 @@ export default function AnalyticsConsolidatedTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
         <ReportChartPanel
           title="Occupancy trend"
           subtitle="Daily occupancy rate for the selected branch scope"
@@ -353,48 +354,65 @@ export default function AnalyticsConsolidatedTab({
           subtitle="Reservation activity and maintenance categories"
           actions={<DrilldownLink tab="operations" range={range} branch={branch} label="Open operations" />}
         >
-          <div className="admin-reports__panel-stack">
+          <div className="flex flex-col gap-3">
             <AnalyticsBarChart
               data={reservationsByPeriod.map((item) => ({ label: item.label, reservations: item.count }))}
-              bars={[{ key: "reservations", label: "Reservations", color: "#2563eb" }]}
-              height={220}
+              bars={[{ key: "reservations", label: "Reservations", color: "#f59e0b" }]}
+              height={140}
               emptyTitle="No reservation trend"
               emptyDescription="Reservation activity will appear once records exist in this range."
             />
-            <div className="admin-reports__meta-grid">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
               {maintenanceByType.slice(0, 3).map((item) => (
-                <div key={item.label} className="admin-reports__meta-card">
-                  <span className="admin-reports__meta-label">{item.label}</span>
-                  <div className="admin-reports__meta-value">{item.count}</div>
-                  <p className="admin-reports__hint">maintenance requests</p>
+                <div key={item.label} className="bg-muted/40 border border-border rounded-lg p-2.5">
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase">{item.label}</span>
+                  <div className="text-[16px] font-semibold text-foreground mt-0.5">{item.count}</div>
+                  <p className="text-[10px] text-muted-foreground">tickets</p>
                 </div>
               ))}
               {!maintenanceByType.length ? (
-                <p className="admin-reports__hint">No maintenance categories for this scope.</p>
+                <p className="text-xs text-muted-foreground italic col-span-3">No maintenance categories for this scope.</p>
               ) : null}
             </div>
           </div>
         </ReportChartPanel>
       </div>
 
-      <ReportChartPanel title="Executive branch snapshot" subtitle="A compact owner table for cross-branch review">
-        <div className="admin-reports__panel-stack">
+      <ReportChartPanel
+        title="Executive Branch Snapshot"
+        subtitle="A compact owner summary matrix for cross-branch portfolio review"
+        actions={<ExportButtons onCsv={exportCsv} onPdf={exportPdf} />}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {branchRows.map((item) => (
-            <div key={item.branch} className="admin-reports__meta-card">
-              <span className="admin-reports__meta-label">{item.label}</span>
-              <div className="admin-reports__meta-value">
-                {item.occupancyRate || 0}% occupancy - {formatPeso(item.collectedRevenue || 0)}
+            <div key={item.branch} className="bg-muted/30 border border-border rounded-lg p-3.5 flex flex-col justify-between space-y-2">
+              <div>
+                <span className="text-xs font-bold text-foreground">{item.label}</span>
+                <div className="text-[18px] font-semibold text-foreground mt-1">
+                  {item.occupancyRate || 0}% <span className="text-xs font-normal text-muted-foreground">occupancy</span>
+                </div>
               </div>
-              <p className="admin-reports__hint">
-                {item.availableBeds || 0} beds available - {formatPeso(item.overdueAmount || 0)} overdue - {item.activeTickets || 0} open maintenance
-              </p>
+              <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t border-border/60">
+                <div className="flex justify-between">
+                  <span>Collected:</span>
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatPeso(item.collectedRevenue || 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Overdue:</span>
+                  <span className="font-semibold text-rose-600 dark:text-rose-400">{formatPeso(item.overdueAmount || 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Available Beds:</span>
+                  <span className="font-medium text-foreground">{item.availableBeds || 0}</span>
+                </div>
+              </div>
             </div>
           ))}
           {!branchRows.length ? (
-            <p className="admin-reports__hint">No branch rows are available for this scope yet.</p>
+            <p className="text-xs text-muted-foreground italic col-span-3">No branch rows are available for this scope yet.</p>
           ) : null}
         </div>
       </ReportChartPanel>
-    </AnalyticsTabLayout>
+    </div>
   );
 }

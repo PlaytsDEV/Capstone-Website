@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams, Navigate } from "react-router-dom";
 import {
  ArrowLeft,
  BedDouble,

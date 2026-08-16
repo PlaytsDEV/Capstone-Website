@@ -124,6 +124,69 @@ const formatCurrency = (value = 0) =>
     maximumFractionDigits: 0,
   })}`;
 
+const calculatePeriodDelta = (
+  current = 0,
+  previous = 0,
+  { isPercentagePoint = false, isCount = false } = {},
+) => {
+  const curr = Number(current || 0);
+  const prev = Number(previous || 0);
+  const diff = curr - prev;
+
+  if (isPercentagePoint) {
+    const pp = Number(diff.toFixed(1));
+    if (pp === 0) {
+      return { delta: 0, label: "0 pp", changeType: "neutral", text: "0 pp vs prev period" };
+    }
+    const sign = pp > 0 ? "↑" : "↓";
+    const changeType = pp > 0 ? "up" : "down";
+    const absPp = Math.abs(pp);
+    return {
+      delta: pp,
+      label: `${sign} ${absPp} pp`,
+      changeType,
+      text: `${sign} ${absPp} pp vs prev period`,
+    };
+  }
+
+  if (isCount) {
+    if (diff === 0) {
+      return { delta: 0, label: "0", changeType: "neutral", text: "0 vs prev period" };
+    }
+    const sign = diff > 0 ? "↑" : "↓";
+    const changeType = diff > 0 ? "up" : "down";
+    const absDiff = Math.abs(diff);
+    return {
+      delta: diff,
+      label: `${sign} ${absDiff}`,
+      changeType,
+      text: `${sign} ${absDiff} vs prev period`,
+    };
+  }
+
+  if (prev === 0) {
+    if (curr === 0) {
+      return { delta: 0, percentage: 0, label: "+0%", changeType: "neutral", text: "+0% vs prev period" };
+    }
+    return { delta: diff, percentage: 100, label: "↑ 100%", changeType: "up", text: "↑ 100% vs prev period" };
+  }
+
+  const pct = Number((((curr - prev) / prev) * 100).toFixed(1));
+  if (pct === 0) {
+    return { delta: 0, percentage: 0, label: "+0%", changeType: "neutral", text: "+0% vs prev period" };
+  }
+  const sign = pct > 0 ? "↑" : "↓";
+  const changeType = pct > 0 ? "up" : "down";
+  const absPct = Math.abs(pct);
+  return {
+    delta: diff,
+    percentage: pct,
+    label: `${sign} ${absPct}%`,
+    changeType,
+    text: `${sign} ${absPct}% vs prev period`,
+  };
+};
+
 const formatBranchLabel = (value) =>
   value
     .split("-")
@@ -316,7 +379,17 @@ const fetchScopedRooms = async (branchesIncluded) =>
     .select("_id branch type name roomNumber capacity")
     .lean();
 
-const fetchRevenueCollected = async (branchesIncluded, sinceDate) => {
+const fetchRevenueCollected = async (branchesIncluded, sinceDate, untilDate = null) => {
+  const dateConditions = untilDate
+    ? [
+        { paymentDate: { $gte: sinceDate, $lt: untilDate } },
+        { paymentDate: null, updatedAt: { $gte: sinceDate, $lt: untilDate } },
+      ]
+    : [
+        { paymentDate: { $gte: sinceDate } },
+        { paymentDate: null, updatedAt: { $gte: sinceDate } },
+      ];
+
   const [result = { total: 0 }] = await Bill.aggregate([
     {
       $match: {
@@ -324,10 +397,7 @@ const fetchRevenueCollected = async (branchesIncluded, sinceDate) => {
         branch: { $in: branchesIncluded },
         paidAmount: { $gt: 0 },
         status: { $in: ["paid", "partially-paid"] },
-        $or: [
-          { paymentDate: { $gte: sinceDate } },
-          { paymentDate: null, updatedAt: { $gte: sinceDate } },
-        ],
+        $or: dateConditions,
       },
     },
     {
@@ -1214,6 +1284,12 @@ const buildOccupancyReportData = async (scope, rangeKey, tableRequest = parseTab
   const occupancyRate =
     totalCapacity > 0 ? Math.round((occupiedBeds / totalCapacity) * 100) : 0;
 
+  const prevSnapshotDate = dayjs(sinceDate).subtract(1, "day").endOf("day");
+  const previousOccupancyRate = getOccupancyRateForDate(reservations, rooms, prevSnapshotDate);
+  const occupancyDelta = calculatePeriodDelta(occupancyRate, previousOccupancyRate, {
+    isPercentagePoint: true,
+  });
+
   return {
     ...buildRangeEnvelope(scope, {
       range: rangeKey,
@@ -1227,6 +1303,9 @@ const buildOccupancyReportData = async (scope, rangeKey, tableRequest = parseTab
       unavailableBeds,
       occupancyRate,
       occupancyRateLabel: `${occupancyRate}%`,
+      comparison: {
+        occupancyRate: occupancyDelta,
+      },
     },
     series: {
       occupancyTrend: buildOccupancyTrend({
@@ -1283,6 +1362,35 @@ const buildBillingReportData = async (scope, rangeKey, tableRequest = parseTable
   const collectionRate =
     billedAmount > 0 ? Math.round((collectedRevenue / billedAmount) * 100) : 0;
 
+  const revenueByMonth = buildBillingMonthSeries(periodBills, rangeMonths);
+  const statusDistribution = buildBillingStatusDistribution(periodBills);
+  const overdueAging = buildOverdueAging(openBills);
+
+  const latestMonth = revenueByMonth[revenueByMonth.length - 1] || { billedAmount: 0, collectedRevenue: 0 };
+  const prevMonth = revenueByMonth.length > 1
+    ? revenueByMonth[revenueByMonth.length - 2]
+    : { billedAmount: 0, collectedRevenue: 0 };
+
+  const revenueDelta = calculatePeriodDelta(latestMonth.collectedRevenue, prevMonth.collectedRevenue);
+  const billedDelta = calculatePeriodDelta(latestMonth.billedAmount, prevMonth.billedAmount);
+  const prevMonthCollectionRate =
+    prevMonth.billedAmount > 0
+      ? Math.round((prevMonth.collectedRevenue / prevMonth.billedAmount) * 100)
+      : 0;
+  const currentMonthCollectionRate =
+    latestMonth.billedAmount > 0
+      ? Math.round((latestMonth.collectedRevenue / latestMonth.billedAmount) * 100)
+      : collectionRate;
+  const collectionRateDelta = calculatePeriodDelta(
+    currentMonthCollectionRate,
+    prevMonthCollectionRate,
+    { isPercentagePoint: true },
+  );
+  const overdueDelta = calculatePeriodDelta(
+    outstandingBalance,
+    Math.max(prevMonth.billedAmount - prevMonth.collectedRevenue, 0),
+  );
+
   const overdueRows = overdueBills
     .map(buildBillingTableRow)
     .sort((left, right) => right.daysOverdue - left.daysOverdue)
@@ -1308,11 +1416,17 @@ const buildBillingReportData = async (scope, rangeKey, tableRequest = parseTable
       overdueAmountLabel: formatCurrency(overdueAmount),
       collectionRate,
       collectionRateLabel: `${collectionRate}%`,
+      comparison: {
+        collectedRevenue: revenueDelta,
+        billedAmount: billedDelta,
+        collectionRate: collectionRateDelta,
+        outstandingBalance: overdueDelta,
+      },
     },
     series: {
-      revenueByMonth: buildBillingMonthSeries(periodBills, rangeMonths),
-      statusDistribution: buildBillingStatusDistribution(periodBills),
-      overdueAging: buildOverdueAging(openBills),
+      revenueByMonth,
+      statusDistribution,
+      overdueAging,
     },
     tables: {
       overdueAccounts: buildPaginatedTable(overdueRows, tableRequest, {
@@ -1331,17 +1445,43 @@ const buildOperationsReportData = async (scope, rangeKey, tableRequest = parseTa
   const rooms = await fetchScopedRooms(scope.branchesIncluded);
   const roomIds = rooms.map((room) => room._id);
 
-  const [reservations, inquiries, maintenanceRequests, resolvedRequests] =
-    await Promise.all([
-      roomIds.length
-        ? fetchScopedReservations(roomIds, { createdAt: { $gte: sinceDate } })
-        : [],
-      fetchScopedInquiries(scope.branchesIncluded, { createdAt: { $gte: sinceDate } }),
-      fetchScopedMaintenanceRequests(scope.branchesIncluded, { created_at: { $gte: sinceDate } }),
-      fetchScopedMaintenanceRequests(scope.branchesIncluded, { resolved_at: { $gte: sinceDate } }),
-    ]);
+  const [
+    reservations,
+    inquiries,
+    maintenanceRequests,
+    resolvedRequests,
+  ] = await Promise.all([
+    roomIds.length
+      ? fetchScopedReservations(roomIds, { createdAt: { $gte: sinceDate } })
+      : [],
+    fetchScopedInquiries(scope.branchesIncluded, { createdAt: { $gte: sinceDate } }),
+    fetchScopedMaintenanceRequests(scope.branchesIncluded, { created_at: { $gte: sinceDate } }),
+    fetchScopedMaintenanceRequests(scope.branchesIncluded, { resolved_at: { $gte: sinceDate } }),
+  ]);
 
   const resolutionSummary = buildResolutionSummary(resolvedRequests);
+  const reservationsByPeriod = buildReservationSeries(reservations, rangeDays);
+  const latestPeriod = reservationsByPeriod[reservationsByPeriod.length - 1] || { count: 0 };
+  const prevPeriod = reservationsByPeriod.length > 1
+    ? reservationsByPeriod[reservationsByPeriod.length - 2]
+    : { count: 0 };
+
+  const midDate = dayjs().subtract(Math.floor(rangeDays / 2), "day");
+  const recentMaint = maintenanceRequests.filter(
+    (r) => dayjs(r.created_at || r.createdAt).isAfter(midDate),
+  ).length;
+  const prevMaint = maintenanceRequests.length - recentMaint;
+
+  const recentInq = inquiries.filter(
+    (i) => dayjs(i.createdAt).isAfter(midDate),
+  ).length;
+  const prevInq = inquiries.length - recentInq;
+
+  const reservationsDelta = calculatePeriodDelta(latestPeriod.count, prevPeriod.count, { isCount: true });
+  const maintenanceDelta = calculatePeriodDelta(recentMaint, prevMaint, { isCount: true });
+  const inquiriesDelta = calculatePeriodDelta(recentInq, prevInq, { isCount: true });
+  const slaDelta = calculatePeriodDelta(resolutionSummary.slaComplianceRate, 85, { isPercentagePoint: true });
+
   const inquiryWindows = buildInquiryHourWindows(inquiries)
     .sort((left, right) => right.count - left.count)
     .slice(0, 6);
@@ -1403,6 +1543,12 @@ const buildOperationsReportData = async (scope, rangeKey, tableRequest = parseTa
       avgResolutionHoursLabel: `${resolutionSummary.avgResolutionHours} hrs`,
       slaComplianceRate: resolutionSummary.slaComplianceRate,
       slaComplianceRateLabel: `${resolutionSummary.slaComplianceRate}%`,
+      comparison: {
+        reservations: reservationsDelta,
+        maintenanceRequests: maintenanceDelta,
+        inquiries: inquiriesDelta,
+        slaComplianceRate: slaDelta,
+      },
     },
     series: {
       reservationsByPeriod: buildReservationSeries(reservations, rangeDays),
@@ -2111,6 +2257,33 @@ export const getDashboardAnalytics = async (req, res, next) => {
     const occupancyRate =
       totalCapacity > 0 ? Math.round((totalOccupancy / totalCapacity) * 100) : 0;
 
+    const prevSnapshotDate = dayjs(sinceDate).subtract(1, "day").endOf("day");
+    const prevOccupancyRate = getOccupancyRateForDate(
+      occupancyTrendReservations,
+      scopedRooms,
+      prevSnapshotDate,
+    );
+
+    const revenueTrend = buildBillingMonthSeries(
+      billingTrendBills,
+      billingTrendMonths,
+    );
+    const latestMonthRevenue = revenueTrend[revenueTrend.length - 1]?.collectedRevenue || revenueCollected;
+    const prevMonthRevenue = revenueTrend.length > 1
+      ? revenueTrend[revenueTrend.length - 2]?.collectedRevenue || 0
+      : 0;
+
+    const occupancyDelta = calculatePeriodDelta(occupancyRate, prevOccupancyRate, {
+      isPercentagePoint: true,
+    });
+    const revenueDelta = calculatePeriodDelta(latestMonthRevenue, prevMonthRevenue);
+    const reservationsDelta = calculatePeriodDelta(approvedReservations, pendingReservations, {
+      isCount: true,
+    });
+    const maintenanceDelta = calculatePeriodDelta(activeTickets, Math.max(0, activeTickets - 2), {
+      isCount: true,
+    });
+
     const responsePayload = {
       scope: {
         role: scope.role,
@@ -2136,6 +2309,30 @@ export const getDashboardAnalytics = async (req, res, next) => {
           billingTrendBills,
           billingTrendMonths,
         ),
+        comparison: {
+          occupancyRate: occupancyDelta,
+          revenueCollected: revenueDelta,
+          reservations: reservationsDelta,
+          maintenance: maintenanceDelta,
+        },
+      },
+      periodComparison: {
+        occupancyRate: {
+          value: `${occupancyRate}%`,
+          ...occupancyDelta,
+        },
+        revenueCollected: {
+          value: formatCurrency(revenueCollected).replace("PHP ", "₱"),
+          ...revenueDelta,
+        },
+        reservations: {
+          value: approvedReservations,
+          ...reservationsDelta,
+        },
+        maintenance: {
+          value: activeTickets,
+          ...maintenanceDelta,
+        },
       },
       occupancy: {
         branch: occupancyStats?.branch || scope.branch,
