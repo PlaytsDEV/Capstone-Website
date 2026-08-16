@@ -35,7 +35,7 @@
 @media (max-width: 768px) {
   .tenant-layout-main {
     margin-left: 0;        /* sidebar overlays on mobile, no push */
-    padding-top: 54px;     /* clears the fixed mobile topbar */
+    padding-top: 0;        /* topbar is sticky inside layout main */
   }
 
   .tenant-layout-main.sidebar-collapsed {
@@ -43,7 +43,7 @@
   }
 
   .tenant-content {
-    padding: 24px 16px;
+    padding: 20px 16px 32px;
   }
 }
 
