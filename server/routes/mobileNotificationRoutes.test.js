@@ -48,6 +48,10 @@ describe("mobile Notification routes (HTTP behavior)", () => {
         ? { status: 200, value: { status: "read", notification_id: id } }
         : { status: 404, detail: "Notification not found." })),
       markAllNotificationsRead: jest.fn(async (db, userId) => ({ status: "all_read", read_at: new Date().toISOString() })),
+      dismissNotification: jest.fn(async (db, userId, id) => (id === "n1"
+        ? { status: 200, value: { status: "dismissed", notification_id: id } }
+        : { status: 404, detail: "Notification not found." })),
+      clearNotifications: jest.fn(async (db, userId) => ({ status: "cleared", cleared_before: new Date().toISOString() })),
     }));
 
     const { default: mobileNotificationRoutes } = await import("./mobileNotificationRoutes.js");
@@ -84,5 +88,25 @@ describe("mobile Notification routes (HTTP behavior)", () => {
     const res = await fetch(`${baseUrl}/api/m/notifications/n1/read`, { method: "PATCH" });
     expect(res.status).toBe(200);
     expect((await res.json()).status).toBe("read");
+  });
+
+  test("Notification-1: DELETE /api/m/notifications/:id dismisses a known id", async () => {
+    await startApp();
+    const res = await fetch(`${baseUrl}/api/m/notifications/n1`, { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect((await res.json()).status).toBe("dismissed");
+  });
+
+  test("DELETE /api/m/notifications/:id returns 404 for an unowned/unknown id", async () => {
+    await startApp();
+    const res = await fetch(`${baseUrl}/api/m/notifications/does-not-exist`, { method: "DELETE" });
+    expect(res.status).toBe(404);
+  });
+
+  test("Notification-4: DELETE /api/m/notifications clears the caller's feed", async () => {
+    await startApp();
+    const res = await fetch(`${baseUrl}/api/m/notifications`, { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect((await res.json()).status).toBe("cleared");
   });
 });

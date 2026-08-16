@@ -3,11 +3,19 @@ import {
   listUserNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  dismissNotification,
+  clearNotifications,
   buildNotificationKey,
 } from "./mobileNotificationBridge.js";
 
-function fakeDb({ notifications = [], announcements = [], reads = [], readState = null, users = [] } = {}) {
-  const updates = { notification_reads: [], notification_read_state: [], notificationsUpdateMany: [] };
+function fakeDb({
+  notifications = [], announcements = [], reads = [], readState = null, users = [],
+  dismissals = [], clearState = null,
+} = {}) {
+  const updates = {
+    notification_reads: [], notification_read_state: [], notificationsUpdateMany: [],
+    notification_dismissals: [], notification_clear_state: [],
+  };
   return {
     updates,
     collection(name) {
@@ -45,6 +53,18 @@ function fakeDb({ notifications = [], announcements = [], reads = [], readState 
         return {
           findOne: async () => readState,
           updateOne: async (filter, update, opts) => { updates.notification_read_state.push({ filter, update, opts }); },
+        };
+      }
+      if (name === "notification_dismissals") {
+        return {
+          find: () => ({ project: () => ({ toArray: async () => dismissals, catch: () => dismissals }) }),
+          updateOne: async (filter, update, opts) => { updates.notification_dismissals.push({ filter, update, opts }); },
+        };
+      }
+      if (name === "notification_clear_state") {
+        return {
+          findOne: async () => clearState,
+          updateOne: async (filter, update, opts) => { updates.notification_clear_state.push({ filter, update, opts }); },
         };
       }
       throw new Error(`unexpected collection: ${name}`);
@@ -159,6 +179,69 @@ describe("mobileNotificationBridge", () => {
   });
 });
 
+describe("mobileNotificationBridge — dismiss/clear (P1 notification cleanup)", () => {
+  test("Notification-1: dismissing a personal notification writes a per-tenant junction row, not a delete/mutation of the source doc", async () => {
+    const db = fakeDb({ notifications: [{ notification_id: "n1", title: "x", created_at: new Date() }] });
+    const result = await dismissNotification(db, "tenant-a", "n1");
+    expect(result.status).toBe(200);
+    expect(db.updates.notification_dismissals[0].filter.user_id).toBe("tenant-a");
+    expect(db.updates.notificationsUpdateMany.length).toBe(0);
+  });
+
+  test("dismissing an unknown/unowned id returns 404, never a silent success — a client cannot probe or dismiss another tenant's item", async () => {
+    const db = fakeDb({ notifications: [] });
+    const result = await dismissNotification(db, "tenant-a", "does-not-exist");
+    expect(result.status).toBe(404);
+  });
+
+  test("Notification-1/8: a dismissed notification is excluded from listUserNotifications and stays excluded (persisted, not client-only state)", async () => {
+    const key = buildNotificationKey({ notification_id: "n1", type: "notification", title: "x", created_at: new Date("2026-01-01") });
+    const db = fakeDb({
+      notifications: [{ notification_id: "n1", title: "x", created_at: new Date("2026-01-01") }],
+      dismissals: [{ notification_key: key }],
+    });
+    const result = await listUserNotifications(db, "tenant-a");
+    expect(result.length).toBe(0);
+  });
+
+  test("Notification-3: dismissing an announcement never touches the shared announcements collection — only this tenant's feed is affected", async () => {
+    const announcementDoc = { _id: "ann1", announcement_id: "ann1", title: "Branch notice", created_at: new Date("2026-01-01") };
+    const key = buildNotificationKey({ announcement_id: "ann1" });
+    const db = fakeDb({ announcements: [announcementDoc] });
+    const result = await dismissNotification(db, "tenant-a", key);
+    expect(result.status).toBe(200);
+    // The fixture array itself is untouched — proving no write ever targets
+    // the `announcements` collection for a dismissal.
+    expect(announcementDoc).toEqual({ _id: "ann1", announcement_id: "ann1", title: "Branch notice", created_at: new Date("2026-01-01") });
+  });
+
+  test("Notification-4/5: clearNotifications sets a cutoff scoped to the caller, hiding items created at/before it but not items created after", async () => {
+    const db = fakeDb({});
+    const result = await clearNotifications(db, "tenant-a");
+    expect(result.status).toBe("cleared");
+    expect(db.updates.notification_clear_state[0].filter.user_id).toBe("tenant-a");
+
+    const clearedBefore = result.cleared_before;
+    const beforeClear = new Date(clearedBefore.getTime() - 60_000);
+    const afterClear = new Date(clearedBefore.getTime() + 60_000);
+    const db2 = fakeDb({
+      notifications: [
+        { notification_id: "old", title: "old", created_at: beforeClear },
+        { notification_id: "new", title: "new", created_at: afterClear },
+      ],
+      clearState: { cleared_before: clearedBefore },
+    });
+    const list = await listUserNotifications(db2, "tenant-a");
+    expect(list.map((n) => n.notification_id)).toEqual(["new"]);
+  });
+
+  test("clearNotifications never disables push delivery or mutates any notification document — it is purely a read-time feed filter", async () => {
+    const db = fakeDb({});
+    await clearNotifications(db, "tenant-a");
+    expect(db.updates.notificationsUpdateMany.length).toBe(0);
+  });
+});
+
 // Regression coverage for the bill-release notification audit: the mobile
 // bridge's `notifications` query previously only matched documents shaped
 // { user_id: <string> } (the legacy standalone-backend shape). This
@@ -221,6 +304,12 @@ function filteringFakeDb({ notifications = [] } = {}) {
         return { find: () => ({ project: () => ({ toArray: async () => [], catch: () => [] }) }) };
       }
       if (name === "notification_read_state") {
+        return { findOne: async () => null, updateOne: async () => {} };
+      }
+      if (name === "notification_dismissals") {
+        return { find: () => ({ project: () => ({ toArray: async () => [], catch: () => [] }) }) };
+      }
+      if (name === "notification_clear_state") {
         return { findOne: async () => null, updateOne: async () => {} };
       }
       throw new Error(`unexpected collection: ${name}`);

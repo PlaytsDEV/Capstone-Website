@@ -334,12 +334,16 @@ async function listUserNotifications(db, userId, userMongoId) {
     }
   }
 
-  const [readReceipts, readState] = await Promise.all([
+  const [readReceipts, readState, dismissalReceipts, clearState] = await Promise.all([
     db.collection("notification_reads").find({ user_id: userId }).project({ notification_key: 1 }).toArray().catch(() => []),
     db.collection("notification_read_state").findOne({ user_id: userId }).catch(() => null),
+    db.collection("notification_dismissals").find({ user_id: userId }).project({ notification_key: 1 }).toArray().catch(() => []),
+    db.collection("notification_clear_state").findOne({ user_id: userId }).catch(() => null),
   ]);
   const readKeys = new Set(readReceipts.map((entry) => normalizeString(entry.notification_key)).filter(Boolean));
   const allReadAt = readState?.all_read_at ? new Date(readState.all_read_at).getTime() : 0;
+  const dismissedKeys = new Set(dismissalReceipts.map((entry) => normalizeString(entry.notification_key)).filter(Boolean));
+  const clearedBefore = clearState?.cleared_before ? new Date(clearState.cleared_before).getTime() : 0;
 
   const mergedByKey = new Map();
   sortNotifications([
@@ -357,6 +361,16 @@ async function listUserNotifications(db, userId, userMongoId) {
     normalizedNotification.read = normalizedNotification.read === true
       || readKeys.has(key)
       || (allReadAt > 0 && notificationTime <= allReadAt);
+
+    // Dismissal/clear are per-tenant feed visibility only — they never
+    // mutate the shared `notifications`/`announcements` document, so a
+    // dismissed announcement stays fully intact (and fully visible to
+    // every other tenant in its audience). "Clear" is a cutoff, not a
+    // permanent hide-all: only items that already existed at clear time
+    // are hidden; anything created after clearedBefore (a new
+    // notification, or a newly published announcement) still appears.
+    if (dismissedKeys.has(key)) return;
+    if (clearedBefore > 0 && notificationTime <= clearedBefore) return;
 
     const existing = mergedByKey.get(key);
     if (!existing) {
@@ -425,6 +439,69 @@ async function markAllNotificationsRead(db, userId, userMongoId) {
   return { status: "all_read", read_at: now };
 }
 
+/**
+ * Resolve a notification/announcement key to one this caller can actually
+ * see (own stored notification or a visible announcement) — the exact same
+ * ownership resolution as markNotificationRead. Returns null if the caller
+ * has no visibility into that key, so a client can never dismiss/probe for
+ * another tenant's private notification by guessing an id.
+ */
+async function resolveOwnedNotificationKey(db, userId, notificationKeyRaw, userMongoId) {
+  const notificationKey = normalizeString(notificationKeyRaw);
+  if (!notificationKey) return null;
+
+  const stored = await db.collection("notifications").find(buildOwnerFilter(userId, userMongoId)).limit(200).toArray();
+  let owned = stored
+    .map((doc) => sanitizeStoredNotification(doc))
+    .find((item) => buildNotificationKey(item) === notificationKey || item.notification_id === notificationKey);
+
+  if (!owned) {
+    const announcements = await db.collection("announcements").find({
+      $and: [ACTIVE_FILTER, NOT_ARCHIVED_FILTER, visibilityFilter(userId, userMongoId)],
+    }).limit(200).toArray();
+    owned = announcements
+      .map((doc) => normalizeAnnouncementNotification(doc))
+      .find((item) => buildNotificationKey(item) === notificationKey || item.notification_id === notificationKey);
+  }
+
+  return owned ? buildNotificationKey(owned) : null;
+}
+
+/**
+ * Dismiss (hide from this tenant's feed only) one notification or
+ * announcement. This is a per-tenant junction write — it NEVER deletes or
+ * mutates the shared `notifications`/`announcements` document, so a
+ * dismissed announcement remains fully intact and fully visible to every
+ * other tenant in its audience, and to admins.
+ */
+async function dismissNotification(db, userId, notificationKeyRaw, userMongoId) {
+  const ownedKey = await resolveOwnedNotificationKey(db, userId, notificationKeyRaw, userMongoId);
+  if (!ownedKey) return { status: 404, detail: "Notification not found." };
+
+  await db.collection("notification_dismissals").updateOne(
+    { user_id: userId, notification_key: ownedKey },
+    { $set: { dismissed_at: new Date() }, $setOnInsert: { created_at: new Date() } },
+    { upsert: true },
+  );
+  return { status: 200, value: { status: "dismissed", notification_id: ownedKey } };
+}
+
+/**
+ * Clear the tenant's currently-visible feed (a cutoff timestamp, not a
+ * permanent hide-all — see listUserNotifications' clearedBefore check).
+ * Anything created after this moment, including a brand-new notification
+ * or a newly published announcement, still appears normally.
+ */
+async function clearNotifications(db, userId) {
+  const now = new Date();
+  await db.collection("notification_clear_state").updateOne(
+    { user_id: userId },
+    { $set: { cleared_before: now, updated_at: now }, $setOnInsert: { created_at: now } },
+    { upsert: true },
+  );
+  return { status: "cleared", cleared_before: now };
+}
+
 export {
   sanitizeStoredNotification,
   normalizeAnnouncementNotification,
@@ -433,4 +510,6 @@ export {
   listUserNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  dismissNotification,
+  clearNotifications,
 };

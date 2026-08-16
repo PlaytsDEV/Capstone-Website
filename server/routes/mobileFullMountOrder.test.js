@@ -65,6 +65,7 @@ jest.unstable_mockModule("../services/mobileUserDocumentService.js", () => ({
 jest.unstable_mockModule("mongoose", () => ({ default: { connection: { db: {} } } }));
 jest.unstable_mockModule("../services/mobileNotificationBridge.js", () => ({
   listUserNotifications: jest.fn(), markNotificationRead: jest.fn(), markAllNotificationsRead: jest.fn(),
+  dismissNotification: jest.fn(), clearNotifications: jest.fn(),
 }));
 jest.unstable_mockModule("../config/firebase.js", () => ({
   default: { apps: [{}], storage: () => ({ bucket: jest.fn() }) },

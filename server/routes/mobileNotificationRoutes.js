@@ -30,6 +30,8 @@ import {
   listUserNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  dismissNotification,
+  clearNotifications,
 } from "../services/mobileNotificationBridge.js";
 
 const router = express.Router();
@@ -64,6 +66,27 @@ router.patch("/notifications/:notificationId/read", mobileTenantAuth, asyncRoute
     return res.status(result.status).json({ detail: result.detail });
   }
   res.json(result.value);
+}));
+
+// Dismiss (per-tenant hide) a single notification or announcement — never
+// deletes/mutates the shared document, so other tenants and admins are
+// unaffected. 404s if the caller has no visibility into that id, so a
+// client can't dismiss/probe another tenant's private notification.
+router.delete("/notifications/:notificationId", mobileTenantAuth, asyncRoute(async (req, res) => {
+  const db = mongoose.connection.db;
+  const result = await dismissNotification(db, req.mobileTenant.user_id, req.params.notificationId, req.mobileTenant._id);
+  if (result.status !== 200) {
+    return res.status(result.status).json({ detail: result.detail });
+  }
+  res.json(result.value);
+}));
+
+// Clear the tenant's current feed (a cutoff, not a permanent hide-all) —
+// new notifications/announcements created after this call still appear.
+router.delete("/notifications", mobileTenantAuth, asyncRoute(async (req, res) => {
+  const db = mongoose.connection.db;
+  const result = await clearNotifications(db, req.mobileTenant.user_id);
+  res.json(result);
 }));
 
 export default router;
