@@ -151,8 +151,8 @@ const ScopedStyles = () => (
         box-shadow var(--duration-fast) var(--ease-out);
     }
     .st-input:focus {
-      border-color: var(--ring);
-      box-shadow: 0 0 0 3px var(--border-focus);
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);
     }
 
     .st-btn {
@@ -526,9 +526,9 @@ const SettingsTab = () => {
           <div className="st-section-head-left">
             <div
               className="st-icon-badge"
-              style={{ backgroundColor: "color-mix(in srgb, var(--secondary) 16%, transparent)" }}
+              style={{ backgroundColor: "color-mix(in srgb, var(--primary) 16%, transparent)" }}
             >
-              <Shield style={{ width: "18px", height: "18px", color: "var(--secondary)" }} />
+              <Shield style={{ width: "18px", height: "18px", color: "var(--primary)" }} />
             </div>
             <h3
               style={{
@@ -563,12 +563,12 @@ const SettingsTab = () => {
                 alignItems: "flex-start",
                 gap: "12px",
                 padding: "var(--spacing-md) var(--spacing-lg)",
-                backgroundColor: "var(--status-info-bg)",
+                backgroundColor: "color-mix(in srgb, var(--primary) 8%, var(--surface-card, var(--card)))",
                 borderRadius: "var(--radius-md)",
-                border: "1px solid color-mix(in srgb, var(--info) 25%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--primary) 25%, transparent)",
               }}
             >
-              <Info style={{ width: "18px", height: "18px", color: "var(--info)", flexShrink: 0, marginTop: "1px" }} />
+              <Info style={{ width: "18px", height: "18px", color: "var(--primary)", flexShrink: 0, marginTop: "1px" }} />
               <div>
                 <p
                   style={{
@@ -706,8 +706,8 @@ const SettingsTab = () => {
       <div className="st-section">
         <div className="st-section-head">
           <div className="st-section-head-left">
-            <div className="st-icon-badge" style={{ backgroundColor: "color-mix(in srgb, var(--secondary) 16%, transparent)" }}>
-              <Monitor style={{ width: "18px", height: "18px", color: "var(--secondary)" }} />
+            <div className="st-icon-badge" style={{ backgroundColor: "color-mix(in srgb, var(--primary) 16%, transparent)" }}>
+              <Monitor style={{ width: "18px", height: "18px", color: "var(--primary)" }} />
             </div>
             <h3
               style={{
@@ -815,8 +815,8 @@ const SettingsTab = () => {
       <div className="st-section">
         <div className="st-section-head">
           <div className="st-section-head-left">
-            <div className="st-icon-badge" style={{ backgroundColor: "color-mix(in srgb, var(--info) 16%, transparent)" }}>
-              <Info style={{ width: "18px", height: "18px", color: "var(--info)" }} />
+            <div className="st-icon-badge" style={{ backgroundColor: "color-mix(in srgb, var(--primary) 16%, transparent)" }}>
+              <Info style={{ width: "18px", height: "18px", color: "var(--primary)" }} />
             </div>
             <h3
               style={{
