@@ -154,7 +154,7 @@ router.post(
  * Returns paginated change history for availability rules for a branch.
  * Branch admins are scoped to their own branch via filterByBranch.
  *
- * @query {string} branch - Target branch (required for super admin)
+ * @query {string} branch - Target branch (required for owner)
  * @query {number} page   - Page number (default: 1)
  * @query {number} limit  - Records per page (default: 20, max: 50)
  */

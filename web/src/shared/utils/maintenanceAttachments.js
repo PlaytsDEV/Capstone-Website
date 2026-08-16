@@ -102,6 +102,9 @@ export const isViewableMaintenanceAttachmentUri = (uri) => {
   }
 };
 
+/** Alias for isViewableMaintenanceAttachmentUri */
+export const isRemoteUri = isViewableMaintenanceAttachmentUri;
+
 export const getMaintenanceAttachmentName = (attachment, index = 0) =>
   pickFirstText(
     attachment?.name,

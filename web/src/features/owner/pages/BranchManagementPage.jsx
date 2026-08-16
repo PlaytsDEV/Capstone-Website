@@ -21,8 +21,8 @@ import {
 import { useApiClient } from "../../../shared/api/apiClient";
 import { buildBranchScopedHref } from "../../../shared/utils/branchFilterQuery.mjs";
 import { AdminBranchesSkeleton } from "../../admin/components/AdminContentSkeletons";
-import "../styles/superadmin-dashboard.css";
-import "../styles/superadmin-branches.css";
+import "../styles/owner-dashboard.css";
+import "../styles/owner-branches.css";
 
 const BRANCH_META = Object.freeze({
   "gil-puyat": {

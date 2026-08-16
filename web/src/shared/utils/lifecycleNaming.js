@@ -142,9 +142,9 @@ export const RESERVATION_STATUS_APPEARANCE = Object.freeze({
   },
   moveIn: {
     label: RESERVATION_STATUS_LABELS.moveIn,
-    color: "#1d4ed8",
-    bg: "#eff6ff",
-    dot: "#3b82f6",
+    color: "#047857",
+    bg: "#ecfdf5",
+    dot: "#10b981",
   },
   moveOut: {
     label: RESERVATION_STATUS_LABELS.moveOut,

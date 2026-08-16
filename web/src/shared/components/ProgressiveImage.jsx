@@ -33,14 +33,11 @@ export function ProgressiveImage({
 
   const optimizedSrc = getOptimizedUrl(src, optimizerOpts);
 
-  // ── Skeleton shimmer ───────────────────────────────────────────────────────
-  const skeletonStyle = {
+  // ── Solid neutral placeholder (strictly no gradients, no CPU animation overhead) ────
+  const placeholderStyle = {
     position: "absolute",
     inset: 0,
-    background:
-      "linear-gradient(90deg, var(--skeleton-base, #e2e8f0) 25%, var(--skeleton-shine, #f1f5f9) 50%, var(--skeleton-base, #e2e8f0) 75%)",
-    backgroundSize: "200% 100%",
-    animation: "progressiveImageShimmer 1.4s infinite",
+    backgroundColor: "var(--card-muted, #f1f5f9)",
     borderRadius: "inherit",
     transition: "opacity 0.3s ease",
     opacity: status === "loaded" ? 0 : 1,
@@ -57,8 +54,8 @@ export function ProgressiveImage({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "var(--skeleton-base, #e2e8f0)",
-          color: "var(--lp-text-muted, #94a3b8)",
+          backgroundColor: "var(--card-muted, #f1f5f9)",
+          color: "var(--text-muted, #94a3b8)",
           fontSize: "12px",
           fontWeight: 500,
           ...style,
@@ -66,7 +63,7 @@ export function ProgressiveImage({
         aria-label={alt}
         role="img"
       >
-        {fallbackLabel || alt || "Image unavailable"}
+        {fallbackLabel || alt || "Photo preview unavailable"}
       </div>
     );
   }
@@ -76,8 +73,8 @@ export function ProgressiveImage({
       style={{ position: "relative", overflow: "hidden", ...style }}
       className={className}
     >
-      {/* Shimmer skeleton — visible until image loads */}
-      <div style={skeletonStyle} aria-hidden="true" />
+      {/* Solid neutral placeholder — visible until image loads */}
+      <div style={placeholderStyle} aria-hidden="true" />
 
       {/* Actual image */}
       <img
@@ -85,7 +82,7 @@ export function ProgressiveImage({
         src={optimizedSrc}
         alt={alt}
         loading={priority ? "eager" : "lazy"}
-        fetchpriority={priority ? "high" : "auto"}
+        fetchpriority={priority ? "high" : "low"}
         decoding="async"
         onLoad={() => setStatus("loaded")}
         onError={() => setStatus("error")}
@@ -95,19 +92,11 @@ export function ProgressiveImage({
           objectFit: "inherit",
           objectPosition: "inherit",
           opacity: status === "loaded" ? 1 : 0,
-          transition: "opacity 0.4s ease",
+          transition: "opacity 0.3s ease",
           display: "block",
         }}
         {...rest}
       />
-
-      {/* Global shimmer keyframe — injected once */}
-      <style>{`
-        @keyframes progressiveImageShimmer {
-          0%   { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-      `}</style>
     </div>
   );
 }

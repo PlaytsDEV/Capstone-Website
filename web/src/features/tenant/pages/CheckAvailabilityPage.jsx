@@ -15,6 +15,7 @@ import BaseModal from "../../../shared/components/BaseModal";
 import "../../../shared/styles/notification.css";
 import "../styles/check-availability.css";
 import CheckAvailabilitySkeleton from "../components/check-availability/CheckAvailabilitySkeleton";
+import { getThumbnailUrl } from "../../../shared/utils/imageOptimizer";
 import {
  ROOM_SELECTION_LOCKED_MESSAGE,
  isApplicantRoomSelectionLocked,
@@ -81,6 +82,16 @@ function CheckAvailabilityPage() {
 
  // ── State ──────────────────────────────────────────────────
  const [searchQuery, setSearchQuery] = useState("");
+ const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+
+ // Debounce search query to keep typing at 60 FPS without filter churn
+ useEffect(() => {
+   const timer = setTimeout(() => {
+     setDebouncedSearchQuery(searchQuery);
+   }, 200);
+   return () => clearTimeout(timer);
+ }, [searchQuery]);
+
  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
  const [selectedBranch, setSelectedBranch] = useState("All");
  const [selectedRoomType, setSelectedRoomType] = useState("All");
@@ -103,9 +114,29 @@ function CheckAvailabilityPage() {
  // ── TanStack Query ─────────────────────────────────────────
  const { data: rawRooms = [], isLoading: roomsLoading, error: roomsQueryError } = useRooms(
    undefined,
-   { pollInterval: user ? false : 30_000 }
+   {
+     pollInterval: user ? false : 30_000,
+     staleTime: 60_000,
+     gcTime: 300_000,
+   }
  );
  const roomsError = roomsQueryError ? "Failed to load rooms. Please try again." : null;
+
+  // Prefetch modal JS chunks in background during browser idle time (0ms cold click latency)
+  useEffect(() => {
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      window.requestIdleCallback(() => {
+        import("../modals/RoomDetailsModal").catch(() => {});
+        import("../../public/modals/InquiryModal").catch(() => {});
+      });
+    } else {
+      const timer = setTimeout(() => {
+        import("../modals/RoomDetailsModal").catch(() => {});
+        import("../../public/modals/InquiryModal").catch(() => {});
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
  useEffect(() => {
  if (!isChangeRoomMode || !changeRoomReservationId || !user) return undefined;
@@ -274,7 +305,7 @@ function CheckAvailabilityPage() {
   }, [selectedBranch]);
 
   const filteredRooms = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = debouncedSearchQuery.trim().toLowerCase();
     return rooms.filter((room) => {
       const hasAvailableBeds = room.availableBeds > 0;
       const matchesSearch =
@@ -301,12 +332,12 @@ function CheckAvailabilityPage() {
         effectivePrice <= maxPrice
       );
     });
-  }, [rooms, searchQuery, selectedLeaseTermFilter, selectedBranch, selectedRoomType, minPrice, maxPrice]);
+  }, [rooms, debouncedSearchQuery, selectedLeaseTermFilter, selectedBranch, selectedRoomType, minPrice, maxPrice]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedBranch, selectedRoomType, selectedLeaseTermFilter, minPrice, maxPrice]);
+  }, [debouncedSearchQuery, selectedBranch, selectedRoomType, selectedLeaseTermFilter, minPrice, maxPrice]);
 
   // Paginated rooms
   const totalPages = Math.max(1, Math.ceil(filteredRooms.length / ROOMS_PER_PAGE));
@@ -314,6 +345,29 @@ function CheckAvailabilityPage() {
     () => filteredRooms.slice((currentPage - 1) * ROOMS_PER_PAGE, currentPage * ROOMS_PER_PAGE),
     [filteredRooms, currentPage],
   );
+
+  // Pre-warm gallery thumbnails for visible rooms during idle time (0ms modal open delay)
+  useEffect(() => {
+    if (typeof window === "undefined" || !Array.isArray(paginatedRooms) || paginatedRooms.length === 0) return;
+    const prewarm = () => {
+      paginatedRooms.slice(0, 6).forEach((room) => {
+        const rImages = room.images?.length ? room.images : (room.image ? [room.image] : []);
+        rImages.forEach((imgSrc) => {
+          if (imgSrc && typeof Image !== "undefined") {
+            const preloader = new Image();
+            preloader.src = getThumbnailUrl(imgSrc, { width: 120, quality: 70 });
+          }
+        });
+      });
+    };
+
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(prewarm);
+    } else {
+      const timer = setTimeout(prewarm, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [paginatedRooms]);
 
   const handleBranchFilter = useCallback((branch) => {
     setSelectedBranch(branch);
@@ -327,6 +381,7 @@ function CheckAvailabilityPage() {
     setMinPrice(0);
     setMaxPrice(15000);
     setSearchQuery("");
+    setDebouncedSearchQuery("");
   }, []);
 
   // Stable callbacks for LoginConfirmModal and logout — prevents inline-arrow
@@ -617,12 +672,13 @@ function CheckAvailabilityPage() {
  ) : filteredRooms.length === 0 ? (
  <div className="text-muted-foreground">No rooms found.</div>
  ) : (
- paginatedRooms.map((room) => (
+ paginatedRooms.map((room, index) => (
  <RoomCard
  key={room.id}
  room={room}
+ isPriority={index < 3}
  selectedLeaseTermFilter={selectedLeaseTermFilter}
- onClick={() => openRoomDetails(room)}
+ onSelect={openRoomDetails}
  />
  ))
  )}
@@ -638,7 +694,11 @@ function CheckAvailabilityPage() {
  <button
  className="ca-pagination__btn"
  disabled={currentPage <= 1}
- onClick={() => setCurrentPage((p) => p - 1)}
+ onClick={() => {
+   setCurrentPage((p) => Math.max(1, p - 1));
+   window.scrollTo({ top: 0, behavior: "smooth" });
+ }}
+ aria-label="Previous page"
  >
  <ChevronLeft size={16} />
  </button>
@@ -648,7 +708,11 @@ function CheckAvailabilityPage() {
  <button
  className="ca-pagination__btn"
  disabled={currentPage >= totalPages}
- onClick={() => setCurrentPage((p) => p + 1)}
+ onClick={() => {
+   setCurrentPage((p) => Math.min(totalPages, p + 1));
+   window.scrollTo({ top: 0, behavior: "smooth" });
+ }}
+ aria-label="Next page"
  >
  <ChevronRight size={16} />
  </button>

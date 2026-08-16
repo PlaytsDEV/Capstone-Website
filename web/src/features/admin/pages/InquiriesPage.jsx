@@ -397,7 +397,7 @@ function InquiriesPage({ isEmbedded = false }) {
                             {inquiry.message}
                           </p>
                         )}
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                           {(inquiry.subject || inquiry.inquiryType) && (
                             <span className="text-xs px-3 py-1 bg-muted text-foreground rounded-md">
                               {inquiry.subject || inquiry.inquiryType}
@@ -405,16 +405,30 @@ function InquiriesPage({ isEmbedded = false }) {
                           )}
                           <span
                             style={{
-                              backgroundColor: status === "resolved" 
-                                ? "var(--status-success-bg)" 
-                                : "var(--status-warning-bg)",
-                              color: status === "resolved" 
-                                ? "var(--status-success)" 
-                                : "var(--status-warning)",
+                              backgroundColor:
+                                status === "resolved"
+                                  ? inquiry.emailDeliveryStatus === "failed"
+                                    ? "#fffbeb"
+                                    : "var(--status-success-bg)"
+                                  : "var(--status-warning-bg)",
+                              color:
+                                status === "resolved"
+                                  ? inquiry.emailDeliveryStatus === "failed"
+                                    ? "#b45309"
+                                    : "var(--status-success)"
+                                  : "var(--status-warning)",
+                              border:
+                                inquiry.emailDeliveryStatus === "failed"
+                                  ? "1px solid #fde68a"
+                                  : "none",
                             }}
-                            className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full"
+                            className="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full inline-flex items-center gap-1"
                           >
-                            {status === "resolved" ? "Responded" : "Pending"}
+                            {status === "resolved"
+                              ? inquiry.emailDeliveryStatus === "failed"
+                                ? "Email Undelivered"
+                                : "Responded"
+                              : "Pending"}
                           </span>
                         </div>
                       </div>

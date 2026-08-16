@@ -143,13 +143,13 @@ export const AnalyticsDetailsPage = lazyWithRetry(
   () => import("../features/admin/pages/AnalyticsDetailsPage.jsx"),
 );
 export const BranchManagementPage = lazyWithRetry(
-  () => import("../features/super-admin/pages/BranchManagementPage.jsx"),
+  () => import("../features/owner/pages/BranchManagementPage.jsx"),
 );
 export const RolePermissionsPage = lazyWithRetry(
-  () => import("../features/super-admin/pages/RolePermissionsPage.jsx"),
+  () => import("../features/owner/pages/RolePermissionsPage.jsx"),
 );
 export const SystemSettingsPage = lazyWithRetry(
-  () => import("../features/super-admin/pages/SystemSettingsPage.jsx"),
+  () => import("../features/owner/pages/SystemSettingsPage.jsx"),
 );
 export const AdminNotificationsPage = lazyWithRetry(
   () => import("../features/admin/pages/AdminNotificationsPage.jsx"),

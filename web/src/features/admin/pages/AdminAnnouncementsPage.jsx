@@ -1356,7 +1356,7 @@ export default function AdminAnnouncementsPage() {
               <option value="policy">Policies</option>
             </select>
 
-            {/* Branch Dropdown (for Owner / Super Admin) */}
+            {/* Branch Dropdown (for Owner) */}
             {isOwner && (
               <select
                 value={branchFilter}

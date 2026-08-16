@@ -306,16 +306,16 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
           <>
             <DetailRow
               icon={<CreditCard size={15} color="var(--text-secondary, #94A3B8)" />}
-              label="Slot Deposit"
-              value="Verified (Paid)"
+              label="Reservation Fee"
+              value="Paid (₱2,000)"
               success
             />
             <DetailRow
               icon={<CreditCard size={15} color="var(--text-secondary, #94A3B8)" />}
-              label="Move-In Due"
+              label="Advance & Deposit"
               value={
                 isMoveInSettled
-                  ? "Settled (Paid)"
+                  ? "Settled"
                   : `₱${moveInRemainingDue.toLocaleString()}`
               }
               success={isMoveInSettled}
@@ -364,21 +364,39 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
               generateDepositReceipt(reservation, activeProfile || profile);
             }}
             style={{
- ...S.downloadBtn,
- background: isDark ? "#142944" : "var(--text-heading, #0F172A)",
- color: isDark ? "#E2E8F0" : "#fff",
- border: isDark ? "1px solid var(--border-card, #2A3B57)" : "none",
- }}
- onMouseEnter={(e) => {
- e.currentTarget.style.background = isDark ? "#1B3557" : "#1E293B";
- }}
- onMouseLeave={(e) => {
- e.currentTarget.style.background = isDark ? "#142944" : "var(--text-heading, #0F172A)";
- }}
- >
- <Download size={14} />
- Download Receipt
- </button>
+              ...S.downloadBtn,
+              background: isDark ? "#142944" : "var(--text-heading, #0F172A)",
+              color: isDark ? "#E2E8F0" : "#fff",
+              border: isDark ? "1px solid var(--border-card, #2A3B57)" : "none",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = isDark ? "#1B3557" : "#1E293B";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = isDark ? "#142944" : "var(--text-heading, #0F172A)";
+            }}
+          >
+            <Download size={14} />
+            Download Receipt
+          </button>
+          {isMoveInSettled && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate("/applicant/contracts");
+              }}
+              style={{
+                ...S.downloadBtn,
+                background: "transparent",
+                color: isDark ? "#93C5FD" : "#1D4ED8",
+                border: isDark ? "1px solid rgba(147, 197, 253, 0.3)" : "1px solid #BFDBFE",
+                marginTop: 8,
+              }}
+            >
+              <FileText size={14} />
+              View Lease Contract
+            </button>
+          )}
  <button
  onClick={(e) => {
  e.stopPropagation();

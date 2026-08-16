@@ -35,7 +35,7 @@ export function ImageWithFallback({ src, alt, className = "", style = {}, priori
       src={optimizedSrc}
       alt={alt}
       loading={priority ? "eager" : "lazy"}
-      fetchpriority={priority ? "high" : "auto"}
+      fetchpriority={priority ? "high" : "low"}
       decoding="async"
       className={className}
       style={style}

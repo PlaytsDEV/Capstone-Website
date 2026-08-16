@@ -100,47 +100,76 @@ export const uploadRoomPhotos = async (req, res, next) => {
 
     const bucket = getFirebaseStorage();
 
-    const uploadedUrls = await Promise.all(
+    const uploadResults = await Promise.all(
       files.map(async (file) => {
+        const timestamp = Date.now();
         const rawFilename = sanitizeFilename(path.parse(file.originalname || "photo").name);
-        const storagePath = `room-photos/${roomId}/${Date.now()}-${rawFilename}.webp`;
+        const fullStoragePath = `room-photos/${roomId}/${timestamp}-${rawFilename}.webp`;
+        const thumbStoragePath = `room-photos/${roomId}/${timestamp}-${rawFilename}-thumb.webp`;
 
-        let uploadBuffer = file.buffer;
+        let fullBuffer = file.buffer;
+        let thumbBuffer = null;
         let contentType = "image/webp";
 
         try {
-          // Convert image to optimized WebP format (1200px max width, 80% quality)
-          uploadBuffer = await sharp(file.buffer)
+          // Generate full resolution WebP (1200x900 inside fit, 82% quality)
+          fullBuffer = await sharp(file.buffer)
             .resize({ width: 1200, height: 900, fit: "inside", withoutEnlargement: true })
-            .webp({ quality: 80 })
+            .webp({ quality: 82 })
+            .toBuffer();
+
+          // Generate lightweight thumbnail WebP (480x360 inside fit, 75% quality)
+          thumbBuffer = await sharp(file.buffer)
+            .resize({ width: 480, height: 360, fit: "inside", withoutEnlargement: true })
+            .webp({ quality: 75 })
             .toBuffer();
         } catch (sharpError) {
-          // Fallback to original file buffer if Sharp processing fails
-          uploadBuffer = file.buffer;
+          // Fallback to original buffer if Sharp processing fails
+          fullBuffer = file.buffer;
+          thumbBuffer = null;
           contentType = file.mimetype || "image/jpeg";
         }
 
-        const fileRef = bucket.file(storagePath);
-
-        await fileRef.save(uploadBuffer, {
+        const fullFileRef = bucket.file(fullStoragePath);
+        await fullFileRef.save(fullBuffer, {
           metadata: {
             contentType,
             cacheControl: "public, max-age=31536000, immutable",
-            metadata: { roomId },
+            metadata: { roomId, variant: "full" },
           },
         });
+        await fullFileRef.makePublic();
+        const fullUrl = `https://storage.googleapis.com/${bucket.name}/${fullStoragePath}`;
 
-        // Make publicly readable so <img src="..."> works without signed URLs
-        await fileRef.makePublic();
+        let thumbUrl = fullUrl;
+        if (thumbBuffer) {
+          const thumbFileRef = bucket.file(thumbStoragePath);
+          await thumbFileRef.save(thumbBuffer, {
+            metadata: {
+              contentType: "image/webp",
+              cacheControl: "public, max-age=31536000, immutable",
+              metadata: { roomId, variant: "thumbnail" },
+            },
+          });
+          await thumbFileRef.makePublic();
+          thumbUrl = `https://storage.googleapis.com/${bucket.name}/${thumbStoragePath}`;
+        }
 
-        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
-        return publicUrl;
+        return {
+          url: fullUrl,
+          thumbnailUrl: thumbUrl,
+        };
       }),
     );
 
+    const uploadedUrls = uploadResults.map((item) => item.url);
+
     res.status(200).json({
       success: true,
-      data: { urls: uploadedUrls },
+      data: {
+        urls: uploadedUrls,
+        items: uploadResults,
+      },
     });
   } catch (err) {
     next(err);

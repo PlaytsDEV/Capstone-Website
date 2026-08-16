@@ -37,6 +37,7 @@ import {
 import { sendPaymentReceiptEmail } from "../config/email.js";
 import { notify } from "../utils/notificationService.js";
 import { settlePaymongoBill } from "../utils/billSettlement.js";
+import { getBillRemainingAmount } from "../utils/billingPolicy.js";
 import logger from "../middleware/logger.js";
 import { BUSINESS } from "../config/constants.js";
 import { getReservationFeeAmount } from "../utils/businessSettings.js";
@@ -418,6 +419,137 @@ async function handleBillPayment(metadata, eventData, context = {}) {
   }
 }
 
+/**
+ * Handle a consolidated multi-bill payment — mark all included bills as paid.
+ */
+async function handleMultiBillPayment(metadata, eventData, context = {}) {
+  let billIds = [];
+  try {
+    billIds = Array.isArray(metadata.billIds)
+      ? metadata.billIds
+      : JSON.parse(metadata.billIds || "[]");
+  } catch {
+    billIds = [];
+  }
+  if (billIds.length === 0 && context.sessionId) {
+    const matchedBills = await Bill.find({ paymongoSessionId: context.sessionId });
+    billIds = matchedBills.map((b) => String(b._id));
+  }
+
+  const paymentId = extractPaymentId(eventData);
+  const paidPayments = readPaidPayments(eventData);
+  const { paymentMethod: formattedChannel } = readPaymentMethod(eventData, paidPayments);
+  const totalPaidAmount = extractPaidAmount(eventData);
+
+  const settledBills = [];
+  let totalSettled = 0;
+  let tenantUserId = metadata.userId || null;
+  let branchName = "";
+
+  for (const bId of billIds) {
+    const bill = await Bill.findById(bId);
+    if (!bill) continue;
+    if (!tenantUserId) tenantUserId = bill.userId;
+    if (!branchName) branchName = bill.branch;
+
+    const remaining = getBillRemainingAmount(bill);
+    if (remaining <= 0) continue;
+
+    const settlement = await settlePaymongoBill({
+      bill,
+      paymentReference: paymentId,
+      settledAmount: remaining,
+      source: "paymongo-webhook",
+      metadata: {
+        eventType: "checkout_session.payment.paid",
+        provider: "paymongo",
+        eventId: context.eventId || null,
+        sessionId: context.sessionId || null,
+        currency:
+          eventData?.attributes?.payments?.[0]?.attributes?.currency || "PHP",
+      },
+    });
+
+    if (settlement.applied) {
+      settledBills.push(bill);
+      totalSettled += settlement.appliedAmount;
+    }
+  }
+
+  logger.info(
+    { billCount: settledBills.length, totalSettled, paymentId },
+    "Webhook: Multi-bill payment confirmed",
+  );
+
+  if (settledBills.length > 0 && tenantUserId) {
+    // Notify tenant
+    try {
+      await notify.paymentApproved(
+        tenantUserId,
+        `${settledBills.length} statements`,
+        totalSettled,
+      );
+    } catch (notifErr) {
+      logger.error({ err: notifErr }, "Webhook: Failed to send multi-bill tenant notification");
+    }
+
+    // Notify branch admins and owner
+    try {
+      const admins = await User.find({
+        accountStatus: "active",
+        $or: [
+          ...(branchName ? [{ role: "branch_admin", branch: branchName }] : [{ role: "branch_admin" }]),
+          { role: "owner" },
+        ],
+      }).select("_id").lean();
+
+      if (admins.length > 0) {
+        const tenantUser = await User.findById(tenantUserId).select("firstName lastName").lean();
+        const tenantName = tenantUser
+          ? `${tenantUser.firstName || ""} ${tenantUser.lastName || ""}`.trim() || "A tenant"
+          : "A tenant";
+        await Promise.all(
+          admins.map((admin) =>
+            notify.general(
+              admin._id,
+              "Payment Received",
+              `${tenantName} paid ₱${totalSettled.toLocaleString()} for ${settledBills.length} consolidated bills.`,
+              { entityType: "bill", actionUrl: "/admin/billing" },
+            )
+          )
+        );
+      }
+    } catch (adminErr) {
+      logger.error({ err: adminErr }, "Webhook: Failed to send admin multi-bill notification");
+    }
+
+    // Send consolidated receipt email
+    try {
+      const tenant = await User.findById(tenantUserId).lean();
+      if (tenant?.email) {
+        const tenantName = `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() || "Tenant";
+        await sendPaymentReceiptEmail({
+          to: tenant.email,
+          tenantName,
+          amount: totalPaidAmount || totalSettled,
+          description: `Lilycrest Dormitory — Consolidated Payment (${settledBills.length} Statements)`,
+          billedTo: tenantName,
+          paymentMethod: formattedChannel || "Online Payment (PayMongo)",
+          paymentDate: new Date().toLocaleDateString("en-PH", {
+            month: "long", day: "numeric", year: "numeric",
+          }),
+          referenceId: paymentId,
+          reservationCode: "",
+          roomName: "",
+          branch: branchName || "",
+        });
+      }
+    } catch (emailErr) {
+      logger.error({ err: emailErr }, "Webhook: Failed to send multi-bill receipt email");
+    }
+  }
+}
+
 /* ─── payment-level event lookup ─────────────────── */
 
 /**
@@ -436,6 +568,9 @@ async function findRecordForPayment({ metadata, sessionId }) {
   if (metadata.type === "bill" && metadata.billId) {
     const b = await Bill.findOne({ _id: metadata.billId }, "_id");
     return b ? { recordType: "bill", billId: String(b._id) } : null;
+  }
+  if (metadata.type === "multi_bill") {
+    return { recordType: "multi_bill" };
   }
   if (sessionId) {
     const r = await Reservation.findOne({ paymongoSessionId: sessionId }, "_id");
@@ -552,6 +687,12 @@ export const handlePaymongoWebhook = async (req, res) => {
       logger.info(
         { eventId, sessionId, billId: metadata.billId },
         "Webhook: Bill processing complete",
+      );
+    } else if (metadata.type === "multi_bill") {
+      await handleMultiBillPayment(metadata, checkoutData, { eventId, sessionId });
+      logger.info(
+        { eventId, sessionId },
+        "Webhook: Multi-bill processing complete",
       );
     } else {
       logger.warn(

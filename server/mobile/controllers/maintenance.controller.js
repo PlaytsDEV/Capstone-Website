@@ -750,6 +750,9 @@ async function sendTenantReply(req, res) {
     if (!message && attachments.length === 0) {
       return res.status(400).json({ detail: 'Message or attachment is required' });
     }
+    if (message && message.length > 1000) {
+      return res.status(400).json({ detail: 'Reply message cannot exceed 1000 characters.' });
+    }
     if (Array.isArray(req.body?.attachments) && req.body.attachments.length > MAX_TENANT_ATTACHMENTS) {
       return res.status(400).json({ detail: `A maximum of ${MAX_TENANT_ATTACHMENTS} attachments is allowed.` });
     }
@@ -799,17 +802,34 @@ async function sendTenantReply(req, res) {
       ? [...located.request.publicReplies, reply]
       : [reply];
 
+    const updateDoc = {
+      conversation,
+      publicReplies,
+      tenantReplies: publicReplies,
+      updated_at: now,
+      updatedAt: now,
+    };
+
+    if (located.request.status === 'waiting_tenant') {
+      updateDoc.status = 'in_progress';
+      const statusHistory = Array.isArray(located.request.statusHistory)
+        ? [...located.request.statusHistory]
+        : [];
+      statusHistory.push({
+        event: 'status_changed',
+        status: 'in_progress',
+        actor_id: req.user.user_id || null,
+        actor_name: actorNameFromUser(req.user),
+        actor_role: 'tenant',
+        note: 'Tenant replied; status resumed to in_progress.',
+        timestamp: now,
+      });
+      updateDoc.statusHistory = statusHistory;
+    }
+
     await db.collection(located.collectionName).updateOne(
       { request_id: requestId },
-      {
-        $set: {
-          conversation,
-          publicReplies,
-          tenantReplies: publicReplies,
-          updated_at: now,
-          updatedAt: now,
-        },
-      }
+      { $set: updateDoc }
     );
 
     const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });

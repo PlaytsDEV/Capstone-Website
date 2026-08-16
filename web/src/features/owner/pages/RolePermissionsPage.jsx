@@ -12,8 +12,8 @@ import {
 } from "../../../shared/hooks/queries/useUsers";
 import { AdminRolePermissionsSkeleton } from "../../admin/components/AdminContentSkeletons";
 import SkeletonPulse from "../../../shared/components/SkeletonPulse";
-import "../styles/superadmin-dashboard.css";
-import "../styles/superadmin-permissions.css";
+import "../styles/owner-dashboard.css";
+import "../styles/owner-permissions.css";
 
 const formatBranch = (branch) => {
   if (!branch) return "Unassigned";

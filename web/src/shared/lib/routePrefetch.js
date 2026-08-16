@@ -54,9 +54,9 @@ const ROUTE_CHUNK_LOADERS = {
   "/admin/users": () => import("../../features/admin/pages/UserManagementPage.jsx"),
   "/admin/notifications": () => import("../../features/admin/pages/AdminNotificationsPage.jsx"),
   "/admin/audit-logs": () => import("../../features/admin/pages/AuditLogsPage.jsx"),
-  "/admin/branches": () => import("../../features/super-admin/pages/BranchManagementPage.jsx"),
-  "/admin/settings": () => import("../../features/super-admin/pages/SystemSettingsPage.jsx"),
-  "/admin/roles": () => import("../../features/super-admin/pages/RolePermissionsPage.jsx"),
+  "/admin/branches": () => import("../../features/owner/pages/BranchManagementPage.jsx"),
+  "/admin/settings": () => import("../../features/owner/pages/SystemSettingsPage.jsx"),
+  "/admin/roles": () => import("../../features/owner/pages/RolePermissionsPage.jsx"),
   "/admin/backups": () => import("../../features/admin/pages/SystemBackupPage.jsx"),
 
   // Tenant Routes

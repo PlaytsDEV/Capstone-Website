@@ -632,23 +632,17 @@ export const updateInquiry = async (req, res, next) => {
     delete updateData.createdAt;
 
     let emailSent = null; // null = no email attempted
+    let emailErrorDetails = null;
 
     // Handle response submission using the model's respond method
     if (req.body.response && req.body.response.trim()) {
       const adminUser = await User.findOne({ firebaseUid: req.user.uid });
       if (!adminUser) {
         return res.status(403).json({
-          error: "Admin user not found",
+          error: "Your staff account record could not be found. Please verify your session and try again.",
           code: "ADMIN_NOT_FOUND",
         });
       }
-
-      // Use the model's respond method which sets status to "resolved"
-      await existingInquiry.respond(req.body.response.trim(), adminUser._id);
-
-      // Remove response from updateData since it's already handled
-      delete updateData.response;
-      delete updateData.status; // Status is set by respond() method
 
       // Send email notification to customer
       const branchNameMap = {
@@ -657,15 +651,17 @@ export const updateInquiry = async (req, res, next) => {
         general: "Lilycrest",
       };
       const branchName =
-        branchNameMap[existingInquiry.branch] || "Lilycrest";
+        branchNameMap[existingInquiry.branch] ||
+        branchNameMap[existingInquiry.preferredBranch] ||
+        "Lilycrest";
 
       emailSent = false;
-      let emailErrorDetails = null;
+      const attemptTime = new Date();
       try {
         const emailResult = await sendInquiryResponseEmail({
           to: existingInquiry.email,
-          customerName: existingInquiry.name,
-          inquirySubject: existingInquiry.subject,
+          customerName: existingInquiry.name || existingInquiry.fullName || "Valued Customer",
+          inquirySubject: existingInquiry.subject || "General Inquiry",
           response: req.body.response.trim(),
           branchName,
         });
@@ -686,6 +682,18 @@ export const updateInquiry = async (req, res, next) => {
         );
       }
 
+      // Use the model's respond method which sets status to "resolved" and tracks email outcome
+      await existingInquiry.respond(req.body.response.trim(), adminUser._id, {
+        emailDeliveryStatus: emailSent ? "sent" : "failed",
+        emailDeliveryError: emailSent
+          ? null
+          : (emailErrorDetails || "Automated email could not be delivered to the recipient address."),
+        emailLastAttemptAt: attemptTime,
+      });
+
+      // Remove response from updateData since it's already handled
+      delete updateData.response;
+      delete updateData.status; // Status is set by respond() method
     }
 
     // Apply any remaining updates (excluding response which is handled above)
@@ -707,16 +715,25 @@ export const updateInquiry = async (req, res, next) => {
     }
 
     // Fetch the updated inquiry with populated fields
-    const inquiry = await Inquiry.findById(id).populate(
+    const rawInquiry = await Inquiry.findById(id).populate(
       "respondedBy",
       "firstName lastName email",
     );
+
+    const inquiry = rawInquiry?.toObject ? rawInquiry.toObject({ virtuals: true }) : rawInquiry;
+    if (inquiry) {
+      inquiry.name = inquiry.name || inquiry.fullName || `${inquiry.firstName || ""} ${inquiry.lastName || ""}`.trim() || "Unknown";
+      inquiry.fullName = inquiry.fullName || inquiry.name;
+      inquiry.phone = inquiry.phone || inquiry.contactNumber || "N/A";
+      inquiry.contactNumber = inquiry.contactNumber || inquiry.phone;
+      inquiry.response = inquiry.response || inquiry.adminResponse || "";
+    }
 
     res.json({
       message: "Inquiry updated successfully",
       inquiry,
       emailSent,
-      emailError: emailSent === false ? (emailErrorDetails || "Failed to deliver email to customer address.") : undefined,
+      emailError: emailSent === false ? (emailErrorDetails || "Automated email could not be delivered to the recipient address.") : undefined,
     });
 
     try {
@@ -724,10 +741,149 @@ export const updateInquiry = async (req, res, next) => {
       emitToAdmins("inquiry:updated", {
         inquiryId: String(id),
         status: inquiry?.status,
+        emailDeliveryStatus: inquiry?.emailDeliveryStatus,
       });
     } catch (socketErr) {
       // non-fatal
     }
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const retryInquiryEmail = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        error: "The specified inquiry identifier is invalid.",
+        code: "INVALID_INQUIRY_ID",
+      });
+    }
+
+    const query = { _id: id };
+    if (req.branchFilter) {
+      query.$or = [
+        { preferredBranch: req.branchFilter },
+        { branch: req.branchFilter },
+      ];
+    }
+
+    const inquiry = await Inquiry.findOne(query);
+    if (!inquiry) {
+      return res.status(404).json({
+        error: "The requested inquiry record could not be found or you do not have permission to access it.",
+        code: "INQUIRY_NOT_FOUND",
+      });
+    }
+
+    const responseText = (inquiry.adminResponse || inquiry.response || "").trim();
+    if (!responseText) {
+      return res.status(400).json({
+        error: "No official response has been recorded for this inquiry yet. Please write a response first.",
+        code: "NO_RESPONSE_RECORDED",
+      });
+    }
+
+    if (!inquiry.email || !inquiry.email.includes("@")) {
+      return res.status(400).json({
+        error: "The inquiry does not contain a valid recipient email address.",
+        code: "INVALID_RECIPIENT_EMAIL",
+      });
+    }
+
+    const branchNameMap = {
+      "gil-puyat": "Gil Puyat",
+      guadalupe: "Guadalupe",
+      general: "Lilycrest",
+    };
+    const branchKey = inquiry.branch || inquiry.preferredBranch || "general";
+    const branchName = branchNameMap[branchKey] || "Lilycrest";
+
+    let emailSent = false;
+    let emailErrorDetails = null;
+    const attemptTime = new Date();
+
+    try {
+      const emailResult = await sendInquiryResponseEmail({
+        to: inquiry.email,
+        customerName: inquiry.name || inquiry.fullName || "Valued Customer",
+        inquirySubject: inquiry.subject || "General Inquiry",
+        response: responseText,
+        branchName,
+      });
+
+      emailSent = emailResult.success;
+      if (!emailResult.success) {
+        emailErrorDetails = emailResult.error || emailResult.message;
+      }
+    } catch (emailErr) {
+      emailErrorDetails = emailErr.message;
+    }
+
+    inquiry.emailLastAttemptAt = attemptTime;
+    inquiry.emailDeliveryStatus = emailSent ? "sent" : "failed";
+    inquiry.emailDeliveryError = emailSent
+      ? null
+      : (emailErrorDetails || "Automated email could not be delivered to the recipient address.");
+    await inquiry.save();
+
+    await auditLogger.logModification(
+      req,
+      "inquiry",
+      id,
+      null,
+      {
+        emailDeliveryStatus: inquiry.emailDeliveryStatus,
+        emailLastAttemptAt: attemptTime,
+      },
+      emailSent ? "Inquiry response email re-sent successfully" : "Inquiry response email retry failed",
+    );
+
+    const populatedInquiry = await Inquiry.findById(id).populate(
+      "respondedBy",
+      "firstName lastName email",
+    );
+
+    const formattedInquiry = populatedInquiry?.toObject
+      ? populatedInquiry.toObject({ virtuals: true })
+      : populatedInquiry;
+    if (formattedInquiry) {
+      formattedInquiry.name =
+        formattedInquiry.name ||
+        formattedInquiry.fullName ||
+        `${formattedInquiry.firstName || ""} ${formattedInquiry.lastName || ""}`.trim() ||
+        "Unknown";
+      formattedInquiry.fullName = formattedInquiry.fullName || formattedInquiry.name;
+      formattedInquiry.phone =
+        formattedInquiry.phone || formattedInquiry.contactNumber || "N/A";
+      formattedInquiry.contactNumber =
+        formattedInquiry.contactNumber || formattedInquiry.phone;
+      formattedInquiry.response =
+        formattedInquiry.response || formattedInquiry.adminResponse || "";
+    }
+
+    try {
+      const { emitToAdmins } = await import("../utils/socket.js");
+      emitToAdmins("inquiry:updated", {
+        inquiryId: String(id),
+        status: formattedInquiry?.status,
+        emailDeliveryStatus: formattedInquiry?.emailDeliveryStatus,
+      });
+    } catch (socketErr) {
+      // non-fatal
+    }
+
+    res.json({
+      success: true,
+      emailSent,
+      message: emailSent
+        ? "Official response email dispatched successfully."
+        : "Email delivery attempt recorded. Note: Automated email could not be delivered.",
+      emailError: emailSent ? undefined : inquiry.emailDeliveryError,
+      inquiry: formattedInquiry,
+    });
   } catch (error) {
     next(error);
   }

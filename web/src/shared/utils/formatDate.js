@@ -73,6 +73,9 @@ export const formatDateTime = (date) => {
   return isNaN(d.getTime()) ? "" : d.toLocaleString();
 };
 
+/** Alias for formatDateTime */
+export const fmtDateTime = formatDateTime;
+
 /** Time only: "10:30 AM" */
 export const formatTime = (date) => {
   if (!date) return "—";

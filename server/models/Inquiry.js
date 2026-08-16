@@ -336,6 +336,24 @@ const inquirySchema = new mongoose.Schema(
       default: null,
     },
 
+    // Email delivery status tracking for official response
+    emailDeliveryStatus: {
+      type: String,
+      enum: ["none", "sent", "failed", "pending"],
+      default: "none",
+      index: true,
+    },
+    emailDeliveryError: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 1000,
+    },
+    emailLastAttemptAt: {
+      type: Date,
+      default: null,
+    },
+
     // =========================================================================
     // CLOSURE TRACKING
     // =========================================================================
@@ -354,6 +372,14 @@ const inquirySchema = new mongoose.Schema(
       trim: true,
       maxlength: 500,
       // Why the inquiry did not convert (optional)
+    },
+
+    // Inquiry lifecycle status
+    status: {
+      type: String,
+      enum: ["pending", "in-progress", "resolved", "closed"],
+      default: "pending",
+      index: true,
     },
 
     isRead: {
@@ -389,6 +415,12 @@ inquirySchema.virtual("inquiryName").get(function () {
 
 inquirySchema.virtual("inquiryPhone").get(function () {
   return this.phone || this.contactNumber || "";
+});
+
+inquirySchema.virtual("response").get(function () {
+  return this.adminResponse || "";
+}).set(function (val) {
+  this.adminResponse = val;
 });
 
 // ============================================================================
@@ -464,8 +496,64 @@ inquirySchema.pre("save", function computeLeaseType(next) {
 });
 
 // ============================================================================
+// INSTANCE METHODS
+// ============================================================================
+
+inquirySchema.methods.archive = async function (archivedById = null) {
+  this.isArchived = true;
+  this.archivedAt = new Date();
+  this.archivedBy = archivedById;
+  return this.save();
+};
+
+inquirySchema.methods.restore = async function () {
+  this.isArchived = false;
+  this.archivedAt = null;
+  this.archivedBy = null;
+  return this.save();
+};
+
+inquirySchema.methods.respond = async function (
+  responseText,
+  responderId,
+  options = {},
+) {
+  this.adminResponse = responseText;
+  this.respondedBy = responderId;
+  this.respondedAt = new Date();
+  this.status = "resolved";
+  if (options.emailDeliveryStatus) {
+    this.emailDeliveryStatus = options.emailDeliveryStatus;
+  }
+  if (options.emailDeliveryError !== undefined) {
+    this.emailDeliveryError = options.emailDeliveryError;
+  }
+  if (options.emailLastAttemptAt) {
+    this.emailLastAttemptAt = options.emailLastAttemptAt;
+  }
+  return this.save();
+};
+
+inquirySchema.methods.markAsRead = async function () {
+  this.isRead = true;
+  return this.save();
+};
+
+// ============================================================================
 // STATICS
 // ============================================================================
+
+inquirySchema.statics.findActive = function (filter = {}) {
+  return this.find({ ...filter, isArchived: false });
+};
+
+inquirySchema.statics.findPending = function (branch = null) {
+  const filter = { isArchived: false, status: "pending" };
+  if (branch && branch !== "all") {
+    filter.$or = [{ preferredBranch: branch }, { branch }];
+  }
+  return this.find(filter).sort({ createdAt: -1 });
+};
 
 /**
  * Marketing source report.

@@ -1,13 +1,10 @@
 /**
  * =============================================================================
- * LEGACY OWNER GUARD
+ * LEGACY OWNER GUARD (@deprecated)
  * =============================================================================
  *
- * Legacy route protection component that now maps to the canonical `owner` role.
- * More restrictive than RequireAdmin - only allows `owner`.
- *
- * Usage:
- *   <Route path="/admin/settings" element={<RequireSuperAdmin><OwnerPage /></RequireSuperAdmin>} />
+ * Legacy route protection component that maps to the canonical `owner` role.
+ * Prefer using `RequireOwner` directly.
  *
  * Allowed Roles: 'owner' only
  * Redirects to: /signin (if not owner)

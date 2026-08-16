@@ -36,6 +36,12 @@ const router = express.Router();
 router.post("/bill/:billId/checkout", verifyToken, paymentController.createBillCheckout);
 
 /**
+ * POST /api/payments/bills/checkout-batch
+ * Create a PayMongo checkout session for multiple selected bills
+ */
+router.post("/bills/checkout-batch", verifyToken, paymentController.createMultiBillCheckout);
+
+/**
  * POST /api/payments/deposit/:resId/checkout
  * Create a PayMongo checkout session for a reservation deposit
  */

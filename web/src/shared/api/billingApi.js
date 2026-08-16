@@ -163,6 +163,15 @@ export const billingApi = {
     authFetch(`/payments/bill/${billId}/checkout`, { method: "POST" }),
 
   /**
+   * Create a PayMongo checkout session for multiple selected bills (consolidated checkout)
+   */
+  createBatchCheckout: (billIds) =>
+    authFetch("/payments/bills/checkout-batch", {
+      method: "POST",
+      body: JSON.stringify({ billIds }),
+    }),
+
+  /**
    * Check PayMongo session payment status
    */
   checkPaymentStatus: (sessionId) =>

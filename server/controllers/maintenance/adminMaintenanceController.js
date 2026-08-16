@@ -975,6 +975,20 @@ export const sendAdminReply = async (req, res, next) => {
       );
     }
 
+    if (message && message.length > 1000) {
+      throw new AppError(
+        "Reply message cannot exceed 1000 characters.",
+        400,
+        "MESSAGE_TOO_LONG",
+        [
+          {
+            field: "message",
+            message: "Reply message cannot exceed 1000 characters.",
+          },
+        ],
+      );
+    }
+
     const eventTimestamp = new Date();
     appendConversationEntry(request, {
       message,
@@ -1010,6 +1024,22 @@ export const sendAdminReply = async (req, res, next) => {
           hasProgressAttachments: false,
         },
       );
+    }
+
+    try {
+      const { emitToAdmins, emitToUser } = await import("../../utils/socket.js");
+      emitToAdmins("ticket:updated", {
+        requestId: String(request._id),
+        status: request.status,
+      });
+      if (tenantUser?._id) {
+        emitToUser(String(tenantUser._id), "ticket:updated", {
+          requestId: String(request._id),
+          status: request.status,
+        });
+      }
+    } catch {
+      // non-fatal
     }
 
     sendSuccess(res, {

@@ -17,6 +17,7 @@ import {
   Layers,
   Lightbulb,
   Loader2,
+  MessageSquare,
   PhoneCall,
   Plus,
   ShieldCheck,
@@ -49,7 +50,11 @@ import {
 } from "../../../../../shared/utils/maintenanceConfig";
 import { showNotification } from "../../../../../shared/utils/notification";
 import { maintenanceApi } from "../../../../../shared/api/maintenanceApi";
-import { useSaveMaintenanceProof } from "../../../../../shared/hooks/queries/useMaintenance";
+import {
+  useSaveMaintenanceProof,
+  useSendMaintenanceReply,
+} from "../../../../../shared/hooks/queries/useMaintenance";
+import { MaintenanceConversationSection } from "../../../../../shared/components/MaintenanceConversationSection";
 import { ServiceProviderAssignmentPanel } from "./ServiceProviderAssignmentPanel";
 import { ProviderRatingCard } from "./ProviderRatingCard";
 import { CostAttributionCard } from "./CostAttributionCard";
@@ -109,12 +114,25 @@ export function MaintenanceDetailModal({
 
   // Proof Upload State
   const saveProofMutation = useSaveMaintenanceProof();
+  const sendReplyMutation = useSendMaintenanceReply();
   const [proofFile, setProofFile] = useState(null);
   const [proofPreviewUrl, setProofPreviewUrl] = useState(null);
   const [proofNote, setProofNote] = useState("");
   const [isUploadingProof, setIsUploadingProof] = useState(false);
   const [showProofUploader, setShowProofUploader] = useState(false);
   const proofFileInputRef = useRef(null);
+
+  const handleAdminSendReply = async ({ message, attachments }) => {
+    if (!request) return;
+    const requestId = request.request_id || request._id;
+    await sendReplyMutation.mutateAsync({
+      requestId,
+      payload: {
+        message,
+        attachments,
+      },
+    });
+  };
 
   const handleSelectProofFile = (e) => {
     const file = e.target.files?.[0];
@@ -417,6 +435,24 @@ export function MaintenanceDetailModal({
 
             <button
               type="button"
+              onClick={() => setActiveTab("conversation")}
+              className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition ${
+                activeTab === "conversation"
+                  ? "border-primary text-primary bg-primary/5 dark:bg-primary/10"
+                  : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <MessageSquare size={13} />
+              <span>Conversation</span>
+              {Array.isArray(request?.conversation) && request.conversation.length > 0 && (
+                <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                  {request.conversation.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab("proof")}
               className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition ${
                 activeTab === "proof"
@@ -591,7 +627,47 @@ export function MaintenanceDetailModal({
                 </div>
               )}
 
-              {/* TAB 2: PHOTOS & QUALITY PROOF */}
+              {/* TAB 2: CONVERSATION */}
+              {activeTab === "conversation" && (
+                <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare size={16} className="text-primary" />
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        Tenant Communication Thread
+                      </h3>
+                    </div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {request.conversation?.length || 0} Messages Logged
+                    </span>
+                  </div>
+
+                  <MaintenanceConversationSection
+                    conversation={request.conversation || []}
+                    currentSide="admin"
+                    isActiveTicket={!["cancelled", "closed"].includes(String(request.status || "").toLowerCase())}
+                    ticketStatus={formatMaintenanceStatus(request.status)}
+                    onSendReply={handleAdminSendReply}
+                    isSending={sendReplyMutation.isPending}
+                    onPreviewAttachment={(attachment) => {
+                      const uri = getMaintenanceAttachmentUri(attachment);
+                      const name = getMaintenanceAttachmentName(attachment);
+                      if (uri) {
+                        setLightboxImage({
+                          uri,
+                          name: name || "Conversation Photo",
+                          tag: "Conversation Photo",
+                          attachment,
+                        });
+                        setLightboxZoom(1);
+                      }
+                    }}
+                    requestId={request.request_id || request._id}
+                  />
+                </div>
+              )}
+
+              {/* TAB 3: PHOTOS & QUALITY PROOF */}
               {activeTab === "proof" && (
                 <div className="space-y-5">
                   <div className="grid gap-5 md:grid-cols-2">
@@ -916,128 +992,134 @@ export function MaintenanceDetailModal({
       {/* ================= ULTRA-MINIMALIST & RESILIENT LIGHTBOX (PORTAL) ================= */}
       {lightboxImage &&
         typeof document !== "undefined" &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 sm:p-6 animate-in fade-in duration-150 select-none"
-            onClick={(e) => {
-              e.stopPropagation();
-              setLightboxImage(null);
-            }}
-          >
-            {/* Top-Right Floating Controls */}
+        (() => {
+          const activeUri = typeof lightboxImage === "string" ? lightboxImage : lightboxImage?.uri || "";
+          const activeName = typeof lightboxImage === "object" ? lightboxImage?.name || "Photo" : "Photo";
+          const activeTag = typeof lightboxImage === "object" ? lightboxImage?.tag || "Attachment" : "Attachment";
+          const targetAtt = typeof lightboxImage === "object" ? lightboxImage?.attachment : null;
+          const source = typeof lightboxImage === "object" ? lightboxImage?.source || "request" : "request";
+          const attachmentIndex = typeof lightboxImage === "object" ? lightboxImage?.attachmentIndex : undefined;
+
+          return createPortal(
             <div
-              className="fixed top-4 right-4 z-50 flex items-center gap-2"
-              onClick={(e) => e.stopPropagation()}
+              className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 sm:p-6 animate-in fade-in duration-150 select-none"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxImage(null);
+              }}
             >
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setLightboxZoom((z) => Math.min(z + 0.25, 2.5));
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
-                title="Zoom In"
-              >
-                <ZoomIn size={15} />
-              </button>
-
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setLightboxZoom((z) => Math.max(z - 0.25, 0.5));
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
-                title="Zoom Out"
-              >
-                <ZoomOut size={15} />
-              </button>
-
-              <a
-                href={lightboxImage.uri}
-                download
-                target="_blank"
-                rel="noreferrer"
+              {/* Top-Right Floating Controls */}
+              <div
+                className="fixed top-4 right-4 z-50 flex items-center gap-2"
                 onClick={(e) => e.stopPropagation()}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
-                title="Download Image"
               >
-                <Download size={15} />
-              </a>
-
-              {/* Direct Delete Image Option (Neutral Default) */}
-              {canRemoveAttachments && onRemoveAttachment && (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    const targetAtt = lightboxImage.attachment;
-                    const source = lightboxImage.source || "request";
-                    const attachmentIndex = lightboxImage.attachmentIndex;
-                    setLightboxImage(null);
-                    onRemoveAttachment({
-                      attachment: targetAtt,
-                      target: {
-                        source,
-                        attachmentIndex,
-                        attachmentId: targetAtt?.id || targetAtt?.storagePath,
-                        uri: lightboxImage.uri,
-                      },
-                      scope: "request",
-                    });
+                    setLightboxZoom((z) => Math.min(z + 0.25, 2.5));
                   }}
-                  className="flex h-9 items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white px-3 text-xs font-medium transition cursor-pointer"
-                  title="Remove this photo"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+                  title="Zoom In"
                 >
-                  <Trash2 size={14} />
-                  <span>Delete</span>
+                  <ZoomIn size={15} />
                 </button>
-              )}
 
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setLightboxImage(null);
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
-                title="Close (Esc)"
-              >
-                <X size={16} />
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLightboxZoom((z) => Math.max(z - 0.25, 0.5));
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+                  title="Zoom Out"
+                >
+                  <ZoomOut size={15} />
+                </button>
 
-            {/* Bottom Minimalist Caption Pill (Neutral Default) */}
-            <div
-              className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
-            >
-              <div className="flex items-center gap-2 rounded-full bg-black/80 border border-white/15 px-4 py-1.5 text-xs text-white shadow-2xl backdrop-blur-md">
-                <span className="font-semibold text-white/90 text-[11px] uppercase tracking-wider">
-                  {lightboxImage.tag || "Attachment"}
-                </span>
-                <span className="text-white/30">•</span>
-                <span className="text-white/80 font-mono text-[11px] truncate max-w-xs sm:max-w-md">
-                  {lightboxImage.name}
-                </span>
+                <a
+                  href={activeUri}
+                  download
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+                  title="Download Image"
+                >
+                  <Download size={15} />
+                </a>
+
+                {/* Direct Delete Image Option (Neutral Default) */}
+                {canRemoveAttachments && onRemoveAttachment && targetAtt && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLightboxImage(null);
+                      onRemoveAttachment({
+                        attachment: targetAtt,
+                        target: {
+                          source,
+                          attachmentIndex,
+                          attachmentId: targetAtt?.id || targetAtt?.storagePath,
+                          uri: activeUri,
+                        },
+                        scope: "request",
+                      });
+                    }}
+                    className="flex h-9 items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white px-3 text-xs font-medium transition cursor-pointer"
+                    title="Remove this photo"
+                  >
+                    <Trash2 size={14} />
+                    <span>Delete</span>
+                  </button>
+                )}
+
+                {/* Close Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLightboxImage(null);
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+                  title="Close (Esc)"
+                >
+                  <X size={16} />
+                </button>
               </div>
-            </div>
 
-            {/* Centered Image Container */}
-            <div
-              className="flex items-center justify-center overflow-auto p-2"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <img
-                src={lightboxImage.uri}
-                alt={lightboxImage.name}
-                style={{ transform: `scale(${lightboxZoom})`, transition: "transform 0.15s ease" }}
-                className="max-h-[85vh] max-w-[90vw] rounded-xl object-contain shadow-2xl border border-white/10"
-              />
-            </div>
-          </div>,
-          document.body,
-        )}
+              {/* Bottom Minimalist Caption Pill (Neutral Default) */}
+              <div
+                className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+              >
+                <div className="flex items-center gap-2 rounded-full bg-black/80 border border-white/15 px-4 py-1.5 text-xs text-white shadow-2xl backdrop-blur-md">
+                  <span className="font-semibold text-white/90 text-[11px] uppercase tracking-wider">
+                    {activeTag}
+                  </span>
+                  <span className="text-white/30">•</span>
+                  <span className="text-white/80 font-mono text-[11px] truncate max-w-xs sm:max-w-md">
+                    {activeName}
+                  </span>
+                </div>
+              </div>
+
+              {/* Centered Image Container */}
+              <div
+                className="flex items-center justify-center overflow-auto p-2"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <img
+                  src={activeUri}
+                  alt={activeName}
+                  style={{ transform: `scale(${lightboxZoom})`, transition: "transform 0.15s ease" }}
+                  className="max-h-[85vh] max-w-[90vw] rounded-xl object-contain shadow-2xl border border-white/10"
+                />
+              </div>
+            </div>,
+            document.body,
+          );
+        })()}
     </div>
   );
 }

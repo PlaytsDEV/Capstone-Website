@@ -35,7 +35,7 @@ test("System category pages integrate AdminTabs component", () => {
 
   // SystemSettingsPage
   const systemSettings = read(
-    "src/features/super-admin/pages/SystemSettingsPage.jsx",
+    "src/features/owner/pages/SystemSettingsPage.jsx",
   );
   assert.match(systemSettings, /import AdminTabs/);
   assert.match(systemSettings, /<AdminTabs/);

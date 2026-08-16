@@ -165,29 +165,11 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  const reservationFeeLabel = isFullTenantReservation ? "Deposit" : "Reservation Fee";
  const paymentDescriptor = isFullTenantReservation ? "deposit" : "reservation fee";
  const statusDisplay = (() => {
- const s = reservationStatus;
- if (s === "cancelled") return { label: "Cancelled", bg: "var(--danger)" };
- if (hasReservationStatus(s, "moveOut")) return { label: "Completed", bg: "var(--neutral)" };
- if (hasReservationStatus(s, "moveIn")) return { label: "Moved In", bg: "var(--chart-4)" };
- if (s === "reserved" || reservation.paymentStatus === "paid")
- return { label: "Reserved", bg: "var(--success)" };
- if (s === "pending_application_review")
- return { label: "Pending Review", bg: "var(--warning)" };
- if (s === "needs_revision")
- return { label: "Needs Revision", bg: "var(--warning)" };
- if (s === "approved_for_payment" || canReservationAccessPayment(s))
- return { label: "Approved for Payment", bg: "var(--info)" };
- if (s === "payment_pending")
- return { label: "Payment Pending", bg: "var(--warning)" };
- if (s === "viewing_preference_selected")
- return { label: "Viewing Preference Selected", bg: "var(--info)" };
- if (s === "visit_approved" || reservation.scheduleApproved || reservation.visitApproved)
- return { label: "Visit Approved", bg: "var(--chart-4)" };
- if (s === "visit_pending" || (reservation.visitDate && !reservation.scheduleRejected))
- return { label: "Visit Scheduled", bg: "var(--info)" };
- if (reservation.scheduleRejected)
- return { label: "Reschedule Needed", bg: "var(--danger)" };
- return { label: "Room Selected", bg: "var(--info)" };
+  const s = reservationStatus;
+  if (s === "cancelled") return { label: "Cancelled", bg: "var(--danger)" };
+  if (hasReservationStatus(s, "moveOut")) return { label: "Completed", bg: "var(--neutral)" };
+  if (hasReservationStatus(s, "moveIn")) return { label: "Moved In", bg: "var(--success)" };
+  return { label: "Reserved", bg: "var(--success)" };
  })();
 
  const monthlyRent = getEffectiveMonthlyRent(reservation);

@@ -44,7 +44,7 @@ const StayCard = ({ stay, isCurrent }) => {
 
  const statusConfig = {
  "reserved": { color: "#10B981", bg: "#ECFDF5", label: "Reserved" },
- moveIn: { color: "#6366F1", bg: "#EEF2FF", label: "Moved In" },
+ moveIn: { color: "#059669", bg: "#DCFCE7", label: "Moved In" },
  moveOut: { color: "#6B7280", bg: "#F3F4F6", label: "Completed" },
  "cancelled": { color: "#EF4444", bg: "#FEF2F2", label: "Cancelled" },
  };

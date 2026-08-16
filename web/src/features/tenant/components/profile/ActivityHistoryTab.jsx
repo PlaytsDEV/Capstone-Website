@@ -1,10 +1,13 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
  Calendar,
+ CalendarDays,
  CreditCard,
  FileText,
  CheckCircle,
+ CheckCircle2,
  Home,
+ Building2,
  UserCheck,
  ClipboardCheck,
  Clock,
@@ -21,6 +24,8 @@ import {
  readMoveInDate,
  readMoveOutDate,
 } from "../../../../shared/utils/lifecycleNaming";
+import Pagination from "../../../../shared/components/Pagination";
+import SkeletonPulse from "../../../../shared/components/SkeletonPulse";
 
 /* ── Date helpers ────────────────────────────────── */
 const fmtDate = (d) =>
@@ -278,15 +283,15 @@ const buildTimeline = (r, direction = "desc") => {
   });
  }
 
- if (hasReservationStatus(r.status, "moveIn")) {
-  events.push({
-    id: "movein", icon: UserCheck, iconBg: "#EEF2FF", iconColor: "#6366F1",
-    title: "Move-in Confirmation",
-    description: "Welcome! You have officially moved into your room.",
-    date: readMoveInDate(r) || r.updatedAt,
-    status: "Official Tenant", statusColor: "#6366F1", statusBg: "#EEF2FF",
-  });
- }
+  if (hasReservationStatus(r.status, "moveIn")) {
+    events.push({
+      id: "movein", icon: UserCheck, iconBg: "#F0FDF4", iconColor: "#059669",
+      title: "Move-in Confirmation",
+      description: "Welcome! You have officially moved into your room.",
+      date: readMoveInDate(r) || r.updatedAt,
+      status: "Official Tenant", statusColor: "#059669", statusBg: "#DCFCE7",
+    });
+  }
 
  if (hasReservationStatus(r.status, "moveOut")) {
   events.push({
@@ -345,7 +350,7 @@ const deriveStage = (r) => {
  // Terminal states
  if (s === "cancelled") return { color: "#EF4444", bg: "#FEF2F2", label: "Cancelled" };
  if (hasReservationStatus(s, "moveOut")) return { color: "#6B7280", bg: "#F3F4F6", label: "Completed" };
- if (hasReservationStatus(s, "moveIn")) return { color: "#6366F1", bg: "#EEF2FF", label: "Moved In" };
+ if (hasReservationStatus(s, "moveIn")) return { color: "#059669", bg: "#DCFCE7", label: "Moved In" };
  if (s === "reserved" || r.paymentStatus === "paid")
  return { color: "#059669", bg: "#D1FAE5", label: "Reserved" };
 
@@ -524,12 +529,15 @@ const ReservationCard = ({ reservation, isOpen, onToggle, timelineSort, onTimeli
  )}
  {/* icon */}
  <div style={{
- width: 32, height: 32, borderRadius: 8, flexShrink: 0,
- display: "flex", alignItems: "center", justifyContent: "center",
- background: ev.iconBg, position: "relative", zIndex: 1,
- }}>
- <ev.icon size={15} color={ev.iconColor} />
- </div>
+    width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    background: "var(--surface-card, #fff)",
+    border: "1px solid var(--border-card, #E2E8F0)",
+    position: "relative", zIndex: 1,
+    color: ev.iconColor || "var(--text-secondary, #475569)",
+  }}>
+    <ev.icon size={15} strokeWidth={1.75} />
+  </div>
  {/* content */}
  <div style={{
  flex: 1, background: "var(--surface-muted, #FAFAFA)", borderRadius: 8,
@@ -566,104 +574,356 @@ const ReservationCard = ({ reservation, isOpen, onToggle, timelineSort, onTimeli
  );
 };
 
+/* ── Skeleton Component ───────────────────────────── */
+const ReservationCardSkeleton = () => (
+  <div
+    style={{
+      borderRadius: 12,
+      border: "1px solid var(--border-card, #E8EBF0)",
+      background: "var(--surface-card, #fff)",
+      padding: "16px 20px",
+      display: "flex",
+      alignItems: "center",
+      gap: 14,
+    }}
+    aria-hidden="true"
+  >
+    {/* Room thumbnail placeholder */}
+    <SkeletonPulse width="48px" height="48px" borderRadius="10px" />
+
+    {/* Info lines placeholder */}
+    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <SkeletonPulse width="120px" height="15px" borderRadius="4px" />
+        <SkeletonPulse width="75px" height="13px" borderRadius="4px" />
+        <SkeletonPulse width="80px" height="18px" borderRadius="20px" />
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <SkeletonPulse width="75px" height="12px" borderRadius="4px" />
+        <SkeletonPulse width="95px" height="12px" borderRadius="4px" />
+        <SkeletonPulse width="85px" height="12px" borderRadius="4px" />
+      </div>
+    </div>
+
+    {/* Price + chevron placeholder */}
+    <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+      <div style={{ textAlign: "right" }}>
+        <SkeletonPulse width="65px" height="15px" borderRadius="4px" style={{ marginBottom: 4 }} />
+        <SkeletonPulse width="40px" height="10px" borderRadius="4px" style={{ marginLeft: "auto" }} />
+      </div>
+      <SkeletonPulse width="16px" height="16px" borderRadius="4px" />
+    </div>
+  </div>
+);
+
 /* ── Main Component ──────────────────────────────── */
-const ActivityHistoryTab = ({ reservations = [] }) => {
- const sorted = useMemo(
- () => [...reservations].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
- [reservations]
- );
+const ActivityHistoryTab = ({ reservations = [], isLoading = false }) => {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [openId, setOpenId] = useState(null);
+  const [timelineSort, setTimelineSort] = useState("desc");
+  const listTopRef = useRef(null);
 
- const [openId, setOpenId] = useState(null);
- const [timelineSort, setTimelineSort] = useState("desc");
- useEffect(() => {
- if (sorted.length > 0 && !openId) setOpenId(sorted[0]._id);
- }, [sorted]);
+  const sorted = useMemo(
+    () => [...reservations].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    [reservations]
+  );
 
- const toggle = (id) => setOpenId((prev) => (prev === id ? null : id));
+  const totalPages = Math.max(1, Math.ceil(sorted.length / itemsPerPage));
 
- const IN_PROGRESS = [
- "pending",
- "viewing_preference_selected",
- "visit_pending",
- "visit_approved",
- "pending_application_review",
- "needs_revision",
- "approved_for_payment",
- "payment_pending",
- "reserved",
- ];
- const stats = useMemo(() => ({
- total: reservations.length,
- active: reservations.filter((r) => IN_PROGRESS.includes(r.status)).length,
- completed: reservations.filter((r) => hasReservationStatus(r.status, "moveOut")).length,
- cancelled: reservations.filter((r) => r.status === "cancelled").length,
- }), [reservations]);
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
 
- if (sorted.length === 0) {
- return (
- <div style={{ width: "100%" }}>
- <div style={{ marginBottom: 24 }}>
- <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 4px" }}>Activity & History</h1>
- <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", margin: 0 }}>Your application timeline, reservation history, and activity log</p>
- </div>
- <div style={{
- display: "flex", flexDirection: "column", alignItems: "center",
- justifyContent: "center", textAlign: "center", padding: "56px 24px",
- background: "var(--surface-card, #fff)", borderRadius: 10, border: "1px solid var(--border-card, #E8EBF0)",
- }}>
- <History size={48} color="#D1D5DB" />
- <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-heading, #374151)", margin: "12px 0 4px" }}>
- No history yet
- </h3>
- <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", maxWidth: 280, textAlign: "center", margin: 0 }}>
- Your reservations and activity milestones will appear here.
- </p>
- </div>
- </div>
- );
- }
+  const paginatedReservations = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return sorted.slice(startIndex, startIndex + itemsPerPage);
+  }, [sorted, currentPage, itemsPerPage]);
 
- return (
- <div style={{ width: "100%" }}>
- {/* Header */}
- <div style={{ marginBottom: 20 }}>
- <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 4px" }}>Activity & History</h1>
- <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", margin: 0 }}>Your application timeline, reservation history, and activity log</p>
- </div>
+  useEffect(() => {
+    if (paginatedReservations.length > 0) {
+      setOpenId(paginatedReservations[0]._id);
+    } else {
+      setOpenId(null);
+    }
+  }, [currentPage, itemsPerPage, sorted]);
 
- {/* Stats row */}
- <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
- {[
- { label: "Total Reservations", value: stats.total, color: "#0A1628", bg: "#F8FAFC" },
- { label: "In Progress", value: stats.active, color: "#FF8C42", bg: "#FFF7ED" },
- { label: "Completed", value: stats.completed, color: "#059669", bg: "#F0FDF4" },
- { label: "Cancelled", value: stats.cancelled, color: "#EF4444", bg: "#FEF2F2" },
- ].map(({ label, value, color, bg }) => (
- <div key={label} style={{
- flex: "1 1 120px", background: "var(--surface-card," + bg + ")", borderRadius: 10,
- border: "1px solid var(--border-card, #E8EBF0)", padding: "14px 18px",
- }}>
- <p style={{ fontSize: 22, fontWeight: 700, color, margin: "0 0 2px" }}>{value}</p>
- <p style={{ fontSize: 11, color: "var(--text-muted, #94A3B8)", fontWeight: 500, margin: 0 }}>{label}</p>
- </div>
- ))}
- </div>
+  const toggle = (id) => setOpenId((prev) => (prev === id ? null : id));
 
- {/* Accordion list */}
- <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
- {sorted.map((r) => (
- <ReservationCard
- key={r._id}
- reservation={r}
- isOpen={openId === r._id}
- onToggle={() => toggle(r._id)}
- timelineSort={timelineSort}
- onTimelineSortChange={setTimelineSort}
- />
- ))}
- </div>
- </div>
- );
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    if (listTopRef.current) {
+      listTopRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  const handleLimitChange = (newLimit) => {
+    setItemsPerPage(newLimit);
+    setCurrentPage(1);
+  };
+
+  const IN_PROGRESS = [
+    "pending",
+    "viewing_preference_selected",
+    "visit_pending",
+    "visit_approved",
+    "pending_application_review",
+    "needs_revision",
+    "approved_for_payment",
+    "payment_pending",
+    "reserved",
+  ];
+
+  const tenantStats = useMemo(() => {
+    const activeStay = reservations.find((r) => hasReservationStatus(r.status, "moveIn"));
+    const activeBooking = reservations.find((r) => IN_PROGRESS.includes(r.status));
+
+    let activeStayValue = "No Active Stay";
+    let activeStaySubtext = "No active booking";
+    let hasActive = false;
+
+    if (activeStay) {
+      hasActive = true;
+      activeStayValue =
+        activeStay.roomId?.name ||
+        (activeStay.roomId?.roomNumber ? `Room ${activeStay.roomId.roomNumber}` : "Moved In");
+      activeStaySubtext = "Active Resident";
+    } else if (activeBooking) {
+      hasActive = true;
+      activeStayValue =
+        activeBooking.roomId?.name ||
+        (activeBooking.roomId?.roomNumber ? `Room ${activeBooking.roomId.roomNumber}` : "In Progress");
+      activeStaySubtext = deriveStage(activeBooking).label || "Application Active";
+    }
+
+    const totalVisits = reservations.reduce((acc, r) => {
+      const historyCount = Array.isArray(r.visitHistory) ? r.visitHistory.length : 0;
+      const directVisit = r.visitDate && !historyCount ? 1 : 0;
+      return acc + historyCount + directVisit;
+    }, 0);
+
+    const completedStays = reservations.filter((r) => hasReservationStatus(r.status, "moveOut")).length;
+
+    const earliestDate = reservations.reduce((earliest, r) => {
+      if (!r.createdAt) return earliest;
+      const d = new Date(r.createdAt);
+      return !earliest || d < earliest ? d : earliest;
+    }, null);
+    const memberSince = earliestDate ? dayjs(earliestDate).format("MMM YYYY") : "Recent";
+
+    return {
+      activeStayValue,
+      activeStaySubtext,
+      hasActive,
+      totalVisits,
+      completedStays,
+      memberSince,
+    };
+  }, [reservations]);
+
+  if (isLoading && sorted.length === 0) {
+    return (
+      <div style={{ width: "100%" }} aria-busy="true" aria-label="Loading activity and history">
+        {/* Header */}
+        <div style={{ marginBottom: 20 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 4px" }}>
+            Activity & History
+          </h1>
+          <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", margin: 0 }}>
+            Your application timeline, reservation history, and activity log
+          </p>
+        </div>
+
+        {/* Stats row skeleton */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              style={{
+                background: "var(--surface-card, #fff)",
+                borderRadius: 12,
+                border: "1px solid var(--border-card, #E8EBF0)",
+                padding: "16px 18px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <SkeletonPulse width="70px" height="12px" borderRadius="4px" />
+                <SkeletonPulse width="16px" height="16px" borderRadius="4px" />
+              </div>
+              <SkeletonPulse width="100px" height="20px" borderRadius="4px" />
+              <SkeletonPulse width="80px" height="10px" borderRadius="4px" />
+            </div>
+          ))}
+        </div>
+
+        {/* Accordion list skeleton */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <ReservationCardSkeleton key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (sorted.length === 0) {
+    return (
+      <div style={{ width: "100%" }}>
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 4px" }}>
+            Activity & History
+          </h1>
+          <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", margin: 0 }}>
+            Your application timeline, reservation history, and activity log
+          </p>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            padding: "56px 24px",
+            background: "var(--surface-card, #fff)",
+            borderRadius: 10,
+            border: "1px solid var(--border-card, #E8EBF0)",
+          }}
+        >
+          <History size={48} color="#D1D5DB" />
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-heading, #374151)", margin: "12px 0 4px" }}>
+            No history yet
+          </h3>
+          <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", maxWidth: 280, textAlign: "center", margin: 0 }}>
+            Your reservations and activity milestones will appear here.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={listTopRef} style={{ width: "100%" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 4px" }}>
+          Activity & History
+        </h1>
+        <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", margin: 0 }}>
+          Your application timeline, reservation history, and activity log
+        </p>
+      </div>
+
+      {/* Tenant-centric KPI summary row */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
+        {[
+          {
+            icon: Building2,
+            label: "Active Stay",
+            value: tenantStats.activeStayValue,
+            subtext: tenantStats.activeStaySubtext,
+            iconColor: tenantStats.hasActive ? "#059669" : "#64748B",
+          },
+          {
+            icon: CalendarDays,
+            label: "Room Viewings",
+            value: tenantStats.totalVisits,
+            subtext: tenantStats.totalVisits === 1 ? "1 viewing booked" : `${tenantStats.totalVisits} viewings booked`,
+            iconColor: "#2563EB",
+          },
+          {
+            icon: CheckCircle2,
+            label: "Completed Stays",
+            value: tenantStats.completedStays,
+            subtext: tenantStats.completedStays === 1 ? "1 past stay" : `${tenantStats.completedStays} past stays`,
+            iconColor: "#7C3AED",
+          },
+          {
+            icon: Clock,
+            label: "Member Since",
+            value: tenantStats.memberSince,
+            subtext: "First activity logged",
+            iconColor: "#D97706",
+          },
+        ].map(({ icon: Icon, label, value, subtext, iconColor }) => (
+          <div
+            key={label}
+            style={{
+              background: "var(--surface-card, #fff)",
+              borderRadius: 12,
+              border: "1px solid var(--border-card, #E8EBF0)",
+              padding: "16px 18px",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <span style={{ fontSize: 12, color: "var(--text-muted, #94A3B8)", fontWeight: 600, letterSpacing: "0.01em" }}>
+                {label}
+              </span>
+              <Icon size={17} strokeWidth={1.8} color={iconColor} />
+            </div>
+            <div>
+              <p
+                style={{
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: "var(--text-heading, #0A1628)",
+                  margin: "0 0 2px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={typeof value === "string" ? value : undefined}
+              >
+                {value}
+              </p>
+              <p style={{ fontSize: 11, color: "var(--text-muted, #94A3B8)", margin: 0, fontWeight: 500 }}>
+                {subtext}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Accordion list */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {paginatedReservations.map((r) => (
+          <ReservationCard
+            key={r._id}
+            reservation={r}
+            isOpen={openId === r._id}
+            onToggle={() => toggle(r._id)}
+            timelineSort={timelineSort}
+            onTimelineSortChange={setTimelineSort}
+          />
+        ))}
+      </div>
+
+      {/* Pagination */}
+      {sorted.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={sorted.length}
+          itemsPerPage={itemsPerPage}
+          onPageChange={handlePageChange}
+          onLimitChange={handleLimitChange}
+          pageSizeOptions={[10, 20, 50]}
+          itemLabel="reservations"
+          variant="numbered"
+          className="mt-6 pt-4 border-t border-border"
+        />
+      )}
+    </div>
+  );
 };
 
 export default ActivityHistoryTab;

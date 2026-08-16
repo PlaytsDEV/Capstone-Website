@@ -36,7 +36,7 @@ const ACTION_CONFIG = {
     title: "Restrict / Ban Account",
     subtitle: "Permanently restrict user access across Lilycrest DMS",
     description:
-      "This will restrict the user's access across all services. Only an Owner / Super Admin can reverse a ban.",
+      "This will restrict the user's access across all services. Only an Owner can reverse a ban.",
     confirmLabel: "Confirm Ban",
     variant: "danger",
     showReason: true,

@@ -12,6 +12,7 @@ const requirePermission = jest.fn((permission) => {
 });
 
 const createBillCheckout = jest.fn(noop);
+const createMultiBillCheckout = jest.fn(noop);
 const createDepositCheckout = jest.fn(noop);
 const createMoveInCheckout = jest.fn(noop);
 const checkSessionStatus = jest.fn(noop);
@@ -33,6 +34,7 @@ await jest.unstable_mockModule("../middleware/permissions.js", () => ({
 
 await jest.unstable_mockModule("../controllers/paymentController.js", () => ({
   createBillCheckout,
+  createMultiBillCheckout,
   createDepositCheckout,
   createMoveInCheckout,
   checkSessionStatus,
@@ -124,6 +126,7 @@ describe("paymentRoutes", () => {
     verifyAdmin.mockClear();
     requirePermission.mockClear();
     createBillCheckout.mockClear();
+    createMultiBillCheckout.mockClear();
     createDepositCheckout.mockClear();
     createMoveInCheckout.mockClear();
     checkSessionStatus.mockClear();
@@ -133,6 +136,19 @@ describe("paymentRoutes", () => {
     userFindOne.mockReset();
     reservationFind.mockReset();
     readMoveInDate.mockReset();
+  });
+
+  test("bills/checkout-batch route delegates to createMultiBillCheckout", async () => {
+    const handlers = getRouteHandlers(paymentRoutes, "/bills/checkout-batch", "post");
+    const batchHandler = handlers[handlers.length - 1];
+
+    const req = { body: { billIds: ["bill_1", "bill_2"] } };
+    const res = createRes();
+    const next = jest.fn();
+
+    await batchHandler(req, res, next);
+
+    expect(createMultiBillCheckout).toHaveBeenCalledWith(req, res, next);
   });
 
   test("history route returns tenant ledger entries for the authenticated user", async () => {
