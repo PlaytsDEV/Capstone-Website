@@ -321,21 +321,16 @@ export const register = async (req, res, next) => {
     const emailOwner = normalizedEmail ? await User.findOne({ email: normalizedEmail }) : null;
     if (emailOwner) return sendIdentityConflict(req, res, emailOwner);
 
-    // Check if username is already taken
-    const usernameExists = await User.findOne({ username });
+    // Auto-resolve username collision if username is already taken
+    let finalUsername = username;
+    const usernameExists = await User.findOne({ username: finalUsername });
     if (usernameExists) {
-      // Log registration attempt with taken username
-      await auditLogger.logError(
-        req,
-        new Error(`Username taken: ${username}`),
-        "Registration attempt with duplicate username",
-      );
-      return res.status(400).json({
-        error: "Username already taken. Please choose another one.",
-        code: "USERNAME_TAKEN",
-      });
+      let suffix = 2;
+      while (await User.exists({ username: `${username}${suffix}` })) {
+        suffix += 1;
+      }
+      finalUsername = `${username}${suffix}`;
     }
-
 
     // Save user data to MongoDB
     // NOTE: Firebase Auth is the source of truth for email verification
@@ -343,7 +338,7 @@ export const register = async (req, res, next) => {
     const user = new User({
       firebaseUid: req.user.uid,
       email: req.user.email,
-      username,
+      username: finalUsername,
       firstName,
       lastName,
       phone,
@@ -437,7 +432,7 @@ export const login = async (req, res, next) => {
           req,
           req.user.email || "unknown",
           false,
-          "User not found in database - Registration required",
+          "Account not found - Registration required",
         );
       }
       return res.status(404).json({
@@ -484,6 +479,13 @@ export const login = async (req, res, next) => {
       await user.save();
     }
 
+    if (isCheckOnly) {
+      return res.json({
+        message: "User exists",
+        user: buildUserPayload(user),
+      });
+    }
+
     // Block unverified non-admin users from logging in
     const adminUser = isAdminRole(user.role);
     if (!user.isEmailVerified && !adminUser) {
@@ -492,13 +494,6 @@ export const login = async (req, res, next) => {
       return res.status(403).json({
         error: "Please verify your email before logging in.",
         code: "EMAIL_NOT_VERIFIED",
-      });
-    }
-
-    if (isCheckOnly) {
-      return res.json({
-        message: "User exists",
-        user: buildUserPayload(user),
       });
     }
 

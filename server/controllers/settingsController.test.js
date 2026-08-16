@@ -289,6 +289,39 @@ describe("settingsController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("updateBusinessRules rejects discount percentage exceeding 100 or negative", async () => {
+    const settings = {
+      reservationFeeAmount: 2000,
+      penaltyRatePerDay: 50,
+      defaultElectricityRatePerKwh: 16,
+      defaultWaterRatePerUnit: 0,
+      quadrupleDiscountPercent: 10,
+      doubleDiscountPercent: 20,
+      privateDiscountPercent: 10,
+      branchOverrides: DEFAULT_BRANCH_OVERRIDES,
+      save: jest.fn(),
+    };
+    const req = {
+      body: {
+        quadrupleDiscountPercent: "150",
+      },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    getBusinessSettings.mockResolvedValue(settings);
+
+    await updateBusinessRules(req, res, next);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+      error: "Quadruple sharing discount percentage must be between 0 and 100",
+    });
+    expect(settings.save).not.toHaveBeenCalled();
+    expect(logModification).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("updateBranchBillingSettings stamps branch metadata and logs the override change", async () => {
     const save = jest.fn().mockResolvedValue(undefined);
     const settings = {

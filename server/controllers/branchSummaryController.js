@@ -199,7 +199,10 @@ export const getOwnerBranchSummaries = async (_req, res, next) => {
       };
     });
 
-    sendSuccess(res, { branches: summaries });
+    sendSuccess(res, {
+      branches: summaries,
+      syncedAt: new Date().toISOString(),
+    });
   } catch (error) {
     next(error);
   }
