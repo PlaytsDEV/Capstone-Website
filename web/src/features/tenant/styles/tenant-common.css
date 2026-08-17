@@ -391,7 +391,7 @@
   align-items: center;
   gap: 6px;
   padding: 5px 12px;
-  border-radius: 999px;
+  border-radius: 4px;
   font-size: 12.5px;
   font-weight: 700;
   white-space: nowrap;
@@ -679,12 +679,12 @@
 }
 
 .maintenance-status-chip.status-resolved {
-  background: #FEF9C3;
-  border-color: #FEF08A;
-  color: #854D0E;
+  background: #DCFCE7;
+  border-color: #BBF7D0;
+  color: #15803D;
 }
 .maintenance-status-chip.status-resolved .status-dot {
-  background: #CA8A04;
+  background: #16A34A;
 }
 
 .maintenance-status-chip.status-completed {
@@ -2793,9 +2793,9 @@ html[data-theme="dark"] .maintenance-status-chip.status-waiting_tenant {
   color: #93C5FD;
 }
 html[data-theme="dark"] .maintenance-status-chip.status-resolved {
-  background: hsl(45, 93%, 18%);
-  border-color: hsl(45, 93%, 28%);
-  color: #FEF08A;
+  background: hsl(142, 76%, 16%);
+  border-color: hsl(142, 76%, 26%);
+  color: #86EFAC;
 }
 html[data-theme="dark"] .maintenance-status-chip.status-completed {
   background: hsl(142, 76%, 16%);

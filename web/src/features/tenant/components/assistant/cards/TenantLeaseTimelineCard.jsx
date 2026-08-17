@@ -55,9 +55,28 @@ export default function TenantLeaseTimelineCard({ data, onCloseDrawer }) {
         <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300 font-medium">
           <span>Room {room} ({bed})</span>
           {daysRemaining !== null && (
-            <span className="flex items-center gap-1 text-slate-900 dark:text-slate-100 font-semibold">
-              <Clock className="w-3 h-3 text-slate-500" aria-hidden="true" />
-              {daysRemaining} days left
+            <span
+              className={`flex items-center gap-1 font-semibold ${
+                daysRemaining <= 7
+                  ? "text-rose-700 dark:text-rose-400"
+                  : daysRemaining <= 30
+                  ? "text-amber-800 dark:text-amber-300"
+                  : "text-slate-900 dark:text-slate-100"
+              }`}
+            >
+              <Clock
+                className={`w-3 h-3 ${
+                  daysRemaining <= 7
+                    ? "text-rose-600 dark:text-rose-400"
+                    : daysRemaining <= 30
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-slate-500"
+                }`}
+                aria-hidden="true"
+              />
+              {daysRemaining <= 0
+                ? "Vacant Today"
+                : `${daysRemaining} ${daysRemaining === 1 ? "day" : "days"} left`}
             </span>
           )}
         </div>

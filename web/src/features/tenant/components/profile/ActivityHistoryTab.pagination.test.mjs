@@ -109,9 +109,9 @@ test("ActivityHistoryTab styles Moved In status and milestone with Success Green
   const source = readTenantSource("components/profile/ActivityHistoryTab.jsx");
 
   assert.equal(
-    source.includes('hasReservationStatus(s, "moveIn")) return { color: "#059669", bg: "#DCFCE7", label: "Moved In" };'),
+    source.includes('hasReservationStatus(s, "moveIn")) return { color: "#059669", bg: "#DCFCE7", label: "Move In" };'),
     true,
-    "Moved In status badge must use Success Green (#059669 on #DCFCE7)",
+    "Move In status badge must use Success Green (#059669 on #DCFCE7)",
   );
   assert.equal(
     source.includes('status: "Official Tenant", statusColor: "#059669", statusBg: "#DCFCE7"'),

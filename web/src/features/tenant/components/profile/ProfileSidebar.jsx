@@ -119,9 +119,6 @@ const ProfileSidebar = ({
  onLogout,
  onUpdateImage,
 }) => {
- // Guard: render nothing if profile data hasn't loaded yet
- if (!profileData) return null;
-
  const fileInputRef = useRef(null);
  const [uploading, setUploading] = useState(false);
  const [collapsed, setCollapsed] = useState(
@@ -131,7 +128,7 @@ const ProfileSidebar = ({
  /* ── Mobile detection ──────────────────────── */
  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= MOBILE_BP);
  const [drawerOpen, setDrawerOpen] = useState(false);
- const initials = getProfileInitials(profileData, "U");
+ const initials = profileData ? getProfileInitials(profileData, "U") : "U";
 
  useEffect(() => {
  const handler = () => {
@@ -527,6 +524,8 @@ const ProfileSidebar = ({
  )}
  </div>
  );
+
+ if (!profileData) return null;
 
  const W = collapsed ? 64 : 256;
 

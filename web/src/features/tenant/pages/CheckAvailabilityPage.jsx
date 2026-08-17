@@ -5,7 +5,7 @@ import getFriendlyError from "../../../shared/utils/friendlyError";
 import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
 import { useRouteFlash } from "../../../shared/hooks/useRouteFlash";
 import { reservationApi } from "../../../shared/api/reservationApi";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { buildSignOutSuccessFlash } from "../../../shared/utils/authToasts";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
@@ -339,16 +339,11 @@ function CheckAvailabilityPage() {
   }, [selectedBranch]);
 
   const filteredRooms = useMemo(() => {
-    const query = debouncedSearchQuery.trim().toLowerCase();
+    const rawQuery = debouncedSearchQuery.trim().toLowerCase();
+    const queryTokens = rawQuery ? rawQuery.split(/\s+/).filter(Boolean) : [];
+
     return rooms.filter((room) => {
       const hasAvailableBeds = room.availableBeds > 0;
-      const matchesSearch =
-        !query ||
-        room.title.toLowerCase().includes(query) ||
-        room.branch.toLowerCase().includes(query) ||
-        (room.id && String(room.id).toLowerCase().includes(query)) ||
-        (room.type && room.type.toLowerCase().includes(query)) ||
-        (room.description && room.description.toLowerCase().includes(query));
 
       let effectivePrice = room.price;
       if (selectedLeaseTermFilter === "shortTerm") {
@@ -356,6 +351,49 @@ function CheckAvailabilityPage() {
       } else if (selectedLeaseTermFilter === "longTerm") {
         effectivePrice = room.monthlyPrice || room.regularLongRate || room.price;
       }
+
+      const matchesSearch =
+        queryTokens.length === 0 ||
+        queryTokens.every((token) => {
+          // Check title, room number & identifier
+          if (room.title && room.title.toLowerCase().includes(token)) return true;
+          if (room.roomNumber && String(room.roomNumber).toLowerCase().includes(token)) return true;
+          if (room.id && String(room.id).toLowerCase().includes(token)) return true;
+
+          // Check branch location
+          if (room.branch && room.branch.toLowerCase().includes(token)) return true;
+
+          // Check room type
+          if (room.type && room.type.toLowerCase().includes(token)) return true;
+
+          // Check room description
+          if (room.description && room.description.toLowerCase().includes(token)) return true;
+
+          // Check amenities list (e.g. WiFi, Aircon, Hot Shower)
+          if (
+            Array.isArray(room.amenities) &&
+            room.amenities.some((a) => String(a).toLowerCase().includes(token))
+          ) {
+            return true;
+          }
+
+          // Check policies and intended tenant restrictions
+          if (room.intendedTenant && room.intendedTenant.toLowerCase().includes(token)) return true;
+          if (
+            Array.isArray(room.policies) &&
+            room.policies.some((p) => String(p).toLowerCase().includes(token))
+          ) {
+            return true;
+          }
+
+          // Check price number search (e.g. searching '5000' matches within ±500 price range)
+          const numToken = Number(token);
+          if (!Number.isNaN(numToken) && numToken > 1000) {
+            if (Math.abs(effectivePrice - numToken) <= 500) return true;
+          }
+
+          return false;
+        });
 
       return (
         hasAvailableBeds &&
@@ -661,118 +699,194 @@ function CheckAvailabilityPage() {
         onLogout={handleLogout}
       />
 
- <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
- {isChangeRoomMode && (
- <div className="ca-change-room-banner">
- <div>
- <h1 className="ca-section-title">Change Selected Room</h1>
- <p className="ca-change-room-copy">
- Choose a replacement room for your current reservation. Confirming a room here updates your existing reservation instead of creating a new one.
- </p>
- </div>
- <button
- type="button"
- className="ca-change-room-back"
- onClick={() => navigate("/applicant/profile")}
- >
- Back to profile
- </button>
- </div>
- )}
-
- <div style={{ marginBottom: "8px" }}>
- {!isChangeRoomMode && <h1 className="ca-section-title">Available Rooms</h1>}
- {!roomsLoading && (
-  <p className="ca-room-count">
-  {`${filteredRooms.length} available room${filteredRooms.length !== 1 ? "s" : ""} found`}
+  {isChangeRoomMode && (
+  <div className="ca-change-room-banner">
+  <div>
+  <h1 className="ca-section-title">Change Selected Room</h1>
+  <p className="ca-change-room-copy">
+  Choose a replacement room for your current reservation. Confirming a room here updates your existing reservation instead of creating a new one.
   </p>
- )}
- {!user && (
- <p className="ca-signin-prompt">
- <button onClick={() => navigate("/signin")}>Sign in</button>{" "}
- or{" "}
- <button onClick={() => navigate("/signup?continue=%2Fapplicant%2Fcheck-availability")}>create an account</button>{" "}
- to reserve a room
- </p>
- )}
- </div>
+  </div>
+  <button
+  type="button"
+  className="ca-change-room-back"
+  onClick={() => navigate("/applicant/profile")}
+  >
+  Back to profile
+  </button>
+  </div>
+  )}
 
- <div className="ca-grid">
- {roomsLoading ? (
- <CheckAvailabilitySkeleton />
- ) : roomsError ? (
- <div className="text-red-600">{roomsError}</div>
- ) : filteredRooms.length === 0 ? (
- <div className="text-muted-foreground">No rooms found.</div>
- ) : (
- paginatedRooms.map((room, index) => (
- <RoomCard
- key={room.id}
- room={room}
- isPriority={index < 3}
- selectedLeaseTermFilter={selectedLeaseTermFilter}
- onSelect={openRoomDetails}
- />
- ))
- )}
- </div>
+  <div style={{ marginBottom: "16px" }}>
+  {!isChangeRoomMode && <h1 className="ca-section-title">Available Rooms</h1>}
+  {!roomsLoading && (
+   <p className="ca-room-count" style={{ margin: "4px 0 0" }}>
+   {`${filteredRooms.length} available room${filteredRooms.length !== 1 ? "s" : ""} found`}
+   </p>
+  )}
+  {!user && (
+  <p className="ca-signin-prompt">
+  <button onClick={() => navigate("/signin")}>Sign in</button>{" "}
+  or{" "}
+  <button onClick={() => navigate("/signup?continue=%2Fapplicant%2Fcheck-availability")}>create an account</button>{" "}
+  to reserve a room
+  </p>
+  )}
+  </div>
 
- {/* Pagination */}
- {!roomsLoading && filteredRooms.length > ROOMS_PER_PAGE && (
- <div className="ca-pagination">
- <span className="ca-pagination__info">
- Showing {(currentPage - 1) * ROOMS_PER_PAGE + 1}–{Math.min(currentPage * ROOMS_PER_PAGE, filteredRooms.length)} of {filteredRooms.length} rooms
- </span>
- <div className="ca-pagination__controls">
- <button
- className="ca-pagination__btn"
- disabled={currentPage <= 1}
- onClick={() => {
-   setCurrentPage((p) => Math.max(1, p - 1));
-   window.scrollTo({ top: 0, behavior: "smooth" });
- }}
- aria-label="Previous page"
- >
- <ChevronLeft size={16} />
- </button>
- <span className="ca-pagination__label">
- {currentPage} / {totalPages}
- </span>
- <button
- className="ca-pagination__btn"
- disabled={currentPage >= totalPages}
- onClick={() => {
-   setCurrentPage((p) => Math.min(totalPages, p + 1));
-   window.scrollTo({ top: 0, behavior: "smooth" });
- }}
- aria-label="Next page"
- >
- <ChevronRight size={16} />
- </button>
- </div>
- </div>
- )}
+  {/* Active Filters Bar */}
+  {(debouncedSearchQuery.trim() !== "" ||
+    selectedBranch !== "All" ||
+    selectedRoomType !== "All" ||
+    selectedLeaseTermFilter !== "All" ||
+    maxPrice < 15000) && !roomsLoading && (
+    <div className="ca-active-filters-bar">
+      <div className="ca-active-filters-group">
+        <span className="ca-active-filters-label">Active:</span>
+        {debouncedSearchQuery.trim() && (
+          <span className="ca-filter-chip ca-filter-chip--search">
+            Search: "{debouncedSearchQuery.trim()}"
+            <button
+              type="button"
+              className="ca-filter-chip__remove"
+              onClick={() => {
+                setSearchQuery("");
+                setDebouncedSearchQuery("");
+              }}
+              aria-label="Remove search filter"
+            >
+              <X size={12} />
+            </button>
+          </span>
+        )}
+        {selectedBranch !== "All" && (
+          <span className="ca-filter-chip">
+            Branch: {selectedBranch}
+            <button
+              type="button"
+              className="ca-filter-chip__remove"
+              onClick={() => setSelectedBranch("All")}
+              aria-label="Remove branch filter"
+            >
+              <X size={12} />
+            </button>
+          </span>
+        )}
+        {selectedRoomType !== "All" && (
+          <span className="ca-filter-chip">
+            Type: {selectedRoomType}
+            <button
+              type="button"
+              className="ca-filter-chip__remove"
+              onClick={() => setSelectedRoomType("All")}
+              aria-label="Remove room type filter"
+            >
+              <X size={12} />
+            </button>
+          </span>
+        )}
+        {selectedLeaseTermFilter !== "All" && (
+          <span className="ca-filter-chip">
+            Stay: {selectedLeaseTermFilter === "longTerm" ? "Long-Term" : "Short-Term"}
+            <button
+              type="button"
+              className="ca-filter-chip__remove"
+              onClick={() => setSelectedLeaseTermFilter("All")}
+              aria-label="Remove stay type filter"
+            >
+              <X size={12} />
+            </button>
+          </span>
+        )}
+        {maxPrice < 15000 && (
+          <span className="ca-filter-chip">
+            Price: ≤ ₱{maxPrice.toLocaleString()}
+            <button
+              type="button"
+              className="ca-filter-chip__remove"
+              onClick={() => {
+                setMaxPrice(15000);
+              }}
+              aria-label="Remove price filter"
+            >
+              <X size={12} />
+            </button>
+          </span>
+        )}
+      </div>
 
- {filteredRooms.length === 0 && !roomsLoading && !roomsError && (
+      <div className="flex items-center gap-3">
+        <span className="ca-active-filters-count">
+          Showing {filteredRooms.length} room{filteredRooms.length !== 1 ? "s" : ""}
+        </span>
+        <button
+          type="button"
+          className="ca-active-filters-clear-btn"
+          onClick={clearAllFilters}
+        >
+          Clear All
+        </button>
+      </div>
+    </div>
+  )}
+
+  {/* Room Grid or Loading / Error / Empty State */}
+  {roomsLoading ? (
+    <div className="ca-grid">
+      <CheckAvailabilitySkeleton />
+    </div>
+  ) : roomsError ? (
+    <div className="p-8 text-center bg-card border border-border rounded-xl">
+      <p className="text-sm font-semibold text-red-600 mb-2">{roomsError}</p>
+      <button
+        type="button"
+        onClick={() => queryClient.invalidateQueries({ queryKey: ["rooms"] })}
+        className="px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground"
+      >
+        Retry
+      </button>
+    </div>
+  ) : filteredRooms.length === 0 ? (
     <div className="ca-empty">
       <div className="ca-empty-icon">
-        <Search style={{ width: 28, height: 28, color: "#9CA3AF" }} />
+        <Search style={{ width: 28, height: 28, color: "var(--text-muted, #94a3b8)" }} />
       </div>
-      <h3>No rooms match your filters</h3>
-      <p>Try changing the branch, room type, or price range</p>
-      <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "12px", flexWrap: "wrap" }}>
-        <button onClick={clearAllFilters}>Clear All Filters</button>
+      <h3>No rooms match your search criteria</h3>
+      <p>
+        {debouncedSearchQuery.trim()
+          ? `No rooms matched "${debouncedSearchQuery.trim()}". Try adjusting your keywords or clearing filters.`
+          : "Try selecting a different branch, room type, or price range to find open beds."}
+      </p>
+      <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "16px", flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={clearAllFilters}
+          style={{
+            padding: "9px 18px",
+            borderRadius: "8px",
+            backgroundColor: "var(--text-heading, #0a1628)",
+            color: "#ffffff",
+            fontWeight: "600",
+            fontSize: "13px",
+            cursor: "pointer",
+            border: "none",
+          }}
+        >
+          Clear All Filters
+        </button>
         <button
           type="button"
           onClick={() => handleOpenRoomInquiry(null)}
           style={{
-            padding: "8px 16px",
+            padding: "9px 18px",
             borderRadius: "8px",
             border: "1px solid var(--border-card, #e2e8f0)",
             backgroundColor: "var(--surface-card, #ffffff)",
-            color: "var(--text-main, #0f172a)",
-            fontWeight: "500",
+            color: "var(--text-heading, #0f172a)",
+            fontWeight: "600",
+            fontSize: "13px",
             cursor: "pointer",
           }}
         >
@@ -780,10 +894,58 @@ function CheckAvailabilityPage() {
         </button>
       </div>
     </div>
+  ) : (
+    <div className="ca-grid">
+      {paginatedRooms.map((room, index) => (
+        <RoomCard
+          key={room.id}
+          room={room}
+          isPriority={index < 3}
+          selectedLeaseTermFilter={selectedLeaseTermFilter}
+          searchQuery={debouncedSearchQuery}
+          onSelect={openRoomDetails}
+        />
+      ))}
+    </div>
   )}
 
+  {/* Pagination */}
+  {!roomsLoading && filteredRooms.length > ROOMS_PER_PAGE && (
+  <div className="ca-pagination">
+  <span className="ca-pagination__info">
+  Showing {(currentPage - 1) * ROOMS_PER_PAGE + 1}–{Math.min(currentPage * ROOMS_PER_PAGE, filteredRooms.length)} of {filteredRooms.length} rooms
+  </span>
+  <div className="ca-pagination__controls">
+  <button
+  className="ca-pagination__btn"
+  disabled={currentPage <= 1}
+  onClick={() => {
+    setCurrentPage((p) => Math.max(1, p - 1));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }}
+  aria-label="Previous page"
+  >
+  <ChevronLeft size={16} />
+  </button>
+  <span className="ca-pagination__label">
+  {currentPage} / {totalPages}
+  </span>
+  <button
+  className="ca-pagination__btn"
+  disabled={currentPage >= totalPages}
+  onClick={() => {
+    setCurrentPage((p) => Math.min(totalPages, p + 1));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }}
+  aria-label="Next page"
+  >
+  <ChevronRight size={16} />
+  </button>
+  </div>
+  </div>
+  )}
 
- </main>
+  </main>
 
   {isDetailsModalOpen && selectedRoom && (
     <Suspense fallback={null}>

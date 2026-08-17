@@ -8,8 +8,6 @@ import { getBedDisplayLabel, groupBedsByBunk } from "../../../shared/utils/bedId
  * Memoized to prevent re-renders when parent modal lease term or move-in date updates.
  */
 function BedSelector({ beds = [], selectedBed, onSelect, readOnly = false }) {
-  if (!beds.length) return null;
-
   const { bunks, singleBeds } = useMemo(() => groupBedsByBunk(beds), [beds]);
 
   const getStatus = useCallback((bed) => {
@@ -35,6 +33,8 @@ function BedSelector({ beds = [], selectedBed, onSelect, readOnly = false }) {
       code: bed.code,
     });
   }, [isSelectable, onSelect]);
+
+  if (!beds.length) return null;
 
   const renderBed = (bed, fallbackLabel, indexInRoom = 0, bunkBlock = "A") => {
     if (!bed) return null;

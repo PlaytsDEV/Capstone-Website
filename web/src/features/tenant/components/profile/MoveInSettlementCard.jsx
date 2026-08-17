@@ -31,6 +31,7 @@ export default function MoveInSettlementCard({
   const [downloading, setDownloading] = useState(false);
   const [viewingReceipt, setViewingReceipt] = useState(false);
   const [downloadingReceipt, setDownloadingReceipt] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded ?? false);
 
   if (!reservation) return null;
 
@@ -43,9 +44,6 @@ export default function MoveInSettlementCard({
     remainingDue,
     isSettled,
   } = resolveReservationFinancials(reservation, profileData);
-
-  // Default to collapsed
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded ?? false);
 
   const handlePayOnline = async (e) => {
     if (e) e.stopPropagation();

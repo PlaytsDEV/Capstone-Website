@@ -2,10 +2,42 @@ import React, { useState, useRef, useCallback, useMemo } from "react";
 import { ChevronLeft, ChevronRight, MapPin } from "lucide-react";
 import { getThumbnailUrl, getOptimizedUrl } from "../../../../shared/utils/imageOptimizer";
 
+function highlightTokens(text, query) {
+  if (!text || !query || !String(query).trim()) return text;
+  const terms = String(query)
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+
+  if (terms.length === 0) return text;
+
+  const regex = new RegExp(`(${terms.join("|")})`, "gi");
+  const parts = String(text).split(regex);
+
+  return parts.map((part, index) =>
+    terms.includes(part.toLowerCase()) ? (
+      <mark key={index} className="ca-highlight">
+        {part}
+      </mark>
+    ) : (
+      part
+    )
+  );
+}
+
 /**
  * Redesigned Room Card — solid HSL tokens, bed availability dots, clear lease pricing.
  */
-const RoomCard = React.memo(({ room, onClick, onSelect, selectedLeaseTermFilter = "All", isPriority = false }) => {
+const RoomCard = React.memo(({
+  room,
+  onClick,
+  onSelect,
+  selectedLeaseTermFilter = "All",
+  searchQuery = "",
+  isPriority = false,
+}) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [loadedMap, setLoadedMap] = useState({}); // { [index]: true } when fully loaded
   const debounceRef = useRef(false);
@@ -15,6 +47,14 @@ const RoomCard = React.memo(({ room, onClick, onSelect, selectedLeaseTermFilter 
     const rawImages = room.images?.length ? room.images : [room.image];
     return rawImages.map((src) => getThumbnailUrl(src));
   }, [room.images, room.image]);
+
+  const matchedAmenities = useMemo(() => {
+    if (!searchQuery || !searchQuery.trim() || !Array.isArray(room.amenities)) return [];
+    const terms = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return room.amenities.filter((amenity) =>
+      terms.some((term) => String(amenity).toLowerCase().includes(term))
+    );
+  }, [room.amenities, searchQuery]);
 
   // Preload secondary carousel images, primary HD image, and modal chunk on hover
   const handleCardMouseEnter = useCallback(() => {
@@ -251,7 +291,7 @@ const RoomCard = React.memo(({ room, onClick, onSelect, selectedLeaseTermFilter 
       {/* Card body */}
       <div className="ca-card-body">
         <div className="ca-card-title">
-          {room.title}
+          {highlightTokens(room.title, searchQuery)}
           <span className="ca-type-badge">{room.type}</span>
         </div>
 
@@ -286,10 +326,30 @@ const RoomCard = React.memo(({ room, onClick, onSelect, selectedLeaseTermFilter 
           </span>
         </div>
 
-        {/* Location */}
-        <div className="ca-card-location">
-          <MapPin size={13} />
-          <span>{room.branch}</span>
+        {/* Location & Matched Amenities */}
+        <div className="flex items-center justify-between flex-wrap gap-1">
+          <div className="ca-card-location">
+            <MapPin size={13} />
+            <span>{highlightTokens(room.branch, searchQuery)}</span>
+          </div>
+
+          {matchedAmenities.length > 0 && (
+            <div className="flex items-center gap-1">
+              {matchedAmenities.slice(0, 2).map((amenity, idx) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                  style={{
+                    backgroundColor: "color-mix(in srgb, var(--chart-3, #d97706) 12%, var(--card, #fff))",
+                    color: "var(--chart-3, #d97706)",
+                    border: "1px solid color-mix(in srgb, var(--chart-3, #d97706) 25%, transparent)",
+                  }}
+                >
+                  ✓ {highlightTokens(amenity, searchQuery)}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Transparent Price UI with Lease Term Awareness */}

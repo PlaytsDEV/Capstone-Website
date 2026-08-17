@@ -169,17 +169,10 @@ export default function RoomDetailsModal({
   proceedButtonText = "Proceed to Reservation",
   selectedLeaseDuration = "",
   onSelectLeaseDuration,
-  targetMoveInDate,
-  onTargetMoveInDateChange,
 }) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [hdLoadedMap, setHdLoadedMap] = useState({});
   const [internalLeaseDuration, setInternalLeaseDuration] = useState("");
-  const [internalMoveInDate, setInternalMoveInDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 30);
-    return d.toISOString().split("T")[0];
-  });
 
   useEscapeClose(isOpen && !!room, onClose);
 
@@ -224,13 +217,6 @@ export default function RoomDetailsModal({
     setInternalLeaseDuration(val);
     if (onSelectLeaseDuration) onSelectLeaseDuration(val);
   }, [onSelectLeaseDuration]);
-
-  const activeMoveInDate = targetMoveInDate || internalMoveInDate;
-
-  const handleMoveInChange = useCallback((val) => {
-    setInternalMoveInDate(val);
-    if (onTargetMoveInDateChange) onTargetMoveInDateChange(val);
-  }, [onTargetMoveInDateChange]);
 
   const flyer = useMemo(
     () => (room ? getFlyerRates(room.type, room) : { regularShort: 0, shortTerm: 0, regularLong: 0, longTerm: 0, discountPercent: 0 }),
@@ -380,7 +366,6 @@ export default function RoomDetailsModal({
           border-color: var(--primary);
           color: var(--primary-foreground);
         }
-        .rdm-date-input::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; }
       `}</style>
 
       <div
@@ -596,11 +581,11 @@ export default function RoomDetailsModal({
                 </div>
               )}
 
-              {/* Lease term + move-in date */}
+              {/* Lease term */}
               <div className="rounded-2xl border border-border/70 p-5">
-                <SectionHeading icon={Calendar} title="Lease term & move-in" subtitle="Choose how long you'll stay" />
+                <SectionHeading icon={Calendar} title="Lease term" subtitle="Choose how long you'll stay" />
 
-                <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5 mb-4">
+                <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
                   {defaultTerms.map((m) => {
                     const valStr = String(m);
                     const labelStr = m === 12 ? "1 yr" : `${m} mo${m > 1 ? "s" : ""}`;
@@ -632,19 +617,6 @@ export default function RoomDetailsModal({
                   })}
                 </div>
 
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5" htmlFor="rdm-movein">
-                  Preferred move-in date
-                </label>
-                <input
-                  id="rdm-movein"
-                  type="date"
-                  className="rdm-date-input w-full sm:w-56 px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground outline-none focus:ring-2"
-                  style={{ "--tw-ring-color": "color-mix(in srgb, var(--ring) 45%, transparent)" }}
-                  value={activeMoveInDate}
-                  min={new Date().toISOString().split("T")[0]}
-                  onChange={(e) => handleMoveInChange(e.target.value)}
-                />
-
                 {!hasLeaseSelected ? (
                   <div
                     className="mt-4 p-3 rounded-lg text-xs flex items-center gap-2.5"
@@ -654,7 +626,7 @@ export default function RoomDetailsModal({
                     Select a lease term above to see pricing.
                   </div>
                 ) : (
-                  <div className="mt-4">
+                  <div className="mt-3">
                     {isLongTerm ? (
                       isDiscountEnabled && discountPercent > 0 ? (
                         <span

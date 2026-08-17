@@ -220,13 +220,13 @@ export default function ContractsPage() {
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl sm:text-2xl font-bold text-foreground">Official Lease Contract</h1>
             {contract?.tenantDocument?.type === "final_notarized" || contract?.finalDocument?.available ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60">
-                <CheckCircle2 size={12} />
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-transparent text-emerald-700 dark:text-emerald-300">
+                <CheckCircle2 size={12} className="text-emerald-500" />
                 Notarized Lease Contract
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900/60">
-                <FileText size={12} />
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-transparent text-sky-700 dark:text-sky-300">
+                <FileText size={12} className="text-sky-500" />
                 Lease Draft — Ready for Signing
               </span>
             )}

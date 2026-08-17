@@ -31,6 +31,7 @@ import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
 import { useCurrentUser } from "../../../../shared/hooks/queries/useUsers";
 import { reservationApi } from "../../../../shared/api/reservationApi";
 import { showNotification } from "../../../../shared/utils/notification";
+import { getFriendlyError } from "../../../../shared/utils/friendlyError";
 import {
  canReservationAccessPayment,
  hasReservationStatus,
@@ -168,7 +169,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
   const s = reservationStatus;
   if (s === "cancelled") return { label: "Cancelled", bg: "var(--danger)" };
   if (hasReservationStatus(s, "moveOut")) return { label: "Completed", bg: "var(--neutral)" };
-  if (hasReservationStatus(s, "moveIn")) return { label: "Moved In", bg: "var(--success)" };
+  if (hasReservationStatus(s, "moveIn")) return { label: "Move In", bg: "var(--success)" };
   return { label: "Reserved", bg: "var(--success)" };
  })();
 
@@ -249,13 +250,13 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  return;
  }
 
- console.error("Cancellation request failed:", error);
- showNotification(
- error?.message || "Failed to submit cancellation request. Please try again.",
- "error",
- 5000,
- );
- } finally {
+    console.error("Cancellation request failed:", error);
+    showNotification(
+      getFriendlyError(error, "Failed to submit cancellation request. Please try again."),
+      "error",
+      5000,
+    );
+  } finally {
  setIsRequestingCancellation(false);
  }
  };

@@ -1347,7 +1347,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         </div>
                       </div>
 
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                         <span
                           style={{
                             display: "inline-flex",
@@ -1359,11 +1359,31 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                             color: statusMeta.color,
                             fontSize: 12,
                             fontWeight: 700,
+                            whiteSpace: "nowrap",
                           }}
                         >
                           <StatusIcon size={12} />
                           {formatMaintenanceStatus(request.status)}
                         </span>
+
+                        {request.status === "resolved" && !isConfirmed && (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "4px 8px",
+                              borderRadius: 6,
+                              background: "#FEF3C7",
+                              color: "#92400E",
+                              border: "1px solid #FDE68A",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Awaiting Verification
+                          </span>
+                        )}
 
                         <button
                           type="button"
@@ -2129,11 +2149,29 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                       <div className="maintenance-detail-grid">
                         <div className="maintenance-grid-card">
                           <span className="grid-card-label">Status</span>
-                          <div className="grid-card-content">
+                          <div className="grid-card-content" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
                             <span className={`maintenance-status-chip status-${selectedRequest.status}`}>
                               <span className="status-dot" />
                               <span>{formatMaintenanceStatus(selectedRequest.status)}</span>
                             </span>
+                            {selectedRequest.status === "resolved" && !selectedRequest.resolutionConfirmation?.confirmedAt && (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  padding: "3px 8px",
+                                  borderRadius: 6,
+                                  background: "#FEF3C7",
+                                  color: "#92400E",
+                                  border: "1px solid #FDE68A",
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                Awaiting Verification
+                              </span>
+                            )}
                           </div>
                         </div>
 

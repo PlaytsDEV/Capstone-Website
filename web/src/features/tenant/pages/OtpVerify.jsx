@@ -14,6 +14,7 @@ import {
   AUTH_TOAST_DURATION,
   buildAuthSuccessMessage,
 } from "../../../shared/utils/authToasts";
+import { getAuthenticatedUserDestination } from "../../../shared/api/loginRouting";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import "../../../shared/styles/auth-forms.css";
 import "../../../shared/styles/notification.css";
@@ -62,13 +63,8 @@ function OtpVerify() {
 
   const navigateAfterAuth = (user) => {
     const name = buildAuthSuccessMessage(user);
-    if (user?.role === "branch_admin" || user?.role === "owner") {
-      showNotification(name, "success", AUTH_TOAST_DURATION);
-      appNavigate("/admin/dashboard");
-      return;
-    }
     showNotification(name, "success", AUTH_TOAST_DURATION);
-    appNavigate("/applicant/check-availability");
+    appNavigate(getAuthenticatedUserDestination(user));
   };
 
   const handleChange = (index, value) => {

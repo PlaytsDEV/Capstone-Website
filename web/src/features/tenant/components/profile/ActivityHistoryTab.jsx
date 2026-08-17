@@ -350,7 +350,7 @@ const deriveStage = (r) => {
  // Terminal states
  if (s === "cancelled") return { color: "#EF4444", bg: "#FEF2F2", label: "Cancelled" };
  if (hasReservationStatus(s, "moveOut")) return { color: "#6B7280", bg: "#F3F4F6", label: "Completed" };
- if (hasReservationStatus(s, "moveIn")) return { color: "#059669", bg: "#DCFCE7", label: "Moved In" };
+ if (hasReservationStatus(s, "moveIn")) return { color: "#059669", bg: "#DCFCE7", label: "Move In" };
  if (s === "reserved" || r.paymentStatus === "paid")
  return { color: "#059669", bg: "#D1FAE5", label: "Reserved" };
 
@@ -688,8 +688,8 @@ const ActivityHistoryTab = ({ reservations = [], isLoading = false }) => {
       hasActive = true;
       activeStayValue =
         activeStay.roomId?.name ||
-        (activeStay.roomId?.roomNumber ? `Room ${activeStay.roomId.roomNumber}` : "Moved In");
-      activeStaySubtext = "Active Resident";
+        (activeStay.roomId?.roomNumber ? `Room ${activeStay.roomId.roomNumber}` : "Move In");
+      activeStaySubtext = "Active Tenant";
     } else if (activeBooking) {
       hasActive = true;
       activeStayValue =

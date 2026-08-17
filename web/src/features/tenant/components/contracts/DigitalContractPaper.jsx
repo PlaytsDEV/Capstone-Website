@@ -1179,15 +1179,13 @@ export default function DigitalContractPaper({
           {/* Lightbox Header */}
           <div className="flex-shrink-0 flex items-center justify-between gap-3 px-4 sm:px-6 py-3 bg-slate-900/95 border-b border-white/10 text-white z-10 shadow-lg">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center flex-shrink-0 text-amber-400">
-                <FileCheck className="w-4 h-4" />
-              </div>
+              <FileCheck className="w-5 h-5 text-amber-400 flex-shrink-0" />
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-xs sm:text-sm font-bold text-white truncate max-w-[220px] sm:max-w-md">
                     {selectedDoc?.fileName || "Signed Contract Scan"}
                   </h3>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
                     v{selectedDoc?.version || 1}
                   </span>
                 </div>

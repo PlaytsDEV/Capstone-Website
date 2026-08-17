@@ -49,7 +49,7 @@ export default function ClearanceSummaryView() {
           <h1 className="text-xl font-bold text-gray-900">Move-Out Clearance Statement</h1>
           <p className="text-xs text-gray-500">Read-Only Former Tenant Account Record</p>
         </div>
-        <StatusBadge status="former_tenant" />
+        <StatusBadge module="clearance" status={clearance.status || "former_tenant"} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
