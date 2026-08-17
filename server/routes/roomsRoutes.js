@@ -16,7 +16,7 @@
  */
 
 import express from "express";
-import { verifyToken, verifyAdmin } from "../middleware/auth.js";
+import { verifyToken, verifyAdmin, optionalAuth } from "../middleware/auth.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
 import {
   requireAnyPermission,
@@ -61,7 +61,7 @@ const router = express.Router();
  *
  * @returns {Array} List of rooms matching the filters
  */
-router.get("/", getRooms);
+router.get("/", optionalAuth, getRooms);
 
 /**
  * POST /api/rooms/:roomId/photos
@@ -75,6 +75,7 @@ router.post(
   "/:roomId/photos",
   verifyToken,
   verifyAdmin,
+  filterByBranch,
   requirePermission("manageRooms"),
   uploadPhotosMiddleware,
   uploadRoomPhotos,
@@ -124,7 +125,7 @@ router.post(
   reconcileAllOccupancy,
 );
 
-router.get("/:roomId", getRoomById);
+router.get("/:roomId", optionalAuth, getRoomById);
 
 /**
  * POST /api/rooms

@@ -98,10 +98,17 @@ router.get(
 
 /**
  * @route   POST /api/audit-logs
- * @desc    Create new audit log entry
- * @access  System (internal use) - but protected for security
+ * @desc    Create new audit log entry (restricted to authorized administrators)
+ * @access  Admin, Owner
  */
-router.post("/", verifyToken, createAuditLog);
+router.post(
+  "/",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageUsers"),
+  createAuditLog,
+);
 
 /**
  * @route   POST /api/audit-logs/export

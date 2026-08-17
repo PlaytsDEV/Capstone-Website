@@ -112,6 +112,7 @@ router.get(
   verifyToken,
   verifyAdmin,
   requirePermission("manageBilling"),
+  filterByBranch,
   async (req, res) => {
   try {
     const reservations = await Reservation.find({
@@ -124,7 +125,11 @@ router.get(
       .lean();
 
     const vacancyData = reservations
-      .filter((r) => readMoveInDate(r) && r.leaseDuration && r.selectedBed?.id)
+      .filter((r) => {
+        if (!readMoveInDate(r) || !r.leaseDuration || !r.selectedBed?.id) return false;
+        if (req.branchFilter && r.roomId?.branch !== req.branchFilter) return false;
+        return true;
+      })
       .map((r) => ({
         roomId: r.roomId?._id,
         roomName: r.roomId?.name,

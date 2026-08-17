@@ -24,6 +24,7 @@
 import express from "express";
 import { verifyToken, verifyAdmin, verifyOwner, optionalAuth } from "../middleware/auth.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
+import { requirePermission, requireAnyPermission } from "../middleware/permissions.js";
 import { inquiryLimiter } from "../middleware/rateLimiter.js";
 import { validate } from "../validation/validate.js";
 import { createInquirySchema } from "../validation/schemas.js";
@@ -55,7 +56,7 @@ const router = express.Router();
  *
  * Access: Admin (filtered by branch) | Owner (all branches)
  */
-router.get("/stats", verifyToken, verifyAdmin, filterByBranch, getInquiryStats);
+router.get("/stats", verifyToken, verifyAdmin, filterByBranch, requireAnyPermission(["manageReservations", "viewReports"]), getInquiryStats);
 
 /**
  * GET /api/inquiries/kanban
@@ -64,7 +65,7 @@ router.get("/stats", verifyToken, verifyAdmin, filterByBranch, getInquiryStats);
  *
  * Access: Admin (filtered by branch) | Owner (all branches)
  */
-router.get("/kanban", verifyToken, verifyAdmin, filterByBranch, getKanbanBoard);
+router.get("/kanban", verifyToken, verifyAdmin, filterByBranch, requireAnyPermission(["manageReservations", "viewReports"]), getKanbanBoard);
 
 /**
  * GET /api/inquiries/marketing-roi
@@ -73,7 +74,7 @@ router.get("/kanban", verifyToken, verifyAdmin, filterByBranch, getKanbanBoard);
  *
  * Access: Admin (filtered by branch) | Owner (all branches)
  */
-router.get("/marketing-roi", verifyToken, verifyAdmin, filterByBranch, getMarketingRoi);
+router.get("/marketing-roi", verifyToken, verifyAdmin, filterByBranch, requireAnyPermission(["manageReservations", "viewReports"]), getMarketingRoi);
 
 // ============================================================================
 // GET INQUIRIES BY BRANCH (Owner only)
@@ -108,7 +109,7 @@ router.get("/branch/:branch", verifyToken, verifyOwner, getInquiriesByBranch);
  * - sort: Sort field (default: createdAt)
  * - order: Sort order (asc/desc, default: desc)
  */
-router.get("/", verifyToken, verifyAdmin, filterByBranch, getInquiries);
+router.get("/", verifyToken, verifyAdmin, filterByBranch, requireAnyPermission(["manageReservations", "manageTenants", "viewReports"]), getInquiries);
 
 // ============================================================================
 // CONVERT INQUIRY TO APPLICATION (Must be before /:id generic handler)
@@ -121,7 +122,7 @@ router.get("/", verifyToken, verifyAdmin, filterByBranch, getInquiries);
  *
  * Access: Admin (must be from their branch) | Owner (any inquiry)
  */
-router.post("/:id/convert", verifyToken, verifyAdmin, filterByBranch, convertToApplication);
+router.post("/:id/convert", verifyToken, verifyAdmin, filterByBranch, requirePermission("manageReservations"), convertToApplication);
 
 /**
  * POST /api/inquiries/:id/viewing
@@ -130,7 +131,7 @@ router.post("/:id/convert", verifyToken, verifyAdmin, filterByBranch, convertToA
  *
  * Access: Admin (must be from their branch) | Owner (any inquiry)
  */
-router.post("/:id/viewing", verifyToken, verifyAdmin, filterByBranch, scheduleViewing);
+router.post("/:id/viewing", verifyToken, verifyAdmin, filterByBranch, requirePermission("manageReservations"), scheduleViewing);
 
 // ============================================================================
 // GET SINGLE INQUIRY
@@ -143,7 +144,7 @@ router.post("/:id/viewing", verifyToken, verifyAdmin, filterByBranch, scheduleVi
  *
  * Access: Admin (must be from their branch) | Owner (any inquiry)
  */
-router.get("/:id", verifyToken, verifyAdmin, filterByBranch, getInquiryById);
+router.get("/:id", verifyToken, verifyAdmin, filterByBranch, requireAnyPermission(["manageReservations", "manageTenants", "viewReports"]), getInquiryById);
 
 // ============================================================================
 // CREATE INQUIRY (Public)
@@ -169,7 +170,7 @@ router.post("/", inquiryLimiter, optionalAuth, validate(createInquirySchema), cr
  *
  * Access: Admin (must be from their branch) | Owner (any inquiry)
  */
-router.put("/:id", verifyToken, verifyAdmin, filterByBranch, updateInquiry);
+router.put("/:id", verifyToken, verifyAdmin, filterByBranch, requirePermission("manageReservations"), updateInquiry);
 
 /**
  * POST /api/inquiries/:id/retry-email
@@ -178,7 +179,7 @@ router.put("/:id", verifyToken, verifyAdmin, filterByBranch, updateInquiry);
  *
  * Access: Admin (must be from their branch) | Owner (any inquiry)
  */
-router.post("/:id/retry-email", verifyToken, verifyAdmin, filterByBranch, retryInquiryEmail);
+router.post("/:id/retry-email", verifyToken, verifyAdmin, filterByBranch, requirePermission("manageReservations"), retryInquiryEmail);
 
 // ============================================================================
 // DELETE INQUIRY
@@ -191,6 +192,6 @@ router.post("/:id/retry-email", verifyToken, verifyAdmin, filterByBranch, retryI
  *
  * Access: Admin (must be from their branch) | Owner (any inquiry)
  */
-router.delete("/:id", verifyToken, verifyAdmin, filterByBranch, deleteInquiry);
+router.delete("/:id", verifyToken, verifyAdmin, filterByBranch, requirePermission("manageReservations"), deleteInquiry);
 
 export default router;

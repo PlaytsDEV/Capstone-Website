@@ -1,5 +1,7 @@
 import express from "express";
 import { verifyAdmin, verifyOwner, verifyToken } from "../middleware/auth.js";
+import { filterByBranch } from "../middleware/branchAccess.js";
+import { requirePermission } from "../middleware/permissions.js";
 import {
   getAuditSummary,
   getAnalyticsInsights,
@@ -17,7 +19,7 @@ import {
 
 const router = express.Router();
 
-router.use(verifyToken, verifyAdmin);
+router.use(verifyToken, verifyAdmin, filterByBranch, requirePermission("viewReports"));
 
 router.get("/dashboard", getDashboardAnalytics);
 router.get("/reports/occupancy", getOccupancyReport);

@@ -30,6 +30,7 @@ const router = express.Router();
 // periods, readings, results, revisions, and send/close workflows.
 router.use(verifyToken);
 router.use(verifyAdmin);
+router.use(filterByBranch);
 router.use(requirePermission("manageBilling"));
 
 // Diagnostics (Shared)

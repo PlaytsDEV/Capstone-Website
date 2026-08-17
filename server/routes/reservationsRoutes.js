@@ -286,7 +286,14 @@ router.get(
  * @param {string} roomId - MongoDB ObjectId of the room
  * @returns {Object} Room occupancy status with bed details
  */
-router.get("/occupancy/:roomId", verifyToken, getRoomOccupancy);
+router.get(
+  "/occupancy/:roomId",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  getRoomOccupancy,
+);
 
 /**
  * GET /api/reservations/stats/occupancy
@@ -294,12 +301,19 @@ router.get("/occupancy/:roomId", verifyToken, getRoomOccupancy);
  * Get occupancy statistics for a branch.
  * Query parameter: branch (optional) - 'gil-puyat' or 'guadalupe'
  *
- * Access: Authenticated users (typically admin)
+ * Access: Authenticated users (admin)
  *
  * @query {string} branch - Optional branch filter
  * @returns {Object} Branch occupancy statistics with all rooms
  */
-router.get("/stats/occupancy", verifyToken, getBranchOccupancyStatistics);
+router.get(
+  "/stats/occupancy",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  getBranchOccupancyStatistics,
+);
 
 /**
  * GET /api/reservations/vacancy-forecast
@@ -754,6 +768,7 @@ router.post(
   "/room-swap",
   verifyToken,
   verifyAdmin,
+  filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   swapRoomsAction,
 );
@@ -771,6 +786,7 @@ router.get(
   "/:reservationId/check-extension",
   verifyToken,
   verifyAdmin,
+  filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   checkExtensionConflictAction,
 );

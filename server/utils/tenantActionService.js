@@ -1216,24 +1216,57 @@ export async function executeEarlyTerminationWorkflow(reservationId, payload = {
 /**
  * SCENARIO 1 - Case 4: Direct Tenant Room Swap
  */
-export async function executeDirectRoomSwapWorkflow(reservationAId, reservationBId, actorId = null) {
+export async function executeDirectRoomSwapWorkflow(
+  reservationAId,
+  reservationBId,
+  actorId = null,
+  branchFilter = null,
+) {
   const session = await mongoose.startSession();
   let result = null;
 
   try {
     await session.withTransaction(async () => {
-      const resA = await Reservation.findById(reservationAId).session(session);
-      const resB = await Reservation.findById(reservationBId).session(session);
+      const resA = await Reservation.findById(reservationAId).populate("roomId").session(session);
+      const resB = await Reservation.findById(reservationBId).populate("roomId").session(session);
 
       if (!resA || !resB) {
-        throw new Error("One or both reservations not found for room swap");
+        throw Object.assign(new Error("One or both reservations not found for room swap"), {
+          statusCode: 404,
+          code: "RESERVATION_NOT_FOUND",
+        });
+      }
+
+      const branchA = resA.roomId?.branch || resA.branch;
+      const branchB = resB.roomId?.branch || resB.branch;
+
+      if (branchFilter) {
+        if (branchA !== branchFilter || branchB !== branchFilter) {
+          throw Object.assign(
+            new Error(`Access denied. You can only execute room swaps within ${branchFilter} branch.`),
+            {
+              statusCode: 403,
+              code: "BRANCH_ACCESS_DENIED",
+            },
+          );
+        }
+      }
+
+      if (branchA && branchB && branchA !== branchB) {
+        throw Object.assign(
+          new Error("Direct room swap cannot be executed across different branches. Use standard tenant transfer."),
+          {
+            statusCode: 400,
+            code: "CROSS_BRANCH_SWAP_PROHIBITED",
+          },
+        );
       }
 
       // Swap room and bed assignments
-      const roomATemp = resA.roomId;
+      const roomATemp = resA.roomId?._id || resA.roomId;
       const bedATemp = resA.selectedBed;
 
-      resA.roomId = resB.roomId;
+      resA.roomId = resB.roomId?._id || resB.roomId;
       resA.selectedBed = resB.selectedBed;
       resA.notes = `${resA.notes ? resA.notes + " | " : ""}Swapped room with tenant ${resB.userId} at ${new Date().toISOString()}`;
 
@@ -1248,7 +1281,7 @@ export async function executeDirectRoomSwapWorkflow(reservationAId, reservationB
         success: true,
         message: "Direct room swap executed successfully between tenants.",
         tenantA: resA,
-        tenantB: resB
+        tenantB: resB,
       };
     });
 
