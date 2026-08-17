@@ -2,61 +2,60 @@ const defaultLogo = new URL("../../assets/images/LOGO.png", import.meta.url).hre
 
 // ─────────────────────────────────────────────────────────────
 // LILYCREST EXECUTIVE PDF DESIGN SYSTEM (Unit: mm unless noted)
-// Modern, clean, warm, and professional enterprise report layout
+// Aligned with /wf-color-objectives, /wf-frontend-overhaul, /wf-ui-redesign
 // ─────────────────────────────────────────────────────────────
 
 const C = {
-  // Brand & Navy Tokens
-  BRAND_PRIMARY:   [ 37,  99, 235], // #2563EB Royal Blue
-  BRAND_DARK:      [ 30,  58, 138], // #1E3A8A Deep Navy
-  BRAND_LIGHT:     [239, 246, 255], // #EFF6FF Soft Blue
-  BRAND_BORDER:    [219, 234, 254], // #DBEAFE
+  // Lilycrest Official Brand Colors
+  NAVY_PRIMARY:    [ 10,  22,  40], // var(--color-primary) #0A1628
+  NAVY_HOVER:      [ 19,  36,  61], // var(--color-primary-hover) #13243D
+  GOLD_ACCENT:     [212, 175,  55], // var(--color-accent) #D4AF37
+  GOLD_SUBTLE:     [251, 247, 234], // var(--color-accent-subtle) #FBF7EA
 
   // Slate Neutral Hierarchy
-  TEXT_PRIMARY:    [ 15,  23,  42], // #0F172A Slate 900
-  TEXT_SECONDARY:  [ 51,  65,  85], // #334155 Slate 700
-  TEXT_MUTED:      [100, 116, 139], // #64748B Slate 500
-  TEXT_TERTIARY:   [148, 163, 184], // #94A3B8 Slate 400
+  TEXT_PRIMARY:    [ 10,  22,  40], // var(--text-heading) #0A1628
+  TEXT_SECONDARY:  [ 30,  41,  59], // var(--text-body) #1E293B
+  TEXT_MUTED:      [100, 116, 139], // var(--text-muted) #64748B
+  TEXT_TERTIARY:   [148, 163, 184], // var(--text-secondary) #94A3B8
 
-  // Backgrounds & Neutral 1px Borders
-  BG_PAGE:         [255, 255, 255], // White
-  BG_CARD:         [248, 250, 252], // #F8FAFC Slate 50
-  BG_CARD_ALT:     [241, 245, 249], // #F1F5F9 Slate 100
-  BORDER:          [226, 232, 240], // #E2E8F0 Slate 200
-  BORDER_LIGHT:    [241, 245, 249], // #F1F5F9
+  // Surfaces & Clean 1px Neutral Borders
+  BG_PAGE:         [255, 255, 255], // #FFFFFF
+  BG_CARD:         [248, 250, 252], // var(--surface-card) #F8FAFC
+  BG_HEADER:       [241, 245, 249], // var(--surface-muted) #F1F5F9
+  BORDER:          [226, 232, 240], // var(--border-card) #E2E8F0
+  BORDER_LIGHT:    [241, 245, 249], // var(--border-subtle) #F1F5F9
 
-  // Semantic Accents (Solid, professional, WCAG-compliant)
-  EMERALD_TEXT:    [  4, 120,  87], // #047857 Emerald 700
-  EMERALD_BG:      [240, 253, 244], // #F0FDF4 Emerald 50
-  EMERALD_BORDER:  [187, 247, 208], // #BBF7D0 Emerald 200
-  EMERALD_DOT:     [ 16, 185, 129], // #10B981 Emerald 500
+  // Semantic Status Colors (Real-World Objectives: Zero colored outlines)
+  EMERALD_TEXT:    [  4, 120,  87], // text-emerald-700 #047857 (Active/Paid/Full/Resolved)
+  EMERALD_DOT:     [ 16, 185, 129], // bg-emerald-500 #10B981
+  EMERALD_BG:      [240, 253, 244], // #F0FDF4 Soft surface for action plans
 
-  AMBER_TEXT:      [180,  83,   9], // #B45309 Amber 700
-  AMBER_BG:        [255, 251, 235], // #FFFBEB Amber 50
-  AMBER_BORDER:    [254, 243, 199], // #FEF3C7 Amber 200
-  AMBER_DOT:       [245, 158,  11], // #F59E0B Amber 500
+  AMBER_TEXT:      [180,  83,   9], // text-amber-700 #B45309 (Pending/Partial/Review/At Risk)
+  AMBER_DOT:       [245, 158,  11], // bg-amber-500 #F59E0B
+  AMBER_BG:        [255, 251, 235], // #FFFBEB Soft surface for attention cards
 
-  ROSE_TEXT:       [185,  28,  28], // #B91C1C Red 700
-  ROSE_BG:         [254, 242, 242], // #FEF2F2 Red 50
-  ROSE_BORDER:     [254, 205, 211], // #FECDD3 Red 200
-  ROSE_DOT:        [239,  68,  68], // #EF4444 Red 500
+  ROSE_TEXT:       [185,  28,  28], // text-rose-700 #B91C1C (Overdue/Breached/Critical)
+  ROSE_DOT:        [239,  68,  68], // bg-rose-500 #EF4444
+
+  SLATE_TEXT:      [ 71,  85, 105], // text-slate-600 #475569 (Vacant/Neutral/Draft)
+  SLATE_DOT:       [148, 163, 184], // bg-slate-400 #94A3B8
 
   WHITE:           [255, 255, 255],
 };
 
 const F = {
-  TITLE:   15,   // Page title
+  TITLE:   15,   // Document title
   SECTION: 10.5, // Section heading
-  BODY:    9,    // Body copy / AI summaries
+  BODY:    8.8,  // Executive narrative body
   SMALL:   7.5,  // Table cells / bullets
   LABEL:   6.8,  // Card labels / table headers
   TINY:    6.5,  // Footers / metadata
 };
 
 const LH = {
-  BODY:   4.8,
-  SMALL:  4.0,
-  BULLET: 4.4,
+  BODY:   4.5,
+  SMALL:  3.8,
+  BULLET: 4.2,
 };
 
 const S = {
@@ -73,19 +72,26 @@ const capH = (pt) => pt * 0.72 * (25.4 / 72);
 
 /**
  * Universal text sanitizer for jsPDF standard Helvetica.
- * Replaces Unicode Peso symbol with "PHP", normalizes dashes, quotes, and whitespace.
+ * Replaces Unicode Peso symbol with "PHP", cleans formatting while preserving '+', '%', and punctuation.
  */
 export const sanitizePdfText = (val) => {
   if (val == null) return "";
   let str = String(val);
+  // Currency replacement
   str = str.replace(/₱/g, "PHP ");
   str = str.replace(/[\u20B1]/g, "PHP ");
   str = str.replace(/PHP\s+([0-9])/g, "PHP $1");
+  // Arrows and trend indicators
+  str = str.replace(/[\u2191\u25B2\u25B4]/g, "+");
+  str = str.replace(/[\u2193\u25BC\u25BE]/g, "-");
+  str = str.replace(/[\u2192\u25B6\u25BA]/g, ">");
+  // Bullets, quotes, and dashes
   str = str
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2013\u2014]/g, "-")
-    .replace(/[\u2022]/g, "-");
+    .replace(/[\u2022\u2023\u25E6\u2043\u2219]/g, "-")
+    .replace(/[\u00B1]/g, "+-");
   return str.trim();
 };
 
@@ -212,8 +218,10 @@ export async function exportReportPdf({
 
   // ── Page chrome ──────────────────────────────────────────────
 
+  // Lilycrest Official Dual-Tone Brand Stripe (Navy + Gold)
   const drawTopAccentBar = () => {
-    rect(0, 0, W, 1.8, C.BRAND_PRIMARY);
+    rect(0, 0, W, 1.4, C.NAVY_PRIMARY);
+    rect(0, 1.4, W, 0.6, C.GOLD_ACCENT);
   };
 
   const drawPageHeaderContinuation = () => {
@@ -222,12 +230,12 @@ export async function exportReportPdf({
     txt(sanitizePdfText(title), M, M + 2.5, {
       size: F.TINY + 0.5,
       weight: "bold",
-      color: C.TEXT_MUTED,
+      color: C.NAVY_PRIMARY,
     });
     txt(sanitizePdfText(reportType).toUpperCase(), W - M, M + 2.5, {
       size: F.TINY,
       weight: "bold",
-      color: C.BRAND_PRIMARY,
+      color: C.TEXT_MUTED,
       align: "right",
     });
   };
@@ -246,18 +254,15 @@ export async function exportReportPdf({
     });
   };
 
+  // Clean, high-contrast section heading (No floating dots)
   const sectionTitle = (label, rightBadge = null) => {
     const cleanLabel = sanitizePdfText(label);
     ensureSpace(12);
-    
-    // Clean, modern section title with solid dot indicator
-    doc.setFillColor(...C.BRAND_PRIMARY);
-    doc.circle(M + 1.2, y + capH(F.SECTION) * 0.5, 0.9, "F");
 
-    txt(cleanLabel, M + 3.8, y + capH(F.SECTION), {
+    txt(cleanLabel, M, y + capH(F.SECTION), {
       size: F.SECTION,
       weight: "bold",
-      color: C.TEXT_PRIMARY,
+      color: C.NAVY_PRIMARY,
     });
 
     if (rightBadge) {
@@ -305,17 +310,17 @@ export async function exportReportPdf({
   txt(title, titleX, titleBaseY, {
     size: F.TITLE,
     weight: "bold",
-    color: C.TEXT_PRIMARY,
+    color: C.NAVY_PRIMARY,
     maxW: titleTextW,
   });
 
-  // Category Pill Badge (Clean 1px border, no loud gradients)
+  // Category Pill Badge (Clean 1px border, neutral surface, no gradients)
   const badgeY = y + (HEADER_H - badgeH) / 2;
-  rect(badgeX, badgeY, badgeW, badgeH, C.BRAND_LIGHT, 1.2, C.BRAND_BORDER, 0.25);
+  rect(badgeX, badgeY, badgeW, badgeH, C.BG_HEADER, 1.2, C.BORDER, 0.25);
   txt(sanitizePdfText(reportType).toUpperCase(), badgeX + badgeW / 2, badgeY + badgeH / 2 + capH(F.LABEL) / 2, {
     size: F.LABEL,
     weight: "bold",
-    color: C.BRAND_PRIMARY,
+    color: C.NAVY_PRIMARY,
     align: "center",
   });
 
@@ -337,7 +342,7 @@ export async function exportReportPdf({
   y += S.LG;
 
   // ══════════════════════════════════════════════════════════
-  // KPI METRICS GRID (Flat, modern cards with clean 1px borders)
+  // KPI METRICS GRID (/wf-frontend-overhaul: 25.5mm cards, zero clipping)
   // ══════════════════════════════════════════════════════════
 
   if (kpis.length > 0) {
@@ -363,55 +368,64 @@ export async function exportReportPdf({
       };
     });
 
-    const cardH = 22; // Fixed uniform height for executive symmetry
-    ensureSpace(cardH + S.MD);
+    const CARD_H = 25.5; // Generous 25.5mm height to guarantee subtext never truncates
+    ensureSpace(CARD_H + S.MD);
 
     parsedKpis.forEach((layout, i) => {
       const col = i % COLS;
       const row = Math.floor(i / COLS);
       const cx  = M + col * (CARD_W + GAP);
-      const cy  = y + row * (cardH + GAP);
+      const cy  = y + row * (CARD_H + GAP);
 
-      const bg = layout.highlight ? C.BRAND_LIGHT : C.BG_CARD;
-      const borderC = layout.highlight ? C.BRAND_BORDER : C.BORDER;
+      // Clean 1px solid neutral border, soft neutral background, strictly zero side-colored stripes
+      rect(cx, cy, CARD_W, CARD_H, C.BG_CARD, 1.5, C.BORDER, 0.25);
 
-      rect(cx, cy, CARD_W, cardH, bg, 1.5, borderC, 0.25);
-
-      // Label (Uppercase, muted)
+      // 1. Label (Uppercase, muted slate)
       const lblY = cy + CARD_PAD + capH(F.LABEL);
       txt(layout.labelLines[0] || "", cx + CARD_PAD, lblY, {
         size: F.LABEL,
         weight: "bold",
-        color: layout.highlight ? C.BRAND_PRIMARY : C.TEXT_MUTED,
+        color: C.TEXT_MUTED,
       });
 
-      // Value (Bold, high-contrast)
-      const valY = cy + CARD_PAD + capH(F.LABEL) + 2.0 + capH(layout.valSize);
+      // 2. Value (Bold, high-contrast Navy)
+      const valY = cy + 9.5 + capH(layout.valSize);
       txt(layout.cleanVal, cx + CARD_PAD, valY, {
         size: layout.valSize,
         weight: "bold",
-        color: layout.highlight ? C.BRAND_PRIMARY : C.TEXT_PRIMARY,
+        color: C.NAVY_PRIMARY,
       });
 
-      // Subtitle / Trend
+      // 3. Subtitle / Trend (Full 2-line wrap budget, no bottom cut-off)
       if (layout.subLines.length > 0) {
-        const subY = cy + cardH - CARD_PAD;
-        txt(layout.subLines[0], cx + CARD_PAD, subY, {
+        const subY = cy + 17.5 + capH(F.TINY);
+        txt(layout.subLines.slice(0, 2), cx + CARD_PAD, subY, {
           size: F.TINY,
           color: C.TEXT_MUTED,
+          lh: 3.4,
+          maxW: TXT_W,
         });
       }
     });
 
     const rowsCount = Math.ceil(parsedKpis.length / COLS);
-    y += rowsCount * cardH + (rowsCount - 1) * GAP + S.LG;
+    y += rowsCount * CARD_H + (rowsCount - 1) * GAP + S.LG;
   }
 
   // ══════════════════════════════════════════════════════════
-  // EXECUTIVE BRIEFING & AI SUMMARY
+  // EXECUTIVE BRIEFING & AI SUMMARY (/wf-ui-redesign: guarded against empty output)
   // ══════════════════════════════════════════════════════════
 
-  if (aiInsight) {
+  const hasAiContent = Boolean(
+    aiInsight && (
+      (aiInsight.summary && aiInsight.summary.trim().length > 0) ||
+      (aiInsight.standout && aiInsight.standout.length > 0) ||
+      (aiInsight.watch && aiInsight.watch.length > 0) ||
+      (aiInsight.nextSteps && aiInsight.nextSteps.length > 0)
+    )
+  );
+
+  if (hasAiContent) {
     ensureSpace(45);
 
     const summarySectionTitle = `${reportType || "Executive"} Performance Summary`;
@@ -427,14 +441,14 @@ export async function exportReportPdf({
       txt(headLines, M, y + capH(F.SECTION), {
         size: F.SECTION - 0.5,
         weight: "bold",
-        color: C.TEXT_PRIMARY,
+        color: C.NAVY_PRIMARY,
         lh: 4.8,
       });
       y += headLines.length * 4.8 + S.SM;
     }
 
-    // Narrative paragraph (Clean left-aligned layout with comfortable line height)
-    if (aiInsight.summary) {
+    // Narrative summary paragraph (Clean left-aligned typography)
+    if (aiInsight.summary && aiInsight.summary.trim().length > 0) {
       const sumLines = wrap(aiInsight.summary, CW);
       txt(sumLines, M, y + capH(F.BODY), {
         size: F.BODY,
@@ -498,15 +512,15 @@ export async function exportReportPdf({
         drawBriefingCard(M, y, colW, blockH, "Key Observations", standoutItems, {
           bg: C.BG_CARD,
           border: C.BORDER,
-          labelColor: C.TEXT_PRIMARY,
-          dotColor: C.BRAND_PRIMARY,
+          labelColor: C.NAVY_PRIMARY,
+          dotColor: C.NAVY_PRIMARY,
         });
       }
 
       if (watchItems.length > 0) {
         drawBriefingCard(colR, y, colW, blockH, "Areas of Attention", watchItems, {
           bg: C.AMBER_BG,
-          border: C.AMBER_BORDER,
+          border: C.BORDER,
           labelColor: C.AMBER_TEXT,
           dotColor: C.AMBER_DOT,
         });
@@ -523,7 +537,7 @@ export async function exportReportPdf({
 
       ensureSpace(stepsH + S.SM);
 
-      rect(M, y, CW, stepsH, C.EMERALD_BG, 1.5, C.EMERALD_BORDER, 0.25);
+      rect(M, y, CW, stepsH, C.EMERALD_BG, 1.5, C.BORDER, 0.25);
 
       txt("RECOMMENDED ACTION PLAN", M + 3.5, y + 3.0 + capH(F.LABEL), {
         size: F.LABEL,
@@ -554,7 +568,7 @@ export async function exportReportPdf({
   }
 
   // ══════════════════════════════════════════════════════════
-  // SECTIONS & TABLES
+  // SECTIONS & TABLES (/wf-color-objectives & /wf-ui-redesign standards)
   // ══════════════════════════════════════════════════════════
 
   sections.forEach((section) => {
@@ -601,7 +615,7 @@ export async function exportReportPdf({
 
       ensureSpace(rowH + 1);
 
-      doc.setFillColor(...C.BRAND_PRIMARY);
+      doc.setFillColor(...C.NAVY_PRIMARY);
       doc.circle(bulletX, ly + capH(F.SMALL) * 0.5, 0.65, "F");
 
       txt(lines, textX, ly + capH(F.SMALL), {
@@ -636,25 +650,36 @@ export async function exportReportPdf({
     const CELL_PAD_X = 2.5;
     const CELL_PAD_Y = 2.0;
 
+    // Detect numeric, monetary, rate, and counter columns for right-alignment
     const isNumericHeader = (h) => {
       const key = String(h || "").toLowerCase();
       return (
+        key.includes("capacity") ||
+        key.includes("occupied") ||
+        key.includes("available") ||
+        key.includes("unavailable") ||
+        key.includes("rate") ||
         key.includes("amount") ||
         key.includes("collected") ||
         key.includes("billed") ||
         key.includes("balance") ||
         key.includes("overdue") ||
-        key.includes("rate") ||
         key.includes("revenue") ||
         key.includes("rent") ||
         key.includes("hours") ||
         key.includes("count") ||
+        key.includes("tickets") ||
+        key.includes("events") ||
+        key.includes("inquiries") ||
+        key.includes("leads") ||
+        key.includes("viewings") ||
+        key.includes("tenants") ||
         key.includes("total")
       );
     };
 
     const renderTableHeader = (yPos) => {
-      rect(M, yPos, CW, ROW_H_BASE, C.BG_CARD_ALT, 0, C.BORDER, 0.25);
+      rect(M, yPos, CW, ROW_H_BASE, C.BG_HEADER, 0, C.BORDER, 0.25);
       hdrs.forEach((h, i) => {
         const alignRight = isNumericHeader(h);
         const textX = alignRight ? colX[i] + colWidths[i] - CELL_PAD_X : colX[i] + CELL_PAD_X;
@@ -695,32 +720,29 @@ export async function exportReportPdf({
         const cx = colX[i] + CELL_PAD_X;
         const hLow = h.toLowerCase();
 
-        // Status Badge Pill
+        // Status Badge: Strict /wf-color-objectives Invariant
+        // Transparent background + colored status dot + semantic text (Strictly ZERO matching colored border outlines)
         if (hLow === "status" || hLow.includes("turnaround status") || hLow.includes("sla")) {
           const vStr = sanitizePdfText(val);
           const vLow = vStr.toLowerCase();
 
           const isGood = ["full", "good", "closed", "sent", "paid", "finalized", "on-time", "within target", "active", "resolved", "completed"].some((k) => vLow.includes(k));
           const isWarn = ["watch", "ready", "open", "pending", "partial", "at risk", "at-risk"].some((k) => vLow.includes(k));
-          const isCrit = ["low", "overdue", "rejected", "canceled", "breached", "delayed", "critical", "vacant", "unpaid"].some((k) => vLow.includes(k));
+          const isCrit = ["low", "overdue", "rejected", "canceled", "breached", "delayed", "critical", "unpaid"].some((k) => vLow.includes(k));
 
-          const pillBg = isGood ? C.EMERALD_BG : isWarn ? C.AMBER_BG : isCrit ? C.ROSE_BG : C.BG_CARD_ALT;
-          const pillText = isGood ? C.EMERALD_TEXT : isWarn ? C.AMBER_TEXT : isCrit ? C.ROSE_TEXT : C.TEXT_MUTED;
-          const pillBorder = isGood ? C.EMERALD_BORDER : isWarn ? C.AMBER_BORDER : isCrit ? C.ROSE_BORDER : C.BORDER;
+          const dotColor = isGood ? C.EMERALD_DOT : isWarn ? C.AMBER_DOT : isCrit ? C.ROSE_DOT : C.SLATE_DOT;
+          const textColor = isGood ? C.EMERALD_TEXT : isWarn ? C.AMBER_TEXT : isCrit ? C.ROSE_TEXT : C.SLATE_TEXT;
 
-          setFont(F.TINY, "bold", pillText);
-          const tW = doc.getTextWidth(vStr);
-          const pH = 4.2;
-          const pW = Math.min(tW + 4.0, colWidths[i] - CELL_PAD_X * 2);
-          const pX = cx;
-          const pY = cellBaseY - capH(F.TINY) - 0.6;
+          // Draw semantic status dot
+          doc.setFillColor(...dotColor);
+          doc.circle(cx + 1.2, cellBaseY - capH(F.SMALL) * 0.35, 0.75, "F");
 
-          rect(pX, pY, pW, pH, pillBg, 1.0, pillBorder, 0.2);
-          txt(vStr, pX + pW / 2, pY + pH / 2 + capH(F.TINY) / 2, {
-            size: F.TINY,
+          // Draw semantic text label (No colored border outline)
+          txt(vStr, cx + 3.4, cellBaseY, {
+            size: F.SMALL,
             weight: "bold",
-            color: pillText,
-            align: "center",
+            color: textColor,
+            align: "left",
           });
           return;
         }
