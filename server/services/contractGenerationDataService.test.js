@@ -138,12 +138,38 @@ describe("Contract generation-data mapping", () => {
     }));
   });
 
-  test("uses approved Reservation fallback when a User field is blank", async () => {
-    records.user.address = "";
-    records.user.phone = "";
+  test("contract generation data is exclusive to applicant application and ignores User profile mutations", async () => {
+    records.user.firstName = "Mutated In User Profile";
+    records.user.lastName = "Account";
+    records.user.address = "999 Irrelevant User Street";
+    records.user.phone = "09888888888";
+    records.user.email = "mutated@userprofile.com";
+    records.user.dateOfBirth = new Date("1980-05-05");
+
     const data = await buildContractGenerationData(contract(), { verifyTemplate: false });
+    expect(data.tenant.tenantLegalName).toBe("Application Fallback");
     expect(data.tenant.tenantAddress).toBe("1, Fallback Street, Makati");
+    expect(data.tenant.tenantEmail).toBe("fallback@example.com");
     expect(data.tenant.tenantPhone).toBe("09990000000");
+    expect(data.tenant.tenantBirthDate).toEqual(new Date("1999-01-01"));
+  });
+
+  test("persisted contract snapshot fields take absolute precedence", async () => {
+    const input = {
+      ...contract(),
+      tenantLegalName: "Stored Snapshot Name",
+      tenantAddress: "Stored Snapshot Address",
+      tenantEmail: "stored@snapshot.com",
+      tenantPhone: "09111111111",
+      tenantNationality: "Filipino",
+      tenantBirthDate: new Date("1995-10-10"),
+    };
+    const data = await buildContractGenerationData(input, { verifyTemplate: false });
+    expect(data.tenant.tenantLegalName).toBe("Stored Snapshot Name");
+    expect(data.tenant.tenantAddress).toBe("Stored Snapshot Address");
+    expect(data.tenant.tenantEmail).toBe("stored@snapshot.com");
+    expect(data.tenant.tenantPhone).toBe("09111111111");
+    expect(data.tenant.tenantBirthDate).toEqual(new Date("1995-10-10"));
   });
 
   test("resolves Room and active assignment from backend records", async () => {

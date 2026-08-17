@@ -204,8 +204,22 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
     throw err;
   }
 
-  const tenantName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
-    reservation?.name || contract?.tenantLegalName || "Valued Resident";
+  const applicantName = [
+    reservation?.firstName,
+    reservation?.middleName,
+    reservation?.lastName,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const tenantName =
+    contract?.tenantLegalName ||
+    applicantName ||
+    reservation?.name ||
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
+    "Valued Resident";
 
   const branchName = (room?.branch || contract?.branch || reservation?.branch || "Guadalupe Branch")
     .replace(/_/g, " ")

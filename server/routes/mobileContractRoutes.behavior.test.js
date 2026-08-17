@@ -117,4 +117,23 @@ describe("mobile Contract canonical document behavior", () => {
     expect(Buffer.from(await response.arrayBuffer()).toString()).toBe("%PDF-canonical-v2\n");
     expect(resolveCurrentPreparedDocument).toHaveBeenCalledWith(contract);
   });
+
+  test("backward-compatible /documents/contract streams the current prepared PDF", async () => {
+    const response = await fetch(`${baseUrl}/api/m/documents/contract`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(Buffer.from(await response.arrayBuffer()).toString()).toBe("%PDF-canonical-v2\n");
+  });
+
+  test("current contract logs warning and reports issue code when prepared document resolution fails", async () => {
+    resolveCurrentPreparedDocument.mockRejectedValueOnce(
+      Object.assign(new Error("Storage missing"), { code: "PREPARED_DOCUMENT_STORAGE_MISSING", statusCode: 410 })
+    );
+    const response = await fetch(`${baseUrl}/api/m/contracts/current`);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.contract.preparedDocument.available).toBe(false);
+    expect(body.contract.preparedDocument.issue).toBe("PREPARED_DOCUMENT_STORAGE_MISSING");
+  });
 });
+

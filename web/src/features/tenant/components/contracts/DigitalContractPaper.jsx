@@ -464,8 +464,8 @@ export default function DigitalContractPaper({
           <section
             aria-label="Initial Digital Contract"
             className={`w-full ${
-              layoutMode === "digital" || !hasSignedDoc ? "max-w-3xl" : "max-w-full"
-            } bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden flex flex-col h-[740px]`}
+              layoutMode === "digital" || !hasSignedDoc ? "max-w-4xl" : "max-w-full"
+            } bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden flex flex-col h-[800px]`}
           >
             {/* Panel Header (Exact h-11 height alignment) */}
             <div className="h-11 flex-shrink-0 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
@@ -534,65 +534,65 @@ export default function DigitalContractPaper({
             </div>
 
             {/* Scrollable Container (flex-1 fill height) */}
-            <div className="flex-1 min-h-0 px-4 py-6 sm:px-8 sm:py-8 overflow-y-auto bg-white flex justify-center">
+            <div className="flex-1 min-h-0 px-6 py-8 sm:px-12 sm:py-10 overflow-y-auto bg-white flex justify-center">
               <article
                 id="digital-contract-paper"
-                className="w-full max-w-[780px] bg-white text-black"
+                className="w-full max-w-[840px] bg-white text-black"
                 style={{
                   fontFamily: '"Times New Roman", Times, "Liberation Serif", serif',
-                  fontSize: `${(10.5 * digitalZoom) / 100}px`,
-                  lineHeight: "1.25",
+                  fontSize: `${(14 * digitalZoom) / 100}px`,
+                  lineHeight: "1.55",
                   color: "#000000",
                 }}
               >
                 {/* Header Notice */}
-                <p className="text-[9.5px] text-center font-normal text-slate-800 tracking-wider uppercase mb-2.5">
+                <p className="text-xs text-center font-semibold text-slate-600 tracking-wider uppercase mb-3">
                   PREPARED COPY — NOT YET SIGNED OR NOTARIZED
                 </p>
 
                 {/* Main Titles */}
-                <div className="text-center pb-1 mb-2">
-                  <h1 className="text-[14px] font-bold tracking-wide uppercase m-0 text-black">
+                <div className="text-center pb-2 mb-3 border-b border-slate-100">
+                  <h1 className="text-xl sm:text-2xl font-bold tracking-wide uppercase m-0 text-black">
                     CONTRACT OF LEASE
                   </h1>
-                  <h2 className="text-[11.5px] font-bold tracking-wider uppercase mt-0.5 text-black">
+                  <h2 className="text-sm sm:text-base font-bold tracking-wider uppercase mt-1 text-black">
                     <Populated>{roomLabel} — {termLabel} LEASE</Populated>
                   </h2>
                 </div>
 
-                <p className="font-bold uppercase tracking-wider text-[10px] text-black mt-2 mb-1">
+                <p className="font-bold uppercase tracking-wider text-xs sm:text-sm text-black mt-4 mb-2">
                   KNOWN TO ALL MEN BY THESE PRESENTS:
                 </p>
 
-                <p className="text-justify indent-6 text-black mb-1">
+                <p className="text-justify indent-8 text-black mb-2 leading-relaxed">
                   This <strong>CONTRACT OF LEASE</strong> is made and executed in the City of Makati, this{" "}
                   <Populated>{executionDay}</Populated> day of{" "}
                   <Populated>{executionMonth} {executionYear}</Populated>, by and between:
                 </p>
 
-                <p className="text-justify indent-6 text-black mb-1">
+                <p className="text-justify indent-8 text-black mb-2 leading-relaxed">
                   <strong>FIRST JRAC PARTNERSHIP CO.</strong>, a general partnership duly organized and existing under and by virtue of the laws of the Republic of the Philippines, with principal office at 9431 Magallanes St., Guadalupe Nuevo, Makati City, represented herein by its General Partner, <strong>JOANNE ONG</strong>, hereinafter referred to as the <strong>LESSOR</strong>;
                 </p>
 
-                <p className="text-center font-bold tracking-widest text-[9.5px] my-1 text-black">
+                <p className="text-center font-bold tracking-widest text-xs my-2.5 text-black">
                   — and —
                 </p>
 
-                <p className="text-justify indent-6 text-black mb-1.5">
+                <p className="text-justify indent-8 text-black mb-2.5 leading-relaxed">
                   <Populated>{tenantName}</Populated>, of legal age, Filipino, with postal and residential address at{" "}
                   <Populated>{tenantAddress}</Populated>, hereinafter referred to as the <strong>LESSEE</strong>;
                 </p>
 
-                <p className="font-bold tracking-wide text-[10px] mt-1.5 mb-1 text-black">
+                <p className="font-bold tracking-wide text-xs sm:text-sm mt-3 mb-2 text-black">
                   WITNESSETH: That
                 </p>
 
-                <p className="text-justify indent-6 text-black mb-1">
+                <p className="text-justify indent-8 text-black mb-2 leading-relaxed">
                   <strong>WHEREAS</strong>, the LESSOR is the owner of a residential establishment known as{" "}
                   <Populated>{branchName}</Populated>, located at <Populated>{branchAddress}</Populated>;
                 </p>
 
-                <p className="text-justify indent-6 text-black mb-1">
+                <p className="text-justify indent-8 text-black mb-2 leading-relaxed">
                   <strong>WHEREAS</strong>, the LESSOR agrees to lease to the LESSEE a <Populated>{roomLabel}</Populated> accommodation known as Room{" "}
                   <Populated>{roomNumber}</Populated>
                   {!isPrivate && (
@@ -603,26 +603,26 @@ export default function DigitalContractPaper({
                   (the “LEASED PREMISES”) within the said establishment, and the LESSEE is willing to lease the same for a limited time or period;
                 </p>
 
-                <p className="text-justify indent-6 text-black mb-1.5">
+                <p className="text-justify indent-8 text-black mb-3 leading-relaxed">
                   <strong>NOW THEREFORE</strong>, for and in consideration of the foregoing premises, the LESSOR leases unto the LESSEE and the LESSEE hereby accepts from the LESSOR the LEASED PREMISES, subject to the following:
                 </p>
 
-                <div className="text-center font-bold tracking-wider text-[10px] uppercase my-1.5 text-black">
+                <div className="text-center font-bold tracking-wider text-xs sm:text-sm uppercase my-3 text-black">
                   TERMS AND CONDITIONS
                 </div>
 
-                <div className="text-justify text-[10px] leading-[1.22] text-black">
-                  <p className="indent-6 mb-1">
+                <div className="text-justify text-[13.5px] sm:text-[14px] leading-relaxed text-black space-y-2">
+                  <p className="indent-8 mb-2">
                     <strong>SECTION 1 – PURPOSE.</strong> The leased premises shall be used exclusively by the LESSEE for residential purposes only and shall not be diverted to other uses. It is hereby expressly agreed that if at any time the premises are used for other purposes, the LESSOR shall have the right to rescind this Contract, without prejudice to its other rights under the law.
                   </p>
 
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     <strong>SECTION 2 – DURATION.</strong> The lease of the {leaseSpaceSubject} shall run for a period of{" "}
                     <Populated>{durationMonths} ( {durationInWords(durationMonths)} )</Populated> months, from{" "}
                     <Populated>{formattedStart}</Populated> to <Populated>{formattedEnd}</Populated>. Being a <Populated>{termLabel}</Populated> LEASE, the period shall be <Populated>{durationCondition}</Populated>
                   </p>
 
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     <strong>SECTION 3 – RENTAL RATE.</strong> The regular and basic monthly rental fee is{" "}
                     <Populated>Php {formatMoney(regularRate)}</Populated> exclusive of any tax.{" "}
                     {discountPercent > 0 ? (
@@ -638,84 +638,84 @@ export default function DigitalContractPaper({
                     )}
                   </p>
 
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     {amenitiesParagraph}
                   </p>
 
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     The electricity consumption of the LESSEE, which is not part of the rental fee, shall be billed on a monthly basis.
                   </p>
 
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     All payments shall be paid directly to the LESSOR through bank deposit or transfer, supported by an official acknowledgment receipt and/or service invoice.
                   </p>
 
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     Delay in the payment of the rental fee or electricity consumption for three (3) consecutive months shall be ground for the LESSOR to terminate this Contract of Lease. In such case, the LESSEE shall voluntarily vacate the leased premises, surrender the key to the LESSOR, and shall no longer be allowed to access the leased premises except to retrieve his or her personal belongings.
                   </p>
 
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     <strong>SECTION 4 – DEPOSITS AND ADVANCES.</strong> Upon moving in, the LESSEE shall pay one (1) month advance rent in the amount of{" "}
                     <Populated>Php {formatMoney(advanceRent)}</Populated>, covering the period of <Populated>{advanceStart}</Populated> to <Populated>{advanceEnd}</Populated>, and one (1) month security deposit in the amount of{" "}
                     <Populated>Php {formatMoney(securityDeposit)}</Populated>.
                   </p>
 
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     The reservation fee of <Populated>Php 2,000.00</Populated> paid by the LESSEE shall be credited as partial payment for the said amounts. The LESSOR agrees to refund the deposit not later than thirty (30) days after the termination of this Contract, less payment, if any, for unpaid bills of electricity or other utility charges, failure to return the key (<Populated>Php 1,000.00</Populated>), and the cost of damages to the leased premises occasioned by the LESSEE’s fault or negligence. This deposit, which shall be non-interest bearing, cannot be applied by the LESSEE to any unpaid rent or to the last month’s rental, and shall be kept intact throughout the life of this Contract.
                   </p>
 
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     Furthermore, if the LESSEE vacates the premises before the expiration of the period of lease, the full amount of the security deposit shall be forfeited in favor of the LESSOR.
                   </p>
 
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     <strong>SECTION 5 – FORCE MAJEURE.</strong> If the whole or any part of the leased premises shall be destroyed or damaged by fire, flood, lightning, typhoon, earthquake, storm, riot, or any other unforeseen disabling cause or act of God, as to render the leased premises during the term substantially unfit for the use and occupation of the LESSEE, then this Contract may be terminated without compensation by either the LESSOR or the LESSEE by notice in writing to the other party.
                   </p>
 
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     <strong>SECTION 6 – LESSOR’S RIGHT OF ENTRY.</strong> The LESSOR or its authorized representative shall, after giving due notice to the LESSEE, have the right to enter the premises in the presence of the LESSEE or his or her representative at any reasonable hour to examine the same, make repairs therein, undertake the operation and maintenance of the building, exhibit the leased premises to prospective lessees, or for any other lawful purpose which it may deem necessary.
                   </p>
 
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     <strong>SECTION 7 – EXPIRATION OF LEASE.</strong> At the expiration of the term of this lease or the cancellation thereof, as herein provided, the LESSEE shall promptly deliver to the LESSOR the leased premises with all corresponding keys, in as good and tenantable condition as the same is now, ordinary wear and tear excepted, devoid of all occupants, movable furniture, articles, and effects of any kind.
                   </p>
                 </div>
 
-                <p className="text-justify indent-6 pt-1 text-black text-[10px] mb-1">
+                <p className="text-justify indent-8 pt-3 text-black text-[13.5px] sm:text-[14px] mb-2 leading-relaxed">
                   <strong>IN WITNESS WHEREOF</strong>, both parties herein have affixed their signatures on the date and place first above written.
                 </p>
 
                 {/* Signatures Grid */}
-                <div className="pt-3 pb-1 text-center text-[10px]">
-                  <div className="grid grid-cols-2 gap-8 sm:gap-12 items-end">
+                <div className="pt-6 pb-2 text-center text-xs sm:text-sm">
+                  <div className="grid grid-cols-2 gap-8 sm:gap-14 items-end">
                     {/* LESSEE Column */}
                     <div className="flex flex-col">
-                      <div className="border-b border-black w-full h-0"></div>
-                      <div className="text-black text-[10px] font-bold uppercase tracking-wider mt-1">
+                      <div className="border-b border-black w-full h-10"></div>
+                      <div className="text-black text-xs sm:text-sm font-bold uppercase tracking-wider mt-2">
                         LESSEE
                       </div>
                     </div>
 
                     {/* LESSOR Column */}
                     <div className="flex flex-col">
-                      <div className="font-bold text-black text-[10px]">FIRST JRAC PARTNERSHIP CO.</div>
-                      <div className="text-[9.5px] italic text-black mt-0.5 mb-4">By:</div>
+                      <div className="font-bold text-black text-xs sm:text-sm">FIRST JRAC PARTNERSHIP CO.</div>
+                      <div className="text-xs italic text-black mt-1 mb-5">By:</div>
                       <div className="border-b border-black w-full h-0"></div>
-                      <div className="font-bold text-black text-[11px] mt-1">
+                      <div className="font-bold text-black text-sm sm:text-base mt-2">
                         JOANNE ONG
                       </div>
-                      <div className="text-black text-[9.5px] font-medium mt-0.5">
+                      <div className="text-black text-xs font-medium mt-1">
                         General Partner – LESSOR
                       </div>
                     </div>
                   </div>
 
                   {/* Witnesses */}
-                  <div className="pt-3 text-left text-[9.5px]">
-                    <div className="font-bold tracking-wide text-black text-[10px]">
+                  <div className="pt-6 text-left text-xs sm:text-sm">
+                    <div className="font-bold tracking-wide text-black text-xs sm:text-sm">
                       SIGNED IN THE PRESENCE OF:
                     </div>
-                    <div className="grid grid-cols-2 gap-8 sm:gap-12 pt-6 pb-1">
+                    <div className="grid grid-cols-2 gap-8 sm:gap-14 pt-8 pb-2">
                       <div className="border-b border-black w-full h-0"></div>
                       <div className="border-b border-black w-full h-0"></div>
                     </div>
@@ -723,25 +723,25 @@ export default function DigitalContractPaper({
                 </div>
 
                 {/* Notarial Acknowledgment */}
-                <div className="pt-3 space-y-1 text-[9.5px] text-black">
-                  <div className="text-center font-bold tracking-wider uppercase text-[10px] text-black mb-1.5">
+                <div className="pt-6 space-y-2 text-xs sm:text-sm text-black leading-relaxed">
+                  <div className="text-center font-bold tracking-wider uppercase text-xs sm:text-sm text-black mb-2">
                     ACKNOWLEDGMENT
                   </div>
-                  <p className="leading-tight mb-1">
+                  <p className="leading-normal mb-2">
                     REPUBLIC OF THE PHILIPPINES )<br />
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;) S.S.
                   </p>
-                  <p className="text-justify indent-6 mb-1">
+                  <p className="text-justify indent-8 mb-2">
                     BEFORE ME, this _____ day of ____________________, personally appeared the above-named parties, all known to me and to known to be the same persons who executed the foregoing instrument, and who acknowledged to me that the same is their free and voluntary act and deed.
                   </p>
-                  <p className="text-justify indent-6 mb-1">
+                  <p className="text-justify indent-8 mb-2">
                     This instrument, consisting of _____ ( ____ ) page/s, including the page on which this acknowledgment is written, has been signed on each and every page thereof by the concerned parties and their witnesses, and sealed with my notarial seal.
                   </p>
-                  <p className="indent-6 mb-1">
+                  <p className="indent-8 mb-2">
                     WITNESS MY HAND AND SEAL, on the date and place first above written.
                   </p>
 
-                  <div className="pt-1 text-[9px] text-black space-y-0.5">
+                  <div className="pt-2 text-xs text-black space-y-1">
                     <div>Doc. No. _______;</div>
                     <div>Page No. _______;</div>
                     <div>Book No. _______;</div>
@@ -773,8 +773,8 @@ export default function DigitalContractPaper({
           <section
             aria-label="Wet-Signed Contract Scan"
             className={`w-full ${
-              layoutMode === "signed" ? "max-w-3xl" : "max-w-full"
-            } bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden flex flex-col h-[740px]`}
+              layoutMode === "signed" ? "max-w-4xl" : "max-w-full"
+            } bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden flex flex-col h-[800px]`}
           >
             {/* Panel Header (Exact h-11 height alignment) */}
             <div className="h-11 flex-shrink-0 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">

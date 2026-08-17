@@ -43,23 +43,22 @@ export default function AdminContractsPage() {
     search: "", branch: ALL, status: ALL, roomType: ALL, leaseType: ALL, archive: "active",
   });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setError("");
     try {
       const payload = await contractApi.listContracts({
-        status: filters.status,
         archive: filters.archive,
-        branch: isOwner ? filters.branch : undefined,
+        branch: isOwner ? (filters.branch === ALL ? undefined : filters.branch) : undefined,
         limit: 100,
       });
       setContracts(payload.contracts || []);
     } catch (requestError) {
       setError(getContractErrorMessage(requestError));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [filters.status, filters.branch, filters.archive, isOwner]);
+  }, [filters.archive, filters.branch, isOwner]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [filters]);

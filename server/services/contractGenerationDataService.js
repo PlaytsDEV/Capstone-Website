@@ -4,7 +4,6 @@ import {
   normalizeContractRoomType,
   resolveContractBranch,
 } from "../config/contractConfig.js";
-import { resolveTenantPersonalDetails } from "./tenantProfileService.js";
 import {
   assertOfficialTemplateAvailable,
   resolveContractTemplate,
@@ -44,6 +43,54 @@ const ordinalDay = (value) => {
     ? "th"
     : ({ 1: "st", 2: "nd", 3: "rd" }[day % 10] || "th");
   return `${day}${suffix}`;
+};
+
+export const resolveApplicantIdentity = ({ contract = {}, reservation = {} } = {}) => {
+  const reservationAddress = reservation.address || {};
+  const collapseWhitespace = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+  const hasValue = (value) =>
+    value !== undefined &&
+    value !== null &&
+    (typeof value !== "string" || value.trim() !== "");
+
+  const joinAddress = (address = {}) => {
+    if (typeof address === "string") return collapseWhitespace(address);
+    return [
+      address.unitHouseNo,
+      address.street,
+      address.barangay,
+      address.city,
+      address.province,
+      address.region,
+    ]
+      .filter(hasValue)
+      .map((value) => collapseWhitespace(value))
+      .join(", ");
+  };
+
+  const firstName = collapseWhitespace(reservation.firstName) || null;
+  const middleName = collapseWhitespace(reservation.middleName) || null;
+  const lastName = collapseWhitespace(reservation.lastName) || null;
+  const reservationFullName = [firstName, middleName, lastName].filter(hasValue).join(" ") || null;
+
+  const legalName = collapseWhitespace(contract.tenantLegalName || reservationFullName || "");
+  const currentAddress = collapseWhitespace(contract.tenantAddress || joinAddress(reservationAddress) || "");
+  const email = collapseWhitespace(contract.tenantEmail || reservation.email || reservation.billingEmail || "");
+  const phone = collapseWhitespace(contract.tenantPhone || reservation.mobileNumber || "");
+  const nationality = collapseWhitespace(contract.tenantNationality || reservation.nationality || "");
+  const birthDate = contract.tenantBirthDate || reservation.birthday || null;
+
+  return {
+    fullName: legalName,
+    firstName,
+    middleName,
+    lastName,
+    email,
+    phone,
+    birthDate,
+    nationality,
+    currentAddress,
+  };
 };
 
 export const resolveContractExecutionDate = (
@@ -144,11 +191,11 @@ export const buildContractGenerationData = async (
     requestedTemplateId,
   });
   const integrity = verifyTemplate ? await assertOfficialTemplateAvailable(template) : null;
-  const person = resolveTenantPersonalDetails({ user, reservation });
+  const person = resolveApplicantIdentity({ contract, reservation });
   const property = resolveContractBranch(room.branch);
   const executionDateResolution = resolveContractExecutionDate(contract);
   const executionDate = executionDateResolution.value;
-  const birthDate = person.birthDate || contract.tenantBirthDate || null;
+  const birthDate = person.birthDate || null;
   const age = legalAge(birthDate, executionDate || new Date());
   const pricing = {
     regularMonthlyRate: contract.regularMonthlyRate,
