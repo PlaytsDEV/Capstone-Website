@@ -224,7 +224,7 @@ function ReservationsPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const {
-    data: rawReservations = [],
+    data: rawReservations,
     isLoading: loading,
     error: queryError,
   } = useReservations(
@@ -234,7 +234,7 @@ function ReservationsPage() {
   const error = queryError?.message || null;
 
   const reservations = useMemo(
-    () => rawReservations.map((raw) => mapReservationAdminRow(raw)),
+    () => (Array.isArray(rawReservations) ? rawReservations.map((raw) => mapReservationAdminRow(raw)) : []),
     [rawReservations],
   );
 
@@ -1110,7 +1110,7 @@ function ReservationsPage() {
     [can, handleDelete, handleHardDelete, handleRestore, handleView, isArchivedView, isOwner],
   );
 
-  if (loading && (!rawReservations || rawReservations.length === 0)) {
+  if (loading && !rawReservations) {
     return <AdminTablePageSkeleton />;
   }
 
@@ -1410,7 +1410,7 @@ function ReservationsPage() {
                       <th
                         key={col.key}
                         style={{ width: col.width }}
-                        className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground"
+                        className="text-left py-2.5 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground"
                         onClick={() => {
                           if (col.sortable) {
                             setSortState((prev) => ({
@@ -1432,7 +1432,7 @@ function ReservationsPage() {
                         </div>
                       </th>
                     ))}
-                    <th style={{ width: "80px" }} className="text-right py-2.5 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th style={{ width: "80px" }} className="text-right py-2.5 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -1463,7 +1463,7 @@ function ReservationsPage() {
                               defaultOnly
                             />
                             <div>
-                              <div className="flex items-center gap-2 font-medium text-foreground">
+                              <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
                                 <span>{row.customer}</span>
                                 {row.isNew && (
                                   <span
@@ -1481,20 +1481,20 @@ function ReservationsPage() {
                                   </span>
                                 )}
                               </div>
-                              <div className="text-xs text-muted-foreground">
+                              <div className="text-[11px] text-muted-foreground">
                                 {row.email}
                               </div>
-                              <div className="text-xs text-muted-foreground">
+                              <div className="text-[11px] text-muted-foreground">
                                 {row.phone}
                               </div>
                             </div>
                           </div>
                         </td>
                         <td className="py-2.5 px-4">
-                          <div className="font-medium text-foreground">
+                          <div className="text-[13px] font-medium text-foreground">
                             {row.room}
                           </div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-[11px] text-muted-foreground">
                             {row.roomType || "Room"}, {row.branch}
                           </div>
                         </td>
@@ -1503,7 +1503,7 @@ function ReservationsPage() {
                             {isArchivedView ? (
                               <>
                                 <StatusBadge status="archived" />
-                                <span className="text-xs text-muted-foreground">
+                                <span className="text-[11px] text-muted-foreground">
                                   Previous:{" "}
                                   {RESERVATION_STATUS_LABELS[
                                     row.archivedPreviousStatus
@@ -1529,12 +1529,12 @@ function ReservationsPage() {
                             )}
                           </div>
                         </td>
-                        <td className="py-2.5 px-4 text-sm text-foreground">
+                        <td className="py-2.5 px-4 text-[13px] font-normal tabular-nums text-foreground">
                           {isArchivedView
                             ? formatShortDate(row.archivedAt)
                             : formatShortDate(row.moveInDate)}
                         </td>
-                        <td className="py-2.5 px-4 text-sm text-foreground">
+                        <td className="py-2.5 px-4 text-[13px] font-normal tabular-nums text-foreground">
                           {isArchivedView
                             ? row.archivedByName || "-"
                             : formatShortDate(row.createdAt)}

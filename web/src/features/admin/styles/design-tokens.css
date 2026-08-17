@@ -26,6 +26,33 @@
   --letter-spacing-normal: 0;
   --letter-spacing-wide: 0.06em;
 
+  /* Explicit Semantic Admin Typography Hierarchy */
+  --font-size-page-title: 18px;
+  --font-size-page-sub: 12px;
+  --font-size-card-title: 14px;
+  --font-size-card-sub: 12px;
+  --font-size-kpi-label: 11px;
+  --font-size-kpi-value: 24px;
+  --font-size-kpi-footer: 11px;
+  --font-size-table-head: 11px;
+  --font-size-table-cell: 13px;
+  --font-size-table-meta: 11px;
+  --font-size-badge: 11px;
+
+  --font-weight-page-title: 700;
+  --font-weight-page-sub: 400;
+  --font-weight-card-title: 600;
+  --font-weight-card-sub: 400;
+  --font-weight-kpi-label: 600;
+  --font-weight-kpi-value: 700;
+  --font-weight-table-head: 600;
+  --font-weight-table-cell: 500;
+  --font-weight-badge: 600;
+
+  --tracking-page-title: -0.015em;
+  --tracking-kpi-label: 0.05em;
+  --tracking-table-head: 0.08em;
+
   --background: #ffffff;
   --foreground: #1e293b;
   --card: #ffffff;

@@ -746,56 +746,56 @@ export default function TenantsWorkspacePage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 mb-4">
           <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground truncate">
                 Total Tenants
               </span>
               <div className="flex shrink-0 items-center justify-center text-sky-600 dark:text-sky-400">
                 <Users size={18} />
               </div>
             </div>
-            <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+            <div className="text-2xl font-bold tracking-tight text-foreground tabular-nums mt-2">
               {summaryItems[0].value}
             </div>
           </div>
 
           <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground truncate">
                 Active Tenants
               </span>
               <div className="flex shrink-0 items-center justify-center text-emerald-600 dark:text-emerald-400">
                 <UserRoundCheck size={18} />
               </div>
             </div>
-            <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+            <div className="text-2xl font-bold tracking-tight text-foreground tabular-nums mt-2">
               {summaryItems[1].value}
             </div>
           </div>
 
           <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground truncate">
                 Expiring Soon
               </span>
               <div className="flex shrink-0 items-center justify-center text-amber-600 dark:text-amber-400">
                 <Clock3 size={18} />
               </div>
             </div>
-            <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+            <div className="text-2xl font-bold tracking-tight text-foreground tabular-nums mt-2">
               {summaryItems[2].value}
             </div>
           </div>
 
           <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground truncate">
                 Overdue Payments
               </span>
               <div className="flex shrink-0 items-center justify-center text-rose-600 dark:text-rose-400">
                 <AlertTriangle size={18} />
               </div>
             </div>
-            <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+            <div className="text-2xl font-bold tracking-tight text-foreground tabular-nums mt-2">
               {summaryItems[3].value}
             </div>
           </div>
@@ -834,27 +834,27 @@ export default function TenantsWorkspacePage() {
             <table className="w-full min-w-[1000px]">
               <thead>
                 <tr className="border-b border-[var(--border-light)]">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                     Tenant
                   </th>
                   {isOwner ? (
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    <th className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                       Branch
                     </th>
                   ) : null}
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                     Room & Bed
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                     Lease & Stay
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                     Billing & Balance
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                     Action Needed
                   </th>
-                  <th className="text-center py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="text-center py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>

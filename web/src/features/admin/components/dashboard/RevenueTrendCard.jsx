@@ -70,40 +70,35 @@ export default function RevenueTrendCard({ data = {} }) {
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
               <DollarSign
-                className="w-5 h-5"
-                style={{ color: "var(--chart-blue)" }}
+                className="w-4 h-4 text-sky-600 dark:text-sky-400"
               />
               <h3
-                className="text-lg font-semibold"
-                style={{ color: "var(--color-text-primary)" }}
+                className="text-sm font-semibold text-foreground"
               >
                 Revenue Trend
               </h3>
             </div>
             <p
-              className="text-sm mb-4"
-              style={{ color: "var(--color-text-secondary)" }}
+              className="text-xs font-normal text-muted-foreground mb-4"
             >
               Monthly billed amounts vs collected payments
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p
-                  className="text-xs uppercase tracking-wide mb-1"
-                  style={{ color: "var(--color-text-muted)" }}
+                  className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1"
                 >
                   Latest Collections
                 </p>
                 <div className="flex items-baseline gap-2">
                   <span
-                    className="text-3xl font-semibold"
-                    style={{ color: "var(--chart-blue)" }}
+                    className="text-2xl font-bold tracking-tight text-foreground tabular-nums"
                   >
                     {formatPeso(currentMonthRevenue)}
                   </span>
                   {changePercentage != null && changePercentage !== 0 ? (
                     <span
-                      className="flex items-center gap-1 text-xs font-semibold"
+                      className="flex items-center gap-1 text-[11px] font-semibold"
                       style={{
                         color: isNegativeRevenue ? "var(--danger)" : "var(--success)",
                       }}
@@ -121,21 +116,18 @@ export default function RevenueTrendCard({ data = {} }) {
 
               <div>
                 <p
-                  className="text-xs uppercase tracking-wide mb-1"
-                  style={{ color: "var(--color-text-muted)" }}
+                  className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1"
                 >
                   Latest Collection Rate
                 </p>
                 <div className="flex items-baseline gap-2">
                   <span
-                    className="text-3xl font-semibold"
-                    style={{ color: "var(--success)" }}
+                    className="text-2xl font-bold tracking-tight text-foreground tabular-nums"
                   >
                     {collectionRate == null ? "--" : `${collectionRate}%`}
                   </span>
                   <span
-                    className="text-xs"
-                    style={{ color: "var(--color-text-muted)" }}
+                    className="text-[11px] font-normal text-muted-foreground"
                   >
                     {latestMonth?.billed
                       ? `from ${formatPeso(latestMonth.billed)} billed`

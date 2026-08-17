@@ -191,7 +191,7 @@ function InquiriesPage({ isEmbedded = false }) {
     }
   };
 
-  if (!isEmbedded && loading && (!inquiries || inquiries.length === 0)) {
+  if (!isEmbedded && loading && !data) {
     return <AdminTablePageSkeleton />;
   }
 

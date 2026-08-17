@@ -433,35 +433,21 @@
 }
 
 .stat-card-label {
-  font-size: var(--font-size-xs, 12px);
-  font-weight: 700;
-  color: var(--text-muted, #64748b);
+  font-size: var(--font-size-kpi-label, 11px);
+  font-weight: var(--font-weight-kpi-label, 600);
+  color: var(--muted-foreground, #64748b);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-kpi-label, 0.05em);
 }
 
 .stat-card-value {
   margin: 0;
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-}
-
-.stat-card-value.text-blue {
-  color: #1e40af;
-}
-
-.stat-card-value.text-red {
-  color: #991b1b;
-}
-
-.stat-card-value.text-green {
-  color: #065f46;
-}
-
-.stat-card-value.text-orange {
-  color: #92400e;
+  font-size: var(--font-size-kpi-value, 24px);
+  font-weight: var(--font-weight-kpi-value, 700);
+  letter-spacing: -0.01em;
+  line-height: 1;
+  color: var(--foreground, #1e293b);
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-card-icon {
