@@ -89,59 +89,38 @@ function matchesFilter(notification, filter) {
 	return notification.type === filter;
 }
 
-// ── Notification color object schemes (Modern Minimalist Light Tints) ──
+// ── Notification semantic color schemes (Strict Standard Objectives) ──
 const NOTIFICATION_COLOR_SCHEMES = {
 	success: {
 		icon: "#059669",
 		iconBg: "#F0FDF4",
 		badgeBg: "#F0FDF4",
 		badgeText: "#047857",
-		border: "#DCFCE7",
+		border: "#BBF7D0",
 	},
 	danger: {
 		icon: "#DC2626",
 		iconBg: "#FEF2F2",
 		badgeBg: "#FEF2F2",
 		badgeText: "#B91C1C",
-		border: "#FEE2E2",
+		border: "#FECACA",
 	},
 	warning: {
 		icon: "#D97706",
 		iconBg: "#FFFBEB",
 		badgeBg: "#FFFBEB",
 		badgeText: "#B45309",
-		border: "#FEF3C7",
+		border: "#FDE68A",
 	},
 	info: {
 		icon: "#2563EB",
 		iconBg: "#EFF6FF",
 		badgeBg: "#EFF6FF",
 		badgeText: "#1D4ED8",
-		border: "#DBEAFE",
-	},
-	purple: {
-		icon: "#7C3AED",
-		iconBg: "#F5F3FF",
-		badgeBg: "#F5F3FF",
-		badgeText: "#6D28D9",
-		border: "#DDD6FE",
-	},
-	indigo: {
-		icon: "#4F46E5",
-		iconBg: "#EEF2FF",
-		badgeBg: "#EEF2FF",
-		badgeText: "#4338CA",
-		border: "#E0E7FF",
-	},
-	orange: {
-		icon: "#EA580C",
-		iconBg: "#FFF7ED",
-		badgeBg: "#FFF7ED",
-		badgeText: "#C2410C",
-		border: "#FFEDD5",
+		border: "#BFDBFE",
 	},
 	neutral: {
-		icon: "#6B7280",
+		icon: "#64748B",
 		iconBg: "#F8FAFC",
 		badgeBg: "#F8FAFC",
 		badgeText: "#475569",
@@ -153,24 +132,26 @@ const NOTIFICATION_COLOR_SCHEMES = {
 const TYPE_CONFIG = {
 	reservation_confirmed: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Confirmed" },
 	reservation_cancelled: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Cancelled" },
-	visit_approved: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Completed" },
+	reservation_expired: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Expired" },
+	reservation_noshow: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "No-Show" },
+	visit_approved: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Approved" },
 	visit_rejected: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Rejected" },
 	payment_approved: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Approved" },
 	payment_rejected: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Rejected" },
-	bill_generated: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Generated" },
+	bill_generated: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Bill Issued" },
 	bill_due_reminder: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Due Soon" },
-	grace_period_warning: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Warning" },
-	move_in_reminder: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.indigo, label: "Move-In Notice" },
+	grace_period_warning: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Grace Period" },
+	move_in_reminder: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Move-In Notice" },
 	account_suspended: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Suspended" },
 	account_reactivated: { icon: Check, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Reactivated" },
-	maintenance_update: { icon: Wrench, colors: NOTIFICATION_COLOR_SCHEMES.purple, label: "Updated" },
-	announcement: { icon: Megaphone, colors: NOTIFICATION_COLOR_SCHEMES.orange, label: "Announcement" },
+	maintenance_update: { icon: Wrench, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Update" },
+	announcement: { icon: Megaphone, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Announcement" },
 	general: { icon: Bell, colors: NOTIFICATION_COLOR_SCHEMES.neutral, label: "Notice" },
 };
 
 /**
  * Resolves notification icon, verb label, and color object scheme.
- * Dynamically detects action verbs (Completed, Cancelled, Rejected, Approved) if type is general.
+ * Dynamically detects action verbs and lifecycle states from title/message content.
  */
 function getNotificationConfig(notification = {}) {
 	const type = notification.type;
@@ -179,19 +160,35 @@ function getNotificationConfig(notification = {}) {
 	let label = baseConfig.label;
 	let colors = baseConfig.colors;
 
-	const titleLower = (notification.title || "").toLowerCase();
-	if (titleLower.includes("completed")) {
+	const content = `${notification.title || ""} ${notification.message || ""}`.toLowerCase();
+
+	if (content.includes("completed") || content.includes("resolved")) {
 		label = "Completed";
 		colors = NOTIFICATION_COLOR_SCHEMES.success;
-	} else if (titleLower.includes("cancelled") || titleLower.includes("canceled")) {
+	} else if (content.includes("cancelled") || content.includes("canceled")) {
 		label = "Cancelled";
 		colors = NOTIFICATION_COLOR_SCHEMES.danger;
-	} else if (titleLower.includes("rejected")) {
+	} else if (content.includes("rejected")) {
 		label = "Rejected";
 		colors = NOTIFICATION_COLOR_SCHEMES.danger;
-	} else if (titleLower.includes("approved") || titleLower.includes("confirmed")) {
+	} else if (content.includes("approved") || content.includes("confirmed")) {
 		label = "Approved";
 		colors = NOTIFICATION_COLOR_SCHEMES.success;
+	} else if (content.includes("reviewed")) {
+		label = "Reviewed";
+		colors = NOTIFICATION_COLOR_SCHEMES.info;
+	} else if (content.includes("viewed")) {
+		label = "Viewed";
+		colors = NOTIFICATION_COLOR_SCHEMES.info;
+	} else if (content.includes("scheduled")) {
+		label = "Scheduled";
+		colors = NOTIFICATION_COLOR_SCHEMES.info;
+	} else if (content.includes("in progress")) {
+		label = "In Progress";
+		colors = NOTIFICATION_COLOR_SCHEMES.info;
+	} else if (content.includes("assigned")) {
+		label = "Assigned";
+		colors = NOTIFICATION_COLOR_SCHEMES.info;
 	}
 
 	return {
@@ -225,17 +222,17 @@ const formatTime = (dateStr) => {
 	});
 };
 
-// ── Filter pill styles ──
-const getFilterPillStyle = (isActive, accentColor) => ({
+// ── Filter pill styles (High Contrast Minimalist) ──
+const getFilterPillStyle = (isActive) => ({
 	padding: "6px 14px",
 	borderRadius: "20px",
 	border: "1px solid",
 	fontSize: "12px",
-	fontWeight: 500,
+	fontWeight: isActive ? 600 : 500,
 	cursor: "pointer",
-	backgroundColor: isActive ? (accentColor || "var(--primary)") : "var(--card)",
-	color: isActive ? "var(--primary-foreground)" : "var(--text-secondary)",
-	borderColor: isActive ? (accentColor || "var(--primary)") : "var(--border)",
+	backgroundColor: isActive ? "#0F172A" : "var(--card)",
+	color: isActive ? "#FFFFFF" : "var(--text-secondary)",
+	borderColor: isActive ? "#0F172A" : "var(--border)",
 	transition: "all 0.18s ease",
 	whiteSpace: "nowrap",
 });
@@ -412,7 +409,7 @@ const NotificationsTab = () => {
 				{/* Unread only toggle */}
 				<button
 					onClick={handleToggleUnread}
-					style={getFilterPillStyle(unreadOnly, "var(--primary)")}
+					style={getFilterPillStyle(unreadOnly)}
 				>
 					<span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
 						<Filter style={{ width: "12px", height: "12px" }} />
@@ -524,7 +521,7 @@ const NotificationsTab = () => {
 													idx < items.length - 1 ? "1px solid var(--color-border-subtle)" : "none",
 												backgroundColor: notification.isRead
 													? "var(--card)"
-													: "color-mix(in srgb, var(--primary) 4%, transparent)",
+													: "color-mix(in srgb, var(--info) 4%, var(--card))",
 												cursor: "pointer",
 												transition: "background-color 0.15s",
 												outlineOffset: "-2px",
@@ -620,7 +617,7 @@ const NotificationsTab = () => {
 														width: "8px",
 														height: "8px",
 														borderRadius: "50%",
-														backgroundColor: "var(--primary)",
+														backgroundColor: "var(--info)",
 														flexShrink: 0,
 														marginTop: "6px",
 													}}

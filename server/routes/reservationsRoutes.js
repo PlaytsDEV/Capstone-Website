@@ -42,6 +42,7 @@ import {
   getVisitConflictHistory,
   toggleResolveVisitConflict,
   getVisitSlotVisitors,
+  getVisitScheduledUsersHistory,
   getReservationById,
   manageReservationVisit,
   precheckReservationDocument,
@@ -178,6 +179,19 @@ router.get(
   filterByBranch,
   requirePermission("manageReservations"),
   getVisitSlotVisitors,
+);
+
+/**
+ * GET /api/reservations/visit-availability/scheduled-users
+ * Returns paginated scheduled users/visits history for a branch.
+ */
+router.get(
+  "/visit-availability/scheduled-users",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  getVisitScheduledUsersHistory,
 );
 
 /**

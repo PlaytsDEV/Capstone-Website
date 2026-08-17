@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import {
   Calendar,
@@ -53,6 +53,7 @@ export default function AnalyticsDemographicsTab({
   isOwner,
   onBranchChange,
   onRangeChange,
+  registerExport,
 }) {
   const [page, setPage] = useState(1);
   const [geoSearch, setGeoSearch] = useState("");
@@ -128,10 +129,6 @@ export default function AnalyticsDemographicsTab({
     [data],
   );
 
-  if (isLoading && !data) {
-    return <AdminAnalyticsDetailSkeleton tab="demographics" isOwner={isOwner} />;
-  }
-
   const openDrilldown = (title, rows, subtitle) => {
     setDrilldown({ title, rows: rows || [], subtitle });
     setDrilldownPage(1);
@@ -197,16 +194,16 @@ export default function AnalyticsDemographicsTab({
         { key: "city", label: "City" },
         { key: "count", label: "Tenant Count" },
       ],
-      `demographics-report-${range}`,
+      `lilycrest-demographics-${branch || "all"}-${range}`,
     );
   };
 
   const exportPdf = () => {
     const insight = insightData?.insight;
     handlePdfExport({
-      title: "Tenant Demographics Report",
+      title: "Tenant Demographics Analytics Report",
       subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
-      filename: `demographics-report-${range}.pdf`,
+      filename: `lilycrest-demographics-${branch || "all"}-${range}.pdf`,
       reportType: "Demographics",
       kpis: metricCards.map((item, i) => ({
         label: item.label,
@@ -273,6 +270,16 @@ export default function AnalyticsDemographicsTab({
       ],
     });
   };
+
+  useEffect(() => {
+    if (registerExport) {
+      registerExport({ exportCsv, exportPdf });
+    }
+  }, [registerExport, exportCsv, exportPdf]);
+
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="demographics" isOwner={isOwner} />;
+  }
 
   const handleExecuteAction = (action) => {
     if (!action) return;

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CalendarDays,
@@ -173,6 +173,7 @@ export default function AnalyticsOperationsTab({
   isOwner,
   onBranchChange,
   onRangeChange,
+  registerExport,
 }) {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -247,10 +248,6 @@ export default function AnalyticsOperationsTab({
     () => getDynamicOperationsPrompts(data),
     [data],
   );
-
-  if (isLoading && !data) {
-    return <AdminAnalyticsDetailSkeleton tab="operations" isOwner={isOwner} />;
-  }
 
   const resCount = data?.kpis?.reservations || 0;
   const inqCount = data?.kpis?.inquiries || 0;
@@ -331,15 +328,15 @@ export default function AnalyticsOperationsTab({
         { key: "resolutionHours", label: "Resolution Hours" },
         { key: "slaState", label: "SLA State" },
       ],
-      `operations-report-${range}`,
+      `lilycrest-operations-${branch || "all"}-${range}`,
     );
   };
 
   const exportPdf = () => {
     handlePdfExport({
-      title: "Operations Report",
+      title: "Operations Analytics Report",
       subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
-      filename: `operations-report-${range}.pdf`,
+      filename: `lilycrest-operations-${branch || "all"}-${range}.pdf`,
       reportType: "Operations",
       kpis: metricCards.map((item, i) => ({
         label: item.label,
@@ -386,6 +383,16 @@ export default function AnalyticsOperationsTab({
       ],
     });
   };
+
+  useEffect(() => {
+    if (registerExport) {
+      registerExport({ exportCsv, exportPdf });
+    }
+  }, [registerExport, exportCsv, exportPdf]);
+
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="operations" isOwner={isOwner} />;
+  }
 
   const periodComparisonRows = [
     {

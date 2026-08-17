@@ -47,38 +47,33 @@ function NotificationIcon({ type }) {
   const iconProps = { size: 18, strokeWidth: 2 };
   switch (type) {
     case "reservation_confirmed":
-      return <CheckCircle2 {...iconProps} style={{ color: "#10B981" }} />;
+    case "visit_approved":
+    case "payment_approved":
+    case "account_reactivated":
+      return <CheckCircle2 {...iconProps} style={{ color: "#059669" }} />;
     case "reservation_cancelled":
-      return <XCircle {...iconProps} style={{ color: "#EF4444" }} />;
-    case "reservation_expired":
-    case "bill_due_reminder":
-      return <Clock {...iconProps} style={{ color: "#F59E0B" }} />;
     case "reservation_noshow":
     case "visit_rejected":
-      return <Slash {...iconProps} style={{ color: "#EF4444" }} />;
-    case "visit_approved":
-    case "move_in_reminder":
-      return <Home {...iconProps} style={{ color: "#0284C7" }} />;
-    case "payment_approved":
     case "payment_rejected":
-      return <CreditCard {...iconProps} style={{ color: "#4F46E5" }} />;
-    case "bill_generated":
-      return <FileText {...iconProps} style={{ color: "#2563EB" }} />;
-    case "penalty_applied":
-    case "grace_period_warning":
-      return <AlertTriangle {...iconProps} style={{ color: "#D97706" }} />;
-    case "contract_expiring":
-      return <FileSpreadsheet {...iconProps} style={{ color: "#9333EA" }} />;
-    case "maintenance_update":
-      return <Wrench {...iconProps} style={{ color: "#F97316" }} />;
+      return <XCircle {...iconProps} style={{ color: "#DC2626" }} />;
     case "account_suspended":
       return <Lock {...iconProps} style={{ color: "#DC2626" }} />;
-    case "account_reactivated":
-      return <Unlock {...iconProps} style={{ color: "#059669" }} />;
+    case "reservation_expired":
+    case "bill_due_reminder":
+    case "penalty_applied":
+    case "grace_period_warning":
+    case "contract_expiring":
+      return <Clock {...iconProps} style={{ color: "#D97706" }} />;
+    case "bill_generated":
+      return <FileText {...iconProps} style={{ color: "#2563EB" }} />;
+    case "move_in_reminder":
+      return <Home {...iconProps} style={{ color: "#2563EB" }} />;
+    case "maintenance_update":
+      return <Wrench {...iconProps} style={{ color: "#2563EB" }} />;
     case "announcement":
       return <Megaphone {...iconProps} style={{ color: "#2563EB" }} />;
     default:
-      return <Info {...iconProps} style={{ color: "#6B7280" }} />;
+      return <Info {...iconProps} style={{ color: "#64748B" }} />;
   }
 }
 
@@ -215,9 +210,9 @@ export default function NotificationsPage() {
           style={{
             padding: "5px 14px", borderRadius: 20, border: "1px solid",
             fontSize: 12, fontWeight: 500, cursor: "pointer",
-            backgroundColor: unreadOnly ? "#D4AF37" : "white",
+            backgroundColor: unreadOnly ? "#0A1628" : "white",
             color: unreadOnly ? "white" : "#374151",
-            borderColor: unreadOnly ? "#D4AF37" : "#D1D5DB",
+            borderColor: unreadOnly ? "#0A1628" : "#D1D5DB",
             transition: "all 0.15s",
           }}
         >
@@ -254,7 +249,7 @@ export default function NotificationsPage() {
                 padding: "14px 16px",
                 borderBottom: index < filtered.length - 1 ? "1px solid #F3F4F6" : "none",
                 cursor: "pointer",
-                backgroundColor: n.isRead ? "white" : "#FFFBEB",
+                backgroundColor: n.isRead ? "white" : "#F8FAFC",
                 transition: "background-color 0.15s",
               }}
             >
@@ -278,7 +273,7 @@ export default function NotificationsPage() {
                 <span
                   style={{
                     width: 8, height: 8, borderRadius: "50%",
-                    backgroundColor: "#D4AF37", flexShrink: 0, marginTop: 6,
+                    backgroundColor: "#2563EB", flexShrink: 0, marginTop: 6,
                   }}
                 />
               )}

@@ -90,6 +90,9 @@ export default function AnalyticsAcquisitionTab({
   branch,
   range = "30d",
   isOwner = false,
+  onBranchChange,
+  onRangeChange,
+  registerExport,
 }) {
   const [report, setReport] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -226,15 +229,15 @@ export default function AnalyticsAcquisitionTab({
         { key: "convertedCount", label: "Converted Tenants" },
         { key: "conversionRate", label: "Conversion Rate (%)" },
       ],
-      `lead-acquisition-${range}`,
+      `lilycrest-acquisition-${branch || "all"}-${range}`,
     );
   };
 
   const exportPdf = () => {
     handlePdfExport({
-      title: "Lead Acquisition & Channel Performance",
+      title: "Lead Acquisition & Channel Performance Report",
       subtitle: `${isOwner ? formatBranch(branch) : "Branch Scope"} • ${buildRangeLabel(range)}`,
-      filename: `lead-acquisition-${range}.pdf`,
+      filename: `lilycrest-acquisition-${branch || "all"}-${range}.pdf`,
       reportType: "Acquisition",
       kpis: metricCards.map((item, i) => ({
         label: item.label,
@@ -258,6 +261,12 @@ export default function AnalyticsAcquisitionTab({
       ],
     });
   };
+
+  useEffect(() => {
+    if (registerExport) {
+      registerExport({ exportCsv, exportPdf });
+    }
+  }, [registerExport, exportCsv, exportPdf]);
 
   if (loading && report.length === 0) {
     return <AdminAnalyticsDetailSkeleton tab="operations" isOwner={isOwner} />;

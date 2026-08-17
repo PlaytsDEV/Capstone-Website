@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   PhilippinePeso,
@@ -101,6 +101,7 @@ export default function AnalyticsBillingTab({
   isOwner,
   onBranchChange,
   onRangeChange,
+  registerExport,
 }) {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -166,10 +167,6 @@ export default function AnalyticsBillingTab({
     () => getDynamicBillingPrompts(data),
     [data],
   );
-
-  if (isLoading && !data) {
-    return <AdminAnalyticsDetailSkeleton tab="billing" isOwner={isOwner} />;
-  }
 
   const kpis = data?.kpis || {};
 
@@ -248,17 +245,17 @@ export default function AnalyticsBillingTab({
         { key: "status", label: "Status" },
         { key: "dueDate", label: "Due Date", formatter: (value) => formatDate(value) },
         { key: "daysOverdue", label: "Days Overdue" },
-        { key: "balance", label: "Balance", formatter: (value) => formatPeso(value) },
+        { key: "balance", label: "Balance (₱)", formatter: (value) => formatPeso(value) },
       ],
-      `billing-report-${range}`,
+      `lilycrest-billing-${branch || "all"}-${range}`,
     );
   };
 
   const exportPdf = () => {
     handlePdfExport({
-      title: "Billing & Revenue Analytics",
+      title: "Billing & Revenue Analytics Report",
       subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
-      filename: `billing-report-${range}.pdf`,
+      filename: `lilycrest-billing-${branch || "all"}-${range}.pdf`,
       reportType: "Billing",
       kpis: metricCards.map((item, i) => ({
         label: item.label,
@@ -315,6 +312,16 @@ export default function AnalyticsBillingTab({
       ],
     });
   };
+
+  useEffect(() => {
+    if (registerExport) {
+      registerExport({ exportCsv, exportPdf });
+    }
+  }, [registerExport, exportCsv, exportPdf]);
+
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="billing" isOwner={isOwner} />;
+  }
 
   const periodComparisonRows = [
     {

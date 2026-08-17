@@ -39,6 +39,7 @@ export const queryKeys = {
     visitAvailabilityHistory: (branch, params) => ["reservations", "visitAvailabilityHistory", branch || "", params || {}],
     visitConflictHistory: (branch, params) => ["reservations", "visitConflictHistory", branch || "", params || {}],
     visitSlotVisitors: (branch, date, slot) => ["reservations", "visitSlotVisitors", branch || "", date || "", slot || ""],
+    visitScheduledUsers: (branch, params) => ["reservations", "visitScheduledUsers", branch || "", params || {}],
   },
 
   // ── Billing ──

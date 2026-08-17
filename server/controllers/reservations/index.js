@@ -25,6 +25,7 @@ export {
   getVisitConflictHistory,
   toggleResolveVisitConflict,
   getVisitSlotVisitors,
+  getVisitScheduledUsersHistory,
   precheckReservationDocument,
 } from "./visitManagementController.js";
 

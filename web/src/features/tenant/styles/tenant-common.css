@@ -1845,17 +1845,18 @@ html[data-theme="dark"] .btn-danger[disabled] {
 .form-control {
   width: 100%;
   padding: 0.6rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: 1px solid var(--border, #CBD5E1);
+  border-radius: 8px;
   font-size: 0.9rem;
   color: var(--foreground);
-  background: var(--input-background);
+  background: var(--input-background, #FFFFFF);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .form-control:focus {
   outline: none;
-  border-color: var(--ring);
-  box-shadow: 0 0 0 4px var(--border-focus);
+  border-color: var(--foreground, #0F172A);
+  box-shadow: 0 0 0 1px var(--foreground, #0F172A);
 }
 
 .form-actions {
@@ -1980,7 +1981,7 @@ html[data-theme="dark"] .filter-tabs .tab.active {
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.85rem;
-  background: var(--muted);
+  background: transparent;
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 0.85rem;
@@ -2268,22 +2269,22 @@ html[data-theme="dark"] .filter-tabs .tab.active {
   padding: 0.6rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--card);
+  background: transparent;
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: center;
 }
 
 .category-picker-btn:hover {
-  background: var(--muted);
+  background: transparent;
   border-color: var(--foreground);
 }
 
 .category-picker-btn.selected {
-  border-color: #2563EB;
-  background: #EFF6FF;
+  border: 1px solid #2563EB;
+  background: transparent;
   color: #1D4ED8;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  box-shadow: none;
 }
 
 .category-picker-btn span {
@@ -2472,7 +2473,7 @@ html[data-theme="dark"] .filter-tabs .tab.active {
   padding: 0.65rem 0.85rem;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--card);
+  background: transparent;
   cursor: pointer;
   text-align: left;
   transition: all 0.15s ease;
@@ -2480,20 +2481,20 @@ html[data-theme="dark"] .filter-tabs .tab.active {
 }
 
 .urgency-card:hover {
-  background: var(--muted);
+  background: transparent;
   border-color: var(--foreground);
 }
 
 .urgency-card.selected {
-  border-color: #2563EB;
-  background: #EFF6FF;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  border: 1px solid #2563EB;
+  background: transparent;
+  box-shadow: none;
 }
 
 .urgency-card.selected.urgency-card--emergency {
-  border-color: #DC2626;
-  background: #FEF2F2;
-  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
+  border: 1px solid #DC2626;
+  background: transparent;
+  box-shadow: none;
 }
 
 .urgency-card__header {
@@ -2522,18 +2523,21 @@ html[data-theme="dark"] .filter-tabs .tab.active {
   font-weight: 700;
   padding: 2px 6px;
   border-radius: 4px;
-  background: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
   color: var(--muted-foreground);
 }
 
 .urgency-card.selected .urgency-card__eta {
-  background: #DBEAFE;
-  color: #1E40AF;
+  background: transparent;
+  border-color: #93C5FD;
+  color: #1D4ED8;
 }
 
 .urgency-card.selected.urgency-card--emergency .urgency-card__eta {
-  background: #FEE2E2;
-  color: #991B1B;
+  background: transparent;
+  border-color: #FCA5A5;
+  color: #DC2626;
 }
 
 .urgency-card__desc {
@@ -2549,9 +2553,9 @@ html[data-theme="dark"] .filter-tabs .tab.active {
   gap: 0.75rem;
   padding: 0.75rem 0.9rem;
   border-radius: 8px;
-  background: #FEF2F2;
-  border: 1px solid #FCA5A5;
-  color: #991B1B;
+  background: transparent;
+  border: 1px solid #DC2626;
+  color: #DC2626;
   margin-top: 0.65rem;
 }
 
@@ -2559,13 +2563,13 @@ html[data-theme="dark"] .filter-tabs .tab.active {
   margin: 0 0 0.2rem;
   font-size: 0.88rem;
   font-weight: 700;
-  color: #991B1B;
+  color: #DC2626;
 }
 
 .emergency-notice-banner p {
   margin: 0;
   font-size: 0.82rem;
-  color: #B91C1C;
+  color: var(--foreground);
   line-height: 1.4;
 }
 
@@ -2576,19 +2580,19 @@ html[data-theme="dark"] .filter-tabs .tab.active {
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 4px;
-  background: #FFFFFF;
-  border: 1px solid #FCA5A5;
+  background: transparent;
+  border: 1px solid #DC2626;
   color: #DC2626;
   margin-top: 0.35rem;
   font-size: 0.78rem;
 }
 
 .maintenance-dropzone {
-  border: 2px dashed var(--border);
+  border: 1px dashed var(--border);
   border-radius: 10px;
   padding: 0.9rem 1.1rem;
   text-align: center;
-  background: var(--muted);
+  background: transparent;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
@@ -2601,7 +2605,7 @@ html[data-theme="dark"] .filter-tabs .tab.active {
 .maintenance-dropzone:hover,
 .maintenance-dropzone.dragover {
   border-color: #2563EB;
-  background: #EFF6FF;
+  background: transparent;
 }
 
 .maintenance-dropzone__title {
@@ -2634,32 +2638,47 @@ html[data-theme="dark"] .filter-tabs .tab.active {
 
 /* Dark Mode Overrides */
 html[data-theme="dark"] .category-picker-btn.selected {
-  background: #1E293B;
+  background: transparent;
   border-color: #3B82F6;
   color: #93C5FD;
+  box-shadow: none;
 }
 
 html[data-theme="dark"] .urgency-card.selected {
-  background: #1E293B;
+  background: transparent;
   border-color: #3B82F6;
+  box-shadow: none;
 }
 
 html[data-theme="dark"] .urgency-card.selected .urgency-card__title {
   color: #93C5FD;
 }
 
+html[data-theme="dark"] .urgency-card.selected .urgency-card__eta {
+  background: transparent;
+  border-color: #1E40AF;
+  color: #93C5FD;
+}
+
 html[data-theme="dark"] .urgency-card.selected.urgency-card--emergency {
-  background: #450A0A;
-  border-color: #DC2626;
+  background: transparent;
+  border-color: #EF4444;
+  box-shadow: none;
 }
 
 html[data-theme="dark"] .urgency-card.selected.urgency-card--emergency .urgency-card__title {
+  color: #F87171;
+}
+
+html[data-theme="dark"] .urgency-card.selected.urgency-card--emergency .urgency-card__eta {
+  background: transparent;
+  border-color: #7F1D1D;
   color: #FCA5A5;
 }
 
 html[data-theme="dark"] .emergency-notice-banner {
-  background: #450A0A;
-  border-color: #7F1D1D;
+  background: transparent;
+  border-color: #EF4444;
   color: #FCA5A5;
 }
 
@@ -2668,18 +2687,18 @@ html[data-theme="dark"] .emergency-notice-banner h5 {
 }
 
 html[data-theme="dark"] .emergency-notice-banner p {
-  color: #FCA5A5;
+  color: var(--foreground);
 }
 
 html[data-theme="dark"] .emergency-notice-banner .hotline-pill {
-  background: #1E293B;
-  border-color: #7F1D1D;
+  background: transparent;
+  border-color: #EF4444;
   color: #FCA5A5;
 }
 
 html[data-theme="dark"] .maintenance-dropzone:hover,
 html[data-theme="dark"] .maintenance-dropzone.dragover {
-  background: #1E293B;
+  background: transparent;
   border-color: #3B82F6;
 }
 

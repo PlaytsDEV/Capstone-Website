@@ -62,6 +62,44 @@ import AnalyticsDemographicsTab from "./AnalyticsDemographicsTab";
 import AnalyticsAcquisitionTab from "./AnalyticsAcquisitionTab";
 import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 
+function MiniSparkline({ data = [], stroke = "#2563eb", width = 54, height = 20 }) {
+  if (!data || data.length < 2) return null;
+  const values = data.map((v) => Number(v) || 0);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min === 0 ? 1 : max - min;
+  const padding = 2;
+  const usableHeight = height - padding * 2;
+  const usableWidth = width - padding * 2;
+
+  const points = values
+    .map((val, idx) => {
+      const x = padding + (idx / (values.length - 1)) * usableWidth;
+      const y = height - padding - ((val - min) / range) * usableHeight;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+
+  return (
+    <svg
+      width={width}
+      height={height}
+      className="analytics-kpi-sparkline"
+      aria-hidden="true"
+      viewBox={`0 0 ${width} ${height}`}
+    >
+      <polyline
+        fill="none"
+        stroke={stroke}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={points}
+      />
+    </svg>
+  );
+}
+
 function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const { user } = useAuth();
   const { can } = usePermissions();
@@ -74,6 +112,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const requestedRange = searchParams.get("range");
   const requestedBranch = searchParams.get("branch");
 
+  const [overviewOccupancyMetric, setOverviewOccupancyMetric] = useState("rate");
   const [overviewOccupancyRange, setOverviewOccupancyRange] = useState(null);
   const [overviewBillingRange, setOverviewBillingRange] = useState(null);
   const [overviewOperationsRange, setOverviewOperationsRange] = useState(null);
@@ -187,6 +226,52 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const occupancyTrend = occupancyData?.series?.occupancyTrend || [];
   const revenueByMonth = billingData?.series?.revenueByMonth || [];
   const reservationsByPeriod = operationsData?.series?.reservationsByPeriod || [];
+
+  const occupancyChartConfig = useMemo(() => {
+    if (overviewOccupancyMetric === "beds") {
+      return {
+        data: occupancyTrend.map((item) => ({
+          label: item.label,
+          occupied: item.occupiedBeds || 0,
+          capacity: item.totalCapacity || 0,
+        })),
+        lines: [
+          { key: "occupied", label: "Occupied Beds", color: "#2563eb", strokeWidth: 2.5 },
+          { key: "capacity", label: "Total Capacity", color: "#64748b", strokeWidth: 1.75 },
+        ],
+        valueFormatter: (value) => `${value} bed${value === 1 ? "" : "s"}`,
+        subTitle: `Occupied beds vs. capacity — ${buildRangeLabel(activeOverviewOccupancyRange).toLowerCase()}`,
+      };
+    }
+
+    if (overviewOccupancyMetric === "byType") {
+      return {
+        data: occupancyTrend.map((item) => ({
+          label: item.label,
+          private: item.byType?.["private"] ?? 0,
+          double: item.byType?.["double-sharing"] ?? 0,
+          quadruple: item.byType?.["quadruple-sharing"] ?? 0,
+        })),
+        lines: [
+          { key: "private", label: "Private", color: "#2563eb", strokeWidth: 2 },
+          { key: "double", label: "Double Sharing", color: "#16a34a", strokeWidth: 2 },
+          { key: "quadruple", label: "Quad Sharing", color: "#f59e0b", strokeWidth: 2 },
+        ],
+        valueFormatter: (value) => `${value}%`,
+        subTitle: `By room type — ${buildRangeLabel(activeOverviewOccupancyRange).toLowerCase()}`,
+      };
+    }
+
+    return {
+      data: occupancyTrend.map((item) => ({
+        label: item.label,
+        occupancy: item.totalRate ?? 0,
+      })),
+      lines: [{ key: "occupancy", label: "Occupancy rate", color: "#2563eb", strokeWidth: 3 }],
+      valueFormatter: (value) => `${value}%`,
+      subTitle: `Daily rate — ${buildRangeLabel(activeOverviewOccupancyRange).toLowerCase()}`,
+    };
+  }, [activeOverviewOccupancyRange, occupancyTrend, overviewOccupancyMetric]);
 
   const pendingReservations =
     dashboardData?.reservationStatus?.pending ?? (operationsKpis.reservations || 0);
@@ -306,6 +391,19 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
 
 
 
+  const [tabExports, setTabExports] = useState({});
+
+  const registerTabExport = React.useCallback((tabKey, exports) => {
+    if (!tabKey) return;
+    setTabExports((prev) => {
+      if (prev[tabKey] === exports) return prev;
+      return {
+        ...prev,
+        [tabKey]: exports,
+      };
+    });
+  }, []);
+
   const detailSharedProps = useMemo(
     () => ({
       branch,
@@ -313,8 +411,9 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
       isOwner,
       onRangeChange: handleRangeChange,
       onBranchChange: handleBranchChange,
+      registerExport: (exports) => registerTabExport(activeTabNormalized, exports),
     }),
-    [branch, activeTab, range, isOwner],
+    [branch, activeTab, range, isOwner, activeTabNormalized, registerTabExport],
   );
 
   const isInitialLoading =
@@ -347,102 +446,11 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     text: "vs prev period",
   };
 
-  const exportOverviewPdf = () => {
-    handlePdfExport({
-      title: "Executive Analytics Overview",
-      subtitle: `${branchLabel} • ${buildRangeLabel(range)}`,
-      filename: `analytics-overview-${range}.pdf`,
-      reportType: "Overview",
-      kpis: [
-        {
-          label: "Occupancy Rate",
-          value: occupancyKpis.occupancyRateLabel || "0%",
-          sub: `${occupancyDelta.label} ${occupancyDelta.text}`,
-          highlight: true,
-        },
-        {
-          label: "Revenue Collected",
-          value: billingKpis.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0",
-          sub: `${revenueDelta.label} ${revenueDelta.text}`,
-        },
-        {
-          label: "Reservations",
-          value: operationsKpis.reservations || 0,
-          sub: `${reservationsDelta.label} ${reservationsDelta.text}`,
-        },
-        {
-          label: "Maintenance Requests",
-          value: operationsKpis.maintenanceRequests || 0,
-          sub: `${maintenanceDelta.label} ${maintenanceDelta.text}`,
-        },
-      ],
-      sections: [
-        {
-          title: "Period Comparison Summary",
-          type: "table",
-          headers: ["Metric", "Current Value", "Change vs Previous Period"],
-          rows: [
-            {
-              Metric: "Occupancy rate",
-              "Current Value": occupancyKpis.occupancyRateLabel || "0%",
-              "Change vs Previous Period": occupancyDelta.label,
-            },
-            {
-              Metric: "Revenue collected",
-              "Current Value": billingKpis.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0",
-              "Change vs Previous Period": revenueDelta.label,
-            },
-            {
-              Metric: "Reservations",
-              "Current Value": String(operationsKpis.reservations || 0),
-              "Change vs Previous Period": reservationsDelta.label,
-            },
-            {
-              Metric: "Maintenance",
-              "Current Value": String(operationsKpis.maintenanceRequests || 0),
-              "Change vs Previous Period": maintenanceDelta.label,
-            },
-          ],
-        },
-      ],
-    });
-  };
-
-  const exportOverviewCsv = () => {
-    handleCsvExport(
-      [
-        {
-          metric: "Occupancy Rate",
-          value: occupancyKpis.occupancyRateLabel || "0%",
-          delta: occupancyDelta.label,
-        },
-        {
-          metric: "Revenue Collected",
-          value: billingKpis.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0",
-          delta: revenueDelta.label,
-        },
-        {
-          metric: "Reservations",
-          value: operationsKpis.reservations || 0,
-          delta: reservationsDelta.label,
-        },
-        {
-          metric: "Maintenance Requests",
-          value: operationsKpis.maintenanceRequests || 0,
-          delta: maintenanceDelta.label,
-        },
-      ],
-      [
-        { key: "metric", label: "Metric" },
-        { key: "value", label: "Current Value" },
-        { key: "delta", label: "Change vs Previous Period" },
-      ],
-      `analytics-overview-${range}`,
-    );
-  };
-
   const activeTabNormalized =
     activeTab === "revenue" ? "billing" : activeTab === "marketing-roi" ? "acquisition" : activeTab;
+
+  const currentTabExport =
+    activeTabNormalized !== "overview" ? tabExports[activeTabNormalized] : null;
 
   return (
     <div className="analytics-container space-y-4">
@@ -498,8 +506,8 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
           </div>
         }
         actions={
-          activeTabNormalized === "overview" ? (
-            <ExportButtons onCsv={exportOverviewCsv} onPdf={exportOverviewPdf} />
+          activeTabNormalized !== "overview" && currentTabExport?.exportCsv && currentTabExport?.exportPdf ? (
+            <ExportButtons onCsv={currentTabExport.exportCsv} onPdf={currentTabExport.exportPdf} />
           ) : null
         }
       />
@@ -517,8 +525,14 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                   onClick={() => handleTabChange("occupancy")}
                   title="Click to view Occupancy details"
                 >
-                  <div className="analytics-kpi-icon blue">
-                    <Bed size={15} strokeWidth={1.5} />
+                  <div className="analytics-kpi-card-header">
+                    <div className="analytics-kpi-icon blue">
+                      <Bed size={15} strokeWidth={1.5} />
+                    </div>
+                    <MiniSparkline
+                      data={occupancyTrend.map((item) => item.totalRate)}
+                      stroke="#2563eb"
+                    />
                   </div>
                   <div className="analytics-kpi-label">Occupancy rate</div>
                   <div className="analytics-kpi-value">
@@ -537,8 +551,14 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                   onClick={() => handleTabChange("revenue")}
                   title="Click to view Billing & Revenue details"
                 >
-                  <div className="analytics-kpi-icon green">
-                    <PhilippinePeso size={15} strokeWidth={1.5} />
+                  <div className="analytics-kpi-card-header">
+                    <div className="analytics-kpi-icon green">
+                      <PhilippinePeso size={15} strokeWidth={1.5} />
+                    </div>
+                    <MiniSparkline
+                      data={revenueByMonth.map((item) => item.collectedRevenue)}
+                      stroke="#16a34a"
+                    />
                   </div>
                   <div className="analytics-kpi-label">Revenue collected</div>
                   <div className="analytics-kpi-value">
@@ -559,8 +579,14 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                   onClick={() => handleTabChange("operations")}
                   title="Click to view Operations details"
                 >
-                  <div className="analytics-kpi-icon amber">
-                    <CalendarDays size={15} strokeWidth={1.5} />
+                  <div className="analytics-kpi-card-header">
+                    <div className="analytics-kpi-icon amber">
+                      <CalendarDays size={15} strokeWidth={1.5} />
+                    </div>
+                    <MiniSparkline
+                      data={reservationsByPeriod.map((item) => item.count)}
+                      stroke="#d97706"
+                    />
                   </div>
                   <div className="analytics-kpi-label">Reservations</div>
                   <div className="analytics-kpi-value">
@@ -579,8 +605,14 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                   onClick={() => handleTabChange("operations")}
                   title="Click to view Operations details"
                 >
-                  <div className="analytics-kpi-icon purple">
-                    <Wrench size={15} strokeWidth={1.5} />
+                  <div className="analytics-kpi-card-header">
+                    <div className="analytics-kpi-icon purple">
+                      <Wrench size={15} strokeWidth={1.5} />
+                    </div>
+                    <MiniSparkline
+                      data={(operationsData?.series?.maintenanceByType || []).map((item) => item.count)}
+                      stroke="#7c3aed"
+                    />
                   </div>
                   <div className="analytics-kpi-label">Maintenance</div>
                   <div className="analytics-kpi-value">
@@ -602,23 +634,45 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                     <div>
                       <div className="analytics-chart-card-title">Occupancy trend</div>
                       <div className="analytics-chart-card-sub">
-                        Daily rate — {buildRangeLabel(activeOverviewOccupancyRange).toLowerCase()}
+                        {occupancyChartConfig.subTitle}
                       </div>
                     </div>
-                    <CardFilterSelect
-                      value={activeOverviewOccupancyRange}
-                      onChange={setOverviewOccupancyRange}
-                    />
+                    <div className="flex items-center gap-2">
+                      <div className="analytics-view-mode-toggle" role="group" aria-label="Occupancy view metric">
+                        <button
+                          type="button"
+                          className={`analytics-view-mode-btn ${overviewOccupancyMetric === "rate" ? "active" : ""}`}
+                          onClick={() => setOverviewOccupancyMetric("rate")}
+                        >
+                          Rate %
+                        </button>
+                        <button
+                          type="button"
+                          className={`analytics-view-mode-btn ${overviewOccupancyMetric === "beds" ? "active" : ""}`}
+                          onClick={() => setOverviewOccupancyMetric("beds")}
+                        >
+                          Beds
+                        </button>
+                        <button
+                          type="button"
+                          className={`analytics-view-mode-btn ${overviewOccupancyMetric === "byType" ? "active" : ""}`}
+                          onClick={() => setOverviewOccupancyMetric("byType")}
+                        >
+                          By Type
+                        </button>
+                      </div>
+                      <CardFilterSelect
+                        value={activeOverviewOccupancyRange}
+                        onChange={setOverviewOccupancyRange}
+                      />
+                    </div>
                   </div>
                   <div className="analytics-chart-card-body">
                     <AnalyticsLineChart
-                      data={occupancyTrend.map((item) => ({
-                        label: item.label,
-                        occupancy: item.totalRate,
-                      }))}
-                      lines={[{ key: "occupancy", label: "Occupancy rate" }]}
+                      data={occupancyChartConfig.data}
+                      lines={occupancyChartConfig.lines}
                       height={140}
-                      valueFormatter={(value) => `${value}%`}
+                      valueFormatter={occupancyChartConfig.valueFormatter}
                       emptyTitle="No occupancy data"
                       emptyDescription="Data will appear once available."
                     />

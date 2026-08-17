@@ -12,9 +12,11 @@ import {
   AlertTriangle,
   Loader2,
   ClipboardList,
+  Users,
 } from "lucide-react";
 import { useVisitAvailabilityHistory } from "../../../shared/hooks/queries/useReservations";
 import VisitConflictHistoryPanel from "./VisitConflictHistoryPanel";
+import VisitScheduledUsersPanel from "./VisitScheduledUsersPanel";
 
 /* ── Day label map ────────────────────────────────────────────────────────── */
 const DAY_NAMES = {
@@ -306,7 +308,7 @@ function VisitAvailabilityHistoryDrawer({ open, onClose, branch }) {
             <button
               type="button"
               onClick={() => setActiveTab("snapshots")}
-              className={`flex-1 py-1 px-3 text-xs font-semibold rounded-md transition-colors ${
+              className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded-md transition-colors text-center ${
                 activeTab === "snapshots"
                   ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
@@ -317,14 +319,26 @@ function VisitAvailabilityHistoryDrawer({ open, onClose, branch }) {
             <button
               type="button"
               onClick={() => setActiveTab("conflicts")}
-              className={`flex-1 py-1 px-3 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${
+              className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1 ${
                 activeTab === "conflicts"
                   ? "bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-400 shadow-xs"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
-              <AlertTriangle size={13} className="text-amber-500" />
-              <span>Schedule Impact Logs</span>
+              <AlertTriangle size={12} className="text-amber-500 shrink-0" />
+              <span>Impact Logs</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("scheduled_users")}
+              className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1 ${
+                activeTab === "scheduled_users"
+                  ? "bg-white dark:bg-slate-900 text-sky-700 dark:text-sky-300 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <Users size={12} className="text-sky-500 shrink-0" />
+              <span>Scheduled Users</span>
             </button>
           </div>
         </div>
@@ -333,6 +347,8 @@ function VisitAvailabilityHistoryDrawer({ open, onClose, branch }) {
         <div className="visit-history-drawer__body">
           {activeTab === "conflicts" ? (
             <VisitConflictHistoryPanel branch={branch} />
+          ) : activeTab === "scheduled_users" ? (
+            <VisitScheduledUsersPanel branch={branch} />
           ) : (
             <>
               {isLoading && (

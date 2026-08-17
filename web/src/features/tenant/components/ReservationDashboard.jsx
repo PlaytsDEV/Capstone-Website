@@ -602,7 +602,7 @@ export default function ReservationDashboard({
             </span>
 
             {(() => {
-              const { primaryDate, showRequested, requestedDate } = resolveDisplayMoveInDate(
+              const { primaryDate } = resolveDisplayMoveInDate(
                 reservation,
                 readMoveInDate,
                 formatDate,
@@ -612,14 +612,6 @@ export default function ReservationDashboard({
                 <>
                   <span style={styles.metaDot}>·</span>
                   <span style={styles.metaItem}>Move-in: {formatDate(primaryDate)}</span>
-                  {showRequested && (
-                    <>
-                      <span style={styles.metaDot}>·</span>
-                      <span style={styles.metaItem}>
-                        Originally requested: {formatDate(requestedDate)}
-                      </span>
-                    </>
-                  )}
                 </>
               );
             })()}
@@ -1095,17 +1087,14 @@ export default function ReservationDashboard({
                 (new Date(moveIn) - new Date()) / (1000 * 60 * 60 * 24),
               )
             : null;
-
-          const confirmedMoveIn = readMoveInDate(reservation);
-          const requestedMoveIn = reservation.targetMoveInDate;
-          const hasDateDivergence =
-            confirmedMoveIn &&
-            requestedMoveIn &&
-            formatDate(confirmedMoveIn) !== formatDate(requestedMoveIn);
+          const isCheckedIn =
+            hasReservationStatus(getReservationStatus(reservation), "moveIn", "moveOut") ||
+            Boolean(reservation.checkInDate);
+          const showCountdown = daysLeft !== null && daysLeft >= 0 && !isCheckedIn;
 
           return (
             <div style={styles.confirmedDashboard}>
-              {daysLeft !== null && (
+              {showCountdown && (
                 <div style={styles.countdownCard}>
                   <div style={styles.countdownLeft}>
                     <div
@@ -1129,17 +1118,6 @@ export default function ReservationDashboard({
                       <div style={styles.countdownDate}>
                         {formatDate(moveIn)}
                       </div>
-                      {hasDateDivergence && (
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "var(--text-secondary, #64748B)",
-                            marginTop: 2,
-                          }}
-                        >
-                          Requested: {formatDate(requestedMoveIn)}
-                        </div>
-                      )}
                     </div>
                   </div>
                   <div style={styles.countdownBadge}>
@@ -1148,13 +1126,9 @@ export default function ReservationDashboard({
                         <span style={styles.countdownNumber}>{daysLeft}</span>{" "}
                         day{daysLeft !== 1 ? "s" : ""} away
                       </>
-                    ) : daysLeft === 0 ? (
+                    ) : (
                       <span style={{ color: "#059669", fontWeight: 700 }}>
                         Today!
-                      </span>
-                    ) : (
-                      <span style={{ color: "#64748B", fontWeight: 600 }}>
-                        Passed
                       </span>
                     )}
                   </div>

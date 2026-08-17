@@ -442,6 +442,203 @@ export const getVisitSlotVisitors = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/reservations/visit-availability/scheduled-users
+ *
+ * Returns paginated history and details of users who scheduled visits for a branch.
+ * Supports filtering by status and search by name, email, phone, visit code, or room.
+ */
+export const getVisitScheduledUsersHistory = async (req, res, next) => {
+  try {
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser) {
+      return res
+        .status(404)
+        .json({ error: "User not found in database", code: "USER_NOT_FOUND" });
+    }
+
+    const branchResult = resolveVisitAvailabilityBranch(req, dbUser);
+    if (branchResult.error) {
+      return res
+        .status(branchResult.code === "BRANCH_ACCESS_DENIED" ? 403 : 400)
+        .json(branchResult);
+    }
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 15));
+    const skip = (page - 1) * limit;
+    const statusFilter = String(req.query.status || "all").trim().toLowerCase();
+    const searchQuery = String(req.query.search || "").trim();
+
+    const roomIds = await Room.find({ branch: branchResult.branch }).distinct("_id");
+    const branchFilter =
+      roomIds.length > 0
+        ? { $or: [{ branch: branchResult.branch }, { roomId: { $in: roomIds } }] }
+        : { branch: branchResult.branch };
+
+    // Base filter: reservations for this branch that have had visit scheduling activity
+    const baseFilter = {
+      ...branchFilter,
+      isArchived: { $ne: true },
+      $or: [
+        { visitDate: { $exists: true, $ne: null } },
+        { visitScheduledAt: { $exists: true, $ne: null } },
+        {
+          viewingPreference: {
+            $in: [
+              "physical_visit",
+              "remote_2d_viewing",
+              "urgent_move_in_review",
+            ],
+          },
+        },
+        { "visitHistory.0": { $exists: true } },
+      ],
+    };
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const filter = { ...baseFilter };
+
+    if (statusFilter === "upcoming") {
+      filter.visitDate = { $gte: todayStart };
+      filter.visitStatus = {
+        $nin: ["cancelled", "visit_cancelled", "rejected", "completed", "visit_completed", "no_show"],
+      };
+      filter.scheduleRejected = { $ne: true };
+    } else if (statusFilter === "completed") {
+      filter.visitStatus = { $in: ["completed", "visit_completed"] };
+    } else if (statusFilter === "cancelled") {
+      filter.$or = [
+        { visitStatus: { $in: ["cancelled", "visit_cancelled", "rejected"] } },
+        { scheduleRejected: true },
+      ];
+    } else if (statusFilter === "no_show") {
+      filter.visitStatus = "no_show";
+    } else if (statusFilter === "pending") {
+      filter.visitStatus = { $in: ["pending", "physical_visit_scheduled"] };
+      filter.scheduleRejected = { $ne: true };
+    }
+
+    if (searchQuery) {
+      const regex = new RegExp(searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      
+      // Also find rooms matching searchQuery in roomNumber
+      const matchingRooms = await Room.find({
+        branch: branchResult.branch,
+        roomNumber: regex,
+      }).distinct("_id");
+
+      const searchConditions = [
+        { tenantName: regex },
+        { fullName: regex },
+        { email: regex },
+        { userEmail: regex },
+        { phone: regex },
+        { userPhone: regex },
+        { visitCode: regex },
+      ];
+
+      if (matchingRooms.length > 0) {
+        searchConditions.push({ roomId: { $in: matchingRooms } });
+      }
+
+      filter.$and = filter.$and || [];
+      filter.$and.push({ $or: searchConditions });
+    }
+
+    const [records, total, upcomingCount, completedCount, cancelledCount] = await Promise.all([
+      Reservation.find(filter)
+        .populate("roomId", "roomNumber name branch roomType")
+        .select(
+          "_id tenantName fullName email userEmail phone userPhone visitDate visitTime visitSlot visitCode visitStatus viewingType viewingPreference status scheduleApproved scheduleApprovedAt scheduleRejected scheduleRejectedAt scheduleRejectionReason visitOutcomeNotes visitOutcomeUpdatedAt visitOutcomeUpdatedByName visitHistory visitScheduledAt createdAt roomId branch",
+        )
+        .sort({ visitDate: -1, visitScheduledAt: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Reservation.countDocuments(filter),
+      Reservation.countDocuments({
+        ...baseFilter,
+        visitDate: { $gte: todayStart },
+        visitStatus: {
+          $nin: ["cancelled", "visit_cancelled", "rejected", "completed", "visit_completed", "no_show"],
+        },
+        scheduleRejected: { $ne: true },
+      }),
+      Reservation.countDocuments({
+        ...baseFilter,
+        visitStatus: { $in: ["completed", "visit_completed"] },
+      }),
+      Reservation.countDocuments({
+        ...baseFilter,
+        $or: [
+          { visitStatus: { $in: ["cancelled", "visit_cancelled", "rejected"] } },
+          { scheduleRejected: true },
+        ],
+      }),
+    ]);
+
+    const formattedRecords = records.map((r) => {
+      const visitDateFormatted = r.visitDate
+        ? new Date(r.visitDate).toISOString().split("T")[0]
+        : null;
+
+      let normalizedStatus = r.visitStatus || "pending";
+      if (r.scheduleRejected) {
+        normalizedStatus = "rejected";
+      }
+
+      return {
+        _id: r._id,
+        reservationId: r._id,
+        tenantName: r.tenantName || r.fullName || "Applicant",
+        email: r.email || r.userEmail || "",
+        phone: r.phone || r.userPhone || "",
+        roomNumber: r.roomId?.roomNumber || r.roomId?.name || "N/A",
+        roomType: r.roomId?.roomType || "Standard",
+        branch: r.branch || r.roomId?.branch || branchResult.branch,
+        viewingPreference: r.viewingPreference || r.viewingType || "physical_visit",
+        visitDate: visitDateFormatted,
+        visitDateRaw: r.visitDate,
+        visitSlot: r.visitTime || r.visitSlot || "N/A",
+        visitCode: r.visitCode || null,
+        visitStatus: normalizedStatus,
+        reservationStatus: r.status || "pending",
+        scheduleApproved: Boolean(r.scheduleApproved),
+        scheduleApprovedAt: r.scheduleApprovedAt || null,
+        scheduleRejected: Boolean(r.scheduleRejected),
+        scheduleRejectedAt: r.scheduleRejectedAt || null,
+        scheduleRejectionReason: r.scheduleRejectionReason || "",
+        visitOutcomeNotes: r.visitOutcomeNotes || "",
+        visitOutcomeUpdatedAt: r.visitOutcomeUpdatedAt || null,
+        visitOutcomeUpdatedByName: r.visitOutcomeUpdatedByName || "",
+        visitHistory: Array.isArray(r.visitHistory) ? r.visitHistory : [],
+        visitScheduledAt: r.visitScheduledAt || r.createdAt,
+        createdAt: r.createdAt,
+      };
+    });
+
+    return sendSuccess(res, {
+      branch: branchResult.branch,
+      records: formattedRecords,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      summary: {
+        totalScheduled: total,
+        upcomingCount,
+        completedCount,
+        cancelledCount,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const precheckReservationDocument = async (req, res, next) => {
   try {
     const { reservationId } = req.params;
