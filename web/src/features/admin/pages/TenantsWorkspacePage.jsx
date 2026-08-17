@@ -41,6 +41,7 @@ import {
   openTenantAction,
 } from "./tenantWorkspaceActions.mjs";
 import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import "../styles/design-tokens.css";
 import "../styles/admin-tenants.css";
 
@@ -584,15 +585,11 @@ export default function TenantsWorkspacePage() {
 
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="mb-1 text-2xl font-semibold text-foreground">
-            Tenants
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Handle renewals, transfers, move-out actions, and current-stay
-            visibility in one workspace.
-          </p>
-        </div>
+        {/* Pattern 1 Sticky Sub-Header */}
+        <AdminPageHeader
+          title="Tenants"
+          subtitle="Handle renewals, transfers, move-out actions, and current-stay visibility in one workspace."
+        />
 
         {expiredStays.length > 0 && (
           <ExpiredOccupancyAlert
@@ -601,65 +598,60 @@ export default function TenantsWorkspacePage() {
           />
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Users className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="text-2xl font-semibold text-blue-600">
-                  {summaryItems[0].value}
-                </div>
-                <div className="text-xs text-muted-foreground uppercase tracking-wide">
-                  Total Tenants
-                </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 mb-4">
+          <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                Total Tenants
+              </span>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
+                <Users size={15} />
               </div>
             </div>
-          </div>
-          <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <UserRoundCheck className="w-5 h-5 text-green-600" />
-              </div>
-              <div>
-                <div className="text-2xl font-semibold text-green-600">
-                  {summaryItems[1].value}
-                </div>
-                <div className="text-xs text-muted-foreground uppercase tracking-wide">
-                  Active Tenants
-                </div>
-              </div>
+            <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+              {summaryItems[0].value}
             </div>
           </div>
-          <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-100 rounded-lg">
-                <Clock3 className="w-5 h-5 text-amber-500" />
-              </div>
-              <div>
-                <div className="text-2xl font-semibold text-amber-500">
-                  {summaryItems[2].value}
-                </div>
-                <div className="text-xs text-muted-foreground uppercase tracking-wide">
-                  Expiring Soon
-                </div>
+
+          <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                Active Tenants
+              </span>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400">
+                <UserRoundCheck size={15} />
               </div>
             </div>
+            <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+              {summaryItems[1].value}
+            </div>
           </div>
-          <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <AlertTriangle className="w-5 h-5 text-red-500" />
+
+          <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                Expiring Soon
+              </span>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+                <Clock3 size={15} />
               </div>
-              <div>
-                <div className="text-2xl font-semibold text-red-500">
-                  {summaryItems[3].value}
-                </div>
-                <div className="text-xs text-muted-foreground uppercase tracking-wide">
-                  Overdue Payments
-                </div>
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+              {summaryItems[2].value}
+            </div>
+          </div>
+
+          <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                Overdue Payments
+              </span>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
+                <AlertTriangle size={15} />
               </div>
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+              {summaryItems[3].value}
             </div>
           </div>
         </div>

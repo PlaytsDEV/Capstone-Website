@@ -19,6 +19,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import PageShell from "../components/shared/PageShell";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import { useInquiries, useInquiryStats } from "../../../shared/hooks/queries/useInquiries";
@@ -195,30 +196,25 @@ function InquiriesPage({ isEmbedded = false }) {
   return (
     <PageShell>
       <PageShell.Content>
+        {/* Pattern 1 Sticky Sub-Header */}
         {!isEmbedded && (
-          <div className="flex flex-col gap-2 mb-4">
-            {showBackToDashboard && (
-              <div>
+          <AdminPageHeader
+            title="Inquiries"
+            subtitle="Review, filter, and respond to applicant and tenant inquiries across acquisition channels."
+            actions={
+              showBackToDashboard ? (
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold text-card-foreground shadow-sm transition-all hover:bg-muted hover:text-foreground cursor-pointer"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold text-card-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground cursor-pointer"
                   title="Back to Dashboard"
                 >
-                  <ArrowLeft className="h-4 w-4" />
+                  <ArrowLeft className="h-3.5 w-3.5" />
                   <span>Back to Dashboard</span>
                 </button>
-              </div>
-            )}
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">
-                Inquiries & Lead Acquisition
-              </h1>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Review, filter, and respond to applicant & tenant inquiries across acquisition channels.
-              </p>
-            </div>
-          </div>
+              ) : null
+            }
+          />
         )}
 
         {/* KPI Summary Cards Grid */}
@@ -281,10 +277,10 @@ function InquiriesPage({ isEmbedded = false }) {
                     borderColor: isActive ? undefined : "var(--border-light)",
                     boxShadow: "0 1px 2px rgba(0, 0, 0, 0.02)",
                   }}
-                  className={`group relative flex flex-col justify-between min-h-[108px] rounded-xl border p-4 transition-all duration-150 ${
+                  className={`group relative flex flex-col justify-between min-h-[108px] rounded-xl border p-4 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 ${
                     isClickable
-                      ? "cursor-pointer select-none hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                      : ""
+                      ? "cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                      : "cursor-default"
                   } ${getActiveStyle()}`}
                   title={
                     isClickable

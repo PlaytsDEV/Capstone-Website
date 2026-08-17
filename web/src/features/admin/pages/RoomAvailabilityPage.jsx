@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar,
+  Download,
 } from "lucide-react";
 
 // Components
@@ -29,6 +30,7 @@ import RoomFormModal from "../components/rooms/RoomFormModal";
 import DeleteRoomModal from "../components/rooms/DeleteRoomModal";
 import DoubleDeckRoomCard from "../components/rooms/DoubleDeckRoomCard";
 import RoomBedHistoryDrawer from "../components/rooms/RoomBedHistoryDrawer";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import { AdminCardGridSkeleton } from "../components/AdminContentSkeletons";
 
 // Hooks & API
@@ -501,7 +503,7 @@ function RoomAvailabilityPage() {
     setSearchParams(next);
   };
 
-  const handleExportRooms = () => {
+  const handleExportCSV = () => {
     exportToCSV(
       filteredRooms.map((room) => ({
         roomName: room.name,
@@ -642,125 +644,129 @@ function RoomAvailabilityPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground mb-1">
-            Room Management
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Track available capacity, assignments, and turnover across rooms
-            without leaving operations.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setShowVacancyModal(true)}
-          className="px-3.5 py-2 rounded-lg text-xs font-semibold border flex items-center gap-2 bg-card hover:bg-muted transition-colors text-foreground border-border shadow-sm self-start md:self-auto"
-          title="Check upcoming vacancy schedule for rooms and beds"
-        >
-          <Calendar className="w-4 h-4 text-amber-500" />
-          <span>Check Vacancy Schedule</span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-bold">
-            {upcomingVacancies.length}
-          </span>
-        </button>
-      </div>
+      {/* Pattern 1 Sticky Sub-Header */}
+      <AdminPageHeader
+        title="Room Management"
+        subtitle="Track available capacity, assignments, and turnover across rooms without leaving operations."
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowVacancyModal(true)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-2 bg-card hover:bg-muted transition-colors text-foreground border-border shadow-xs"
+              title="Check upcoming vacancy schedule for rooms and beds"
+            >
+              <Calendar className="w-4 h-4 text-amber-500" />
+              <span>Check Vacancy Schedule</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-bold">
+                {upcomingVacancies.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 bg-card hover:bg-muted transition-colors text-foreground border-border shadow-xs"
+              title="Export room inventory as CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export CSV</span>
+            </button>
+            {can("create", "rooms") && (
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Room</span>
+              </button>
+            )}
+          </div>
+        }
+      />
 
       {/* Stats Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-            <div
-              className="rounded-lg p-3 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
-              style={{
-                backgroundColor: "var(--card)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <DoorOpen className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5 mb-4">
+            <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
                   Total Rooms
                 </span>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  <DoorOpen size={15} />
+                </div>
               </div>
-              <div className="text-2xl font-semibold text-foreground">
+              <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
                 {stats.total}
               </div>
             </div>
-            <div
-              className="rounded-lg p-3 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
-              style={{
-                backgroundColor: "var(--card)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-green-500" />
-                <span className="text-xs text-muted-foreground">Available</span>
+
+            <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                  Available
+                </span>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400">
+                  <DoorOpen size={15} />
+                </div>
               </div>
-              <div className="text-2xl font-semibold text-foreground">
+              <div className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-2">
                 {stats.available}
               </div>
             </div>
-            <div
-              className="rounded-lg p-3 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
-              style={{
-                backgroundColor: "var(--card)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-amber-500" />
-                <span className="text-xs text-muted-foreground">Partial</span>
+
+            <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                  Partial
+                </span>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+                  <DoorOpen size={15} />
+                </div>
               </div>
-              <div className="text-2xl font-semibold text-foreground">
+              <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
                 {stats.partial}
               </div>
             </div>
-            <div
-              className="rounded-lg p-3 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
-              style={{
-                backgroundColor: "var(--card)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-red-500" />
-                <span className="text-xs text-muted-foreground">Full</span>
+
+            <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                  Full
+                </span>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
+                  <DoorOpen size={15} />
+                </div>
               </div>
-              <div className="text-2xl font-semibold text-foreground">
+              <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
                 {stats.full}
               </div>
             </div>
-            <div
-              className="rounded-lg p-3 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
-              style={{
-                backgroundColor: "var(--card)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-neutral-500" />
-                <span className="text-xs text-muted-foreground">
+
+            <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
                   Maintenance
                 </span>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  <DoorOpen size={15} />
+                </div>
               </div>
-              <div className="text-2xl font-semibold text-foreground">
+              <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
                 {stats.maintenance}
               </div>
             </div>
-            <div
-              className="rounded-lg p-3 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
-              style={{
-                backgroundColor: "var(--card)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <Bed className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">Total Beds</span>
+
+            <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                  Total Beds
+                </span>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
+                  <Bed size={15} />
+                </div>
               </div>
-              <div className="text-2xl font-semibold text-foreground">
+              <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
                 {rooms.reduce((sum, r) => sum + (r.capacity || 0), 0)}
               </div>
             </div>
@@ -1254,7 +1260,7 @@ function RoomAvailabilityPage() {
                   return (
                     <div
                       key={kpi.id}
-                      className="p-3 rounded-xl border border-border bg-card text-foreground"
+                      className="p-3 rounded-xl border border-border bg-card text-foreground transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default"
                     >
                       <div className="flex items-center justify-between text-xs font-semibold text-foreground">
                         <span>{kpi.label}</span>

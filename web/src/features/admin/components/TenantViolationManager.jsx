@@ -160,63 +160,73 @@ export default function TenantViolationManager({ branch }) {
   return (
     <div className="space-y-4">
       {/* Top KPI Metrics Banner */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-4">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Total Infractions
             </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300">
-              <FileText size={14} />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <FileText size={15} />
             </div>
           </div>
-          <p className="mt-2 text-xl font-bold text-card-foreground">{stats.total}</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">Cumulative logged rule events</p>
+          <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+            {stats.total}
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground font-medium">
+            Cumulative logged rule events
+          </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Active Warnings
             </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-400">
-              <AlertTriangle size={14} />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+              <AlertTriangle size={15} />
             </div>
           </div>
-          <p className="mt-2 text-xl font-bold text-amber-700 dark:text-amber-400">
+          <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
             {stats.activeWarnings}
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground font-medium">
+            Confirmed active warning notices
           </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">Confirmed active warning notices</p>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Assessed Penalties
             </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-400">
-              <DollarSign size={14} />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
+              <DollarSign size={15} />
             </div>
           </div>
-          <p className="mt-2 text-xl font-bold text-red-600 dark:text-red-400">
+          <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
             ₱{Number(stats.totalPenalties || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground font-medium">
+            Monetary fines & restoration fees
           </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">Monetary fines & restoration fees</p>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Escalated Cases
             </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-400">
-              <ShieldAlert size={14} />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
+              <ShieldAlert size={15} />
             </div>
           </div>
-          <p className="mt-2 text-xl font-bold text-rose-600 dark:text-rose-400">
+          <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
             {stats.escalatedCases}
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground font-medium">
+            Sent to Termination Review Board
           </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">Sent to Termination Review Board</p>
         </div>
       </div>
 

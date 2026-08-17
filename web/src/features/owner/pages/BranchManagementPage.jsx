@@ -20,6 +20,7 @@ import {
 import { useApiClient } from "../../../shared/api/apiClient";
 import { buildBranchScopedHref } from "../../../shared/utils/branchFilterQuery.mjs";
 import { AdminBranchesSkeleton } from "../../admin/components/AdminContentSkeletons";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import "../styles/owner-dashboard.css";
 import "../styles/owner-branches.css";
 
@@ -146,19 +147,13 @@ export default function BranchManagementPage() {
   }
 
   return (
-    <div className="sa2">
-      {/* ── Page Header ── */}
-      <div className="sa2-header">
-        <div>
-          <p className="sa2-eyebrow">System Control Hub</p>
-          <h1 className="sa2-title">Branches Operations Matrix</h1>
-          <p className="sa-branches-header-copy">
-            Real-time branch operational capacity, occupancy distribution, and
-            direct-action workflow matrices across the dormitory network.
-          </p>
-        </div>
-        <div className="sa-branches-header-actions">
-          {lastSyncFormatted && (
+    <div className="sa2 space-y-4">
+      {/* ── Pattern 1 Sticky Sub-Header ── */}
+      <AdminPageHeader
+        title="Branches"
+        subtitle="Manage branch-level operational capacity, assignments, and dormitory performance."
+        actions={
+          lastSyncFormatted ? (
             <span
               className="sa-branches-sync-indicator"
               title="Automatically synchronized in the background"
@@ -172,9 +167,9 @@ export default function BranchManagementPage() {
                 {isFetching ? "Syncing..." : `Synced at ${lastSyncFormatted}`}
               </span>
             </span>
-          )}
-        </div>
-      </div>
+          ) : null
+        }
+      />
 
       {/* ── Network Overview Strip ── */}
       <div className="sa-branches-overview">

@@ -1144,6 +1144,8 @@ const AuditLogsPage = () => {
 
   return (
     <PageShell
+      title="Audit & Security"
+      subtitle="Review audit events, trace administrative changes, and inspect security-relevant activity."
       tabs={isOwner ? auditTabs : []}
       activeTab={currentTab}
       onTabChange={handleTabChange}

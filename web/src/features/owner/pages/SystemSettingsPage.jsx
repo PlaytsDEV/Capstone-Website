@@ -28,6 +28,7 @@ import { showNotification } from "../../../shared/utils/notification";
 import { AdminPoliciesSettingsSkeleton } from "../../admin/components/AdminContentSkeletons";
 import SystemBackupPage from "../../admin/pages/SystemBackupPage";
 import AdminTabs from "../../../shared/components/AdminTabs";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 
 const BRANCH_META = {
   "gil-puyat": {
@@ -870,24 +871,14 @@ export default function SystemSettingsPage() {
         </div>
       )}
 
-      {/* ── Header ── */}
-      <div className="sa2-header">
-        <div>
-          <p className="sa2-eyebrow">System Governance</p>
-          <h1 className="sa2-title">Operational Policies & Governance</h1>
-          <p className="sa-settings-header-copy">
-            System-wide billing rates, promotional discounts, branch overrides, and database governance utilities.
-          </p>
-        </div>
-      </div>
-
-      {/* ── Navigation Tabs ── */}
-      <AdminTabs
+      {/* ── Pattern 1 Sticky Sub-Header ── */}
+      <AdminPageHeader
+        title="Policies & Maintenance"
+        subtitle="Control platform policies, defaults, branch overrides, and manage database backup and recovery."
         tabs={settingsTabs}
         activeTab={activeTab}
         onTabChange={handleTabChange}
         ariaLabel="Operational policies and database backup navigation"
-        className="sa-settings-tabs-bar"
       />
 
       {/* ── Tab Content ── */}

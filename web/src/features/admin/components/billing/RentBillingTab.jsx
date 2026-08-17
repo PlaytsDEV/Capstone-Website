@@ -612,7 +612,7 @@ export default function RentBillingTab({ isActive }) {
       </div>
 
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-shadow hover:shadow-sm">
+        <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Expected Revenue</p>
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
@@ -625,7 +625,7 @@ export default function RentBillingTab({ isActive }) {
           </div>
         </div>
 
-        <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-shadow hover:shadow-sm">
+        <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Collected</p>
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-100 text-emerald-800 font-extrabold text-[11px]">
@@ -638,7 +638,7 @@ export default function RentBillingTab({ isActive }) {
           </div>
         </div>
 
-        <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-shadow hover:shadow-sm">
+        <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Outstanding</p>
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300">
@@ -657,7 +657,7 @@ export default function RentBillingTab({ isActive }) {
           </div>
         </div>
 
-        <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs">
+        <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex h-full flex-col justify-between">
             <div className="flex items-center justify-between text-card-foreground">
               <div className="flex items-center gap-2 text-xs font-bold">

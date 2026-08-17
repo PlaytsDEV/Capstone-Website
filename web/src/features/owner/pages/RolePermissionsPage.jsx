@@ -12,6 +12,7 @@ import {
 } from "../../../shared/hooks/queries/useUsers";
 import { AdminRolePermissionsSkeleton } from "../../admin/components/AdminContentSkeletons";
 import SkeletonPulse from "../../../shared/components/SkeletonPulse";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import "../styles/owner-dashboard.css";
 import "../styles/owner-permissions.css";
 
@@ -166,19 +167,13 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
     <div className={isEmbedded ? "sa-perm-embedded" : "sa2"}>
       {/* Page / Context Header */}
       {!isEmbedded ? (
-        <div className="sa2-header flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <p className="sa2-eyebrow">Owner Controls</p>
-            <h1 className="sa2-title">Role Permissions Workspace</h1>
-            <p className="text-xs text-muted-foreground mt-1">
-              Configure granular feature permissions and administrative access switches for branch administrators.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
+        <AdminPageHeader
+          title="Roles & Permissions"
+          subtitle="Adjust branch admin capabilities and granular module permissions."
+          actions={
             <button
               type="button"
-              className="sa-perm-header-btn flex items-center gap-1.5"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted cursor-pointer disabled:opacity-50"
               onClick={() => refetch()}
               disabled={isRefetching}
               title="Synchronize and refresh permissions list"
@@ -189,8 +184,8 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
               />
               <span>{isRefetching ? "Synchronizing…" : "Refresh"}</span>
             </button>
-          </div>
-        </div>
+          }
+        />
       ) : (
         <div className="sa-perm-context-bar flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg mb-2">
           <div className="flex items-center gap-2.5">

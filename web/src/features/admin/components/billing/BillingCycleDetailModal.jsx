@@ -151,22 +151,24 @@ const BillingCycleDetailModal = ({
             ].map(({ label, value, sub, icon: Icon, badgeBg, badgeText }) => (
               <div
                 key={label}
-                className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-border/80"
+                className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default"
               >
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
                     {label}
-                  </p>
-                  <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${badgeBg} ${badgeText}`}>
-                    <Icon size={14} />
+                  </span>
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 ${badgeBg} ${badgeText}`}>
+                    <Icon size={15} />
                   </div>
                 </div>
-                <p className="mt-2 text-xl font-bold text-foreground">
-                  {value}
-                </p>
-                {sub && (
-                  <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">{sub}</p>
-                )}
+                <div className="mt-2">
+                  <p className="text-2xl font-bold tracking-tight text-foreground">
+                    {value}
+                  </p>
+                  {sub && (
+                    <p className="mt-1 text-[11px] font-medium text-muted-foreground">{sub}</p>
+                  )}
+                </div>
               </div>
             ))}
           </div>
