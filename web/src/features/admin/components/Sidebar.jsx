@@ -38,20 +38,20 @@ const NAV_GROUPS = [
 ];
 
 const NAV_ITEMS = [
- // WORKSPACE group
- { to: "/admin/dashboard", icon: LayoutDashboard, text: "Dashboard", group: "workspace", priority: 1 },
- { to: "/admin/reservations", icon: CalendarCheck, text: "Reservations", group: "workspace", priority: 2 },
- { to: "/admin/room-availability", icon: BedDouble, text: "Room Management", group: "workspace", priority: 3 },
- { to: "/admin/tenants", icon: Users, text: "Tenants", group: "workspace", priority: 4 },
- { to: "/admin/maintenance", icon: Wrench, text: "Maintenance", group: "workspace", priority: 5, permission: "manageMaintenance" },
- { to: "/admin/billing", icon: Receipt, text: "Billing", group: "workspace", priority: 6 },
- { to: "/admin/analytics", icon: BarChart3, text: "Analytics", group: "workspace", priority: 7 },
- { to: "/admin/announcements", icon: Megaphone, text: "Announcements", group: "workspace", priority: 8, permission: "manageAnnouncements" },
- // SYSTEM group
- { to: "/admin/users", icon: UserCog, text: "Accounts", group: "system", priority: 1 },
- { to: "/admin/audit-logs", icon: FileText, text: "Activity Log", group: "system", priority: 2 },
- { to: "/admin/branches", icon: Building2, text: "Branches", group: "system", priority: 3, saOnly: true },
- { to: "/admin/settings", icon: Settings, text: "Settings", group: "system", priority: 4, saOnly: true },
+  // WORKSPACE group
+  { to: "/admin/dashboard", icon: LayoutDashboard, text: "Dashboard", group: "workspace", priority: 1 },
+  { to: "/admin/reservations", icon: CalendarCheck, text: "Reservations", group: "workspace", priority: 2 },
+  { to: "/admin/room-availability", icon: BedDouble, text: "Room Management", group: "workspace", priority: 3 },
+  { to: "/admin/tenants", icon: Users, text: "Tenants", group: "workspace", priority: 4 },
+  { to: "/admin/maintenance", icon: Wrench, text: "Maintenance", group: "workspace", priority: 5, permission: "manageMaintenance" },
+  { to: "/admin/billing", icon: Receipt, text: "Billing", group: "workspace", priority: 6 },
+  { to: "/admin/analytics", icon: BarChart3, text: "Analytics", group: "workspace", priority: 7 },
+  { to: "/admin/announcements", icon: Megaphone, text: "Announcements", group: "workspace", priority: 8, permission: "manageAnnouncements" },
+  // SYSTEM group
+  { to: "/admin/users", icon: UserCog, text: "Accounts & Access", group: "system", priority: 1 },
+  { to: "/admin/audit-logs", icon: FileText, text: "Audit & Security", group: "system", priority: 2 },
+  { to: "/admin/branches", icon: Building2, text: "Branches", group: "system", priority: 3, saOnly: true },
+  { to: "/admin/settings", icon: Settings, text: "Policies & Maintenance", group: "system", priority: 4, saOnly: true },
 ];
 
 export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }) {
@@ -150,7 +150,7 @@ export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }
  onMouseLeave={() => setHoveredItem(null)}
  >
  <span className="sb-link-indicator" />
- <item.icon className="sb-link-icon" />
+ <item.icon className="sb-link-icon" aria-hidden="true" />
  {!collapsed && <span className="sb-link-text">{item.text}</span>}
  {collapsed && hoveredItem === item.to && (
  <span className="sb-tooltip">{item.text}</span>
@@ -234,7 +234,7 @@ export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }
  onMouseEnter={() => collapsed && setHoveredItem("__signout")}
  onMouseLeave={() => setHoveredItem(null)}
  >
- <LogOut size={16} style={{ flexShrink: 0 }} />
+ <LogOut size={16} style={{ flexShrink: 0 }} aria-hidden="true" />
  {!collapsed && <span>Sign Out</span>}
  {collapsed && hoveredItem === "__signout" && (
  <span className="sb-tooltip">Sign Out</span>

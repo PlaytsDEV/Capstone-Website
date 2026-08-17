@@ -270,6 +270,10 @@ export const sanitizeToastMessage = (rawMessage, type = "info") => {
     /\b(failed\s*to\s*fetch|networkerror|econnrefused|etimedout|network\s*error|axioserror)\b/i;
   const databaseErrorRegex =
     /\b(mongoose|cast\s*to\s*objectid|validationerror\b|duplicate\s*key\s*error|e11000|is not a valid enum value|not a valid enum|validation failed)\b/i;
+  const maintenanceNotFoundRegex =
+    /\b(maintenance\s*request\s*not\s*found|maintenance\s*ticket\s*not\s*found|request\s*not\s*found)\b/i;
+  const notFoundRegex =
+    /^(not\s*found\.?|404\s*not\s*found\.?|resource\s*not\s*found\.?|item\s*not\s*found\.?|record\s*not\s*found\.?)$/i;
   const genericErrorRegex =
     /^(an\s*error\s*occurred\.?|something\s*went\s*wrong\.?|error\s*occurred\.?)$/i;
 
@@ -283,6 +287,14 @@ export const sanitizeToastMessage = (rawMessage, type = "info") => {
 
   if (databaseErrorRegex.test(message)) {
     return "Unable to process this request. Please verify the details and try again.";
+  }
+
+  if (maintenanceNotFoundRegex.test(message)) {
+    return "Unable to find the requested maintenance record. Please refresh the page and try again.";
+  }
+
+  if (notFoundRegex.test(message)) {
+    return "The requested record could not be found. It may have been updated or removed.";
   }
 
   if (genericErrorRegex.test(message)) {

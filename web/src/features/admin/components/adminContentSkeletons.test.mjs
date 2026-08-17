@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-test("AdminContentSkeletons exports bespoke skeletons for Branches, Settings, Backups, Analytics, and Room Availability", () => {
+test("AdminContentSkeletons exports bespoke skeletons for Branches, Settings, Backups, Analytics, Room Availability, and Support Chat", () => {
   const skeletonsFile = fs.readFileSync(
     path.join(__dirname, "AdminContentSkeletons.jsx"),
     "utf8"
@@ -20,6 +20,9 @@ test("AdminContentSkeletons exports bespoke skeletons for Branches, Settings, Ba
   assert.match(skeletonsFile, /export function AdminAnalyticsDetailSkeleton/);
   assert.match(skeletonsFile, /export function AdminRoomAvailabilitySkeleton/);
   assert.match(skeletonsFile, /export const AdminRoomManagementSkeleton/);
+  assert.match(skeletonsFile, /export function AdminChatSkeleton/);
+  assert.match(skeletonsFile, /export function ChatConversationListSkeleton/);
+  assert.match(skeletonsFile, /export function ChatMessageFeedSkeleton/);
 });
 
 test("AdminRoomAvailabilitySkeleton mirrors Room Management UI architecture with 6 KPI cards, filters, and double-deck layout", () => {
@@ -166,6 +169,50 @@ test("AdminAnalyticsSkeleton and DetailSkeleton avoid colored icon classes and a
   // Ensure navigation tabs do not have active class highlights or underlines during loading
   assert.doesNotMatch(skeletonsFile, /analytics-tab\s+\$\{isActive/);
 });
+
+test("AdminChatSkeleton mirrors Support Chat workspace UI architecture with 4 KPI cards, sidebar, and message feed", () => {
+  const skeletonsFile = fs.readFileSync(
+    path.join(__dirname, "AdminContentSkeletons.jsx"),
+    "utf8"
+  );
+
+  // Pattern 1 Sticky sub-header
+  assert.match(skeletonsFile, /admin-page-header admin-page-header--sticky/);
+  // 4 KPI summary cards grid
+  assert.match(skeletonsFile, /grid grid-cols-2 lg:grid-cols-4 gap-3\.5 mb-4/);
+  // Responsive 2-column workspace layout
+  assert.match(skeletonsFile, /grid grid-cols-1 lg:grid-cols-\[380px_minmax\(0,1fr\)\] xl:grid-cols-\[400px_minmax\(0,1fr\)\]/);
+  // Sidebar with 4 segmented quick tabs & ChatConversationListSkeleton
+  assert.match(skeletonsFile, /ChatConversationListSkeleton/);
+  // Right chat section with thread header, ChatMessageFeedSkeleton, and reply composer
+  assert.match(skeletonsFile, /ChatMessageFeedSkeleton/);
+  // Accessibility attributes
+  assert.match(skeletonsFile, /aria-label="Loading support chat workspace"/);
+  assert.match(skeletonsFile, /aria-busy="true"/);
+  assert.match(skeletonsFile, /aria-live="polite"/);
+});
+
+test("AdminChatPage integrates AdminChatSkeleton, ChatConversationListSkeleton, and ChatMessageFeedSkeleton without generic ListSkeleton", () => {
+  const chatPageFile = fs.readFileSync(
+    path.join(__dirname, "../pages/AdminChatPage.jsx"),
+    "utf8"
+  );
+
+  assert.match(chatPageFile, /AdminChatSkeleton/);
+  assert.match(chatPageFile, /ChatConversationListSkeleton/);
+  assert.match(chatPageFile, /ChatMessageFeedSkeleton/);
+  assert.doesNotMatch(chatPageFile, /\bListSkeleton\b/);
+});
+
+test("adminRoutes uses AdminChatSkeleton as route fallback", () => {
+  const routesFile = fs.readFileSync(
+    path.join(__dirname, "../../../app/routes/adminRoutes.jsx"),
+    "utf8"
+  );
+
+  assert.match(routesFile, /fallback=\{<AdminChatSkeleton \/>\}/);
+});
+
 
 
 

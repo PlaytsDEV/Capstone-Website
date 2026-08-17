@@ -240,7 +240,7 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
           </button>
         ) : (
           <button type="button" className="sidebar-collapse-toggle" onClick={toggleCollapse} aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
-            <ChevronLeft size={14} style={{ transform: isCollapsed ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.24s ease" }} />
+            <ChevronLeft size={12} style={{ transform: isCollapsed ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.52s cubic-bezier(0.4, 0, 0.2, 1)" }} />
           </button>
         )}
       </div>

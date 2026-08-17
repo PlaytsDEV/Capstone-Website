@@ -183,7 +183,11 @@ export default function AdminTabs({
               onKeyDown={(e) => handleKeyDown(e, index)}
             >
               {IconComponent && (
-                <IconComponent className="admin-tab-icon" aria-hidden="true" />
+                <IconComponent
+                  className={`admin-tab-icon ${tab.iconClassName || ""}`.trim()}
+                  style={tab.iconColor ? { color: tab.iconColor } : undefined}
+                  aria-hidden="true"
+                />
               )}
               <span>{tab.label}</span>
               {hasBadge && (
@@ -248,7 +252,11 @@ export default function AdminTabs({
                     }}
                   >
                     {IconComponent && (
-                      <IconComponent className="admin-tab-icon" aria-hidden="true" />
+                      <IconComponent
+                        className={`admin-tab-icon ${tab.iconClassName || ""}`.trim()}
+                        style={tab.iconColor ? { color: tab.iconColor } : undefined}
+                        aria-hidden="true"
+                      />
                     )}
                     <span className="flex-1 text-left">{tab.label}</span>
                     {hasBadge && (

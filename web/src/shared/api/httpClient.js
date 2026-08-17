@@ -157,7 +157,10 @@ export const authFetch = async (url, options = {}, _isRetry = false) => {
         }
       }
 
-      let errorMessage = "API request failed";
+      let errorMessage =
+        response.status === 404
+          ? "The requested resource could not be found."
+          : "Unable to complete your request right now.";
       const validationMessage = getFirstApiValidationMessage(error);
       if (validationMessage) {
         errorMessage = validationMessage;
@@ -168,6 +171,10 @@ export const authFetch = async (url, options = {}, _isRetry = false) => {
             : error.error.message;
       } else if (error && error.message) {
         errorMessage = error.message;
+      }
+
+      if (errorMessage === "Not Found" || errorMessage === "Not Found.") {
+        errorMessage = "The requested resource could not be found.";
       }
 
       const apiError = new Error(errorMessage);
@@ -221,9 +228,17 @@ export const publicFetch = async (url, options = {}) => {
         .catch(() => ({ message: response.statusText }));
 
       const validationMessage = getFirstApiValidationMessage(error);
-      const apiError = new Error(
-        validationMessage || error.error || error.message || "API request failed",
-      );
+      let fallbackMessage =
+        response.status === 404
+          ? "The requested resource could not be found."
+          : "Unable to complete your request right now.";
+      let errorMessage =
+        validationMessage || error.error || error.message || fallbackMessage;
+      if (errorMessage === "Not Found" || errorMessage === "Not Found.") {
+        errorMessage = "The requested resource could not be found.";
+      }
+
+      const apiError = new Error(errorMessage);
       apiError.response = { status: response.status, data: error };
       throw apiError;
     }

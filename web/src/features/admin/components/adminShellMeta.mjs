@@ -117,9 +117,9 @@ const ANALYTICS_DETAILS_META = {
 
 const PAGE_TAB_META = {
   "/admin/analytics": {
-    overview: "Overview",
     occupancy: "Occupancy",
     billing: "Billing & Revenue",
+    revenue: "Billing & Revenue",
     operations: "Operations",
     demographics: "Demographics",
     acquisition: "Lead Acquisition",
@@ -135,53 +135,36 @@ const PAGE_TAB_META = {
     "overdue-notices": "Overdue Notices",
     violations: "Violations",
   },
-  "/admin/room-availability": {
-    rooms: "Room Inventory",
-    occupancy: "Occupancy",
-    forecast: "Vacancy Forecast",
-    blackout: "Blackout Dates",
-  },
-  "/admin/tenants": {
-    active: "Active Tenants",
-    renewals: "Lease Renewals",
-    transfers: "Room Transfers",
-    moveouts: "Move-Outs",
-    violations: "Violations",
-  },
   "/admin/users": {
-    accounts: "User Accounts",
     roles: "Roles & Permissions",
     permissions: "Roles & Permissions",
     activity: "Activity Logs",
   },
   "/admin/reservations": {
-    applications: "Applications",
+    visits: "Visit Schedules",
     pipeline: "Visit Pipeline",
     schedules: "Visit Schedules",
     availability: "Availability Slots",
+    inquiries: "Inquiries",
     conflicts: "Conflict Warnings",
     blackout: "Blackout Dates",
   },
   "/admin/audit-logs": {
-    events: "Event Log",
+    signals: "Security Signals",
+    "security-signals": "Security Signals",
     security: "Security Alerts",
     actions: "Admin Actions",
   },
   "/admin/maintenance": {
-    active: "Active Tickets",
+    analytics: "Analytics",
+    branch_reports: "Branch Reports",
+    service_providers: "Service Providers",
     history: "Service History",
     schedules: "Schedules",
   },
-  "/admin/announcements": {
-    published: "Published",
-    drafts: "Drafts",
-    scheduled: "Scheduled",
-    archived: "Archive",
-  },
-  "/admin/notifications": {
-    all: "All Alerts",
-    sla: "SLA Breaches",
-    system: "System Events",
+  "/admin/settings": {
+    backups: "Database Backup",
+    database: "Database Backup",
   },
 };
 
@@ -215,33 +198,6 @@ export function getPageMeta(pathname, search = "") {
     };
   }
 
-  if (pathname === "/admin/room-availability") {
-    const tab = params.get("tab") || "rooms";
-    let subTitle = "Room Management";
-    let subDesc = PAGE_META["/admin/room-availability"].description;
-
-    if (tab === "occupancy") {
-      subTitle = "Room Occupancy";
-      subDesc = "See who is assigned where and catch room-level conflicts early.";
-    } else if (tab === "forecast") {
-      subTitle = "Vacancy Forecast";
-      subDesc = "Plan around expected openings, pending reservations, and room turnover.";
-    }
-
-    const tabLabel = PAGE_TAB_META["/admin/room-availability"]?.[tab] || "Room Inventory";
-
-    return {
-      title: subTitle,
-      description: subDesc,
-      activeTab: tab,
-      breadcrumbs: [
-        { label: "Admin", href: "/admin/dashboard" },
-        { label: "Room Management", href: "/admin/room-availability" },
-        { label: tabLabel },
-      ],
-    };
-  }
-
   const baseMeta = PAGE_META[pathname] || {
     title: "Admin",
     description: "Manage daily operations, resident workflows, and branch performance.",
@@ -258,17 +214,14 @@ export function getPageMeta(pathname, search = "") {
     };
   }
 
-  // Check if page has sub-tabs defined
+  // Check if a specific sub-tab parameter is requested in the URL and defined in PAGE_TAB_META
+  const tabParam = params.get("tab");
   const tabMap = PAGE_TAB_META[pathname];
-  if (tabMap) {
-    const defaultTabKey = Object.keys(tabMap)[0];
-    const tabParam = params.get("tab");
-    const activeTabKey = tabParam && tabMap[tabParam] ? tabParam : defaultTabKey;
-    const activeTabLabel = tabMap[activeTabKey] || tabMap[defaultTabKey];
-
+  if (tabParam && tabMap && tabMap[tabParam]) {
+    const activeTabLabel = tabMap[tabParam];
     return {
       ...baseMeta,
-      activeTab: activeTabKey,
+      activeTab: tabParam,
       breadcrumbs: [
         { label: "Admin", href: "/admin/dashboard" },
         { label: baseMeta.title, href: pathname },
@@ -279,6 +232,7 @@ export function getPageMeta(pathname, search = "") {
 
   return {
     ...baseMeta,
+    activeTab: tabParam || null,
     breadcrumbs: [
       { label: "Admin", href: "/admin/dashboard" },
       { label: baseMeta.title },

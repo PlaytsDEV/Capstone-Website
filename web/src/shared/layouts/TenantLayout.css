@@ -15,7 +15,7 @@
   flex-direction: column;
   margin-left: 280px; /* ← matches sidebar width */
   will-change: margin-left;
-  transition: margin-left 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: margin-left 0.52s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .tenant-layout-main.sidebar-collapsed {

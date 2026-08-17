@@ -808,40 +808,249 @@ export function AdminRolePermissionsSkeleton() {
   );
 }
 
-// ─── Chat skeleton ────────────────────────────────────────────────────────────
-export function AdminChatSkeleton() {
+// ─── Chat conversation list partial skeleton (Sidebar live reload) ──────────
+export function ChatConversationListSkeleton({ count = 5 }) {
   return (
-    <div aria-live="polite" aria-busy="true" style={{ display: "flex", height: "calc(100vh - 64px)" }}>
-      {/* Sidebar */}
-      <div style={{ width: "280px", flexShrink: 0, borderRight: "1px solid var(--border-light, #e5e7eb)", padding: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
-        <SkeletonPulse width="100%" height="36px" borderRadius="8px" style={{ marginBottom: "8px" }} />
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px" }}>
-            <SkeletonPulse variant="circle" width="38px" />
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
-              <SkeletonPulse variant="text" width="70%" height="13px" />
-              <SkeletonPulse variant="text" width="50%" height="11px" />
+    <div className="space-y-3" aria-hidden="true">
+      {/* Group 1: Open */}
+      <div className="space-y-1">
+        <div className="px-2.5 py-1 flex items-center justify-between">
+          <SkeletonPulse variant="text" width="60px" height="10px" />
+          <SkeletonPulse width="20px" height="16px" borderRadius="9999px" />
+        </div>
+        {[
+          { nameW: "120px", roomW: "140px", msgW: "90%", timeW: "45px", unread: true },
+          { nameW: "100px", roomW: "120px", msgW: "75%", timeW: "35px", urgent: true },
+          { nameW: "135px", roomW: "150px", msgW: "85%", timeW: "50px" },
+        ].slice(0, Math.min(count, 3)).map((item, idx) => (
+          <div
+            key={idx}
+            className="p-2.5 rounded-lg border border-transparent flex items-start gap-2.5"
+          >
+            <SkeletonPulse variant="circle" width="32px" style={{ flexShrink: 0 }} />
+            <div className="flex-1 min-w-0 space-y-1">
+              <div className="flex items-center justify-between gap-1">
+                <SkeletonPulse variant="text" width={item.nameW} height="13px" />
+                <SkeletonPulse variant="text" width={item.timeW} height="10px" />
+              </div>
+              <SkeletonPulse variant="text" width={item.roomW} height="11px" />
+              <SkeletonPulse variant="text" width={item.msgW} height="11px" />
+            </div>
+            {item.unread && (
+              <SkeletonPulse width="18px" height="18px" borderRadius="9999px" style={{ flexShrink: 0 }} />
+            )}
+            {item.urgent && (
+              <SkeletonPulse width="48px" height="16px" borderRadius="4px" style={{ flexShrink: 0 }} />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Group 2: In Review */}
+      {count > 3 && (
+        <div className="space-y-1 pt-1">
+          <div className="px-2.5 py-1 flex items-center justify-between">
+            <SkeletonPulse variant="text" width="75px" height="10px" />
+            <SkeletonPulse width="20px" height="16px" borderRadius="9999px" />
+          </div>
+          {[
+            { nameW: "110px", roomW: "130px", msgW: "80%", timeW: "40px" },
+            { nameW: "95px", roomW: "115px", msgW: "65%", timeW: "55px" },
+          ].slice(0, count - 3).map((item, idx) => (
+            <div
+              key={idx}
+              className="p-2.5 rounded-lg border border-transparent flex items-start gap-2.5"
+            >
+              <SkeletonPulse variant="circle" width="32px" style={{ flexShrink: 0 }} />
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center justify-between gap-1">
+                  <SkeletonPulse variant="text" width={item.nameW} height="13px" />
+                  <SkeletonPulse variant="text" width={item.timeW} height="10px" />
+                </div>
+                <SkeletonPulse variant="text" width={item.roomW} height="11px" />
+                <SkeletonPulse variant="text" width={item.msgW} height="11px" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Chat message feed partial skeleton (Message feed live reload) ──────────
+export function ChatMessageFeedSkeleton({ count = 4 }) {
+  const bubbles = [
+    { isTenant: true, senderW: "110px", timeW: "60px", lines: ["85%", "60%"], avatar: "28px" },
+    { isTenant: false, senderW: "90px", timeW: "55px", lines: ["70%", "90%", "40%"], avatar: "28px" },
+    { isTenant: true, senderW: "110px", timeW: "60px", lines: ["50%"], avatar: "28px" },
+    { isTenant: false, senderW: "90px", timeW: "55px", lines: ["80%", "45%"], avatar: "28px" },
+  ];
+
+  return (
+    <div className="space-y-4" aria-hidden="true">
+      {bubbles.slice(0, count).map((bubble, idx) => (
+        <div
+          key={idx}
+          className={`flex items-end gap-2.5 ${
+            bubble.isTenant ? "justify-start" : "justify-end flex-row-reverse"
+          }`}
+        >
+          <SkeletonPulse variant="circle" width={bubble.avatar} style={{ flexShrink: 0, marginBottom: "4px" }} />
+          <div
+            className={`max-w-[78%] rounded-xl p-3.5 space-y-2 border border-border bg-card shadow-2xs ${
+              bubble.isTenant ? "rounded-bl-xs" : "rounded-br-xs"
+            }`}
+            style={{ width: "65%" }}
+          >
+            <div className="flex items-center justify-between gap-3 pb-1 border-b border-border/40">
+              <SkeletonPulse variant="text" width={bubble.senderW} height="12px" />
+              <SkeletonPulse variant="text" width={bubble.timeW} height="10px" />
+            </div>
+            <div className="space-y-1.5 pt-0.5">
+              {bubble.lines.map((lineWidth, lineIdx) => (
+                <SkeletonPulse key={lineIdx} variant="text" width={lineWidth} height="11px" />
+              ))}
             </div>
           </div>
-        ))}
-      </div>
-      {/* Message pane */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "20px", gap: "14px" }}>
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} style={{ display: "flex", gap: "10px", justifyContent: i % 2 === 0 ? "flex-start" : "flex-end" }}>
-            {i % 2 === 0 && <SkeletonPulse variant="circle" width="32px" />}
-            <SkeletonPulse
-              width={`${30 + (i * 7) % 30}%`}
-              height="44px"
-              borderRadius="12px"
-            />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Chat full page skeleton (Support Chat Workspace) ────────────────────────
+export function AdminChatSkeleton() {
+  return (
+    <section
+      className="admin-chat-page space-y-4"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label="Loading support chat workspace"
+    >
+      {/* Pattern 1 Sticky Sub-Header matching AdminPageHeader */}
+      <div className="admin-page-header admin-page-header--sticky">
+        <div className="admin-page-header-top">
+          <div className="admin-page-header-heading">
+            <SkeletonPulse variant="text" width="140px" height="24px" style={{ marginBottom: "6px" }} />
+            <SkeletonPulse variant="text" width="460px" height="13px" />
           </div>
-        ))}
-        <div style={{ marginTop: "auto" }}>
-          <SkeletonPulse width="100%" height="48px" borderRadius="10px" />
+          <div className="admin-page-header-side">
+            <div className="admin-page-header-actions flex items-center gap-2">
+              <SkeletonPulse width="90px" height="32px" borderRadius="8px" />
+              <SkeletonPulse width="76px" height="28px" borderRadius="9999px" />
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* 4 KPI Summary Metric Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-4">
+        {[
+          { labelW: "85px", valW: "40px" }, // Total Threads
+          { labelW: "50px", valW: "32px" }, // Unread
+          { labelW: "100px", valW: "32px" }, // Urgent Priority
+          { labelW: "95px", valW: "32px" }, // Assigned to Me
+        ].map((kpi, i) => (
+          <div
+            key={i}
+            className="flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <SkeletonPulse variant="text" width={kpi.labelW} height="11px" />
+              <SkeletonPulse width="32px" height="32px" borderRadius="8px" />
+            </div>
+            <SkeletonPulse variant="text" width={kpi.valW} height="24px" style={{ marginTop: "8px" }} />
+          </div>
+        ))}
+      </div>
+
+      {/* Main 2-Column Responsive Chat Workspace */}
+      <div className="grid grid-cols-1 lg:grid-cols-[380px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)] gap-4 items-start min-h-[640px]">
+        {/* Left Sidebar: Conversations & Filters */}
+        <aside className="rounded-xl border border-border bg-card shadow-xs flex flex-col h-[700px] overflow-hidden">
+          {/* Search & Filter Toolbar */}
+          <div className="p-3 border-b border-border space-y-2.5 bg-card/60">
+            {/* Search Input */}
+            <SkeletonPulse width="100%" height="36px" borderRadius="8px" />
+
+            {/* 4 Segmented Quick Tabs */}
+            <div className="grid grid-cols-4 gap-1 p-0.5 rounded-lg bg-muted border border-border">
+              {["32px", "42px", "40px", "52px"].map((w, idx) => (
+                <div key={idx} className="py-1 flex items-center justify-center">
+                  <SkeletonPulse variant="text" width={w} height="12px" />
+                </div>
+              ))}
+            </div>
+
+            {/* Filter Trigger & Reset Link */}
+            <div className="flex items-center justify-between pt-0.5">
+              <SkeletonPulse width="80px" height="26px" borderRadius="6px" />
+              <SkeletonPulse variant="text" width="50px" height="12px" />
+            </div>
+          </div>
+
+          {/* Grouped Conversation Threads List */}
+          <div className="flex-1 overflow-y-auto p-2 space-y-2">
+            <ChatConversationListSkeleton count={5} />
+          </div>
+        </aside>
+
+        {/* Right Chat Pane: Selected Thread & Message Feed */}
+        <section className="rounded-xl border border-border bg-card shadow-xs flex flex-col h-[720px] overflow-hidden">
+          {/* Thread Header Bar */}
+          <header className="p-3.5 border-b border-border bg-card/80 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <SkeletonPulse variant="circle" width="40px" style={{ flexShrink: 0 }} />
+              <div className="space-y-1.5 min-w-0">
+                <div className="flex items-center gap-2">
+                  <SkeletonPulse variant="text" width="140px" height="16px" />
+                  <SkeletonPulse variant="text" width="120px" height="12px" />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SkeletonPulse width="110px" height="22px" borderRadius="6px" />
+                  <SkeletonPulse width="80px" height="22px" borderRadius="6px" />
+                  <SkeletonPulse width="85px" height="22px" borderRadius="6px" />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <SkeletonPulse width="140px" height="28px" borderRadius="8px" />
+              <SkeletonPulse width="95px" height="30px" borderRadius="8px" />
+              <SkeletonPulse width="125px" height="30px" borderRadius="8px" />
+            </div>
+          </header>
+
+          {/* Conversational Message Feed */}
+          <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-muted/15 min-h-[440px]">
+            <ChatMessageFeedSkeleton count={4} />
+          </div>
+
+          {/* Reply Composer Footer */}
+          <footer className="p-3 border-t border-border bg-card space-y-2.5">
+            {/* Quick Replies Strip */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              {["170px", "160px", "175px", "150px"].map((width, idx) => (
+                <SkeletonPulse key={idx} width={width} height="26px" borderRadius="9999px" style={{ flexShrink: 0 }} />
+              ))}
+            </div>
+
+            {/* AI Draft Suggestion & Textarea */}
+            <div className="space-y-2">
+              <SkeletonPulse width="130px" height="28px" borderRadius="6px" />
+              <SkeletonPulse width="100%" height="70px" borderRadius="8px" />
+            </div>
+
+            {/* Composer Footer Actions */}
+            <div className="flex items-center justify-between">
+              <SkeletonPulse variant="text" width="60px" height="11px" />
+              <SkeletonPulse width="105px" height="32px" borderRadius="8px" />
+            </div>
+          </footer>
+        </section>
+      </div>
+    </section>
   );
 }
 
@@ -1298,7 +1507,6 @@ function SkelAnalyticsInsight() {
         border: "1px solid var(--border, #e2e8f0)",
         background: "var(--card, #fff)",
         overflow: "hidden",
-        marginBottom: "24px",
       }}
     >
       <div
@@ -1546,7 +1754,7 @@ export function AdminAnalyticsDetailSkeleton({ tab = "occupancy", isOwner = fals
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1" aria-busy="true" aria-live="polite">
       {/* 4 Metric Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
@@ -1574,7 +1782,7 @@ export function AdminAnalyticsDetailSkeleton({ tab = "occupancy", isOwner = fals
       {tab !== "acquisition" && <SkelAnalyticsInsight />}
 
       {/* 2x2 Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Panel 1 */}
         <div
           style={{

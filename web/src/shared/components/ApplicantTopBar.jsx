@@ -27,7 +27,7 @@ export default function ApplicantTopBar({ onOpenSidebar }) {
 
   return (
     <header
-      className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b px-4 backdrop-blur-xl md:px-6"
+      className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b px-5 backdrop-blur-xl md:px-7"
       style={{
         backgroundColor: "var(--bg-card)",
         borderColor: "var(--border-light)",

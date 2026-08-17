@@ -93,14 +93,75 @@ test("contract list and detail routes share Contract workspace metadata", () => 
   assert.equal(getPageMeta("/admin/contracts/507f1f77bcf86cd799439011").title, "Contracts");
 });
 
-test("dynamic 3-level breadcrumbs are generated for multi-tab pages", () => {
-  const analyticsOverview = getPageMeta("/admin/analytics");
-  assert.deepEqual(analyticsOverview.breadcrumbs, [
+test("base pages stop at page name without extra sub-tab names in breadcrumbs", () => {
+  const roomMeta = getPageMeta("/admin/room-availability");
+  assert.deepEqual(roomMeta.breadcrumbs, [
     { label: "Admin", href: "/admin/dashboard" },
-    { label: "Analytics", href: "/admin/analytics" },
-    { label: "Overview" },
+    { label: "Room Management" },
   ]);
 
+  const tenantsMeta = getPageMeta("/admin/tenants");
+  assert.deepEqual(tenantsMeta.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Tenants" },
+  ]);
+
+  const analyticsMeta = getPageMeta("/admin/analytics");
+  assert.deepEqual(analyticsMeta.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Analytics" },
+  ]);
+
+  const billingMeta = getPageMeta("/admin/billing");
+  assert.deepEqual(billingMeta.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Billing" },
+  ]);
+
+  const usersMeta = getPageMeta("/admin/users");
+  assert.deepEqual(usersMeta.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Accounts & Access" },
+  ]);
+
+  const reservationsMeta = getPageMeta("/admin/reservations");
+  assert.deepEqual(reservationsMeta.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Reservations" },
+  ]);
+
+  const auditMeta = getPageMeta("/admin/audit-logs");
+  assert.deepEqual(auditMeta.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Audit & Security" },
+  ]);
+
+  const maintenanceMeta = getPageMeta("/admin/maintenance");
+  assert.deepEqual(maintenanceMeta.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Maintenance" },
+  ]);
+
+  const announcementsMeta = getPageMeta("/admin/announcements");
+  assert.deepEqual(announcementsMeta.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Announcements" },
+  ]);
+
+  const notifsMeta = getPageMeta("/admin/notifications");
+  assert.deepEqual(notifsMeta.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Notifications" },
+  ]);
+
+  const settingsMeta = getPageMeta("/admin/settings");
+  assert.deepEqual(settingsMeta.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Policies & Maintenance" },
+  ]);
+});
+
+test("dynamic 3-level breadcrumbs are generated ONLY when an explicit sub-tab is active", () => {
   const analyticsOccupancy = getPageMeta("/admin/analytics", "?tab=occupancy");
   assert.deepEqual(analyticsOccupancy.breadcrumbs, [
     { label: "Admin", href: "/admin/dashboard" },
@@ -115,25 +176,40 @@ test("dynamic 3-level breadcrumbs are generated for multi-tab pages", () => {
     { label: "Water" },
   ]);
 
-  const roomForecast = getPageMeta("/admin/room-availability", "?tab=forecast");
-  assert.deepEqual(roomForecast.breadcrumbs, [
-    { label: "Admin", href: "/admin/dashboard" },
-    { label: "Room Management", href: "/admin/room-availability" },
-    { label: "Vacancy Forecast" },
-  ]);
-
-  const tenantRenewals = getPageMeta("/admin/tenants", "?tab=renewals");
-  assert.deepEqual(tenantRenewals.breadcrumbs, [
-    { label: "Admin", href: "/admin/dashboard" },
-    { label: "Tenants", href: "/admin/tenants" },
-    { label: "Lease Renewals" },
-  ]);
-
   const userRoles = getPageMeta("/admin/users", "?tab=roles");
   assert.deepEqual(userRoles.breadcrumbs, [
     { label: "Admin", href: "/admin/dashboard" },
     { label: "Accounts & Access", href: "/admin/users" },
     { label: "Roles & Permissions" },
   ]);
+
+  const reservationVisits = getPageMeta("/admin/reservations", "?tab=visits");
+  assert.deepEqual(reservationVisits.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Reservations", href: "/admin/reservations" },
+    { label: "Visit Schedules" },
+  ]);
+
+  const auditSignals = getPageMeta("/admin/audit-logs", "?tab=signals");
+  assert.deepEqual(auditSignals.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Audit & Security", href: "/admin/audit-logs" },
+    { label: "Security Signals" },
+  ]);
+
+  const maintenanceAnalytics = getPageMeta("/admin/maintenance", "?tab=analytics");
+  assert.deepEqual(maintenanceAnalytics.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Maintenance", href: "/admin/maintenance" },
+    { label: "Analytics" },
+  ]);
+
+  const settingsBackups = getPageMeta("/admin/settings", "?tab=backups");
+  assert.deepEqual(settingsBackups.breadcrumbs, [
+    { label: "Admin", href: "/admin/dashboard" },
+    { label: "Policies & Maintenance", href: "/admin/settings" },
+    { label: "Database Backup" },
+  ]);
 });
+
 

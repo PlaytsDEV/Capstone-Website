@@ -23,8 +23,8 @@ export default function BranchKpiSummaryCard({
     <div className={`p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-sm space-y-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 cursor-default ${className}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-            <Building2 className="w-5 h-5" />
+          <div className="flex shrink-0 items-center justify-center text-emerald-600 dark:text-emerald-400">
+            <Building2 className="w-6 h-6" />
           </div>
           <div>
             <h3 className="font-semibold text-base text-slate-900 dark:text-white">{branchName}</h3>

@@ -93,7 +93,7 @@ export default function AdminSidebar({
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           <ChevronLeft
-            size={14}
+            size={12}
             style={{
               transform: collapsed ? "rotate(180deg)" : "rotate(0deg)",
               transition: "transform 0.24s ease",
@@ -154,6 +154,7 @@ export default function AdminSidebar({
                           <>
                             <Icon
                               className="admin-sidebar-nav-icon"
+                              aria-hidden="true"
                             />
                             <span className="admin-sidebar-nav-label">
                               {item.text}
@@ -184,7 +185,7 @@ export default function AdminSidebar({
           onMouseEnter={() => collapsed && setHoveredItem("__signout")}
           onMouseLeave={() => setHoveredItem(null)}
         >
-          <LogOut className="admin-sidebar-nav-icon" />
+          <LogOut className="admin-sidebar-nav-icon" aria-hidden="true" />
           <span className="admin-sidebar-nav-label">Sign Out</span>
           {collapsed && hoveredItem === "__signout" && (
             <span className="sb-tooltip">Sign Out</span>
