@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Search, Filter, X, SearchX, Calendar } from "lucide-react";
+import { ExportButtons } from "../pages/analyticsTabShared.js";
 import "./TenantFilterBar.css";
 
 /**
@@ -27,6 +28,10 @@ export default function TenantFilterBar({
   clearQuickFilters,
   QUICK_FILTERS,
   resetFilters,
+  onExportCSV,
+  onExportPDF,
+  isExporting = false,
+  disabledExport = false,
 }) {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const filterRef = useRef(null);
@@ -91,6 +96,15 @@ export default function TenantFilterBar({
             <SearchX size={15} />
             Reset
           </button>
+
+          {(onExportCSV || onExportPDF) && (
+            <ExportButtons
+              onCsv={onExportCSV}
+              onPdf={onExportPDF}
+              loading={isExporting}
+              disabled={disabledExport}
+            />
+          )}
 
           {/* Filter Dropdown */}
           {isFiltersOpen && (

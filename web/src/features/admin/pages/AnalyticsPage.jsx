@@ -51,7 +51,13 @@ import {
   handleCsvExport,
   handlePdfExport,
 } from "./analyticsTabShared";
-import { buildRangeLabel, formatBranch, formatPeso } from "./reportCommon";
+import {
+  buildRangeLabel,
+  formatBranch,
+  formatPeso,
+  formatDate,
+  formatDateTime,
+} from "./reportCommon";
 import AnalyticsOccupancyTab from "./AnalyticsOccupancyTab";
 import AnalyticsBillingTab from "./AnalyticsBillingTab";
 import AnalyticsOperationsTab from "./AnalyticsOperationsTab";
@@ -449,8 +455,103 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const activeTabNormalized =
     activeTab === "revenue" ? "billing" : activeTab === "marketing-roi" ? "acquisition" : activeTab;
 
+  const exportOverviewCsv = React.useCallback(() => {
+    const reservations = dashboardData?.recentReservations || [];
+    handleCsvExport(
+      reservations,
+      [
+        { key: "guestName", label: "Guest" },
+        { key: "roomType", label: "Room Type" },
+        { key: "branch", label: "Branch", formatter: (value) => formatBranch(value) },
+        { key: "status", label: "Status" },
+        { key: "moveInDate", label: "Move In", formatter: (value) => formatDate(value) },
+      ],
+      `analytics-overview-${range}`,
+    );
+  }, [dashboardData?.recentReservations, range]);
+
+  const exportOverviewPdf = React.useCallback(() => {
+    const reservations = dashboardData?.recentReservations || [];
+    const inquiries = dashboardData?.recentInquiries || [];
+    const reservationStatus = dashboardData?.reservationStatus || {
+      approved: 0,
+      pending: 0,
+      rejected: 0,
+    };
+
+    handlePdfExport({
+      title: "Analytics Executive Overview",
+      subtitle: `${buildRangeLabel(range)} • ${formatBranch(dashboardData?.scope?.branch || branch)}`,
+      filename: `analytics-overview-${range}.pdf`,
+      reportType: "Overview",
+      kpis: [
+        {
+          label: "Occupancy Rate",
+          value: occupancyKpis?.occupancyRateLabel || `${occupancyKpis?.occupancyRate || 0}%`,
+          highlight: true,
+        },
+        {
+          label: "Collected Revenue",
+          value: billingKpis?.collectedRevenueLabel || "PHP 0",
+        },
+        {
+          label: "Active Tickets",
+          value: String(activeTickets || 0),
+        },
+        {
+          label: "Inquiries",
+          value: String(operationsKpis?.inquiries || unresolvedInquiries || 0),
+        },
+      ],
+      sections: [
+        {
+          title: "Reservation Status Summary",
+          type: "table",
+          headers: ["Status", "Count"],
+          rows: Object.entries(reservationStatus).map(([status, count]) => ({
+            Status: status.toUpperCase(),
+            Count: count,
+          })),
+        },
+        {
+          title: "Recent Reservations",
+          type: "table",
+          headers: ["Guest", "Room Type", "Status", "Move In"],
+          rows: (reservations || []).slice(0, 10).map((item) => ({
+            Guest: item.guestName || "Unknown",
+            "Room Type": item.roomType || "-",
+            Status: (item.status || "pending").toUpperCase(),
+            "Move In": formatDate(item.moveInDate || item.createdAt),
+          })),
+        },
+        {
+          title: "Recent Inquiries",
+          type: "table",
+          headers: ["Name", "Email", "Branch", "Created"],
+          rows: (inquiries || []).slice(0, 10).map((item) => ({
+            Name: item.name || "Unknown",
+            Email: item.email || "-",
+            Branch: formatBranch(item.branch),
+            Created: formatDateTime(item.createdAt),
+          })),
+        },
+      ],
+    });
+  }, [
+    dashboardData,
+    range,
+    branch,
+    occupancyKpis,
+    billingKpis,
+    activeTickets,
+    operationsKpis,
+    unresolvedInquiries,
+  ]);
+
   const currentTabExport =
-    activeTabNormalized !== "overview" ? tabExports[activeTabNormalized] : null;
+    activeTabNormalized === "overview"
+      ? { exportCsv: exportOverviewCsv, exportPdf: exportOverviewPdf }
+      : tabExports[activeTabNormalized];
 
   return (
     <div className="analytics-container space-y-4">
@@ -506,7 +607,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
           </div>
         }
         actions={
-          activeTabNormalized !== "overview" && currentTabExport?.exportCsv && currentTabExport?.exportPdf ? (
+          currentTabExport?.exportCsv && currentTabExport?.exportPdf ? (
             <ExportButtons onCsv={currentTabExport.exportCsv} onPdf={currentTabExport.exportPdf} />
           ) : null
         }

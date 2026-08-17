@@ -2,10 +2,24 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
-const page = fs.readFileSync(path.resolve("src/features/admin/pages/AdminContractsPage.jsx"), "utf8");
-const drawer = fs.readFileSync(path.resolve("src/features/admin/components/contracts/ContractDetailDrawer.jsx"), "utf8");
-const api = fs.readFileSync(path.resolve("src/shared/api/contractApi.js"), "utf8");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const findFile = (rel) => {
+  const candidates = [
+    path.resolve(__dirname, rel),
+    path.resolve(process.cwd(), rel),
+    path.resolve(process.cwd(), "web", rel),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return path.resolve(rel);
+};
+
+const page = fs.readFileSync(findFile("AdminContractsPage.jsx"), "utf8");
+const drawer = fs.readFileSync(findFile("../components/contracts/ContractDetailDrawer.jsx"), "utf8");
+const api = fs.readFileSync(findFile("../../../shared/api/contractApi.js"), "utf8");
 
 test("Contract list defaults to Active Contracts and offers archived audit view", () => {
   assert.match(page, /archive: "active"/);

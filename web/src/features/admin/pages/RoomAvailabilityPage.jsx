@@ -504,6 +504,10 @@ function RoomAvailabilityPage() {
   };
 
   const handleExportCSV = () => {
+    if (!filteredRooms || filteredRooms.length === 0) {
+      showNotification("No room inventory records match the current filter criteria.", "info", 3000);
+      return;
+    }
     exportToCSV(
       filteredRooms.map((room) => ({
         roomName: room.name,
@@ -529,6 +533,7 @@ function RoomAvailabilityPage() {
       ],
       "room-inventory",
     );
+    showNotification(`Successfully exported ${filteredRooms.length} room inventory record(s) to CSV.`, "success", 3000);
   };
 
   const roomFilters = [

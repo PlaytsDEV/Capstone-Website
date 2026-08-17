@@ -40,6 +40,11 @@ import {
   hasEnabledTenantAction,
   openTenantAction,
 } from "./tenantWorkspaceActions.mjs";
+import {
+  handleExportTenantsCSV,
+  handleExportTenantsPDF,
+} from "../utils/tenantExportUtils.js";
+import { ExportButtons } from "./analyticsTabShared.js";
 import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import "../styles/design-tokens.css";
@@ -466,6 +471,55 @@ export default function TenantsWorkspacePage() {
         onAction: setActionState,
         });
 
+    const [isExporting, setIsExporting] = useState(false);
+
+    const handleExportCSV = useCallback(() => {
+      if (!sortedTenants.length) {
+        showNotification("No tenant records available to export for the active filters.", "info", 3000);
+        return;
+      }
+      handleExportTenantsCSV({
+        tenants: sortedTenants,
+        branchFilter: isOwner ? branchFilter : (user?.branch || "all"),
+      });
+      showNotification(`Successfully exported ${sortedTenants.length} tenant record(s) to CSV.`, "success", 3000);
+    }, [sortedTenants, isOwner, branchFilter, user?.branch]);
+
+    const handleExportPDF = useCallback(async () => {
+      if (!sortedTenants.length) {
+        showNotification("No tenant records available to export for the active filters.", "info", 3000);
+        return;
+      }
+      setIsExporting(true);
+      try {
+        await handleExportTenantsPDF({
+          tenants: sortedTenants,
+          summaryItems,
+          branchFilter: isOwner ? branchFilter : (user?.branch || "all"),
+          leaseStatusFilter,
+          paymentStatusFilter,
+          stayStatusFilter,
+          searchTerm,
+        });
+        showNotification("Tenant directory report generated as PDF successfully.", "success", 3000);
+      } catch (err) {
+        console.error("[TenantsWorkspace] PDF export failed:", err);
+        showNotification(err.message || "Failed to generate tenant directory PDF report.", "error", 4000);
+      } finally {
+        setIsExporting(false);
+      }
+    }, [
+      sortedTenants,
+      summaryItems,
+      isOwner,
+      branchFilter,
+      user?.branch,
+      leaseStatusFilter,
+      paymentStatusFilter,
+      stayStatusFilter,
+      searchTerm,
+    ]);
+
     const columns = useMemo(
         () => [
         {
@@ -589,6 +643,14 @@ export default function TenantsWorkspacePage() {
         <AdminPageHeader
           title="Tenants"
           subtitle="Handle renewals, transfers, move-out actions, and current-stay visibility in one workspace."
+          actions={
+            <ExportButtons
+              onCsv={handleExportCSV}
+              onPdf={handleExportPDF}
+              loading={isExporting}
+              disabled={sortedTenants.length === 0}
+            />
+          }
         />
 
         {expiredStays.length > 0 && (
@@ -677,6 +739,10 @@ export default function TenantsWorkspacePage() {
           clearQuickFilters={clearQuickFilters}
           QUICK_FILTERS={QUICK_FILTERS}
           resetFilters={resetFilters}
+          onExportCSV={handleExportCSV}
+          onExportPDF={handleExportPDF}
+          isExporting={isExporting}
+          disabledExport={sortedTenants.length === 0}
         />
 
 

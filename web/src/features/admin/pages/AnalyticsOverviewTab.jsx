@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
  CalendarCheck,
@@ -70,131 +70,138 @@ function ForecastCards({ forecast }) {
 }
 
 export default function AnalyticsOverviewTab({
- branch,
- range,
- isOwner,
- onBranchChange,
- onRangeChange,
+  branch,
+  range,
+  isOwner,
+  onBranchChange,
+  onRangeChange,
+  registerExport,
 }) {
- const params = useMemo(
- () => ({
- range,
- ...(isOwner ? { branch } : {}),
- }),
- [branch, isOwner, range],
- );
- const { data, isLoading, isError } = useDashboardData(params);
- const { data: forecastData } = useOccupancyForecast({
- months: 3,
- ...(isOwner ? { branch } : {}),
- });
- const {
- data: insightData,
- isLoading: isInsightLoading,
- isError: isInsightError,
- } = useReportInsights({
- reportType: "hub",
- range,
- branch: isOwner ? branch : undefined,
- });
+  const params = useMemo(
+    () => ({
+      range,
+      ...(isOwner ? { branch } : {}),
+    }),
+    [branch, isOwner, range],
+  );
+  const { data, isLoading, isError } = useDashboardData(params);
+  const { data: forecastData } = useOccupancyForecast({
+    months: 3,
+    ...(isOwner ? { branch } : {}),
+  });
+  const {
+    data: insightData,
+    isLoading: isInsightLoading,
+    isError: isInsightError,
+  } = useReportInsights({
+    reportType: "hub",
+    range,
+    branch: isOwner ? branch : undefined,
+  });
 
- const kpis = data?.kpis || {};
- const occupancy = data?.occupancy || {};
- const reservations = data?.recentReservations || [];
- const inquiries = data?.recentInquiries || [];
- const reservationStatus = data?.reservationStatus || {
- approved: 0,
- pending: 0,
- rejected: 0,
- };
- const forecast = forecastData?.forecast || {};
- const forecastSeries = (forecast.projected || []).map((item) => ({
- label: item.label,
- projected: item.projectedOccupancyRate,
- baseline: item.baselineRate,
- }));
+  const kpis = data?.kpis || {};
+  const occupancy = data?.occupancy || {};
+  const reservations = data?.recentReservations || [];
+  const inquiries = data?.recentInquiries || [];
+  const reservationStatus = data?.reservationStatus || {
+    approved: 0,
+    pending: 0,
+    rejected: 0,
+  };
+  const forecast = forecastData?.forecast || {};
+  const forecastSeries = (forecast.projected || []).map((item) => ({
+    label: item.label,
+    projected: item.projectedOccupancyRate,
+    baseline: item.baselineRate,
+  }));
 
- const occAnomalies = detectOccupancyAnomalies(kpis);
- const opsAnomalies = detectOperationsAnomalies(kpis);
+  const occAnomalies = detectOccupancyAnomalies(kpis);
+  const opsAnomalies = detectOperationsAnomalies(kpis);
 
- const metricCards = [
- { label: "Occupancy Rate", value: kpis.occupancyRateLabel || "0%", tone: "blue", anomalyBadge: occAnomalies.occupancyRate },
- { label: "Collected", value: kpis.revenueLabel || "PHP 0", tone: "green" },
- { label: "Active Tickets", value: kpis.activeTickets || 0, tone: "amber", anomalyBadge: opsAnomalies.maintenanceRequests },
- { label: "Inquiries", value: kpis.inquiries || 0, tone: "rose" },
- ];
+  const metricCards = [
+    { label: "Occupancy Rate", value: kpis.occupancyRateLabel || "0%", tone: "blue", anomalyBadge: occAnomalies.occupancyRate },
+    { label: "Collected", value: kpis.revenueLabel || "PHP 0", tone: "green" },
+    { label: "Active Tickets", value: kpis.activeTickets || 0, tone: "amber", anomalyBadge: opsAnomalies.maintenanceRequests },
+    { label: "Inquiries", value: kpis.inquiries || 0, tone: "rose" },
+  ];
 
- const exportCsv = () => {
- handleCsvExport(
- reservations,
- [
- { key: "guestName", label: "Guest" },
- { key: "roomType", label: "Room Type" },
- { key: "branch", label: "Branch", formatter: (value) => formatBranch(value) },
- { key: "status", label: "Status" },
- { key: "moveInDate", label: "Move In", formatter: (value) => formatDate(value) },
- ],
- `analytics-overview-${range}`,
- );
- };
+  const exportCsv = () => {
+    handleCsvExport(
+      reservations,
+      [
+        { key: "guestName", label: "Guest" },
+        { key: "roomType", label: "Room Type" },
+        { key: "branch", label: "Branch", formatter: (value) => formatBranch(value) },
+        { key: "status", label: "Status" },
+        { key: "moveInDate", label: "Move In", formatter: (value) => formatDate(value) },
+      ],
+      `analytics-overview-${range}`,
+    );
+  };
 
- const exportPdf = () => {
- const forecastInsight = forecast?.insights || {};
- handlePdfExport({
- title: "Analytics Overview",
- subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
- filename: `analytics-overview-${range}.pdf`,
- reportType: "Overview",
- kpis: metricCards.map((item, i) => ({
- label: item.label,
- value: item.value,
- sub: "",
- highlight: i === 0,
- })),
- aiInsight: {
- headline: forecastInsight?.headline || "Overview summary",
- summary: (forecastInsight?.recommendations || []).slice(0, 2).join(" "),
- confidence: forecast?.sufficientHistory ? 70 : 35,
- confidenceLabel: forecast?.sufficientHistory ? "Medium" : "Low",
- standout: forecastInsight?.recommendations || [],
- watch: [],
- nextSteps: (forecastInsight?.recommendations || []).slice(0, 3),
- },
- sections: [
- {
- title: "Reservation Status",
- type: "table",
- headers: ["Status", "Count"],
- rows: Object.entries(reservationStatus).map(([status, count]) => ({
- Status: status,
- Count: count,
- })),
- },
- {
- title: "Recent Reservations",
- type: "table",
- headers: ["Guest", "Room Type", "Status", "Move In"],
- rows: reservations.slice(0, 10).map((item) => ({
- Guest: item.guestName || "Unknown",
- "Room Type": item.roomType || "-",
- Status: item.status || "pending",
- "Move In": formatDate(item.moveInDate),
- })),
- },
- {
- title: "Recent Inquiries",
- type: "table",
- headers: ["Name", "Email", "Branch", "Created"],
- rows: inquiries.slice(0, 10).map((item) => ({
- Name: item.name || "Unknown",
- Email: item.email || "-",
- Branch: formatBranch(item.branch),
- Created: formatDateTime(item.createdAt),
- })),
- },
- ],
- });
- };
+  const exportPdf = () => {
+    const forecastInsight = forecast?.insights || {};
+    handlePdfExport({
+      title: "Analytics Overview",
+      subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
+      filename: `analytics-overview-${range}.pdf`,
+      reportType: "Overview",
+      kpis: metricCards.map((item, i) => ({
+        label: item.label,
+        value: item.value,
+        sub: "",
+        highlight: i === 0,
+      })),
+      aiInsight: {
+        headline: forecastInsight?.headline || "Overview summary",
+        summary: (forecastInsight?.recommendations || []).slice(0, 2).join(" "),
+        confidence: forecast?.sufficientHistory ? 70 : 35,
+        confidenceLabel: forecast?.sufficientHistory ? "Medium" : "Low",
+        standout: forecastInsight?.recommendations || [],
+        watch: [],
+        nextSteps: (forecastInsight?.recommendations || []).slice(0, 3),
+      },
+      sections: [
+        {
+          title: "Reservation Status",
+          type: "table",
+          headers: ["Status", "Count"],
+          rows: Object.entries(reservationStatus).map(([status, count]) => ({
+            Status: status,
+            Count: count,
+          })),
+        },
+        {
+          title: "Recent Reservations",
+          type: "table",
+          headers: ["Guest", "Room Type", "Status", "Move In"],
+          rows: reservations.slice(0, 10).map((item) => ({
+            Guest: item.guestName || "Unknown",
+            "Room Type": item.roomType || "-",
+            Status: item.status || "pending",
+            "Move In": formatDate(item.moveInDate),
+          })),
+        },
+        {
+          title: "Recent Inquiries",
+          type: "table",
+          headers: ["Name", "Email", "Branch", "Created"],
+          rows: inquiries.slice(0, 10).map((item) => ({
+            Name: item.name || "Unknown",
+            Email: item.email || "-",
+            Branch: formatBranch(item.branch),
+            Created: formatDateTime(item.createdAt),
+          })),
+        },
+      ],
+    });
+  };
+
+  useEffect(() => {
+    if (typeof registerExport === "function") {
+      registerExport({ exportCsv, exportPdf });
+    }
+  }, [registerExport, exportCsv, exportPdf]);
 
   const overviewPrompts = useMemo(
     () => getDynamicOverviewPrompts(data, { forecast }),

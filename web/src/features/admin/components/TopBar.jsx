@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { User, LogOut, Moon, Sun, ChevronDown, Clock, Menu, Sparkles } from "lucide-react";
+import { User, LogOut, Moon, Sun, ChevronDown, ChevronRight, Clock, Menu, Sparkles } from "lucide-react";
 import NotificationBell from "../../../shared/components/NotificationBell";
 import AdminCopilotDrawer from "./copilot/AdminCopilotDrawer";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
@@ -253,16 +253,26 @@ export default function TopBar({
             onClick={() => setShowUserMenu((previous) => !previous)}
             aria-haspopup="menu"
             aria-expanded={showUserMenu}
-            className="flex items-center gap-2 rounded-xl border border-transparent px-2 py-1.5 transition-colors hover:bg-[var(--bg-hover)] sm:px-3"
+            className={`flex items-center gap-2.5 rounded-xl border px-2.5 py-1.5 transition-all duration-200 sm:px-3 ${
+              showUserMenu
+                ? "border-[var(--color-accent)] bg-[var(--bg-hover)] shadow-sm"
+                : "border-transparent hover:border-[var(--border-light)] hover:bg-[var(--bg-hover)]"
+            }`}
           >
-            <ProfileAvatar user={user} initials={initials} size={32} />
+            <div className="transition-transform duration-200 group-hover:scale-105">
+              <ProfileAvatar user={user} initials={initials} size={32} />
+            </div>
             <div className="hidden min-w-0 text-left md:block">
               <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
                 {displayName}
               </div>
               <div className="text-xs text-[var(--text-muted)]">{roleLabel}</div>
             </div>
-            <ChevronDown className="hidden h-4 w-4 text-[var(--text-muted)] md:block" />
+            <ChevronDown
+              className={`hidden h-4 w-4 text-[var(--text-muted)] transition-transform duration-200 md:block ${
+                showUserMenu ? "rotate-180 text-[var(--text-primary)]" : ""
+              }`}
+            />
           </button>
 
           {showUserMenu ? (
@@ -274,18 +284,25 @@ export default function TopBar({
               <div
                 ref={menuRef}
                 role="menu"
-                className="absolute right-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-2xl border shadow-xl"
+                className="absolute right-0 top-full z-20 mt-2 w-60 rounded-2xl border p-1.5 shadow-xl transition-all duration-200"
                 style={{
                   backgroundColor: "var(--bg-card)",
                   borderColor: "var(--border-light)",
                   boxShadow: "var(--shadow-xl)",
+                  animation: "fadeIn 0.18s ease-out",
                 }}
               >
-                <div className="border-b px-4 py-3" style={{ borderColor: "var(--border-light)" }}>
+                <div
+                  className="rounded-xl px-3.5 py-2.5 mb-1"
+                  style={{
+                    backgroundColor: "var(--bg-muted)",
+                    border: "1px solid var(--border-light)",
+                  }}
+                >
                   <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
                     {displayName}
                   </div>
-                  <div className="text-xs text-[var(--text-muted)]">{roleLabel}</div>
+                  <div className="text-xs text-[var(--text-muted)] mt-0.5">{roleLabel}</div>
                 </div>
 
                 <button
@@ -293,11 +310,27 @@ export default function TopBar({
                   role="menuitem"
                   onClick={handleLogoutClick}
                   disabled={logoutInProgress}
-                  className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-all duration-200 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-60"
                   style={{ color: "var(--status-error)" }}
                 >
-                  <LogOut className="h-4 w-4" />
-                  {logoutInProgress ? "Signing out..." : "Sign Out"}
+                  <div
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-200 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white"
+                    style={{
+                      backgroundColor: "color-mix(in srgb, var(--status-error) 12%, transparent)",
+                      color: "var(--status-error)",
+                    }}
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="font-semibold leading-tight">
+                      {logoutInProgress ? "Signing out..." : "Sign Out"}
+                    </span>
+                    <p className="text-[11px] text-[var(--text-muted)] leading-tight mt-0.5">
+                      End current session
+                    </p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 opacity-0 transition-all duration-200 group-hover:translate-x-0.5 group-hover:opacity-100" />
                 </button>
               </div>
             </>

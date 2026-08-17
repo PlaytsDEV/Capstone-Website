@@ -21,6 +21,312 @@
 
 .ca-header-user {
   flex-shrink: 0;
+  position: relative;
+}
+
+/* ── Premium User Menu Dropdown & Popover ────────────────────────── */
+.ca-user-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px 5px 6px;
+  width: 260px;
+  border-radius: 9999px;
+  background-color: var(--surface-card);
+  border: 1.5px solid var(--border-card, #e5e7eb);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ca-user-trigger:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--color-accent, #d4af37);
+  box-shadow: 0 4px 14px -2px rgba(10, 22, 40, 0.08);
+}
+
+.ca-user-trigger--open {
+  border-color: var(--color-accent, #d4af37) !important;
+  background-color: color-mix(in srgb, var(--color-accent, #d4af37) 10%, var(--surface-card)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, #d4af37) 18%, transparent) !important;
+}
+
+.ca-user-trigger-avatar {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ca-user-trigger:hover .ca-user-trigger-avatar {
+  transform: scale(1.04);
+}
+
+.ca-user-trigger-chevron {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+  color: var(--text-muted);
+}
+
+.ca-user-trigger:hover .ca-user-trigger-chevron {
+  color: var(--text-heading);
+}
+
+.ca-user-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 100%;
+  min-width: 280px;
+  background-color: var(--surface-elevated, var(--card, #ffffff));
+  border: 1px solid var(--border-card, #e5e7eb);
+  border-radius: 18px;
+  box-shadow: 0 16px 38px -6px rgba(10, 22, 40, 0.14), 0 4px 12px -2px rgba(10, 22, 40, 0.06);
+  padding: 6px;
+  z-index: 50;
+  animation: caUserMenuEntrance 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top right;
+}
+
+@keyframes caUserMenuEntrance {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.ca-user-identity-card {
+  padding: 10px 12px;
+  background-color: var(--surface-muted);
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle, #f1f5f9);
+  margin-bottom: 4px;
+}
+
+.ca-user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background-color: transparent;
+  text-decoration: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+/* Icon Box inside Menu Items */
+.ca-user-menu-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Chevron arrow inside Menu Items */
+.ca-user-menu-arrow {
+  margin-left: auto;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* --- Profile Item Hover --- */
+.ca-user-menu-item--profile {
+  color: var(--text-body);
+}
+
+.ca-user-menu-item--profile .ca-user-menu-icon {
+  background-color: var(--surface-muted);
+  color: var(--text-secondary);
+}
+
+.ca-user-menu-item--profile .ca-user-menu-title {
+  color: var(--text-heading);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+  transition: color 0.18s ease;
+}
+
+.ca-user-menu-item--profile .ca-user-menu-sub {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  margin-top: 2px;
+  transition: color 0.18s ease;
+}
+
+.ca-user-menu-item--profile:hover {
+  background-color: color-mix(in srgb, var(--color-primary, #0a1628) 6%, var(--surface-card));
+  border-color: color-mix(in srgb, var(--color-primary, #0a1628) 14%, transparent);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px -2px rgba(10, 22, 40, 0.05);
+}
+
+.ca-user-menu-item--profile:hover .ca-user-menu-icon {
+  background-color: var(--color-primary, #0a1628);
+  color: #ffffff;
+  transform: scale(1.08);
+  box-shadow: 0 4px 10px -2px rgba(10, 22, 40, 0.25);
+}
+
+.ca-user-menu-item--profile:hover .ca-user-menu-title {
+  color: var(--color-primary, #0a1628);
+}
+
+.ca-user-menu-item--profile:hover .ca-user-menu-sub {
+  color: var(--text-heading);
+}
+
+.ca-user-menu-item--profile:hover .ca-user-menu-arrow {
+  opacity: 1;
+  transform: translateX(0);
+  color: var(--color-primary, #0a1628);
+}
+
+/* --- Sign Out Item Hover --- */
+.ca-user-menu-divider {
+  height: 1px;
+  background-color: var(--border-divider, #e5e7eb);
+  margin: 4px 6px;
+}
+
+.ca-user-menu-item--logout {
+  color: var(--color-danger, #dc2626);
+}
+
+.ca-user-menu-item--logout .ca-user-menu-icon {
+  background-color: color-mix(in srgb, var(--color-danger, #dc2626) 10%, transparent);
+  color: var(--color-danger, #dc2626);
+}
+
+.ca-user-menu-item--logout .ca-user-menu-title {
+  color: var(--color-danger, #dc2626);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+  transition: color 0.18s ease;
+}
+
+.ca-user-menu-item--logout .ca-user-menu-sub {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  margin-top: 2px;
+  transition: color 0.18s ease;
+}
+
+.ca-user-menu-item--logout:hover {
+  background-color: color-mix(in srgb, var(--color-danger, #dc2626) 8%, var(--surface-card));
+  border-color: color-mix(in srgb, var(--color-danger, #dc2626) 18%, transparent);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px -2px rgba(220, 38, 38, 0.08);
+}
+
+.ca-user-menu-item--logout:hover .ca-user-menu-icon {
+  background-color: var(--color-danger, #dc2626);
+  color: #ffffff;
+  transform: scale(1.08);
+  box-shadow: 0 4px 10px -2px rgba(220, 38, 38, 0.3);
+}
+
+.ca-user-menu-item--logout:hover .ca-user-menu-title {
+  color: var(--color-danger-text, #991b1b);
+}
+
+.ca-user-menu-item--logout:hover .ca-user-menu-sub {
+  color: var(--color-danger, #dc2626);
+}
+
+.ca-user-menu-item--logout:hover .ca-user-menu-arrow {
+  opacity: 1;
+  transform: translateX(0);
+  color: var(--color-danger, #dc2626);
+}
+
+/* ── Dark Theme Overrides for User Menu ────────────────────────── */
+html[data-theme="dark"] .ca-user-trigger {
+  background-color: var(--surface-card);
+  border-color: var(--border-card);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+html[data-theme="dark"] .ca-user-trigger:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--color-accent, #d4af37);
+  box-shadow: 0 4px 14px -2px rgba(0, 0, 0, 0.4);
+}
+
+html[data-theme="dark"] .ca-user-trigger--open {
+  border-color: var(--color-accent, #d4af37) !important;
+  background-color: color-mix(in srgb, var(--color-accent, #d4af37) 14%, var(--surface-card)) !important;
+}
+
+html[data-theme="dark"] .ca-user-popover {
+  background-color: var(--surface-card);
+  border-color: var(--border-card);
+  box-shadow: 0 18px 40px -6px rgba(0, 0, 0, 0.6), 0 4px 14px -2px rgba(0, 0, 0, 0.4);
+}
+
+html[data-theme="dark"] .ca-user-identity-card {
+  background-color: var(--surface-muted);
+  border-color: var(--border-subtle);
+}
+
+html[data-theme="dark"] .ca-user-menu-item--profile:hover {
+  background-color: color-mix(in srgb, var(--color-accent, #d4af37) 12%, var(--surface-card));
+  border-color: color-mix(in srgb, var(--color-accent, #d4af37) 22%, transparent);
+}
+
+html[data-theme="dark"] .ca-user-menu-item--profile:hover .ca-user-menu-icon {
+  background-color: var(--color-accent, #d4af37);
+  color: #0a1628;
+  box-shadow: 0 4px 12px -2px rgba(212, 175, 55, 0.4);
+}
+
+html[data-theme="dark"] .ca-user-menu-item--profile:hover .ca-user-menu-title {
+  color: var(--color-accent, #d4af37);
+}
+
+html[data-theme="dark"] .ca-user-menu-item--profile:hover .ca-user-menu-sub {
+  color: var(--text-heading);
+}
+
+html[data-theme="dark"] .ca-user-menu-item--profile:hover .ca-user-menu-arrow {
+  color: var(--color-accent, #d4af37);
+}
+
+html[data-theme="dark"] .ca-user-menu-item--logout:hover {
+  background-color: color-mix(in srgb, var(--color-danger, #ef4444) 14%, var(--surface-card));
+  border-color: color-mix(in srgb, var(--color-danger, #ef4444) 25%, transparent);
+}
+
+html[data-theme="dark"] .ca-user-menu-item--logout:hover .ca-user-menu-icon {
+  background-color: var(--color-danger, #ef4444);
+  color: #ffffff;
+  box-shadow: 0 4px 12px -2px rgba(239, 68, 68, 0.4);
+}
+
+html[data-theme="dark"] .ca-user-menu-item--logout:hover .ca-user-menu-title {
+  color: #fca5a5;
+}
+
+html[data-theme="dark"] .ca-user-menu-item--logout:hover .ca-user-menu-sub {
+  color: #f87171;
+}
+
+html[data-theme="dark"] .ca-user-menu-item--logout:hover .ca-user-menu-arrow {
+  color: #fca5a5;
 }
 
 /* ── Unified Filter Bar ──────────────────────────────────────────── */

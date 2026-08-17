@@ -1044,13 +1044,22 @@ function UserManagementPage() {
   );
 
   const handleExportCSV = () => {
+    if (!users || users.length === 0) {
+      showNotification("No user accounts available to export for the active filters.", "info", 3000);
+      return;
+    }
     handleExportUsersCSV({
       users,
       branchFilter: isOwner ? branchFilter : (user?.branch || "all"),
     });
+    showNotification(`Successfully exported ${users.length} user account(s) to CSV.`, "success", 3000);
   };
 
   const handleExportPDF = async () => {
+    if (!users || users.length === 0) {
+      showNotification("No user accounts available to export for the active filters.", "info", 3000);
+      return;
+    }
     setIsExportingPdf(true);
     try {
       await handleExportUsersPDF({
@@ -1061,8 +1070,10 @@ function UserManagementPage() {
         statusFilter,
         searchTerm: searchQuery,
       });
+      showNotification("User account roster PDF report downloaded successfully.", "success", 3000);
     } catch (error) {
       console.error("[UserManagement] PDF export failed:", error);
+      showNotification(error?.message || "Failed to generate user account PDF report.", "error", 4000);
     } finally {
       setIsExportingPdf(false);
     }

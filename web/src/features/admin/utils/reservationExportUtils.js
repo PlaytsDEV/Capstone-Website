@@ -1,9 +1,9 @@
-import { exportToCSV } from "../../../shared/utils/exportUtils";
-import { exportReportPdf } from "../../../shared/utils/reportPdf";
+import { exportToCSV } from "../../../shared/utils/exportUtils.js";
+import { exportReportPdf } from "../../../shared/utils/reportPdf.js";
 import {
   RESERVATION_STATUS_LABELS,
   readMoveInDate,
-} from "../../../shared/utils/lifecycleNaming";
+} from "../../../shared/utils/lifecycleNaming.js";
 
 /**
  * Standard CSV column configurations for reservations export.

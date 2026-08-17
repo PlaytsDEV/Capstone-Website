@@ -1,3 +1,5 @@
+const defaultLogo = new URL("../../assets/images/LOGO.png", import.meta.url).href;
+
 // ─────────────────────────────────────────────────────────────
 // UNIT SYSTEM  (all mm unless noted)
 // jsPDF text: baseline is BOTTOM of cap-height.

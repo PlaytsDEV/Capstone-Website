@@ -35,6 +35,7 @@ import {
   Upload,
 } from "lucide-react";
 import { backupApi } from "../../../shared/api/backupApi";
+import { showNotification } from "../../../shared/utils/notification";
 import { AdminSystemBackupSkeleton } from "../components/AdminContentSkeletons";
 import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import "../styles/admin-backup.css";
@@ -414,8 +415,10 @@ export default function SystemBackupPage({ isEmbedded = false }) {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      showNotification(`Backup archive "${record.fileName || "backup.gz"}" downloaded successfully.`, "success", 3000);
     } catch (err) {
       console.error("Failed to download backup:", err);
+      showNotification(err?.message || "Failed to download backup archive.", "error", 4000);
     }
   };
 

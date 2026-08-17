@@ -3,6 +3,7 @@ import { FilePlus2, FileSignature, RefreshCw, Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { contractApi } from "../../../shared/api/contractApi";
 import { useAuth } from "../../../shared/hooks/useAuth";
+import { showNotification } from "../../../shared/utils/notification";
 import { DataTable, PageShell, StatusBadge } from "../components/shared";
 import ContractDetailDrawer from "../components/contracts/ContractDetailDrawer";
 import CreateContractDraftModal from "../components/contracts/CreateContractDraftModal";
@@ -17,7 +18,7 @@ import {
 import {
   handleExportContractsCSV,
   handleExportContractsPDF,
-} from "../utils/contractExportUtils";
+} from "../utils/contractExportUtils.js";
 import { MaintenanceExportDropdown } from "./maintenance/components/MaintenanceReportModal";
 import "../styles/admin-contracts.css";
 
@@ -118,17 +119,32 @@ export default function AdminContractsPage() {
   }, [contracts]);
 
   const handleExportCSV = () => {
+    if (!filtered || filtered.length === 0) {
+      showNotification("No contract records match the active filter criteria.", "info", 3000);
+      return;
+    }
     handleExportContractsCSV({ contracts: filtered, branchFilter: filters.branch });
+    showNotification(`Successfully exported ${filtered.length} contract record(s) to CSV.`, "success", 3000);
   };
 
-  const handleExportPDF = () => {
-    handleExportContractsPDF({
-      contracts: filtered,
-      counts,
-      branchFilter: filters.branch,
-      statusFilter: filters.status,
-      searchTerm: filters.search,
-    });
+  const handleExportPDF = async () => {
+    if (!filtered || filtered.length === 0) {
+      showNotification("No contract records match the active filter criteria.", "info", 3000);
+      return;
+    }
+    try {
+      await handleExportContractsPDF({
+        contracts: filtered,
+        counts,
+        branchFilter: filters.branch,
+        statusFilter: filters.status,
+        searchTerm: filters.search,
+      });
+      showNotification("Contracts roster PDF report generated successfully.", "success", 3000);
+    } catch (err) {
+      console.error("[AdminContracts] PDF export failed:", err);
+      showNotification(err?.message || "Failed to generate contracts PDF report.", "error", 4000);
+    }
   };
 
   const exportOptions = [

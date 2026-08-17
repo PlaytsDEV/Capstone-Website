@@ -4,6 +4,7 @@ import {
   Search,
   User,
   ChevronDown,
+  ChevronRight,
   LogOut,
 } from "lucide-react";
 import logo from "../../../../assets/images/LOGO.svg";
@@ -208,59 +209,30 @@ const AvailabilityHeader = React.memo(({
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="flex items-center gap-2.5 pl-1.5 pr-3 py-1 rounded-full transition-all duration-200"
-                  style={{
-                    width: "260px",
-                    border: showUserMenu
-                      ? "1.5px solid var(--color-accent, #d4af37)"
-                      : "1.5px solid var(--border-card, transparent)",
-                    backgroundColor: showUserMenu ? "color-mix(in srgb, var(--color-accent, #d4af37) 12%, var(--card, #fff))" : "var(--surface-card)",
-                    boxShadow: showUserMenu ? "none" : "0 1px 4px rgba(0,0,0,0.15)",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!showUserMenu) {
-                      e.currentTarget.style.backgroundColor = "var(--surface-hover)";
-                      e.currentTarget.style.borderColor = "var(--border-card)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!showUserMenu) {
-                      e.currentTarget.style.backgroundColor = "var(--surface-card)";
-                      e.currentTarget.style.borderColor = "var(--border-card, transparent)";
-                    }
-                  }}
+                  className={`ca-user-trigger ${showUserMenu ? "ca-user-trigger--open" : ""}`}
                   aria-label="User menu"
                   aria-expanded={showUserMenu}
                 >
-                  <ProfileAvatar user={user} initials={userInitials} size={32} />
+                  <div className="ca-user-trigger-avatar">
+                    <ProfileAvatar user={user} initials={userInitials} size={32} />
+                  </div>
                   <span className="flex-1 text-sm font-medium truncate leading-tight text-left" style={{ color: "var(--text-heading)" }}>
                     {userDisplayName}
                   </span>
                   <ChevronDown
-                    className={`w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform duration-200 ${showUserMenu ? "rotate-180" : ""}`}
+                    className={`w-3.5 h-3.5 ca-user-trigger-chevron shrink-0 ${showUserMenu ? "rotate-180" : ""}`}
                   />
                 </button>
 
                 {showUserMenu && (
                   <div
-                    className="absolute right-0 mt-1.5 w-full rounded-2xl shadow-xl z-50 overflow-hidden"
-                    style={{
-                      backgroundColor: "var(--surface-elevated, var(--card))",
-                      border: "1px solid var(--border-card)",
-                      animation: "fadeIn 0.18s ease-out",
-                      boxShadow: "0 10px 40px -8px rgba(0,0,0,0.3), 0 4px 12px -2px rgba(0,0,0,0.2)",
-                    }}
+                    className="ca-user-popover"
+                    role="menu"
                   >
                     {/* User identity */}
-                    <div
-                      className="px-3 pt-3 pb-3.5"
-                      style={{
-                        background: "var(--surface-muted)",
-                        borderBottom: "1px solid var(--border-divider)",
-                      }}
-                    >
+                    <div className="ca-user-identity-card">
                       <div className="flex items-center gap-2.5">
-                        <ProfileAvatar user={user} initials={userInitials} size={40} />
+                        <ProfileAvatar user={user} initials={userInitials} size={38} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <p
@@ -280,72 +252,53 @@ const AvailabilityHeader = React.memo(({
                         </div>
                       </div>
                     </div>
+
                     {/* Nav links */}
                     <div>
                       <Link
                         to="/applicant/profile"
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors duration-150"
-                        style={{ color: "var(--text-body)" }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = "color-mix(in srgb, var(--primary) 8%, transparent)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        }}
+                        className="ca-user-menu-item ca-user-menu-item--profile"
                         onClick={() => setShowUserMenu(false)}
                       >
-                        <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: "var(--surface-muted)" }}
-                        >
-                          <User
-                            className="w-4 h-4"
-                            style={{ color: "var(--text-secondary)" }}
-                          />
+                        <div className="ca-user-menu-icon">
+                          <User className="w-4 h-4" />
                         </div>
-                        <div>
-                          <p className="font-medium text-sm leading-tight">
+                        <div className="min-w-0 flex-1">
+                          <p className="ca-user-menu-title">
                             My Profile
                           </p>
-                          <p
-                            className="text-[11px] leading-tight mt-0.5"
-                            style={{ color: "var(--text-muted)" }}
-                          >
+                          <p className="ca-user-menu-sub">
                             View your dashboard
                           </p>
                         </div>
+                        <ChevronRight className="w-4 h-4 ca-user-menu-arrow" />
                       </Link>
                     </div>
+
+                    {/* Divider */}
+                    <div className="ca-user-menu-divider" />
+
                     {/* Sign Out */}
-                    <div
-                      style={{ borderTop: "1px solid var(--border-divider)" }}
-                    >
+                    <div>
                       <button
                         onClick={() => {
                           setShowUserMenu(false);
                           onLogout();
                         }}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors duration-150 text-left"
-                        style={{ color: "var(--danger-dark, #dc2626)" }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = "color-mix(in srgb, var(--danger, #dc2626) 10%, transparent)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        }}
+                        className="ca-user-menu-item ca-user-menu-item--logout"
                       >
-                        <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: "color-mix(in srgb, var(--danger, #dc2626) 12%, transparent)" }}
-                        >
-                          <LogOut
-                            className="w-4 h-4"
-                            style={{ color: "var(--danger-dark, #dc2626)" }}
-                          />
+                        <div className="ca-user-menu-icon">
+                          <LogOut className="w-4 h-4" />
                         </div>
-                        <p className="font-medium text-sm leading-tight">
-                          Sign Out
-                        </p>
+                        <div className="min-w-0 flex-1">
+                          <p className="ca-user-menu-title">
+                            Sign Out
+                          </p>
+                          <p className="ca-user-menu-sub">
+                            End current session
+                          </p>
+                        </div>
+                        <ChevronRight className="w-4 h-4 ca-user-menu-arrow" />
                       </button>
                     </div>
                   </div>
