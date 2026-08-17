@@ -1,6 +1,6 @@
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../config/database');
-const { resolveRequesterBranchCode } = require('./announcement.controller');
+const { resolveRequesterBranchCode, normalizedBranchReference } = require('./announcement.controller');
 
 // Lazy-load socket module (shimmed by mobileRoutes.js to call emitToChatAdmins).
 let _emitToChatAdmins = null;
@@ -212,7 +212,14 @@ async function resolveTenantContext(db, user) {
   }
 
   const mongoId = toObjectId(user?._id);
-  let branch = user?.branch || user?.assigned_branch || '';
+  // Every assignment to `branch` below is passed through
+  // normalizedBranchReference() (case/whitespace/hyphen-insensitive) before
+  // being compared against VALID_BRANCHES. Without this, a differently-cased
+  // raw branch value read from bedhistories/rooms/reservations (e.g.
+  // "Guadalupe" vs "guadalupe") could silently clobber an already-resolved
+  // authoritative branch and fail the VALID_BRANCHES check below, incorrectly
+  // rejecting a resolvable tenant with "No active tenant."
+  let branch = normalizedBranchReference(user?.branch || user?.assigned_branch || '');
   let roomNumber = user?.roomNumber || user?.room_number || '';
   let roomBed = user?.bedId || user?.bed_id || '';
 
@@ -236,7 +243,7 @@ async function resolveTenantContext(db, user) {
     );
 
     if (bedHistory) {
-      branch = bedHistory.branch || branch;
+      branch = normalizedBranchReference(bedHistory.branch) || branch;
       roomBed = bedHistory.bedId || roomBed;
       const roomId = toObjectId(bedHistory.roomId);
       if (roomId) {
@@ -244,7 +251,7 @@ async function resolveTenantContext(db, user) {
           { _id: roomId },
           { projection: { roomNumber: 1, name: 1, branch: 1 } },
         );
-        branch = room?.branch || branch;
+        branch = normalizedBranchReference(room?.branch) || branch;
         roomNumber = room?.roomNumber || room?.name || roomNumber;
       }
     }
@@ -267,7 +274,7 @@ async function resolveTenantContext(db, user) {
             { _id: roomId },
             { projection: { roomNumber: 1, name: 1, branch: 1 } },
           );
-          branch = room?.branch || branch;
+          branch = normalizedBranchReference(room?.branch) || branch;
           roomNumber = room?.roomNumber || room?.name || roomNumber;
         }
       }
