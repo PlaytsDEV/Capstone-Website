@@ -1,5 +1,5 @@
 const { getDb } = require('../config/database');
-const { ObjectId } = require('mongodb');
+const { Types: { ObjectId } } = require('mongoose');
 const { sanitizeUserForClient, normalizeUser } = require('./user.controller');
 
 // Dashboard billing must show the exact same status/amount/utility-release

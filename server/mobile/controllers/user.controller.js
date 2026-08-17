@@ -1,5 +1,5 @@
 const { getDb } = require('../config/database');
-const { ObjectId } = require('mongodb');
+const { Types: { ObjectId } } = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const { resolveRequesterBranchCode } = require('./announcement.controller');
 const { MOBILE_BRANCH_LOCATIONS } = require('../config/branchLocations');

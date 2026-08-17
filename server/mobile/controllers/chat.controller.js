@@ -1,4 +1,4 @@
-const { ObjectId } = require('mongodb');
+const { Types: { ObjectId } } = require('mongoose');
 const { getDb } = require('../config/database');
 const { resolveRequesterBranchCode, normalizedBranchReference } = require('./announcement.controller');
 

@@ -12,6 +12,7 @@ import {
   usesStructuredInitialPayment,
 } from "../config/structuredInitialPayment.js";
 import { notify } from "../utils/notificationService.js";
+import { syncBillAmounts } from "./billing/billingPolicy.js";
 
 const money = (value) => Math.round((Number(value) || 0) * 100) / 100;
 import {
@@ -93,6 +94,10 @@ export async function createStructuredInitialPaymentBill({
   });
 
   try {
+    // Structured initial-payment bills are born tenant-visible as pending or
+    // paid, never as drafts. Run the canonical lifecycle synchronizer before
+    // the first save so releasedAt records that real release event.
+    syncBillAmounts(bill, { now });
     await bill.save();
   } catch (error) {
     if (error?.code !== 11000) throw error;
