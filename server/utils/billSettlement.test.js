@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 const applyBillPayment = jest.fn();
 const getVisibleBillSnapshot = jest.fn();
 const roundMoney = jest.fn((value) => Math.round((Number(value) || 0) * 100) / 100);
+const syncBillAmounts = jest.fn((bill) => bill);
 
 await jest.unstable_mockModule("../services/billing/paymentLedger.js", () => ({
   applyBillPayment,
@@ -15,11 +16,13 @@ await jest.unstable_mockModule("./paymentLedger.js", () => ({
 await jest.unstable_mockModule("../services/billing/billingPolicy.js", () => ({
   getVisibleBillSnapshot,
   roundMoney,
+  syncBillAmounts,
 }));
 
 await jest.unstable_mockModule("./billingPolicy.js", () => ({
   getVisibleBillSnapshot,
   roundMoney,
+  syncBillAmounts,
 }));
 
 const { settlePaymongoBill } = await import("./billSettlement.js");
