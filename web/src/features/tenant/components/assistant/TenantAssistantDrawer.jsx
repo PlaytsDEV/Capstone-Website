@@ -31,6 +31,12 @@ import "../../styles/tenant-assistant.css";
 const STORAGE_KEY = "lilycrest_tenant_assistant_msgs";
 
 const CATEGORIZED_PROMPTS = {
+  applicant: [
+    { icon: ShieldCheck, label: "Reservation status", prompt: "What is my current reservation status?" },
+    { icon: Receipt, label: "Deposit payment steps", prompt: "How do I settle the advance rent and security deposit?" },
+    { icon: FileText, label: "Accepted KYC IDs", prompt: "What valid IDs are accepted for identity verification?" },
+    { icon: Building2, label: "Viewing schedule", prompt: "How can I schedule an in-person room viewing appointment?" },
+  ],
   billing: [
     { icon: Zap, label: "Electricity math", prompt: "How was my submetered electricity share computed this month?" },
     { icon: Receipt, label: "Payment due date", prompt: "When is my current bill due and how do I settle it?" },
@@ -91,14 +97,17 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
   const abortControllerRef = useRef(null);
   const isScrolledUpRef = useRef(false);
 
+  const isApplicant = user?.role === "applicant" || contextSnapshot?.isApplicant;
+
   // Determine active route prompts
   const activeRoutePrompts = useMemo(() => {
+    if (isApplicant) return CATEGORIZED_PROMPTS.applicant;
     const path = location.pathname.toLowerCase();
     if (path.includes("billing")) return CATEGORIZED_PROMPTS.billing;
     if (path.includes("contract")) return CATEGORIZED_PROMPTS.contracts;
     if (path.includes("maintenance")) return CATEGORIZED_PROMPTS.maintenance;
     return CATEGORIZED_PROMPTS.default;
-  }, [location.pathname]);
+  }, [location.pathname, isApplicant]);
 
   // Persist messages to session storage
   useEffect(() => {
@@ -385,7 +394,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
               <div className="tenant-assistant-avatar-badge" aria-hidden="true">
                 <Bot className="w-4 h-4" />
               </div>
-              <span className="tenant-assistant-title">Tenant Assistant</span>
+              <span className="tenant-assistant-title">{isApplicant ? "Applicant Assistant" : "Tenant Assistant"}</span>
             </div>
 
             <div className="tenant-assistant-header-actions">
@@ -427,11 +436,15 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
             <div className="tenant-assistant-banner-left">
               <span className="tenant-assistant-banner-branch">{branchLabel}</span>
               <span>•</span>
-              <span>Room {roomLabel} ({bedLabel})</span>
+              {isApplicant ? (
+                <span>{contextSnapshot?.reservation?.status ? `Reservation: ${contextSnapshot.reservation.status.toUpperCase()}` : "Application in Progress"}</span>
+              ) : (
+                <span>Room {roomLabel} ({bedLabel})</span>
+              )}
             </div>
             <div className="tenant-assistant-banner-right">
               <span className="tenant-assistant-grounded-dot" />
-              <span>Grounded on Stay Data</span>
+              <span>{isApplicant ? "Grounded on Reservation" : "Grounded on Stay Data"}</span>
             </div>
           </div>
         </div>
@@ -443,18 +456,31 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
             <div className="tenant-msg-row assistant">
               <div className="tenant-msg-meta">
                 <Bot className="w-3.5 h-3.5" />
-                <span>Tenant Assistant</span>
+                <span>{isApplicant ? "Applicant Assistant" : "Tenant Assistant"}</span>
               </div>
               <div className="tenant-msg-bubble">
                 <p className="font-semibold text-slate-900 dark:text-slate-100 mb-1">
                   Hello, {tenantDisplayName}!
                 </p>
-                <p>
-                  I am your <strong>Lilycrest Tenant Assistant</strong>. I have real-time access to your room assignment, submetered utility breakdown, active lease agreement, and maintenance tickets.
-                </p>
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  Feel free to ask about your monthly billing line items, electricity share, lease renewal timeline, or report room repair concerns.
-                </p>
+                {isApplicant ? (
+                  <>
+                    <p>
+                      I am your <strong>Lilycrest Applicant Assistant</strong>. I have real-time access to your reservation status, viewing schedule, KYC document verification progress, and advance deposit guidelines.
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      Feel free to ask about your application stage, payment requirements, valid IDs, or schedule an in-person room viewing.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      I am your <strong>Lilycrest Tenant Assistant</strong>. I have real-time access to your room assignment, submetered utility breakdown, active lease agreement, and maintenance tickets.
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      Feel free to ask about your monthly billing line items, electricity share, lease renewal timeline, or report room repair concerns.
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           )}

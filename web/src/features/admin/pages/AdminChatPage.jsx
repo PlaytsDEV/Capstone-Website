@@ -1,35 +1,50 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   Check,
+  CheckCheck,
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   CircleAlert,
   Clock,
+  Download,
+  Eye,
   FileDown,
+  FileText,
   Filter,
+  Image as ImageIcon,
   Inbox,
   LoaderCircle,
   Lock,
   MessageSquare,
   MessageSquareText,
+  Paperclip,
   RefreshCw,
   Search,
   Send,
   ShieldAlert,
   SlidersHorizontal,
+  Sparkles,
   Tag,
   User,
   UserCheck,
   X,
   XCircle,
+  Zap,
 } from "lucide-react";
 import { chatApi } from "../../../shared/api/chatApi.js";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import useChatSocket from "../../../shared/hooks/useChatSocket.js";
 import { showConfirmation, showNotification } from "../../../shared/utils/notification";
 import { BRANCH_DISPLAY_NAMES, BRANCH_OPTIONS } from "../../../shared/utils/constants";
+import {
+  uploadToFirebaseStorage,
+  validateFile,
+} from "../../../shared/utils/firebaseStorageUpload.js";
+import ProgressiveImage from "../../../shared/components/ProgressiveImage";
 import {
   AdminChatSkeleton,
   ChatConversationListSkeleton,
@@ -110,6 +125,56 @@ const fmtDateTime = (value) => {
     hour: "numeric",
     minute: "2-digit",
   });
+};
+
+const fmtShortTime = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("en-PH", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const fmtDateDivider = (dateValue) => {
+  if (!dateValue) return "";
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "";
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) {
+    return "Today";
+  }
+  if (date.toDateString() === yesterday.toDateString()) {
+    return "Yesterday";
+  }
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
+  });
+};
+
+const isSameDay = (d1, d2) => {
+  if (!d1 || !d2) return false;
+  const date1 = new Date(d1);
+  const date2 = new Date(d2);
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
+};
+
+const fmtFileSize = (bytes) => {
+  if (!bytes || Number.isNaN(bytes) || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 const fmtRelativeTime = (dateValue) => {
@@ -206,6 +271,7 @@ function addWrappedPdfText(doc, text, x, y, maxWidth, lineHeight = 5) {
 }
 
 export default function AdminChatPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isOwner = user?.role === "owner";
   const [search, setSearch] = useState("");
@@ -221,6 +287,13 @@ export default function AdminChatPage() {
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [replyText, setReplyText] = useState("");
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [showAiDraft, setShowAiDraft] = useState(false);
+  const [dismissedClusters, setDismissedClusters] = useState({});
+  const [stagedAttachments, setStagedAttachments] = useState([]);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const [previewImageModal, setPreviewImageModal] = useState(null);
+  const fileInputRef = useRef(null);
 
   const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [closeNote, setCloseNote] = useState("");
@@ -232,7 +305,8 @@ export default function AdminChatPage() {
   const [priorityModalOpen, setPriorityModalOpen] = useState(false);
   const [pendingPriority, setPendingPriority] = useState("normal");
 
-  const [listLoading, setListLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -245,9 +319,19 @@ export default function AdminChatPage() {
   const [replyError, setReplyError] = useState("");
 
   const [tenantTyping, setTenantTyping] = useState(null);
+  const hasLoadedOnceRef = useRef(false);
   const typingClearRef = useRef(null);
   const typingSendRef = useRef(null);
   const messageEndRef = useRef(null);
+
+  const sortedMessages = useMemo(() => {
+    return [...messages].sort((a, b) => {
+      const timeA = new Date(a.createdAt || 0).getTime();
+      const timeB = new Date(b.createdAt || 0).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+      return String(a.id || "").localeCompare(String(b.id || ""));
+    });
+  }, [messages]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
@@ -258,36 +342,24 @@ export default function AdminChatPage() {
     return count;
   }, [statusFilter, priorityFilter, categoryFilter, branchFilter, isOwner]);
 
-  const filters = useMemo(
-    () => ({
-      status: statusFilter,
-      branch: isOwner ? branchFilter : "all",
-      unread: activeTab === "unread" ? "true" : "",
-      assigned: activeTab === "me" ? "me" : "",
-      priority: activeTab === "urgent" ? "urgent" : priorityFilter,
-      category: categoryFilter,
-      search: search.trim(),
-    }),
-    [
-      activeTab,
-      branchFilter,
-      categoryFilter,
-      isOwner,
-      priorityFilter,
-      search,
-      statusFilter,
-    ],
-  );
-
   const loadConversations = useCallback(
     async ({ silent = false } = {}) => {
-      if (!silent) setListLoading(true);
+      if (!silent) {
+        if (!hasLoadedOnceRef.current) {
+          setInitialLoading(true);
+        } else {
+          setIsRefreshing(true);
+        }
+      }
       setListError("");
       try {
-        const data = await chatApi.getAdminConversations(filters);
+        const data = await chatApi.getAdminConversations({
+          branch: isOwner ? branchFilter : "all",
+        });
         const nextConversations = data?.conversations || [];
         setConversations(nextConversations);
         setAccessInfo(data?.access || null);
+        hasLoadedOnceRef.current = true;
         setSelectedConversation((current) => {
           if (!current) return current;
           return nextConversations.find((item) => item.id === current.id) || current;
@@ -297,10 +369,13 @@ export default function AdminChatPage() {
         setListError(message);
         if (!silent) showNotification(message, "error");
       } finally {
-        if (!silent) setListLoading(false);
+        if (!silent) {
+          setInitialLoading(false);
+          setIsRefreshing(false);
+        }
       }
     },
-    [filters],
+    [branchFilter, isOwner],
   );
 
   const loadMessages = useCallback(
@@ -327,10 +402,7 @@ export default function AdminChatPage() {
   );
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      loadConversations();
-    }, 250);
-    return () => window.clearTimeout(timeoutId);
+    loadConversations();
   }, [loadConversations]);
 
   useEffect(() => {
@@ -354,9 +426,24 @@ export default function AdminChatPage() {
           if (current.some((item) => item.id === message.id)) return current;
           return [...current, message];
         });
-        chatApi.markAsRead(conversationId).catch(() => {});
+        chatApi.markAdminRead(conversationId).catch(() => {});
       }
       loadConversations({ silent: true });
+    },
+    onMessagesRead: ({ conversationId, readerRole, readAt } = {}) => {
+      if (
+        selectedConversation?.id === conversationId &&
+        readerRole === "tenant"
+      ) {
+        setMessages((current) =>
+          current.map((msg) => {
+            if (msg.senderRole !== "tenant" && !msg.readAt) {
+              return { ...msg, readAt: readAt || new Date().toISOString() };
+            }
+            return msg;
+          }),
+        );
+      }
     },
     onConversationUpdated: (updatedConversation) => {
       if (!updatedConversation?.id) return;
@@ -412,6 +499,64 @@ export default function AdminChatPage() {
     setShowAdvancedFilters(false);
   };
 
+  const filteredConversations = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const myAdminId = accessInfo?.adminId || user?._id || user?.id;
+
+    return conversations.filter((item) => {
+      // 1. Search filter
+      if (q) {
+        const matchesSearch =
+          (item.tenantName || "").toLowerCase().includes(q) ||
+          (item.tenantEmail || "").toLowerCase().includes(q) ||
+          (item.roomNumber || "").toLowerCase().includes(q) ||
+          (item.roomBed || "").toLowerCase().includes(q) ||
+          (item.lastMessage || "").toLowerCase().includes(q);
+        if (!matchesSearch) return false;
+      }
+
+      // 2. Active Tab filter
+      if (activeTab === "unread" && !(item.unreadAdminCount > 0)) {
+        return false;
+      }
+      if (activeTab === "urgent" && item.priority !== "urgent") {
+        return false;
+      }
+      if (activeTab === "me") {
+        if (!item.assignedAdminId || String(item.assignedAdminId) !== String(myAdminId)) {
+          return false;
+        }
+      }
+
+      // 3. Status filter
+      if (statusFilter !== "all" && item.status !== statusFilter) {
+        return false;
+      }
+
+      // 4. Priority filter (if not in urgent tab)
+      if (activeTab !== "urgent" && priorityFilter !== "all" && item.priority !== priorityFilter) {
+        return false;
+      }
+
+      // 5. Category filter
+      if (categoryFilter !== "all" && item.category !== categoryFilter) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    conversations,
+    search,
+    activeTab,
+    accessInfo?.adminId,
+    user?._id,
+    user?.id,
+    statusFilter,
+    priorityFilter,
+    categoryFilter,
+  ]);
+
   const groupedConversations = useMemo(() => {
     const groups = STATUS_SECTION_ORDER.map((status) => ({
       status,
@@ -419,20 +564,103 @@ export default function AdminChatPage() {
       items: [],
     }));
 
-    conversations.forEach((item) => {
+    filteredConversations.forEach((item) => {
       const targetGroup =
         groups.find((group) => group.status === item.status) || groups[0];
       targetGroup.items.push(item);
     });
 
     return groups.filter((group) => group.items.length > 0);
-  }, [conversations]);
+  }, [filteredConversations]);
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    const newAttachments = [];
+    for (const file of files) {
+      const validation = validateFile(file);
+      if (!validation.valid) {
+        showNotification(validation.error, "error");
+        continue;
+      }
+      const isImage = file.type.startsWith("image/");
+      const previewUrl = isImage ? URL.createObjectURL(file) : null;
+      newAttachments.push({
+        file,
+        previewUrl,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        isImage,
+      });
+    }
+
+    if (newAttachments.length > 0) {
+      setStagedAttachments((prev) => [...prev, ...newAttachments].slice(0, 5));
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveStagedAttachment = (index) => {
+    setStagedAttachments((prev) => {
+      const target = prev[index];
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const handlePaste = (e) => {
+    const clipboardItems = e.clipboardData?.items;
+    if (!clipboardItems) return;
+
+    const pastedImages = [];
+    for (let i = 0; i < clipboardItems.length; i++) {
+      const item = clipboardItems[i];
+      if (item.type && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          const validation = validateFile(file);
+          if (!validation.valid) {
+            showNotification(validation.error, "error");
+            continue;
+          }
+          const previewUrl = URL.createObjectURL(file);
+          const extension = file.type.split("/")[1] || "png";
+          const formattedName =
+            file.name && file.name !== "image.png"
+              ? file.name
+              : `Pasted_Image_${Date.now()}.${extension}`;
+          pastedImages.push({
+            file,
+            previewUrl,
+            name: formattedName,
+            size: file.size,
+            type: file.type,
+            isImage: true,
+          });
+        }
+      }
+    }
+
+    if (pastedImages.length > 0) {
+      setStagedAttachments((prev) => [...prev, ...pastedImages].slice(0, 5));
+      const hasText = e.clipboardData.getData("text/plain");
+      if (!hasText) {
+        e.preventDefault();
+      }
+    }
+  };
 
   const handleSendReply = async () => {
-    if (!selectedConversation || sending) return;
+    if (!selectedConversation || sending || uploadingAttachments) return;
     const message = replyText.trim();
-    if (!message) {
-      setReplyError("Please enter a reply message.");
+    if (!message && stagedAttachments.length === 0) {
+      setReplyError("Please enter a reply message or attach a file.");
       return;
     }
 
@@ -444,9 +672,47 @@ export default function AdminChatPage() {
     setSending(true);
     setReplyError("");
     try {
-      const data = await chatApi.sendAdminMessage(selectedConversation.id, message);
+      let uploadedAttachments = [];
+      if (stagedAttachments.length > 0) {
+        setUploadingAttachments(true);
+        const uploadPromises = stagedAttachments.map(async (item) => {
+          const result = await uploadToFirebaseStorage(item.file, {
+            documentType: "chat-attachment",
+          });
+          return {
+            url: result.downloadUrl || result.url,
+            fileUrl: result.downloadUrl || result.url,
+            name: result.originalName || item.name,
+            fileName: result.originalName || item.name,
+            type: result.mimeType || item.type,
+            mimeType: result.mimeType || item.type,
+            size: result.size ?? item.size,
+          };
+        });
+        uploadedAttachments = await Promise.all(uploadPromises);
+      }
+
+      const data = await chatApi.sendAdminMessage(
+        selectedConversation.id,
+        message,
+        uploadedAttachments,
+      );
+
+      // Clean up local preview object URLs
+      stagedAttachments.forEach((item) => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      });
+      setStagedAttachments([]);
       setReplyText("");
-      setMessages((current) => [...current, data.message].filter(Boolean));
+      setMessages((current) => {
+        const next = [...current, data.message].filter(Boolean);
+        const seen = new Set();
+        return next.filter((m) => {
+          if (!m?.id || seen.has(m.id)) return false;
+          seen.add(m.id);
+          return true;
+        });
+      });
       setSelectedConversation(data.conversation);
       await loadConversations({ silent: true });
     } catch (error) {
@@ -455,6 +721,7 @@ export default function AdminChatPage() {
       showNotification(messageText, "error");
     } finally {
       setSending(false);
+      setUploadingAttachments(false);
     }
   };
 
@@ -684,20 +951,41 @@ export default function AdminChatPage() {
     }
   };
 
-  const unreadTotal = conversations.reduce(
-    (total, item) => total + (item.unreadAdminCount || 0),
-    0,
+  const handleReviewRoomHistory = useCallback(() => {
+    if (!selectedConversation) return;
+    const searchParam = selectedConversation.roomNumber || "";
+    const branchParam = selectedConversation.branch || "";
+    const params = new URLSearchParams();
+    if (searchParam) {
+      params.set("search", searchParam);
+    }
+    if (branchParam) {
+      params.set("branch", branchParam);
+    }
+    navigate(`/admin/maintenance?${params.toString()}`);
+  }, [navigate, selectedConversation]);
+
+  const totalThreads = conversations.length;
+  const unreadTotal = useMemo(
+    () => conversations.reduce((total, item) => total + (item.unreadAdminCount || 0), 0),
+    [conversations],
   );
-  const urgentTotal = conversations.filter((item) => item.priority === "urgent").length;
-  const assignedToMeTotal = conversations.filter(
-    (item) => item.assignedAdminId && item.assignedAdminId === accessInfo?.adminId,
-  ).length;
+  const urgentTotal = useMemo(
+    () => conversations.filter((item) => item.priority === "urgent").length,
+    [conversations],
+  );
+  const assignedToMeTotal = useMemo(() => {
+    const myAdminId = accessInfo?.adminId || user?._id || user?.id;
+    return conversations.filter(
+      (item) => item.assignedAdminId && String(item.assignedAdminId) === String(myAdminId),
+    ).length;
+  }, [conversations, accessInfo?.adminId, user?._id, user?.id]);
   const assignedToAnother =
     selectedConversation?.assignedAdminId &&
     accessInfo?.adminId &&
     selectedConversation.assignedAdminId !== accessInfo.adminId;
 
-  if (listLoading && !conversations.length) {
+  if (initialLoading && !conversations.length) {
     return <AdminChatSkeleton />;
   }
 
@@ -713,10 +1001,10 @@ export default function AdminChatPage() {
               type="button"
               className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted cursor-pointer"
               onClick={handleRefresh}
-              disabled={listLoading || messagesLoading}
+              disabled={isRefreshing || messagesLoading}
               title="Refresh conversations"
             >
-              <RefreshCw size={14} className={listLoading ? "animate-spin" : ""} />
+              <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
               <span>Refresh</span>
             </button>
 
@@ -799,9 +1087,9 @@ export default function AdminChatPage() {
       </div>
 
       {/* ── Main Chat Workspace ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[380px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)] gap-4 items-start min-h-[640px]">
+      <div className="grid grid-cols-1 lg:grid-cols-[380px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)] gap-4 items-stretch h-[calc(100vh-210px)] min-h-[580px] max-h-[920px]">
         {/* Left Sidebar: Conversations & Filters */}
-        <aside className="rounded-xl border border-border bg-card shadow-xs flex flex-col h-[700px] overflow-hidden">
+        <aside className="rounded-xl border border-border bg-card shadow-xs flex flex-col h-full overflow-hidden">
           {/* Search & Filter Bar */}
           <div className="p-3 border-b border-border space-y-2.5 bg-card/60">
             <div className="relative flex items-center">
@@ -962,18 +1250,33 @@ export default function AdminChatPage() {
 
           {/* Conversation List */}
           <div className="flex-1 overflow-y-auto p-2 space-y-2">
-            {listLoading ? (
+            {initialLoading ? (
               <ChatConversationListSkeleton count={7} />
             ) : listError ? (
               <div className="p-6 text-center text-xs text-destructive space-y-2">
                 <XCircle size={22} className="mx-auto" />
                 <span>{listError}</span>
               </div>
-            ) : conversations.length === 0 ? (
+            ) : filteredConversations.length === 0 ? (
               <div className="p-8 text-center text-xs text-muted-foreground space-y-2">
                 <Inbox size={26} className="mx-auto text-muted-foreground/60" />
-                <div className="font-semibold text-foreground">No conversations found</div>
-                <div>Tenant messages matching your filters will appear here.</div>
+                <div className="font-semibold text-foreground">
+                  {conversations.length === 0 ? "No conversations found" : "No matching conversations"}
+                </div>
+                <div>
+                  {conversations.length === 0
+                    ? "Tenant messages will appear here."
+                    : "No tenant messages match your active filter criteria."}
+                </div>
+                {conversations.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline cursor-pointer"
+                  >
+                    Reset all filters
+                  </button>
+                )}
               </div>
             ) : (
               groupedConversations.map((group) => (
@@ -1066,7 +1369,7 @@ export default function AdminChatPage() {
         </aside>
 
         {/* Right Pane: Conversation Details & Message Feed */}
-        <section className="rounded-xl border border-border bg-card shadow-xs flex flex-col h-[720px] overflow-hidden">
+        <section className="rounded-xl border border-border bg-card shadow-xs flex flex-col h-full overflow-hidden">
           {selectedConversation ? (
             <>
               {/* Thread Header */}
@@ -1222,17 +1525,35 @@ export default function AdminChatPage() {
                 </div>
               </header>
 
-              {selectedConversation?.priority === "urgent" && selectedConversation?.status !== "closed" && (
-                <div className="px-4 pt-3 pb-1 border-b border-border">
-                  <AdminIssueClusterBanner clusters={[{
-                    type: "Maintenance Cluster",
-                    description: "Multiple open tickets detected for the same unit.",
-                    count: 3,
-                    location: selectedConversation?.roomNumber ? `Room ${selectedConversation.roomNumber}` : `${getBranchLabel(selectedConversation?.branch)} Branch`,
-                    action: "Review Room History"
-                  }]} />
-                </div>
-              )}
+              {selectedConversation?.priority === "urgent" &&
+                selectedConversation?.status !== "closed" &&
+                !dismissedClusters[selectedConversation?.id] && (
+                  <div className="px-4 pt-3 pb-1 border-b border-border">
+                    <AdminIssueClusterBanner
+                      clusters={[
+                        {
+                          type: "Maintenance Cluster",
+                          description:
+                            "Multiple open tickets detected for the same unit.",
+                          count: 3,
+                          location: selectedConversation?.roomNumber
+                            ? `Room ${selectedConversation.roomNumber}`
+                            : `${getBranchLabel(selectedConversation?.branch)} Branch`,
+                          action: "Review Room History",
+                          onAction: handleReviewRoomHistory,
+                        },
+                      ]}
+                      onDismiss={() => {
+                        if (selectedConversation?.id) {
+                          setDismissedClusters((prev) => ({
+                            ...prev,
+                            [selectedConversation.id]: true,
+                          }));
+                        }
+                      }}
+                    />
+                  </div>
+                )}
 
               {assignedToAnother && (
                 <div className="px-4 py-2 bg-card border-b border-border text-xs text-foreground flex items-center gap-2 shadow-2xs">
@@ -1244,10 +1565,30 @@ export default function AdminChatPage() {
               )}
 
               {/* Message Feed */}
-              <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-muted/15">
+              <div className="flex-1 p-4 overflow-y-auto space-y-2 bg-muted/15">
+                {/* Thread Initialization Banner */}
+                {selectedConversation && (
+                  <div className="mx-auto my-3 max-w-sm rounded-xl border border-border bg-card p-3.5 text-center shadow-2xs space-y-1">
+                    <div className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-muted text-muted-foreground mx-auto mb-0.5">
+                      <MessageSquare size={16} />
+                    </div>
+                    <div className="text-xs font-bold text-foreground">
+                      Support Thread with {selectedConversation.tenantName}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {getBranchLabel(selectedConversation.branch)} · {getRoomLabel(selectedConversation)}
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                      <span>{getCategoryLabel(selectedConversation.category)}</span>
+                      <span>•</span>
+                      <span>{fmtDateTime(selectedConversation.createdAt)}</span>
+                    </div>
+                  </div>
+                )}
+
                 {messagesLoading ? (
                   <ChatMessageFeedSkeleton count={5} />
-                ) : messages.length === 0 ? (
+                ) : sortedMessages.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground p-8 space-y-2">
                     <MessageSquare size={32} className="text-muted-foreground/50" />
                     <div className="font-semibold text-foreground">No messages yet</div>
@@ -1256,52 +1597,233 @@ export default function AdminChatPage() {
                     </div>
                   </div>
                 ) : (
-                  messages.map((msg) => {
+                  sortedMessages.map((msg, i) => {
                     const isTenant = msg.senderRole === "tenant";
                     const senderAvatarSrc = isTenant
                       ? (msg.senderProfileImage || selectedConversation.tenantProfileImage)
                       : (msg.senderProfileImage || (user?._id === msg.senderId ? user?.profileImage : ""));
 
+                    const prevMsg = i > 0 ? sortedMessages[i - 1] : null;
+                    const nextMsg = i < sortedMessages.length - 1 ? sortedMessages[i + 1] : null;
+
+                    const showDateDivider = !prevMsg || !isSameDay(msg.createdAt, prevMsg.createdAt);
+
+                    const isSameSenderAsPrev = prevMsg &&
+                      prevMsg.senderRole === msg.senderRole &&
+                      (msg.senderRole !== "tenant" || prevMsg.senderId === msg.senderId) &&
+                      isSameDay(msg.createdAt, prevMsg.createdAt) &&
+                      (new Date(msg.createdAt) - new Date(prevMsg.createdAt)) < 5 * 60 * 1000;
+
+                    const isSameSenderAsNext = nextMsg &&
+                      nextMsg.senderRole === msg.senderRole &&
+                      (msg.senderRole !== "tenant" || nextMsg.senderId === msg.senderId) &&
+                      isSameDay(msg.createdAt, nextMsg.createdAt) &&
+                      (new Date(nextMsg.createdAt) - new Date(msg.createdAt)) < 5 * 60 * 1000;
+
+                    const isFirstInGroup = !isSameSenderAsPrev;
+                    const isLastInGroup = !isSameSenderAsNext;
+
                     return (
-                      <div
-                        key={msg.id}
-                        className={`flex items-end gap-2.5 ${
-                          isTenant ? "justify-start" : "justify-end flex-row-reverse"
-                        }`}
-                      >
-                        <ProfileAvatar
-                          src={senderAvatarSrc}
-                          user={{
-                            name: msg.senderName,
-                            profileImage: senderAvatarSrc,
-                          }}
-                          initials={getInitials(msg.senderName)}
-                          size={28}
-                          alt={msg.senderName}
-                          className="shrink-0 mb-1 ring-1 ring-border/40"
-                        />
-                        <div
-                          className={`max-w-[78%] rounded-xl p-3.5 space-y-1.5 shadow-2xs ${
-                            isTenant
-                              ? "bg-card border border-border text-foreground"
-                              : "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                          }`}
-                        >
-                          <div
-                            className={`flex items-center justify-between gap-3 text-[11px] ${
-                              isTenant
-                                ? "text-muted-foreground"
-                                : "text-slate-300 dark:text-slate-600"
-                            }`}
-                          >
-                            <span className="font-bold">
-                              {msg.senderName} ({msg.senderRole || "admin"})
+                      <div key={msg.id} className="space-y-1">
+                        {showDateDivider && (
+                          <div className="flex items-center justify-center my-3">
+                            <span className="rounded-full bg-card border border-border px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground shadow-2xs">
+                              {fmtDateDivider(msg.createdAt)}
                             </span>
-                            <time>{fmtDateTime(msg.createdAt)}</time>
                           </div>
-                          <p className="text-xs leading-relaxed whitespace-pre-wrap break-words">
-                            {msg.message}
-                          </p>
+                        )}
+
+                        <div
+                          className={`flex items-end gap-2 ${
+                            isTenant ? "justify-start" : "justify-end"
+                          } ${isFirstInGroup ? "mt-2.5" : "mt-0.5"}`}
+                        >
+                          {/* Tenant Avatar on Left: Visible on last message of group */}
+                          {isTenant && (
+                            <div className="w-7 shrink-0 flex justify-center">
+                              {isLastInGroup ? (
+                                <ProfileAvatar
+                                  src={senderAvatarSrc}
+                                  user={{
+                                    name: msg.senderName,
+                                    profileImage: senderAvatarSrc,
+                                  }}
+                                  initials={getInitials(msg.senderName)}
+                                  size={28}
+                                  alt={msg.senderName}
+                                  className="mb-0.5 ring-1 ring-border/40"
+                                />
+                              ) : (
+                                <div className="w-7 h-7" />
+                              )}
+                            </div>
+                          )}
+
+                          {/* Message Content & Metadata */}
+                          <div className={`max-w-[75%] space-y-0.5 ${isTenant ? "text-left" : "text-right"}`}>
+                            {/* Sender Header on First Message in Group */}
+                            {isFirstInGroup && (
+                              <div
+                                className={`text-[10px] font-bold text-muted-foreground px-1 pb-0.5 ${
+                                  isTenant ? "text-left" : "text-right"
+                                }`}
+                              >
+                                {msg.senderName} ({msg.senderRole || (isTenant ? "tenant" : "admin")})
+                              </div>
+                            )}
+
+                            {/* Bubble */}
+                            <div
+                              className={`inline-block text-left p-3 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap break-words shadow-2xs space-y-2 ${
+                                isTenant
+                                  ? `bg-card border border-border text-foreground ${
+                                      isLastInGroup ? "rounded-bl-xs" : ""
+                                    }`
+                                  : `bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 ${
+                                      isLastInGroup ? "rounded-br-xs" : ""
+                                    }`
+                              }`}
+                            >
+                              {/* Photo Attachments */}
+                              {Array.isArray(msg.attachments) &&
+                                msg.attachments.filter((a) =>
+                                  String(a.type || a.mimeType || "").startsWith("image"),
+                                ).length > 0 && (
+                                  <div
+                                    className={`gap-1.5 ${
+                                      msg.attachments.filter((a) =>
+                                        String(a.type || a.mimeType || "").startsWith("image"),
+                                      ).length === 1
+                                        ? "block max-w-[260px]"
+                                        : "grid grid-cols-2 max-w-[320px]"
+                                    }`}
+                                  >
+                                    {msg.attachments
+                                      .filter((a) =>
+                                        String(a.type || a.mimeType || "").startsWith("image"),
+                                      )
+                                      .map((img, imgIdx) => (
+                                        <button
+                                          type="button"
+                                          key={imgIdx}
+                                          onClick={() => setPreviewImageModal(img)}
+                                          className="relative group rounded-lg overflow-hidden border border-border/40 focus:outline-none cursor-pointer block"
+                                          title="Click to enlarge"
+                                        >
+                                          <ProgressiveImage
+                                            src={img.url || img.fileUrl}
+                                            alt={img.name || "Attachment"}
+                                            className="w-full h-32 object-cover transition-transform group-hover:scale-105"
+                                          />
+                                          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                                            <Eye size={18} />
+                                          </div>
+                                        </button>
+                                      ))}
+                                  </div>
+                                )}
+
+                              {/* Document / PDF Attachments */}
+                              {Array.isArray(msg.attachments) &&
+                                msg.attachments.filter(
+                                  (a) =>
+                                    !String(a.type || a.mimeType || "").startsWith("image"),
+                                ).length > 0 && (
+                                  <div className="space-y-1.5 max-w-[280px]">
+                                    {msg.attachments
+                                      .filter(
+                                        (a) =>
+                                          !String(a.type || a.mimeType || "").startsWith("image"),
+                                      )
+                                      .map((doc, docIdx) => (
+                                        <a
+                                          key={docIdx}
+                                          href={doc.url || doc.fileUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          download={doc.name || "document"}
+                                          className={`flex items-center gap-2 p-2 rounded-lg border text-xs transition-colors ${
+                                            isTenant
+                                              ? "bg-muted/40 hover:bg-muted border-border text-foreground"
+                                              : "bg-white/10 hover:bg-white/20 border-white/20 text-white dark:bg-black/10 dark:hover:bg-black/20 dark:border-black/20 dark:text-slate-900"
+                                          }`}
+                                        >
+                                          <FileText size={16} className="shrink-0 opacity-80" />
+                                          <div className="flex-1 min-w-0">
+                                            <p className="truncate font-medium text-[11px]">
+                                              {doc.name || "Attached File"}
+                                            </p>
+                                            {doc.size > 0 && (
+                                              <p className="text-[10px] opacity-70">
+                                                {fmtFileSize(doc.size)}
+                                              </p>
+                                            )}
+                                          </div>
+                                          <Download size={13} className="shrink-0 opacity-70" />
+                                        </a>
+                                      ))}
+                                  </div>
+                                )}
+
+                              {/* Text message (if present) */}
+                              {msg.message ? (
+                                <p className="text-xs leading-relaxed whitespace-pre-wrap break-words">
+                                  {msg.message}
+                                </p>
+                              ) : null}
+                            </div>
+
+                            {/* Timestamp & Seen Indicator on Last Message in Group */}
+                            {isLastInGroup && (
+                              <div
+                                className={`flex items-center gap-1.5 text-[10px] text-muted-foreground px-1 pt-0.5 ${
+                                  isTenant ? "justify-start" : "justify-end"
+                                }`}
+                              >
+                                <time>{fmtShortTime(msg.createdAt)}</time>
+                                {!isTenant && (
+                                  <>
+                                    <span>•</span>
+                                    {msg.readAt ? (
+                                      <span
+                                        className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 font-semibold"
+                                        title={`Seen at ${fmtDateTime(msg.readAt)}`}
+                                      >
+                                        <CheckCheck size={11} />
+                                        <span>Seen</span>
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-0.5 text-muted-foreground">
+                                        <Check size={11} />
+                                        <span>Sent</span>
+                                      </span>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Staff/Owner Avatar on Right: Visible on last message of group */}
+                          {!isTenant && (
+                            <div className="w-7 shrink-0 flex justify-center">
+                              {isLastInGroup ? (
+                                <ProfileAvatar
+                                  src={senderAvatarSrc}
+                                  user={{
+                                    name: msg.senderName,
+                                    profileImage: senderAvatarSrc,
+                                  }}
+                                  initials={getInitials(msg.senderName)}
+                                  size={28}
+                                  alt={msg.senderName}
+                                  className="mb-0.5 ring-1 ring-border/40"
+                                />
+                              ) : (
+                                <div className="w-7 h-7" />
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1337,23 +1859,145 @@ export default function AdminChatPage() {
                 </div>
               ) : (
                 /* Reply Composer */
-                <footer className="p-3 border-t border-border bg-card space-y-2.5">
-                  {/* Quick Replies */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                    {QUICK_REPLIES.map((template) => (
+                <footer className="p-3 border-t border-border bg-card space-y-2">
+                  {/* Expandable Quick Replies (Appears AT THE TOP of the toggle buttons) */}
+                  {showQuickReplies && (
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-0.5 border-b border-border/40 animate-in fade-in slide-in-from-bottom-1 duration-150">
+                      {QUICK_REPLIES.map((template) => (
+                        <button
+                          type="button"
+                          key={template}
+                          onClick={() => {
+                            setReplyText(template);
+                            setReplyError("");
+                          }}
+                          className="rounded-full border border-border bg-card px-3 py-1 text-xs font-normal text-muted-foreground hover:text-foreground hover:bg-muted transition-colors whitespace-nowrap cursor-pointer shrink-0"
+                        >
+                          {template}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Expandable AI Auto-Draft Reply (Appears AT THE TOP of the toggle buttons) */}
+                  {showAiDraft && (
+                    <div className="pt-0.5 pb-1 border-b border-border/40 animate-in fade-in slide-in-from-bottom-1 duration-150">
+                      <AdminReplyDraftButton
+                        conversationId={selectedConversation?.id}
+                        ticketCategory={selectedConversation?.category || "general_inquiry"}
+                        urgency={selectedConversation?.priority || "normal"}
+                        recentMessages={
+                          Array.isArray(messages)
+                            ? messages.slice(-6).map((m) => ({
+                                senderRole: m.senderRole || (m.isStaff ? "admin" : "tenant"),
+                                message: m.message || "",
+                              }))
+                            : []
+                        }
+                        tenantContext={{
+                          tenantName: selectedConversation?.tenantName,
+                          roomNumber: selectedConversation?.roomNumber,
+                          branch: selectedConversation?.branch,
+                        }}
+                        branch={selectedConversation?.branch}
+                        onDraftGenerated={(draft) => {
+                          setReplyText(draft);
+                          if (replyError) setReplyError("");
+                        }}
+                        disabled={sending}
+                      />
+                    </div>
+                  )}
+
+                  {/* Collapsible Action Bar & Attachment Trigger */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <button
                         type="button"
-                        key={template}
-                        onClick={() => {
-                          setReplyText(template);
-                          setReplyError("");
-                        }}
-                        className="rounded-full border border-border bg-card px-3 py-1 text-xs font-normal text-muted-foreground hover:text-foreground hover:bg-muted transition-colors whitespace-nowrap cursor-pointer shrink-0"
+                        onClick={() => setShowQuickReplies((prev) => !prev)}
+                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold border transition-colors cursor-pointer ${
+                          showQuickReplies
+                            ? "bg-muted border-border text-foreground shadow-2xs"
+                            : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                        }`}
+                        title="Toggle quick response templates"
                       >
-                        {template}
+                        <Zap size={13} className={showQuickReplies ? "text-amber-500" : "text-muted-foreground"} />
+                        <span>Quick Replies</span>
+                        {showQuickReplies ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
                       </button>
-                    ))}
+
+                      <button
+                        type="button"
+                        onClick={() => setShowAiDraft((prev) => !prev)}
+                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold border transition-colors cursor-pointer ${
+                          showAiDraft
+                            ? "bg-muted border-border text-foreground shadow-2xs"
+                            : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                        }`}
+                        title="Toggle AI Auto-Draft Assistant"
+                      >
+                        <Sparkles size={13} className={showAiDraft ? "text-primary" : "text-muted-foreground"} />
+                        <span>AI Draft Reply</span>
+                        {showAiDraft ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={sending || uploadingAttachments}
+                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer disabled:opacity-50"
+                        title="Attach photos or documents (JPEG, PNG, WebP, PDF up to 5MB)"
+                      >
+                        <Paperclip size={13} className="text-muted-foreground" />
+                        <span>Attach File / Photo</span>
+                      </button>
+
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+                        className="hidden"
+                        onChange={handleFileSelect}
+                      />
+                    </div>
                   </div>
+
+                  {/* Staged Attachments Tray */}
+                  {stagedAttachments.length > 0 && (
+                    <div className="flex items-center gap-2 overflow-x-auto py-1.5 px-1 bg-muted/40 rounded-lg border border-border animate-in fade-in duration-150">
+                      {stagedAttachments.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="relative group flex items-center gap-2 bg-card border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground shrink-0 shadow-2xs"
+                        >
+                          {item.isImage && item.previewUrl ? (
+                            <img
+                              src={item.previewUrl}
+                              alt={item.name}
+                              className="h-8 w-8 rounded object-cover border border-border/50 shrink-0"
+                            />
+                          ) : (
+                            <FileText size={18} className="text-muted-foreground shrink-0" />
+                          )}
+                          <div className="max-w-[120px] truncate">
+                            <p className="font-medium text-[11px] truncate">{item.name}</p>
+                            <p className="text-[10px] text-muted-foreground">{fmtFileSize(item.size)}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveStagedAttachment(idx)}
+                            disabled={sending || uploadingAttachments}
+                            className="ml-1 p-0.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                            title="Remove attachment"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {replyError && (
                     <div className="text-xs text-destructive flex items-center gap-1">
@@ -1363,30 +2007,6 @@ export default function AdminChatPage() {
                   )}
 
                   <div>
-                    <AdminReplyDraftButton
-                      conversationId={selectedConversation?.id}
-                      ticketCategory={selectedConversation?.category || "general_inquiry"}
-                      urgency={selectedConversation?.priority || "normal"}
-                      recentMessages={
-                        Array.isArray(messages)
-                          ? messages.slice(-6).map((m) => ({
-                              senderRole: m.senderRole || (m.isStaff ? "admin" : "tenant"),
-                              message: m.message || "",
-                            }))
-                          : []
-                      }
-                      tenantContext={{
-                        tenantName: selectedConversation?.tenantName,
-                        roomNumber: selectedConversation?.roomNumber,
-                        branch: selectedConversation?.branch,
-                      }}
-                      branch={selectedConversation?.branch}
-                      onDraftGenerated={(draft) => {
-                        setReplyText(draft);
-                        if (replyError) setReplyError("");
-                      }}
-                      disabled={sending}
-                    />
                     <textarea
                       value={replyText}
                       onChange={(e) => {
@@ -1405,7 +2025,8 @@ export default function AdminChatPage() {
                         }
                       }}
                       onKeyDown={handleKeyDownReply}
-                      placeholder="Type a reply... (Press Enter to send, Shift+Enter for new line)"
+                      onPaste={handlePaste}
+                      placeholder="Type a reply or paste photos... (Press Enter to send, Shift+Enter for new line)"
                       rows={3}
                       maxLength={1000}
                       className="w-full rounded-lg border border-border bg-input-background p-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-border transition-colors resize-none"
@@ -1426,15 +2047,25 @@ export default function AdminChatPage() {
                     <button
                       type="button"
                       onClick={handleSendReply}
-                      disabled={sending || !replyText.trim()}
+                      disabled={
+                        sending ||
+                        uploadingAttachments ||
+                        (!replyText.trim() && stagedAttachments.length === 0)
+                      }
                       className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                     >
-                      {sending ? (
+                      {sending || uploadingAttachments ? (
                         <LoaderCircle size={14} className="animate-spin" />
                       ) : (
                         <Send size={14} />
                       )}
-                      <span>{sending ? "Sending..." : "Send Reply"}</span>
+                      <span>
+                        {uploadingAttachments
+                          ? "Uploading..."
+                          : sending
+                          ? "Sending..."
+                          : "Send Reply"}
+                      </span>
                     </button>
                   </div>
                 </footer>
@@ -1734,6 +2365,57 @@ export default function AdminChatPage() {
           </div>
         </div>
       )}
+
+      {/* ── Fullscreen Image Lightbox Modal ── */}
+      {previewImageModal &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+            onClick={() => setPreviewImageModal(null)}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div
+              className="relative max-w-4xl max-h-[90vh] flex flex-col items-center justify-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close & Action Toolbar */}
+              <div className="w-full flex items-center justify-between gap-3 text-white pb-2 px-1">
+                <p className="text-xs text-white/90 font-medium truncate max-w-md">
+                  {previewImageModal.name || previewImageModal.fileName || "Photo Preview"}
+                </p>
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href={previewImageModal.url || previewImageModal.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={previewImageModal.name || "photo"}
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-xs font-semibold backdrop-blur-sm transition-colors text-white cursor-pointer"
+                    title="Download original photo"
+                  >
+                    <Download size={13} />
+                    <span>Download</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImageModal(null)}
+                    className="p-1 rounded-lg bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm transition-colors cursor-pointer"
+                    title="Close preview"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <img
+                src={previewImageModal.url || previewImageModal.fileUrl}
+                alt={previewImageModal.name || "Full Preview"}
+                className="max-w-full max-h-[80vh] rounded-xl object-contain shadow-2xl ring-1 ring-white/10"
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
     </section>
   );
 }

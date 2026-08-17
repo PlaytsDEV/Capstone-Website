@@ -31,7 +31,7 @@ export default function AdminIssueClusterBanner({ clusters = [], onDismiss }) {
                 <button
                   type="button"
                   onClick={cluster.onAction}
-                  className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline cursor-pointer"
+                  className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline focus:outline-hidden transition-colors cursor-pointer"
                 >
                   <span>{cluster.action}</span>
                   <ChevronRight size={12} />

@@ -69,15 +69,23 @@ function sendError(res, error, fallback = 'Failed to process chat request.') {
   });
 }
 
-function normalizeMessage(rawMessage) {
+function normalizeMessage(rawMessage, hasAttachments = false) {
+  if (rawMessage === undefined || rawMessage === null) {
+    if (hasAttachments) return '';
+    const error = new Error('Message cannot be empty.');
+    error.statusCode = 400;
+    throw error;
+  }
+
   if (typeof rawMessage !== 'string') {
+    if (hasAttachments) return '';
     const error = new Error('Message cannot be empty.');
     error.statusCode = 400;
     throw error;
   }
 
   const message = rawMessage.replace(/\r\n?/g, '\n').replace(/\t/g, ' ').trim();
-  if (!message) {
+  if (!message && !hasAttachments) {
     const error = new Error('Message cannot be empty.');
     error.statusCode = 400;
     throw error;
@@ -90,6 +98,29 @@ function normalizeMessage(rawMessage) {
   }
 
   return message;
+}
+
+function normalizeAttachments(rawAttachments) {
+  if (!Array.isArray(rawAttachments)) return [];
+  return rawAttachments
+    .map((att) => {
+      if (!att || typeof att !== 'object') return null;
+      const url = String(att.url || att.fileUrl || att.downloadUrl || '').trim();
+      if (!url) return null;
+      const name = String(att.name || att.fileName || att.originalName || 'Attachment').trim();
+      const type = String(att.type || att.mimeType || 'application/octet-stream').trim();
+      const size = Number(att.size || 0);
+      return {
+        url,
+        fileUrl: url,
+        name,
+        fileName: name,
+        type,
+        mimeType: type,
+        size,
+      };
+    })
+    .filter(Boolean);
 }
 
 function normalizeCategory(rawCategory, { required = false } = {}) {
@@ -202,6 +233,17 @@ function serializeMessage(message) {
         : '') ||
       '',
     message: message.message || '',
+    attachments: Array.isArray(message.attachments)
+      ? message.attachments.map((att) => ({
+          url: att.url || att.fileUrl || '',
+          fileUrl: att.fileUrl || att.url || '',
+          name: att.name || att.fileName || 'attachment',
+          fileName: att.fileName || att.name || 'attachment',
+          type: att.type || att.mimeType || 'application/octet-stream',
+          mimeType: att.mimeType || att.type || 'application/octet-stream',
+          size: Number(att.size || 0),
+        }))
+      : [],
     readAt: message.readAt || null,
     createdAt: message.createdAt || null,
   };
@@ -554,6 +596,12 @@ async function getConversationMessages(req, res) {
       ),
     ]);
 
+    safeEmitChatAdmins(conversation.branch, 'chat:messages-read', {
+      conversationId: String(conversation._id),
+      readerRole: 'tenant',
+      readAt: now.toISOString(),
+    });
+
     const [messages, freshConversation] = await Promise.all([
       db.collection(CHAT_MESSAGES)
         .find({ conversationId: conversation._id })
@@ -577,7 +625,8 @@ async function sendMessage(req, res) {
     const tenant = await resolveTenantContext(db, req.user);
     const conversation = await getTenantConversation(db, req.params.conversationId, req.user);
 
-    const messageText = normalizeMessage(req.body?.message);
+    const attachments = normalizeAttachments(req.body?.attachments);
+    const messageText = normalizeMessage(req.body?.message, attachments.length > 0);
     const now = new Date();
     const messageDoc = {
       conversationId: conversation._id,
@@ -585,7 +634,8 @@ async function sendMessage(req, res) {
       senderUserId: req.user.user_id || '',
       senderName: tenant.tenantName,
       senderRole: 'tenant',
-      message: messageText,
+      message: messageText || '',
+      attachments: attachments || [],
       readAt: null,
       createdAt: now,
       updatedAt: now,
@@ -594,11 +644,17 @@ async function sendMessage(req, res) {
     const insertResult = await db.collection(CHAT_MESSAGES).insertOne(messageDoc);
     messageDoc._id = insertResult.insertedId;
 
+    const lastMessagePreview = messageText || (
+      attachments.some((a) => String(a.type || a.mimeType || '').startsWith('image'))
+        ? '📷 Photo'
+        : '📎 Attachment'
+    );
+
     await db.collection(CHAT_CONVERSATIONS).updateOne(
       { _id: conversation._id },
       {
         $set: {
-          lastMessage: messageText,
+          lastMessage: lastMessagePreview,
           lastMessageAt: now,
           status: 'open',
           closedAt: null,

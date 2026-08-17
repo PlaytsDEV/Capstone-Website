@@ -66,13 +66,19 @@ function sendError(res, error, fallback = "Failed to process chat request.") {
   });
 }
 
-function normalizeMessage(rawMessage) {
+function normalizeMessage(rawMessage, hasAttachments = false) {
+  if (rawMessage === undefined || rawMessage === null) {
+    if (hasAttachments) return "";
+    throw createHttpError("Message cannot be empty.", 400, "EMPTY_MESSAGE");
+  }
+
   if (typeof rawMessage !== "string") {
+    if (hasAttachments) return "";
     throw createHttpError("Message cannot be empty.", 400, "EMPTY_MESSAGE");
   }
 
   const message = rawMessage.replace(/\r\n?/g, "\n").replace(/\t/g, " ").trim();
-  if (!message) {
+  if (!message && !hasAttachments) {
     throw createHttpError("Message cannot be empty.", 400, "EMPTY_MESSAGE");
   }
 
@@ -85,6 +91,29 @@ function normalizeMessage(rawMessage) {
   }
 
   return message;
+}
+
+function normalizeAttachments(rawAttachments) {
+  if (!Array.isArray(rawAttachments)) return [];
+  return rawAttachments
+    .map((att) => {
+      if (!att || typeof att !== "object") return null;
+      const url = String(att.url || att.fileUrl || att.downloadUrl || "").trim();
+      if (!url) return null;
+      const name = String(att.name || att.fileName || att.originalName || "Attachment").trim();
+      const type = String(att.type || att.mimeType || "application/octet-stream").trim();
+      const size = Number(att.size || 0);
+      return {
+        url,
+        fileUrl: url,
+        name,
+        fileName: name,
+        type,
+        mimeType: type,
+        size,
+      };
+    })
+    .filter(Boolean);
 }
 
 function normalizeCategory(rawCategory, { required = false } = {}) {
@@ -542,6 +571,17 @@ function serializeMessage(message) {
     senderProfileImage:
       doc.senderProfileImage || senderObj?.profileImage || "",
     message: doc.message || "",
+    attachments: Array.isArray(doc.attachments)
+      ? doc.attachments.map((att) => ({
+          url: att.url || att.fileUrl || "",
+          fileUrl: att.fileUrl || att.url || "",
+          name: att.name || att.fileName || "attachment",
+          fileName: att.fileName || att.name || "attachment",
+          type: att.type || att.mimeType || "application/octet-stream",
+          mimeType: att.mimeType || att.type || "application/octet-stream",
+          size: Number(att.size || 0),
+        }))
+      : [],
     readAt: doc.readAt || null,
     createdAt: doc.createdAt || null,
   };
@@ -674,6 +714,7 @@ async function createMessageAndUpdateConversation({
   sender,
   senderRole,
   message,
+  attachments = [],
   unreadTarget,
   nextStatus = null,
   statusNote = "",
@@ -697,14 +738,21 @@ async function createMessageAndUpdateConversation({
     senderName: sender?.name || sender?.displayName || displayName(sender, "User"),
     senderRole,
     senderProfileImage: senderPhoto,
-    message,
+    message: message || "",
+    attachments: attachments || [],
     createdAt: now,
     updatedAt: now,
   });
 
+  const lastMessagePreview = message || (
+    attachments.some((a) => String(a.type || a.mimeType || "").startsWith("image"))
+      ? "📷 Photo"
+      : "📎 Attachment"
+  );
+
   const update = {
     $set: {
-      lastMessage: message,
+      lastMessage: lastMessagePreview,
       lastMessageAt: now,
       ...(senderPhoto && !conversation.tenantProfileImage ? { tenantProfileImage: senderPhoto } : {}),
     },
@@ -808,23 +856,42 @@ async function notifyTenantOfAdminReply(conversation) {
 
 async function markTenantMessagesRead(conversationId) {
   const now = new Date();
-  await Promise.all([
-    ChatConversation.findByIdAndUpdate(conversationId, {
-      $set: { unreadAdminCount: 0 },
-    }),
+  const [conv] = await Promise.all([
+    ChatConversation.findByIdAndUpdate(
+      conversationId,
+      { $set: { unreadAdminCount: 0 } },
+      { new: true },
+    ),
     ChatMessage.updateMany(
       { conversationId, senderRole: "tenant", readAt: null },
       { $set: { readAt: now } },
     ),
   ]);
+
+  if (conv?.tenantId) {
+    emitToUser(conv.tenantId, "chat:messages-read", {
+      conversationId: String(conversationId),
+      readerRole: "admin",
+      readAt: now.toISOString(),
+    });
+  }
+  if (conv?.branch) {
+    emitToChatAdmins(conv.branch, "chat:messages-read", {
+      conversationId: String(conversationId),
+      readerRole: "admin",
+      readAt: now.toISOString(),
+    });
+  }
 }
 
 async function markAdminMessagesRead(conversationId) {
   const now = new Date();
-  await Promise.all([
-    ChatConversation.findByIdAndUpdate(conversationId, {
-      $set: { unreadTenantCount: 0 },
-    }),
+  const [conv] = await Promise.all([
+    ChatConversation.findByIdAndUpdate(
+      conversationId,
+      { $set: { unreadTenantCount: 0 } },
+      { new: true },
+    ),
     ChatMessage.updateMany(
       {
         conversationId,
@@ -834,6 +901,14 @@ async function markAdminMessagesRead(conversationId) {
       { $set: { readAt: now } },
     ),
   ]);
+
+  if (conv?.branch) {
+    emitToChatAdmins(conv.branch, "chat:messages-read", {
+      conversationId: String(conversationId),
+      readerRole: "tenant",
+      readAt: now.toISOString(),
+    });
+  }
 }
 
 /**
@@ -1021,12 +1096,14 @@ export async function sendTenantMessage(req, res) {
       tenantContext.user,
     );
 
-    const message = normalizeMessage(req.body?.message);
+    const attachments = normalizeAttachments(req.body?.attachments);
+    const message = normalizeMessage(req.body?.message, attachments.length > 0);
     const result = await createMessageAndUpdateConversation({
       conversation,
       sender: tenantContext.user,
       senderRole: "tenant",
       message,
+      attachments,
       unreadTarget: "admin",
       nextStatus: "open",
       statusNote: conversation.status === "closed"
@@ -1237,7 +1314,8 @@ export async function sendAdminMessage(req, res) {
       throw createHttpError("This conversation is closed.", 400, "CONVERSATION_CLOSED");
     }
 
-    const message = normalizeMessage(req.body?.message);
+    const attachments = normalizeAttachments(req.body?.attachments);
+    const message = normalizeMessage(req.body?.message, attachments.length > 0);
     const result = await createMessageAndUpdateConversation({
       conversation,
       sender: {
@@ -1246,12 +1324,25 @@ export async function sendAdminMessage(req, res) {
       },
       senderRole: adminContext.senderRole,
       message,
+      attachments,
       unreadTarget: "tenant",
       nextStatus: "waiting_tenant",
       statusNote: "Admin replied and is waiting for tenant response.",
     });
 
     await notifyTenantOfAdminReply(result.conversation);
+    emitToUser(result.conversation.tenantId, "chat:message-new", {
+      message: serializeMessage(result.chatMessage),
+      conversationId: String(result.conversation._id),
+    });
+    emitToChatAdmins(
+      result.conversation.branch,
+      "chat:message-new",
+      {
+        message: serializeMessage(result.chatMessage),
+        conversationId: String(result.conversation._id),
+      },
+    );
     emitToChatAdmins(
       result.conversation.branch,
       "chat:conversation-updated",

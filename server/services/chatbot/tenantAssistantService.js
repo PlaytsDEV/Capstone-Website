@@ -47,10 +47,21 @@ export async function getTenantStayContext(userId) {
       .sort({ createdAt: -1 })
       .lean();
 
+    // 1b. Fetch reservation if contract is not yet active (Applicant onboarding)
+    const reservation = await Reservation.findOne({
+      $or: [{ userId: user._id }, { user: user._id }],
+      isArchived: { $ne: true },
+    })
+      .sort({ createdAt: -1 })
+      .populate("roomId")
+      .lean();
+
     // 2. Fetch room details if roomId is available
     let room = null;
     if (contract?.roomId) {
       room = await Room.findById(contract.roomId).lean();
+    } else if (reservation?.roomId) {
+      room = typeof reservation.roomId === "object" ? reservation.roomId : await Room.findById(reservation.roomId).lean();
     } else if (user.roomId) {
       room = await Room.findById(user.roomId).lean();
     }
@@ -73,6 +84,7 @@ export async function getTenantStayContext(userId) {
 
     const branchName =
       contract?.branch ||
+      reservation?.branch ||
       room?.branch ||
       user.branch ||
       "Guadalupe";
@@ -80,17 +92,22 @@ export async function getTenantStayContext(userId) {
     const roomNumber =
       room?.roomNumber ||
       contract?.roomNumber ||
+      reservation?.roomNumber ||
       user.roomNumber ||
       "Unassigned";
 
     const bedLabel =
       contract?.bedLabel ||
+      reservation?.selectedBed?.id ||
+      reservation?.selectedBed?.position ||
       user.bedNumber ||
       "Bed 1";
 
     const roomType =
       room?.roomType ||
+      room?.type ||
       contract?.roomType ||
+      reservation?.roomType ||
       "Double Sharing";
 
     let daysRemaining = null;
@@ -113,16 +130,32 @@ export async function getTenantStayContext(userId) {
       }
     };
     const leaseCycleText = leaseDay ? `${ordinalSuffix(leaseDay)} of each month` : "Monthly lease start date";
+    const isApplicant = !contract && Boolean(reservation || user.role === "applicant");
 
     return {
       user: {
         id: String(user._id),
-        name: user.name || "Tenant",
+        name: user.name || `${user.firstName || ""} ${user.lastName || ""}`.trim() || "Tenant",
         email: user.email,
         phone: user.phone || "N/A",
-        role: user.role,
+        role: user.role || (isApplicant ? "applicant" : "tenant"),
         branch: branchName,
       },
+      isApplicant,
+      reservation: reservation
+        ? {
+            id: String(reservation._id),
+            status: reservation.status || "pending",
+            branch: branchName,
+            roomNumber,
+            bedLabel,
+            roomType,
+            intendedMoveInDate: reservation.intendedMoveInDate || reservation.preferredMoveInDate || reservation.moveInDate || null,
+            viewingDate: reservation.viewingDate || reservation.viewingSchedule?.date || null,
+            paymentStatus: reservation.paymentStatus || (reservation.depositPaid ? "paid" : "pending"),
+            monthlyRent: reservation.monthlyRate || reservation.totalPrice || 5500,
+          }
+        : null,
       contract: contract
         ? {
             id: String(contract._id),
@@ -286,6 +319,38 @@ export function buildTenantSystemPrompt(context) {
   const contract = context?.contract;
   const bill = context?.bill;
   const maintenance = context?.maintenance || [];
+  const reservation = context?.reservation;
+  const isApplicant = context?.isApplicant || (!contract && Boolean(reservation || user?.role === "applicant"));
+
+  if (isApplicant) {
+    return `
+You are the dedicated Lilycrest Applicant AI Assistant for Lilycrest Dormitory Management System (Lilycrest DMS).
+You assist prospective tenants and applicants who are undergoing the reservation, viewing, and move-in onboarding lifecycle with a warm, encouraging, polite, and helpful tone in clear English.
+
+AUTHENTICATED APPLICANT PROFILE:
+- Applicant Name: ${user?.name || "Applicant"}
+- Target Branch: ${reservation?.branch || user?.branch || "Guadalupe Branch (Makati City)"}
+- Selected Room: ${reservation?.roomNumber ? `Room ${reservation.roomNumber}` : "Room Selection in Progress"} (${reservation?.bedPosition || "Bed Selected"})
+- Room Type: ${reservation?.roomType || "Double Sharing"}
+- Reservation Status: ${reservation?.status?.toUpperCase() || "PENDING"}
+- Intended Move-in Date: ${reservation?.intendedMoveInDate ? new Date(reservation.intendedMoveInDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "To be scheduled"}
+- Viewing Appointment: ${reservation?.viewingDate ? new Date(reservation.viewingDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "Not yet scheduled / Remote viewing waiver"}
+- Deposit / Advance Payment: ${reservation?.paymentStatus === "paid" ? "PAID / SUBMITTED" : "PENDING (1-Month Advance Rent + 1-Month Security Deposit)"}
+
+GUIDED 5-STAGE APPLICATION LIFECYCLE:
+1. Room Selection: Choose branch (Gil Puyat or Guadalupe), room type, and bed position.
+2. Viewing Schedule / Remote Waiver: Select an in-person viewing slot or submit a remote viewing waiver.
+3. Tenant Info & KYC: Submit personal information, emergency contact, and upload valid government/student ID.
+4. Payment Deposit: Pay 1-month advance rent and 1-month security deposit via GCash, Maya, or bank transfer, then upload payment proof.
+5. Confirmation & Admin Approval: Branch Admin verifies the application within 24 to 48 hours for lease contract generation and key turnover.
+
+STRICT OPERATIONAL & PRIVACY RULES:
+1. Tone & Phrasing: Always write in warm, polite, encouraging, and friendly English only. Do NOT use filler words or Tagalog honorifics like "po" or "opo".
+2. Role Restrictions: You cannot submit room maintenance tickets or calculate monthly utility submeters since the applicant has not checked in as an active tenant yet.
+3. Grounding: Answer strictly using the applicant profile and application stages above.
+4. Strictly No Icons or Emojis: Format all responses using clean, plain text and standard markdown bold or lists only.
+`;
+  }
 
   return `
 You are the dedicated Lilycrest Tenant AI Assistant for Lilycrest Dormitory Management System (Lilycrest DMS).
@@ -355,6 +420,15 @@ STRICT BEHAVIOR RULES:
 export function determineTenantSuggestedActions(message = "", botReply = "", context = null) {
   const actions = [];
   const text = `${message} ${botReply}`.toLowerCase();
+  const isApplicant = context?.isApplicant || (!context?.contract && Boolean(context?.reservation || context?.user?.role === "applicant"));
+
+  if (isApplicant) {
+    actions.push({ label: "Application Status", prompt: "What is my current reservation status?" });
+    actions.push({ label: "Deposit Payment Steps", prompt: "How do I settle the advance rent and deposit?" });
+    actions.push({ label: "Accepted KYC IDs", prompt: "What valid IDs are accepted for verification?" });
+    actions.push({ label: "Viewing Schedule", prompt: "How can I schedule an in-person room viewing?" });
+    return actions.slice(0, 4);
+  }
 
   // Billing links
   if (text.includes("bill") || text.includes("bayad") || text.includes("electric") || text.includes("kuryente") || text.includes("penalty")) {

@@ -380,7 +380,9 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             <Sparkles size={18} className="text-primary shrink-0" />
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-foreground">Admin Operations Assistant</h3>
+                <h3 className="text-sm font-bold text-foreground">
+                  {user?.role === "owner" ? "Owner Operations Assistant" : "Admin Operations Assistant"}
+                </h3>
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   SOP & Briefings

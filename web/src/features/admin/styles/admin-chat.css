@@ -43,3 +43,12 @@
 .admin-chat-page *::-webkit-scrollbar-thumb:hover {
   background: var(--muted-foreground);
 }
+
+/* Rounded subtle corner adjustments for speech bubbles */
+.rounded-bl-xs {
+  border-bottom-left-radius: 2px !important;
+}
+
+.rounded-br-xs {
+  border-bottom-right-radius: 2px !important;
+}
