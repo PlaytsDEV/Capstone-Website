@@ -4,6 +4,7 @@ const { getDb } = require('../config/database');
 const { verifyFirebaseIdToken, verifyTenantInFirebase, admin } = require('../config/firebase');
 const { sendPasswordResetEmail, sendPasswordChangedEmail } = require('../services/emailService');
 const { invalidateUserSessionsCore } = require('../../security/sessionInvalidationCore.cjs');
+const { validateNewPassword: validateCanonicalNewPassword } = require('../../security/passwordPolicy.cjs');
 const { createSession } = require('../security/mobileSession');
 const { hashResetToken, resetTokenEligibilityFilter } = require('../security/resetTokenEligibility');
 const authTestDependencies = {
@@ -307,10 +308,6 @@ async function login(req, res) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw) || emailRaw.length > 254) {
     return res.status(400).json({ detail: 'Please provide a valid email address' });
   }
-  if (password.length < 6 || password.length > 128) {
-    return res.status(400).json({ detail: 'Password must be 6 to 128 characters long' });
-  }
-
   const apiKey = firebaseApiKey();
   if (!apiKey) {
     return res.status(500).json({ detail: 'Firebase API key not configured on backend' });
@@ -784,47 +781,17 @@ async function logout(req, res) {
 
 // ─── CHANGE PASSWORD ────────────────────────────────────────────────────────
 
-// Common weak passwords to reject (top offenders)
-const COMMON_PASSWORDS = new Set([
-  'password', 'password1', 'password123', '12345678', '123456789',
-  '1234567890', 'qwerty123', 'abc12345', 'iloveyou', 'sunshine',
-  'princess', 'football', 'charlie', 'access14', 'trustno1',
-  'letmein1', 'baseball', 'dragon12', 'master12', 'monkey12',
-  'lilycrest', 'lilycrest1', 'lilycrest123', 'dormitory', 'tenant123',
-]);
-
 function validateNewPassword(password) {
-  const errors = [];
+  return validateCanonicalNewPassword(password);
+}
 
-  if (!password || typeof password !== 'string') {
-    return ['New password is required'];
-  }
-  if (/\s/.test(password)) {
-    errors.push('Password must not contain spaces');
-  }
-  if (password.length < 8) {
-    errors.push('Password must be at least 8 characters');
-  }
-  if (password.length > 128) {
-    errors.push('Password must be 128 characters or fewer');
-  }
-  if (!/[A-Z]/.test(password)) {
-    errors.push('Password must contain at least one uppercase letter');
-  }
-  if (!/[a-z]/.test(password)) {
-    errors.push('Password must contain at least one lowercase letter');
-  }
-  if (!/[0-9]/.test(password)) {
-    errors.push('Password must contain at least one number');
-  }
-  if (!/[!@#$%^&*()\-_=+\[\]{};:'",.<>?/\\|`~]/.test(password)) {
-    errors.push('Password must contain at least one special character (e.g. !@#$%^&*)');
-  }
-  if (COMMON_PASSWORDS.has(password.toLowerCase())) {
-    errors.push('This password is too common. Please choose a stronger one');
-  }
+function firebasePasswordError(error) {
+  return String(error?.response?.data?.error?.message || error?.code || '').toUpperCase();
+}
 
-  return errors;
+function isNetworkFailure(error) {
+  return !error?.response
+    && Boolean(error?.request || /network|timeout|timed out|econn/i.test(String(error?.message || error?.code || '')));
 }
 
 async function changePassword(req, res) {
@@ -836,7 +803,8 @@ async function changePassword(req, res) {
     const requestIp = req.ip || req.headers['x-forwarded-for'] || 'Unknown';
 
     // ── Input validation ──────────────────────────────────────────────────
-    if (!current_password || !new_password) {
+    if (typeof current_password !== 'string' || current_password.length === 0
+      || typeof new_password !== 'string' || new_password.length === 0) {
       return res.status(400).json({ detail: 'Current password and new password are required' });
     }
 
@@ -866,11 +834,17 @@ async function changePassword(req, res) {
         { email: userEmail, password: current_password, returnSecureToken: false },
       );
     } catch (fbErr) {
-      const msg = fbErr.response?.data?.error?.message || '';
+      const msg = firebasePasswordError(fbErr);
       if (msg.includes('TOO_MANY_ATTEMPTS')) {
-        return res.status(429).json({ detail: 'Too many attempts. Please try again later.' });
+        return res.status(429).json({ code: 'RATE_LIMITED', detail: 'Too many attempts. Please wait and try again.' });
       }
-      return res.status(401).json({ detail: 'Current password is incorrect' });
+      if (msg.includes('INVALID_PASSWORD') || msg.includes('INVALID_LOGIN_CREDENTIALS')) {
+        return res.status(401).json({ code: 'CURRENT_PASSWORD_INCORRECT', detail: 'Your current password is incorrect.' });
+      }
+      if (isNetworkFailure(fbErr)) {
+        return res.status(503).json({ code: 'CURRENT_PASSWORD_VERIFICATION_UNAVAILABLE', detail: "We couldn't verify your current password. Check your connection and try again." });
+      }
+      return res.status(502).json({ code: 'PASSWORD_PROVIDER_FAILURE', detail: 'We could not verify your current password right now. Please try again.' });
     }
 
     // ── Update password in Firebase ───────────────────────────────────────
@@ -879,8 +853,21 @@ async function changePassword(req, res) {
       return res.status(400).json({ detail: 'No Firebase account linked. Cannot change password.' });
     }
     const db = getDb();
-    await invalidateMobileIdentity(db, req.user, 'password_changed', req);
-    await admin.auth().updateUser(uid, { password: new_password });
+    try {
+      await admin.auth().updateUser(uid, { password: new_password });
+    } catch (providerError) {
+      console.error('[ChangePassword] Firebase update failed:', providerError?.code || providerError?.message);
+      return res.status(502).json({ code: 'PASSWORD_PROVIDER_FAILURE', detail: 'We could not update your password right now. Please try again.' });
+    }
+
+    let sessionCleanupComplete = true;
+    try {
+      const invalidation = await invalidateMobileIdentity(db, req.user, 'password_changed', req);
+      sessionCleanupComplete = !invalidation.failures.length;
+    } catch (sessionError) {
+      sessionCleanupComplete = false;
+      console.error('[ChangePassword] Password changed; session finalization incomplete:', sessionError?.code || sessionError?.message);
+    }
 
     console.log('[ChangePassword] Password updated', {
       user_fingerprint: shortFingerprint(userId),
@@ -939,7 +926,7 @@ async function changePassword(req, res) {
       });
     } catch (err) { console.warn('[ChangePassword] Audit log warning:', err.message); }
 
-    res.json({ message: 'Password updated successfully' });
+    res.json({ message: 'Password updated successfully', sessionCleanupComplete });
   } catch (error) {
     console.error('Change password error:', error);
     res.status(500).json({ detail: 'Failed to change password. Please try again.' });
@@ -1380,11 +1367,10 @@ module.exports = {
   getMe,
   logout,
   changePassword,
-  forgotPassword,
-  getResetPasswordPage,
-  resetPassword,
-  hashResetToken,
-  resetTokenEligibilityFilter,
+  // Password reset is deliberately not exported from this legacy auth
+  // controller. New requests use the canonical Firebase action-code
+  // controller; the separately scoped legacy controller exists only to
+  // finish already-issued custom tokens during the cutover window.
   __test: {
     hashOtp,
     otpMatches,

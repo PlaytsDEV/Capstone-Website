@@ -15,7 +15,12 @@ function hashResetToken(rawToken) {
 }
 
 function resetTokenEligibilityFilter(hashedToken, asOf = new Date()) {
-  return { hashedToken, used: false, expiresAt: { $gt: asOf } };
+  return {
+    hashedToken,
+    used: false,
+    expiresAt: { $gt: asOf },
+    processingId: { $exists: false },
+  };
 }
 
 module.exports = { hashResetToken, resetTokenEligibilityFilter };

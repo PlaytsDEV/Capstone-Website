@@ -1,31 +1,10 @@
-const ACTIVE_ACCOUNT_STATUS = new Set(['active', '']);
-const ACTIVE_TENANT_STATUS = new Set(['active']);
+const { evaluateAccount, evaluateTenant } = require('../../security/mobileTenantEligibility.cjs');
 const ADMIN_ROLES = new Set(['branch_admin', 'owner']);
 
 function extractSessionToken(req) {
   const header = req.headers?.authorization;
   if (typeof header === 'string' && header.startsWith('Bearer ')) return header.slice(7);
   return req.cookies?.session_token || null;
-}
-
-function evaluateAccount(user) {
-  if (!user?.user_id) return { allowed: false, code: 'ACCOUNT_ACCESS_RESTRICTED' };
-  if (user.isActive === false || user.is_active === false || user.isArchived === true || user.is_archived === true) {
-    return { allowed: false, code: 'ACCOUNT_ACCESS_RESTRICTED' };
-  }
-  const status = String(user.accountStatus || user.account_status || '').toLowerCase();
-  if (!ACTIVE_ACCOUNT_STATUS.has(status)) return { allowed: false, code: 'ACCOUNT_ACCESS_RESTRICTED' };
-  return { allowed: true };
-}
-
-function evaluateTenant(user) {
-  const account = evaluateAccount(user);
-  if (!account.allowed) return account;
-  if (String(user.role || '').toLowerCase() !== 'tenant') return { allowed: false, code: 'TENANT_ACCESS_REQUIRED' };
-  if (!ACTIVE_TENANT_STATUS.has(String(user.tenantStatus || user.tenant_status || '').toLowerCase())) {
-    return { allowed: false, code: 'TENANT_NOT_ACTIVE' };
-  }
-  return { allowed: true };
 }
 
 function evaluateAdmin(user) {

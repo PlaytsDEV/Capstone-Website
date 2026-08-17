@@ -20,6 +20,9 @@ import auditLogger from "../utils/auditLogger.js";
 import { sanitizeEmail } from "../middleware/validation.js";
 import { emailFingerprint, maskEmail } from "../services/emailVerificationService.js";
 import { PASSWORD_RESET_COOLDOWN_SECONDS, buildCustomPasswordResetLink } from "../services/passwordResetService.js";
+import mobileTenantEligibility from "../security/mobileTenantEligibility.cjs";
+
+const { evaluateTenant } = mobileTenantEligibility;
 
 const GENERIC_RESPONSE = {
   message: "If an account exists for this email, a password reset link has been sent.",
@@ -34,7 +37,7 @@ const displayNameFor = (applicationUser) =>
  * Public endpoint — no auth required, the caller is by definition signed
  * out. Body: { email }.
  */
-export const requestPasswordReset = async (req, res) => {
+const handlePasswordResetRequest = async (req, res, { mobileTenantOnly = false } = {}) => {
   try {
     const email = sanitizeEmail(req.body?.email);
     if (!email) {
@@ -69,6 +72,20 @@ export const requestPasswordReset = async (req, res) => {
     // document to attach to — global per-IP rate limiting (authLimiter on
     // this route) is the only throttle for that edge case.
     const applicationUser = await User.findOne({ firebaseUid: firebaseUser.uid });
+
+    // The website recovery endpoint remains available to every Lilycrest web
+    // identity, including interrupted registration profiles. The mobile app
+    // is tenant-only, so its alias fails closed unless the authoritative
+    // backend profile is an active tenant. No role supplied by the caller is
+    // ever consulted, and every ineligible/unknown outcome stays byte-for-byte
+    // enumeration-safe.
+    if (mobileTenantOnly && !evaluateTenant(applicationUser).allowed) {
+      logger.info(
+        { emailFingerprint: emailFingerprint(email) },
+        "Mobile password reset suppressed for ineligible identity",
+      );
+      return res.status(200).json(GENERIC_RESPONSE);
+    }
 
     let reservationId = null;
     if (applicationUser) {
@@ -187,3 +204,9 @@ export const requestPasswordReset = async (req, res) => {
     return res.status(200).json(GENERIC_RESPONSE);
   }
 };
+
+export const requestPasswordReset = (req, res) =>
+  handlePasswordResetRequest(req, res);
+
+export const requestMobileTenantPasswordReset = (req, res) =>
+  handlePasswordResetRequest(req, res, { mobileTenantOnly: true });
