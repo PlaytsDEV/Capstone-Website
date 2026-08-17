@@ -34,7 +34,10 @@ describe("mobile Billing route safety", () => {
   });
 
   test("reads canonical billing status/amounts through billingPolicy — never re-derives its own status math", () => {
-    expect(routes).toContain('import { toMobileBill, isMobileEffectivelyPaid, toMobilePaymentMethodLabel } from "../services/mobileBillingBridge.js"');
+    const bridgeImportBlock = routes.match(/import \{([^}]*)\} from "\.\.\/services\/mobileBillingBridge\.js";/s)?.[1] || "";
+    for (const name of ["toMobileBill", "isMobileEffectivelyPaid", "toMobilePaymentMethodLabel"]) {
+      expect(bridgeImportBlock).toContain(name);
+    }
     expect(routes).not.toMatch(/function\s+(normalizeBillStatus|getEffectiveBillStatus)/);
   });
 

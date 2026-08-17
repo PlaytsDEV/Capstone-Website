@@ -17,6 +17,14 @@
 import { getVisibleBillSnapshot, getUtilityDispatchEntry } from "../utils/billingPolicy.js";
 import { PAYMENT_METHOD_LABELS } from "../utils/paymongoPaymentMethod.js";
 
+// "Which bill is the tenant's current bill" selection rule (NON_DRAFT_BILL_
+// FILTER / CURRENT_BILL_SORT / selectCurrentBillFromList) lives in
+// services/billing/currentBillResolver.js — the canonical, consumer-neutral
+// module every bill-selecting query (web, mobile Billing tab, mobile
+// dashboard) imports directly. It intentionally does NOT live here: this
+// bridge is mobile-specific field mapping, and the selection rule must have
+// no web/mobile ownership so it can never re-diverge per consumer.
+
 /**
  * Mobile-facing effective status vocabulary. This is the ONLY status
  * vocabulary the mobile app is shown — never the raw canonical Bill.status

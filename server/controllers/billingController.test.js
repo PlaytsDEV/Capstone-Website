@@ -254,10 +254,16 @@ describe("billingController tenant endpoints", () => {
       ]),
     );
 
-    billFindOne
-      .mockReturnValueOnce(makeQueryChain(null))
-      .mockReturnValueOnce(
-        makeQueryChain({
+    // getCurrentBilling now resolves via the SAME shared
+    // services/billing/currentBillResolver.js selectCurrentBillFromList()
+    // that mobileBillingRoutes.js /billing/me/latest and
+    // dashboard.controller.js latest_bill use — Bill.find() + selection,
+    // not a two-step Bill.findOne() pair. With a single eligible bill
+    // returned, selectCurrentBillFromList falls back to it regardless of
+    // whether its cycle window contains the real "now" the test runs at.
+    billFind.mockReturnValue(
+      makeQueryChain([
+        {
           _id: "bill-1",
           reservationId: "reservation-1",
           billingCycleStart: new Date("2026-02-05T00:00:00.000Z"),
@@ -269,8 +275,9 @@ describe("billingController tenant endpoints", () => {
           totalAmount: 6000,
           remainingAmount: 6000,
           status: "pending",
-        }),
-      );
+        },
+      ]),
+    );
 
     const req = { user: { uid: "firebase-1", branch: "gil-puyat" } };
     const res = createRes();
@@ -279,14 +286,11 @@ describe("billingController tenant endpoints", () => {
     await getCurrentBilling(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
-    expect(billFindOne).toHaveBeenNthCalledWith(
-      1,
+    expect(billFind).toHaveBeenCalledWith(
       expect.objectContaining({
         reservationId: "reservation-1",
         status: { $ne: "draft" },
         isArchived: false,
-        billingCycleStart: { $lte: expect.any(Date) },
-        billingCycleEnd: { $gt: expect.any(Date) },
       }),
     );
     expect(res.json).toHaveBeenCalledWith(

@@ -61,6 +61,11 @@ jest.unstable_mockModule("../services/mobileBillingBridge.js", () => ({
   formatMobileElectricityBreakdown: jest.fn(() => null),
   formatMobileWaterBreakdown: jest.fn(() => null),
 }));
+jest.unstable_mockModule("../services/billing/currentBillResolver.js", () => ({
+  NON_DRAFT_BILL_FILTER: { status: { $ne: "draft" }, isArchived: false },
+  CURRENT_BILL_SORT: { billingCycleStart: -1, billingMonth: -1, createdAt: -1 },
+  selectCurrentBillFromList: jest.fn((bills) => (Array.isArray(bills) ? bills[0] || null : null)),
+}));
 jest.unstable_mockModule("../services/mobileDocumentBridge.js", () => ({ buildPolicyDocumentPdf: jest.fn(() => null), POLICY_DOCUMENT_IDS: [] }));
 jest.unstable_mockModule("../services/mobileUserDocumentService.js", () => ({
   listUserDocuments: jest.fn(), uploadUserDocument: jest.fn(), getUserDocumentContent: jest.fn(), deleteUserDocument: jest.fn(),

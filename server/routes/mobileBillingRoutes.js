@@ -27,8 +27,18 @@ import fs from "fs";
 import path from "path";
 import { Bill, Reservation } from "../models/index.js";
 import { mobileTenantAuth } from "../middleware/mobileTenantAuth.js";
-import { toMobileBill, isMobileEffectivelyPaid, toMobilePaymentMethodLabel } from "../services/mobileBillingBridge.js";
-import { formatMobileElectricityBreakdown, formatMobileWaterBreakdown } from "../services/mobileBillingBridge.js";
+import {
+  toMobileBill,
+  isMobileEffectivelyPaid,
+  toMobilePaymentMethodLabel,
+  formatMobileElectricityBreakdown,
+  formatMobileWaterBreakdown,
+} from "../services/mobileBillingBridge.js";
+import {
+  NON_DRAFT_BILL_FILTER,
+  CURRENT_BILL_SORT,
+  selectCurrentBillFromList,
+} from "../services/billing/currentBillResolver.js";
 import { getVisibleBillCharges, getVisibleBillSnapshot } from "../utils/billingPolicy.js";
 import { generateBillReceiptPdf } from "../utils/pdfGenerator.js";
 import { isBillPdfStale } from "../services/billPdfCache.js";
@@ -54,7 +64,12 @@ const asyncRoute = (handler) => (req, res, next) =>
 // the sibling router that actually owns that path. Matches the existing
 // per-route convention in routes/mobileContractRoutes.js.
 
-const NON_DRAFT_FILTER = { status: { $ne: "draft" }, isArchived: false };
+// Canonical selection rule lives in services/billing/currentBillResolver.js
+// — see NON_DRAFT_BILL_FILTER/CURRENT_BILL_SORT/selectCurrentBillFromList
+// there for why (shared verbatim with billingQueryController.js's web
+// getCurrentBilling and the mobile dashboard controller so Billing, Home,
+// and the web app never disagree on which bill is "current").
+const NON_DRAFT_FILTER = NON_DRAFT_BILL_FILTER;
 
 async function mapMobileBillsWithBreakdowns(bills, tenantId) {
   const dbUser = { _id: tenantId };
@@ -82,14 +97,20 @@ async function mapMobileBillWithBreakdowns(bill, tenantId) {
 
 router.get("/billing/me", mobileTenantAuth, asyncRoute(async (req, res) => {
   const bills = await Bill.find({ userId: req.mobileTenant._id, ...NON_DRAFT_FILTER })
-    .sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 });
+    .sort(CURRENT_BILL_SORT);
   const mapped = await mapMobileBillsWithBreakdowns(bills, req.mobileTenant._id);
   res.json(mapped);
 }));
 
 router.get("/billing/me/latest", mobileTenantAuth, asyncRoute(async (req, res) => {
-  const bill = await Bill.findOne({ userId: req.mobileTenant._id, ...NON_DRAFT_FILTER })
-    .sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 });
+  // selectCurrentBillFromList (not bills[0]) — a later billingCycleStart
+  // alone doesn't mean "current"; see its doc comment in
+  // services/mobileBillingBridge.js for the pre-generated-next-cycle overlap
+  // this guards against, matching the same rule the mobile dashboard uses.
+  const bills = await Bill.find({ userId: req.mobileTenant._id, ...NON_DRAFT_FILTER })
+    .sort(CURRENT_BILL_SORT)
+    .limit(5);
+  const bill = selectCurrentBillFromList(bills);
   if (!bill) return res.status(404).json({ detail: "No billing found" });
   const mapped = await mapMobileBillWithBreakdowns(bill, req.mobileTenant._id);
   res.json(mapped);
@@ -98,7 +119,7 @@ router.get("/billing/me/latest", mobileTenantAuth, asyncRoute(async (req, res) =
 router.get("/billing/history", mobileTenantAuth, asyncRoute(async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
   const bills = await Bill.find({ userId: req.mobileTenant._id, ...NON_DRAFT_FILTER })
-    .sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 })
+    .sort(CURRENT_BILL_SORT)
     .limit(limit);
   const mapped = await mapMobileBillsWithBreakdowns(bills, req.mobileTenant._id);
   res.json(mapped);
@@ -110,7 +131,7 @@ router.get("/billing/history", mobileTenantAuth, asyncRoute(async (req, res) => 
 router.get("/billing/history/paid", mobileTenantAuth, asyncRoute(async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 100, 200);
   const bills = await Bill.find({ userId: req.mobileTenant._id, ...NON_DRAFT_FILTER })
-    .sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 })
+    .sort(CURRENT_BILL_SORT)
     .limit(limit);
   const paidBills = bills.filter(isMobileEffectivelyPaid);
   const mapped = await mapMobileBillsWithBreakdowns(paidBills, req.mobileTenant._id);
