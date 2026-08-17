@@ -1,204 +1,338 @@
 import mongoose from "mongoose";
 import User from "../../models/User.js";
 import Reservation from "../../models/Reservation.js";
-import Contract from "../../models/Contract.js";
 import Bill from "../../models/Bill.js";
+import Stay from "../../models/Stay.js";
 import MaintenanceRequest from "../../models/MaintenanceRequest.js";
-import { ACTIVE_STAY_STATUS_QUERY, CURRENT_RESIDENT_STATUS_QUERY } from "../../utils/lifecycleNaming.js";
+import ChatConversation from "../../models/ChatConversation.js";
+import announcementAudience from "../../mobile/services/announcementAudience.service.js";
+import {
+  NON_DRAFT_BILL_FILTER,
+  CURRENT_BILL_SORT,
+  selectCurrentBillFromList,
+} from "../billing/currentBillResolver.js";
+import { toMobileBill } from "../mobileBillingBridge.js";
+import { resolveTenantCanonicalContract } from "../tenantContractSelectionService.js";
+import { toTenantContractView } from "../tenantContractViewService.js";
 
-/**
- * Format raw branch identifiers (e.g. "gil_puyat", "gil-puyat") into readable display names.
- */
+const {
+  PRESENT_STAY_STATUSES,
+  buildTenantContext: buildAnnouncementTenantContext,
+  canTenantViewAnnouncement,
+} = announcementAudience;
+
+const CURRENT_RESERVATION_STATUSES = Object.freeze([
+  "moveIn",
+  "reserved",
+  "move_in_overdue",
+  "payment_pending",
+  "approved_for_payment",
+]);
+
 function formatBranchName(rawBranch) {
   if (!rawBranch) return "Lilycrest Residence";
-  const str = String(rawBranch).toLowerCase().trim();
-  if (str.includes("gil") || str.includes("puyat") || str.includes("pasay")) {
-    return "Gil Puyat";
-  }
-  if (str.includes("guadalupe") || str.includes("makati")) {
-    return "Guadalupe";
-  }
-  return rawBranch
+  if (rawBranch === "gil-puyat") return "Gil Puyat";
+  if (rawBranch === "guadalupe") return "Guadalupe";
+  return String(rawBranch)
     .replace(/[_-]/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function tenantName(user = {}) {
+  return (
+    `${user.firstName || ""} ${user.lastName || ""}`.trim()
+    || user.name
+    || user.fullName
+    || "Lilycrest Resident"
+  );
+}
+
+function selectedBedLabel(reservation = {}) {
+  const selectedBed = reservation?.selectedBed || {};
+  return selectedBed.position || selectedBed.code || selectedBed.id || null;
+}
+
+function resolveRoom(stay, reservation) {
+  const stayRoom = stay?.roomId && typeof stay.roomId === "object" ? stay.roomId : null;
+  const reservationRoom = reservation?.roomId && typeof reservation.roomId === "object"
+    ? reservation.roomId
+    : null;
+  return stayRoom || reservationRoom || null;
+}
+
+function toCurrentBillContext(bill) {
+  if (!bill) return null;
+  const mobileBill = toMobileBill(bill);
+  const utilityDeadlines = mobileBill.utility_deadlines || {};
+  return {
+    billId: mobileBill.billing_id,
+    month: bill.billingMonth || null,
+    billingPeriod: mobileBill.billing_period,
+    totalAmount: mobileBill.total,
+    remainingAmount: mobileBill.remaining_amount,
+    paidAmount: mobileBill.paid_amount,
+    rentAmount: mobileBill.rent,
+    electricityAmount: mobileBill.electricity,
+    waterAmount: mobileBill.water,
+    applianceAmount: Number(bill.charges?.applianceFees || 0),
+    penaltyAmount: Number(bill.charges?.penalty || 0),
+    discountAmount: Number(bill.charges?.discount || 0),
+    status: mobileBill.status,
+    statusLabel: mobileBill.status_label,
+    dueDate: mobileBill.due_date,
+    releasedAt: mobileBill.release_date,
+    utilityReleased: Object.keys(utilityDeadlines).length > 0,
+    utilityDeadlines,
+    proRataDays: bill.proRataDays || null,
+  };
+}
+
+function toContractContext(contract, now) {
+  if (!contract) return null;
+  const view = toTenantContractView(contract, now, {
+    documentBasePath: "/api/m/contracts",
+  });
+  return {
+    contractId: view.id,
+    contractNumber: view.contractNumber || null,
+    status: view.status,
+    displayStatus: view.displayStatus,
+    startDate: view.leaseStartDate,
+    endDate: view.leaseEndDate,
+    daysRemaining: view.daysRemaining,
+    monthlyRate: view.approvedMonthlyRate,
+    depositAmount: view.securityDepositAmount,
+    roomNumber: view.roomNumber || null,
+    bedPosition: view.bedLabel || null,
+    roomType: view.roomType || null,
+    tenantDocument: view.tenantDocument,
+  };
+}
+
+function toMaintenanceContext(request) {
+  return {
+    ticketCode: request.ticketNumber || request.request_id || String(request._id),
+    category: request.request_type || request.type || "Maintenance Issue",
+    urgency: request.urgency || "normal",
+    status: request.status || "pending",
+    description: request.description?.slice(0, 150) || "",
+    providerName: request.providerDetails?.tenantVisibleLabel || request.providerName || null,
+    scheduledDate: request.schedule?.scheduledDate || request.scheduledDate || null,
+    submittedDate: request.createdAt || null,
+  };
+}
+
+function toInquiryContext(conversation) {
+  return {
+    conversationId: String(conversation._id),
+    category: conversation.category,
+    priority: conversation.priority,
+    status: conversation.status,
+    lastMessage: conversation.lastMessage || "",
+    lastMessageAt: conversation.lastMessageAt || conversation.updatedAt || null,
+  };
+}
+
+function toAnnouncementContext(announcement) {
+  return {
+    announcementId: String(announcement._id || announcement.announcement_id || ""),
+    title: announcement.title || announcement.subject || "Announcement",
+    content: String(
+      announcement.content || announcement.message || announcement.body || "",
+    ).slice(0, 180),
+    createdAt: announcement.createdAt || announcement.created_at || announcement.publishedAt || null,
+  };
+}
+
+async function loadVisibleAnnouncements(db, audienceContext, now) {
+  if (!db || !audienceContext?.authenticated) return [];
+  const candidates = await db.collection("announcements")
+    .find({ isArchived: { $ne: true } })
+    .sort({ createdAt: -1, created_at: -1 })
+    .limit(25)
+    .toArray();
+  return candidates
+    .filter((announcement) => canTenantViewAnnouncement({
+      announcement,
+      tenantContext: audienceContext,
+      now,
+    }))
+    .slice(0, 3)
+    .map(toAnnouncementContext);
+}
+
+function buildNeutralContext(fallbackAuthUser = null) {
+  const user = fallbackAuthUser || {};
+  return {
+    tenantName: tenantName(user),
+    tenantEmail: user.email || null,
+    branch: "Lilycrest Residence",
+    branchRaw: null,
+    branchSource: "unresolved",
+    roomNumber: null,
+    bedPosition: null,
+    tenancy: {
+      status: "unknown",
+      isCurrentResident: false,
+      occupancyStartedAt: null,
+      scheduledMoveInDate: null,
+    },
+    currentBill: null,
+    contract: null,
+    activeMaintenance: [],
+    inquiries: [],
+    recentAnnouncements: [],
+    hasActiveMaintenance: false,
+    hasPendingBill: false,
+  };
 }
 
 /**
- * Resolves comprehensive, real-time context for the authenticated tenant.
- * Strictly scoped by user ID to prevent any cross-tenant data leakage.
- *
- * @param {string|mongoose.Types.ObjectId} userId - Authenticated user identifier
- * @param {Object} [fallbackAuthUser=null] - Optional cached auth user from req.authUser
- * @returns {Promise<Object>} Sanitized context snapshot
+ * Resolve the single tenant-state snapshot shared by Lily's web and mobile
+ * consumers. Every business domain delegates to its canonical resolver:
+ * occupancy-backed announcement audience, current-cycle billing, canonical
+ * Contract selection/document view, and shared support conversations.
  */
-export async function resolveTenantAIContext(userId, fallbackAuthUser = null) {
+export async function resolveTenantAIContext(
+  userId,
+  fallbackAuthUser = null,
+  { db = mongoose.connection?.db || null, now = new Date() } = {},
+) {
   if (!userId && !fallbackAuthUser) return null;
 
-  const validObjectId = mongoose.Types.ObjectId.isValid(userId)
-    ? new mongoose.Types.ObjectId(userId)
+  const candidateId = userId || fallbackAuthUser?._id;
+  const validObjectId = mongoose.Types.ObjectId.isValid(candidateId)
+    ? new mongoose.Types.ObjectId(candidateId)
     : null;
+  const identityClauses = [
+    ...(validObjectId ? [{ _id: validObjectId }] : []),
+    ...(fallbackAuthUser?.user_id ? [{ user_id: fallbackAuthUser.user_id }] : []),
+    ...(fallbackAuthUser?.firebaseUid ? [{ firebaseUid: fallbackAuthUser.firebaseUid }] : []),
+  ];
 
-  const userQuery = validObjectId ? { _id: validObjectId } : { _id: userId };
+  const dbUser = identityClauses.length
+    ? await User.findOne({ $or: identityClauses })
+      .select("firstName lastName name fullName email user_id firebaseUid")
+      .lean()
+      .catch(() => null)
+    : null;
+  const user = dbUser || fallbackAuthUser;
+  const tenantIdValue = dbUser?._id || validObjectId || fallbackAuthUser?._id;
+  if (!user || !mongoose.Types.ObjectId.isValid(tenantIdValue)) {
+    return buildNeutralContext(user);
+  }
+  const tenantId = new mongoose.Types.ObjectId(tenantIdValue);
 
-  const [dbUser, activeReservation, contract, latestBill, activeMaintenanceRaw] = await Promise.all([
-    User.findOne(userQuery)
-      .select("firstName lastName email branch roomNumber roomBed contactNumber")
+  const audienceContextPromise = db
+    ? buildAnnouncementTenantContext(db, {
+      tenant: { ...user, _id: tenantId },
+      userId: user.user_id || fallbackAuthUser?.user_id || null,
+      userMongoId: tenantId,
+    })
+    : Promise.resolve({
+      authenticated: true,
+      mongoId: tenantId,
+      userId: user.user_id || null,
+      branch: null,
+      branchSource: "unresolved",
+    });
+
+  const [
+    audienceContext,
+    activeStay,
+    currentReservation,
+    canonicalContract,
+    billingResolution,
+    maintenanceRequests,
+    conversations,
+  ] = await Promise.all([
+    audienceContextPromise,
+    Stay.findOne({
+      tenantId,
+      status: { $in: PRESENT_STAY_STATUSES },
+    })
+      .sort({ leaseStartDate: -1, createdAt: -1 })
+      .populate("roomId", "name roomNumber branch type")
       .lean()
       .catch(() => null),
     Reservation.findOne({
-      $or: [
-        { userId: userId },
-        ...(validObjectId ? [{ userId: validObjectId }] : []),
-      ],
-      isArchived: false,
-      status: { $in: [...ACTIVE_STAY_STATUS_QUERY, ...CURRENT_RESIDENT_STATUS_QUERY, "approved_for_payment", "payment_pending", "reserved", "moveIn"] },
-    })
-      .populate("roomId", "name roomNumber branch type floor")
-      .sort({ createdAt: -1 })
-      .lean()
-      .catch(() => null),
-    Contract.findOne({
-      $or: [
-        { tenantId: userId },
-        { userId: userId },
-        ...(validObjectId ? [{ tenantId: validObjectId }, { userId: validObjectId }] : []),
-      ],
+      userId: tenantId,
       isArchived: { $ne: true },
+      status: { $in: CURRENT_RESERVATION_STATUSES },
     })
-      .sort({ createdAt: -1 })
+      .sort({ confirmedMoveInDate: -1, moveInDate: -1, createdAt: -1 })
+      .populate("roomId", "name roomNumber branch type")
       .lean()
       .catch(() => null),
-    Bill.findOne({
-      $or: [
-        { userId: userId },
-        ...(validObjectId ? [{ userId: validObjectId }] : []),
-      ],
-      isArchived: false,
-    })
-      .sort({ billingMonth: -1, createdAt: -1 })
+    resolveTenantCanonicalContract(tenantId, { includeEarlyStages: true }).catch(() => null),
+    Bill.find({ userId: tenantId, ...NON_DRAFT_BILL_FILTER })
+      .sort(CURRENT_BILL_SORT)
+      .limit(10)
       .lean()
-      .catch(() => null),
+      .then((bills) => ({ currentBill: selectCurrentBillFromList(bills, now), bills }))
+      .catch(() => ({ currentBill: null, bills: [] })),
     MaintenanceRequest.find({
       $or: [
-        { user_id: String(userId) },
-        { userId: userId },
-        ...(validObjectId ? [{ userId: validObjectId }, { user_id: String(validObjectId) }] : []),
+        { userId: tenantId },
+        { user_id: String(user.user_id || fallbackAuthUser?.user_id || "") },
       ],
     })
       .sort({ createdAt: -1 })
       .limit(5)
       .lean()
       .catch(() => []),
+    ChatConversation.find({ tenantId })
+      .sort({ lastMessageAt: -1, updatedAt: -1 })
+      .limit(3)
+      .lean()
+      .catch(() => []),
   ]);
 
-  const user = dbUser || fallbackAuthUser;
-  if (!user && !activeReservation && !contract) {
-    return null;
-  }
+  const room = resolveRoom(activeStay, currentReservation);
+  const branchRaw = audienceContext.branch || null;
+  const currentResident = Boolean(activeStay);
+  const scheduledMoveInDate = currentResident
+    ? null
+    : (
+      currentReservation?.confirmedMoveInDate
+      || currentReservation?.moveInDate
+      || currentReservation?.targetMoveInDate
+      || null
+    );
+  const tenancyStatus = currentResident
+    ? "active"
+    : (currentReservation?.status || "unknown");
 
-  const rawBranch =
-    user?.branch ||
-    activeReservation?.roomId?.branch ||
-    activeReservation?.branch ||
-    contract?.branch ||
-    "guadalupe";
-
-  const branchDisplay = formatBranchName(rawBranch);
-
-  const tenantName =
-    `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
-    user?.name ||
-    user?.fullName ||
-    "Tenant";
-
-  const roomNumber =
-    user?.roomNumber ||
-    activeReservation?.roomId?.roomNumber ||
-    activeReservation?.roomNumber ||
-    contract?.roomNumber ||
-    "304";
-
-  const bedPosition =
-    user?.roomBed ||
-    activeReservation?.selectedBed?.id ||
-    activeReservation?.selectedBed?.position ||
-    contract?.bedLabel ||
-    contract?.bedId ||
-    "Bed 1";
-
-  // Formulate structured current bill
-  let currentBill = null;
-  if (latestBill) {
-    const rentAmount = Number(latestBill.charges?.rent ?? latestBill.rentAmount ?? 0);
-    const electricityAmount = Number(latestBill.charges?.electricity ?? latestBill.electricityAmount ?? 0);
-    const waterAmount = Number(latestBill.charges?.water ?? latestBill.waterAmount ?? 0);
-    const applianceAmount = Number(latestBill.charges?.applianceFees ?? latestBill.applianceAmount ?? 0);
-    const penaltyAmount = Number(latestBill.charges?.penalty ?? latestBill.penaltyAmount ?? 0);
-    const discountAmount = Number(latestBill.charges?.discount ?? latestBill.discountAmount ?? 0);
-    const totalAmount = Number(latestBill.totalAmount ?? (rentAmount + electricityAmount + applianceAmount + penaltyAmount - discountAmount));
-
-    currentBill = {
-      billId: latestBill._id,
-      month: latestBill.billingMonth || latestBill.month || new Date(),
-      totalAmount,
-      rentAmount,
-      electricityAmount,
-      waterAmount,
-      applianceAmount,
-      penaltyAmount,
-      discountAmount,
-      status: latestBill.status || "pending",
-      dueDate: latestBill.dueDate || null,
-      proRataDays: latestBill.proRataDays || null,
-    };
-  }
-
-  // Formulate structured active contract
-  let contractData = null;
-  const activeDoc = contract || activeReservation;
-  if (activeDoc) {
-    const startDate = activeDoc.leaseStartDate || activeDoc.startDate || activeDoc.moveInDate || null;
-    const endDate = activeDoc.leaseEndDate || activeDoc.endDate || activeDoc.moveOutDate || null;
-    const daysRemaining = endDate
-      ? Math.max(0, Math.ceil((new Date(endDate) - new Date()) / (1000 * 60 * 60 * 24)))
-      : null;
-
-    contractData = {
-      contractNumber: contract?.contractNumber || "CTR-ACTIVE",
-      roomNumber,
-      bedPosition,
-      startDate,
-      endDate,
-      daysRemaining,
-      monthlyRate: Number(contract?.approvedMonthlyRate ?? contract?.regularMonthlyRate ?? activeDoc.monthlyRate ?? 3500),
-      depositAmount: Number(contract?.securityDepositAmount ?? activeDoc.depositAmount ?? activeDoc.totalPrice ?? 3500),
-      status: contract?.status || activeDoc?.status || "active",
-      roomType: contract?.roomType || activeReservation?.roomId?.type || "Quadruple Sharing",
-    };
-  }
-
-  // Formulate maintenance tickets list
-  const activeMaintenance = (activeMaintenanceRaw || []).map((ticket) => ({
-    ticketCode: ticket.ticketNumber || ticket.request_id || String(ticket._id),
-    category: ticket.request_type || ticket.type || "Maintenance Issue",
-    urgency: ticket.urgency || "normal",
-    status: ticket.status || "pending",
-    description: ticket.description?.slice(0, 150) || "Room repair request",
-    providerName: ticket.providerDetails?.tenantVisibleLabel || ticket.providerName || "Assigned Technician",
-    scheduledDate: ticket.schedule?.scheduledDate || ticket.scheduledDate || null,
-    submittedDate: ticket.createdAt || new Date(),
-  }));
+  const currentBill = toCurrentBillContext(billingResolution.currentBill);
+  const contract = toContractContext(canonicalContract, now);
+  const recentAnnouncements = await loadVisibleAnnouncements(db, audienceContext, now)
+    .catch(() => []);
 
   return {
-    tenantName,
-    branch: branchDisplay,
-    branchRaw: rawBranch,
-    roomNumber,
-    bedPosition,
+    tenantName: tenantName(user),
+    tenantEmail: user.email || null,
+    branch: formatBranchName(branchRaw),
+    branchRaw,
+    branchSource: audienceContext.branchSource || "unresolved",
+    roomNumber: room?.roomNumber || room?.name || contract?.roomNumber || null,
+    bedPosition: activeStay?.bedCode || activeStay?.bedId
+      || selectedBedLabel(currentReservation)
+      || contract?.bedPosition
+      || null,
+    tenancy: {
+      status: tenancyStatus,
+      isCurrentResident: currentResident,
+      occupancyStartedAt: activeStay?.leaseStartDate || null,
+      scheduledMoveInDate,
+    },
     currentBill,
-    contract: contractData,
-    activeMaintenance,
-    hasActiveMaintenance: activeMaintenance.length > 0,
-    hasPendingBill: Boolean(currentBill && currentBill.status !== "paid"),
+    contract,
+    activeMaintenance: maintenanceRequests.map(toMaintenanceContext),
+    inquiries: conversations.map(toInquiryContext),
+    recentAnnouncements,
+    hasActiveMaintenance: maintenanceRequests.length > 0,
+    hasPendingBill: Boolean(currentBill && currentBill.remainingAmount > 0),
   };
 }
+
+export { buildNeutralContext };

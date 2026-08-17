@@ -2,6 +2,11 @@ const { v4: uuidv4 } = require('uuid');
 const { Types: { ObjectId } } = require('mongoose');
 const { getDb } = require('../config/database');
 const { notifyNewAnnouncement } = require('../services/pushService');
+const {
+  normalizeBranch,
+  buildTenantContext,
+  canTenantViewAnnouncement,
+} = require('../services/announcementAudience.service');
 
 function normalizedBranchReference(reference) {
   const normalized = String(reference || '').trim().toLowerCase()
@@ -224,8 +229,12 @@ async function getAllAnnouncements(req, res) {
       }
     }
 
-    const requesterBranchCode = await resolveRequesterBranchCode(db, req.user?._id || null);
-    let visible = announcements.filter((doc) => isAnnouncementVisibleForBranch(doc, requesterBranchCode));
+    const tenantContext = await buildTenantContext(db, {
+      tenant: req.user,
+      userId,
+      userMongoId: req.user?._id || null,
+    });
+    let visible = announcements.filter((doc) => canTenantViewAnnouncement({ announcement: doc, tenantContext }));
 
     // News-tab dismissal is intentionally its own per-tenant state
     // (announcement_dismissals), separate from the Home bell's
@@ -256,6 +265,41 @@ async function getDismissedAnnouncementIds(db, userId) {
     return new Set(rows.map((row) => row.announcement_id).filter(Boolean));
   } catch (_) {
     return new Set();
+  }
+}
+
+async function getAnnouncementDetail(req, res) {
+  try {
+    const db = getDb();
+    const announcementId = String(req.params.announcementId || '').trim();
+    if (!announcementId) {
+      return res.status(400).json({ detail: 'announcementId is required.' });
+    }
+
+    const idFilter = isHexObjectId(announcementId)
+      ? { $or: [{ announcement_id: announcementId }, { _id: new ObjectId(announcementId) }] }
+      : { announcement_id: announcementId };
+    const announcement = await db.collection('announcements').findOne(idFilter);
+    const tenantContext = await buildTenantContext(db, {
+      tenant: req.user,
+      userId: req.user?.user_id || null,
+      userMongoId: req.user?._id || null,
+    });
+
+    if (!announcement || !canTenantViewAnnouncement({ announcement, tenantContext })) {
+      return res.status(404).json({ detail: 'Announcement not found.' });
+    }
+
+    const canonicalId = announcement.announcement_id || announcement._id?.toString();
+    const dismissedIds = await getDismissedAnnouncementIds(db, req.user?.user_id || null);
+    if (dismissedIds.has(canonicalId)) {
+      return res.status(404).json({ detail: 'Announcement not found.' });
+    }
+
+    return res.json(normalizeAnnouncement(announcement));
+  } catch (error) {
+    console.error('getAnnouncementDetail error:', error);
+    return res.status(500).json({ detail: 'Failed to fetch announcement' });
   }
 }
 
@@ -308,8 +352,12 @@ async function dismissAnnouncement(req, res) {
       return res.status(404).json({ detail: 'Announcement not found.' });
     }
 
-    const requesterBranchCode = await resolveRequesterBranchCode(db, req.user?._id || null);
-    if (!isAnnouncementVisibleForBranch(announcement, requesterBranchCode)) {
+    const tenantContext = await buildTenantContext(db, {
+      tenant: req.user,
+      userId,
+      userMongoId: req.user?._id || null,
+    });
+    if (!canTenantViewAnnouncement({ announcement, tenantContext })) {
       return res.status(404).json({ detail: 'Announcement not found.' });
     }
 
@@ -324,6 +372,42 @@ async function dismissAnnouncement(req, res) {
   } catch (error) {
     console.error('dismissAnnouncement error:', error);
     return res.status(500).json({ detail: 'Failed to dismiss announcement' });
+  }
+}
+
+// Reverse only this tenant's News-tab dismissal. The shared announcement is
+// never mutated, and audience authorization is re-evaluated before the row is
+// removed so Undo cannot be used to probe another branch's content.
+async function restoreAnnouncement(req, res) {
+  try {
+    const db = getDb();
+    const userId = req.user?.user_id || null;
+    const announcementId = String(req.params.announcementId || '').trim();
+    if (!userId) return res.status(401).json({ detail: 'Authentication required.' });
+    if (!announcementId) return res.status(400).json({ detail: 'announcementId is required.' });
+
+    const idFilter = isHexObjectId(announcementId)
+      ? { $or: [{ announcement_id: announcementId }, { _id: new ObjectId(announcementId) }] }
+      : { announcement_id: announcementId };
+    const announcement = await db.collection('announcements').findOne(idFilter);
+    const tenantContext = await buildTenantContext(db, {
+      tenant: req.user,
+      userId,
+      userMongoId: req.user?._id || null,
+    });
+    if (!announcement || !canTenantViewAnnouncement({ announcement, tenantContext })) {
+      return res.status(404).json({ detail: 'Announcement not found.' });
+    }
+
+    const canonicalId = announcement.announcement_id || announcement._id?.toString();
+    await db.collection('announcement_dismissals').deleteOne({
+      user_id: userId,
+      announcement_id: canonicalId,
+    });
+    return res.json({ status: 'restored', announcement_id: canonicalId });
+  } catch (error) {
+    console.error('restoreAnnouncement error:', error);
+    return res.status(500).json({ detail: 'Failed to restore announcement' });
   }
 }
 
@@ -382,8 +466,12 @@ async function dismissAnnouncementsBulk(req, res) {
       $and: [activeFilter, notArchivedFilter, visibilityFilter, idFilter],
     }).toArray();
 
-    const requesterBranchCode = await resolveRequesterBranchCode(db, req.user?._id || null);
-    const visibleMatches = matches.filter((doc) => isAnnouncementVisibleForBranch(doc, requesterBranchCode));
+    const tenantContext = await buildTenantContext(db, {
+      tenant: req.user,
+      userId,
+      userMongoId: req.user?._id || null,
+    });
+    const visibleMatches = matches.filter((doc) => canTenantViewAnnouncement({ announcement: doc, tenantContext }));
     const visibleIds = new Set(visibleMatches.map((doc) => doc.announcement_id || doc._id?.toString()));
 
     if (visibleIds.size !== ids.length) {
@@ -419,6 +507,12 @@ async function createAnnouncement(req, res) {
     }
 
     const db = getDb();
+    const requestedTargetBranch = normalizeBranch(
+      req.mobileBranchScope || req.body.targetBranch || req.body.branch || 'both',
+    );
+    if (!['both', 'gil-puyat', 'guadalupe'].includes(requestedTargetBranch)) {
+      return res.status(400).json({ detail: 'A valid targetBranch is required.' });
+    }
     const announcement = {
       announcement_id: `ann_${uuidv4().replace(/-/g, '').substring(0, 12)}`,
       title,
@@ -430,7 +524,12 @@ async function createAnnouncement(req, res) {
       is_active: true,
       is_private: is_private || false,
       user_id: targetUserId || null,
-      branch: req.mobileBranchScope || req.body.branch || null,
+      targetBranch: requestedTargetBranch,
+      visibility: 'tenants-only',
+      publicationStatus: 'published',
+      startsAt: new Date(),
+      publishedAt: new Date(),
+      isArchived: false,
       created_at: new Date(),
       updated_at: new Date(),
     };
@@ -451,9 +550,11 @@ async function createAnnouncement(req, res) {
 
 module.exports = {
   getAllAnnouncements,
+  getAnnouncementDetail,
   createAnnouncement,
   dismissAnnouncement,
   dismissAnnouncementsBulk,
+  restoreAnnouncement,
   resolveRequesterBranchCode,
-  normalizedBranchReference,
+  normalizedBranchReference: normalizeBranch,
 };

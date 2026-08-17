@@ -1,4 +1,10 @@
 import mongoose from "mongoose";
+import announcementAudiencePolicy from "../mobile/services/announcementAudience.service.js";
+
+const {
+  buildTenantContext,
+  canTenantViewAnnouncement,
+} = announcementAudiencePolicy;
 
 /**
  * ============================================================================
@@ -139,12 +145,19 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
   const entityId = normalizeString(String(doc.entityId || ""));
   const isCanonicalBillEntity = entityType === "bill" && entityId;
   const isCanonicalContractEntity = entityType === "contract" && entityId;
+  const isCanonicalAnnouncementEntity = entityType === "announcement" && entityId;
   const data = sanitizePayload(doc.data);
   if (isCanonicalContractEntity) {
     data.type ||= type;
     data.contract_id ||= entityId;
     data.screen ||= "contract";
     data.url ||= "/contract-viewer";
+  }
+  if (isCanonicalAnnouncementEntity) {
+    data.type ||= "announcement";
+    data.announcement_id ||= entityId;
+    data.screen ||= "announcements";
+    data.url ||= "/(tabs)/announcements";
   }
   return {
     notification_id: doc.notification_id || doc._id?.toString?.() || "",
@@ -167,7 +180,9 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
       doc.url || doc.data?.url || (isCanonicalContractEntity ? "/contract-viewer" : doc.actionUrl) || "",
     ),
     read: doc.read === true || doc.isRead === true,
-    announcement_id: normalizeString(doc.announcement_id || doc.data?.announcement_id || ""),
+    announcement_id: normalizeString(
+      doc.announcement_id || doc.data?.announcement_id || (isCanonicalAnnouncementEntity ? entityId : ""),
+    ),
     billing_id: normalizeString(
       doc.billing_id || doc.data?.billing_id || doc.data?.bill_id
         || (isCanonicalBillEntity ? entityId : ""),
@@ -282,6 +297,51 @@ function visibilityFilter(userIdString, userMongoId) {
   };
 }
 
+function getLinkedAnnouncementId(doc = {}) {
+  const type = normalizeString(doc.type).toLowerCase();
+  if (type !== "announcement") return "";
+  return normalizeString(
+    doc.announcement_id
+      || doc.data?.announcement_id
+      || (normalizeString(doc.entityType).toLowerCase() === "announcement" ? String(doc.entityId || "") : ""),
+  );
+}
+
+async function loadAuthorizedSources(db, userId, userMongoId, { storedLimit = 200, announcementLimit = 200 } = {}) {
+  const [storedNotifications, announcementCandidates, tenantContext] = await Promise.all([
+    db.collection("notifications")
+      .find(buildOwnerFilter(userId, userMongoId))
+      .sort({ created_at: -1, updated_at: -1, createdAt: -1 })
+      .limit(storedLimit)
+      .toArray()
+      .catch(() => []),
+    db.collection("announcements")
+      .find({ $and: [ACTIVE_FILTER, NOT_ARCHIVED_FILTER, visibilityFilter(userId, userMongoId)] })
+      .sort({ created_at: -1, createdAt: -1 })
+      .limit(announcementLimit)
+      .toArray()
+      .catch(() => []),
+    buildTenantContext(db, { userId, userMongoId }),
+  ]);
+
+  const announcements = announcementCandidates.filter((announcement) =>
+    canTenantViewAnnouncement({ announcement, tenantContext }));
+  const visibleAnnouncementIds = new Set(
+    announcements.flatMap((announcement) => [
+      normalizeString(announcement.announcement_id),
+      normalizeString(announcement._id?.toString?.()),
+    ]).filter(Boolean),
+  );
+
+  const authorizedStoredNotifications = storedNotifications.filter((notification) => {
+    if (normalizeString(notification.type).toLowerCase() !== "announcement") return true;
+    const announcementId = getLinkedAnnouncementId(notification);
+    return Boolean(announcementId) && visibleAnnouncementIds.has(announcementId);
+  });
+
+  return { storedNotifications: authorizedStoredNotifications, announcements };
+}
+
 /**
  * List the authenticated tenant's merged notifications (stored notifications
  * + visible announcements), with read-state applied. Identity is server-
@@ -294,19 +354,12 @@ function visibilityFilter(userIdString, userMongoId) {
  * created it.
  */
 async function listUserNotifications(db, userId, userMongoId) {
-  const storedNotifications = await db.collection("notifications")
-    .find(buildOwnerFilter(userId, userMongoId))
-    .sort({ created_at: -1, updated_at: -1, createdAt: -1 })
-    .limit(120)
-    .toArray()
-    .catch(() => []);
-
-  const announcements = await db.collection("announcements")
-    .find({ $and: [ACTIVE_FILTER, NOT_ARCHIVED_FILTER, visibilityFilter(userId, userMongoId)] })
-    .sort({ created_at: -1, createdAt: -1 })
-    .limit(80)
-    .toArray()
-    .catch(() => []);
+  const { storedNotifications, announcements } = await loadAuthorizedSources(
+    db,
+    userId,
+    userMongoId,
+    { storedLimit: 120, announcementLimit: 200 },
+  );
 
   // Collect all author/publishedBy/createdBy ObjectId references to resolve admin names
   const authorIds = new Set();
@@ -413,15 +466,12 @@ async function markNotificationRead(db, userId, notificationKeyRaw, userMongoId)
   const notificationKey = normalizeString(notificationKeyRaw);
   if (!notificationKey) return { status: 400, detail: "notificationId is required." };
 
-  const stored = await db.collection("notifications").find(buildOwnerFilter(userId, userMongoId)).limit(200).toArray();
+  const { storedNotifications: stored, announcements } = await loadAuthorizedSources(db, userId, userMongoId);
   let ownedNotification = stored
     .map((doc) => sanitizeStoredNotification(doc))
     .find((item) => buildNotificationKey(item) === notificationKey || item.notification_id === notificationKey);
 
   if (!ownedNotification) {
-    const announcements = await db.collection("announcements").find({
-      $and: [ACTIVE_FILTER, NOT_ARCHIVED_FILTER, visibilityFilter(userId, userMongoId)],
-    }).limit(200).toArray();
     ownedNotification = announcements
       .map((doc) => normalizeAnnouncementNotification(doc))
       .find((item) => buildNotificationKey(item) === notificationKey || item.notification_id === notificationKey);
@@ -469,15 +519,12 @@ async function resolveOwnedNotificationKey(db, userId, notificationKeyRaw, userM
   const notificationKey = normalizeString(notificationKeyRaw);
   if (!notificationKey) return null;
 
-  const stored = await db.collection("notifications").find(buildOwnerFilter(userId, userMongoId)).limit(200).toArray();
+  const { storedNotifications: stored, announcements } = await loadAuthorizedSources(db, userId, userMongoId);
   let owned = stored
     .map((doc) => sanitizeStoredNotification(doc))
     .find((item) => buildNotificationKey(item) === notificationKey || item.notification_id === notificationKey);
 
   if (!owned) {
-    const announcements = await db.collection("announcements").find({
-      $and: [ACTIVE_FILTER, NOT_ARCHIVED_FILTER, visibilityFilter(userId, userMongoId)],
-    }).limit(200).toArray();
     owned = announcements
       .map((doc) => normalizeAnnouncementNotification(doc))
       .find((item) => buildNotificationKey(item) === notificationKey || item.notification_id === notificationKey);
@@ -526,6 +573,7 @@ export {
   normalizeAnnouncementNotification,
   buildNotificationKey,
   buildOwnerFilter,
+  loadAuthorizedSources,
   listUserNotifications,
   markNotificationRead,
   markAllNotificationsRead,

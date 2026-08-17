@@ -2,21 +2,29 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const conversationFind = jest.fn();
 const conversationFindOne = jest.fn();
+const conversationFindById = jest.fn();
+const conversationFindByIdAndUpdate = jest.fn();
 const messageFind = jest.fn();
 const messageUpdateMany = jest.fn();
+const messageCreate = jest.fn();
+const reservationFindOne = jest.fn();
+const userFindById = jest.fn();
+const userFind = jest.fn();
 
 await jest.unstable_mockModule("../models/index.js", () => ({
   ChatConversation: {
     find: conversationFind,
     findOne: conversationFindOne,
-    findByIdAndUpdate: jest.fn(),
+    findById: conversationFindById,
+    findByIdAndUpdate: conversationFindByIdAndUpdate,
   },
   ChatMessage: {
+    create: messageCreate,
     find: messageFind,
     updateMany: messageUpdateMany,
   },
-  Reservation: {},
-  User: {},
+  Reservation: { findOne: reservationFindOne },
+  User: { findById: userFindById, find: userFind },
 }));
 
 await jest.unstable_mockModule("../utils/notificationService.js", () => ({
@@ -28,7 +36,11 @@ await jest.unstable_mockModule("../utils/socket.js", () => ({
   emitToUser: jest.fn(),
 }));
 
-const { getAdminConversations, getAdminConversationMessages } = await import("./chatController.js");
+const {
+  getAdminConversations,
+  getAdminConversationMessages,
+  sendTenantMessage,
+} = await import("./chatController.js");
 
 function response() {
   return {
@@ -108,5 +120,92 @@ describe("chat controller authoritative branch scope", () => {
 
     expect(conversationFindOne).toHaveBeenCalledWith({ _id: expect.any(Object) });
     expect(res.statusCode).toBe(200);
+  });
+
+  test("tenant reply reopens a closed shared conversation and clears closure metadata", async () => {
+    const tenantId = "507f1f77bcf86cd799439012";
+    const conversationId = "507f1f77bcf86cd799439011";
+    const tenant = {
+      _id: tenantId,
+      role: "tenant",
+      tenantStatus: "active",
+      branch: "gil-puyat",
+      firstName: "Ava",
+      lastName: "Guest",
+      profileImage: "https://example.test/ava.jpg",
+    };
+    const conversation = {
+      _id: conversationId,
+      tenantId,
+      tenantName: "Ava Guest",
+      branch: "gil-puyat",
+      priority: "normal",
+      status: "closed",
+      closedAt: new Date(),
+      closedBy: "507f1f77bcf86cd799439013",
+      closingNote: "Closed by admin.",
+      statusHistory: [],
+    };
+
+    userFindById.mockReturnValue({ lean: async () => tenant });
+    reservationFindOne.mockReturnValue({
+      sort: () => ({ populate: () => ({ lean: async () => null }) }),
+    });
+    conversationFindById.mockResolvedValue(conversation);
+    messageCreate.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439014",
+      conversationId,
+      senderId: tenantId,
+      senderName: "Ava Guest",
+      senderRole: "tenant",
+      message: "The issue persists.",
+      createdAt: new Date(),
+    });
+    conversationFindByIdAndUpdate.mockImplementation(async (_id, update) => ({
+      ...conversation,
+      ...update.$set,
+      unreadAdminCount: 1,
+      statusHistory: update.$push.statusHistory.$each,
+    }));
+    userFind.mockReturnValue({
+      select: () => ({ lean: async () => [] }),
+    });
+
+    const req = {
+      authUser: tenant,
+      params: { conversationId },
+      body: { message: "The issue persists." },
+    };
+    const res = response();
+    await sendTenantMessage(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.conversation).toMatchObject({
+      id: conversationId,
+      status: "open",
+      closedAt: null,
+      closedBy: null,
+      closingNote: "",
+    });
+    expect(conversationFindByIdAndUpdate).toHaveBeenCalledWith(
+      conversationId,
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          status: "open",
+          closedAt: null,
+          closedBy: null,
+          closingNote: "",
+        }),
+        $push: expect.objectContaining({
+          statusHistory: expect.objectContaining({
+            $each: [expect.objectContaining({
+              status: "open",
+              note: expect.stringMatching(/persists.*reopened/i),
+            })],
+          }),
+        }),
+      }),
+      { new: true },
+    );
   });
 });

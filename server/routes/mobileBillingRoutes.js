@@ -215,6 +215,8 @@ router.get("/billing/:billingId/pdf", mobileTenantAuth, asyncRoute(async (req, r
     return res.status(404).json({ detail: "PDF not found" });
   }
 
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Pragma", "no-cache");
   res.download(absolutePdfPath, `${formatBillReference(bill)}.pdf`);
 }));
 

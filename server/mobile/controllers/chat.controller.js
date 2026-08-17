@@ -577,12 +577,6 @@ async function sendMessage(req, res) {
     const tenant = await resolveTenantContext(db, req.user);
     const conversation = await getTenantConversation(db, req.params.conversationId, req.user);
 
-    if (conversation.status === 'closed') {
-      const error = new Error('This conversation is closed.');
-      error.statusCode = 400;
-      throw error;
-    }
-
     const messageText = normalizeMessage(req.body?.message);
     const now = new Date();
     const messageDoc = {
@@ -607,6 +601,9 @@ async function sendMessage(req, res) {
           lastMessage: messageText,
           lastMessageAt: now,
           status: 'open',
+          closedAt: null,
+          closedBy: null,
+          closingNote: '',
           updatedAt: now,
         },
         $inc: { unreadAdminCount: 1 },
@@ -616,7 +613,9 @@ async function sendMessage(req, res) {
                 statusHistory: {
                   $each: [{
                     status: 'open',
-                    note: 'Tenant replied.',
+                    note: conversation.status === 'closed'
+                      ? 'Tenant replied because the concern persists; conversation reopened.'
+                      : 'Tenant replied.',
                     actorId: tenant.mongoId,
                     actorName: tenant.tenantName,
                     createdAt: now,
@@ -650,6 +649,54 @@ async function sendMessage(req, res) {
     });
   } catch (error) {
     return sendError(res, error, 'Failed to send message.');
+  }
+}
+
+async function reopenConversation(req, res) {
+  try {
+    const db = getDb();
+    const tenant = await resolveTenantContext(db, req.user);
+    const conversation = await getTenantConversation(db, req.params.conversationId, req.user);
+
+    if (!['resolved', 'closed'].includes(conversation.status)) {
+      return res.json({ conversation: serializeConversation(conversation) });
+    }
+
+    const now = new Date();
+    const note = String(req.body?.note || '').trim().slice(0, 500)
+      || 'Tenant reports that the concern persists; conversation reopened.';
+
+    await db.collection(CHAT_CONVERSATIONS).updateOne(
+      { _id: conversation._id },
+      {
+        $set: {
+          status: 'open',
+          closedAt: null,
+          closedBy: null,
+          closingNote: '',
+          updatedAt: now,
+        },
+        $push: {
+          statusHistory: {
+            $each: [{
+              status: 'open',
+              note,
+              actorId: tenant.mongoId,
+              actorName: tenant.tenantName,
+              createdAt: now,
+            }],
+            $slice: -25,
+          },
+        },
+      },
+    );
+
+    const reopened = await db.collection(CHAT_CONVERSATIONS).findOne({ _id: conversation._id });
+    safeEmitChatAdmins(reopened.branch, 'chat:conversation-updated', serializeConversation(reopened));
+
+    return res.json({ conversation: serializeConversation(reopened) });
+  } catch (error) {
+    return sendError(res, error, 'Failed to reopen conversation.');
   }
 }
 
@@ -705,5 +752,6 @@ module.exports = {
   getMyConversations,
   getConversationMessages,
   sendMessage,
+  reopenConversation,
   closeConversation,
 };

@@ -2,6 +2,14 @@ import fs from "fs";
 import { describe, expect, test } from "@jest/globals";
 
 const source = fs.readFileSync(new URL("./contractController.js", import.meta.url), "utf8");
+const pdfSource = fs.readFileSync(
+  new URL("../services/contractPdfService.js", import.meta.url),
+  "utf8",
+);
+const publicationSource = fs.readFileSync(
+  new URL("../services/contractPublicationService.js", import.meta.url),
+  "utf8",
+);
 
 describe("secure prepared Contract responses", () => {
   test("admin and tenant streams prevent stale PDF caching", () => {
@@ -45,5 +53,20 @@ describe("secure prepared Contract responses", () => {
       finalFlow.indexOf("await publishFinalContract"),
     );
     expect(finalFlow).toMatch(/finalDocument\?\.sourceVersion/);
+  });
+
+  test("both production notification call sites receive deterministic positive document versions", () => {
+    expect(pdfSource).toMatch(
+      /const generatedVersion = Math\.max\([\s\S]*preparedDocuments[\s\S]*\) \+ 1;/,
+    );
+    expect(source).toMatch(
+      /contractDocumentReady\(result\.contract\.tenantId, "prepared", result\.contract\._id, document\.version\)/,
+    );
+    expect(publicationSource).toMatch(
+      /sourceVersion: source\.document\.version/,
+    );
+    expect(source).toMatch(
+      /contractDocumentReady\(contract\.tenantId, "final", contract\._id, contract\.finalDocument\?\.sourceVersion\)/,
+    );
   });
 });

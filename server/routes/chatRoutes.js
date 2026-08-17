@@ -58,5 +58,6 @@ router.post("/start", chatController.startConversation);
 router.get("/me", chatController.getMyConversations);
 router.get("/:conversationId/messages", chatController.getConversationMessages);
 router.post("/:conversationId/messages", chatController.sendTenantMessage);
+router.patch("/:conversationId/reopen", chatController.reopenTenantConversation);
 
 export default router;

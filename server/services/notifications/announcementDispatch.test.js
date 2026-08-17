@@ -5,6 +5,7 @@ const announcementFind = jest.fn();
 const acknowledgmentCreateForAnnouncement = jest.fn();
 const createNotification = jest.fn();
 const emitToUser = jest.fn();
+const filterAnnouncementRecipients = jest.fn(async (_db, _announcement, recipients) => recipients);
 
 const createSelectableChain = (result) => ({
   select: jest.fn(() => ({
@@ -44,6 +45,10 @@ await jest.unstable_mockModule("../../middleware/logger.js", () => ({
   },
 }));
 
+await jest.unstable_mockModule("../../mobile/services/announcementAudience.service.js", () => ({
+  default: { filterAnnouncementRecipients },
+}));
+
 const {
   dispatchAnnouncementNotifications,
   dispatchDueScheduledAnnouncements,
@@ -56,6 +61,7 @@ describe("announcementDispatch", () => {
     acknowledgmentCreateForAnnouncement.mockReset();
     createNotification.mockReset();
     emitToUser.mockReset();
+    filterAnnouncementRecipients.mockClear();
   });
 
   test("dispatchAnnouncementNotifications creates notifications once and marks dispatch state", async () => {
@@ -108,6 +114,17 @@ describe("announcementDispatch", () => {
       ["tenant-1", "tenant-2"],
     );
     expect(createNotification).toHaveBeenCalledTimes(2);
+    expect(createNotification).toHaveBeenNthCalledWith(
+      1,
+      "tenant-1",
+      "announcement",
+      "Water outage",
+      "Temporary outage in the building.",
+      expect.objectContaining({
+        entityType: "announcement",
+        entityId: "announcement-1",
+      }),
+    );
     expect(emitToUser).toHaveBeenCalledTimes(2);
     expect(announcement.notificationDispatchedAt).toEqual(expect.any(Date));
     expect(announcement.save).toHaveBeenCalledTimes(1);
@@ -144,6 +161,40 @@ describe("announcementDispatch", () => {
         skippedReason: "already-dispatched",
       }),
     );
+  });
+
+  test("notification persistence is materialized only for recipients accepted by the canonical audience policy", async () => {
+    const announcement = {
+      _id: "announcement-guarded",
+      title: "Guadalupe notice",
+      content: "Branch only",
+      targetBranch: "guadalupe",
+      publicationStatus: "published",
+      startsAt: new Date("2026-08-01T00:00:00.000Z"),
+      endsAt: null,
+      isArchived: false,
+      requiresAcknowledgment: false,
+      notificationDispatchedAt: null,
+      notificationDispatchAttemptCount: 0,
+      save: jest.fn(async function save() { return this; }),
+    };
+    const guadalupe = { _id: "tenant-guadalupe" };
+    const gilPuyat = { _id: "tenant-gil-puyat" };
+    filterAnnouncementRecipients.mockResolvedValueOnce([guadalupe]);
+    createNotification.mockResolvedValue({
+      _id: "notification-guarded",
+      userId: guadalupe._id,
+      isRead: false,
+      toObject: () => ({ _id: "notification-guarded", userId: guadalupe._id, isRead: false }),
+    });
+
+    const result = await dispatchAnnouncementNotifications(announcement, {
+      recipients: [guadalupe, gilPuyat],
+    });
+
+    expect(createNotification).toHaveBeenCalledTimes(1);
+    expect(createNotification.mock.calls[0][0]).toBe("tenant-guadalupe");
+    expect(result.recipients).toEqual([guadalupe]);
   });
 
   test("dispatchDueScheduledAnnouncements catches up due scheduled notices", async () => {
