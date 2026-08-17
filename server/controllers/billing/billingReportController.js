@@ -265,6 +265,8 @@ export const downloadBillPdf = async (req, res, next) => {
       });
     }
 
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Pragma", "no-cache");
     res.download(absolutePdfPath, `${formatBillReference(bill)}.pdf`);
   } catch (error) {
     next(error);

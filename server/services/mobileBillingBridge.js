@@ -16,6 +16,7 @@
 
 import { getVisibleBillSnapshot, getUtilityDispatchEntry } from "../utils/billingPolicy.js";
 import { PAYMENT_METHOD_LABELS } from "../utils/paymongoPaymentMethod.js";
+import { BILL_STATEMENT_TEMPLATE_VERSION } from "./billingStatementTemplate.js";
 
 // "Which bill is the tenant's current bill" selection rule (NON_DRAFT_BILL_
 // FILTER / CURRENT_BILL_SORT / selectCurrentBillFromList) lives in
@@ -313,13 +314,14 @@ export function toMobileBill(bill, { electricityBreakdown = null, waterBreakdown
     // which key the cached file as `${billId}_v${statement_version}`). Any
     // server-side change to this bill (e.g. a utility charge posting,
     // payment recorded, status transition) advances bill.updatedAt via
-    // Mongoose timestamps, which changes this value and forces the app to
+    // Mongoose timestamps, while the template suffix advances independently
+    // when statement presentation changes. Either change forces the app to
     // refetch instead of serving a stale cached PDF. Falls back to createdAt
     // so a never-updated bill still has a stable, present version string.
-    statement_version: String(
+    statement_version: `${String(
       (bill.updatedAt || bill.createdAt || new Date()).getTime?.()
       ?? new Date(bill.updatedAt || bill.createdAt || Date.now()).getTime(),
-    ),
+    )}-t${BILL_STATEMENT_TEMPLATE_VERSION}`,
     utility_deadlines: mobileUtilityDeadlines(bill, charges),
     electricity_breakdown: formattedElectricityBreakdown,
     water_breakdown: formattedWaterBreakdown,

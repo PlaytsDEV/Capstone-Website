@@ -7,6 +7,7 @@ import {
   isMobileEffectivelyPaid,
   MOBILE_BILL_STATUSES,
 } from "./mobileBillingBridge.js";
+import { BILL_STATEMENT_TEMPLATE_VERSION } from "./billingStatementTemplate.js";
 
 describe("resolveMobileBillStatus", () => {
   test("unpaid: no payments made yet, not overdue", () => {
@@ -213,7 +214,16 @@ describe("toMobileBill statement_version (PDF cache-busting)", () => {
 
   test("falls back to createdAt so a never-updated bill still has a stable, present version", () => {
     const mobileBill = toMobileBill(makeBill({ updatedAt: undefined, createdAt: new Date("2026-05-01T00:00:00Z") }));
-    expect(mobileBill.statement_version).toBe(String(new Date("2026-05-01T00:00:00Z").getTime()));
+    expect(mobileBill.statement_version).toBe(
+      `${new Date("2026-05-01T00:00:00Z").getTime()}-t${BILL_STATEMENT_TEMPLATE_VERSION}`,
+    );
+  });
+
+  test("includes the server template version so a template-only deployment changes the device cache key", () => {
+    const mobileBill = toMobileBill(makeBill({ updatedAt: new Date("2026-05-01T00:00:00Z") }));
+    expect(mobileBill.statement_version).toMatch(
+      new RegExp(`-t${BILL_STATEMENT_TEMPLATE_VERSION}$`),
+    );
   });
 });
 

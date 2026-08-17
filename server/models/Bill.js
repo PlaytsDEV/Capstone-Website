@@ -494,6 +494,12 @@ const billSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Cache provenance for the canonical statement renderer. A template
+    // deployment can invalidate old files without mutating business data.
+    pdfTemplateVersion: {
+      type: Number,
+      default: null,
+    },
 
     // --- Payment Proof (tenant submission) ---
     paymentProof: {
