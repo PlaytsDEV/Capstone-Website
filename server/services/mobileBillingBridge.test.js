@@ -330,6 +330,10 @@ describe("isMobileEffectivelyPaid", () => {
   });
 });
 
+// selectCurrentBillFromList moved to services/billing/currentBillResolver.js
+// (consumer-neutral canonical module) — see currentBillResolver.test.js for
+// its coverage. It no longer lives in or is re-exported from this bridge.
+
 describe("utility breakdowns formatting & bridge", () => {
   const sampleElectricityBreakdown = {
     period: {

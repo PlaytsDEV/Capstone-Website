@@ -21,6 +21,11 @@ import {
   getRoomPublishState,
 } from "./_helpers.js";
 import { isUtilityChargeVisible } from "../../utils/billingPolicy.js";
+import {
+  NON_DRAFT_BILL_FILTER,
+  CURRENT_BILL_SORT,
+  selectCurrentBillFromList,
+} from "../../services/billing/currentBillResolver.js";
 
 export const getCurrentBilling = async (req, res, next) => {
   try {
@@ -31,25 +36,18 @@ export const getCurrentBilling = async (req, res, next) => {
     if (!activeStay)
       return res.status(404).json({ error: "No active stay found" });
 
-    const now = dayjs();
-    let currentBill = await Bill.findOne({
+    // Selection rule (which of the tenant's non-draft bills is "current")
+    // is the SAME canonical resolver the mobile Billing tab and mobile
+    // Home/dashboard use — see services/billing/currentBillResolver.js for
+    // why a later billingCycleStart alone can't decide this (pre-generated
+    // next-cycle bills).
+    const bills = await Bill.find({
       reservationId: activeStay._id,
-      status: { $ne: "draft" },
-      isArchived: false,
-      billingCycleStart: {
-        $lte: now.startOf("day").toDate(),
-      },
-      billingCycleEnd: {
-        $gt: now.startOf("day").toDate(),
-      },
-    }).sort({ billingCycleStart: -1, createdAt: -1 });
-    if (!currentBill) {
-      currentBill = await Bill.findOne({
-        reservationId: activeStay._id,
-        status: { $ne: "draft" },
-        isArchived: false,
-      }).sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 });
-    }
+      ...NON_DRAFT_BILL_FILTER,
+    })
+      .sort(CURRENT_BILL_SORT)
+      .limit(5);
+    const currentBill = selectCurrentBillFromList(bills);
     if (!currentBill)
       return res.status(404).json({ error: "No current bill found" });
 
