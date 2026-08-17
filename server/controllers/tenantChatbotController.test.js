@@ -2,7 +2,9 @@ import { jest } from "@jest/globals";
 
 const mockContextSnapshot = {
   tenantName: "Juan Dela Cruz",
+  tenantEmail: "juan@example.com",
   branch: "Guadalupe",
+  branchRaw: "guadalupe",
   roomNumber: "204",
   bedPosition: "Bed B",
   currentBill: {
@@ -36,10 +38,22 @@ const mockContextSnapshot = {
       submittedDate: new Date("2026-08-10"),
     },
   ],
+  inquiries: [],
 };
 
 jest.unstable_mockModule("../services/chatbot/tenantContextResolver.js", () => ({
   resolveTenantAIContext: jest.fn().mockResolvedValue(mockContextSnapshot),
+  buildNeutralContext: jest.fn(() => ({
+    tenantName: "Resident",
+    branch: "Lilycrest Residence",
+    branchRaw: null,
+    roomNumber: null,
+    bedPosition: null,
+    currentBill: null,
+    contract: null,
+    activeMaintenance: [],
+    inquiries: [],
+  })),
 }));
 
 jest.unstable_mockModule("../services/chatbot/tenantChatbotService.js", () => ({
@@ -52,18 +66,22 @@ jest.unstable_mockModule("../services/chatbot/tenantChatbotService.js", () => ({
 }));
 
 class MockConversation {
+  static instances = [];
   constructor(data) {
     Object.assign(this, data);
     this._id = "mock-convo-id";
+    MockConversation.instances.push(this);
   }
   save = jest.fn().mockResolvedValue(true);
   static findOne = jest.fn().mockResolvedValue(null);
 }
 
 class MockMessage {
+  static instances = [];
   constructor(data) {
     Object.assign(this, data);
     this._id = "mock-msg-id";
+    MockMessage.instances.push(this);
   }
   save = jest.fn().mockResolvedValue(true);
 }
@@ -93,6 +111,8 @@ describe("tenantChatbotController", () => {
   let next;
 
   beforeEach(() => {
+    MockConversation.instances = [];
+    MockMessage.instances = [];
     req = {
       body: {},
       authUser: { _id: "mock-user-id-123" },
@@ -175,6 +195,21 @@ describe("tenantChatbotController", () => {
           }),
         }),
       );
+      expect(MockConversation.instances[0]).toMatchObject({
+        tenantId: "mock-user-id-123",
+        tenantName: "Juan Dela Cruz",
+        branch: "guadalupe",
+        status: "open",
+        category: "billing_concern",
+        priority: "urgent",
+      });
+      expect(MockMessage.instances[0]).toMatchObject({
+        conversationId: "mock-convo-id",
+        senderId: "mock-user-id-123",
+        senderName: "Juan Dela Cruz",
+        senderRole: "tenant",
+        message: expect.stringContaining("Billing Dispute"),
+      });
     });
   });
 });

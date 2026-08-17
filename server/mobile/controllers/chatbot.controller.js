@@ -19,6 +19,7 @@ const {
   notifyAdminChatAccepted,
   notifyChatbotReply,
 } = require('../services/pushService');
+const { resolveTenantAIContext } = require('../services/tenantContextResolver');
 
 function sanitizeResponse(text = '') {
   const withoutFences = text.replace(/```[\s\S]*?```/g, (block) => block.replace(/```/g, ''));
@@ -143,8 +144,9 @@ function pickFollowups(knowledgeEntries, intent) {
 /**
  * Dynamically fetches live room prices from MongoDB and hydrates the Leasing Assistant prompt.
  */
-async function fetchHydratedLeasingPrompt(db, branch = 'gil-puyat') {
+async function fetchHydratedLeasingPrompt(db, branch) {
   try {
+    if (!['gil-puyat', 'guadalupe'].includes(branch)) return buildLeasingSystemPrompt();
     const rooms = await db.collection('rooms').find(
       { branch, isArchived: { $ne: true } },
       { projection: { type: 1, price: 1, monthlyPrice: 1 } }
@@ -213,7 +215,75 @@ function buildAIPrompt(userMessage, contextLines, knowledgeHints, conversationHi
   return `${baseSystemPrompt}\n\n${timeContext}${contextBlock}${knowledgeBlock}${historyBlock}${emotionalHint}\n\nTenant: ${userMessage}`;
 }
 
-async function ensureLiveChatRequest(db, sessionId, userId, userName, userEmail, reason) {
+function contextDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString('en-PH');
+}
+
+function buildTenantContextLines(context = {}, fallbackUser = {}) {
+  const lines = [];
+  lines.push(`Tenant: ${context.tenantName || fallbackUser.name || 'Resident'} (${context.tenantEmail || fallbackUser.email || 'email unavailable'})`);
+
+  if (context.branchRaw) {
+    lines.push(`Current branch: ${context.branch} (${context.branchRaw}; source: ${context.branchSource})`);
+  } else {
+    lines.push('Current branch: not resolved from canonical occupancy records');
+  }
+
+  if (context.tenancy?.isCurrentResident) {
+    const started = contextDate(context.tenancy.occupancyStartedAt);
+    lines.push(`Current tenancy: active resident${started ? `; move-in completed on ${started}` : ''}. Do not present a move-in reminder.`);
+  } else if (context.tenancy?.scheduledMoveInDate) {
+    lines.push(`Current tenancy: ${context.tenancy.status}; scheduled move-in date: ${contextDate(context.tenancy.scheduledMoveInDate)}`);
+  } else {
+    lines.push(`Current tenancy: ${context.tenancy?.status || 'unknown'}; no verified move-in date`);
+  }
+
+  if (context.roomNumber || context.bedPosition) {
+    lines.push(`Current assignment: room ${context.roomNumber || 'not recorded'}, ${context.bedPosition || 'bed not recorded'}`);
+  }
+
+  if (context.currentBill) {
+    const bill = context.currentBill;
+    lines.push(
+      `Canonical current bill (${bill.billingPeriod || 'current cycle'}): ${bill.statusLabel || bill.status}; `
+      + `total PHP ${Number(bill.totalAmount || 0).toFixed(2)}, remaining PHP ${Number(bill.remainingAmount || 0).toFixed(2)}, `
+      + `due ${contextDate(bill.dueDate) || 'not set'}; utilities ${bill.utilityReleased ? 'released' : 'not released'}`,
+    );
+  } else {
+    lines.push('Canonical current bill: none');
+  }
+
+  if (context.contract) {
+    const documentState = context.contract.tenantDocument?.available
+      ? `${context.contract.tenantDocument.label || 'tenant document'} available (version ${context.contract.tenantDocument.version || 'unknown'})`
+      : 'tenant document not available yet';
+    lines.push(`Canonical contract: ${context.contract.displayStatus || context.contract.status}; ${documentState}`);
+  } else {
+    lines.push('Canonical contract: none');
+  }
+
+  if (context.inquiries?.length) {
+    const inquiries = context.inquiries
+      .map((inquiry) => `- ${inquiry.category || 'general inquiry'}: ${inquiry.status}`)
+      .join('\n');
+    lines.push(`Support inquiries:\n${inquiries}`);
+  } else {
+    lines.push('Support inquiries: none');
+  }
+
+  if (context.recentAnnouncements?.length) {
+    const announcements = context.recentAnnouncements
+      .map((announcement) => `- ${announcement.title}: ${announcement.content}`)
+      .join('\n');
+    lines.push(`Audience-authorized recent announcements:\n${announcements}`);
+  }
+
+  return lines;
+}
+
+async function ensureLiveChatRequest(db, sessionId, userId, userName, userEmail, reason, tenantContext = null) {
   const existing = liveChatQueue.get(sessionId);
   if (existing) return existing;
 
@@ -230,6 +300,7 @@ async function ensureLiveChatRequest(db, sessionId, userId, userName, userEmail,
     status: 'waiting',
     admin_id: null,
     admin_name: null,
+    branch: tenantContext?.branchRaw || null,
     position: liveChatQueue.size + 1,
     created_at: new Date(),
   };
@@ -237,62 +308,92 @@ async function ensureLiveChatRequest(db, sessionId, userId, userName, userEmail,
   liveChatQueue.set(sessionId, liveChatRequest);
   await db.collection('live_chat_requests').insertOne(liveChatRequest);
 
-  // Bridge escalation to the web admin chat (chatconversations collection)
+  // Bridge escalation to the same chat_conversations collection used by the
+  // mobile inquiry screen and web admin panel. Never create a parallel ticket.
   try {
-    const alreadyBridged = await db.collection('chatconversations').findOne(
+    const conversations = db.collection('chat_conversations');
+    const alreadyBridged = await conversations.findOne(
       { mobileSessionId: sessionId },
       { projection: { _id: 1 } },
     );
     if (!alreadyBridged) {
       const dbUser = await db.collection('users').findOne(
-        { firebaseUid: userId },
-        { projection: { _id: 1 } },
+        { $or: [{ firebaseUid: userId }, { user_id: userId }] },
+        { projection: { _id: 1, user_id: 1 } },
       );
 
-      let branch = 'gil-puyat';
-      if (dbUser?._id) {
-        const activeRes = await db.collection('reservations').findOne(
-          { userId: dbUser._id, status: { $in: ['moveIn', 'reserved'] }, isArchived: { $ne: true } },
-          { projection: { roomId: 1 } },
-        );
-        if (activeRes?.roomId) {
-          const room = await db.collection('rooms').findOne(
-            { _id: activeRes.roomId },
-            { projection: { branch: 1 } },
-          );
-          if (room?.branch && ['gil-puyat', 'guadalupe'].includes(room.branch)) {
-            branch = room.branch;
-          }
-        }
+      const branch = tenantContext?.branchRaw;
+      if (!dbUser?._id || !['gil-puyat', 'guadalupe'].includes(branch)) {
+        return liveChatRequest;
       }
 
       const now = new Date();
-      const convDoc = {
-        tenantId: dbUser?._id || null,
-        tenantUserId: userId,
-        tenantName: userName || 'Mobile Tenant',
-        tenantEmail: userEmail || '',
-        branch,
-        roomNumber: '',
-        roomBed: '',
-        status: 'open',
-        category: 'general_inquiry',
-        priority: 'normal',
-        assignedAdminId: null,
-        assignedAdminName: '',
-        lastMessage: (reason || 'AI escalation').slice(0, 200),
-        lastMessageAt: now,
-        unreadAdminCount: chatHistory.filter((h) => h.role === 'user').length || 1,
-        unreadTenantCount: 0,
-        closedAt: null,
-        closedBy: null,
-        closingNote: '',
-        statusHistory: [],
-        mobileSessionId: sessionId,
-        createdAt: now,
-        updatedAt: now,
-      };
-      const { insertedId: convId } = await db.collection('chatconversations').insertOne(convDoc);
+      const existingConversation = await conversations.findOne({
+        tenantId: dbUser._id,
+        status: { $in: ['open', 'in_review', 'waiting_tenant', 'resolved'] },
+      }, { sort: { lastMessageAt: -1, updatedAt: -1 } });
+      let convId = existingConversation?._id || null;
+
+      if (existingConversation) {
+        await conversations.updateOne(
+          { _id: existingConversation._id },
+          {
+            $set: {
+              mobileSessionId: sessionId,
+              status: 'open',
+              lastMessage: (reason || 'AI escalation').slice(0, 200),
+              lastMessageAt: now,
+              closedAt: null,
+              closedBy: null,
+              closingNote: '',
+              updatedAt: now,
+            },
+            $inc: { unreadAdminCount: chatHistory.filter((item) => item.role === 'user').length || 1 },
+            ...(existingConversation.status !== 'open' ? {
+              $push: {
+                statusHistory: {
+                  $each: [{
+                    status: 'open',
+                    note: 'Tenant escalated the persistent concern from Lily.',
+                    actorId: dbUser._id,
+                    actorName: tenantContext.tenantName || userName || 'Tenant',
+                    createdAt: now,
+                  }],
+                  $slice: -25,
+                },
+              },
+            } : {}),
+          },
+        );
+      } else {
+        const convDoc = {
+          tenantId: dbUser._id,
+          tenantUserId: userId,
+          tenantName: tenantContext.tenantName || userName || 'Mobile Tenant',
+          tenantEmail: tenantContext.tenantEmail || userEmail || '',
+          branch,
+          roomNumber: tenantContext.roomNumber || '',
+          roomBed: tenantContext.bedPosition || '',
+          status: 'open',
+          category: 'general_inquiry',
+          priority: 'normal',
+          assignedAdminId: null,
+          assignedAdminName: '',
+          lastMessage: (reason || 'AI escalation').slice(0, 200),
+          lastMessageAt: now,
+          unreadAdminCount: chatHistory.filter((item) => item.role === 'user').length || 1,
+          unreadTenantCount: 0,
+          closedAt: null,
+          closedBy: null,
+          closingNote: '',
+          statusHistory: [],
+          mobileSessionId: sessionId,
+          createdAt: now,
+          updatedAt: now,
+        };
+        const inserted = await conversations.insertOne(convDoc);
+        convId = inserted.insertedId;
+      }
 
       if (chatHistory.length > 0) {
         const messages = chatHistory.map((h) => ({
@@ -339,23 +440,13 @@ async function sendMessage(req, res) {
 
     logChatEvent('message', { sessionId, messageLength: userMessage.length, userId });
 
-    // Resolve MongoDB ObjectId from session user (used for reservation lookup)
+    // Resolve MongoDB ObjectId from the authenticated server-owned identity.
     const rawId = req.user?._id;
     const mongoId = rawId && ObjectId.isValid(String(rawId)) ? new ObjectId(String(rawId)) : null;
 
-    // Pull tenant context for grounded responses
+    // Pull the shared canonical tenant context used by both web and mobile Lily.
     const db = getDb();
-    const [announcements, pendingBills, openTickets, activeReservation] = await Promise.all([
-      db.collection('announcements').find({ is_active: true }).sort({ created_at: -1 }).limit(3).toArray(),
-      db.collection('billing').find({ user_id: userId, status: { $ne: 'paid' } }).sort({ due_date: -1 }).limit(3).toArray(),
-      db.collection('tickets').find({ user_id: userId, status: { $ne: 'closed' } }).sort({ created_at: -1 }).limit(3).toArray(),
-      mongoId
-        ? db.collection('reservations').findOne(
-            { userId: mongoId, isArchived: { $ne: true }, status: { $in: ['pending', 'confirmed', 'moveIn', 'active'] } },
-            { sort: { createdAt: -1 }, projection: { status: 1, moveInDate: 1, branch: 1 } },
-          )
-        : Promise.resolve(null),
-    ]);
+    const tenantContext = await resolveTenantAIContext(mongoId, req.user, { db });
 
     // Check if this is an active live chat (admin is responding)
     const liveChat = getOwnedLiveChat(sessionId, userId);
@@ -364,48 +455,7 @@ async function sendMessage(req, res) {
       return res.json({ response: null, session_id: sessionId, live_chat_active: true, admin_name: liveChat.admin_name, message: 'Message sent to admin' });
     }
 
-    // Build tenant context lines
-    const contextLines = [];
-    contextLines.push(`Tenant: ${userName || 'Resident'} (${userEmail || 'unknown'})`);
-
-    if (pendingBills.length > 0) {
-      const billsSummary = pendingBills.map((b) => {
-        const amount = typeof b.amount === 'number' ? b.amount.toFixed(2) : b.amount;
-        return `- ${b.description || b.billing_type || 'Bill'}: ₱${amount}, due ${new Date(b.due_date).toLocaleDateString('en-PH')}`;
-      }).join('\n');
-      contextLines.push(`Pending bills:\n${billsSummary}`);
-    } else {
-      contextLines.push('Pending bills: none');
-    }
-
-    if (openTickets.length > 0) {
-      const ticketSummary = openTickets.map((t) => `- ${t.subject || 'Issue'} (${t.status}) — ${t.category || 'General'}`).join('\n');
-      contextLines.push(`Open tickets:\n${ticketSummary}`);
-    } else {
-      contextLines.push('Open tickets: none');
-    }
-
-    if (announcements.length > 0) {
-      const annSummary = announcements.map((a) => `- ${a.title || 'Announcement'}: ${a.content ? a.content.slice(0, 120) : ''}`).join('\n');
-      contextLines.push(`Recent announcements:\n${annSummary}`);
-    }
-
-    if (activeReservation) {
-      const STEP_LABELS = {
-        pending: 'pending — awaiting admin confirmation',
-        confirmed: 'confirmed — complete payment and submit move-in requirements',
-        moveIn: 'move-in scheduled — prepare documents and deposits',
-        active: 'active — currently checked in',
-      };
-      const stepLabel = STEP_LABELS[activeReservation.status] || activeReservation.status;
-      const moveInStr = activeReservation.moveInDate
-        ? `, move-in date: ${new Date(activeReservation.moveInDate).toLocaleDateString('en-PH')}`
-        : '';
-      const branchStr = activeReservation.branch ? `, branch: ${activeReservation.branch}` : '';
-      contextLines.push(`Reservation status: ${stepLabel}${moveInStr}${branchStr}`);
-    } else {
-      contextLines.push('Reservation status: no active reservation found');
-    }
+    const contextLines = buildTenantContextLines(tenantContext, req.user);
 
     // Find relevant knowledge entries (context hints for the AI)
     const knowledgeHints = findRelevantKnowledge(userMessage);
@@ -445,7 +495,8 @@ async function sendMessage(req, res) {
         needsAdmin = true;
         await ensureLiveChatRequest(
           db, sessionId, userId, userName, userEmail,
-          `Escalated: ${userMessage.slice(0, 120)}`
+          `Escalated: ${userMessage.slice(0, 120)}`,
+          tenantContext,
         );
         const escalationPrompt = buildAIPrompt(
           userMessage, contextLines, knowledgeHints, conversationHistory, isEmotional
@@ -469,8 +520,8 @@ async function sendMessage(req, res) {
           /(price|rate|cost|rent|how much|quad|double|private|room rate|deposit|advance|short-term|long-term|move-in)/i.test(userMessage);
 
         if (isLeasingInquiry) {
-          const branch = activeReservation?.branch || 'gil-puyat';
-          systemPromptOverride = await fetchHydratedLeasingPrompt(db, branch);
+          const branch = tenantContext?.branchRaw;
+          if (branch) systemPromptOverride = await fetchHydratedLeasingPrompt(db, branch);
         }
 
         const prompt = buildAIPrompt(
@@ -484,7 +535,8 @@ async function sendMessage(req, res) {
             needsAdmin = true;
             await ensureLiveChatRequest(
               db, sessionId, userId, userName, userEmail,
-              `AI escalation: ${userMessage.slice(0, 120)}`
+              `AI escalation: ${userMessage.slice(0, 120)}`,
+              tenantContext,
             );
           }
         } else {
@@ -549,7 +601,9 @@ async function requestAdmin(req, res) {
     const { session_id, reason } = req.body;
     const userId = req.user.user_id;
     const db = getDb();
-    const user = await db.collection('users').findOne({ user_id: userId });
+    const user = await db.collection('users').findOne({
+      $or: [{ user_id: userId }, { firebaseUid: userId }],
+    });
     const normalizedSession = normalizeSessionId(session_id, userId);
     if (!normalizedSession.ok) {
       return res.status(400).json({ detail: normalizedSession.error });
@@ -560,27 +614,29 @@ async function requestAdmin(req, res) {
       return res.status(400).json({ detail: `Reason must be ${MAX_ADMIN_REASON_CHARS} characters or fewer` });
     }
 
-    if (liveChatQueue.has(sessionId)) {
-      const existing = liveChatQueue.get(sessionId);
-      return res.json({
-        queued: true, position: existing.position, status: existing.status,
-        message: existing.status === 'active' ? `You are now chatting with ${existing.admin_name}` : 'Your request is in queue. An admin will be with you shortly.'
-      });
-    }
+    const mongoId = user?._id && ObjectId.isValid(String(user._id))
+      ? new ObjectId(String(user._id))
+      : null;
+    const tenantContext = await resolveTenantAIContext(mongoId, req.user, { db });
+    const liveChatRequest = await ensureLiveChatRequest(
+      db,
+      sessionId,
+      userId,
+      tenantContext?.tenantName || user?.name || 'Tenant',
+      tenantContext?.tenantEmail || user?.email,
+      normalizedReason || 'Requested admin assistance',
+      tenantContext,
+    );
 
-    const session = chatSessions.get(sessionId);
-    const chatHistory = session ? session.history : [];
-
-    const liveChatRequest = {
-      session_id: sessionId, user_id: userId, user_name: user?.name || 'Tenant', user_email: user?.email,
-      reason: normalizedReason || 'Requested admin assistance', chat_history: chatHistory, messages: [],
-      status: 'waiting', admin_id: null, admin_name: null, branch: user?.branch || null, position: liveChatQueue.size + 1, created_at: new Date()
-    };
-
-    liveChatQueue.set(sessionId, liveChatRequest);
-    await db.collection('live_chat_requests').insertOne(liveChatRequest);
-
-    res.json({ queued: true, session_id: sessionId, position: liveChatRequest.position, message: 'Your request has been submitted. An admin will be with you shortly.' });
+    res.json({
+      queued: true,
+      session_id: sessionId,
+      position: liveChatRequest.position,
+      status: liveChatRequest.status,
+      message: liveChatRequest.status === 'active'
+        ? `You are now chatting with ${liveChatRequest.admin_name}`
+        : 'Your request has been submitted. An admin will be with you shortly.',
+    });
   } catch (error) {
     console.error('Live chat request error:', error);
     res.status(500).json({ error: 'Failed to request admin chat' });
@@ -757,6 +813,7 @@ module.exports = {
   getChatHistory,
   __test: {
     getOwnedLiveChat,
+    buildTenantContextLines,
     liveChatQueue,
   },
 };
