@@ -49,6 +49,7 @@ import {
   normalizeApiValidationDetail,
   normalizeMaintenanceBranch,
   OPERATIONAL_STAGES,
+  CONSOLIDATED_STATUS_OPTIONS,
   SPECIFIC_STATUS_OPTIONS,
   matchesStage,
   matchesStatus,
@@ -376,14 +377,13 @@ export function useMaintenanceData() {
 
   const statusCounts = useMemo(() => {
     const counts = { all: summaryRequests.length };
-    SPECIFIC_STATUS_OPTIONS.forEach((status) => {
+    CONSOLIDATED_STATUS_OPTIONS.forEach((status) => {
       counts[status.key] = summaryRequests.filter((request) =>
         matchesStatus({
           request,
           status: status.key,
         }),
       ).length;
-      counts[status.rawStatus] = counts[status.key];
     });
     return counts;
   }, [summaryRequests]);

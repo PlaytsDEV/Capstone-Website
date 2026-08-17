@@ -100,21 +100,21 @@ export function MaintenanceExportDropdown({
     <div className={`relative inline-block ${className}`} ref={dropdownRef}>
       <button
         type="button"
-        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 disabled:cursor-not-allowed disabled:opacity-50 transition cursor-pointer"
+        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 disabled:cursor-not-allowed disabled:opacity-50 transition cursor-pointer"
         onClick={() => setOpen((current) => !current)}
         disabled={disabled || loading || resolvedOptions.length === 0}
         aria-haspopup="menu"
         aria-expanded={open}
       >
         {loading ? (
-          <LoaderCircle size={13} className="animate-spin text-primary shrink-0" />
+          <LoaderCircle size={13} className="animate-spin text-slate-800 dark:text-slate-200 shrink-0" />
         ) : (
-          <Download size={13} className="shrink-0" />
+          <Download size={13} className="shrink-0 text-slate-800 dark:text-slate-200" />
         )}
         <span>{loading ? "Exporting..." : "Export"}</span>
         <ChevronDown
           size={13}
-          className={`text-slate-400 dark:text-slate-500 transition-transform duration-200 ${
+          className={`text-slate-800 dark:text-slate-200 transition-transform duration-200 ${
             open ? "rotate-180" : ""
           }`}
         />
@@ -457,13 +457,13 @@ export function MaintenanceMetricsGrid({ summary = {}, isOwner = false }) {
   const metrics = [
     ["Total Requests", summary.totalRequests ?? 0, "blue"],
     ["Pending Requests", summary.pendingRequests ?? 0, "amber"],
-    ["In Progress", summary.inProgressRequests ?? 0, "violet"],
+    ["In Progress", summary.inProgressRequests ?? 0, "blue"],
     ["Completed", summary.completedRequests ?? 0, "green"],
     ["Overdue", summary.overdueRequests ?? 0, "rose"],
     ["Cancelled/Rejected", summary.cancelledRejectedRequests ?? 0, "rose"],
     ["Avg Response", summary.averageResponseTimeLabel || "Not enough data", "blue"],
     ["Avg Resolution", summary.averageResolutionTimeLabel || "Not enough data", "green"],
-    ["Most Common Issue", summary.mostCommonIssueType || "Not enough data", "violet"],
+    ["Most Common Issue", summary.mostCommonIssueType || "Not enough data", "blue"],
     ["Assigned", summary.assignedRequests ?? 0, "blue"],
     ["Unassigned", summary.unassignedRequests ?? 0, "amber"],
     ...(isOwner ? [["Top Branch", summary.branchWithMostRequests || "Not enough data", "green"]] : []),

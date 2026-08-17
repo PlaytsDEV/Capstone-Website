@@ -24,6 +24,7 @@ import {
 } from "../../../../../shared/utils/maintenanceConfig";
 import {
   ARCHIVE_FILTER_OPTIONS,
+  CONSOLIDATED_STATUS_OPTIONS,
   OPERATIONAL_STAGES,
   SLA_FILTER_OPTIONS,
   SPECIFIC_STATUS_OPTIONS,
@@ -39,12 +40,12 @@ export const QUEUE_FILTER_OPTIONS = [
   { key: "open_queue", label: "Active Queue" },
   { key: "in_progress", label: "In Progress" },
   { key: "needs_attention", label: "Needs Attention", alertBadge: true },
-  { key: "resolved", label: "Resolved (Awaiting)" },
+  { key: "resolved", label: "Resolved" },
   { key: "completed", label: "Completed" },
 ];
 
 /**
- * MaintenanceFilters — 4-Core Primary Toolbar with an organized Advanced Filters drawer.
+ * MaintenanceFilters — Streamlined Primary Toolbar with an organized Advanced Filters drawer.
  */
 export function MaintenanceFilters({
   searchQuery,
@@ -92,26 +93,14 @@ export function MaintenanceFilters({
   isExporting = false,
   onResetFilters,
 }) {
-  const effectiveStage = stageFilter || queueFilter || (stageStatusFilter && !String(stageStatusFilter).startsWith("status:") ? String(stageStatusFilter).replace(/^stage:/, "") : "all");
   const effectiveStatus = statusFilter || (stageStatusFilter && String(stageStatusFilter).startsWith("status:") ? String(stageStatusFilter).replace(/^status:/, "") : "all");
-
-  const effectiveStageCounts = Object.keys(stageCounts).length > 0 ? stageCounts : queueCounts;
   const effectiveStatusCounts = Object.keys(statusCounts).length > 0 ? statusCounts : stageStatusCounts;
-
-  const handleStageChange = (val) => {
-    if (onStageFilterChange) {
-      onStageFilterChange(val);
-    } else if (onQueueFilterChange) {
-      onQueueFilterChange(val === "all" ? null : val);
-    } else if (onStageStatusFilterChange) {
-      onStageStatusFilterChange(val);
-    }
-  };
 
   const handleStatusChange = (val) => {
     if (onStatusFilterChange) {
       onStatusFilterChange(val);
-    } else if (onStageStatusFilterChange) {
+    }
+    if (onStageStatusFilterChange) {
       onStageStatusFilterChange(val);
     }
   };
@@ -126,7 +115,6 @@ export function MaintenanceFilters({
 
   const hasAnyActiveFilter =
     searchQuery.trim() !== "" ||
-    effectiveStage !== "all" ||
     effectiveStatus !== "all" ||
     (isOwner && branchFilter !== "all") ||
     urgencyFilter !== "all" ||
@@ -208,28 +196,28 @@ export function MaintenanceFilters({
 
   return (
     <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3.5">
-      {/* Primary 4-Core Toolbar Row */}
+      {/* Primary Toolbar Row */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Left Side: Search & 4-Core Quick Dropdowns */}
+        {/* Left Side: Search & Core Quick Dropdowns */}
         <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
           {/* 1. Search Box */}
           <div className="relative flex-1 min-w-[220px] max-w-sm sm:max-w-md">
             <Search
               size={15}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-slate-400 pointer-events-none"
             />
             <input
               type="text"
               placeholder="Search tenant, room, ID, or description..."
               value={searchQuery}
               onChange={(e) => onSearchQueryChange(e.target.value)}
-              className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 pl-9 pr-8 text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 transition"
+              className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 pl-9 pr-8 text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:border-[#0A1628] dark:focus:border-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 transition"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => onSearchQueryChange("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-0.5"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 p-0.5"
                 title="Clear search"
               >
                 <X size={13} />
@@ -239,38 +227,18 @@ export function MaintenanceFilters({
 
           {/* Core Dropdowns Group */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* 2. Operational Stage Dropdown */}
-            <select
-              value={effectiveStage}
-              onChange={(e) => handleStageChange(e.target.value)}
-              className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-primary focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition min-w-[140px]"
-              aria-label="Filter by operational stage"
-            >
-              <option value="all">
-                All Stages {effectiveStageCounts.all !== undefined ? `(${effectiveStageCounts.all})` : ""}
-              </option>
-              {OPERATIONAL_STAGES.map((stage) => {
-                const count = effectiveStageCounts[stage.key] ?? effectiveStageCounts[stage.stageKey];
-                return (
-                  <option key={stage.key} value={stage.key}>
-                    {stage.label} {count !== undefined ? `(${count})` : ""}
-                  </option>
-                );
-              })}
-            </select>
-
-            {/* 3. Specific Status Dropdown */}
+            {/* 2. Consolidated Status Dropdown */}
             <select
               value={effectiveStatus}
               onChange={(e) => handleStatusChange(e.target.value)}
-              className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-primary focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition min-w-[140px]"
-              aria-label="Filter by specific status"
+              className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 cursor-pointer transition min-w-[150px]"
+              aria-label="Filter by maintenance status"
             >
               <option value="all">
                 All Statuses {effectiveStatusCounts.all !== undefined ? `(${effectiveStatusCounts.all})` : ""}
               </option>
-              {SPECIFIC_STATUS_OPTIONS.map((status) => {
-                const count = effectiveStatusCounts[status.key] ?? effectiveStatusCounts[status.rawStatus];
+              {CONSOLIDATED_STATUS_OPTIONS.map((status) => {
+                const count = effectiveStatusCounts[status.key];
                 return (
                   <option key={status.key} value={status.key}>
                     {status.label} {count !== undefined ? `(${count})` : ""}
@@ -283,7 +251,7 @@ export function MaintenanceFilters({
             <select
               value={urgencyFilter}
               onChange={(e) => onUrgencyFilterChange(e.target.value)}
-              className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-primary focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition min-w-[130px]"
+              className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 cursor-pointer transition min-w-[130px]"
             >
               <option value="all">
                 All Urgencies {urgencyCounts.all !== undefined ? `(${urgencyCounts.all})` : ""}
@@ -303,7 +271,7 @@ export function MaintenanceFilters({
               <select
                 value={branchFilter}
                 onChange={(e) => onBranchFilterChange(e.target.value)}
-                className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-primary focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition min-w-[130px]"
+                className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 cursor-pointer transition min-w-[130px]"
               >
                 <option value="all">
                   All Branches {branchCounts.all !== undefined ? `(${branchCounts.all})` : ""}
@@ -327,21 +295,40 @@ export function MaintenanceFilters({
           <button
             type="button"
             onClick={onToggleAdvancedFilters}
-            className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${
+            className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition cursor-pointer ${
               showAdvancedFilters || advancedFiltersActiveCount > 0
-                ? "border-primary/40 dark:border-primary/60 bg-primary/10 text-primary dark:bg-primary/20"
-                : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60"
+                ? "border-slate-800 bg-[#0A1628] text-white dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60"
             }`}
             aria-expanded={showAdvancedFilters}
           >
-            <SlidersHorizontal size={13} />
-            <span>Filters</span>
+            <SlidersHorizontal
+              size={13}
+              className={
+                showAdvancedFilters || advancedFiltersActiveCount > 0
+                  ? "text-white"
+                  : "text-slate-800 dark:text-slate-200"
+              }
+            />
+            <span className={showAdvancedFilters || advancedFiltersActiveCount > 0 ? "text-white font-semibold" : "text-slate-800 dark:text-slate-200 font-semibold"}>
+              Filters
+            </span>
             {advancedFiltersActiveCount > 0 && (
-              <span className="flex h-4.5 min-w-[18px] px-1 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white">
+              <span
+                className={`flex h-4.5 min-w-[18px] px-1 items-center justify-center rounded-full text-[10px] font-bold ${
+                  showAdvancedFilters
+                    ? "bg-white text-[#0A1628] dark:bg-slate-900 dark:text-slate-100"
+                    : "bg-[#0A1628] text-white dark:bg-slate-700 dark:text-white"
+                }`}
+              >
                 {advancedFiltersActiveCount}
               </span>
             )}
-            {showAdvancedFilters ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            {showAdvancedFilters ? (
+              <ChevronUp size={13} className={showAdvancedFilters ? "text-white" : "text-slate-800 dark:text-slate-200"} />
+            ) : (
+              <ChevronDown size={13} className="text-slate-800 dark:text-slate-200" />
+            )}
           </button>
 
           {/* Quick 1-Click Reset All Button (Visible only when any filter is active) */}
@@ -349,10 +336,10 @@ export function MaintenanceFilters({
             <button
               type="button"
               onClick={onResetFilters}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/60 hover:text-slate-900 dark:hover:text-slate-100 transition"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition cursor-pointer"
               title="Reset all filters"
             >
-              <RotateCcw size={12} />
+              <RotateCcw size={12} className="text-slate-800 dark:text-slate-200" />
               <span>Reset All</span>
             </button>
           )}
@@ -373,12 +360,12 @@ export function MaintenanceFilters({
           {/* Drawer Header */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 dark:border-slate-800 pb-3">
             <div className="flex items-center gap-2">
-              <SlidersHorizontal size={14} className="text-primary" />
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+              <SlidersHorizontal size={14} className="text-slate-800 dark:text-slate-200" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
                 Secondary Filters & Sorting
               </h4>
               {advancedFiltersActiveCount > 0 && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary text-white">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#0A1628] text-white dark:bg-slate-700 dark:text-white">
                   {advancedFiltersActiveCount} active
                 </span>
               )}
@@ -387,10 +374,10 @@ export function MaintenanceFilters({
               <button
                 type="button"
                 onClick={handleClearAdvancedFilters}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
                 title="Reset all secondary filter options"
               >
-                <RotateCcw size={12} />
+                <RotateCcw size={12} className="text-slate-600 dark:text-slate-400" />
                 <span>Clear Secondary Filters</span>
               </button>
             )}
@@ -406,12 +393,12 @@ export function MaintenanceFilters({
               <div className="relative">
                 <Wrench
                   size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-slate-300 pointer-events-none"
                 />
                 <select
                   value={requestTypeFilter}
                   onChange={(e) => onRequestTypeFilterChange(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition"
+                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 cursor-pointer transition"
                 >
                   <option value="all">All Categories</option>
                   {MAINTENANCE_REQUEST_TYPES.map((requestType) => (
@@ -431,12 +418,12 @@ export function MaintenanceFilters({
               <div className="relative">
                 <Activity
                   size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-slate-300 pointer-events-none"
                 />
                 <select
                   value={slaFilter}
                   onChange={(e) => onSlaFilterChange(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition"
+                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 cursor-pointer transition"
                 >
                   {SLA_FILTER_OPTIONS.map((option) => (
                     <option key={option.key} value={option.key}>
@@ -455,12 +442,12 @@ export function MaintenanceFilters({
               <div className="relative">
                 <ArrowUpDown
                   size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-slate-300 pointer-events-none"
                 />
                 <select
                   value={sortMode}
                   onChange={(e) => onSortModeChange(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition"
+                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 cursor-pointer transition"
                 >
                   <option value="newest">Newest First</option>
                   <option value="urgency">Urgency Priority</option>
@@ -476,12 +463,12 @@ export function MaintenanceFilters({
               <div className="relative">
                 <Archive
                   size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-slate-300 pointer-events-none"
                 />
                 <select
                   value={archiveView}
                   onChange={(e) => onArchiveViewChange(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition"
+                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 cursor-pointer transition"
                 >
                   {ARCHIVE_FILTER_OPTIONS.map((option) => (
                     <option key={option.key} value={option.key}>
@@ -497,13 +484,13 @@ export function MaintenanceFilters({
           <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/80 space-y-2.5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <Calendar size={13} className="text-primary" />
+                <Calendar size={13} className="text-slate-700 dark:text-slate-300" />
                 <span>Logged Date Range</span>
               </label>
 
               {/* Quick Date Presets */}
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1 hidden sm:inline">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1 hidden sm:inline">
                   Presets:
                 </span>
                 {[
@@ -518,10 +505,10 @@ export function MaintenanceFilters({
                       key={preset.key}
                       type="button"
                       onClick={() => handleApplyDatePreset(preset.key)}
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition ${
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition cursor-pointer ${
                         isActive
-                          ? "bg-primary text-white border-primary font-semibold shadow-xs"
-                          : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
+                          ? "bg-[#0A1628] text-white border-[#0A1628] font-bold dark:bg-slate-700 dark:border-slate-600 shadow-xs"
+                          : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 font-semibold"
                       }`}
                     >
                       {preset.label}
@@ -532,7 +519,7 @@ export function MaintenanceFilters({
                   <button
                     type="button"
                     onClick={() => handleApplyDatePreset("clear")}
-                    className="px-2 py-1 rounded-md text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition ml-1"
+                    className="px-2 py-1 rounded-md text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition ml-1 cursor-pointer"
                     title="Clear date filter"
                   >
                     Clear Dates
@@ -544,21 +531,21 @@ export function MaintenanceFilters({
             {/* Date Pickers */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500 pointer-events-none">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 pointer-events-none">
                   From
                 </span>
                 <input
                   type="date"
                   value={dateFrom}
                   onChange={(e) => onDateFromChange(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-14 pr-8 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition"
+                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-14 pr-8 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 transition"
                   aria-label="Start date"
                 />
                 {dateFrom && (
                   <button
                     type="button"
                     onClick={() => onDateFromChange("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 p-0.5"
                     title="Clear start date"
                   >
                     <X size={13} />
@@ -567,21 +554,21 @@ export function MaintenanceFilters({
               </div>
 
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500 pointer-events-none">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 pointer-events-none">
                   To
                 </span>
                 <input
                   type="date"
                   value={dateTo}
                   onChange={(e) => onDateToChange(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-10 pr-8 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition"
+                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-10 pr-8 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 transition"
                   aria-label="End date"
                 />
                 {dateTo && (
                   <button
                     type="button"
                     onClick={() => onDateToChange("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 p-0.5"
                     title="Clear end date"
                   >
                     <X size={13} />
@@ -599,14 +586,14 @@ export function MaintenanceFilters({
           {activeFilterChips.map((chip) => (
             <span
               key={chip.key}
-              className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/80"
+              className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700/80"
             >
               <span>{chip.label}</span>
               {chip.onRemove && (
                 <button
                   type="button"
                   onClick={chip.onRemove}
-                  className="ml-0.5 rounded p-0.5 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 transition"
+                  className="ml-0.5 rounded p-0.5 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 transition"
                   title={`Remove ${chip.label}`}
                 >
                   <X size={11} />
@@ -617,7 +604,7 @@ export function MaintenanceFilters({
           <button
             type="button"
             onClick={onResetFilters}
-            className="text-[11px] font-semibold text-primary hover:underline px-1.5 py-0.5"
+            className="text-[11px] font-semibold text-slate-700 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-400 hover:underline px-1.5 py-0.5 transition"
           >
             Clear all
           </button>

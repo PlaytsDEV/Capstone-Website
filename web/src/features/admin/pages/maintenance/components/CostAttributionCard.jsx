@@ -261,20 +261,20 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
   }));
 
   return (
-    <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-4">
+    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
         <div className="flex items-center gap-2">
           <Receipt size={16} className="text-slate-700 dark:text-slate-300" />
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+          <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
             Repair Expenses &amp; Cost Attribution
           </h3>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+          <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
             Post-Service Accounting
           </span>
-          <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+          <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
             Admin Only
           </span>
         </div>
@@ -420,24 +420,24 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
               setIsTenantChargeable(false);
               setTouched((curr) => ({ ...curr, reason: false }));
             }}
-            className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition cursor-pointer ${
+            className={`flex items-start gap-3 p-3.5 rounded-xl border text-left transition cursor-pointer active:scale-[0.98] ${
               !isTenantChargeable
-                ? "border-slate-800 dark:border-slate-200 bg-slate-50 dark:bg-slate-800/60 shadow-2xs"
+                ? "border-[#0A1628] dark:border-slate-200 bg-slate-50/70 dark:bg-slate-800/60 shadow-2xs"
                 : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900/50"
             }`}
           >
-            <div
-              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition ${
-                !isTenantChargeable
-                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                  : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
-              }`}
-            >
-              {!isTenantChargeable ? (
-                <Check size={13} strokeWidth={2.5} />
-              ) : (
-                <Building2 size={13} />
-              )}
+            <div className="pt-0.5 shrink-0">
+              <div
+                className={`flex h-4.5 w-4.5 items-center justify-center rounded-full border-2 transition ${
+                  !isTenantChargeable
+                    ? "border-[#0A1628] dark:border-slate-100"
+                    : "border-slate-300 dark:border-slate-600 bg-transparent"
+                }`}
+              >
+                {!isTenantChargeable && (
+                  <div className="h-2 w-2 rounded-full bg-[#0A1628] dark:bg-slate-100" />
+                )}
+              </div>
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center justify-between">
@@ -455,32 +455,31 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
             disabled={disabled || updateCostMutation.isPending}
             onClick={() => {
               setIsTenantChargeable(true);
-              // Do NOT mark touched immediately so red error is not triggered before typing
               setTouched((curr) => ({ ...curr, reason: false }));
             }}
-            className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition cursor-pointer ${
+            className={`flex items-start gap-3 p-3.5 rounded-xl border text-left transition cursor-pointer active:scale-[0.98] ${
               isTenantChargeable
-                ? "border-slate-800 dark:border-slate-200 bg-slate-50 dark:bg-slate-800/60 shadow-2xs"
+                ? "border-[#0A1628] dark:border-slate-200 bg-slate-50/70 dark:bg-slate-800/60 shadow-2xs"
                 : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900/50"
             }`}
           >
-            <div
-              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition ${
-                isTenantChargeable
-                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                  : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
-              }`}
-            >
-              {isTenantChargeable ? (
-                <Check size={13} strokeWidth={2.5} />
-              ) : (
-                <UserX size={13} />
-              )}
+            <div className="pt-0.5 shrink-0">
+              <div
+                className={`flex h-4.5 w-4.5 items-center justify-center rounded-full border-2 transition ${
+                  isTenantChargeable
+                    ? "border-[#0A1628] dark:border-slate-100"
+                    : "border-slate-300 dark:border-slate-600 bg-transparent"
+                }`}
+              >
+                {isTenantChargeable && (
+                  <div className="h-2 w-2 rounded-full bg-[#0A1628] dark:bg-slate-100" />
+                )}
+              </div>
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center justify-between">
+              <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center justify-between gap-2">
                 <span>Charge to Tenant</span>
-                <span className="text-[10px] font-bold uppercase rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 border border-slate-200 dark:border-slate-700">
+                <span className="text-[10px] font-bold uppercase rounded bg-transparent text-slate-700 dark:text-slate-300 px-1.5 py-0.5 border border-slate-200 dark:border-slate-700 shrink-0">
                   Tenant Misuse
                 </span>
               </div>
@@ -555,18 +554,20 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
           <button
             type="button"
             onClick={handleSaveCost}
-            disabled={updateCostMutation.isPending}
+            disabled={disabled || updateCostMutation.isPending || !hasChanges || hasValidationErrors}
             title={
               disabled
-                ? "Ticket is locked"
-                : hasChanges
-                  ? "Click to save and record expenses"
-                  : "Enter or edit Labor / Materials cost to record expenses"
+                ? "Maintenance request is locked and cannot be edited"
+                : !hasChanges
+                  ? "All repair expenses are synced. Update costs to record changes."
+                  : hasValidationErrors
+                    ? "Fix validation errors above before recording expenses"
+                    : "Click to save and record expenses"
             }
             className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-4 text-xs font-bold shadow-xs transition cursor-pointer active:scale-[0.98] ${
-              hasChanges && !hasValidationErrors
-                ? "bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 text-white dark:text-slate-900"
-                : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
+              hasChanges && !hasValidationErrors && !disabled
+                ? "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white"
+                : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-75"
             }`}
           >
             {updateCostMutation.isPending ? (

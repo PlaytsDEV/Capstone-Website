@@ -588,7 +588,7 @@ export default function AdminMaintenancePage() {
       });
       showNotification({
         title: action === "decline" ? "Reschedule Declined" : "Schedule Updated",
-        message: action === "decline" ? "Resident reschedule request declined." : "New repair schedule confirmed.",
+        message: action === "decline" ? "Tenant reschedule request declined." : "New repair schedule confirmed.",
         type: "success",
       });
     } catch (err) {

@@ -278,7 +278,7 @@ export const SUMMARY_STATUSES = [
   { key: "reviewed", label: "Under Review" },
   { key: "in_progress", label: "In Progress" },
   { key: "waiting_tenant", label: "Waiting for Tenant" },
-  { key: "resolved", label: "Resolved (Awaiting Verification)" },
+  { key: "resolved", label: "Resolved" },
   { key: "completed", label: "Completed" },
   { key: "reopened", label: "Reopened" },
   { key: "rejected", label: "Rejected" },
@@ -310,10 +310,10 @@ export const MANAGEMENT_SUMMARY_CARDS = [
   },
   {
     key: "resolved",
-    label: "Resolved (Awaiting)",
+    label: "Resolved",
     icon: Clock3,
     color: "amber",
-    description: "Awaiting resident confirmation",
+    description: "Awaiting tenant confirmation",
   },
   {
     key: "completed",
@@ -402,25 +402,50 @@ export const OPERATIONAL_STAGES = [
   { key: "open_queue", label: "Active Queue", stageKey: "open_queue", description: "Pending, viewed & assigned" },
   { key: "in_progress", label: "In Progress", stageKey: "in_progress", description: "Scheduled & servicing" },
   { key: "needs_attention", label: "Needs Attention", stageKey: "needs_attention", description: "Reopened, overdue timeline, urgent" },
-  { key: "resolved", label: "Resolved (Awaiting)", stageKey: "resolved", description: "Awaiting resident confirmation" },
+  { key: "resolved", label: "Resolved", stageKey: "resolved", description: "Awaiting tenant confirmation" },
   { key: "completed", label: "Completed", stageKey: "completed", description: "Verified & completed" },
 ];
 
-export const SPECIFIC_STATUS_OPTIONS = [
-  { key: "pending_review", label: "Pending Review", rawStatus: "pending_review" },
-  { key: "provider_assigned", label: "Provider Assigned", rawStatus: "provider_assigned" },
-  { key: "scheduled", label: "Scheduled", rawStatus: "scheduled" },
-  { key: "viewed", label: "Viewed", rawStatus: "viewed" },
-  { key: "reviewed", label: "Under Review", rawStatus: "reviewed" },
-  { key: "in_progress", label: "In Progress (Active)", rawStatus: "in_progress" },
-  { key: "waiting_tenant", label: "Waiting for Tenant", rawStatus: "waiting_tenant" },
-  { key: "resolved", label: "Resolved", rawStatus: "resolved" },
-  { key: "completed", label: "Completed", rawStatus: "completed" },
-  { key: "reopened", label: "Reopened", rawStatus: "reopened" },
-  { key: "rejected", label: "Rejected", rawStatus: "rejected" },
-  { key: "cancelled", label: "Cancelled", rawStatus: "cancelled" },
-  { key: "closed", label: "Closed", rawStatus: "closed" },
-];
+export const CONSOLIDATED_STATUS_OPTIONS = Object.freeze([
+  {
+    key: "under_review",
+    label: "Under Review",
+    rawStatuses: ["pending", "pending_review", "viewed", "reviewed"],
+    description: "New and unassigned tickets under review",
+  },
+  {
+    key: "in_progress",
+    label: "In Progress",
+    rawStatuses: ["provider_assigned", "scheduled", "in_progress", "waiting_tenant"],
+    description: "Actively assigned, scheduled, or being serviced",
+  },
+  {
+    key: "resolved",
+    label: "Resolved",
+    rawStatuses: ["resolved"],
+    description: "Repair finished, awaiting tenant verification",
+  },
+  {
+    key: "completed",
+    label: "Completed",
+    rawStatuses: ["completed"],
+    description: "Verified and closed tickets",
+  },
+  {
+    key: "needs_attention",
+    label: "Needs Attention",
+    rawStatuses: ["reopened"],
+    description: "Tickets requiring urgent re-evaluation",
+  },
+  {
+    key: "cancelled_rejected",
+    label: "Cancelled / Rejected",
+    rawStatuses: ["cancelled", "rejected", "closed"],
+    description: "Declined requests",
+  },
+]);
+
+export const SPECIFIC_STATUS_OPTIONS = CONSOLIDATED_STATUS_OPTIONS;
 
 export const getStageLabel = (stageKey) => {
   if (!stageKey || stageKey === "all") return "All Stages";
@@ -431,9 +456,9 @@ export const getStageLabel = (stageKey) => {
 
 export const getStatusLabel = (statusKey) => {
   if (!statusKey || statusKey === "all") return "All Statuses";
-  const rawKey = String(statusKey).replace(/^status:/, "");
-  const status = SPECIFIC_STATUS_OPTIONS.find((s) => s.key === rawKey || s.rawStatus === rawKey);
-  if (status) return status.label;
+  const rawKey = String(statusKey).replace(/^status:/, "").toLowerCase();
+  const consolidated = CONSOLIDATED_STATUS_OPTIONS.find((s) => s.key === rawKey);
+  if (consolidated) return consolidated.label;
   const legacyStatus = SUMMARY_STATUSES.find((s) => s.key === rawKey);
   if (legacyStatus) return legacyStatus.label;
   return formatMaintenanceStatus(rawKey);
@@ -445,8 +470,8 @@ export const getStageStatusLabel = (filterKey) => {
   if (String(filterKey).startsWith("status:")) return getStatusLabel(filterKey);
   const stage = OPERATIONAL_STAGES.find((s) => s.key === filterKey || s.stageKey === filterKey);
   if (stage) return stage.label;
-  const status = SPECIFIC_STATUS_OPTIONS.find((s) => s.key === filterKey || s.rawStatus === filterKey);
-  if (status) return status.label;
+  const consolidated = CONSOLIDATED_STATUS_OPTIONS.find((s) => s.key === filterKey);
+  if (consolidated) return consolidated.label;
   const legacyStatus = SUMMARY_STATUSES.find((s) => s.key === filterKey);
   if (legacyStatus) return legacyStatus.label;
   return formatMaintenanceStatus(filterKey);
@@ -460,8 +485,19 @@ export const matchesStage = ({ request, stage, dateFrom, dateTo }) => {
 
 export const matchesStatus = ({ request, status }) => {
   if (!status || status === "all") return true;
-  const rawKey = String(status).replace(/^status:/, "");
-  return request.status === rawKey;
+  const rawKey = String(status).replace(/^status:/, "").toLowerCase();
+  const reqStatus = String(request?.status || "").toLowerCase();
+
+  const consolidated = CONSOLIDATED_STATUS_OPTIONS.find((c) => c.key === rawKey);
+  if (consolidated) {
+    return consolidated.rawStatuses.includes(reqStatus);
+  }
+
+  if (rawKey === "cancelled_rejected") {
+    return ["cancelled", "rejected"].includes(reqStatus);
+  }
+
+  return reqStatus === rawKey;
 };
 
 export const matchesStageOrStatus = ({ request, stageOrStatus, dateFrom, dateTo }) => {
@@ -500,7 +536,7 @@ export const getStatusBadgeMeta = (status) => {
     case "reviewed":
       return {
         badge:
-          "bg-amber-50 text-amber-800 border-amber-200/90 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60",
+          "bg-transparent text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700",
         dot: "bg-amber-500",
       };
     case "provider_assigned":
@@ -509,21 +545,21 @@ export const getStatusBadgeMeta = (status) => {
     case "waiting_tenant":
       return {
         badge:
-          "bg-blue-50 text-blue-700 border-blue-200/90 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60",
-        dot: "bg-blue-500",
+          "bg-transparent text-sky-700 dark:text-sky-400 border border-slate-200 dark:border-slate-700",
+        dot: "bg-sky-500",
       };
     case "resolved":
     case "completed":
       return {
         badge:
-          "bg-emerald-50 text-emerald-700 border-emerald-200/90 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60",
+          "bg-transparent text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700",
         dot: "bg-emerald-500",
       };
     case "reopened":
     case "rejected":
       return {
         badge:
-          "bg-rose-50 text-rose-700 border-rose-200/90 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60",
+          "bg-transparent text-rose-700 dark:text-rose-400 border border-slate-200 dark:border-slate-700",
         dot: "bg-rose-500",
       };
     case "cancelled":
@@ -531,7 +567,7 @@ export const getStatusBadgeMeta = (status) => {
     default:
       return {
         badge:
-          "bg-slate-100 text-slate-600 border-slate-200/90 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700",
+          "bg-transparent text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700",
         dot: "bg-slate-400",
       };
   }
@@ -543,20 +579,18 @@ export const getStatusDotClass = (status) => {
     case "pending_review":
     case "viewed":
     case "reviewed":
-      return "bg-amber-400";
+      return "bg-amber-500";
     case "provider_assigned":
     case "scheduled":
     case "in_progress":
     case "waiting_tenant":
-      return "bg-blue-500";
+      return "bg-sky-500";
     case "resolved":
-      return "bg-amber-500";
     case "completed":
       return "bg-emerald-500";
     case "reopened":
-      return "bg-rose-500";
     case "rejected":
-      return "bg-red-500";
+      return "bg-rose-500";
     case "cancelled":
     case "closed":
       return "bg-slate-400";
@@ -571,20 +605,18 @@ export const getStatusTextClass = (status) => {
     case "pending_review":
     case "viewed":
     case "reviewed":
-      return "text-amber-700 dark:text-amber-300";
+      return "text-amber-700 dark:text-amber-400";
     case "provider_assigned":
     case "scheduled":
     case "in_progress":
     case "waiting_tenant":
-      return "text-blue-600 dark:text-blue-400";
+      return "text-sky-700 dark:text-sky-400";
     case "resolved":
-      return "text-amber-700 dark:text-amber-300";
     case "completed":
-      return "text-emerald-700 dark:text-emerald-300";
+      return "text-emerald-700 dark:text-emerald-400";
     case "reopened":
-      return "text-rose-700 dark:text-rose-300";
     case "rejected":
-      return "text-red-700 dark:text-red-300";
+      return "text-rose-700 dark:text-rose-400";
     case "cancelled":
     case "closed":
       return "text-slate-600 dark:text-slate-400";
@@ -1450,7 +1482,7 @@ export const formatContractorDispatchTicket = (request, options = {}) => {
     (request.tenant?.firstName
       ? `${request.tenant.firstName} ${request.tenant.lastName || ""}`.trim()
       : "") ||
-    "Resident";
+    "Tenant";
 
   const tenantPhone =
     request.tenant?.phone ||
@@ -1523,7 +1555,7 @@ export const formatContractorDispatchTicket = (request, options = {}) => {
     request.description ||
     request.issue ||
     request.problemDescription ||
-    "No specific problem description provided by resident.";
+    "No specific problem description provided by tenant.";
 
   const specialNotes =
     options.notes ||
@@ -1550,9 +1582,9 @@ export const formatContractorDispatchTicket = (request, options = {}) => {
     `Provider Contact: ${providerContact}`,
     `Dispatch Channel: ${dispatchTypeLabel}`,
     "",
-    "--- RESIDENT CONTACT & ACCESS ---",
-    `Resident Name: ${tenantName}`,
-    `Resident Contact: ${tenantPhone}`,
+    "--- TENANT CONTACT & ACCESS ---",
+    `Tenant Name: ${tenantName}`,
+    `Tenant Contact: ${tenantPhone}`,
     `Unit / Bed: ${roomName}${bedSlot ? ` (${bedSlot})` : ""}`,
     "",
     "--- ISSUE DETAILS ---",

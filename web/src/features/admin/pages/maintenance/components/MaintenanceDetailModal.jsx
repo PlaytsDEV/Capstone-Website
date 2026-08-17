@@ -54,6 +54,7 @@ import {
   getMaintenanceTypeMeta,
   getMaintenanceUrgencyMeta,
   getRequestBranch,
+  getStatusBadgeMeta,
   isMaintenanceImageAttachment,
   isMaintenancePdfAttachment,
 } from "../maintenanceUtils";
@@ -100,7 +101,7 @@ function AttachmentThumbnail({
   attachment,
   index = 0,
   onPreviewImage,
-  tag = "Resident Upload",
+  tag = "Tenant Upload",
   size = "normal",
 }) {
   const uri = getMaintenanceAttachmentUri(attachment);
@@ -561,7 +562,7 @@ export function MaintenanceDetailModal({
 
       showNotification({
         title: "Resolution Proof Saved",
-        message: "Proof photo saved. Ticket is now Resolved (Awaiting Resident Verification).",
+        message: "Proof photo saved. Ticket is now Resolved (Awaiting Tenant Verification).",
         type: "success",
       });
 
@@ -748,7 +749,7 @@ export function MaintenanceDetailModal({
     (request?.tenant?.firstName
       ? `${request.tenant.firstName} ${request.tenant.lastName || ""}`.trim()
       : "") ||
-    "Resident";
+    "Tenant";
 
   const rawRoomCandidate =
     request?.occupancyContext?.unitNumber
@@ -875,13 +876,13 @@ export function MaintenanceDetailModal({
           <div className="flex items-center justify-between gap-4">
             {/* Title, Ticket ID & Urgency */}
             <div className="flex items-center gap-2.5 flex-wrap min-w-0">
-              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
                 <span>Maintenance Ticket</span>
                 <button
                   type="button"
                   onClick={handleCopyId}
                   title="Click to copy full ID"
-                  className="inline-flex items-center gap-1 rounded-md bg-slate-200/80 dark:bg-slate-800 px-2 py-0.5 text-xs font-mono font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-md bg-transparent border border-slate-200 dark:border-slate-700 px-2 py-0.5 text-xs font-mono font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
                 >
                   <Copy size={11} className={isCopiedId ? "text-emerald-600" : "text-slate-400"} />
                   <span>#{request.ticketNumber || shortId}</span>
@@ -889,18 +890,32 @@ export function MaintenanceDetailModal({
               </h2>
 
               <span
-                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0"
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0 bg-transparent border"
                 style={{
-                  backgroundColor: `${urgencyMeta.color}15`,
                   color: urgencyMeta.color,
-                  border: `1px solid ${urgencyMeta.color}30`,
+                  borderColor: `${urgencyMeta.color}60`,
                 }}
               >
-                {urgencyMeta.label} Priority
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: urgencyMeta.color }} />
+                <span>{urgencyMeta.label} Priority</span>
               </span>
+
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0 ${getStatusBadgeMeta(request?.status).badge}`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${getStatusBadgeMeta(request?.status).dot}`} />
+                <span>{formatMaintenanceStatus(request?.status, { includeStage: true })}</span>
+              </span>
+
+              {status === "resolved" && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-transparent text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700 shrink-0">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  <span>Awaiting Verification</span>
+                </span>
+              )}
             </div>
 
-            {/* Right: Resident, Room Info & Close */}
+            {/* Right: Tenant, Room Info & Close */}
             <div className="flex items-center gap-3 shrink-0">
               <div className="hidden md:flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
                 <span className="inline-flex items-center gap-1 font-medium text-slate-800 dark:text-slate-200">
@@ -933,7 +948,7 @@ export function MaintenanceDetailModal({
               onClick={() => setActiveTab("overview")}
               className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition cursor-pointer shrink-0 ${
                 activeTab === "overview"
-                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-2xs font-bold"
+                  ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 border-[#0A1628] dark:border-slate-100 shadow-2xs font-bold"
                   : "border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
               }`}
             >
@@ -949,7 +964,7 @@ export function MaintenanceDetailModal({
               }}
               className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition cursor-pointer shrink-0 ${
                 activeTab === "conversation"
-                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-2xs font-bold"
+                  ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 border-[#0A1628] dark:border-slate-100 shadow-2xs font-bold"
                   : "border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
               }`}
             >
@@ -959,7 +974,7 @@ export function MaintenanceDetailModal({
                 <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
                   activeTab === "conversation"
                     ? "bg-white/20 text-white dark:bg-slate-900/30 dark:text-slate-900"
-                    : "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                    : "bg-transparent text-sky-700 dark:text-sky-400 border border-slate-200 dark:border-slate-700"
                 }`}>
                   {getUnreadConvCount(request, activeTab === "conversation")}
                 </span>
@@ -971,7 +986,7 @@ export function MaintenanceDetailModal({
               onClick={() => setActiveTab("proof")}
               className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition cursor-pointer shrink-0 ${
                 activeTab === "proof"
-                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-2xs font-bold"
+                  ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 border-[#0A1628] dark:border-slate-100 shadow-2xs font-bold"
                   : "border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
               }`}
             >
@@ -981,7 +996,7 @@ export function MaintenanceDetailModal({
                 <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
                   activeTab === "proof"
                     ? "bg-white/20 text-white dark:bg-slate-900/30 dark:text-slate-900"
-                    : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                    : "bg-transparent text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
                 }`}>
                   {workLogAttachments.length}
                 </span>
@@ -993,7 +1008,7 @@ export function MaintenanceDetailModal({
               onClick={() => setActiveTab("timeline")}
               className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition cursor-pointer shrink-0 ${
                 activeTab === "timeline"
-                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-2xs font-bold"
+                  ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 border-[#0A1628] dark:border-slate-100 shadow-2xs font-bold"
                   : "border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
               }`}
             >
@@ -1003,7 +1018,7 @@ export function MaintenanceDetailModal({
                 <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
                   activeTab === "timeline"
                     ? "bg-white/20 text-white dark:bg-slate-900/30 dark:text-slate-900"
-                    : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                    : "bg-transparent text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
                 }`}>
                   {timelineItems.length}
                 </span>
@@ -1026,11 +1041,11 @@ export function MaintenanceDetailModal({
             <>
               {/* Duplicate Alert Banner */}
               {duplicateData?.hasPotentialDuplicates && (
-                <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-50/80 dark:bg-amber-950/30 p-3 text-xs text-amber-900 dark:text-amber-200">
+                <div className="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-3 text-xs text-slate-900 dark:text-slate-100">
                   <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
                   <div>
-                    <span className="font-bold">Potential Duplicate Tickets Detected</span>
-                    <p className="mt-0.5 text-amber-800 dark:text-amber-300 leading-relaxed">
+                    <span className="font-bold text-slate-900 dark:text-slate-100">Potential Duplicate Tickets Detected</span>
+                    <p className="mt-0.5 text-slate-600 dark:text-slate-400 leading-relaxed">
                       {duplicateData.count} other ticket(s) logged for this unit/room within 48 hours. Please check existing work orders before dispatching new contractors.
                     </p>
                   </div>
@@ -1042,25 +1057,18 @@ export function MaintenanceDetailModal({
               {/* ═══════════════════════════════════════════ */}
               {activeTab === "overview" && (
                 <div className="space-y-4">
-                  {/* 1. RESIDENT CONCERN & CONTEXT CARD */}
+                  {/* 1. TENANT CONCERN & CONTEXT CARD */}
                   <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="flex h-7 w-7 items-center justify-center rounded-lg border text-xs shrink-0"
-                          style={{
-                            backgroundColor: `${typeMeta.color}15`,
-                            borderColor: `${typeMeta.color}35`,
-                            color: typeMeta.color,
-                          }}
-                        >
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-slate-700 dark:text-slate-300 shrink-0">
                           {getTypeIcon(request.request_type)}
                         </span>
                         <div>
-                          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                          <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
                             {typeMeta.label} Request
                           </h3>
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
                             Submitted on {fmtDateTime(request.created_at)}
                           </span>
                         </div>
@@ -1072,12 +1080,12 @@ export function MaintenanceDetailModal({
                     </div>
 
                     {/* Reported Problem Text */}
-                    <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-800/40 p-3 space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                    <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-800/40 p-3.5 space-y-2">
+                      <span className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-400 block">
                         Problem Description
                       </span>
-                      <p className="text-xs sm:text-sm text-slate-900 dark:text-slate-100 leading-relaxed font-normal whitespace-pre-wrap">
-                        {request.description || "No specific problem details provided by resident."}
+                      <p className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-normal whitespace-pre-wrap">
+                        {request.description || "No specific problem details provided by tenant."}
                       </p>
                       {request.notes && (
                         <div className="mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-700/80 text-xs text-slate-600 dark:text-slate-400">
@@ -1087,11 +1095,11 @@ export function MaintenanceDetailModal({
                       )}
                     </div>
 
-                    {/* Resident Attached Media Strip */}
+                    {/* Tenant Attached Media Strip */}
                     {initialAttachments.length > 0 && (
-                      <div className="space-y-1.5 pt-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                          Resident Attached Photos / Documents ({initialAttachments.length})
+                      <div className="space-y-2 pt-1">
+                        <span className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-400 block">
+                          Tenant Attached Photos &amp; Documents ({initialAttachments.length})
                         </span>
                         <div className="flex items-center gap-2 overflow-x-auto pb-1">
                           {initialAttachments.map((att, idx) => (
@@ -1100,7 +1108,7 @@ export function MaintenanceDetailModal({
                               attachment={att}
                               index={idx}
                               onPreviewImage={setLightboxImage}
-                              tag="Resident Upload"
+                              tag="Tenant Upload"
                               size="normal"
                             />
                           ))}
@@ -1112,12 +1120,12 @@ export function MaintenanceDetailModal({
                   {/* 2. DYNAMIC STAGE ACTION HUB */}
                   <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-4 space-y-4">
                     <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <ClipboardCheck size={16} className="text-slate-700 dark:text-slate-300" />
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                        <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
                           Guided Stage Action Hub
                         </h3>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold hidden sm:inline">
+                        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium hidden sm:inline">
                           • {status === "completed" || status === "closed"
                               ? "All 5 Stages Completed • Ticket Closed"
                               : status === "resolved"
@@ -1167,7 +1175,7 @@ export function MaintenanceDetailModal({
                                 {isDone ? <Check size={13} strokeWidth={3} /> : <span>{idx + 1}</span>}
                               </div>
                               <span
-                                className={`mt-1.5 text-[11px] max-w-[76px] leading-tight transition-colors ${
+                                className={`mt-1.5 text-xs max-w-[84px] leading-tight transition-colors ${
                                   isActive
                                     ? "font-bold text-blue-600 dark:text-blue-400"
                                     : isDone
@@ -1185,16 +1193,16 @@ export function MaintenanceDetailModal({
 
                     {/* Reopened High-Priority Alert Banner */}
                     {isReopened && (
-                      <div className="flex items-start gap-2.5 rounded-lg border border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/40 p-3 text-xs">
+                      <div className="flex items-start gap-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-3 text-xs">
                         <RefreshCw size={16} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5 animate-spin-slow" />
                         <div className="min-w-0">
-                          <div className="font-bold text-rose-900 dark:text-rose-200">
-                            Reopened by Resident — Iteration #{request?.reopenCount || 1}
+                          <div className="font-bold text-slate-900 dark:text-slate-100">
+                            Reopened by Tenant — Iteration #{request?.reopenCount || 1}
                           </div>
-                          <p className="mt-0.5 text-xs text-rose-800 dark:text-rose-300 leading-relaxed">
+                          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                             {request?.reopen_history?.[request.reopen_history.length - 1]?.note ||
                               request?.reopen_note ||
-                              "Resident reported the issue persists. Please reassess, reassign or reschedule the repair."}
+                              "Tenant reported the issue persists. Please reassess, reassign or reschedule the repair."}
                           </p>
                         </div>
                       </div>
@@ -1202,19 +1210,19 @@ export function MaintenanceDetailModal({
 
                     {/* Stage 4 Resolved Alert Banner (Awaiting Tenant Feedback & 7-Day Auto-Completion Notice) */}
                     {isResolvedStage && (
-                      <div className="flex flex-col gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 text-xs">
+                      <div className="flex flex-col gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 text-xs">
                         <div className="flex items-start gap-2.5">
                           <Clock size={16} className="text-slate-600 dark:text-slate-400 shrink-0 mt-0.5" />
-                          <div className="min-w-0 flex-1 space-y-1">
+                          <div className="min-w-0 flex-1 space-y-1.5">
                             <div className="flex items-center justify-between flex-wrap gap-2">
-                              <span className="font-bold text-slate-900 dark:text-slate-100">
+                              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
                                 Stage 4: Work Resolved • Awaiting Tenant Verification &amp; Feedback
                               </span>
-                              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                              <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                                 7-Day Auto-Completion Policy
                               </span>
                             </div>
-                            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                               Repair details and completion proof have been saved. The tenant has been notified on mobile to inspect the repair and submit feedback. If no issues or objections are reported within <strong>7 days (1 week)</strong>, this ticket will automatically close as Completed.
                             </p>
                           </div>
@@ -1224,12 +1232,12 @@ export function MaintenanceDetailModal({
 
                     {/* Stage 5: Terminal Completed Banner with AI Report Generator */}
                     {isTerminal && (
-                      <div className="flex flex-col gap-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 text-xs">
+                      <div className="flex flex-col gap-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 text-xs">
                         <div className="flex items-start gap-2.5">
                           <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                          <div className="min-w-0 flex-1 space-y-1">
+                          <div className="min-w-0 flex-1 space-y-1.5">
                             <div className="flex items-center justify-between flex-wrap gap-2">
-                              <span className="font-bold text-slate-900 dark:text-slate-100">
+                              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
                                 {request?.status === "completed"
                                   ? "Stage 5: Ticket Completed & Confirmed Fixed"
                                   : request?.status === "rejected"
@@ -1238,19 +1246,19 @@ export function MaintenanceDetailModal({
                                       ? "Ticket Cancelled"
                                       : "Stage 5: Ticket Closed & Archived"}
                               </span>
-                              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                              <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                                 Officially Closed
                               </span>
                             </div>
                             {request?.resolutionConfirmation?.confirmedAt ? (
-                              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                                Resident confirmed resolution on {fmtDateTime(request.resolutionConfirmation.confirmedAt)}
+                              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                                Tenant confirmed resolution on {fmtDateTime(request.resolutionConfirmation.confirmedAt)}
                                 {request.resolutionConfirmation.tenantFeedback
                                   ? ` • "${request.resolutionConfirmation.tenantFeedback}"`
                                   : ""}
                               </p>
                             ) : (
-                              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                                 Officially completed and finalized. All service records, contractor ratings, and cost attributions are permanently logged.
                               </p>
                             )}
@@ -1261,7 +1269,8 @@ export function MaintenanceDetailModal({
                             <button
                               type="button"
                               onClick={() => onGenerateReport("admin")}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition cursor-pointer shadow-sm"
+                              title="Generate or view official maintenance completion report"
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] transition cursor-pointer shadow-sm"
                             >
                               <Sparkles size={13} />
                               <span>
@@ -1287,11 +1296,11 @@ export function MaintenanceDetailModal({
                         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
                           <div className="flex items-center gap-2">
                             <UserCheck size={16} className="text-slate-700 dark:text-slate-300" />
-                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
                               Assign Service Provider &amp; Schedule Repair Visit
                             </h3>
                           </div>
-                          <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                          <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400 border border-amber-300/80 dark:border-amber-700/60">
                             Stage 2: Under Review
                           </span>
                         </div>
@@ -1325,14 +1334,14 @@ export function MaintenanceDetailModal({
                         <div className="border-t border-slate-200/80 dark:border-slate-800/80 pt-3.5 space-y-3.5">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 text-[10px] font-bold shadow-2xs">
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 text-[10px] font-bold shadow-2xs">
                                 2
                               </span>
-                              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-slate-800 dark:text-slate-200">
                                 Set Repair Visit Schedule
                               </h4>
                             </div>
-                            <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                            <span className="rounded bg-transparent px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                               Required *
                             </span>
                           </div>
@@ -1349,7 +1358,7 @@ export function MaintenanceDetailModal({
                           <div className="space-y-1">
                             <div className="flex items-center justify-between">
                               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                                Room Access Notes / Resident Instructions <span className="text-[11px] font-normal text-slate-400">(Optional)</span>
+                                Room Access Notes / Tenant Instructions <span className="text-[11px] font-normal text-slate-400">(Optional)</span>
                               </label>
                               <span className="text-[10px] text-slate-400">
                                 {scheduleNote.length}/300
@@ -1386,7 +1395,12 @@ export function MaintenanceDetailModal({
                             type="button"
                             onClick={handleConfirmProviderAndSchedule}
                             disabled={!scheduleDate || !scheduleTime || isAssigningProvider || isSubmittingSchedule}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-5 py-2.5 text-xs font-bold shadow-sm disabled:opacity-40 transition cursor-pointer shrink-0 active:scale-[0.98]"
+                            title={
+                              !scheduleDate || !scheduleTime
+                                ? "Select visit date and time before confirming"
+                                : "Confirm service provider assignment and visit schedule"
+                            }
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-5 py-2.5 text-xs font-bold shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shrink-0 active:scale-[0.98]"
                           >
                             {isAssigningProvider || isSubmittingSchedule ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -1396,7 +1410,7 @@ export function MaintenanceDetailModal({
                             <span>
                               {isAssigningProvider || isSubmittingSchedule
                                 ? "Confirming..."
-                                : "Confirm"}
+                                : "Confirm Assignment & Schedule"}
                             </span>
                           </button>
                         </div>
@@ -1404,7 +1418,7 @@ export function MaintenanceDetailModal({
                     </div>
                   )}
 
-                  {/* STAGE 3: IN PROGRESS (Active Execution, Resident Reschedule, Proof Upload & Expenses) */}
+                  {/* STAGE 3: IN PROGRESS (Active Execution, Tenant Reschedule, Proof Upload & Expenses) */}
                   {(isExecutionStage || isReopened) && (
                     <div id="maintenance-stage3-actions" className="space-y-4">
                       <div className="grid gap-4 md:grid-cols-2 items-stretch">
@@ -1412,11 +1426,11 @@ export function MaintenanceDetailModal({
                         <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-col justify-between space-y-4">
                           <div className="space-y-3">
                             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
-                              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                                 <PlayCircle size={16} className="text-amber-600 dark:text-amber-500" />
                                 <span>Active Work In Progress</span>
                               </h3>
-                              <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                              <span className="px-2.5 py-0.5 text-xs font-semibold rounded bg-transparent text-amber-700 dark:text-amber-400 border border-amber-300/80 dark:border-amber-700/60">
                                 Active on site
                               </span>
                             </div>
@@ -1478,7 +1492,8 @@ export function MaintenanceDetailModal({
                                   <button
                                     type="button"
                                     onClick={() => setShowScheduler((v) => !v)}
-                                    className="px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                                    title="Open visit rescheduling panel"
+                                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 active:scale-[0.98] transition cursor-pointer shadow-2xs"
                                   >
                                     {showScheduler ? "Hide" : "Reschedule"}
                                   </button>
@@ -1486,16 +1501,16 @@ export function MaintenanceDetailModal({
                               )}
                             </div>
 
-                            {/* Resident Reschedule Request Alert Banner */}
+                            {/* Tenant Reschedule Request Alert Banner */}
                             {request?.rescheduleRequest?.status === "pending" && (
-                              <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 space-y-2 text-xs">
-                                <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-200">
-                                  <Clock size={14} className="text-amber-600 shrink-0" />
-                                  <span>Resident Requested Schedule Adjustment</span>
+                              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-3 space-y-2 text-xs">
+                                <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-slate-100">
+                                  <Clock size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                                  <span>Tenant Requested Schedule Adjustment</span>
                                 </div>
-                                <p className="text-amber-800 dark:text-amber-300">
+                                <p className="text-slate-600 dark:text-slate-400">
                                   Preferred:{" "}
-                                  <strong>
+                                  <strong className="text-slate-800 dark:text-slate-200">
                                     {fmtDateTime(request.rescheduleRequest.proposedDate)}
                                   </strong>
                                   {request.rescheduleRequest.reason
@@ -1511,7 +1526,8 @@ export function MaintenanceDetailModal({
                                       )
                                     }
                                     disabled={isRespondingToReschedule}
-                                    className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-xs cursor-pointer"
+                                    title="Accept tenant's requested date & time adjustment"
+                                    className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] transition shadow-xs cursor-pointer"
                                   >
                                     {isRespondingToReschedule
                                       ? "Updating..."
@@ -1520,7 +1536,8 @@ export function MaintenanceDetailModal({
                                   <button
                                     type="button"
                                     onClick={() => setShowScheduler(true)}
-                                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-amber-300 text-amber-900 hover:bg-amber-100 transition cursor-pointer"
+                                    title="Pick a different date and time for the repair visit"
+                                    className="px-3.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 active:scale-[0.98] transition cursor-pointer"
                                   >
                                     Set Alternate Date
                                   </button>
@@ -1530,7 +1547,7 @@ export function MaintenanceDetailModal({
 
                             {/* Interactive Rescheduler if opened */}
                             {showScheduler && (
-                              <div className="rounded-xl border border-sky-200 dark:border-sky-800 bg-sky-50/50 dark:bg-sky-950/30 p-3.5 space-y-3">
+                              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-3.5 space-y-3">
                                 <span className="text-[11px] font-bold uppercase tracking-wider text-sky-950 dark:text-sky-200 block">
                                   Update Repair Visit Date &amp; Time
                                 </span>
@@ -1553,7 +1570,7 @@ export function MaintenanceDetailModal({
                                   <button
                                     type="button"
                                     onClick={() => setShowScheduler(false)}
-                                    className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                                    className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg active:scale-[0.98] cursor-pointer"
                                   >
                                     Cancel
                                   </button>
@@ -1565,7 +1582,12 @@ export function MaintenanceDetailModal({
                                       !scheduleTime ||
                                       isSubmittingSchedule
                                     }
-                                    className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 cursor-pointer shadow-xs"
+                                    title={
+                                      !scheduleDate || !scheduleTime
+                                        ? "Select date and time first"
+                                        : "Save updated visit schedule"
+                                    }
+                                    className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-sky-600 text-white hover:bg-sky-700 active:bg-sky-800 disabled:opacity-50 active:scale-[0.98] cursor-pointer shadow-xs"
                                   >
                                     {isSubmittingSchedule
                                       ? "Saving..."
@@ -1585,11 +1607,11 @@ export function MaintenanceDetailModal({
                         <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-col justify-between space-y-4">
                           <div className="space-y-3">
                             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
-                              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                                 <ShieldCheck size={16} className="text-slate-700 dark:text-slate-300" />
                                 <span>Upload Resolution Proof</span>
                               </h3>
-                              <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                              <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                                 Required *
                               </span>
                             </div>
@@ -1755,11 +1777,11 @@ export function MaintenanceDetailModal({
                         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
                           <div className="flex items-center gap-2">
                             <Clock size={16} className="text-slate-700 dark:text-slate-300 shrink-0" />
-                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
                               Tenant Verification &amp; Feedback Window
                             </h3>
                           </div>
-                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-transparent text-amber-700 dark:text-amber-400 border border-amber-300/80 dark:border-amber-700/60">
                             Awaiting Feedback
                           </span>
                         </div>
@@ -1770,12 +1792,12 @@ export function MaintenanceDetailModal({
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1.5">
                                 <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">
-                                  Verified by Resident
+                                <span className="text-xs font-bold uppercase tracking-wide text-slate-900 dark:text-slate-100">
+                                  Verified by Tenant
                                 </span>
                               </div>
                               {request?.resolutionConfirmation?.confirmedAt && (
-                                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                                   {fmtDateTime(request.resolutionConfirmation.confirmedAt)}
                                 </span>
                               )}
@@ -1804,26 +1826,26 @@ export function MaintenanceDetailModal({
                             ) : null}
 
                             {request?.resolutionConfirmation?.tenantFeedback ? (
-                              <p className="text-xs text-slate-700 dark:text-slate-300 italic">
+                              <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 italic">
                                 "{request.resolutionConfirmation.tenantFeedback}"
                               </p>
                             ) : (
-                              <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                                Resident confirmed resolution without additional comments.
+                              <p className="text-xs text-slate-600 dark:text-slate-400">
+                                Tenant confirmed resolution without additional comments.
                               </p>
                             )}
 
-                            <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
+                            <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
                               Observation window active: Ticket will automatically finalize as Completed after 7 days of inactivity.
                             </div>
                           </div>
                         ) : (
                           <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 space-y-2">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-800 dark:text-slate-200">
-                              <Clock size={14} className="text-slate-500" />
+                            <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-slate-200">
+                              <Clock size={15} className="text-slate-500" />
                               <span>Pending Tenant Feedback on Web &amp; Mobile</span>
                             </div>
-                            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                               The tenant was notified to inspect the resolved issue and rate the repair. If no further movement or issues are reported within <strong>7 days (1 week)</strong>, the ticket will automatically close as Completed.
                             </p>
                           </div>
@@ -1832,7 +1854,7 @@ export function MaintenanceDetailModal({
                         {/* Action Buttons: In-Person Confirmation or Reopen */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800/80">
                           <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            The ticket will auto-complete after 7 days. If the resident confirmed in person, you can manually complete now.
+                            The ticket will auto-complete after 7 days. If the tenant confirmed in person, you can manually complete now.
                           </p>
                           <div className="flex items-center gap-2 shrink-0">
                             <button
@@ -1841,9 +1863,10 @@ export function MaintenanceDetailModal({
                                 setLocalRequestOverride((prev) => ({ ...(prev || request), status: "in_progress" }));
                                 await onQuickStatusChange?.(rawRequestId, "in_progress");
                               }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                              title="Reopen this ticket for additional maintenance servicing"
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 active:scale-[0.98] shadow-xs transition cursor-pointer"
                             >
-                              <RefreshCw size={13} />
+                              <RefreshCw size={13} className="text-amber-600 dark:text-amber-400" />
                               <span>Reopen Issue</span>
                             </button>
 
@@ -1853,9 +1876,10 @@ export function MaintenanceDetailModal({
                                 setLocalRequestOverride((prev) => ({ ...(prev || request), status: "completed" }));
                                 await onQuickStatusChange?.(rawRequestId, "completed");
                               }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                              title="Manually verify and mark this ticket as Completed immediately (in-person confirmation)"
+                              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-sm active:scale-[0.98] transition cursor-pointer"
                             >
-                              <CheckCircle2 size={13} />
+                              <CheckCircle2 size={14} />
                               <span>Staff Early Close Override</span>
                             </button>
                           </div>
@@ -1876,11 +1900,11 @@ export function MaintenanceDetailModal({
                       {(assignedProviderName || request?.scheduledDate) && (
                         <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-2">
                           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                               <UserCheck size={14} className="text-slate-500" />
                               <span>Assigned Service Provider &amp; Schedule</span>
                             </span>
-                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                            <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-transparent text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                               Work Logged
                             </span>
                           </div>
@@ -1925,8 +1949,8 @@ export function MaintenanceDetailModal({
                       {/* Before vs After Photo Comparison */}
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-2">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
-                            1. Resident Reported Media (Before)
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-300 block">
+                            1. Tenant Reported Media (Before)
                           </span>
                           {initialAttachments.length === 0 ? (
                             <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
@@ -1949,7 +1973,7 @@ export function MaintenanceDetailModal({
                         </div>
 
                         <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-2">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-300 block">
                             2. Technician Resolution Proof (After)
                           </span>
                           {workLogAttachments.length === 0 ? (
@@ -1985,11 +2009,11 @@ export function MaintenanceDetailModal({
                         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
                           <div className="flex items-center gap-2">
                             <CheckCircle2 size={16} className="text-slate-700 dark:text-slate-300 shrink-0" />
-                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
                               Official Ticket Resolution Record
                             </h3>
                           </div>
-                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-transparent text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700">
                             Closed &amp; Archived
                           </span>
                         </div>
@@ -1997,11 +2021,11 @@ export function MaintenanceDetailModal({
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                           <div className="rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 p-3 space-y-1.5">
                             <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">
-                              Verification &amp; Resident Rating
+                              Verification &amp; Tenant Rating
                             </span>
                             <span className="font-bold text-slate-900 dark:text-slate-100">
                               {request?.resolutionConfirmation?.confirmedAt
-                                ? "Verified by Resident on Web/Mobile"
+                                ? "Verified by Tenant on Web/Mobile"
                                 : "Staff In-Person Verification & Closure"}
                             </span>
 
@@ -2065,7 +2089,7 @@ export function MaintenanceDetailModal({
                               <UserCheck size={14} className="text-slate-500" />
                               <span>Assigned Service Provider &amp; Schedule</span>
                             </span>
-                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-transparent text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700">
                               Completed Work
                             </span>
                           </div>
@@ -2111,7 +2135,7 @@ export function MaintenanceDetailModal({
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-2">
                           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                            1. Resident Reported Media (Before)
+                            1. Tenant Reported Media (Before)
                           </span>
                           {initialAttachments.length === 0 ? (
                             <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
@@ -2172,8 +2196,8 @@ export function MaintenanceDetailModal({
                   <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
                     <div className="flex items-center gap-2">
                       <MessageSquare size={16} className="text-primary" />
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                        Two-Way Resident Communication
+                      <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                        Two-Way Tenant Communication
                       </h3>
                     </div>
                     <span className="text-xs text-slate-500">
@@ -2213,10 +2237,10 @@ export function MaintenanceDetailModal({
                 <div className="space-y-4">
                   {/* Proof of Resolution Card */}
                   <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2">
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
                       <div className="flex items-center gap-2">
                         <ShieldCheck size={16} className="text-emerald-600" />
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                        <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
                           Proof of Work &amp; Resolution Photos
                         </h3>
                       </div>
@@ -2232,8 +2256,8 @@ export function MaintenanceDetailModal({
 
                     {/* Proof Upload Box */}
                     {showProofUploader && (
-                      <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/40 p-3 space-y-2">
-                        <span className="text-[11px] font-bold uppercase text-emerald-900 dark:text-emerald-200 block">
+                      <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-2">
+                        <span className="text-[11px] font-bold uppercase text-slate-900 dark:text-slate-100 block">
                           Upload Completed Repair Proof
                         </span>
                         <input
@@ -2262,9 +2286,10 @@ export function MaintenanceDetailModal({
                             type="button"
                             onClick={handleUploadAndSaveProof}
                             disabled={!proofFile || isUploadingProof}
-                            className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
+                            title={!proofFile ? "Attach photo proof first" : "Save photo proof and mark ticket as Resolved"}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 active:scale-[0.98] cursor-pointer shadow-xs"
                           >
-                            {isUploadingProof ? <Loader2 size={11} className="animate-spin" /> : <ShieldCheck size={11} />}
+                            {isUploadingProof ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />}
                             <span>{isUploadingProof ? "Saving..." : "Save Proof & Mark Resolved"}</span>
                           </button>
                         </div>
@@ -2311,10 +2336,10 @@ export function MaintenanceDetailModal({
               {/* ═══════════════════════════════════════════ */}
               {activeTab === "timeline" && (
                 <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
                     <div className="flex items-center gap-1.5">
                       <History size={16} className="text-primary" />
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                      <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
                         Audit Log &amp; Timeline History
                       </h3>
                     </div>

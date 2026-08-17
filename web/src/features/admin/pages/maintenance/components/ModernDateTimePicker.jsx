@@ -242,11 +242,11 @@ export function ModernDateTimePicker({
                       type="button"
                       disabled={isDisabledDay}
                       onClick={() => handleSelectDay(day.dateStr, day.isPast, day.isFuture)}
-                      className={`h-7 w-full rounded-md text-xs font-medium flex items-center justify-center transition cursor-pointer ${
+                      className={`h-7 w-full rounded-md text-xs font-medium flex items-center justify-center transition cursor-pointer active:scale-[0.96] ${
                         isSelected
-                          ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-bold shadow-xs"
+                          ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 font-bold shadow-xs"
                           : isToday
-                          ? "border border-slate-900 dark:border-slate-100 text-slate-900 dark:text-slate-100 font-bold"
+                          ? "border border-[#0A1628] dark:border-slate-100 text-[#0A1628] dark:text-slate-100 font-bold"
                           : isDisabledDay
                           ? "opacity-25 cursor-not-allowed text-slate-400"
                           : day.isCurrentMonth
@@ -268,7 +268,7 @@ export function ModernDateTimePicker({
                     handleQuickDay(0);
                     setIsCalendarOpen(false);
                   }}
-                  className="text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:underline cursor-pointer"
+                  className="text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:underline active:scale-[0.98] cursor-pointer"
                 >
                   Today
                 </button>
@@ -278,7 +278,7 @@ export function ModernDateTimePicker({
                     handleQuickDay(1);
                     setIsCalendarOpen(false);
                   }}
-                  className="text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:underline cursor-pointer"
+                  className="text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:underline active:scale-[0.98] cursor-pointer"
                 >
                   Tomorrow
                 </button>
@@ -288,7 +288,7 @@ export function ModernDateTimePicker({
                     handleQuickDay(2);
                     setIsCalendarOpen(false);
                   }}
-                  className="text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:underline cursor-pointer"
+                  className="text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:underline active:scale-[0.98] cursor-pointer"
                 >
                   In 2 Days
                 </button>
@@ -319,9 +319,9 @@ export function ModernDateTimePicker({
               setIsTimePickerOpen((prev) => !prev);
               setIsCalendarOpen(false);
             }}
-            className={`w-full h-10 rounded-lg border px-3 flex items-center justify-between text-xs font-medium transition cursor-pointer text-left ${
+            className={`w-full h-10 rounded-lg border px-3 flex items-center justify-between text-xs font-medium transition cursor-pointer text-left active:scale-[0.99] ${
               isTimePickerOpen
-                ? "border-slate-900 dark:border-slate-100 ring-1 ring-slate-900/10 bg-white dark:bg-slate-900"
+                ? "border-[#0A1628] dark:border-slate-100 ring-1 ring-[#0A1628]/10 bg-white dark:bg-slate-900"
                 : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-400 dark:hover:border-slate-600 shadow-2xs"
             }`}
           >
@@ -350,9 +350,9 @@ export function ModernDateTimePicker({
                       key={slot.time}
                       type="button"
                       onClick={() => handleSelectTimeSlot(slot.time)}
-                      className={`flex items-center justify-between p-2 rounded-lg text-xs transition cursor-pointer ${
+                      className={`flex items-center justify-between p-2 rounded-lg text-xs transition cursor-pointer active:scale-[0.98] ${
                         isSelected
-                          ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-bold shadow-xs"
+                          ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 font-bold shadow-xs"
                           : "bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-700"
                       }`}
                     >
@@ -397,9 +397,9 @@ export function ModernDateTimePicker({
           onClick={() => {
             handleQuickDay(0, dayjs().add(2, "hour").format("HH:00"));
           }}
-          className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition cursor-pointer shadow-2xs border ${
+          className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition cursor-pointer shadow-2xs border active:scale-[0.98] ${
             dateValue === dayjs().format("YYYY-MM-DD")
-              ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent font-bold"
+              ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 border-[#0A1628] font-bold"
               : "bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
           }`}
         >
@@ -411,9 +411,9 @@ export function ModernDateTimePicker({
           onClick={() => {
             handleQuickDay(1, "09:00");
           }}
-          className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition cursor-pointer shadow-2xs border ${
+          className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition cursor-pointer shadow-2xs border active:scale-[0.98] ${
             dateValue === dayjs().add(1, "day").format("YYYY-MM-DD") && timeValue === "09:00"
-              ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent font-bold"
+              ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 border-[#0A1628] font-bold"
               : "bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
           }`}
         >
@@ -425,9 +425,9 @@ export function ModernDateTimePicker({
           onClick={() => {
             handleQuickDay(1, "14:00");
           }}
-          className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition cursor-pointer shadow-2xs border ${
+          className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition cursor-pointer shadow-2xs border active:scale-[0.98] ${
             dateValue === dayjs().add(1, "day").format("YYYY-MM-DD") && timeValue === "14:00"
-              ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent font-bold"
+              ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 border-[#0A1628] font-bold"
               : "bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
           }`}
         >

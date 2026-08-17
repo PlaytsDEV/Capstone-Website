@@ -294,27 +294,27 @@ export function ServiceProviderAssignmentPanel({
       {!embedded ? (
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
           <div className="flex items-center gap-2">
-            <PhoneCall size={15} className="text-slate-700 dark:text-slate-300" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+            <PhoneCall size={16} className="text-slate-700 dark:text-slate-300" />
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
               Contractor &amp; Dispatch
             </h3>
           </div>
-          <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+          <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
             Admin Only
           </span>
         </div>
       ) : (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 text-[10px] font-bold shadow-2xs">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 text-[10px] font-bold shadow-2xs">
               1
             </span>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+            <h4 className="text-xs font-bold uppercase tracking-wide text-slate-800 dark:text-slate-200">
               Assign Service Contractor
             </h4>
           </div>
 
-          <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+          <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
             Required *
           </span>
         </div>
@@ -338,7 +338,7 @@ export function ServiceProviderAssignmentPanel({
             type="button"
             disabled={disabled || isAssigning}
             onClick={handleSelectInHouse}
-            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition cursor-pointer active:scale-[0.98] ${
               dispatchMode === "in_house"
                 ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/90 dark:border-slate-700"
                 : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
@@ -353,7 +353,7 @@ export function ServiceProviderAssignmentPanel({
             type="button"
             disabled={disabled || isAssigning}
             onClick={handleSelectManual}
-            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition cursor-pointer active:scale-[0.98] ${
               dispatchMode === "manual"
                 ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/90 dark:border-slate-700"
                 : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
@@ -368,7 +368,7 @@ export function ServiceProviderAssignmentPanel({
             type="button"
             disabled={disabled || isAssigning}
             onClick={handleSelectDirectoryMode}
-            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition cursor-pointer active:scale-[0.98] ${
               dispatchMode === "directory"
                 ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/90 dark:border-slate-700"
                 : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
@@ -396,9 +396,7 @@ export function ServiceProviderAssignmentPanel({
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 space-y-3.5 shadow-2xs text-xs">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300">
-                <Building2 size={15} />
-              </span>
+              <Building2 size={16} className="text-slate-700 dark:text-slate-300 shrink-0" />
               <div>
                 <span className="font-bold text-slate-900 dark:text-slate-100 text-xs block">
                   In-House Facilities Staff
@@ -412,7 +410,7 @@ export function ServiceProviderAssignmentPanel({
             <button
               type="button"
               onClick={handleSelectInHouse}
-              className="text-[11px] font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 cursor-pointer"
+              className="text-[11px] font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 active:scale-[0.98] cursor-pointer"
               title="Reset to standard facilities team defaults"
             >
               Reset to Defaults
@@ -479,10 +477,10 @@ export function ServiceProviderAssignmentPanel({
             </div>
           </div>
 
-          {/* Integrated Resident Preview & Copy Dispatch Footer */}
+          {/* Integrated Tenant Preview & Copy Dispatch Footer */}
           <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400 min-w-0">
-              <span className="font-semibold text-slate-500">Resident sees:</span>
+              <span className="font-semibold text-slate-500">Tenant sees:</span>
               <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
                 Authorized {requestCategory} Specialist
               </span>
@@ -576,7 +574,7 @@ export function ServiceProviderAssignmentPanel({
                             {selectedCandidate.providerName}
                           </span>
                           {selectedCandidate.strength && (
-                            <span className="rounded bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 text-[9px] font-bold shrink-0">
+                            <span className="rounded bg-transparent text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 text-[9px] font-bold shrink-0">
                               {selectedCandidate.strength}
                             </span>
                           )}
@@ -681,7 +679,7 @@ export function ServiceProviderAssignmentPanel({
                             {candidate.providerName}
                           </span>
                           {candidate.strength && (
-                            <span className="rounded bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 text-[9px] font-bold shrink-0">
+                            <span className="rounded bg-transparent text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 text-[9px] font-bold shrink-0">
                               {candidate.strength}
                             </span>
                           )}
@@ -725,7 +723,7 @@ export function ServiceProviderAssignmentPanel({
                           type="button"
                           disabled={disabled || isAssigning}
                           onClick={() => handleSelectCandidate(candidate)}
-                          className={`inline-flex h-6 items-center gap-1 rounded-md px-2.5 text-[11px] font-semibold transition cursor-pointer ${
+                          className={`inline-flex h-6 items-center gap-1 rounded-md px-2.5 text-[11px] font-semibold transition cursor-pointer active:scale-[0.98] ${
                             isSelected
                               ? "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold shadow-xs"
                               : "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700"
@@ -839,11 +837,11 @@ export function ServiceProviderAssignmentPanel({
             <span>Save contractor to directory for future {requestBranch} {requestCategory} requests</span>
           </label>
 
-          {/* Integrated Resident Preview & Copy Dispatch Footer */}
+          {/* Integrated Tenant Preview & Copy Dispatch Footer */}
           {activeAssignedName && (
             <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400 min-w-0">
-                <span className="font-semibold text-slate-500">Resident sees:</span>
+                <span className="font-semibold text-slate-500">Tenant sees:</span>
                 <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
                   Authorized {activeAssignedCategory} Specialist
                 </span>
@@ -877,7 +875,7 @@ export function ServiceProviderAssignmentPanel({
                 Select a previously saved contractor for {requestBranch}
               </span>
             </div>
-            <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+            <span className="rounded bg-transparent px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
               {providers.length} Saved
             </span>
           </div>
@@ -953,11 +951,11 @@ export function ServiceProviderAssignmentPanel({
                 </div>
               )}
 
-              {/* Integrated Resident Preview & Copy Dispatch Footer */}
+              {/* Integrated Tenant Preview & Copy Dispatch Footer */}
               {activeAssignedName && (
                 <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400 min-w-0">
-                    <span className="font-semibold text-slate-500">Resident sees:</span>
+                    <span className="font-semibold text-slate-500">Tenant sees:</span>
                     <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
                       Authorized {activeAssignedCategory} Specialist
                     </span>

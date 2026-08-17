@@ -6,10 +6,10 @@ export const BranchBadge = ({ branch }) => {
 
   return (
     <span
-      className={`inline-flex w-fit items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${
+      className={`inline-flex w-fit items-center rounded-md border border-slate-200 dark:border-slate-700 px-2 py-0.5 text-xs font-semibold bg-transparent ${
         isMissing
-          ? "border-amber-200 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"
-          : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300"
+          ? "text-amber-700 dark:text-amber-400"
+          : "text-slate-700 dark:text-slate-300"
       }`}
     >
       {isMissing ? "Unassigned Branch" : label}
@@ -23,10 +23,10 @@ export const BranchTableText = ({ branch }) => {
 
   return (
     <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-transparent border border-slate-200 dark:border-slate-700 ${
         isMissing
-          ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/80 dark:border-amber-900/60"
-          : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+          ? "text-amber-700 dark:text-amber-400"
+          : "text-slate-700 dark:text-slate-200"
       }`}
     >
       {isMissing ? "Unassigned Branch" : label}

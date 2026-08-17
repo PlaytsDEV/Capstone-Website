@@ -578,7 +578,8 @@
 }
 
 .admin-maintenance__avatar {
-  background: linear-gradient(135deg, #0f766e 0%, #1d4ed8 100%);
+  background-color: #0A1628;
+  border: 1px solid #1e293b;
   color: #fff;
   font-size: 12px;
   font-weight: 800;

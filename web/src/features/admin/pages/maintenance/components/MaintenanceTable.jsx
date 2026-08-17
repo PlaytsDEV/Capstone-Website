@@ -17,6 +17,7 @@ import {
 } from "../../../../../shared/utils/maintenanceConfig";
 import { formatBranch, fmtDate, getRelativeTime } from "../../../../../shared/utils/formatDate";
 import { DataTable } from "../../../components/shared";
+import ProfileAvatar from "../../../../../shared/components/ProfileAvatar";
 import {
   formatCleanRoomName,
   getAssignedProviderName,
@@ -95,8 +96,8 @@ export function MaintenanceTable({
           ]
         : []),
       {
-        key: "resident",
-        label: "Resident & Location",
+        key: "tenant",
+        label: "Tenant & Location",
         width: "21%",
         render: (row) => {
           const rawName = row.tenant?.full_name || row.tenantName || "";
@@ -138,11 +139,12 @@ export function MaintenanceTable({
 
           return (
             <div className="flex items-center gap-3">
-              <div
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${palette.bg} ${palette.text}`}
-              >
-                {initials}
-              </div>
+              <ProfileAvatar
+                user={{ name: rawName }}
+                initials={initials}
+                size={36}
+                defaultOnly
+              />
               <div className="min-w-0">
                 <div
                   className="text-sm font-semibold text-slate-900 dark:text-slate-100 line-clamp-1 break-words"
@@ -255,7 +257,7 @@ export function MaintenanceTable({
           return (
             <div className="flex flex-col items-start gap-1.5">
               {isUrgent ? (
-                <span className="inline-flex items-center rounded-md border border-rose-200/90 bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-300">
+                <span className="inline-flex items-center rounded-md border border-slate-200 dark:border-slate-700 bg-transparent px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-400">
                   Urgent
                 </span>
               ) : (
@@ -276,17 +278,25 @@ export function MaintenanceTable({
           const statusMeta = getStatusBadgeMeta(row.status);
 
           return (
-            <div className="flex flex-col items-start gap-1.5">
+            <div className="flex flex-col items-start gap-1">
               <span
-                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold ${statusMeta.badge}`}
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${statusMeta.badge}`}
               >
                 <span className={`h-2 w-2 rounded-full shrink-0 ${statusMeta.dot}`} />
-                <span>{formatMaintenanceStatus(row.status)}</span>
+                <span>{formatMaintenanceStatus(row.status, { includeStage: true })}</span>
               </span>
+              {row.status === "resolved" && (
+                <span
+                  id={`awaiting-verification-badge-${row.request_id || row._id || row.id}`}
+                  className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-transparent text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700 whitespace-nowrap"
+                >
+                  Awaiting Verification
+                </span>
+              )}
               {row.isReopened && row.status !== "reopened" && (
                 <span
-                  id={`reopened-badge-${row.request_id}`}
-                  className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/60"
+                  id={`reopened-badge-${row.request_id || row._id || row.id}`}
+                  className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-transparent text-rose-700 dark:text-rose-400 border border-slate-200 dark:border-slate-700 whitespace-nowrap"
                 >
                   Reopened
                 </span>
