@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const { ObjectId } = require('mongodb');
 const { getDb } = require('../config/database');
 const { notifyNewAnnouncement } = require('../services/pushService');
 
@@ -225,12 +226,105 @@ async function getAllAnnouncements(req, res) {
     }
 
     const requesterBranchCode = await resolveRequesterBranchCode(db, req.user?._id || null);
-    const visible = announcements.filter((doc) => isAnnouncementVisibleForBranch(doc, requesterBranchCode));
+    let visible = announcements.filter((doc) => isAnnouncementVisibleForBranch(doc, requesterBranchCode));
+
+    // News-tab dismissal is intentionally its own per-tenant state
+    // (announcement_dismissals), separate from the Home bell's
+    // notification_dismissals (server/services/mobileNotificationBridge.js).
+    // The two feeds must be independently dismissible: hiding an item from
+    // one must never hide (or otherwise affect) it in the other, and neither
+    // ever mutates or deletes the shared announcement document itself.
+    if (userId) {
+      const dismissedIds = await getDismissedAnnouncementIds(db, userId);
+      if (dismissedIds.size) {
+        visible = visible.filter((doc) => !dismissedIds.has(doc.announcement_id || doc._id?.toString()));
+      }
+    }
 
     res.json(visible.map((doc) => normalizeAnnouncement(doc, authorNameMap)));
   } catch (error) {
     console.error('getAllAnnouncements error:', error);
     res.status(500).json({ detail: 'Failed to fetch announcements' });
+  }
+}
+
+async function getDismissedAnnouncementIds(db, userId) {
+  try {
+    const rows = await db.collection('announcement_dismissals')
+      .find({ user_id: userId })
+      .project({ announcement_id: 1 })
+      .toArray();
+    return new Set(rows.map((row) => row.announcement_id).filter(Boolean));
+  } catch (_) {
+    return new Set();
+  }
+}
+
+// Dismiss (per-tenant hide from the News tab only) a single announcement.
+// This is a junction write to announcement_dismissals — it never deletes or
+// mutates the shared `announcements` document, so the announcement stays
+// fully intact and fully visible to every other tenant in its audience, to
+// admins, and to this same tenant's Home bell feed (which reads its own,
+// separate notification_dismissals state). 404s if the announcement isn't
+// currently visible to this caller, so a client can't dismiss/probe another
+// tenant's private announcement or a different branch's announcement by
+// guessing an id.
+async function dismissAnnouncement(req, res) {
+  try {
+    const db = getDb();
+    const userId = req.user?.user_id || null;
+    const announcementId = String(req.params.announcementId || req.params.id || '').trim();
+
+    if (!userId) {
+      return res.status(401).json({ detail: 'Authentication required.' });
+    }
+    if (!announcementId) {
+      return res.status(400).json({ detail: 'announcementId is required.' });
+    }
+
+    const activeFilter = {
+      $or: [
+        { is_active: true },
+        { isActive: true },
+        { is_active: { $exists: false }, isActive: { $exists: false } },
+      ],
+    };
+    const notArchivedFilter = { isArchived: { $ne: true } };
+    const visibilityFilter = {
+      $or: [
+        { is_private: { $ne: true }, isPrivate: { $ne: true } },
+        { is_private: true, user_id: userId },
+        { isPrivate: true, userId },
+      ],
+    };
+    const idFilter = isHexObjectId(announcementId)
+      ? { $or: [{ announcement_id: announcementId }, { _id: new ObjectId(announcementId) }] }
+      : { announcement_id: announcementId };
+
+    const announcement = await db.collection('announcements').findOne({
+      $and: [activeFilter, notArchivedFilter, visibilityFilter, idFilter],
+    });
+
+    if (!announcement) {
+      return res.status(404).json({ detail: 'Announcement not found.' });
+    }
+
+    const requesterBranchCode = await resolveRequesterBranchCode(db, req.user?._id || null);
+    if (!isAnnouncementVisibleForBranch(announcement, requesterBranchCode)) {
+      return res.status(404).json({ detail: 'Announcement not found.' });
+    }
+
+    const canonicalId = announcement.announcement_id || announcement._id?.toString();
+    await db.collection('announcement_dismissals').updateOne(
+      { user_id: userId, announcement_id: canonicalId },
+      { $set: { dismissed_at: new Date() }, $setOnInsert: { created_at: new Date() } },
+      { upsert: true },
+    );
+
+    return res.json({ status: 'dismissed', announcement_id: canonicalId });
+  } catch (error) {
+    console.error('dismissAnnouncement error:', error);
+    return res.status(500).json({ detail: 'Failed to dismiss announcement' });
   }
 }
 
@@ -276,6 +370,7 @@ async function createAnnouncement(req, res) {
 module.exports = {
   getAllAnnouncements,
   createAnnouncement,
+  dismissAnnouncement,
   resolveRequesterBranchCode,
   normalizedBranchReference,
 };
