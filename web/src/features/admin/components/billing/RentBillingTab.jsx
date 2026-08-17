@@ -308,6 +308,7 @@ export default function RentBillingTab({ isActive }) {
   const { user } = useAuth();
   const isOwner = OWNER_ROLES.has(user?.role);
   const [branch, setBranch] = useState(isOwner ? "" : user?.branch || "");
+  const [timeframeMode, setTimeframeMode] = useState("month"); // "month" | "all"
   const [month, setMonth] = useState(getCurrentMonthInput());
   
   const [tenants, setTenants] = useState([]);
@@ -328,6 +329,7 @@ export default function RentBillingTab({ isActive }) {
 
   const branchParam = branch || undefined;
   const canLoad = isOwner || Boolean(branch);
+  const activeMonthParam = timeframeMode === "all" ? "all" : month;
 
   // Keep cron countdown fresh
   useEffect(() => {
@@ -342,8 +344,8 @@ export default function RentBillingTab({ isActive }) {
     setLoading(true);
     try {
       const [tenantData, billData] = await Promise.all([
-        billingApi.getRentBillableTenants({ branch: branchParam, month }),
-        billingApi.getRentBills({ branch: branchParam, month, limit: 1000 }),
+        billingApi.getRentBillableTenants({ branch: branchParam, month: activeMonthParam }),
+        billingApi.getRentBills({ branch: branchParam, month: activeMonthParam, limit: 1000 }),
       ]);
       setTenants(tenantData?.tenants || []);
       setBills(billData?.bills || []);
@@ -352,7 +354,7 @@ export default function RentBillingTab({ isActive }) {
     } finally {
       setLoading(false);
     }
-  }, [branchParam, canLoad, isActive, month]);
+  }, [branchParam, canLoad, isActive, activeMonthParam]);
 
   useEffect(() => {
     if (isActive) loadData();
@@ -369,6 +371,78 @@ export default function RentBillingTab({ isActive }) {
 
   // Derived state for the table with contract-rate locking and pending generation detection
   const tableRows = useMemo(() => {
+    if (timeframeMode === "all") {
+      // 1. Build a row for every bill in bills (all historical and current statements)
+      const billedReservationIds = new Set();
+      const billRows = bills.map((bill) => {
+        const billId = getId(bill.id || bill._id);
+        const reservationId = getId(bill.reservationId?._id || bill.reservationId || bill.id);
+        if (reservationId) billedReservationIds.add(reservationId);
+        
+        const paymentRecord = billId ? paymentsByBillId.get(billId) : null;
+        const normalizedBill = getNormalizedBillSnapshot(bill, paymentRecord);
+        const tenantName = bill.tenant?.name || `${bill.userId?.firstName || ""} ${bill.userId?.lastName || ""}`.trim() || bill.tenantName || "Tenant";
+        const roomName = bill.roomName || bill.room || bill.reservationId?.roomName || "Unassigned";
+        const contractRate = normalizeAmount(bill.charges?.rent || bill.grossAmount || bill.totalAmount || 0);
+
+        return {
+          id: billId,
+          reservationId: reservationId || billId,
+          tenantName,
+          roomName,
+          branch: bill.branch,
+          bill,
+          paymentRecord,
+          normalizedBill,
+          computedStatus: normalizedBill.status,
+          contractRate,
+          billingCycleStart: bill.billingCycleStart,
+          billingCycleEnd: bill.billingCycleEnd,
+          dueDate: normalizedBill.dueDate || bill.dueDate,
+          daysOverdue: normalizedBill.daysOverdue,
+          isPastGen: false,
+          applianceFees: normalizeAmount(bill.charges?.applianceFees || 0),
+          isHistoricalBill: true,
+        };
+      });
+
+      // 2. For active tenants who do not have any bill generated yet, include them as upcoming / action required
+      const unbilledTenantRows = tenants
+        .filter((tenant) => !billedReservationIds.has(getId(tenant.reservationId)))
+        .map((tenant) => {
+          const contractRate = normalizeAmount(tenant.monthlyRent || tenant.pricingSnapshot?.finalMonthlyRate || 0);
+          const isMissingData = tenant.billStatus === "missing_data" || contractRate <= 0;
+          const genDate = tenant.nextBillingDate || tenant.billingCycle?.generationDate;
+          const isPastGen = isGenerationDatePast(genDate);
+          let computedStatus = isMissingData ? "missing_data" : "ready";
+          if (computedStatus === "ready" && isPastGen) {
+            computedStatus = "pending_generation";
+          }
+          return {
+            ...tenant,
+            id: getId(tenant.reservationId),
+            bill: null,
+            paymentRecord: null,
+            normalizedBill: { isPaid: false, balance: contractRate, paidAmount: 0, status: computedStatus, daysOverdue: 0 },
+            computedStatus,
+            contractRate,
+            daysOverdue: 0,
+            isPastGen,
+            isHistoricalBill: false,
+          };
+        });
+
+      return [...billRows, ...unbilledTenantRows].sort((a, b) => {
+        const order = { missing_data: 1, overdue: 2, pending_generation: 3, ready: 4, generated: 5, sent: 6, partially_paid: 7, paid: 8 };
+        const statusDiff = (order[a.computedStatus] || 99) - (order[b.computedStatus] || 99);
+        if (statusDiff !== 0) return statusDiff;
+        const dateA = new Date(a.dueDate || a.billingCycleEnd || 0).getTime();
+        const dateB = new Date(b.dueDate || b.billingCycleEnd || 0).getTime();
+        return dateB - dateA;
+      });
+    }
+
+    // Specific Month mode: standard active cycle calculation
     return tenants.map((tenant) => {
       const bill = getTenantBill(tenant, billsById);
       const billId = getId(bill?.id || bill?._id);
@@ -389,6 +463,7 @@ export default function RentBillingTab({ isActive }) {
 
       return {
         ...tenant,
+        id: getId(tenant.reservationId),
         bill,
         paymentRecord,
         normalizedBill,
@@ -396,13 +471,14 @@ export default function RentBillingTab({ isActive }) {
         contractRate,
         daysOverdue: normalizedBill.daysOverdue,
         isPastGen,
+        isHistoricalBill: false,
       };
     }).sort((a, b) => {
       // Sort by status priority: exceptions -> overdue -> pending_generation -> ready -> generated -> sent -> partially_paid -> paid
       const order = { missing_data: 1, overdue: 2, pending_generation: 3, ready: 4, generated: 5, sent: 6, partially_paid: 7, paid: 8 };
       return (order[a.computedStatus] || 99) - (order[b.computedStatus] || 99);
     });
-  }, [tenants, billsById, paymentsByBillId]);
+  }, [timeframeMode, bills, tenants, billsById, paymentsByBillId]);
 
   const filteredRows = useMemo(() => {
     let rows = tableRows;
@@ -433,17 +509,20 @@ export default function RentBillingTab({ isActive }) {
     let upcoming = 0;
 
     tableRows.forEach(row => {
-      const applianceFee = Number(row.applianceFees || row.charges?.applianceFees || 0);
-      const amount = row.contractRate + (Number.isFinite(applianceFee) ? applianceFee : 0);
-      expected += amount;
+      if (row.bill) {
+        const applianceFee = Number(row.bill.charges?.applianceFees || 0);
+        const billTotal = Number(row.bill.totalAmount || (row.contractRate + applianceFee));
+        expected += billTotal;
+        collected += row.normalizedBill.paidAmount;
+        outstanding += row.normalizedBill.balance;
+      } else {
+        const applianceFee = Number(row.applianceFees || row.charges?.applianceFees || 0);
+        const amount = row.contractRate + (Number.isFinite(applianceFee) ? applianceFee : 0);
+        expected += amount;
+      }
 
       if (row.computedStatus === 'missing_data') exceptions++;
       if (row.computedStatus === 'ready' || row.computedStatus === 'pending_generation') upcoming++;
-
-      if (row.bill) {
-        collected += row.normalizedBill.paidAmount;
-        outstanding += row.normalizedBill.balance;
-      }
     });
 
     const collectionPercent = expected > 0 ? Math.min(100, Math.round((collected / expected) * 100)) : 0;
@@ -470,10 +549,11 @@ export default function RentBillingTab({ isActive }) {
     const reservationId = getId(tenant.reservationId);
     setPreviewLoadingId(reservationId);
     try {
+      const targetMonth = timeframeMode === "all" ? getCurrentMonthInput() : month;
       const payload = {
         reservationId,
         branch: tenant.branch || branch,
-        billingMonth: month,
+        billingMonth: targetMonth,
         rentAmount: tenant.contractRate || tenant.monthlyRent,
       };
       const result = await billingApi.previewRentBill(payload);
@@ -487,10 +567,11 @@ export default function RentBillingTab({ isActive }) {
   };
 
   const handleGenerate = async (tenant, { skipConfirm = false } = {}) => {
+    const targetMonth = timeframeMode === "all" ? getCurrentMonthInput() : month;
     const payload = {
       reservationId: getId(tenant.reservationId),
       branch: tenant.branch || branch,
-      billingMonth: month,
+      billingMonth: targetMonth,
       rentAmount: tenant.contractRate || tenant.monthlyRent,
     };
     setGeneratingId(payload.reservationId);
@@ -581,29 +662,50 @@ export default function RentBillingTab({ isActive }) {
             Monitor auto-generated rent bills. Bills generate automatically 7 days before their due date.
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           {isOwner && (
             <select
               value={branch}
               onChange={(e) => setBranch(e.target.value)}
-              className="h-9 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
+              className="h-9 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200 cursor-pointer"
+              title="Filter by branch"
+              aria-label="Filter by branch"
             >
               {BRANCH_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
           )}
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
-          />
+
+          <div className="flex items-center gap-1.5">
+            <select
+              value={timeframeMode}
+              onChange={(e) => setTimeframeMode(e.target.value)}
+              className="h-9 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200 cursor-pointer"
+              title="Select timeframe view"
+              aria-label="Select timeframe view"
+            >
+              <option value="month">Specific Month</option>
+              <option value="all">All Time</option>
+            </select>
+
+            {timeframeMode === "month" && (
+              <input
+                type="month"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="h-9 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
+                title="Select billing month"
+                aria-label="Select billing month"
+              />
+            )}
+          </div>
+
           <button
             type="button"
             onClick={loadData}
             disabled={loading}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card shadow-xs transition-colors hover:bg-muted"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card shadow-xs transition-colors hover:bg-muted active:scale-[0.98]"
             title="Refresh rent billing data"
           >
             <RefreshCw size={15} className={loading ? "animate-spin text-muted-foreground" : "text-muted-foreground"} />
@@ -621,7 +723,7 @@ export default function RentBillingTab({ isActive }) {
           </div>
           <p className="mt-2 text-2xl font-bold tracking-tight text-card-foreground">{fmtCurrency(kpis.expected)}</p>
           <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="font-semibold text-card-foreground">{tableRows.length}</span> billable tenant{tableRows.length !== 1 ? 's' : ''}
+            <span className="font-semibold text-card-foreground">{tableRows.length}</span> {timeframeMode === "all" ? "total record" : "billable tenant"}{tableRows.length !== 1 ? 's' : ''} {timeframeMode === "all" ? "(All-Time)" : ""}
           </div>
         </div>
 
@@ -664,7 +766,7 @@ export default function RentBillingTab({ isActive }) {
                 <Clock3 size={16} className="text-slate-600 dark:text-slate-400" />
                 Automated Cron System
               </div>
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200 uppercase">
+              <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200 uppercase">
                 Active
               </span>
             </div>
@@ -763,7 +865,9 @@ export default function RentBillingTab({ isActive }) {
                       <p className="mt-0.5 text-xs text-muted-foreground text-center">
                         {searchQuery
                           ? `No records match your search "${searchQuery}".`
-                          : `No billable tenant records for ${fmtMonth(month)} in ${branch ? formatBranch(branch) : 'All Branches'}.`}
+                          : timeframeMode === "all"
+                            ? `No rent billing records found in ${branch ? formatBranch(branch) : 'All Branches'}.`
+                            : `No billable tenant records for ${fmtMonth(month)} in ${branch ? formatBranch(branch) : 'All Branches'}.`}
                       </p>
 
                       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
@@ -776,13 +880,30 @@ export default function RentBillingTab({ isActive }) {
                             <X size={12} /> Clear Search
                           </button>
                         )}
-                        {month !== getCurrentMonthInput() && (
+                        {timeframeMode === "month" && month !== getCurrentMonthInput() && (
                           <button
                             type="button"
                             onClick={() => setMonth(getCurrentMonthInput())}
                             className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-xs font-semibold text-card-foreground shadow-xs hover:bg-muted active:scale-[0.98]"
                           >
                             <CalendarDays size={12} /> Current Month
+                          </button>
+                        )}
+                        {timeframeMode === "month" ? (
+                          <button
+                            type="button"
+                            onClick={() => setTimeframeMode("all")}
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-xs font-semibold text-card-foreground shadow-xs hover:bg-muted active:scale-[0.98]"
+                          >
+                            <CalendarDays size={12} /> Switch to All Time
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { setTimeframeMode("month"); setMonth(getCurrentMonthInput()); }}
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-xs font-semibold text-card-foreground shadow-xs hover:bg-muted active:scale-[0.98]"
+                          >
+                            <CalendarDays size={12} /> Switch to Current Month
                           </button>
                         )}
                         {branch && isOwner && (
@@ -800,12 +921,13 @@ export default function RentBillingTab({ isActive }) {
                 </tr>
               ) : (
                 filteredRows.map((row) => {
+                  const rowKey = row.bill ? getId(row.bill.id || row.bill._id) : `${getId(row.reservationId)}_${row.computedStatus}`;
                   const reservationId = getId(row.reservationId);
                   const isBusy = previewLoadingId === reservationId || generatingId === reservationId;
                   const genDate = row.nextBillingDate || row.billingCycle?.generationDate;
                   
                   return (
-                    <tr key={reservationId} className="group transition-colors hover:bg-muted/30">
+                    <tr key={rowKey} className="group transition-colors hover:bg-muted/30">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2.5">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-bold shadow-xs dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700">
@@ -832,7 +954,7 @@ export default function RentBillingTab({ isActive }) {
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex flex-col items-start gap-1">
-                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getStatusStyles(row.computedStatus)}`}>
+                          <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getStatusStyles(row.computedStatus)}`}>
                             {row.computedStatus === 'missing_data' && <AlertCircle size={11} />}
                             {row.computedStatus === 'pending_generation' && <Clock3 size={11} />}
                             {TENANT_STATUS_LABELS[row.computedStatus] || row.computedStatus}

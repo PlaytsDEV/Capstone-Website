@@ -10,11 +10,10 @@ import {
   FileText,
   Calendar,
   ChevronDown,
-  MoreVertical,
+  ChevronRight,
   Check,
   CheckCircle2,
   Clock,
-  Sparkles,
   X as XIcon,
   ArrowLeft,
 } from "lucide-react";
@@ -28,6 +27,7 @@ import { ListSkeleton, StatGridSkeleton } from "../../../shared/components/Loadi
 import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import Pagination from "../../../shared/components/Pagination";
 import InquiryDetailsModal from "../components/InquiryDetailsModal";
+import ProfileAvatar from "../../../shared/components/ProfileAvatar";
 import { ExportButtons } from "./analyticsTabShared";
 import {
   handleExportInquiriesCSV,
@@ -43,9 +43,8 @@ const getAvatarColor = (initials = "") => {
     "bg-[color:var(--chart-2)] text-white",
     "bg-[color:var(--warning)] text-white",
   ];
-  const charCode = initials.length > 0 ? initials.charCodeAt(0) : 0;
-  const index = charCode % colors.length;
-  return colors[index];
+  const charCode = (initials.charCodeAt(0) || 0) + (initials.charCodeAt(1) || 0);
+  return colors[charCode % colors.length];
 };
 
 function initial(name = "") {
@@ -64,6 +63,13 @@ function fmtDate(dateStr) {
     year: "numeric",
   });
 }
+
+const KPI_ICON_BADGES = {
+  sky: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-400",
+  amber: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400",
+  emerald: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400",
+  slate: "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
+};
 
 function InquiriesPage({ isEmbedded = false }) {
   const navigate = useNavigate();
@@ -116,39 +122,35 @@ function InquiriesPage({ isEmbedded = false }) {
   const kpiItems = useMemo(
     () => [
       {
-        key: "all",
-        statusKey: "",
+        key: "total",
         label: "Total Inquiries",
         value: totalCount,
         icon: MessageSquare,
-        color: "blue",
+        color: "sky",
         subtext: "Total lead volume",
       },
       {
         key: "pending",
-        statusKey: "pending",
         label: "New / Pending",
         value: pendingCount,
         icon: Clock,
-        color: "orange",
+        color: "amber",
         subtext: "Awaiting staff response",
       },
       {
         key: "resolved",
-        statusKey: "resolved",
         label: "Responded",
         value: resolvedCount,
         icon: CheckCircle2,
-        color: "teal",
+        color: "emerald",
         subtext: "Answered & resolved",
       },
       {
         key: "recent",
-        statusKey: null,
         label: "Recent (7 Days)",
         value: recentCount,
-        icon: Sparkles,
-        color: "emerald",
+        icon: Calendar,
+        color: "slate",
         subtext: "Received this week",
       },
     ],
@@ -217,84 +219,32 @@ function InquiriesPage({ isEmbedded = false }) {
           />
         )}
 
-        {/* KPI Summary Cards Grid */}
+        {/* Informational KPI Summary Cards Grid */}
         {statsLoading && !statsData ? (
           <StatGridSkeleton count={4} className="mb-4" />
         ) : (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4" role="list" aria-label="Inquiry Statistics">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4" role="region" aria-label="Inquiry Statistics">
             {kpiItems.map((item) => {
               const Icon = item.icon;
-              const isClickable = item.statusKey !== null;
-              const isActive =
-                item.key === "all"
-                  ? statusFilter === ""
-                  : item.statusKey
-                  ? statusFilter === item.statusKey
-                  : false;
-
-              const getIconStyle = () => {
-                if (item.color === "blue") return "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400";
-                if (item.color === "orange") return "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400";
-                if (item.color === "teal") return "bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400";
-                return "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400";
-              };
-
-              const getActiveStyle = () => {
-                if (!isActive) return "";
-                if (item.color === "blue") return "border-blue-500 ring-2 ring-inset ring-blue-500/20 bg-blue-50/30 dark:bg-blue-950/20";
-                if (item.color === "orange") return "border-amber-500 ring-2 ring-inset ring-amber-500/20 bg-amber-50/30 dark:bg-amber-950/20";
-                if (item.color === "teal") return "border-teal-500 ring-2 ring-inset ring-teal-500/20 bg-teal-50/30 dark:bg-teal-950/20";
-                return "border-emerald-500 ring-2 ring-inset ring-emerald-500/20 bg-emerald-50/30 dark:bg-emerald-950/20";
-              };
-
-              const handleClick = () => {
-                if (!isClickable) return;
-                if (item.key === "all") {
-                  setStatusFilter("");
-                } else if (statusFilter === item.statusKey) {
-                  setStatusFilter("");
-                } else {
-                  setStatusFilter(item.statusKey);
-                }
-                setPage(1);
-              };
-
               return (
                 <div
                   key={item.key}
-                  onClick={handleClick}
-                  onKeyDown={(e) => {
-                    if (isClickable && (e.key === "Enter" || e.key === " ")) {
-                      e.preventDefault();
-                      handleClick();
-                    }
-                  }}
-                  role={isClickable ? "button" : "listitem"}
-                  tabIndex={isClickable ? 0 : undefined}
-                  aria-pressed={isClickable ? isActive : undefined}
                   style={{
                     backgroundColor: "var(--bg-card)",
-                    borderColor: isActive ? undefined : "var(--border-light)",
+                    borderColor: "var(--border-light)",
                     boxShadow: "0 1px 2px rgba(0, 0, 0, 0.02)",
                   }}
-                  className={`group relative flex flex-col justify-between min-h-[108px] rounded-xl border p-4 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 ${
-                    isClickable
-                      ? "cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                      : "cursor-default"
-                  } ${getActiveStyle()}`}
-                  title={
-                    isClickable
-                      ? isActive
-                        ? `Active filter: ${item.label}. Click to clear filter.`
-                        : `Click to filter by ${item.label}`
-                      : item.subtext
-                  }
+                  className="relative flex flex-col justify-between min-h-[108px] rounded-xl border p-4 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default select-none"
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">
                       {item.label}
                     </span>
-                    <div className={`p-2 rounded-lg ${getIconStyle()}`}>
+                    <div
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+                        KPI_ICON_BADGES[item.color] || KPI_ICON_BADGES.slate
+                      }`}
+                    >
                       <Icon className="w-4 h-4" strokeWidth={2} />
                     </div>
                   </div>
@@ -313,8 +263,9 @@ function InquiriesPage({ isEmbedded = false }) {
           </div>
         )}
 
+        {/* Dedicated Separate Filter Toolbar */}
         <div
-          className="border rounded-lg p-5 mb-6 overflow-visible"
+          className="border rounded-lg p-4 sm:p-5 mb-6 overflow-visible"
           style={{
             backgroundColor: "var(--bg-card)",
             borderColor: "var(--border-light)",
@@ -330,13 +281,27 @@ function InquiriesPage({ isEmbedded = false }) {
                   setSearchTerm(event.target.value);
                   setPage(1);
                 }}
-                placeholder="Search inquiries..."
+                placeholder="Search inquiries by name, email, subject..."
                 style={{
                   backgroundColor: "var(--input-background)",
                   borderColor: "var(--border-light)",
                 }}
-                className="w-full pl-10 pr-4 h-9 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
+                className="w-full pl-10 pr-8 h-9 border rounded-lg text-xs focus:outline-none focus:border-[var(--primary)] focus:ring-0 transition-colors"
               />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm("");
+                    setPage(1);
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded cursor-pointer"
+                  title="Clear search"
+                  aria-label="Clear search"
+                >
+                  <XIcon className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2.5 sm:justify-start lg:justify-end">
@@ -347,11 +312,12 @@ function InquiriesPage({ isEmbedded = false }) {
                     setBranchFilter(event.target.value);
                     setPage(1);
                   }}
+                  aria-label="Filter by branch"
                   style={{
                     backgroundColor: "var(--input-background)",
                     borderColor: "var(--border-light)",
                   }}
-                  className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+                  className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:border-[var(--primary)] focus:ring-0 cursor-pointer hover:bg-muted transition-colors"
                 >
                   <option value="">All Branches</option>
                   <option value="gil-puyat">Gil Puyat</option>
@@ -365,25 +331,27 @@ function InquiriesPage({ isEmbedded = false }) {
                   setStatusFilter(event.target.value);
                   setPage(1);
                 }}
+                aria-label="Filter by status"
                 style={{
                   backgroundColor: "var(--input-background)",
                   borderColor: "var(--border-light)",
                 }}
-                className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+                className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:border-[var(--primary)] focus:ring-0 cursor-pointer hover:bg-muted transition-colors"
               >
-                <option value="">All Status</option>
+                <option value="">All Statuses</option>
                 <option value="pending">New / Pending</option>
-                <option value="resolved">Responded / Resolved</option>
+                <option value="resolved">Responded</option>
               </select>
 
               <select
                 value={sortBy}
                 onChange={(event) => setSortBy(event.target.value)}
+                aria-label="Sort inquiries"
                 style={{
                   backgroundColor: "var(--input-background)",
                   borderColor: "var(--border-light)",
                 }}
-                className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+                className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:border-[var(--primary)] focus:ring-0 cursor-pointer hover:bg-muted transition-colors"
               >
                 <option value="recent">Most Recent</option>
                 <option value="oldest">Oldest First</option>
@@ -403,7 +371,7 @@ function InquiriesPage({ isEmbedded = false }) {
             <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-[var(--border-light)] text-xs">
               <span className="text-muted-foreground font-medium">Active Filters:</span>
               {activeBranchDisplay && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-800 border border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700">
                   Branch: {activeBranchDisplay === "gil-puyat" ? "Gil Puyat" : activeBranchDisplay === "guadalupe" ? "Guadalupe" : activeBranchDisplay}
                   <button
                     type="button"
@@ -411,7 +379,7 @@ function InquiriesPage({ isEmbedded = false }) {
                       setBranchFilter("");
                       setPage(1);
                     }}
-                    className="hover:opacity-75 focus:outline-none"
+                    className="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 focus:outline-none cursor-pointer"
                     aria-label="Clear branch filter"
                   >
                     <XIcon className="w-3 h-3" />
@@ -419,15 +387,15 @@ function InquiriesPage({ isEmbedded = false }) {
                 </span>
               )}
               {statusFilter && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                  Status: {statusFilter === "pending" ? "New / Pending" : statusFilter === "resolved" ? "Responded / Resolved" : statusFilter}
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-800 border border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700">
+                  Status: {statusFilter === "pending" ? "New / Pending" : statusFilter === "resolved" ? "Responded" : statusFilter}
                   <button
                     type="button"
                     onClick={() => {
                       setStatusFilter("");
                       setPage(1);
                     }}
-                    className="hover:opacity-75 focus:outline-none"
+                    className="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 focus:outline-none cursor-pointer"
                     aria-label="Clear status filter"
                   >
                     <XIcon className="w-3 h-3" />
@@ -435,7 +403,7 @@ function InquiriesPage({ isEmbedded = false }) {
                 </span>
               )}
               {searchTerm && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-800 border border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700">
                   Search: "{searchTerm}"
                   <button
                     type="button"
@@ -443,7 +411,7 @@ function InquiriesPage({ isEmbedded = false }) {
                       setSearchTerm("");
                       setPage(1);
                     }}
-                    className="hover:opacity-75 focus:outline-none"
+                    className="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 focus:outline-none cursor-pointer"
                     aria-label="Clear search query"
                   >
                     <XIcon className="w-3 h-3" />
@@ -460,7 +428,9 @@ function InquiriesPage({ isEmbedded = false }) {
                   setSearchTerm("");
                   setPage(1);
                 }}
-                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 ml-1 cursor-pointer"
+                className="text-xs font-semibold text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 underline underline-offset-2 ml-1.5 cursor-pointer transition-colors"
+                title="Clear all active filters"
+                aria-label="Clear all active filters"
               >
                 Clear all
               </button>
@@ -499,46 +469,31 @@ function InquiriesPage({ isEmbedded = false }) {
                       backgroundColor: "var(--bg-card)",
                       borderColor: "var(--border-light, rgba(0, 0, 0, 0.05))",
                     }}
-                    className="flex items-start justify-between p-5 border border-border/40 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all duration-200 cursor-pointer hover:bg-muted/40 hover:border-border/70"
+                    className="group flex items-stretch justify-between p-5 border border-border/40 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all duration-200 cursor-pointer hover:bg-muted/40 hover:border-border/70 gap-4"
                   >
-                    <div className="flex items-start gap-4 flex-1">
-                      <div
-                        className={`w-12 h-12 rounded-full flex items-center justify-center font-medium ${getAvatarColor(initial(name))}`}
-                      >
-                        {initial(name)}
-                      </div>
+                    <div className="flex items-start gap-4 flex-1 min-w-0">
+                      <ProfileAvatar
+                        user={{ name }}
+                        initials={initial(name)}
+                        size={48}
+                        defaultOnly
+                      />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-semibold text-foreground">
-                                {name}
-                              </h3>
-                              {isNew && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                  NEW
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              {inquiry.email || "-"}
-                            </p>
-                          </div>
+                        <div className="mb-2">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">
-                              {fmtDate(inquiry.createdAt)}
-                            </span>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedInquiry(inquiry);
-                              }}
-                              className="p-1 hover:bg-muted rounded-md transition-colors"
-                            >
-                              <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                            </button>
+                            <h3 className="font-semibold text-foreground">
+                              {name}
+                            </h3>
+                            {isNew && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                NEW
+                              </span>
+                            )}
                           </div>
+                          <p className="text-sm text-muted-foreground">
+                            {inquiry.email || "-"}
+                          </p>
                         </div>
                         {inquiry.message && (
                           <p className="text-sm text-foreground mb-2 line-clamp-2">
@@ -580,6 +535,15 @@ function InquiriesPage({ isEmbedded = false }) {
                           </span>
                         </div>
                       </div>
+                    </div>
+
+                    <div className="shrink-0 flex flex-col items-end justify-between pl-2">
+                      <div className="flex-1 flex items-center justify-center">
+                        <ChevronRight className="w-4 h-4 text-muted-foreground transition-transform duration-150 group-hover:translate-x-0.5" />
+                      </div>
+                      <span className="text-[11px] text-muted-foreground tabular-nums whitespace-nowrap mt-2">
+                        {fmtDate(inquiry.createdAt)}
+                      </span>
                     </div>
                   </div>
                 );

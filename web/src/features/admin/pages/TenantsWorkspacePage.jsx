@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,6 +25,7 @@ import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import StatusBadge from "../components/shared/StatusBadge";
 import TenantDetailModal from "../components/TenantDetailModal";
+import ProfileAvatar from "../../../shared/components/ProfileAvatar";
 import TenantFilterBar from "../components/TenantFilterBar";
 import Pagination from "../../../shared/components/Pagination";
 import {
@@ -34,7 +35,7 @@ import {
 } from "../components/TenantWorkspaceModals";
 import ExpiredOccupancyAlert from "../components/ExpiredOccupancyAlert";
 import MoveOutClearanceCalculator from "../components/MoveOutClearanceCalculator";
-import { formatBranch } from "../utils/formatters";
+import { formatBranch, fmtCurrency } from "../utils/formatters";
 import {
   getTenantActionMeta,
   hasEnabledTenantAction,
@@ -471,6 +472,25 @@ export default function TenantsWorkspacePage() {
         onAction: setActionState,
         });
 
+    const handleNextActionClick = (tenant) => {
+      if (!tenant) return;
+      switch (tenant.nextAction) {
+        case "verify_payment":
+        case "review_overdue_account":
+          setSelectedReservationId(tenant.reservationId);
+          break;
+        case "renew_lease":
+          openActionForTenant(tenant, "renew", "renew");
+          break;
+        case "process_move_out":
+          openActionForTenant(tenant, "moveOut", "moveOut");
+          break;
+        default:
+          setSelectedReservationId(tenant.reservationId);
+          break;
+      }
+    };
+
     const [isExporting, setIsExporting] = useState(false);
 
     const handleExportCSV = useCallback(() => {
@@ -528,15 +548,12 @@ export default function TenantsWorkspacePage() {
             sortable: true,
             render: (row) => (
             <div className="tenant-cell">
-                <div className="tenant-cell__avatar">
-                {row.tenantName
-                    .split(/\s+/)
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .map((part) => part[0])
-                    .join("")
-                    .toUpperCase() || "?"}
-                </div>
+                <ProfileAvatar
+                  className="shrink-0"
+                  user={{ name: row.tenantName, email: row.contact?.email }}
+                  size={36}
+                  defaultOnly
+                />
                 <div className="tenant-cell__info">
                 <span className="tenant-cell__name">{row.tenantName}</span>
                 <span className="tenant-cell__email">
@@ -560,7 +577,7 @@ export default function TenantsWorkspacePage() {
             : []),
         {
             key: "room",
-            label: "Room + Bed",
+            label: "Room & Bed",
             render: (row) => (
             <div className="tenant-room-cell">
                 <span className="tenant-room-cell__primary">{row.room || "—"}</span>
@@ -572,43 +589,109 @@ export default function TenantsWorkspacePage() {
         },
         {
             key: "leaseEndDate",
-            label: "Contract End",
+            label: "Lease & Stay",
             sortable: true,
-            render: (row) => (
-            <div className="tenant-room-cell">
-                <span className="tenant-room-cell__primary">
-                {fmtDate(row.leaseEndDate)}
-                </span>
-                <span className="tenant-room-cell__secondary">
-                {row.daysUntilLeaseEnd == null
-                    ? "No contract"
-                    : `${row.daysUntilLeaseEnd} day${row.daysUntilLeaseEnd === 1 ? "" : "s"}`}
-                </span>
-            </div>
-            ),
+            render: (row) => {
+              const stayBadgeStatus =
+                row.stayStatus === "moving_out"
+                  ? "moving_out"
+                  : row.stayStatus === "moved_out"
+                  ? "moved_out"
+                  : row.leaseStatus === "expired"
+                  ? "expired"
+                  : row.leaseStatus === "expiring_soon"
+                  ? "expiring_soon"
+                  : "active";
+
+              const stayBadgeLabel =
+                row.stayStatus === "moving_out"
+                  ? "Moving Out"
+                  : row.stayStatus === "moved_out"
+                  ? "Moved Out"
+                  : row.leaseStatus === "expired"
+                  ? "Contract Expired"
+                  : row.leaseStatus === "expiring_soon"
+                  ? "Expiring Soon"
+                  : "Active Stay";
+
+              return (
+                <div className="tenant-lease-cell">
+                  <div className="tenant-lease-cell__primary">
+                    <span>{fmtDate(row.leaseEndDate)}</span>
+                    {row.daysUntilLeaseEnd != null ? (
+                      <span className={`tenant-lease-cell__countdown ${
+                        row.daysUntilLeaseEnd < 0
+                          ? "tenant-lease-cell__countdown--expired"
+                          : row.daysUntilLeaseEnd <= 30
+                          ? "tenant-lease-cell__countdown--warning"
+                          : ""
+                      }`}>
+                        {row.daysUntilLeaseEnd < 0
+                          ? `(${Math.abs(row.daysUntilLeaseEnd)}d overdue)`
+                          : `(${row.daysUntilLeaseEnd}d left)`}
+                      </span>
+                    ) : (
+                      <span className="tenant-lease-cell__countdown">(No contract)</span>
+                    )}
+                  </div>
+                  <div className="tenant-lease-cell__secondary">
+                    <StatusBadge
+                      module="contract"
+                      status={stayBadgeStatus}
+                      label={stayBadgeLabel}
+                    />
+                  </div>
+                </div>
+              );
+            },
         },
         {
             key: "paymentStatus",
-            label: "Billing",
-            render: (row) => <StatusBadge status={row.paymentStatus} />,
-        },
-        {
-            key: "leaseStatus",
-            label: "Contract",
-            render: (row) => <StatusBadge status={row.leaseStatus} />,
-        },
-        {
-            key: "stayStatus",
-            label: "Occupancy",
-            render: (row) => <StatusBadge status={row.stayStatus} />,
+            label: "Billing & Balance",
+            render: (row) => {
+              const isOverdue = row.paymentStatus === "overdue";
+              const isPaid = row.paymentStatus === "paid";
+              return (
+                <div className="tenant-billing-cell">
+                  <div className="tenant-billing-cell__status">
+                    <StatusBadge module="billing" status={row.paymentStatus} />
+                  </div>
+                  <div className="tenant-billing-cell__balance">
+                    {isPaid && (!row.currentBalance || row.currentBalance === 0) ? (
+                      <span className="tenant-billing-balance--settled">₱0.00 settled</span>
+                    ) : (
+                      <span className={isOverdue ? "tenant-billing-balance--overdue" : "tenant-billing-balance--pending"}>
+                        {fmtCurrency(row.currentBalance || 0)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            },
         },
         {
             key: "nextAction",
-            label: "Next Action",
+            label: "Action Needed",
             render: (row) => (
-            <span className={`tenant-next-action ${actionTone(row.nextAction)}`}>
-                {row.nextActionLabel}
-            </span>
+              row.nextAction && row.nextAction !== "none" ? (
+                <button
+                  type="button"
+                  className={`tenant-action-btn tenant-action-btn--${row.nextAction}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleNextActionClick(row);
+                  }}
+                  title={`Quick action: ${row.nextActionLabel}`}
+                >
+                  <span>{row.nextActionLabel}</span>
+                  <span className="tenant-action-btn__arrow">→</span>
+                </button>
+              ) : (
+                <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
+                  Up to date
+                </span>
+              )
             ),
         },
         {
@@ -748,7 +831,7 @@ export default function TenantsWorkspacePage() {
 
         <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px]">
+            <table className="w-full min-w-[1000px]">
               <thead>
                 <tr className="border-b border-[var(--border-light)]">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -760,22 +843,16 @@ export default function TenantsWorkspacePage() {
                     </th>
                   ) : null}
                   <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Room + Bed
+                    Room & Bed
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Contract End
+                    Lease & Stay
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Billing
+                    Billing & Balance
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Contract
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Occupancy
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Next Action
+                    Action Needed
                   </th>
                   <th className="text-center py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     Actions
@@ -783,89 +860,170 @@ export default function TenantsWorkspacePage() {
                 </tr>
               </thead>
               <tbody>
-                {paginatedTenants.map((tenant) => (
-                  <tr
-                    key={tenant.reservationId || tenant.tenantName}
-                    className="border-b border-[var(--border-light)] hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
-                    onMouseEnter={() => prefetchTenantWorkspaceDetail(queryClient, tenant.reservationId)}
-                  >
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-semibold">
-                          {tenant.tenantName
-                            .split(/\s+/)
-                            .filter(Boolean)
-                            .slice(0, 2)
-                            .map((part) => part[0])
-                            .join("")
-                            .toUpperCase() || "?"}
+                {paginatedTenants.map((tenant) => {
+                  const isOverdue = tenant.paymentStatus === "overdue";
+                  const isPaid = tenant.paymentStatus === "paid";
+                  const stayBadgeStatus =
+                    tenant.stayStatus === "moving_out"
+                      ? "moving_out"
+                      : tenant.stayStatus === "moved_out"
+                      ? "moved_out"
+                      : tenant.leaseStatus === "expired"
+                      ? "expired"
+                      : tenant.leaseStatus === "expiring_soon"
+                      ? "expiring_soon"
+                      : "active";
+
+                  const stayBadgeLabel =
+                    tenant.stayStatus === "moving_out"
+                      ? "Moving Out"
+                      : tenant.stayStatus === "moved_out"
+                      ? "Moved Out"
+                      : tenant.leaseStatus === "expired"
+                      ? "Contract Expired"
+                      : tenant.leaseStatus === "expiring_soon"
+                      ? "Expiring Soon"
+                      : "Active Stay";
+
+                  return (
+                    <tr
+                      key={tenant.reservationId || tenant.tenantName}
+                      className="border-b border-[var(--border-light)] hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                      onMouseEnter={() => prefetchTenantWorkspaceDetail(queryClient, tenant.reservationId)}
+                    >
+                      {/* 1. Tenant */}
+                      <td className="py-3 px-4">
+                        <div className="tenant-cell">
+                          <ProfileAvatar
+                            className="shrink-0"
+                            user={{ name: tenant.tenantName, email: tenant.contact?.email }}
+                            size={36}
+                            defaultOnly
+                          />
+                          <div className="tenant-cell__info">
+                            <span className="tenant-cell__name">{tenant.tenantName}</span>
+                            <span className="tenant-cell__email">
+                              {tenant.contact?.email || "No email"}
+                            </span>
+                            <span className="tenant-cell__meta">
+                              {tenant.contact?.phone || "No phone"}
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-medium text-sm text-foreground">
-                            {tenant.tenantName}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {tenant.contact?.email || "No email"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {tenant.contact?.phone || "No phone"}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    {isOwner ? (
-                      <td className="py-3 px-4 text-sm text-foreground">
-                        {formatBranch(tenant.branch) || "—"}
                       </td>
-                    ) : null}
-                    <td className="py-3 px-4">
-                      <div className="text-sm font-medium text-foreground">
-                        {tenant.room || "—"}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {tenant.bed || "No bed"}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="text-sm text-foreground">
-                        {fmtDate(tenant.leaseEndDate)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {tenant.daysUntilLeaseEnd == null
-                          ? "No contract"
-                          : `${tenant.daysUntilLeaseEnd} day${tenant.daysUntilLeaseEnd === 1 ? "" : "s"}`}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <StatusBadge status={tenant.paymentStatus} />
-                    </td>
-                    <td className="py-3 px-4">
-                      <StatusBadge status={tenant.leaseStatus} />
-                    </td>
-                    <td className="py-3 px-4">
-                      <StatusBadge status={tenant.stayStatus} />
-                    </td>
-                    <td className="py-3 px-4 text-sm text-muted-foreground">
-                      {tenant.nextActionLabel}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <button
-                        type="button"
-                        className="tenant-view-btn"
-                        title="View tenant details"
-                        onMouseEnter={() => prefetchTenantWorkspaceDetail(queryClient, tenant.reservationId)}
-                        onFocus={() => prefetchTenantWorkspaceDetail(queryClient, tenant.reservationId)}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedReservationId(tenant.reservationId);
-                        }}
-                      >
-                        <Eye size={14} />
-                        <span>View</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+
+                      {/* 2. Branch (Owner only) */}
+                      {isOwner ? (
+                        <td className="py-3 px-4 text-sm text-foreground">
+                          {formatBranch(tenant.branch) || "—"}
+                        </td>
+                      ) : null}
+
+                      {/* 3. Room & Bed */}
+                      <td className="py-3 px-4">
+                        <div className="tenant-room-cell">
+                          <span className="tenant-room-cell__primary">{tenant.room || "—"}</span>
+                          <span className="tenant-room-cell__secondary">
+                            {tenant.bed || "No bed"}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* 4. Lease & Stay (Consolidated) */}
+                      <td className="py-3 px-4">
+                        <div className="tenant-lease-cell">
+                          <div className="tenant-lease-cell__primary">
+                            <span>{fmtDate(tenant.leaseEndDate)}</span>
+                            {tenant.daysUntilLeaseEnd != null ? (
+                              <span className={`tenant-lease-cell__countdown ${
+                                tenant.daysUntilLeaseEnd < 0
+                                  ? "tenant-lease-cell__countdown--expired"
+                                  : tenant.daysUntilLeaseEnd <= 30
+                                  ? "tenant-lease-cell__countdown--warning"
+                                  : ""
+                              }`}>
+                                {tenant.daysUntilLeaseEnd < 0
+                                  ? `(${Math.abs(tenant.daysUntilLeaseEnd)}d overdue)`
+                                  : `(${tenant.daysUntilLeaseEnd}d left)`}
+                              </span>
+                            ) : (
+                              <span className="tenant-lease-cell__countdown">(No contract)</span>
+                            )}
+                          </div>
+                          <div className="tenant-lease-cell__secondary">
+                            <StatusBadge
+                              module="contract"
+                              status={stayBadgeStatus}
+                              label={stayBadgeLabel}
+                            />
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 5. Billing & Balance */}
+                      <td className="py-3 px-4">
+                        <div className="tenant-billing-cell">
+                          <div className="tenant-billing-cell__status">
+                            <StatusBadge
+                              module="billing"
+                              status={tenant.paymentStatus}
+                            />
+                          </div>
+                          <div className="tenant-billing-cell__balance">
+                            {isPaid && (!tenant.currentBalance || tenant.currentBalance === 0) ? (
+                              <span className="tenant-billing-balance--settled">₱0.00 settled</span>
+                            ) : (
+                              <span className={isOverdue ? "tenant-billing-balance--overdue" : "tenant-billing-balance--pending"}>
+                                {fmtCurrency(tenant.currentBalance || 0)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 6. Action Needed (Interactive CTA Button) */}
+                      <td className="py-3 px-4">
+                        {tenant.nextAction && tenant.nextAction !== "none" ? (
+                          <button
+                            type="button"
+                            className={`tenant-action-btn tenant-action-btn--${tenant.nextAction}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleNextActionClick(tenant);
+                            }}
+                            title={`Quick action: ${tenant.nextActionLabel}`}
+                          >
+                            <span>{tenant.nextActionLabel}</span>
+                            <span className="tenant-action-btn__arrow">→</span>
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
+                            Up to date
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 7. View Details */}
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          type="button"
+                          className="tenant-view-btn"
+                          title="View tenant details"
+                          onMouseEnter={() => prefetchTenantWorkspaceDetail(queryClient, tenant.reservationId)}
+                          onFocus={() => prefetchTenantWorkspaceDetail(queryClient, tenant.reservationId)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedReservationId(tenant.reservationId);
+                          }}
+                        >
+                          <Eye size={14} />
+                          <span>View</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -87,12 +87,16 @@ export default function AdminContractsPage() {
     ...(isOwner ? [{ key: "branch", label: "Branch", render: (row) => formatContractValue(row.branch) }] : []),
     { key: "roomNumber", label: "Room / Bed", render: (row) => <span>{row.roomNumber || "—"}<small className="contract-table-sub">{row.bedLabel || "No bed label"}</small></span> },
     { key: "status", label: "Current Stage", render: (row) =>
-      <StatusBadge status={row.status} label={
-        row.archivedAt ? "Archived / Voided"
-          : row.status === "generated" && row.preparedDocumentAvailable === false
-          ? "Prepared PDF Unavailable"
-          : getContractStage(row.status)
-      } /> },
+      <StatusBadge
+        module="contract"
+        status={row.status}
+        label={
+          row.archivedAt ? "Archived / Voided"
+            : row.status === "generated" && row.preparedDocumentAvailable === false
+            ? "Prepared PDF Unavailable"
+            : getContractStage(row.status)
+        }
+      /> },
     ...(filters.archive === "archived" ? [
       { key: "archivedPreviousStatus", label: "Original Status", render: (row) => formatContractValue(row.archivedPreviousStatus) },
       { key: "archiveReason", label: "Archive Reason" },

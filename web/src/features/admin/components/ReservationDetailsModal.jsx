@@ -41,7 +41,7 @@ import "../styles/reservation-details-modal.css";
   moveIn: {
     title: "Move In Tenant",
     message:
-      "Mark this tenant as moved in? They'll be promoted to Tenant role with full system access.",
+      "Record move-in for this tenant? They'll be promoted to Tenant role with full system access.",
     confirmText: "Yes, Move In",
     variant: "success",
   },
@@ -97,7 +97,7 @@ const getQuickActionsEmptyState = (status, isMovedOut) => {
       iconColor: "#059669",
       bgColor: "#ECFDF5",
       borderColor: "#A7F3D0",
-      title: "Tenant Currently Moved In",
+      title: "Tenant Move In",
       desc: "This tenant has completed move-in. Occupancy, room stay details, and utility billing are actively managed under Tenancy & Rooms.",
     };
   }
@@ -231,12 +231,12 @@ const VISIT_STATUS_CONFIG = {
  bg: "#FEF3C7",
  dot: "#F59E0B",
  },
- rescheduled: {
- label: "Rescheduled",
- color: "#7C3AED",
- bg: "#EDE9FE",
- dot: "#8B5CF6",
- },
+  rescheduled: {
+    label: "Rescheduled",
+    color: "#B45309",
+    bg: "#FEF3C7",
+    dot: "#F59E0B",
+  },
  visit_cancelled: {
   label: "Visit Cancelled",
   color: "#B91C1C",
@@ -404,7 +404,7 @@ const getPrecheckAppearance = (precheck) => {
  return { label: "Needs Clearer Upload", color: "#B91C1C", bg: "#FEE2E2" };
  }
  if (precheckStatus === "manual_review_fallback") {
- return { label: "Manual Review Required", color: "#7C3AED", bg: "#EDE9FE" };
+ return { label: "Manual Review Required", color: "#B45309", bg: "#FEF3C7" };
  }
 
  const status = String(precheck?.aiCheckStatus || "not_checked").toLowerCase();
@@ -421,7 +421,7 @@ const getPrecheckAppearance = (precheck) => {
  return { label: "Needs Clearer Upload", color: "#B91C1C", bg: "#FEE2E2" };
  }
  if (status === "error") {
- return { label: "Manual Review Required", color: "#7C3AED", bg: "#EDE9FE" };
+ return { label: "Manual Review Required", color: "#B45309", bg: "#FEF3C7" };
  }
  return null;
 };
@@ -655,6 +655,23 @@ export default function ReservationDetailsModal({
      )
  : [];
 
+  const reservationFeeStatusKey = useMemo(
+    () => resolveReservationFeeStatus(reservation),
+    [reservation],
+  );
+  const moveInPaymentStatusKey = useMemo(
+    () => resolveMoveInPaymentStatus(reservation),
+    [reservation],
+  );
+  const reservationFeeBadge = useMemo(
+    () => getPaymentStatusBadgeConfig(reservationFeeStatusKey),
+    [reservationFeeStatusKey],
+  );
+  const moveInPaymentBadge = useMemo(
+    () => getPaymentStatusBadgeConfig(moveInPaymentStatusKey),
+    [moveInPaymentStatusKey],
+  );
+
  if (!reservation) return null;
  const viewingPreferenceLabel =
  reservation.viewingPreference === "remote_2d_viewing"
@@ -842,22 +859,7 @@ export default function ReservationDetailsModal({
     (advanceRentAmount !== null && securityDepositAmount !== null
       ? Math.max(0, advanceRentAmount + securityDepositAmount - reservationFeeAmount)
       : null);
-  const reservationFeeStatusKey = useMemo(
-    () => resolveReservationFeeStatus(reservation),
-    [reservation],
-  );
-  const moveInPaymentStatusKey = useMemo(
-    () => resolveMoveInPaymentStatus(reservation),
-    [reservation],
-  );
-  const reservationFeeBadge = useMemo(
-    () => getPaymentStatusBadgeConfig(reservationFeeStatusKey),
-    [reservationFeeStatusKey],
-  );
-  const moveInPaymentBadge = useMemo(
-    () => getPaymentStatusBadgeConfig(moveInPaymentStatusKey),
-    [moveInPaymentStatusKey],
-  );
+
   const leaseCategoryLabel =
     pricingDisplay?.leaseType === "long_term"
       ? "Long-term"
@@ -2063,7 +2065,7 @@ export default function ReservationDetailsModal({
                           </span>
                         </div>
                         <p className="rdm-movein-future-notice-text">
-                          Marking as Moved In immediately activates this resident and finalizes advance rent. If the tenant has not yet arrived on-site, please <strong>Cancel</strong> and use <strong>Reschedule move-in</strong> to update their expected arrival date instead.
+                          Recording Move In immediately activates this tenant and finalizes advance rent. If the tenant has not yet arrived on-site, please <strong>Cancel</strong> and use <strong>Reschedule move-in</strong> to update their expected arrival date instead.
                         </p>
                       </div>
                     )}
@@ -2179,7 +2181,7 @@ export default function ReservationDetailsModal({
                                 throw apiErr;
                               }
                             },
-                            "Tenant moved in successfully",
+                            "Tenant move-in recorded successfully",
                           );
                         }}
                         disabled={isSubmitting}
@@ -2211,11 +2213,11 @@ export default function ReservationDetailsModal({
                           disabled={isSubmitting || !isMoveInPaymentSettled}
                           title={
                             isMoveInPaymentSettled
-                              ? "Mark tenant as moved in and record the initial meter reading"
+                              ? "Record tenant move-in and the initial meter reading"
                               : "Move-in locked: 1-Month Advance Rent and Security Deposit (1DP + 1Adv) must be settled first."
                           }
                         >
-                          Mark as Moved In
+                          Record Move In
                         </button>
                         {!isMoveInPaymentSettled && (
                           <div

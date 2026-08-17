@@ -42,211 +42,271 @@ const TYPE_META = {
     label: "SLA Breach",
     icon: AlertTriangle,
     priority: "critical",
+    variant: "critical",
     actionLabel: "View Ticket",
     category: "maintenance",
+    isPrimaryAction: true,
   },
   account_suspended: {
     label: "Account Suspended",
     icon: ShieldAlert,
     priority: "critical",
+    variant: "critical",
     actionLabel: "View Account",
     category: "general",
+    isPrimaryAction: true,
   },
   reservation_cancellation_requested: {
     label: "Cancellation Request",
     icon: AlertTriangle,
     priority: "critical",
+    variant: "critical",
     actionLabel: "Review Request",
     category: "cancellations",
+    isPrimaryAction: true,
   },
   grace_period_warning: {
     label: "Grace Period",
     icon: AlertTriangle,
     priority: "high",
+    variant: "warning",
     actionLabel: "View Reservation",
     category: "reservations",
+    isPrimaryAction: true,
   },
   maintenance_update: {
     label: "Maintenance",
     icon: Wrench,
     priority: "high",
+    variant: "info",
     actionLabel: "View Maintenance",
     category: "maintenance",
+    isPrimaryAction: false,
   },
   maintenance_new: {
     label: "Maintenance Request",
     icon: Wrench,
     priority: "high",
+    variant: "warning",
     actionLabel: "Review Request",
     category: "maintenance",
+    isPrimaryAction: true,
   },
   penalty_applied: {
     label: "Penalty Applied",
     icon: Receipt,
     priority: "high",
+    variant: "warning",
     actionLabel: "View Billing",
     category: "billing",
+    isPrimaryAction: true,
   },
   chat_unresponded: {
     label: "Unread Chat",
     icon: MessageSquareText,
     priority: "high",
+    variant: "warning",
     actionLabel: "Open Chat",
     category: "chat",
+    isPrimaryAction: true,
   },
   inquiry_new: {
     label: "New Inquiry",
     icon: MessageSquareText,
     priority: "high",
+    variant: "info",
     actionLabel: "Review Inquiry",
     category: "chat",
+    isPrimaryAction: true,
   },
   payment_proof_submitted: {
     label: "Payment Proof",
     icon: Receipt,
     priority: "high",
+    variant: "warning",
     actionLabel: "Verify Proof",
     category: "billing",
+    isPrimaryAction: true,
   },
   payment_rejected: {
     label: "Payment Rejected",
     icon: Receipt,
     priority: "high",
+    variant: "critical",
     actionLabel: "View Billing",
     category: "billing",
+    isPrimaryAction: true,
   },
   application_submitted: {
     label: "New Application",
     icon: CalendarCheck,
     priority: "high",
+    variant: "info",
     actionLabel: "Review Application",
     category: "reservations",
+    isPrimaryAction: true,
   },
   contract_incomplete: {
     label: "Contract Incomplete",
     icon: AlertTriangle,
     priority: "high",
+    variant: "warning",
     actionLabel: "Review Contract",
     category: "reservations",
+    isPrimaryAction: true,
   },
   contract_error: {
     label: "Contract Error",
     icon: AlertTriangle,
     priority: "high",
+    variant: "critical",
     actionLabel: "Fix Contract",
     category: "reservations",
+    isPrimaryAction: true,
   },
   reservation_noshow: {
     label: "No-Show Recorded",
     icon: CalendarCheck,
     priority: "high",
+    variant: "critical",
     actionLabel: "View Reservation",
     category: "reservations",
+    isPrimaryAction: true,
   },
   bill_due_reminder: {
     label: "Due Reminder",
     icon: Receipt,
     priority: "medium",
+    variant: "warning",
     actionLabel: "View Bill",
     category: "billing",
+    isPrimaryAction: false,
   },
   bill_generated: {
     label: "Bill Generated",
     icon: Receipt,
     priority: "medium",
+    variant: "info",
     actionLabel: "View Bill",
     category: "billing",
+    isPrimaryAction: false,
   },
   contract_signed: {
     label: "Contract Signed",
     icon: CalendarCheck,
     priority: "medium",
+    variant: "success",
     actionLabel: "View Contract",
     category: "reservations",
+    isPrimaryAction: false,
   },
   contract_expiring: {
     label: "Contract Expiring",
     icon: CalendarCheck,
     priority: "medium",
+    variant: "warning",
     actionLabel: "View Tenant",
     category: "reservations",
+    isPrimaryAction: false,
   },
   contract_prepared: {
     label: "Contract Prepared",
     icon: CalendarCheck,
     priority: "medium",
+    variant: "info",
     actionLabel: "View Contract",
     category: "reservations",
+    isPrimaryAction: false,
   },
   reservation_cancelled: {
     label: "Reservation Cancelled",
     icon: CalendarCheck,
     priority: "medium",
+    variant: "neutral",
     actionLabel: "View Reservation",
     category: "cancellations",
+    isPrimaryAction: false,
   },
   reservation_cancellation_rejected: {
     label: "Cancellation Rejected",
     icon: CalendarCheck,
     priority: "medium",
+    variant: "neutral",
     actionLabel: "View Reservation",
     category: "cancellations",
+    isPrimaryAction: false,
   },
   reservation_expired: {
     label: "Reservation Expired",
     icon: CalendarCheck,
     priority: "medium",
+    variant: "neutral",
     actionLabel: "View Reservation",
     category: "reservations",
+    isPrimaryAction: false,
   },
   visit_requested: {
     label: "Visit Request",
     icon: CalendarCheck,
     priority: "medium",
+    variant: "info",
     actionLabel: "Review Visit",
     category: "reservations",
+    isPrimaryAction: true,
   },
   visit_rejected: {
     label: "Visit Rejected",
     icon: CalendarCheck,
     priority: "medium",
+    variant: "neutral",
     actionLabel: "View Visit",
     category: "reservations",
+    isPrimaryAction: false,
   },
   payment_approved: {
     label: "Payment Approved",
     icon: Receipt,
     priority: "low",
+    variant: "success",
     actionLabel: "View Billing",
     category: "billing",
+    isPrimaryAction: false,
   },
   reservation_confirmed: {
     label: "Reservation Confirmed",
     icon: CalendarCheck,
     priority: "low",
+    variant: "success",
     actionLabel: "View Reservation",
     category: "reservations",
+    isPrimaryAction: false,
   },
   visit_approved: {
     label: "Visit Approved",
     icon: CalendarCheck,
     priority: "low",
+    variant: "success",
     actionLabel: "View Visit",
     category: "reservations",
+    isPrimaryAction: false,
   },
   account_reactivated: {
     label: "Account Reactivated",
     icon: ShieldAlert,
     priority: "low",
+    variant: "success",
     actionLabel: "View Account",
     category: "general",
+    isPrimaryAction: false,
   },
   general: {
     label: "General Notice",
     icon: Info,
     priority: "low",
+    variant: "neutral",
     actionLabel: "View Details",
     category: "general",
+    isPrimaryAction: false,
   },
 };
 
@@ -303,8 +363,10 @@ function getMeta(type) {
       label: "System Alert",
       icon: Bell,
       priority: "low",
+      variant: "neutral",
       actionLabel: "View Details",
       category: "general",
+      isPrimaryAction: false,
     }
   );
 }
@@ -606,20 +668,20 @@ export default function AdminNotificationsPage() {
 
   return (
     <div className="admin-notif-page">
-      {/* ── Pattern 1 Sticky Sub-Header ── */}
+      {/* ── Sticky Sub-Header ── */}
       <AdminPageHeader
         title="Notifications"
         subtitle="Review SLA breaches, billing alerts, maintenance updates, and system events."
         actions={
           <div className="flex items-center gap-2">
             {unreadCount > 0 && (
-              <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-700 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/50">
+              <span className="admin-notif-page__unread-badge">
                 {unreadCount} Unread
               </span>
             )}
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="admin-notif-page__mark-all-btn"
               onClick={handleMarkAllRead}
               disabled={markAllMutation.isPending || unreadCount === 0}
               title={
@@ -655,6 +717,42 @@ export default function AdminNotificationsPage() {
         className="admin-notif-page__controls"
         aria-label="Filter Controls"
       >
+        {/* Row 1: Category Segmented Tabs & Active Results Count */}
+        <div className="admin-notif-page__tabs-row">
+          <div className="admin-notif-page__category-tabs">
+            {CATEGORY_TABS.map((tab) => {
+              const count = categoryCounts[tab.key] || 0;
+              const isActive = categoryFilter === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`admin-notif-page__category-tab ${
+                    isActive ? "is-active" : ""
+                  }`}
+                  onClick={() => {
+                    setCategoryFilter(tab.key);
+                    setPage(1);
+                  }}
+                >
+                  <span>{tab.label}</span>
+                  {count > 0 && (
+                    <span className="admin-notif-page__tab-badge">{count}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="admin-notif-page__count-status">
+            <span>
+              Showing <strong>{filteredNotifications.length}</strong> of{" "}
+              <strong>{totalNotifications}</strong> alerts
+            </span>
+          </div>
+        </div>
+
+        {/* Row 2: Search Input, Severity Filter, and Unread Toggle */}
         <div className="admin-notif-page__controls-row">
           {/* Live Search Input */}
           <div className="admin-notif-page__search-wrap">
@@ -710,40 +808,32 @@ export default function AdminNotificationsPage() {
               }}
               title={
                 unreadOnly
-                  ? "Showing only unread alerts. Click to show all."
-                  : "Click to filter by unread notifications only"
+                  ? "Showing unread alerts only. Click to show all."
+                  : "Filter by unread notifications"
               }
             >
               <span className="admin-notif-item__dot" />
-              Unread only ({unreadCount})
+              <span>Unread only</span>
+              <span className="admin-notif-page__unread-count-badge">
+                {unreadCount}
+              </span>
             </button>
-          </div>
-        </div>
 
-        {/* Category Segmented Tabs */}
-        <div className="admin-notif-page__category-tabs">
-          {CATEGORY_TABS.map((tab) => {
-            const count = categoryCounts[tab.key] || 0;
-            const isActive = categoryFilter === tab.key;
-            return (
+            {(searchTerm ||
+              categoryFilter !== "all" ||
+              priorityFilter !== "all" ||
+              unreadOnly) && (
               <button
-                key={tab.key}
                 type="button"
-                className={`admin-notif-page__category-tab ${
-                  isActive ? "is-active" : ""
-                }`}
-                onClick={() => {
-                  setCategoryFilter(tab.key);
-                  setPage(1);
-                }}
+                className="admin-notif-page__clear-filters-btn"
+                onClick={handleResetFilters}
+                title="Reset all search and filter criteria"
               >
-                <span>{tab.label}</span>
-                {count > 0 && (
-                  <span className="admin-notif-page__tab-badge">{count}</span>
-                )}
+                <XIcon size={13} />
+                <span>Reset</span>
               </button>
-            );
-          })}
+            )}
+          </div>
         </div>
       </section>
 
@@ -807,6 +897,8 @@ export default function AdminNotificationsPage() {
             const cleanedMessage = cleanNotificationMessage(
               notification.message
             );
+            const variant = meta.variant || meta.priority || "neutral";
+            const isPrimaryAction = meta.isPrimaryAction ?? (meta.priority === "critical" || meta.priority === "high");
 
             return (
               <article
@@ -815,7 +907,6 @@ export default function AdminNotificationsPage() {
                 tabIndex={isClickable ? 0 : undefined}
                 className={[
                   "admin-notif-item",
-                  `admin-notif-item--${meta.priority}`,
                   isUnread ? "admin-notif-item--unread" : "admin-notif-item--read",
                   isClickable ? "admin-notif-item--clickable" : "",
                 ].join(" ")}
@@ -835,10 +926,8 @@ export default function AdminNotificationsPage() {
                     : undefined
                 }
               >
-                {/* Priority / Type Icon Box */}
-                <div
-                  className={`admin-notif-item__icon-wrap admin-notif-item__icon-wrap--${meta.priority}`}
-                >
+                {/* Clean Neutral Icon Box */}
+                <div className="admin-notif-item__icon-wrap">
                   <Icon size={18} />
                 </div>
 
@@ -871,13 +960,16 @@ export default function AdminNotificationsPage() {
 
                   <div className="admin-notif-item__meta-row">
                     <span
-                      className={`admin-notif-item__tag admin-notif-item__tag--${meta.priority}`}
+                      className={`admin-notif-tag admin-notif-tag--${variant}`}
                     >
                       {meta.label}
                     </span>
 
                     {notification.entityId && (
-                      <span className="admin-notif-item__category-badge">
+                      <span
+                        className="admin-notif-item__entity-ref"
+                        title={`Reference Code: ${notification.entityId}`}
+                      >
                         Ref: {notification.entityId}
                       </span>
                     )}
@@ -901,8 +993,17 @@ export default function AdminNotificationsPage() {
                   {isClickable && (
                     <button
                       type="button"
-                      className="admin-notif-item__action-btn"
+                      className={`admin-notif-item__action-btn ${
+                        isPrimaryAction
+                          ? "admin-notif-item__action-btn--primary"
+                          : "admin-notif-item__action-btn--secondary"
+                      }`}
                       onClick={() => handleNotificationClick(notification)}
+                      title={
+                        isPrimaryAction
+                          ? `${meta.actionLabel || "Review"} (Urgent action)`
+                          : `${meta.actionLabel || "View Details"}`
+                      }
                     >
                       <span>{meta.actionLabel || "Review"}</span>
                       <ArrowUpRight size={13} />

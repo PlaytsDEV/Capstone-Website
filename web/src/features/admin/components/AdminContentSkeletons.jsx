@@ -7,6 +7,7 @@ import "../../owner/styles/owner-branches.css";
 import "../../owner/styles/owner-settings.css";
 import "../styles/admin-backup.css";
 import "../styles/admin-reports.css";
+import "../../../shared/components/AdminPageHeader.css";
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
 
@@ -346,44 +347,247 @@ export function AdminMaintenanceSkeleton() {
   );
 }
 
-// ─── Card-grid skeleton (Room Availability, Branches) ────────────────────────
-export function AdminCardGridSkeleton() {
+// ─── Room Availability / Inventory Workspace Skeleton ───────────────────────
+// Mirrors RoomAvailabilityPage: AdminPageHeader (with vacancy schedule, export, add actions) →
+// 6 KPI stat metric cards (Total Rooms, Available, Partial, Full, Maintenance, Total Beds) →
+// main card container → filter preset chips bar → search input + filter dropdowns →
+// multi-category status legend bar → floor-grouped double-deck bunk bed matrix cards →
+// bottom summary & page controls footer.
+export function AdminRoomAvailabilitySkeleton() {
   return (
-    <div aria-live="polite" aria-busy="true" style={{ padding: "24px 28px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "22px" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <SkeletonPulse variant="text" width="160px" height="20px" />
-          <SkeletonPulse variant="text" width="240px" height="12px" />
-        </div>
-        <SkeletonPulse width="110px" height="36px" borderRadius="8px" />
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "16px" }}>
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div
-            key={i}
-            style={{
-              borderRadius: "12px",
-              border: "1px solid var(--border-light, #e5e7eb)",
-              background: "var(--bg-card, #fff)",
-              padding: "18px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "10px",
-            }}
-          >
-            <SkeletonPulse width="100%" height="120px" borderRadius="8px" />
-            <SkeletonPulse variant="text" width="60%" height="14px" />
-            <SkeletonPulse variant="text" width="80%" height="11px" />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <SkeletonPulse width="50px" height="22px" borderRadius="6px" />
-              <SkeletonPulse width="70px" height="22px" borderRadius="6px" />
+    <div
+      className="space-y-6"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label="Loading room inventory workspace"
+    >
+      {/* Pattern 1 Sticky Sub-Header matching AdminPageHeader */}
+      <div className="admin-page-header admin-page-header--sticky">
+        <div className="admin-page-header-top">
+          <div className="admin-page-header-heading">
+            <SkeletonPulse variant="text" width="170px" height="24px" style={{ marginBottom: "6px" }} />
+            <SkeletonPulse variant="text" width="420px" height="13px" />
+          </div>
+          <div className="admin-page-header-side">
+            <div className="admin-page-header-actions flex items-center gap-2 flex-wrap">
+              {/* Check Vacancy Schedule action button */}
+              <SkeletonPulse width="190px" height="32px" borderRadius="8px" />
+              {/* Export CSV action button */}
+              <SkeletonPulse width="90px" height="32px" borderRadius="8px" />
+              {/* Export PDF action button */}
+              <SkeletonPulse width="90px" height="32px" borderRadius="8px" />
+              {/* Add Room action button */}
+              <SkeletonPulse width="95px" height="32px" borderRadius="8px" />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* 6 KPI Stat Metric Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5 mb-4">
+        {[
+          { labelW: "70px", valW: "36px" }, // Total Rooms
+          { labelW: "55px", valW: "32px" }, // Available
+          { labelW: "45px", valW: "32px" }, // Partial
+          { labelW: "35px", valW: "28px" }, // Full
+          { labelW: "75px", valW: "24px" }, // Maintenance
+          { labelW: "65px", valW: "36px" }, // Total Beds
+        ].map((kpi, i) => (
+          <div
+            key={i}
+            className="flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <SkeletonPulse variant="text" width={kpi.labelW} height="11px" />
+              <SkeletonPulse width="32px" height="32px" borderRadius="8px" />
+            </div>
+            <SkeletonPulse variant="text" width={kpi.valW} height="24px" style={{ marginTop: "8px" }} />
+          </div>
         ))}
+      </div>
+
+      {/* Main Inventory Container */}
+      <div
+        className="rounded-xl p-5"
+        style={{
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        {/* Optimized Toolbar with Preset Chips, Search, & Active Filter Controls */}
+        <div className="flex flex-col gap-4 mb-6">
+          {/* Quick Preset Filter Chips Bar */}
+          <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-border/60">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <SkeletonPulse variant="text" width="55px" height="11px" style={{ marginRight: "4px" }} />
+              {["92px", "88px", "76px", "65px", "106px"].map((width, idx) => (
+                <SkeletonPulse key={idx} width={width} height="28px" borderRadius="9999px" />
+              ))}
+            </div>
+          </div>
+
+          {/* Search Bar & Dropdown Select Controls */}
+          <div className="flex flex-col lg:flex-row gap-3 items-end">
+            {/* Search Input with Micro-Label */}
+            <div className="flex-1 flex flex-col gap-1 min-w-[240px] w-full">
+              <SkeletonPulse variant="text" width="45px" height="10px" />
+              <SkeletonPulse width="100%" height="36px" borderRadius="8px" />
+            </div>
+
+            {/* Filter Dropdowns & Add Room Button */}
+            <div className="flex gap-2.5 flex-wrap items-end">
+              <div className="flex flex-col gap-1">
+                <SkeletonPulse variant="text" width="35px" height="10px" />
+                <SkeletonPulse width="110px" height="36px" borderRadius="8px" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <SkeletonPulse variant="text" width="35px" height="10px" />
+                <SkeletonPulse width="110px" height="36px" borderRadius="8px" />
+              </div>
+              <SkeletonPulse width="105px" height="36px" borderRadius="8px" />
+            </div>
+          </div>
+        </div>
+
+        {/* Multi-Category Status Legend Bar */}
+        <div className="mb-5 rounded-xl p-3.5 border border-border bg-card shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+            {/* Room Status Badges */}
+            <div className="flex flex-wrap items-center gap-2">
+              <SkeletonPulse variant="text" width="80px" height="11px" style={{ marginRight: "4px" }} />
+              {["75px", "70px", "60px", "90px"].map((w, idx) => (
+                <SkeletonPulse key={idx} width={w} height="22px" borderRadius="9999px" />
+              ))}
+            </div>
+
+            {/* Bed Deck Pills */}
+            <div className="flex flex-wrap items-center gap-2 pt-2.5 lg:pt-0 border-t lg:border-t-0 lg:border-l border-border lg:pl-3.5">
+              <SkeletonPulse variant="text" width="75px" height="11px" style={{ marginRight: "4px" }} />
+              {["65px", "72px", "72px", "110px", "55px"].map((w, idx) => (
+                <SkeletonPulse key={idx} width={w} height="22px" borderRadius="4px" />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Floor Grouped Room Card Grid */}
+        <div className="space-y-8 mt-2">
+          {[
+            { floorW: "55px", roomsW: "65px", availW: "85px" },
+            { floorW: "55px", roomsW: "65px", availW: "85px" },
+          ].map((floorGroup, fIdx) => (
+            <div key={fIdx} className="space-y-3">
+              {/* Floor Section Header */}
+              <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-card border border-border shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <SkeletonPulse width="28px" height="28px" borderRadius="8px" />
+                  <SkeletonPulse variant="text" width={floorGroup.floorW} height="16px" />
+                  <SkeletonPulse width={floorGroup.roomsW} height="20px" borderRadius="9999px" />
+                </div>
+                <SkeletonPulse width={floorGroup.availW} height="20px" borderRadius="9999px" />
+              </div>
+
+              {/* Double Deck Room Cards Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-stretch">
+                {Array.from({ length: 4 }).map((_, cardIdx) => (
+                  <div
+                    key={cardIdx}
+                    className="rounded-xl p-3.5 flex flex-col justify-between w-full bg-card border border-border"
+                  >
+                    {/* Card Top Header */}
+                    <div className="flex items-start justify-between gap-2 pb-2.5 mb-2.5 border-b border-border/60">
+                      <div>
+                        <SkeletonPulse variant="text" width="80px" height="18px" style={{ marginBottom: "4px" }} />
+                        <SkeletonPulse variant="text" width="110px" height="12px" />
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <SkeletonPulse width="68px" height="20px" borderRadius="9999px" />
+                        <SkeletonPulse variant="text" width="65px" height="11px" />
+                      </div>
+                    </div>
+
+                    {/* Double Deck Bunk Layout Frame */}
+                    <div className="space-y-2 my-1">
+                      <div className="flex items-center justify-between px-0.5">
+                        <SkeletonPulse variant="text" width="105px" height="10px" />
+                        <SkeletonPulse variant="text" width="65px" height="10px" />
+                      </div>
+
+                      {/* Bunk Frames (2 Double Deck Bunks per 4-cap room) */}
+                      <div className="grid grid-cols-1 gap-2">
+                        {[1, 2].map((bunkIdx) => (
+                          <div
+                            key={bunkIdx}
+                            className="rounded-lg p-2 bg-muted/40 border border-border/80 flex flex-col gap-1.5"
+                          >
+                            <div className="flex items-center justify-between border-b border-border/40 pb-1">
+                              <SkeletonPulse variant="text" width="45px" height="11px" />
+                              <SkeletonPulse variant="text" width="60px" height="10px" />
+                            </div>
+
+                            {/* Top Deck */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <SkeletonPulse width="24px" height="16px" borderRadius="4px" />
+                                <SkeletonPulse variant="text" width="28px" height="11px" />
+                              </div>
+                              <SkeletonPulse width="72px" height="18px" borderRadius="4px" />
+                            </div>
+
+                            <div className="w-full h-px bg-border/40 my-0.5" />
+
+                            {/* Bottom Deck */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <SkeletonPulse width="24px" height="16px" borderRadius="4px" />
+                                <SkeletonPulse variant="text" width="28px" height="11px" />
+                              </div>
+                              <SkeletonPulse width="72px" height="18px" borderRadius="4px" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Amenity Pills Strip */}
+                    <div className="my-2 flex flex-wrap gap-1">
+                      <SkeletonPulse width="80px" height="18px" borderRadius="4px" />
+                      <SkeletonPulse width="48px" height="18px" borderRadius="4px" />
+                    </div>
+
+                    {/* Card Footer Details */}
+                    <div className="pt-2 mt-1 border-t border-border/60 flex items-center justify-between text-xs">
+                      <SkeletonPulse width="55px" height="18px" borderRadius="4px" />
+                      <SkeletonPulse variant="text" width="85px" height="13px" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Bottom Summary & Fast Page Controls Footer */}
+        <div className="flex items-center justify-between flex-wrap gap-3 pt-4 mt-6 px-1 border-t border-border/60 text-xs">
+          <SkeletonPulse variant="text" width="180px" height="13px" />
+          <div className="flex items-center gap-3 ml-auto">
+            <SkeletonPulse variant="text" width="70px" height="13px" />
+            <div className="flex items-center gap-1">
+              <SkeletonPulse width="65px" height="28px" borderRadius="8px" />
+              <SkeletonPulse width="28px" height="28px" borderRadius="8px" />
+              <SkeletonPulse width="28px" height="28px" borderRadius="8px" />
+              <SkeletonPulse width="55px" height="28px" borderRadius="8px" />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+
+// Backward-compatible aliases for AdminCardGridSkeleton / AdminRoomManagementSkeleton
+export const AdminRoomManagementSkeleton = AdminRoomAvailabilitySkeleton;
+export const AdminCardGridSkeleton = AdminRoomAvailabilitySkeleton;
 
 // ─── Form-page skeleton (Settings, Roles) ────────────────────────────────────
 export function AdminFormPageSkeleton() {

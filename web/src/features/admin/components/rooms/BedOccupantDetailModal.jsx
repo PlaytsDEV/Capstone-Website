@@ -64,6 +64,7 @@ export default function BedOccupantDetailModal({
   const reservationId = occupant.reservationId || bed?.reservationId || extraDetails?.reservationId || extraDetails?._id || null;
   const occupiedSince = occupant.occupiedSince || bed?.occupiedSince || extraDetails?.moveInDate || extraDetails?.startDate || null;
   const expectedVacancy = bed?.expectedVacancyDate || occupant.expectedVacancyDate || extraDetails?.endDate || extraDetails?.expectedVacancyDate || null;
+  const daysRemaining = bed?.daysRemaining ?? occupant.daysRemaining ?? (expectedVacancy ? Math.ceil((new Date(expectedVacancy) - new Date()) / (1000 * 60 * 60 * 24)) : null);
 
   // Fetch extra details if reservationId is available and email/phone are missing
   useEffect(() => {
@@ -129,8 +130,8 @@ export default function BedOccupantDetailModal({
                 isReserved
                   ? "bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
                   : isLocked
-                    ? "bg-orange-100 text-orange-900 border border-orange-300 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800"
-                    : "bg-blue-100 text-blue-900 border border-blue-300 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800"
+                    ? "bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
+                    : "bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800"
               }`}
             >
               {initials}
@@ -161,15 +162,13 @@ export default function BedOccupantDetailModal({
           <div className="flex items-center justify-between gap-2">
             <span
               className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-medium text-[11px] ${
-                isReserved
+                isLocked
                   ? "bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800"
-                  : isLocked
-                    ? "bg-orange-50 text-orange-800 border border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800"
-                    : "bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800"
+                  : "bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800"
               }`}
             >
-              {isReserved ? <Lock size={12} /> : isLocked ? <Lock size={12} /> : <CheckCircle2 size={12} />}
-              {isReserved ? "Reserved" : isLocked ? "Payment Pending" : "Moved In"}
+              {isLocked ? <Lock size={12} /> : <CheckCircle2 size={12} />}
+              {isReserved ? "Reserved" : isLocked ? "Payment Pending" : "Move In"}
             </span>
 
             {reservationId && (
@@ -196,12 +195,33 @@ export default function BedOccupantDetailModal({
             )}
 
             {(occupiedSince || expectedVacancy) && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Calendar size={13} className="flex-shrink-0 text-foreground/70" />
-                <span className="text-foreground font-medium">
-                  {occupiedSince ? formatDate(occupiedSince) : "Started"}
-                  {expectedVacancy ? ` → ${formatDate(expectedVacancy)}` : ""}
-                </span>
+              <div className="flex items-center justify-between gap-2 text-muted-foreground flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Calendar size={13} className="flex-shrink-0 text-foreground/70" />
+                  <span className="text-foreground font-medium">
+                    {occupiedSince ? formatDate(occupiedSince) : "Started"}
+                    {expectedVacancy ? ` → ${formatDate(expectedVacancy)}` : ""}
+                  </span>
+                </div>
+                {expectedVacancy && daysRemaining != null && (
+                  <span
+                    className={`whitespace-nowrap inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                      daysRemaining <= 0
+                        ? "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 font-bold"
+                        : daysRemaining <= 7
+                        ? "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 font-bold"
+                        : daysRemaining <= 30
+                        ? "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800"
+                        : daysRemaining <= 90
+                        ? "bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    {daysRemaining <= 0
+                      ? "Vacant Today"
+                      : `${daysRemaining} ${daysRemaining === 1 ? "day" : "days"} left`}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -214,7 +234,7 @@ export default function BedOccupantDetailModal({
             {isLocked && onReleaseBed && (
               <button
                 type="button"
-                className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/60 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors"
+                className="px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-800 dark:hover:bg-rose-950/60 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors"
                 onClick={() => { onReleaseBed(bed); onClose(); }}
                 title="Release this bed back to Vacant. This will cancel the applicant's payment window."
               >
@@ -226,14 +246,14 @@ export default function BedOccupantDetailModal({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="px-3 py-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md text-xs font-medium transition-colors"
+              className="px-3 py-1.5 bg-white text-slate-700 border border-slate-300 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-700 rounded-md text-xs font-medium transition-colors"
               onClick={onClose}
             >
               Close
             </button>
             <button
               type="button"
-              className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-opacity"
+              className="px-3 py-1.5 bg-[#0A1628] text-white hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors"
               onClick={handleOpenTenantsPage}
             >
               Full Profile

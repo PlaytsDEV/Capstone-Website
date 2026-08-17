@@ -144,8 +144,8 @@ function VisitAvailabilityTab() {
     confirmText: "Delete",
     onConfirm: null,
   });
-  // Day-selector panel state: null = auto-select first enabled weekday
-  const [selectedDay, setSelectedDay] = useState(null);
+  // Day-selector panel state: default to Monday (1)
+  const [selectedDay, setSelectedDay] = useState(1);
 
   const canLoadSettings =
     Boolean(currentUser) && (!isBranchAdmin || branch === currentUser.branch);
@@ -164,22 +164,6 @@ function VisitAvailabilityTab() {
   const updateSettings = useUpdateVisitAvailabilitySettings();
   const preflightCheck = useVisitAvailabilityPreflight();
 
-  useEffect(() => {
-    if (isBranchAdmin && currentUser?.branch && branch !== currentUser.branch) {
-      setBranch(currentUser.branch);
-    }
-  }, [branch, currentUser?.branch, isBranchAdmin]);
-
-  useEffect(() => {
-    if (!settings) return;
-    setDraft({
-      enabledWeekdays: settings.enabledWeekdays || [1, 2, 3, 4, 5],
-      slots: settings.slots?.length ? settings.slots : createDefaultDraft().slots,
-      blackoutDates: settings.blackoutDates || [],
-      dayOverrides: settings.dayOverrides || {},
-    });
-  }, [settings]);
-
   // Check if draft has unsaved modifications
   const isDirty = useMemo(() => {
     if (!settings) return false;
@@ -188,7 +172,7 @@ function VisitAvailabilityTab() {
     const origBlackouts = settings.blackoutDates || [];
     const origDayOverrides = settings.dayOverrides || {};
 
-    if (JSON.stringify(draft.enabledWeekdays.sort()) !== JSON.stringify([...origWeekdays].sort())) return true;
+    if (JSON.stringify([...draft.enabledWeekdays].sort()) !== JSON.stringify([...origWeekdays].sort())) return true;
     if (draft.blackoutDates.length !== origBlackouts.length) return true;
     if (JSON.stringify(draft.blackoutDates) !== JSON.stringify(origBlackouts)) return true;
     if (JSON.stringify(draft.dayOverrides) !== JSON.stringify(origDayOverrides)) return true;
@@ -201,6 +185,27 @@ function VisitAvailabilityTab() {
     }
     return false;
   }, [draft, settings]);
+
+  useEffect(() => {
+    if (isBranchAdmin && currentUser?.branch && branch !== currentUser.branch) {
+      setBranch(currentUser.branch);
+    }
+  }, [branch, currentUser?.branch, isBranchAdmin]);
+
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  useEffect(() => {
+    if (!settings) return;
+    if (!hasInitialized || !isDirty) {
+      setDraft({
+        enabledWeekdays: settings.enabledWeekdays || [1, 2, 3, 4, 5],
+        slots: settings.slots?.length ? settings.slots : createDefaultDraft().slots,
+        blackoutDates: settings.blackoutDates || [],
+        dayOverrides: settings.dayOverrides || {},
+      });
+      setHasInitialized(true);
+    }
+  }, [settings, isDirty, hasInitialized]);
 
   const activeSlots = draft.slots.filter((slot) => slot.enabled);
   const totalCapacity = activeSlots.reduce(
@@ -527,6 +532,12 @@ function VisitAvailabilityTab() {
       });
       setWarningModalOpen(false);
       setConflictReport(null);
+      setDraft({
+        enabledWeekdays: payload.enabledWeekdays,
+        slots: payload.slots,
+        blackoutDates: payload.blackoutDates,
+        dayOverrides: payload.dayOverrides || {},
+      });
       showNotification("Visit availability rules saved successfully", "success", 3000);
     } catch (error) {
       showNotification(
@@ -639,8 +650,8 @@ function VisitAvailabilityTab() {
       {/* TOOLBAR CONTROLS BAR */}
       <div className="visit-avail-toolbar">
         <div className="visit-avail-toolbar__left">
-          <div className="visit-avail-branch-picker">
-            <Building2 size={15} />
+          <div className="visit-avail-branch-picker" title="Select dormitory branch to configure availability">
+            <Building2 size={15} className="text-slate-600 dark:text-slate-300" />
             <select
               value={branch}
               disabled={isBranchAdmin}
@@ -657,7 +668,7 @@ function VisitAvailabilityTab() {
 
           {isDirty && (
             <div className="visit-avail-dirty-group">
-              <div className="visit-avail-dirty-pill">
+              <div className="visit-avail-dirty-badge" title="You have unsaved changes in your schedule settings">
                 <span className="visit-avail-dirty-dot" />
                 <span>Unsaved Changes</span>
               </div>
@@ -689,7 +700,7 @@ function VisitAvailabilityTab() {
             type="button"
             className="res-action-btn res-action-btn--secondary"
             onClick={resetToDefault}
-            title="Reset form values to default system settings"
+            title="Reset form values to standard system defaults"
           >
             <RotateCcw size={15} />
             <span>Reset</span>
@@ -697,12 +708,19 @@ function VisitAvailabilityTab() {
 
           <button
             type="button"
-            disabled={updateSettings.isPending || isSavingBlackout || isLoading}
+            disabled={!isDirty || updateSettings.isPending || isSavingBlackout || isLoading}
             className={`res-action-btn visit-avail-save-btn ${isDirty ? "visit-avail-save-btn--active" : "visit-avail-save-btn--clean"}`}
             onClick={save}
+            title={
+              !isDirty
+                ? "No unsaved changes to save"
+                : updateSettings.isPending
+                  ? "Saving changes in progress..."
+                  : "Save operating schedule and blackout settings"
+            }
           >
             {updateSettings.isPending ? (
-              <RefreshCw size={15} className="spin" />
+              <RefreshCw size={15} className="animate-spin" />
             ) : (
               <Save size={15} />
             )}
@@ -722,12 +740,12 @@ function VisitAvailabilityTab() {
             <p>Set operating days, configure time slots and visitor caps, and manage per-day slot exceptions.</p>
           </div>
           <div className="visit-card__header-actions">
-            <div className="visit-cap-quick-set">
+            <div className="visit-cap-quick-set" title="Set uniform visitor capacity across all time slots">
               <span className="visit-cap-label">Quick Cap:</span>
               <div className="visit-cap-pills">
-                <button type="button" className="visit-cap-pill" onClick={() => setAllSlotsCapacity(3)}>3</button>
-                <button type="button" className="visit-cap-pill" onClick={() => setAllSlotsCapacity(5)}>5</button>
-                <button type="button" className="visit-cap-pill" onClick={() => setAllSlotsCapacity(10)}>10</button>
+                <button type="button" className="visit-cap-pill" onClick={() => setAllSlotsCapacity(3)} title="Set 3 visitors per slot">3</button>
+                <button type="button" className="visit-cap-pill" onClick={() => setAllSlotsCapacity(5)} title="Set 5 visitors per slot">5</button>
+                <button type="button" className="visit-cap-pill" onClick={() => setAllSlotsCapacity(10)} title="Set 10 visitors per slot">10</button>
               </div>
             </div>
             <div className="visit-header-divider" />
@@ -766,16 +784,26 @@ function VisitAvailabilityTab() {
                 const isActive = activeDay === day.value;
                 const hasOverrides = Object.keys(draft.dayOverrides?.[day.value] || {}).length > 0;
                 return (
-                  <button
+                  <div
                     key={day.value}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedDay(day.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedDay(day.value);
+                      }
+                    }}
                     className={`visit-day-tab ${isActive ? "visit-day-tab--active" : ""} ${!isOperating ? "visit-day-tab--off" : ""}`}
-                    title={isOperating ? `${day.full} — operating` : `${day.full} — day off`}
+                    title={isOperating ? `${day.full} — operating day` : `${day.full} — day off`}
                   >
                     <div className="visit-day-tab__top">
                       <span className="visit-day-tab__short">{day.label}</span>
-                      <div className="visit-day-tab__toggle">
+                      <div
+                        className="visit-day-tab__toggle"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <input
                           type="checkbox"
                           checked={isOperating}
@@ -784,19 +812,20 @@ function VisitAvailabilityTab() {
                             toggleWeekday(day.value);
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          title={isOperating ? "Disable this day" : "Enable this day"}
+                          title={isOperating ? `Disable ${day.full}` : `Enable ${day.full}`}
+                          aria-label={`Toggle ${day.full} operating status`}
                         />
                       </div>
                     </div>
                     <span className="visit-day-tab__full">{day.full}</span>
                     {hasOverrides && <span className="visit-day-tab__override-dot" title="Has per-day slot exceptions" />}
-                  </button>
+                  </div>
                 );
               })}
             </div>
             <div className="visit-day-tab-presets">
-              <button type="button" className="visit-mini-btn" onClick={selectWeekdaysOnly}>Mon – Fri</button>
-              <button type="button" className="visit-mini-btn" onClick={selectAllDays}>All 7 Days</button>
+              <button type="button" className="visit-mini-btn" onClick={selectWeekdaysOnly} title="Set Monday to Friday as operating days">Mon – Fri</button>
+              <button type="button" className="visit-mini-btn" onClick={selectAllDays} title="Set all 7 days as operating days">All 7 Days</button>
             </div>
           </div>
 
@@ -808,8 +837,8 @@ function VisitAvailabilityTab() {
             const dayOverridesForDay = draft.dayOverrides?.[activeDay] || {};
 
             const slotGroups = [
-              { label: "Morning Session (AM)", icon: <Sun size={14} />, slots: draft.slots.filter((s) => s.label.includes("AM")) },
-              { label: "Afternoon Session (PM)", icon: <Moon size={14} />, slots: draft.slots.filter((s) => s.label.includes("PM")) },
+              { label: "Morning Session (AM)", icon: <Sun size={15} className="text-amber-500 shrink-0" />, slots: draft.slots.filter((s) => s.label.includes("AM")) },
+              { label: "Afternoon Session (PM)", icon: <Moon size={15} className="text-sky-500 shrink-0" />, slots: draft.slots.filter((s) => s.label.includes("PM")) },
             ];
 
             return (
@@ -817,10 +846,14 @@ function VisitAvailabilityTab() {
                 <div className="visit-day-slot-panel__heading">
                   <span className="visit-day-slot-panel__day-name">{activeDayInfo?.full ?? "Selected Day"}</span>
                   {!isDayOperating && (
-                    <span className="visit-day-slot-panel__off-badge">Day Off — pre-configure slots for when this day is re-enabled</span>
+                    <span className="visit-day-slot-panel__off-badge">
+                      <span className="visit-status-dot visit-status-dot--slate" />
+                      Day Off — pre-configure slots for when this day is re-enabled
+                    </span>
                   )}
                   {isDayOperating && Object.keys(dayOverridesForDay).length > 0 && (
                     <span className="visit-day-slot-panel__override-badge">
+                      <span className="visit-status-dot visit-status-dot--amber" />
                       {Object.keys(dayOverridesForDay).length} custom slot rule{Object.keys(dayOverridesForDay).length > 1 ? "s" : ""}
                     </span>
                   )}
@@ -835,7 +868,6 @@ function VisitAvailabilityTab() {
                       </div>
                       <div className="visit-slot-table">
                         {group.slots.map((slot) => {
-                          const globalIndex = draft.slots.findIndex((s) => s.label === slot.label);
                           const dayOverride = dayOverridesForDay[slot.label];
                           const effectiveEnabled = dayOverride?.enabled !== undefined ? dayOverride.enabled : slot.enabled;
                           const effectiveCapacity = dayOverride?.capacity !== undefined ? dayOverride.capacity : slot.capacity;
@@ -852,30 +884,44 @@ function VisitAvailabilityTab() {
                                 <strong>{slot.label}</strong>
                                 {hasOverride && (
                                   <span className="visit-slot-override-tag" title="This slot has a custom setting for this day">
+                                    <span className="visit-status-dot visit-status-dot--amber" />
                                     Custom
                                   </span>
                                 )}
                               </div>
 
                               {/* Per-day toggle (affects this day only) */}
-                              <label className="visit-custom-toggle" title={effectiveEnabled ? "Disable for this day only" : "Enable for this day"}>
+                              <label
+                                className="visit-custom-toggle"
+                                title={effectiveEnabled ? "Disable for this day only" : "Enable for this day"}
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 <input
                                   type="checkbox"
                                   checked={effectiveEnabled}
-                                  onChange={() => toggleDaySlot(activeDay, slot.label)}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    toggleDaySlot(activeDay, slot.label);
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
                                 />
                                 <span className="visit-custom-toggle__slider" />
                                 <span className="visit-custom-toggle__text">
-                                  {effectiveEnabled ? "Active" : "Off this day"}
+                                  {effectiveEnabled ? "Active" : "Closed"}
                                 </span>
                               </label>
 
                               {/* Per-day capacity stepper */}
-                              <div className="visit-slot-cap-input" title="Set visitor cap for this day">
+                              <div className="visit-slot-cap-input" title="Set visitor capacity for this slot">
                                 <button
                                   type="button"
                                   disabled={!effectiveEnabled || Number(effectiveCapacity) <= 0}
-                                  onClick={() => updateDaySlotCapacity(activeDay, slot.label, Math.max(0, Number(effectiveCapacity) - 1))}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateDaySlotCapacity(activeDay, slot.label, Math.max(0, Number(effectiveCapacity) - 1));
+                                  }}
+                                  title="Decrease capacity"
+                                  aria-label={`Decrease capacity for ${slot.label}`}
                                 >
                                   -
                                 </button>
@@ -885,12 +931,22 @@ function VisitAvailabilityTab() {
                                   max="99"
                                   value={effectiveCapacity}
                                   disabled={!effectiveEnabled}
-                                  onChange={(e) => updateDaySlotCapacity(activeDay, slot.label, e.target.value)}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    updateDaySlotCapacity(activeDay, slot.label, e.target.value);
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  aria-label={`Visitor capacity for ${slot.label}`}
                                 />
                                 <button
                                   type="button"
                                   disabled={!effectiveEnabled}
-                                  onClick={() => updateDaySlotCapacity(activeDay, slot.label, Number(effectiveCapacity) + 1)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateDaySlotCapacity(activeDay, slot.label, Number(effectiveCapacity) + 1);
+                                  }}
+                                  title="Increase capacity"
+                                  aria-label={`Increase capacity for ${slot.label}`}
                                 >
                                   +
                                 </button>
@@ -906,21 +962,21 @@ function VisitAvailabilityTab() {
             );
           })()}
 
-          {/* POLICY SUMMARY ROW */}
+          {/* POLICY SUMMARY ROW / KPI METRICS */}
           <div className="visit-policy-summary visit-policy-summary--inline">
-            <div className="visit-policy-stat">
+            <div className="visit-policy-stat" title="Total active operating weekdays per week">
               <span className="visit-policy-stat__value">{draft.enabledWeekdays.length}</span>
               <span className="visit-policy-stat__label">Operating Days / Wk</span>
             </div>
-            <div className="visit-policy-stat">
+            <div className="visit-policy-stat" title="Total active slots configured globally">
               <span className="visit-policy-stat__value">{activeSlots.length}</span>
               <span className="visit-policy-stat__label">Active Global Slots</span>
             </div>
-            <div className="visit-policy-stat">
+            <div className="visit-policy-stat" title="Maximum combined visitor capacity per operating day">
               <span className="visit-policy-stat__value">{totalCapacity}</span>
               <span className="visit-policy-stat__label">Max Visitors / Day</span>
             </div>
-            <div className="visit-policy-stat">
+            <div className="visit-policy-stat" title="Number of weekdays with custom exceptions or capacity overrides">
               <span className="visit-policy-stat__value">{Object.keys(draft.dayOverrides || {}).length}</span>
               <span className="visit-policy-stat__label">Days with Exceptions</span>
             </div>
@@ -928,411 +984,443 @@ function VisitAvailabilityTab() {
         </div>
       </section>
 
-
       {/* REAL-TIME LIVE SLOT MONITOR */}
       <section className="visit-card visit-card--full">
-          <div className="visit-card__header">
-            <div className="visit-card__header-icon">
-              <Users size={18} />
-            </div>
-            <div>
-              <h3>Real-Time Live Slot Occupancy Monitor</h3>
-              <p>Inspect visitor bookings and remaining slot capacities for any selected calendar date.</p>
-            </div>
-            <div className="visit-live-picker-group">
-              <label>
-                <span>Viewing Date</span>
-                <input
-                  type="date"
-                  value={usageDate}
-                  onChange={(event) => setUsageDate(event.target.value)}
-                />
-              </label>
-              <button
-                type="button"
-                className="visit-mini-btn"
-                onClick={() => refetchLiveUsage()}
-                title="Refresh live occupancy data"
-              >
-                <RefreshCw size={13} />
-                Refresh
-              </button>
-            </div>
+        <div className="visit-card__header">
+          <div className="visit-card__header-icon">
+            <Users size={18} />
           </div>
-
-          <div className="visit-live-grid">
-            {liveUsageLoading && (
-              <div className="visit-empty-box">
-                <RefreshCw size={22} className="spin" />
-                <span>Loading live slot usage data...</span>
-              </div>
-            )}
-            {liveUsageError && (
-              <div className="visit-empty-box visit-empty-box--error">
-                <AlertCircle size={22} />
-                <span>Unable to load live slot occupancy. Ensure branch is selected.</span>
-              </div>
-            )}
-            {!liveUsageLoading &&
-              !liveUsageError &&
-              draft.slots.map((configuredSlot) => {
-                const liveSlot = liveSlotsByLabel.get(configuredSlot.label);
-                const bookedCount = liveSlot?.count || 0;
-                const capacity = Number(configuredSlot.capacity) || 1;
-                const pct = Math.min(100, Math.round((bookedCount / capacity) * 100));
-
-                const isFull =
-                  liveSlot?.disabledCode === "VISIT_CAPACITY_REACHED" ||
-                  Number(liveSlot?.remaining) <= 0;
-                const isClosed =
-                  !configuredSlot.enabled ||
-                  (liveSlot && (!liveSlot.available || liveSlot.enabled === false) && !isFull);
-
-                return (
-                  <div
-                    key={configuredSlot.label}
-                    onClick={() => {
-                      if (bookedCount > 0) {
-                        setSlotVisitorInspect({ slot: configuredSlot.label, date: usageDate });
-                      }
-                    }}
-                    className={`visit-live-card ${isFull ? "visit-live-card--full" : ""} ${isClosed ? "visit-live-card--closed" : ""} ${bookedCount > 0 ? "visit-live-card--interactive cursor-pointer hover:border-blue-400 dark:hover:border-blue-600 transition-all shadow-2xs hover:shadow-xs" : ""}`}
-                    title={bookedCount > 0 ? `Click to inspect ${bookedCount} visitor(s)` : `${configuredSlot.label} — ${bookedCount} bookings`}
-                  >
-                    <div className="visit-live-card__header">
-                      <strong>{configuredSlot.label}</strong>
-                      <span className={`visit-live-card__badge ${bookedCount > 0 ? "bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-semibold" : ""}`}>
-                        {isClosed ? "CLOSED" : isFull ? "FULL" : `${bookedCount}/${capacity} Booked`}
-                      </span>
-                    </div>
-
-                    <div className="visit-live-card__meter">
-                      <div
-                        className={`visit-live-card__fill ${pct >= 100 ? "full" : pct >= 70 ? "warning" : ""}`}
-                        style={{ width: `${isClosed ? 0 : pct}%` }}
-                      />
-                    </div>
-
-                    <div className="visit-live-card__footer flex items-center justify-between">
-                      <span>
-                        {isClosed
-                          ? "Slot Disabled"
-                          : liveSlot
-                            ? formatRemainingSlots(liveSlot)
-                            : `${capacity} Available`}
-                      </span>
-                      {bookedCount > 0 && (
-                        <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 underline">
-                          View &rarr;
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+          <div>
+            <h3>Real-Time Live Slot Occupancy Monitor</h3>
+            <p>Inspect visitor bookings and remaining slot capacities for any selected calendar date.</p>
           </div>
-        </section>
-
-        {/* FULL-WIDTH CARD 4: BLACKOUT DATES & SPECIAL CLOSURES */}
-        <section className="visit-card visit-card--full">
-          <div className="visit-card__header">
-            <div className="visit-card__header-icon">
-              <CalendarX size={18} />
-            </div>
-            <div>
-              <h3>Blackout Dates & Special Closures</h3>
-              <p>Block specific calendar dates for holidays, maintenance, or staff events.</p>
-            </div>
-            <div className="visit-blackout-header-actions">
-              <button
-                type="button"
-                className="res-action-btn res-action-btn--primary"
-                onClick={() => setIsAddModalOpen(true)}
-                disabled={isSavingBlackout}
-                title="Open modal to add a blackout calendar date entry"
-              >
-                <Plus size={15} />
-                <span>Add Blackout Date</span>
-              </button>
-            </div>
+          <div className="visit-live-picker-group">
+            <label>
+              <span>Viewing Date</span>
+              <input
+                type="date"
+                value={usageDate}
+                onChange={(event) => setUsageDate(event.target.value)}
+                aria-label="Select date to inspect slot occupancy"
+              />
+            </label>
+            <button
+              type="button"
+              className="visit-mini-btn"
+              onClick={() => refetchLiveUsage()}
+              title="Refresh live occupancy data"
+              disabled={liveUsageLoading}
+            >
+              <RefreshCw size={13} className={liveUsageLoading ? "animate-spin" : ""} />
+              <span>Refresh</span>
+            </button>
           </div>
+        </div>
 
-          {/* TOOLBAR: SEARCH, STATUS TABS, SORT, & EXPIRED CLEANUP */}
-          {draft.blackoutDates.length > 0 && (
-            <div className="visit-blackout-toolbar">
-              <div className="visit-blackout-search">
-                <Search size={14} />
-                <input
-                  type="text"
-                  placeholder="Filter by date or reason..."
-                  value={blackoutSearch}
-                  onChange={(e) => setBlackoutSearch(e.target.value)}
-                />
-                {blackoutSearch && (
-                  <button
-                    type="button"
-                    className="visit-blackout-search-clear"
-                    onClick={() => setBlackoutSearch("")}
-                  >
-                    &times;
-                  </button>
-                )}
-              </div>
-
-              <div className="visit-blackout-tabs">
-                <button
-                  type="button"
-                  className={`visit-blackout-tab ${blackoutStatusFilter === "all" ? "active" : ""}`}
-                  onClick={() => setBlackoutStatusFilter("all")}
-                >
-                  All ({blackoutStats.total})
-                </button>
-                <button
-                  type="button"
-                  className={`visit-blackout-tab ${blackoutStatusFilter === "upcoming" ? "active" : ""}`}
-                  onClick={() => setBlackoutStatusFilter("upcoming")}
-                >
-                  Upcoming ({blackoutStats.upcoming})
-                </button>
-                <button
-                  type="button"
-                  className={`visit-blackout-tab ${blackoutStatusFilter === "today" ? "active" : ""}`}
-                  onClick={() => setBlackoutStatusFilter("today")}
-                >
-                  Today ({blackoutStats.today})
-                </button>
-                <button
-                  type="button"
-                  className={`visit-blackout-tab ${blackoutStatusFilter === "past" ? "active" : ""}`}
-                  onClick={() => setBlackoutStatusFilter("past")}
-                >
-                  Past ({blackoutStats.past})
-                </button>
-              </div>
-
-              <div className="visit-blackout-toolbar-right">
-                <button
-                  type="button"
-                  className="visit-blackout-sort-btn"
-                  onClick={() =>
-                    setBlackoutSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))
-                  }
-                  title={`Sort by date (${blackoutSortOrder === "asc" ? "Ascending" : "Descending"})`}
-                >
-                  <ArrowUpDown size={14} />
-                  <span>{blackoutSortOrder === "asc" ? "Date Asc" : "Date Desc"}</span>
-                </button>
-
-                <button
-                  type="button"
-                  className="visit-blackout-clean-btn"
-                  disabled={blackoutStats.past === 0}
-                  title={
-                    blackoutStats.past === 0
-                      ? "No expired blackout dates to remove"
-                      : `Remove ${blackoutStats.past} expired blackout date(s) older than today`
-                  }
-                  onClick={promptRemoveExpiredBlackouts}
-                >
-                  <Trash2 size={14} />
-                  <span>Clear Expired ({blackoutStats.past})</span>
-                </button>
-              </div>
+        <div className="visit-live-grid">
+          {liveUsageLoading && !liveDate && (
+            <div className="visit-empty-box">
+              <RefreshCw size={22} className="spin" />
+              <span>Loading live slot usage data...</span>
             </div>
           )}
+          {liveUsageError && (
+            <div className="visit-empty-box visit-empty-box--error">
+              <AlertCircle size={22} className="text-rose-500" />
+              <span>Unable to load live slot occupancy. Ensure branch is selected.</span>
+            </div>
+          )}
+          {(!liveUsageLoading || Boolean(liveDate)) &&
+            !liveUsageError &&
+            draft.slots.map((configuredSlot) => {
+              const liveSlot = liveSlotsByLabel.get(configuredSlot.label);
+              const bookedCount = liveSlot?.count || 0;
+              const capacity = Number(configuredSlot.capacity) || 1;
+              const pct = Math.min(100, Math.round((bookedCount / capacity) * 100));
 
-          {/* BLACKOUT DATES CONTAINER */}
-          <div className="visit-blackout-container">
-            {draft.blackoutDates.length === 0 ? (
-              <div className="visit-empty-box">
-                <CheckCircle2 size={28} />
-                <div className="visit-empty-text">
-                  <strong>No blackout dates currently configured</strong>
-                  <p>All open operating weekdays are available for physical visit bookings.</p>
+              const isFull =
+                liveSlot?.disabledCode === "VISIT_CAPACITY_REACHED" ||
+                Number(liveSlot?.remaining) <= 0;
+              const isClosed =
+                !configuredSlot.enabled ||
+                (liveSlot && (!liveSlot.available || liveSlot.enabled === false) && !isFull);
+
+              let badgeDotClass = "visit-status-dot--slate";
+              let badgeText = `${bookedCount}/${capacity} Booked`;
+              let fillClass = "";
+
+              if (isClosed) {
+                badgeText = "CLOSED";
+                badgeDotClass = "visit-status-dot--slate";
+              } else if (isFull) {
+                badgeText = `FULL (${bookedCount}/${capacity})`;
+                badgeDotClass = "visit-status-dot--rose";
+                fillClass = "full";
+              } else if (pct >= 70) {
+                badgeDotClass = "visit-status-dot--amber";
+                fillClass = "warning";
+              } else if (bookedCount > 0) {
+                badgeDotClass = "visit-status-dot--sky";
+              } else {
+                badgeDotClass = "visit-status-dot--emerald";
+              }
+
+              return (
+                <div
+                  key={configuredSlot.label}
+                  onClick={() => {
+                    if (bookedCount > 0) {
+                      setSlotVisitorInspect({ slot: configuredSlot.label, date: usageDate });
+                    }
+                  }}
+                  className={`visit-live-card ${isFull ? "visit-live-card--full" : ""} ${isClosed ? "visit-live-card--closed" : ""} ${bookedCount > 0 ? "visit-live-card--interactive" : ""}`}
+                  title={bookedCount > 0 ? `Click to inspect ${bookedCount} visitor(s)` : `${configuredSlot.label} — ${bookedCount} bookings`}
+                >
+                  <div className="visit-live-card__header">
+                    <strong>{configuredSlot.label}</strong>
+                    <span className="visit-live-card__badge">
+                      <span className={`visit-status-dot ${badgeDotClass}`} />
+                      {badgeText}
+                    </span>
+                  </div>
+
+                  <div className="visit-live-card__meter">
+                    <div
+                      className={`visit-live-card__fill ${fillClass}`}
+                      style={{ width: `${isClosed ? 0 : pct}%` }}
+                    />
+                  </div>
+
+                  <div className="visit-live-card__footer">
+                    <span>
+                      {isClosed
+                        ? "Slot Disabled"
+                        : liveSlot
+                          ? formatRemainingSlots(liveSlot)
+                          : `${capacity} Available`}
+                    </span>
+                    {bookedCount > 0 && (
+                      <span className="text-[11px] font-semibold text-sky-700 dark:text-sky-400 hover:underline">
+                        View &rarr;
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : processedBlackouts.length === 0 ? (
-              <div className="visit-empty-box visit-empty-box--compact">
-                <AlertCircle size={20} />
-                <span>No blackout dates match your search or filter criteria.</span>
+              );
+            })}
+        </div>
+      </section>
+
+      {/* FULL-WIDTH CARD 4: BLACKOUT DATES & SPECIAL CLOSURES */}
+      <section className="visit-card visit-card--full">
+        <div className="visit-card__header">
+          <div className="visit-card__header-icon">
+            <CalendarX size={18} />
+          </div>
+          <div>
+            <h3>Blackout Dates & Special Closures</h3>
+            <p>Block specific calendar dates for holidays, maintenance, or staff events.</p>
+          </div>
+          <div className="visit-blackout-header-actions">
+            <button
+              type="button"
+              className="res-action-btn res-action-btn--primary"
+              onClick={() => setIsAddModalOpen(true)}
+              disabled={isSavingBlackout}
+              title="Open modal to add a blackout calendar date entry"
+            >
+              <Plus size={15} />
+              <span>Add Blackout Date</span>
+            </button>
+          </div>
+        </div>
+
+        {/* TOOLBAR: SEARCH, STATUS TABS, SORT, & EXPIRED CLEANUP */}
+        {draft.blackoutDates.length > 0 && (
+          <div className="visit-blackout-toolbar">
+            <div className="visit-blackout-search">
+              <Search size={14} className="text-slate-400" />
+              <input
+                type="text"
+                placeholder="Filter by date or reason..."
+                value={blackoutSearch}
+                onChange={(e) => setBlackoutSearch(e.target.value)}
+                aria-label="Filter blackout dates"
+              />
+              {blackoutSearch && (
                 <button
                   type="button"
-                  className="visit-link-btn"
-                  onClick={() => {
-                    setBlackoutSearch("");
-                    setBlackoutStatusFilter("all");
-                  }}
+                  className="visit-blackout-search-clear"
+                  onClick={() => setBlackoutSearch("")}
+                  title="Clear search filter"
                 >
-                  Reset Filters
+                  &times;
                 </button>
+              )}
+            </div>
+
+            <div className="visit-blackout-tabs">
+              <button
+                type="button"
+                className={`visit-blackout-tab ${blackoutStatusFilter === "all" ? "active" : ""}`}
+                onClick={() => setBlackoutStatusFilter("all")}
+              >
+                All ({blackoutStats.total})
+              </button>
+              <button
+                type="button"
+                className={`visit-blackout-tab ${blackoutStatusFilter === "upcoming" ? "active" : ""}`}
+                onClick={() => setBlackoutStatusFilter("upcoming")}
+              >
+                Upcoming ({blackoutStats.upcoming})
+              </button>
+              <button
+                type="button"
+                className={`visit-blackout-tab ${blackoutStatusFilter === "today" ? "active" : ""}`}
+                onClick={() => setBlackoutStatusFilter("today")}
+              >
+                Today ({blackoutStats.today})
+              </button>
+              <button
+                type="button"
+                className={`visit-blackout-tab ${blackoutStatusFilter === "past" ? "active" : ""}`}
+                onClick={() => setBlackoutStatusFilter("past")}
+              >
+                Past ({blackoutStats.past})
+              </button>
+            </div>
+
+            <div className="visit-blackout-toolbar-right">
+              <button
+                type="button"
+                className="visit-blackout-sort-btn"
+                onClick={() =>
+                  setBlackoutSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))
+                }
+                title={`Sort by date (${blackoutSortOrder === "asc" ? "Ascending" : "Descending"})`}
+              >
+                <ArrowUpDown size={14} />
+                <span>{blackoutSortOrder === "asc" ? "Date Asc" : "Date Desc"}</span>
+              </button>
+
+              <button
+                type="button"
+                className="visit-blackout-clean-btn"
+                disabled={blackoutStats.past === 0}
+                title={
+                  blackoutStats.past === 0
+                    ? "No expired blackout dates to remove"
+                    : `Remove ${blackoutStats.past} expired blackout date(s) older than today`
+                }
+                onClick={promptRemoveExpiredBlackouts}
+              >
+                <Trash2 size={14} />
+                <span>Clear Expired ({blackoutStats.past})</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* BLACKOUT DATES CONTAINER */}
+        <div className="visit-blackout-container">
+          {draft.blackoutDates.length === 0 ? (
+            <div className="visit-empty-box">
+              <CheckCircle2 size={28} className="text-slate-400" />
+              <div className="visit-empty-text">
+                <strong>No blackout dates currently configured</strong>
+                <p>All open operating weekdays are available for physical visit bookings.</p>
               </div>
-            ) : (
-              <>
-                <div className="visit-blackout-grid">
-                  {pagedBlackouts.map((item) => {
-                    const originalIndex = draft.blackoutDates.findIndex((b) => b === item);
-                    const itemStatus = getBlackoutDateStatus(item.date, todayISO);
-                    const isPast = itemStatus === "past";
-                    const isToday = itemStatus === "today";
-                    const isEditing = editingBlackoutIndex === originalIndex;
-                    const isEditDirty = isEditing && (
-                      editBlackoutForm.date !== (item.date || "") ||
-                      editBlackoutForm.reason !== (item.reason || "")
-                    );
+            </div>
+          ) : processedBlackouts.length === 0 ? (
+            <div className="visit-empty-box visit-empty-box--compact">
+              <AlertCircle size={20} className="text-slate-400" />
+              <span>No blackout dates match your search or filter criteria.</span>
+              <button
+                type="button"
+                className="visit-link-btn"
+                onClick={() => {
+                  setBlackoutSearch("");
+                  setBlackoutStatusFilter("all");
+                }}
+              >
+                Reset Filters
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="visit-blackout-grid">
+                {pagedBlackouts.map((item) => {
+                  const originalIndex = draft.blackoutDates.findIndex((b) => b === item);
+                  const itemStatus = getBlackoutDateStatus(item.date, todayISO);
+                  const isPast = itemStatus === "past";
+                  const isToday = itemStatus === "today";
+                  const isEditing = editingBlackoutIndex === originalIndex;
+                  const isEditDirty = isEditing && (
+                    editBlackoutForm.date !== (item.date || "") ||
+                    editBlackoutForm.reason !== (item.reason || "")
+                  );
 
-                    return (
-                      <div
-                        key={`${item.date}-${originalIndex}`}
-                        className={`visit-blackout-item ${isPast ? "visit-blackout-item--past" : ""} ${
-                          isToday ? "visit-blackout-item--today" : ""
-                        } ${isEditing ? "visit-blackout-item--editing" : ""}`}
-                      >
-                        {isEditing ? (
-                          <>
-                            <div className="visit-blackout-item__left">
-                              <span
-                                className={`visit-blackout-badge visit-blackout-badge--${itemStatus}`}
-                              >
-                                {isPast ? "Past" : isToday ? "Today" : "Upcoming"}
-                              </span>
-                              <div className="visit-input-field visit-input-field--date">
-                                <label>Date</label>
-                                <input
-                                  type="date"
-                                  value={editBlackoutForm.date}
-                                  onChange={(e) =>
-                                    setEditBlackoutForm((prev) => ({
-                                      ...prev,
-                                      date: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                            </div>
+                  let statusDotClass = "visit-status-dot--sky";
+                  let statusText = "Upcoming";
+                  if (isPast) {
+                    statusDotClass = "visit-status-dot--slate";
+                    statusText = "Past";
+                  } else if (isToday) {
+                    statusDotClass = "visit-status-dot--amber";
+                    statusText = "Today";
+                  }
 
-                            <div className="visit-input-field visit-input-field--reason">
-                              <label>Reason / Closure Note</label>
+                  return (
+                    <div
+                      key={`${item.date}-${originalIndex}`}
+                      className={`visit-blackout-item ${isPast ? "visit-blackout-item--past" : ""} ${
+                        isToday ? "visit-blackout-item--today" : ""
+                      } ${isEditing ? "visit-blackout-item--editing" : ""}`}
+                    >
+                      {isEditing ? (
+                        <>
+                          <div className="visit-blackout-item__left">
+                            <span className="visit-blackout-badge">
+                              <span className={`visit-status-dot ${statusDotClass}`} />
+                              {statusText}
+                            </span>
+                            <div className="visit-input-field visit-input-field--date">
+                              <label>Date</label>
                               <input
-                                type="text"
-                                value={editBlackoutForm.reason}
-                                placeholder="e.g. Regular Holiday, Building Maintenance"
+                                type="date"
+                                value={editBlackoutForm.date}
                                 onChange={(e) =>
                                   setEditBlackoutForm((prev) => ({
                                     ...prev,
-                                    reason: e.target.value,
+                                    date: e.target.value,
                                   }))
                                 }
-                                autoFocus
                               />
                             </div>
+                          </div>
 
-                            <div className="visit-blackout-item__actions">
-                              <button
-                                type="button"
-                                className="res-icon-btn res-icon-btn--success"
-                                onClick={() => saveEditBlackout(originalIndex)}
-                                title="Save changes"
-                                disabled={!editBlackoutForm.date || !isEditDirty}
-                              >
-                                <Check size={15} />
-                              </button>
-                              <button
-                                type="button"
-                                className="res-icon-btn res-icon-btn--secondary"
-                                onClick={cancelEditBlackout}
-                                title="Cancel editing"
-                              >
-                                <X size={15} />
-                              </button>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="visit-blackout-item__left">
-                              <span
-                                className={`visit-blackout-badge visit-blackout-badge--${itemStatus}`}
-                              >
-                                {isPast ? "Past" : isToday ? "Today" : "Upcoming"}
-                              </span>
-                              <div className="visit-blackout-display-date">
-                                <span className="visit-blackout-display-label">Date</span>
-                                <span className="visit-blackout-display-value">
-                                  {formatBlackoutDateDisplay(item.date)}
-                                </span>
-                              </div>
-                            </div>
+                          <div className="visit-input-field visit-input-field--reason">
+                            <label>Reason / Closure Note</label>
+                            <input
+                              type="text"
+                              value={editBlackoutForm.reason}
+                              placeholder="e.g. Regular Holiday, Building Maintenance"
+                              onChange={(e) =>
+                                setEditBlackoutForm((prev) => ({
+                                  ...prev,
+                                  reason: e.target.value,
+                                }))
+                              }
+                              autoFocus
+                            />
+                          </div>
 
-                            <div className="visit-blackout-display-reason">
-                              <span className="visit-blackout-display-label">Reason / Closure Note</span>
+                          <div className="visit-blackout-item__actions">
+                            <button
+                              type="button"
+                              className="res-icon-btn res-icon-btn--success"
+                              onClick={() => saveEditBlackout(originalIndex)}
+                              title="Save changes"
+                              disabled={!editBlackoutForm.date || !isEditDirty}
+                            >
+                              <Check size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              className="res-icon-btn res-icon-btn--secondary"
+                              onClick={cancelEditBlackout}
+                              title="Cancel editing"
+                            >
+                              <X size={15} />
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="visit-blackout-item__left">
+                            <span className="visit-blackout-badge">
+                              <span className={`visit-status-dot ${statusDotClass}`} />
+                              {statusText}
+                            </span>
+                            <div className="visit-blackout-display-date">
+                              <span className="visit-blackout-display-label">Date</span>
                               <span className="visit-blackout-display-value">
-                                {item.reason || <span className="visit-blackout-no-reason">No reason specified</span>}
+                                {formatBlackoutDateDisplay(item.date)}
                               </span>
                             </div>
+                          </div>
 
-                            <div className="visit-blackout-item__actions">
-                              <button
-                                type="button"
-                                className="res-icon-btn res-icon-btn--secondary"
-                                onClick={() => startEditBlackout(originalIndex, item)}
-                                title="Edit blackout date"
-                              >
-                                <Pencil size={15} />
-                              </button>
-                              <button
-                                type="button"
-                                className="res-icon-btn res-icon-btn--danger"
-                                onClick={() => promptRemoveBlackout(originalIndex, item)}
-                                title="Remove blackout date"
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                          <div className="visit-blackout-display-reason">
+                            <span className="visit-blackout-display-label">Reason / Closure Note</span>
+                            <span className="visit-blackout-display-value">
+                              {item.reason || <span className="visit-blackout-no-reason">No reason specified</span>}
+                            </span>
+                          </div>
 
-                {/* FIXED PAGINATION CONTROLS AT BOTTOM */}
-                {processedBlackouts.length > 0 && (
-                  <div className="visit-blackout-pagination">
-                    <span className="visit-blackout-pagination-info">
-                      Showing {(blackoutPage - 1) * BLACKOUT_PAGE_SIZE + 1}–
-                      {Math.min(blackoutPage * BLACKOUT_PAGE_SIZE, processedBlackouts.length)} of{" "}
-                      {processedBlackouts.length} blackout {processedBlackouts.length === 1 ? "date" : "dates"}
-                    </span>
-                    <div className="visit-blackout-pagination-controls">
-                      <button
-                        type="button"
-                        className="visit-blackout-page-btn"
-                        disabled={blackoutPage <= 1}
-                        onClick={() => setBlackoutPage((p) => Math.max(1, p - 1))}
-                        title="Previous Page"
-                      >
-                        <ChevronLeft size={15} />
-                        <span>Previous</span>
-                      </button>
-                      <span className="visit-blackout-page-num">
-                        Page {blackoutPage} of {totalBlackoutPages}
-                      </span>
-                      <button
-                        type="button"
-                        className="visit-blackout-page-btn"
-                        disabled={blackoutPage >= totalBlackoutPages}
-                        onClick={() => setBlackoutPage((p) => Math.min(totalBlackoutPages, p + 1))}
-                        title="Next Page"
-                      >
-                        <span>Next</span>
-                        <ChevronRight size={15} />
-                      </button>
+                          <div className="visit-blackout-item__actions">
+                            <button
+                              type="button"
+                              className="res-icon-btn res-icon-btn--secondary"
+                              onClick={() => startEditBlackout(originalIndex, item)}
+                              title="Edit blackout date"
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              className="res-icon-btn res-icon-btn--danger"
+                              onClick={() => promptRemoveBlackout(originalIndex, item)}
+                              title="Remove blackout date"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
+                  );
+                })}
+              </div>
+
+              {/* FIXED PAGINATION CONTROLS AT BOTTOM */}
+              {processedBlackouts.length > 0 && (
+                <div className="visit-blackout-pagination">
+                  <span className="visit-blackout-pagination-info">
+                    Showing {(blackoutPage - 1) * BLACKOUT_PAGE_SIZE + 1}–
+                    {Math.min(blackoutPage * BLACKOUT_PAGE_SIZE, processedBlackouts.length)} of{" "}
+                    {processedBlackouts.length} blackout {processedBlackouts.length === 1 ? "date" : "dates"}
+                  </span>
+                  <div className="visit-blackout-pagination-controls">
+                    <button
+                      type="button"
+                      className="visit-blackout-page-btn"
+                      disabled={blackoutPage <= 1}
+                      onClick={() => setBlackoutPage((p) => Math.max(1, p - 1))}
+                      title="Previous Page"
+                    >
+                      <ChevronLeft size={15} />
+                      <span>Previous</span>
+                    </button>
+                    <span className="visit-blackout-page-num">
+                      Page {blackoutPage} of {totalBlackoutPages}
+                    </span>
+                    <button
+                      type="button"
+                      className="visit-blackout-page-btn"
+                      disabled={blackoutPage >= totalBlackoutPages}
+                      onClick={() => setBlackoutPage((p) => Math.min(totalBlackoutPages, p + 1))}
+                      title="Next Page"
+                    >
+                      <span>Next</span>
+                      <ChevronRight size={15} />
+                    </button>
                   </div>
-                )}
-              </>
-            )}
-          </div>
-        </section>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </section>
 
       <VisitAvailabilityHistoryDrawer
         open={historyOpen}

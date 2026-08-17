@@ -348,24 +348,6 @@ export default function AnalyticsOccupancyTab({
     }
   }, [registerExport, exportCsv, exportPdf]);
 
-  if (isLoading && !data) {
-    return <AdminAnalyticsDetailSkeleton tab="occupancy" isOwner={isOwner} />;
-  }
-
-  const handleExecuteAction = (action) => {
-    if (!action) return;
-    if (action.actionType === "FILTER_STATUS" && action.filterValue) {
-      setStatusFilter(action.filterValue);
-      setPage(1);
-    } else if (action.actionType === "FILTER_TYPE" && action.filterValue) {
-      setTypeFilter(action.filterValue);
-        setPage(1);
-    } else if (action.actionType === "SEARCH" && action.filterValue) {
-      setSearchQuery(action.filterValue);
-      setPage(1);
-    }
-  };
-
   const trendChartConfig = useMemo(() => {
     if (occupancyMetric === "beds") {
       return {
@@ -411,6 +393,24 @@ export default function AnalyticsOccupancyTab({
       subtitle: `Daily occupancy rate — ${buildRangeLabel(activeTrendRange).toLowerCase()}`,
     };
   }, [activeTrendRange, occupancyMetric, trend]);
+
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="occupancy" isOwner={isOwner} />;
+  }
+
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "FILTER_STATUS" && action.filterValue) {
+      setStatusFilter(action.filterValue);
+      setPage(1);
+    } else if (action.actionType === "FILTER_TYPE" && action.filterValue) {
+      setTypeFilter(action.filterValue);
+        setPage(1);
+    } else if (action.actionType === "SEARCH" && action.filterValue) {
+      setSearchQuery(action.filterValue);
+      setPage(1);
+    }
+  };
 
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">

@@ -269,7 +269,7 @@ export default function SignedContractUploadSection({
         </h4>
         <div className="flex items-center gap-2">
           {signedDocs.length > 0 ? (
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-success-light text-success-dark dark:text-success">
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
               {signedDocs.length} Scan{signedDocs.length > 1 ? "s" : ""} Attached
             </span>
           ) : (

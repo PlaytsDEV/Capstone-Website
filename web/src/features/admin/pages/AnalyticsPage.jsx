@@ -115,6 +115,8 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const isOwner = user?.role === "owner";
   const requestedTab = searchParams.get("tab") || "overview";
   const [activeTab, setActiveTab] = useState(requestedTab);
+  const activeTabNormalized =
+    activeTab === "revenue" ? "billing" : activeTab === "marketing-roi" ? "acquisition" : activeTab;
   const requestedRange = searchParams.get("range");
   const requestedBranch = searchParams.get("branch");
 
@@ -422,39 +424,6 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     [branch, activeTab, range, isOwner, activeTabNormalized, registerTabExport],
   );
 
-  const isInitialLoading =
-    (occupancyQuery.isLoading && !occupancyData) ||
-    (billingQuery.isLoading && !billingData) ||
-    (operationsQuery.isLoading && !operationsData);
-
-  if (isInitialLoading) {
-    return <AdminAnalyticsSkeleton activeTab={activeTab} isOwner={isOwner} />;
-  }
-
-  const occupancyDelta = occupancyKpis?.comparison?.occupancyRate || {
-    label: "+0 pp",
-    changeType: "neutral",
-    text: "vs prev period",
-  };
-  const revenueDelta = billingKpis?.comparison?.collectedRevenue || {
-    label: "+0%",
-    changeType: "neutral",
-    text: "vs prev period",
-  };
-  const reservationsDelta = operationsKpis?.comparison?.reservations || {
-    label: "+0",
-    changeType: "neutral",
-    text: "vs prev period",
-  };
-  const maintenanceDelta = operationsKpis?.comparison?.maintenanceRequests || {
-    label: "+0",
-    changeType: "neutral",
-    text: "vs prev period",
-  };
-
-  const activeTabNormalized =
-    activeTab === "revenue" ? "billing" : activeTab === "marketing-roi" ? "acquisition" : activeTab;
-
   const exportOverviewCsv = React.useCallback(() => {
     const reservations = dashboardData?.recentReservations || [];
     handleCsvExport(
@@ -552,6 +521,36 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     activeTabNormalized === "overview"
       ? { exportCsv: exportOverviewCsv, exportPdf: exportOverviewPdf }
       : tabExports[activeTabNormalized];
+
+  const isInitialLoading =
+    (occupancyQuery.isLoading && !occupancyData) ||
+    (billingQuery.isLoading && !billingData) ||
+    (operationsQuery.isLoading && !operationsData);
+
+  if (isInitialLoading) {
+    return <AdminAnalyticsSkeleton activeTab={activeTab} isOwner={isOwner} />;
+  }
+
+  const occupancyDelta = occupancyKpis?.comparison?.occupancyRate || {
+    label: "+0 pp",
+    changeType: "neutral",
+    text: "vs prev period",
+  };
+  const revenueDelta = billingKpis?.comparison?.collectedRevenue || {
+    label: "+0%",
+    changeType: "neutral",
+    text: "vs prev period",
+  };
+  const reservationsDelta = operationsKpis?.comparison?.reservations || {
+    label: "+0",
+    changeType: "neutral",
+    text: "vs prev period",
+  };
+  const maintenanceDelta = operationsKpis?.comparison?.maintenanceRequests || {
+    label: "+0",
+    changeType: "neutral",
+    text: "vs prev period",
+  };
 
   return (
     <div className="analytics-container space-y-4">

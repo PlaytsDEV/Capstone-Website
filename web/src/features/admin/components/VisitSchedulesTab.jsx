@@ -695,7 +695,7 @@ function VisitSchedulesTab() {
                 backgroundColor: "var(--input-background)",
                 borderColor: "var(--border-light)",
               }}
-              className="w-full pl-10 pr-4 h-9 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
+              className="w-full pl-10 pr-4 h-9 border rounded-lg text-xs focus:outline-none focus:border-[var(--primary)] focus:ring-0 transition-colors"
             />
           </div>
 
@@ -708,7 +708,7 @@ function VisitSchedulesTab() {
                   backgroundColor: "var(--input-background)",
                   borderColor: "var(--border-light)",
                 }}
-                className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+                className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:border-[var(--primary)] focus:ring-0 cursor-pointer hover:bg-muted transition-colors"
               >
                 <option value="all">All Branches</option>
                 <option value="Gil Puyat">Gil Puyat</option>
@@ -723,7 +723,7 @@ function VisitSchedulesTab() {
                 backgroundColor: "var(--input-background)",
                 borderColor: "var(--border-light)",
               }}
-              className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+              className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:border-[var(--primary)] focus:ring-0 cursor-pointer hover:bg-muted transition-colors"
             >
               <option value="all">All Statuses</option>
               <option value="awaiting_visit">Awaiting Visit</option>
@@ -740,7 +740,7 @@ function VisitSchedulesTab() {
                 backgroundColor: "var(--input-background)",
                 borderColor: "var(--border-light)",
               }}
-              className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer hover:bg-muted transition-colors"
+              className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:border-[var(--primary)] focus:ring-0 cursor-pointer hover:bg-muted transition-colors"
             >
               <option value="recent">Most Recent</option>
               <option value="oldest">Oldest First</option>
@@ -825,6 +825,7 @@ function VisitSchedulesTab() {
                     statusNode = (
                       <div className="opacity-60">
                         <StatusBadge
+                          module="visit"
                           status={config.status}
                           label={config.label}
                         />
@@ -851,19 +852,23 @@ function VisitSchedulesTab() {
                       activeStatus = "rejected";
                       activeLabel = "Rejected";
                     } else if (row.visitApproved || row.visitStatus === "visit_completed") {
-                      activeStatus = "verified";
+                      activeStatus = "completed";
                       activeLabel = "Visit Completed";
                     } else if (row.visitStatus === "no_show") {
-                      activeStatus = "overdue";
+                      activeStatus = "no_show";
                       activeLabel = "No-Show";
                     } else {
                       // Schedules are auto-approved — show "Awaiting Visit"
-                      activeStatus = "active";
+                      activeStatus = "confirmed";
                       activeLabel = "Awaiting Visit";
                     }
                     statusNode = (
                       <div>
-                        <StatusBadge status={activeStatus} label={activeLabel} />
+                        <StatusBadge
+                          module="visit"
+                          status={activeStatus}
+                          label={activeLabel}
+                        />
                         {actionedDate && (
                           <div className="mt-1 text-xs text-muted-foreground">
                             {actionedDate.toLocaleDateString("en-US", {
@@ -893,10 +898,10 @@ function VisitSchedulesTab() {
                           <ProfileAvatar
                             className="w-10 h-10 rounded-full flex-shrink-0"
                             user={row.userId}
-                            src={row.photoUrl || row.profileImage || row.userId?.profileImage}
                             initials={initials(row.customer)}
-                            alt={`${row.customer} profile photo`}
+                            alt={`${row.customer} profile`}
                             size={40}
+                            defaultOnly
                           />
                           <div className="min-w-0">
                             <div className="font-medium text-foreground">

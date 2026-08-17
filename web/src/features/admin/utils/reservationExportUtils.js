@@ -113,7 +113,7 @@ export async function handleExportReservationsPDF({
     { label: "PENDING REVIEW", value: String(counts.pendingApplicationReview || 0), format: "number" },
     { label: "APPROVED PAYMENT", value: String(counts.approvedForPayment || 0), format: "number" },
     { label: "RESERVED", value: String(counts.reserved || 0), format: "number" },
-    { label: "MOVED IN", value: String(counts.movedIn || 0), format: "number" },
+    { label: "MOVE IN", value: String(counts.movedIn || 0), format: "number" },
     { label: "CANCELLED", value: String(counts.cancelled || 0), format: "number" },
   ];
 

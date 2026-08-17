@@ -35,6 +35,7 @@ import { AdminChatSkeleton } from "../components/AdminContentSkeletons";
 import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import AdminIssueClusterBanner from "../components/copilot/AdminIssueClusterBanner";
 import AdminReplyDraftButton from "../components/copilot/AdminReplyDraftButton";
+import ProfileAvatar from "../../../shared/components/ProfileAvatar";
 import "../styles/design-tokens.css";
 import "../styles/admin-common.css";
 import "../styles/admin-chat.css";
@@ -57,7 +58,7 @@ const STATUS_DESCRIPTIONS = {
 };
 
 const PRIORITY_DESCRIPTIONS = {
-  normal: "Standard priority ticket with normal SLA response timeline.",
+  normal: "Standard priority ticket with standard target turnaround timeline.",
   high: "High priority ticket requiring prioritized administrative attention.",
   urgent: "Critical urgent issue requiring immediate response and handling.",
 };
@@ -999,13 +1000,17 @@ export default function AdminChatPage() {
                           } ${isUnread && !isSelected ? "bg-blue-50/40 dark:bg-blue-950/20" : ""}`}
                         >
                           {/* Circular Avatar */}
-                          <div
-                            className={`h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 shadow-2xs ${getAvatarBg(
-                              conversation.tenantName,
-                            )}`}
-                          >
-                            {getInitials(conversation.tenantName)}
-                          </div>
+                          <ProfileAvatar
+                            src={conversation.tenantProfileImage}
+                            user={{
+                              name: conversation.tenantName,
+                              profileImage: conversation.tenantProfileImage,
+                            }}
+                            initials={getInitials(conversation.tenantName)}
+                            size={32}
+                            alt={conversation.tenantName}
+                            className="shrink-0 ring-1 ring-border/40"
+                          />
 
                           {/* Middle Info */}
                           <div className="flex-1 min-w-0 space-y-0.5">
@@ -1041,7 +1046,8 @@ export default function AdminChatPage() {
                               </span>
                             )}
                             {isUrgent && (
-                              <span className="rounded bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-700 dark:text-rose-400">
+                                <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
                                 Urgent
                               </span>
                             )}
@@ -1062,19 +1068,32 @@ export default function AdminChatPage() {
             <>
               {/* Thread Header */}
               <header className="p-3.5 border-b border-border bg-card/80 flex flex-wrap items-center justify-between gap-3">
-                <div className="space-y-1.5 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-base font-bold text-foreground truncate">
-                      {selectedConversation.tenantName}
-                    </h2>
-                    <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-                      {getBranchLabel(selectedConversation.branch)} - {getRoomLabel(selectedConversation)}
-                    </span>
-                  </div>
+                <div className="flex items-center gap-3 min-w-0">
+                  <ProfileAvatar
+                    src={selectedConversation.tenantProfileImage}
+                    user={{
+                      name: selectedConversation.tenantName,
+                      profileImage: selectedConversation.tenantProfileImage,
+                    }}
+                    initials={getInitials(selectedConversation.tenantName)}
+                    size={40}
+                    alt={selectedConversation.tenantName}
+                    className="shrink-0 ring-1 ring-border/40"
+                  />
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-base font-bold text-foreground truncate">
+                        {selectedConversation.tenantName}
+                      </h2>
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {getBranchLabel(selectedConversation.branch)} · {getRoomLabel(selectedConversation)}
+                      </span>
+                    </div>
 
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 px-2.5 py-0.5 font-medium border border-border">
-                      {getCategoryLabel(selectedConversation.category)}
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-transparent px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                      <span>{getCategoryLabel(selectedConversation.category)}</span>
                     </span>
 
                     {/* Interactive Status Badge Button */}
@@ -1082,20 +1101,32 @@ export default function AdminChatPage() {
                       type="button"
                       onClick={handleOpenStatusModal}
                       disabled={selectedConversation.status === "closed"}
-                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold border transition-all ${
+                      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5 text-xs font-semibold border transition-colors bg-transparent ${
                         selectedConversation.status === "closed"
-                          ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-border cursor-default"
+                          ? "border-border text-slate-600 dark:text-slate-400 cursor-default"
                           : selectedConversation.status === "resolved"
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800 cursor-pointer"
+                          ? "border-border text-emerald-700 dark:text-emerald-400 hover:bg-muted/40 cursor-pointer"
                           : selectedConversation.status === "waiting_tenant"
-                          ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800 cursor-pointer"
+                          ? "border-border text-amber-700 dark:text-amber-400 hover:bg-muted/40 cursor-pointer"
                           : selectedConversation.status === "in_review"
-                          ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800 cursor-pointer"
-                          : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800 cursor-pointer"
+                          ? "border-border text-sky-700 dark:text-sky-400 hover:bg-muted/40 cursor-pointer"
+                          : "border-border text-blue-700 dark:text-blue-400 hover:bg-muted/40 cursor-pointer"
                       }`}
                       title="Click to update status with confirmation"
                     >
-                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                          selectedConversation.status === "resolved"
+                            ? "bg-emerald-500"
+                            : selectedConversation.status === "waiting_tenant"
+                            ? "bg-amber-500"
+                            : selectedConversation.status === "in_review"
+                            ? "bg-sky-500"
+                            : selectedConversation.status === "open"
+                            ? "bg-blue-500"
+                            : "bg-slate-400"
+                        }`}
+                      />
                       <span>{getStatusLabel(selectedConversation.status)}</span>
                       {selectedConversation.status !== "closed" && (
                         <ChevronDown size={12} className="opacity-70" />
@@ -1107,17 +1138,26 @@ export default function AdminChatPage() {
                       type="button"
                       onClick={handleOpenPriorityModal}
                       disabled={selectedConversation.status === "closed"}
-                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold border transition-all ${
+                      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5 text-xs font-semibold border transition-colors bg-transparent ${
                         selectedConversation.status === "closed"
-                          ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-border cursor-default"
+                          ? "border-border text-slate-600 dark:text-slate-400 cursor-default"
                           : selectedConversation.priority === "urgent"
-                          ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800 cursor-pointer"
+                          ? "border-border text-rose-700 dark:text-rose-400 hover:bg-muted/40 cursor-pointer"
                           : selectedConversation.priority === "high"
-                          ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800 cursor-pointer"
-                          : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 cursor-pointer"
+                          ? "border-border text-amber-700 dark:text-amber-400 hover:bg-muted/40 cursor-pointer"
+                          : "border-border text-slate-700 dark:text-slate-300 hover:bg-muted/40 cursor-pointer"
                       }`}
                       title="Click to update priority"
                     >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                          selectedConversation.priority === "urgent"
+                            ? "bg-rose-500"
+                            : selectedConversation.priority === "high"
+                            ? "bg-amber-500"
+                            : "bg-slate-400"
+                        }`}
+                      />
                       <span>Priority: {getPriorityLabel(selectedConversation.priority)}</span>
                       {selectedConversation.status !== "closed" && (
                         <ChevronDown size={12} className="opacity-70" />
@@ -1125,10 +1165,11 @@ export default function AdminChatPage() {
                     </button>
                   </div>
                 </div>
+              </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  {/* Assigned Admin Indicator */}
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/60 border border-border text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Assigned Admin Indicator */}
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card border border-border text-xs">
                     <span className="text-muted-foreground">Assigned:</span>
                     <span className="font-semibold text-foreground">
                       {selectedConversation.assignedAdminName || "Unassigned"}
@@ -1138,7 +1179,7 @@ export default function AdminChatPage() {
                         type="button"
                         onClick={handleAssignToMe}
                         disabled={assigning}
-                        className="ml-1 inline-flex items-center gap-1 rounded bg-card border border-border px-2 py-0.5 text-[11px] font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                        className="ml-1 inline-flex items-center gap-1 rounded bg-muted/60 border border-border px-2 py-0.5 text-[11px] font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
                       >
                         {assigning ? (
                           <LoaderCircle size={11} className="animate-spin" />
@@ -1178,23 +1219,23 @@ export default function AdminChatPage() {
                 </div>
               </header>
 
-              {selectedConversation?.priority === "urgent" && (
+              {selectedConversation?.priority === "urgent" && selectedConversation?.status !== "closed" && (
                 <div className="px-4 pt-3 pb-1 border-b border-border">
                   <AdminIssueClusterBanner clusters={[{
                     type: "Maintenance Cluster",
-                    description: "Multiple open tickets for the same room.",
+                    description: "Multiple open tickets detected for the same unit.",
                     count: 3,
-                    location: selectedConversation?.roomNumber || "Unknown",
+                    location: selectedConversation?.roomNumber ? `Room ${selectedConversation.roomNumber}` : `${getBranchLabel(selectedConversation?.branch)} Branch`,
                     action: "Review Room History"
                   }]} />
                 </div>
               )}
 
               {assignedToAnother && (
-                <div className="px-4 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200 flex items-center gap-2">
-                  <AlertTriangle size={14} className="shrink-0" />
+                <div className="px-4 py-2 bg-card border-b border-border text-xs text-foreground flex items-center gap-2 shadow-2xs">
+                  <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
                   <span>
-                    Currently assigned to <strong>{selectedConversation.assignedAdminName}</strong>. Please coordinate before replying.
+                    Currently assigned to <strong className="font-semibold text-foreground">{selectedConversation.assignedAdminName}</strong>. Please coordinate before replying.
                   </span>
                 </div>
               )}
@@ -1214,14 +1255,28 @@ export default function AdminChatPage() {
                 ) : (
                   messages.map((msg) => {
                     const isTenant = msg.senderRole === "tenant";
+                    const senderAvatarSrc = isTenant
+                      ? (msg.senderProfileImage || selectedConversation.tenantProfileImage)
+                      : (msg.senderProfileImage || (user?._id === msg.senderId ? user?.profileImage : ""));
 
                     return (
                       <div
                         key={msg.id}
-                        className={`flex flex-col ${
-                          isTenant ? "items-start" : "items-end"
+                        className={`flex items-end gap-2.5 ${
+                          isTenant ? "justify-start" : "justify-end flex-row-reverse"
                         }`}
                       >
+                        <ProfileAvatar
+                          src={senderAvatarSrc}
+                          user={{
+                            name: msg.senderName,
+                            profileImage: senderAvatarSrc,
+                          }}
+                          initials={getInitials(msg.senderName)}
+                          size={28}
+                          alt={msg.senderName}
+                          className="shrink-0 mb-1 ring-1 ring-border/40"
+                        />
                         <div
                           className={`max-w-[78%] rounded-xl p-3.5 space-y-1.5 shadow-2xs ${
                             isTenant
@@ -1485,9 +1540,7 @@ export default function AdminChatPage() {
           <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400">
-                  <Tag size={16} />
-                </div>
+                <Tag size={18} className="text-primary shrink-0" />
                 <h3 className="text-sm font-bold text-foreground">Update Ticket Status</h3>
               </div>
               <button
@@ -1588,9 +1641,7 @@ export default function AdminChatPage() {
           <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-400">
-                  <ShieldAlert size={16} />
-                </div>
+                <ShieldAlert size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
                 <h3 className="text-sm font-bold text-foreground">Update Ticket Priority</h3>
               </div>
               <button

@@ -49,21 +49,21 @@ const COLOR_CLASSES = {
   },
   purple: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-violet-50 text-violet-700 dark:bg-violet-950/70 dark:text-violet-400 border-violet-200/80 dark:border-violet-900/60",
+    icon: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
-    active: "border-violet-500 ring-2 ring-inset ring-violet-500/20 bg-violet-50/40 dark:bg-violet-950/20",
+    active: "border-slate-500 ring-2 ring-inset ring-slate-500/20 bg-slate-50/40 dark:bg-slate-950/20",
   },
   violet: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-violet-50 text-violet-700 dark:bg-violet-950/70 dark:text-violet-400 border-violet-200/80 dark:border-violet-900/60",
+    icon: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
-    active: "border-violet-500 ring-2 ring-inset ring-violet-500/20 bg-violet-50/40 dark:bg-violet-950/20",
+    active: "border-slate-500 ring-2 ring-inset ring-slate-500/20 bg-slate-50/40 dark:bg-slate-950/20",
   },
   indigo: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-400 border-indigo-200/80 dark:border-indigo-900/60",
+    icon: "bg-sky-50 text-sky-700 dark:bg-sky-950/70 dark:text-sky-400 border-sky-200/80 dark:border-sky-900/60",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
-    active: "border-indigo-500 ring-2 ring-inset ring-indigo-500/20 bg-indigo-50/40 dark:bg-indigo-950/20",
+    active: "border-sky-500 ring-2 ring-inset ring-sky-500/20 bg-sky-50/40 dark:bg-sky-950/20",
   },
   teal: {
     value: "text-slate-900 dark:text-slate-100",

@@ -84,12 +84,12 @@ const BillingCycleDetailModal = ({
                 Billing Cycle History
               </h2>
               {statusLabel && (
-                <span className="rounded-full bg-info-light px-2.5 py-0.5 text-[11px] font-semibold text-info-dark border border-info-dark/20 uppercase tracking-wide">
+                <span className="rounded-md bg-info-light px-2.5 py-0.5 text-[11px] font-semibold text-info-dark border border-info-dark/20 uppercase tracking-wide">
                   {statusLabel}
                 </span>
               )}
               {isReadOnly && (
-                <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground border border-border">
+                <span className="rounded-md bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground border border-border">
                   Read-only
                 </span>
               )}
@@ -440,7 +440,7 @@ const BillingCycleDetailModal = ({
                           {tenant.billStatus ? (
                             <div className="space-y-0.5">
                               <span
-                                className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                className={`inline-block rounded-md px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                                   tenant.billStatus === "paid"
                                     ? "bg-success-light text-success-dark border border-success-dark/20"
                                     : tenant.daysOverdue > 0 || tenant.billStatus === "overdue"

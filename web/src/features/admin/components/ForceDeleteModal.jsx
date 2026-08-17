@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Skull, X } from "lucide-react";
+import { AlertTriangle, Skull, X, LoaderCircle, Check, ArrowRight, ArrowLeft } from "lucide-react";
 
 /**
  * ForceDeleteModal
@@ -158,7 +158,7 @@ export default function ForceDeleteModal({
 
               {hasPaidDeposit && (
                 <div className="force-delete-modal__callout force-delete-modal__callout--warn">
-                  <AlertTriangle size={14} />
+                  <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                   <span>
                     This tenant has a paid security deposit of{" "}
                     <strong>₱{paidDeposit.toLocaleString()}</strong>. Force deleting
@@ -187,20 +187,25 @@ export default function ForceDeleteModal({
                 {tenantName}
               </div>
               <label className="force-delete-modal__label">
-                Tenant name
-                <input
-                  type="text"
-                  className={`force-delete-modal__input${nameMatches ? " force-delete-modal__input--match" : ""}`}
-                  value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
-                  placeholder="Type exact name here"
-                  autoFocus
-                  autoComplete="off"
-                  spellCheck={false}
-                />
+                <span>Tenant name</span>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    className={`force-delete-modal__input w-full pr-8 ${nameMatches ? "force-delete-modal__input--match" : ""}`}
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    placeholder="Type exact name here"
+                    autoFocus
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  {nameMatches && (
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 absolute right-2.5 pointer-events-none" />
+                  )}
+                </div>
               </label>
               {nameInput.length > 0 && !nameMatches && (
-                <p className="force-delete-modal__mismatch">Name does not match — check capitalisation</p>
+                <p className="force-delete-modal__mismatch">Name does not match — check spelling and capitalization</p>
               )}
             </div>
           )}
@@ -214,17 +219,22 @@ export default function ForceDeleteModal({
                 exactly to permanently remove this account from the system.
               </p>
               <label className="force-delete-modal__label">
-                Confirmation code
-                <input
-                  type="text"
-                  className={`force-delete-modal__input${codeMatches ? " force-delete-modal__input--match" : ""}`}
-                  value={codeInput}
-                  onChange={(e) => setCodeInput(e.target.value)}
-                  placeholder="FORCE DELETE"
-                  autoFocus
-                  autoComplete="off"
-                  spellCheck={false}
-                />
+                <span>Confirmation code</span>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    className={`force-delete-modal__input w-full pr-8 ${codeMatches ? "force-delete-modal__input--match" : ""}`}
+                    value={codeInput}
+                    onChange={(e) => setCodeInput(e.target.value)}
+                    placeholder="FORCE DELETE"
+                    autoFocus
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  {codeMatches && (
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 absolute right-2.5 pointer-events-none" />
+                  )}
+                </div>
               </label>
               {codeInput.length > 0 && !codeMatches && (
                 <p className="force-delete-modal__mismatch">Type exactly: FORCE DELETE</p>
@@ -250,7 +260,8 @@ export default function ForceDeleteModal({
                 className="force-delete-modal__btn force-delete-modal__btn--next"
                 onClick={() => setStep(2)}
               >
-                I Understand, Continue →
+                <span>I Understand, Continue</span>
+                <ArrowRight size={14} />
               </button>
             </>
           )}
@@ -263,7 +274,8 @@ export default function ForceDeleteModal({
                 onClick={() => setStep(1)}
                 disabled={loading}
               >
-                ← Back
+                <ArrowLeft size={14} />
+                <span>Back</span>
               </button>
               <button
                 type="button"
@@ -271,7 +283,8 @@ export default function ForceDeleteModal({
                 onClick={() => setStep(3)}
                 disabled={!nameMatches}
               >
-                Confirm Name & Continue →
+                <span>Confirm Name & Continue</span>
+                <ArrowRight size={14} />
               </button>
             </>
           )}
@@ -284,7 +297,8 @@ export default function ForceDeleteModal({
                 onClick={() => setStep(2)}
                 disabled={loading}
               >
-                ← Back
+                <ArrowLeft size={14} />
+                <span>Back</span>
               </button>
               <button
                 type="button"
@@ -292,7 +306,14 @@ export default function ForceDeleteModal({
                 onClick={onConfirm}
                 disabled={!codeMatches || loading}
               >
-                {loading ? "Deleting…" : "Force Delete Now"}
+                {loading ? (
+                  <>
+                    <LoaderCircle className="w-4 h-4 animate-spin" />
+                    <span>Deleting…</span>
+                  </>
+                ) : (
+                  <span>Force Delete Now</span>
+                )}
               </button>
             </>
           )}

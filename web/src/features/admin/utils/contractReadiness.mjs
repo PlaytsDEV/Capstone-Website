@@ -4,7 +4,7 @@ export const mapContractBlocker = (item = {}) => {
   const value = source(item);
   if (value.includes("RESERVATION_LEGACY_VERIFICATION_REQUIRED")) return {
     kind: "reservation", title: "Reservation record needs verification",
-    description: "This tenant is already marked as moved in, but the Reservation is missing approval metadata required for Contract generation.",
+    description: "This tenant has a recorded Move In status, but the Reservation is missing approval metadata required for Contract generation.",
     action: "Verify Reservation Record",
   };
   if (value.includes("PRIC") || value.includes("RATE") || value.includes("DISCOUNT")) return {

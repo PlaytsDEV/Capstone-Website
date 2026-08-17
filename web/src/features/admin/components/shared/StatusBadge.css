@@ -4,40 +4,107 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 14px;
-  border-radius: 99px;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  padding: 0;
+  border-radius: 0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
   white-space: nowrap;
-  letter-spacing: 0.01em;
+  letter-spacing: normal;
+  background: transparent;
+  border: none;
+  user-select: none;
 }
 
-/* ── Success (Active, Approved, Paid, Moved In) ── */
+.status-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Success (Occupied, Active, Approved, Paid, Move In, Reserved) ── */
 .status-badge--success {
-  background: var(--status-success-bg);
-  color: var(--status-success);
+  background: transparent;
+  color: var(--status-success, #047857);
+}
+.status-badge--success .status-badge__dot {
+  background-color: var(--status-success, #10b981);
 }
 
-/* ── Warning (Pending, Partial, Moving Out) ── */
+/* ── Warning (Pending, Payment Pending, Partial, In Progress) ── */
 .status-badge--warning {
-  background: var(--status-warning-bg);
-  color: var(--status-warning);
+  background: transparent;
+  color: var(--warning-dark, #92400e);
+}
+.status-badge--warning .status-badge__dot {
+  background-color: var(--status-warning, #f59e0b);
 }
 
-/* ── Error (Overdue, Cancelled, Denied, Banned) ── */
+/* ── Error (Overdue, Cancelled, Denied, Banned, No Show) ── */
 .status-badge--error {
-  background: var(--status-error-bg);
-  color: var(--status-error);
+  background: transparent;
+  color: var(--status-error, #dc2626);
+}
+.status-badge--error .status-badge__dot {
+  background-color: var(--status-error, #ef4444);
 }
 
-/* ── Info (Reserved, Confirmed, New) ── */
+/* ── Info (Viewing Preference Selected, Visit Confirmed, New) ── */
 .status-badge--info {
-  background: var(--status-info-bg);
-  color: var(--status-info);
+  background: transparent;
+  color: var(--status-info, #1d4ed8);
+}
+.status-badge--info .status-badge__dot {
+  background-color: var(--status-info, #3b82f6);
 }
 
-/* ── Neutral (Unknown, Inactive, Suspended) ── */
+/* ── Neutral (Vacant, Maint, Moved Out, Archived, Inactive) ── */
 .status-badge--neutral {
-  background: var(--status-neutral-bg);
-  color: var(--status-neutral);
+  background: transparent;
+  color: var(--status-neutral, #475569);
+}
+.status-badge--neutral .status-badge__dot {
+  background-color: var(--status-neutral, #94a3b8);
+}
+
+/* ── Dark Mode Invariants ── */
+:is(.dark *) .status-badge--success {
+  background: transparent;
+  color: #34d399;
+}
+:is(.dark *) .status-badge--success .status-badge__dot {
+  background-color: #34d399;
+}
+
+:is(.dark *) .status-badge--warning {
+  background: transparent;
+  color: #fbbf24;
+}
+:is(.dark *) .status-badge--warning .status-badge__dot {
+  background-color: #fbbf24;
+}
+
+:is(.dark *) .status-badge--error {
+  background: transparent;
+  color: #f87171;
+}
+:is(.dark *) .status-badge--error .status-badge__dot {
+  background-color: #f87171;
+}
+
+:is(.dark *) .status-badge--info {
+  background: transparent;
+  color: #60a5fa;
+}
+:is(.dark *) .status-badge--info .status-badge__dot {
+  background-color: #60a5fa;
+}
+
+:is(.dark *) .status-badge--neutral {
+  background: transparent;
+  color: #cbd5e1;
+}
+:is(.dark *) .status-badge--neutral .status-badge__dot {
+  background-color: #94a3b8;
 }

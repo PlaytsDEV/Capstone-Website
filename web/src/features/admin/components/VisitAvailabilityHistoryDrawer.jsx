@@ -4,6 +4,8 @@ import {
   History,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Plus,
   Minus,
@@ -76,24 +78,45 @@ function RoleBadge({ role }) {
         : role === "admin"
           ? "Admin"
           : role || "Unknown";
-  return <span className="visit-history-role-badge">{label}</span>;
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+      {label}
+    </span>
+  );
 }
 
-/* ── Single diff line item ────────────────────────────────────────────────── */
+/* ── Single diff line item with transparent background & semantic dots ─────── */
 function DiffBadge({ type, children }) {
+  const dotColor =
+    type === "added"
+      ? "bg-emerald-500"
+      : type === "removed"
+        ? "bg-rose-500"
+        : "bg-amber-500";
+
+  const textColor =
+    type === "added"
+      ? "text-emerald-700 dark:text-emerald-400"
+      : type === "removed"
+        ? "text-rose-700 dark:text-rose-400"
+        : "text-amber-700 dark:text-amber-400";
+
   return (
-    <span className={`visit-diff-badge visit-diff-badge--${type}`}>
-      {type === "added" && <Plus size={10} />}
-      {type === "removed" && <Minus size={10} />}
-      {type === "modified" && <Edit2 size={10} />}
-      {children}
+    <span
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-transparent ${textColor}`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} />
+      {type === "added" && <Plus size={10} className="shrink-0" />}
+      {type === "removed" && <Minus size={10} className="shrink-0" />}
+      {type === "modified" && <Edit2 size={10} className="shrink-0" />}
+      <span>{children}</span>
     </span>
   );
 }
 
 /* ── Human-readable diff renderer ────────────────────────────────────────── */
 function DiffSummary({ diff }) {
-  if (!diff) return <span className="visit-history-no-diff">No diff data</span>;
+  if (!diff) return <span className="text-xs text-slate-400">No diff data</span>;
 
   const items = [];
 
@@ -167,62 +190,88 @@ function DiffSummary({ diff }) {
   });
 
   if (items.length === 0) {
-    return <span className="visit-history-no-diff">No changes recorded</span>;
+    return <span className="text-xs text-slate-400">No changes recorded</span>;
   }
 
-  return <div className="visit-diff-list">{items}</div>;
+  return <div className="flex flex-wrap gap-1.5 mt-1">{items}</div>;
 }
 
-/* ── Single history record card ───────────────────────────────────────────── */
+/* ── Single history record card with whole-header clickable accordion ───────── */
 function HistoryRecord({ record }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="visit-history-record">
-      <div className="visit-history-record__header">
-        <div className="visit-history-record__meta">
-          <span className="visit-history-record__time" title={formatFull(record.changedAt)}>
-            <Clock size={12} />
+    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 transition-all hover:border-slate-300 dark:hover:border-slate-700 space-y-2.5">
+      {/* Clickable Header Accordion */}
+      <div
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center justify-between gap-2 cursor-pointer select-none group"
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setExpanded((v) => !v);
+          }
+        }}
+      >
+        <div className="flex items-center flex-wrap gap-2 text-xs">
+          <span
+            className="flex items-center gap-1 font-medium text-slate-500 dark:text-slate-400"
+            title={formatFull(record.changedAt)}
+          >
+            <Clock size={12} className="text-slate-400 shrink-0" />
             {formatRelative(record.changedAt)}
           </span>
           {record.changedBy?.email && (
-            <span className="visit-history-record__actor">
+            <span className="font-semibold text-slate-800 dark:text-slate-200">
               {record.changedBy.email}
             </span>
           )}
           {record.changedBy?.role && <RoleBadge role={record.changedBy.role} />}
         </div>
+
         <button
           type="button"
-          className="visit-history-expand-btn"
-          onClick={() => setExpanded((v) => !v)}
+          className="p-1 rounded text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((v) => !v);
+          }}
           aria-expanded={expanded}
-          aria-label={expanded ? "Collapse change details" : "Expand change details"}
+          title={expanded ? "Collapse change snapshot" : "Expand change snapshot"}
         >
-          {expanded ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
+          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
       </div>
 
+      {/* Admin Note without side-colored border */}
       {record.changeDescription && (
-        <p className="visit-history-record__note">&ldquo;{record.changeDescription}&rdquo;</p>
+        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300">
+          <span className="text-slate-400 font-medium">Note: </span>
+          <span>&ldquo;{record.changeDescription}&rdquo;</span>
+        </div>
       )}
 
-      <div className="visit-diff-summary">
-        <DiffSummary diff={record.diff} />
-      </div>
+      {/* Diff badges */}
+      <DiffSummary diff={record.diff} />
 
+      {/* Collapsible Snapshot */}
       {expanded && (
-        <div className="visit-history-record__snapshot">
-          <p className="visit-history-snapshot-label">Snapshot after change</p>
-          <div className="visit-history-snapshot-grid">
+        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-xs space-y-2">
+          <span className="font-semibold uppercase tracking-wider text-[10px] text-slate-400">
+            Snapshot after change
+          </span>
+          <div className="grid grid-cols-1 gap-1.5 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
             <div>
-              <strong>Operating Days:</strong>{" "}
+              <strong className="text-slate-900 dark:text-slate-100">Operating Days:</strong>{" "}
               {(record.snapshot?.enabledWeekdays || [])
                 .map((d) => DAY_NAMES[d] || d)
                 .join(", ") || "None"}
             </div>
             <div>
-              <strong>Active Slots:</strong>{" "}
+              <strong className="text-slate-900 dark:text-slate-100">Active Slots:</strong>{" "}
               {(record.snapshot?.slots || [])
                 .filter((s) => s.enabled)
                 .map((s) => `${s.label} (cap ${s.capacity})`)
@@ -230,7 +279,7 @@ function HistoryRecord({ record }) {
             </div>
             {(record.snapshot?.blackoutDates || []).length > 0 && (
               <div>
-                <strong>Blackouts:</strong>{" "}
+                <strong className="text-slate-900 dark:text-slate-100">Blackouts:</strong>{" "}
                 {record.snapshot.blackoutDates
                   .map((b) => `${b.date}${b.reason ? ` — ${b.reason}` : ""}`)
                   .join("; ")}
@@ -259,10 +308,6 @@ function VisitAvailabilityHistoryDrawer({ open, onClose, branch }) {
   const total = data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
 
-  // Reset to page 1 when branch changes
-  const handleBranchChange = () => setPage(1);
-  void handleBranchChange; // suppress unused warning
-
   return (
     <>
       {/* Overlay */}
@@ -282,69 +327,73 @@ function VisitAvailabilityHistoryDrawer({ open, onClose, branch }) {
         role="complementary"
       >
         {/* Drawer header */}
-        <div className="visit-history-drawer__header flex-col items-stretch gap-3">
+        <div className="visit-history-drawer__header flex-col items-stretch gap-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
           <div className="flex items-center justify-between">
-            <div className="visit-history-drawer__title">
-              <History size={16} />
-              <span>Audit History</span>
+            <div className="flex items-center gap-2">
+              <History size={16} className="text-slate-500 dark:text-slate-400 shrink-0" />
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                Audit History
+              </h2>
               {branch && (
-                <span className="visit-history-branch-chip">
+                <span className="px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                   {branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe"}
                 </span>
               )}
             </div>
             <button
               type="button"
-              className="visit-history-close-btn"
+              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               onClick={onClose}
-              aria-label="Close history drawer"
+              title="Close audit history drawer"
+              aria-label="Close audit history drawer"
             >
-              <X size={18} />
+              <X size={16} />
             </button>
           </div>
 
-          {/* Sub Tab Buttons */}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
+          {/* Minimalist Segmented Sub-Tab Switcher */}
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/90 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
             <button
               type="button"
               onClick={() => setActiveTab("snapshots")}
-              className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded-md transition-colors text-center ${
+              className={`flex-1 py-1.5 px-2.5 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-1.5 ${
                 activeTab === "snapshots"
-                  ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs"
+                  ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
-              Rule Snapshots
+              <ClipboardList size={13} className="shrink-0" />
+              <span>Rule Snapshots</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab("conflicts")}
-              className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1 ${
+              className={`flex-1 py-1.5 px-2.5 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-1.5 ${
                 activeTab === "conflicts"
-                  ? "bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-400 shadow-xs"
+                  ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
-              <AlertTriangle size={12} className="text-amber-500 shrink-0" />
+              <AlertTriangle size={13} className="text-amber-500 shrink-0" />
               <span>Impact Logs</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab("scheduled_users")}
-              className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1 ${
+              className={`flex-1 py-1.5 px-2.5 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-1.5 ${
                 activeTab === "scheduled_users"
-                  ? "bg-white dark:bg-slate-900 text-sky-700 dark:text-sky-300 shadow-xs"
+                  ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
-              <Users size={12} className="text-sky-500 shrink-0" />
+              <Users size={13} className="text-sky-500 shrink-0" />
               <span>Scheduled Users</span>
             </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="visit-history-drawer__body">
+        <div className="visit-history-drawer__body bg-slate-50/50 dark:bg-slate-950">
           {activeTab === "conflicts" ? (
             <VisitConflictHistoryPanel branch={branch} />
           ) : activeTab === "scheduled_users" ? (
@@ -388,7 +437,7 @@ function VisitAvailabilityHistoryDrawer({ open, onClose, branch }) {
 
         {/* Pagination footer */}
         {activeTab === "snapshots" && !isLoading && !isError && total > LIMIT && (
-          <div className="visit-history-drawer__footer">
+          <div className="visit-history-drawer__footer bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
             <span className="visit-history-pagination-info">
               Page {page} of {totalPages} &middot; {total} records
             </span>
@@ -398,6 +447,7 @@ function VisitAvailabilityHistoryDrawer({ open, onClose, branch }) {
                 className="visit-history-page-btn"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => p - 1)}
+                title={page <= 1 ? "Already at first page" : "Previous page"}
                 aria-label="Previous page"
               >
                 <ChevronLeft size={15} />
@@ -407,6 +457,7 @@ function VisitAvailabilityHistoryDrawer({ open, onClose, branch }) {
                 className="visit-history-page-btn"
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
+                title={page >= totalPages ? "Already at last page" : "Next page"}
                 aria-label="Next page"
               >
                 <ChevronRight size={15} />
@@ -420,3 +471,4 @@ function VisitAvailabilityHistoryDrawer({ open, onClose, branch }) {
 }
 
 export default VisitAvailabilityHistoryDrawer;
+

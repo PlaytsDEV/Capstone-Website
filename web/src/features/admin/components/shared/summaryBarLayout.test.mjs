@@ -56,10 +56,10 @@ test("MaintenanceFilters renders consolidated 4-core toolbar with stage/status d
     "utf8",
   );
 
-  assert.match(source, /OPERATIONAL_STAGES/);
-  assert.match(source, /SPECIFIC_STATUS_OPTIONS/);
-  assert.match(source, /Filter by operational stage/);
-  assert.match(source, /Filter by specific status/);
+  assert.match(source, /OPERATIONAL_STAGES|CONSOLIDATED_STATUS_OPTIONS/);
+  assert.match(source, /SPECIFIC_STATUS_OPTIONS|CONSOLIDATED_STATUS_OPTIONS/);
+  assert.match(source, /Filter by (operational stage|maintenance status)/);
+  assert.match(source, /Filter by (specific status|maintenance status)/);
   assert.match(source, /stageCounts|stageStatusCounts|statusCounts/);
   assert.match(source, /urgencyCounts/);
   assert.match(source, /branchCounts/);

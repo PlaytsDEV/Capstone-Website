@@ -7,7 +7,7 @@ import { resolveDepositFromPaymentInfo } from "../../../shared/utils/depositUtil
 import { formatBedPosition, getBedDisplayLabel, getBedShortCode } from "../../../shared/utils/bedIdentifier";
 import { reservationApi } from "../../../shared/api/reservationApi";
 import { showNotification } from "../../../shared/utils/notification";
-import { Clock, History, ChevronLeft, ChevronRight, Download, CheckCircle2, LogOut } from "lucide-react";
+import { Clock, History, ChevronLeft, ChevronRight, Download, CheckCircle2, LogOut, LoaderCircle, AlertTriangle, ArrowRight } from "lucide-react";
 
 const fmtDate = (value) =>
   value
@@ -177,6 +177,7 @@ export function RenewLeaseModal({
             type="button"
             className="tenant-modal-btn tenant-modal-btn--ghost"
             onClick={onClose}
+            disabled={loading}
           >
             Cancel
           </button>
@@ -186,44 +187,39 @@ export function RenewLeaseModal({
             disabled={loading || (mode === "direct" && !newLeaseEndDate)}
             onClick={handleConfirm}
           >
-            {loading ? "Processing..." : mode === "offer" ? "Send Extension Offer" : "Extend Reservation"}
+            {loading ? (
+              <>
+                <LoaderCircle className="w-4 h-4 animate-spin" />
+                <span>Processing...</span>
+              </>
+            ) : mode === "offer" ? (
+              "Send Extension Offer"
+            ) : (
+              "Extend Reservation"
+            )}
           </button>
         </>
       }
     >
-      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+      <div className="flex gap-2.5 mb-5">
         <button
           type="button"
-          style={{
-            flex: 1,
-            padding: "9px 14px",
-            borderRadius: 8,
-            border: mode === "direct" ? "2px solid #E8734A" : "1px solid #CBD5E1",
-            background: mode === "direct" ? "#FFF7ED" : "#fff",
-            color: mode === "direct" ? "#E8734A" : "#64748B",
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: "pointer",
-            transition: "all 0.15s ease",
-          }}
+          className={`flex-1 py-2 px-3.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer text-center ${
+            mode === "direct"
+              ? "border-primary bg-primary text-primary-foreground shadow-xs"
+              : "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted"
+          }`}
           onClick={() => setMode("direct")}
         >
           Direct Extension
         </button>
         <button
           type="button"
-          style={{
-            flex: 1,
-            padding: "9px 14px",
-            borderRadius: 8,
-            border: mode === "offer" ? "2px solid #E8734A" : "1px solid #CBD5E1",
-            background: mode === "offer" ? "#FFF7ED" : "#fff",
-            color: mode === "offer" ? "#E8734A" : "#64748B",
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: "pointer",
-            transition: "all 0.15s ease",
-          }}
+          className={`flex-1 py-2 px-3.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer text-center ${
+            mode === "offer"
+              ? "border-primary bg-primary text-primary-foreground shadow-xs"
+              : "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted"
+          }`}
           onClick={() => setMode("offer")}
         >
           Send Extension Offer
@@ -231,11 +227,11 @@ export function RenewLeaseModal({
       </div>
 
       {/* Duration Preset Selector */}
-      <div style={{ marginBottom: 20 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 8 }}>
-          How long do they want to stay again?
+      <div className="mb-5 space-y-2">
+        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
+          Extended Term Duration
         </span>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+        <div className="grid grid-cols-5 gap-2">
           {[
             { label: "+1 Month", value: 1 },
             { label: "+3 Months", value: 3 },
@@ -248,18 +244,11 @@ export function RenewLeaseModal({
               <button
                 key={opt.label}
                 type="button"
-                style={{
-                  padding: "8px 4px",
-                  borderRadius: 6,
-                  border: isSelected ? "1.5px solid #E8734A" : "1px solid #E2E8F0",
-                  background: isSelected ? "#E8734A" : "#F8FAFC",
-                  color: isSelected ? "#FFFFFF" : "#334155",
-                  fontWeight: 600,
-                  fontSize: 12,
-                  cursor: "pointer",
-                  textAlign: "center",
-                  transition: "all 0.15s ease",
-                }}
+                className={`py-2 px-1 rounded-lg border text-xs font-semibold transition-colors cursor-pointer text-center ${
+                  isSelected
+                    ? "border-primary bg-primary text-primary-foreground shadow-2xs"
+                    : "border-border bg-card text-foreground hover:bg-muted hover:border-border-strong"
+                }`}
                 onClick={() => handleSelectDuration(opt.value)}
               >
                 {opt.label}
@@ -270,29 +259,15 @@ export function RenewLeaseModal({
       </div>
 
       {/* Live Extension Preview Card */}
-      <div
-        style={{
-          background: "#F8FAFC",
-          border: "1px solid #E2E8F0",
-          borderRadius: 10,
-          padding: "12px 16px",
-          marginBottom: 20,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-        }}
-      >
+      <div className="bg-muted/40 border border-border/80 rounded-xl p-3.5 mb-5 flex items-center justify-between gap-3 shadow-2xs">
         <div>
-          <div style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>Current End Date</div>
-          <div style={{ fontSize: 14, color: "#1E293B", fontWeight: 700 }}>
-            {fmtDate(currentEndRaw)}
-          </div>
+          <div className="text-[11px] text-muted-foreground font-medium">Current End Date</div>
+          <div className="text-sm text-foreground font-bold">{fmtDate(currentEndRaw)}</div>
         </div>
-        <div style={{ color: "#E8734A", fontSize: 18, fontWeight: 700 }}>→</div>
-        <div>
-          <div style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>New Extended End Date</div>
-          <div style={{ fontSize: 14, color: "#E8734A", fontWeight: 700 }}>
+        <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+        <div className="text-right">
+          <div className="text-[11px] text-muted-foreground font-medium">New Extended End Date</div>
+          <div className="text-sm text-foreground font-bold">
             {mode === "offer" ? `+${offerMonths} Months from end` : fmtDate(newLeaseEndDate)}
           </div>
         </div>
@@ -306,7 +281,7 @@ export function RenewLeaseModal({
               type="text"
               value={fmtDate(currentEndRaw)}
               readOnly
-              style={{ background: "#F1F5F9" }}
+              className="bg-muted/50"
             />
           </label>
           <label className="tenant-modal-field">
@@ -367,27 +342,17 @@ export function RenewLeaseModal({
         />
       </label>
 
-      <div className="tenant-modal-section" style={{ marginTop: 20 }}>
-        <h4 style={{ fontSize: 12, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+      <div className="mt-5 space-y-2.5">
+        <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
           Extension History
         </h4>
         {extensionHistory.length === 0 ? (
-          <div
-            style={{
-              background: "#F8FAFC",
-              border: "1px dashed #CBD5E1",
-              borderRadius: 8,
-              padding: "16px",
-              textAlign: "center",
-              color: "#64748B",
-              fontSize: 12,
-            }}
-          >
-            <Clock style={{ width: 18, height: 18, color: "#94A3B8", margin: "0 auto 4px", display: "block" }} />
+          <div className="bg-muted/20 border border-dashed border-border rounded-xl p-4 text-center text-muted-foreground text-xs space-y-1">
+            <Clock className="w-4 h-4 text-slate-400 dark:text-slate-500 mx-auto mb-1 block" />
             No previous stay extensions recorded for this tenant.
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="space-y-2">
             {extensionHistory.map((entry, idx) => {
               const startDate = entry.leaseStartDate ? fmtDate(entry.leaseStartDate) : null;
               const endDate = entry.leaseEndDate ? fmtDate(entry.leaseEndDate) : null;
@@ -415,62 +380,30 @@ export function RenewLeaseModal({
               return (
                 <div
                   key={entry.id || idx}
-                  style={{
-                    background: "#FFFFFF",
-                    border: "1px solid #E2E8F0",
-                    borderRadius: 8,
-                    padding: "10px 14px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
-                  }}
+                  className="bg-card border border-border rounded-xl p-3 flex items-center justify-between gap-3 shadow-2xs"
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 6,
-                        background: "#F1F5F9",
-                        color: "#475569",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <History style={{ width: 16, height: 16 }} />
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                      <History className="w-4 h-4" />
                     </div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-foreground truncate">
                         {dateRangeText}
                       </div>
-                      <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
+                      <div className="text-[11px] text-muted-foreground truncate">
                         {entry.notes ? entry.notes : `Term #${idx + 1} • ${statusBadge}`}
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ textAlign: "right" }}>
+                  <div className="text-right shrink-0">
                     {durationText && (
-                      <span
-                        style={{
-                          display: "inline-block",
-                          padding: "2px 8px",
-                          borderRadius: 4,
-                          background: "#FFF7ED",
-                          border: "1px solid #FFEDD5",
-                          color: "#EA580C",
-                          fontSize: 11,
-                          fontWeight: 700,
-                        }}
-                      >
+                      <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-muted text-foreground border border-border/80">
                         {durationText}
                       </span>
                     )}
                     {entry.monthlyRent ? (
-                      <div style={{ fontSize: 11, color: "#64748B", marginTop: 2, fontWeight: 500 }}>
+                      <div className="text-[11px] text-muted-foreground font-medium mt-0.5">
                         {fmtMoney(entry.monthlyRent)}/mo
                       </div>
                     ) : null}
@@ -945,8 +878,17 @@ export function TransferTenantModal({
               });
             }}
           >
-            <CheckCircle2 size={16} />
-            <span>{loading ? "Saving..." : "Confirm Transfer"}</span>
+            {loading ? (
+              <>
+                <LoaderCircle size={16} className="animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={16} />
+                <span>Confirm Transfer</span>
+              </>
+            )}
           </button>
         )}
       </div>
@@ -1426,8 +1368,17 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit,
               })
             }
           >
-            <LogOut size={16} />
-            <span>{loading ? "Saving..." : "Confirm Move-Out"}</span>
+            {loading ? (
+              <>
+                <LoaderCircle size={16} className="animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <LogOut size={16} />
+                <span>Confirm Move-Out</span>
+              </>
+            )}
           </button>
         )}
       </div>

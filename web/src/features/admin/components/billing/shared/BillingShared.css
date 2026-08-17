@@ -138,53 +138,84 @@
 .billing-status-badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 0.76rem;
-  font-weight: 700;
-  text-transform: capitalize;
+  gap: 5px;
+  padding: 0;
+  border-radius: 0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  letter-spacing: normal;
+  background: transparent;
+  border: none;
+}
+
+.billing-status-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .billing-status-badge--draft,
-.billing-status-badge--open {
-  background: var(--color-warning-bg);
-  color: var(--color-warning);
+.billing-status-badge--open,
+.billing-status-badge--pending,
+.billing-status-badge--ready_to_send,
+.billing-status-badge--ready {
+  background: transparent;
+  color: var(--warning-dark, #92400e);
+}
+.billing-status-badge--draft .billing-status-badge__dot,
+.billing-status-badge--open .billing-status-badge__dot,
+.billing-status-badge--pending .billing-status-badge__dot,
+.billing-status-badge--ready_to_send .billing-status-badge__dot,
+.billing-status-badge--ready .billing-status-badge__dot {
+  background-color: var(--status-warning, #f59e0b);
 }
 
 .billing-status-badge--finalized,
 .billing-status-badge--closed,
 .billing-status-badge--sent,
 .billing-status-badge--paid {
-  background: var(--color-success-bg);
-  color: var(--color-success);
+  background: transparent;
+  color: var(--status-success, #047857);
+}
+.billing-status-badge--finalized .billing-status-badge__dot,
+.billing-status-badge--closed .billing-status-badge__dot,
+.billing-status-badge--sent .billing-status-badge__dot,
+.billing-status-badge--paid .billing-status-badge__dot {
+  background-color: var(--status-success, #10b981);
 }
 
 .billing-status-badge--revised {
-  background: var(--color-info-bg);
-  color: var(--color-accent-hover);
+  background: transparent;
+  color: var(--status-info, #1d4ed8);
 }
-
-.billing-status-badge--pending,
-.billing-status-badge--ready\_to\_send,
-.billing-status-badge--ready {
-  background: var(--color-warning-bg);
-  color: var(--color-warning);
+.billing-status-badge--revised .billing-status-badge__dot {
+  background-color: var(--status-info, #3b82f6);
 }
 
 .billing-status-badge--overdue {
-  background: var(--error-light, hsl(0 72% 94%));
-  color: var(--error-dark, hsl(0 65% 38%));
+  background: transparent;
+  color: var(--status-error, #dc2626);
+}
+.billing-status-badge--overdue .billing-status-badge__dot {
+  background-color: var(--status-error, #ef4444);
 }
 
 .billing-status-badge--partially-paid,
-.billing-status-badge--partially\_paid {
-  background: var(--color-info-bg);
-  color: var(--color-accent-hover);
+.billing-status-badge--partially_paid {
+  background: transparent;
+  color: var(--warning-dark, #92400e);
+}
+.billing-status-badge--partially-paid .billing-status-badge__dot,
+.billing-status-badge--partially_paid .billing-status-badge__dot {
+  background-color: var(--status-warning, #f59e0b);
 }
 
-.billing-status-badge--no\_active\_cycle,
-.billing-status-badge--missing\_data {
-  background: var(--surface-muted);
+.billing-status-badge--no_active_cycle,
+.billing-status-badge--missing_data {
+  background: transparent;
   color: var(--text-muted);
 }
 

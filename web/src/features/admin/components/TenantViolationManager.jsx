@@ -17,6 +17,7 @@ import {
 import { billingApi } from "../../../shared/api/billingApi.js";
 import RecordViolationModal from "./billing/RecordViolationModal.jsx";
 import ViolationDetailModal from "./billing/ViolationDetailModal.jsx";
+import ProfileAvatar from "../../../shared/components/ProfileAvatar.jsx";
 
 const STATUS_FILTERS = [
   { id: "all", label: "All Infractions" },
@@ -426,10 +427,11 @@ export default function TenantViolationManager({ branch }) {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
-                            <ResidentAvatar
-                              avatarUrl={v.tenantAvatar || v.tenantProfileImage || v.tenantId?.profileImage}
-                              name={v.tenantName}
-                              className="h-8 w-8 text-[11px]"
+                            <ProfileAvatar
+                              user={{ name: v.tenantName }}
+                              initials={getInitials(v.tenantName)}
+                              size={32}
+                              defaultOnly
                             />
                             <div>
                               <p className="font-bold text-card-foreground">{v.tenantName}</p>

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Search, Filter, X, SearchX, Calendar } from "lucide-react";
+import { Search, Filter, X, RotateCcw, Calendar } from "lucide-react";
 import { ExportButtons } from "../pages/analyticsTabShared.js";
 import "./TenantFilterBar.css";
 
@@ -59,6 +59,10 @@ export default function TenantFilterBar({
   };
 
   const filterCount = getActiveFilterCount();
+  const hasActiveFilters =
+    filterCount > 0 ||
+    Boolean(searchTerm?.trim()) ||
+    (Array.isArray(quickFilters) && quickFilters.length > 0);
 
   return (
     <div className="tenant-filter-bar">
@@ -72,6 +76,7 @@ export default function TenantFilterBar({
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search by name, contact, room, or bed..."
             className="tenant-filter-bar__input"
+            aria-label="Search tenants"
           />
         </div>
 
@@ -80,9 +85,11 @@ export default function TenantFilterBar({
             type="button"
             className={`tenant-filter-bar__btn ${isFiltersOpen ? "active" : ""} ${filterCount > 0 ? "has-filters" : ""}`}
             onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+            title={isFiltersOpen ? "Hide advanced filter options" : "Show advanced filter options"}
+            aria-expanded={isFiltersOpen}
           >
-            <Filter size={15} />
-            Filters{" "}
+            <Filter size={14} />
+            <span>Filters</span>
             {filterCount > 0 && (
               <span className="tenant-filter-bar__badge">{filterCount}</span>
             )}
@@ -92,9 +99,15 @@ export default function TenantFilterBar({
             type="button"
             className="tenant-filter-bar__btn tenant-filter-bar__btn--ghost"
             onClick={resetFilters}
+            disabled={!hasActiveFilters}
+            title={
+              hasActiveFilters
+                ? "Reset all search queries and active filter criteria"
+                : "No active filters or search terms to reset"
+            }
           >
-            <SearchX size={15} />
-            Reset
+            <RotateCcw size={14} className={hasActiveFilters ? "" : "opacity-50"} />
+            <span>Reset</span>
           </button>
 
           {(onExportCSV || onExportPDF) && (
@@ -214,12 +227,22 @@ export default function TenantFilterBar({
           <div className="tenant-filter-bar__quick-filters">
             {QUICK_FILTERS.map((filter) => {
               const active = quickFilters.includes(filter.key);
+              let semanticClass = "";
+              if (active) {
+                if (filter.key === "overdue") {
+                  semanticClass = "tenant-quick-filter--danger";
+                } else if (filter.key === "expiring_soon" || filter.key === "needs_action") {
+                  semanticClass = "tenant-quick-filter--warning";
+                } else {
+                  semanticClass = "tenant-quick-filter--active";
+                }
+              }
 
               return (
                 <button
                   key={filter.key}
                   type="button"
-                  className={`tenant-quick-filter ${active ? "is-active" : ""}`}
+                  className={`tenant-quick-filter ${semanticClass}`}
                   onClick={() => toggleQuickFilter(filter.key)}
                 >
                   {filter.label}

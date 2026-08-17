@@ -512,9 +512,7 @@ export default function RoomConfigModal({
         {/* Header */}
         <div className="admin-modal-header rfm-header">
           <div className="rfm-header__title-block">
-            <div className="rfm-header__icon">
-              <Building2 size={18} />
-            </div>
+            <Building2 size={20} className="rfm-header__icon" />
             <div>
               <h2>Configure Room: {draftRoom.name || `Room ${draftRoom.roomNumber}`}</h2>
               <div className="room-config-modal__header-badges">

@@ -28,7 +28,7 @@ const STATUS_LABELS = {
   reserved: "Reserved",
   overdue: "Overdue Move-In",
   cancellation_requested: "Cancellation Requested",
-  moveIn: "Moved In",
+  moveIn: "Move In",
   cancelled: "Cancelled",
   archived: "Archived",
 };

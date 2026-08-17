@@ -1,5 +1,5 @@
-/* ── Inline SVG icons used by each row ── */
 import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
+import ProfileAvatar from "../../../../shared/components/ProfileAvatar";
 
 const BuildingIcon = () => (
  <svg
@@ -206,20 +206,21 @@ export default function TenantTable({
  <div style={{ padding: "60px 24px", textAlign: "center" }}>
  <div style={{ fontSize: "32px", marginBottom: "12px", opacity: 0.4 }}>🏠</div>
  <div style={{ fontSize: "15px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>No tenants found</div>
- <div style={{ fontSize: "13px", color: "#9CA3AF" }}>Tenants will appear here once applicants are moved in.</div>
+ <div style={{ fontSize: "13px", color: "#9CA3AF" }}>Tenants will appear here once applicants complete move-in.</div>
  </div>
  ) : (
  tenants.map((tenant) => (
  <div key={tenant.id} className="admin-tenants-row">
  <div className="admin-tenants-cell">
- <div className="admin-tenants-profile">
- <div
- className={`admin-tenants-avatar admin-tenants-avatar-${tenant.id % 5}`}
- >
- {tenant.initials}
- </div>
- <span className="admin-tenants-name">{tenant.name}</span>
- </div>
+  <div className="admin-tenants-profile">
+  <ProfileAvatar
+    user={{ name: tenant.name, email: tenant.email }}
+    initials={tenant.initials}
+    size={34}
+    defaultOnly
+  />
+  <span className="admin-tenants-name">{tenant.name}</span>
+  </div>
  </div>
  <div className="admin-tenants-cell">
  <span

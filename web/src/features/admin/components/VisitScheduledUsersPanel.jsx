@@ -18,8 +18,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
+  Download,
 } from "lucide-react";
 import { useVisitScheduledUsers } from "../../../shared/hooks/queries/useReservations";
+import { showNotification } from "../../../shared/utils/notification";
 
 function ScheduledUsersSkeleton() {
   return (
@@ -41,12 +43,13 @@ function ScheduledUsersSkeleton() {
   );
 }
 
-/* ── Friendly status badge styling with solid HSL colors (strictly no gradients) ── */
+/* ── Friendly status badge styling with transparent background & semantic dots ── */
 function VisitStatusBadge({ status, rejected }) {
   if (rejected) {
     return (
-      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-900">
-        Rejected
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider bg-transparent text-rose-700 dark:text-rose-400">
+        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+        <span>Rejected</span>
       </span>
     );
   }
@@ -55,47 +58,53 @@ function VisitStatusBadge({ status, rejected }) {
 
   if (s === "completed" || s === "visit_completed") {
     return (
-      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900">
-        Completed
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider bg-transparent text-emerald-700 dark:text-emerald-300">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+        <span>Completed</span>
       </span>
     );
   }
 
   if (s === "cancelled" || s === "visit_cancelled") {
     return (
-      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-        Cancelled
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider bg-transparent text-slate-600 dark:text-slate-400">
+        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+        <span>Cancelled</span>
       </span>
     );
   }
 
   if (s === "no_show") {
     return (
-      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900">
-        No-Show
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider bg-transparent text-amber-700 dark:text-amber-300">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+        <span>No-Show</span>
       </span>
     );
   }
 
   if (s === "schedule_approved" || s === "approved") {
     return (
-      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
-        Approved
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider bg-transparent text-sky-700 dark:text-sky-300">
+        <span className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
+        <span>Approved</span>
       </span>
     );
   }
 
   if (s === "rescheduled") {
     return (
-      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-900">
-        Rescheduled
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider bg-transparent text-amber-700 dark:text-amber-300">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+        <span>Rescheduled</span>
       </span>
     );
   }
 
   return (
-    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-900">
-      Scheduled
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider bg-transparent text-sky-700 dark:text-sky-300">
+      <span className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
+      <span>Scheduled</span>
     </span>
   );
 }
@@ -105,24 +114,24 @@ function ViewingTypeBadge({ type }) {
   const t = String(type || "").toLowerCase();
   if (t === "remote_2d_viewing") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900">
-        <Eye size={11} />
-        2D Remote Viewing
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-transparent text-sky-700 dark:text-sky-300">
+        <Eye size={12} className="text-sky-500 shrink-0" />
+        <span>2D Remote Viewing</span>
       </span>
     );
   }
   if (t === "urgent_move_in_review") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900">
-        <AlertCircle size={11} />
-        Urgent Move-in
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-transparent text-amber-700 dark:text-amber-300">
+        <AlertCircle size={12} className="text-amber-500 shrink-0" />
+        <span>Urgent Move-in</span>
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-      <Home size={11} />
-      Physical Visit
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-transparent text-slate-700 dark:text-slate-300">
+      <Home size={12} className="text-slate-400 shrink-0" />
+      <span>Physical Visit</span>
     </span>
   );
 }
@@ -208,11 +217,91 @@ export default function VisitScheduledUsersPanel({ branch }) {
     setExpandedCardId((prev) => (prev === id ? null : id));
   };
 
+  /* ── Export CSV Functionality ── */
+  const handleExportCSV = () => {
+    if (!records || records.length === 0) {
+      showNotification({
+        type: "warning",
+        message: "No scheduled visitor records available to export.",
+      });
+      return;
+    }
+
+    const headers = [
+      "Tenant Name",
+      "Visit Code",
+      "Email",
+      "Phone",
+      "Branch",
+      "Visit Date",
+      "Slot",
+      "Room",
+      "Room Type",
+      "Viewing Preference",
+      "Status",
+      "Scheduled At",
+      "Approved At",
+      "Rejection Reason",
+      "Outcome Notes",
+    ];
+
+    const branchLabel =
+      branch === "gil-puyat"
+        ? "Gil Puyat"
+        : branch === "guadalupe"
+          ? "Guadalupe"
+          : branch || "All";
+
+    const csvRows = [
+      headers.join(","),
+      ...records.map((r) => {
+        const fields = [
+          `"${(r.tenantName || "").replace(/"/g, '""')}"`,
+          `"${(r.visitCode || "").replace(/"/g, '""')}"`,
+          `"${(r.email || "").replace(/"/g, '""')}"`,
+          `"${(r.phone || "").replace(/"/g, '""')}"`,
+          `"${branchLabel}"`,
+          `"${(r.visitDate || "").replace(/"/g, '""')}"`,
+          `"${(r.visitSlot || "").replace(/"/g, '""')}"`,
+          `"${(r.roomNumber || "").replace(/"/g, '""')}"`,
+          `"${(r.roomType || "").replace(/"/g, '""')}"`,
+          `"${(r.viewingPreference || "").replace(/"/g, '""')}"`,
+          `"${(r.scheduleRejected ? "Rejected" : r.visitStatus || "").replace(/"/g, '""')}"`,
+          `"${(r.visitScheduledAt ? new Date(r.visitScheduledAt).toISOString() : "").replace(/"/g, '""')}"`,
+          `"${(r.scheduleApprovedAt ? new Date(r.scheduleApprovedAt).toISOString() : "").replace(/"/g, '""')}"`,
+          `"${(r.scheduleRejectionReason || "").replace(/"/g, '""')}"`,
+          `"${(r.visitOutcomeNotes || "").replace(/"/g, '""')}"`,
+        ];
+        return fields.join(",");
+      }),
+    ];
+
+    const csvContent =
+      "data:text/csv;charset=utf-8," + encodeURIComponent(csvRows.join("\n"));
+    const link = document.createElement("a");
+    link.setAttribute("href", csvContent);
+    const dateStamp = new Date().toISOString().split("T")[0];
+    link.setAttribute(
+      "download",
+      `scheduled_visitors_${branch || "all"}_${dateStamp}.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showNotification({
+      type: "success",
+      message: `Exported ${records.length} scheduled visitor ${
+        records.length === 1 ? "record" : "records"
+      } to CSV.`,
+    });
+  };
+
   return (
     <div className="space-y-4">
-      {/* ── Search & Filter Controls ── */}
-      <div className="space-y-3 pb-2 border-b border-slate-200 dark:border-slate-800">
-        {/* Search row */}
+      {/* ── Search, Export & Filter Controls ── */}
+      <div className="space-y-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+        {/* Search & Actions row */}
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -221,7 +310,7 @@ export default function VisitScheduledUsersPanel({ branch }) {
               value={searchQuery}
               onChange={handleSearchChange}
               placeholder="Search applicant name, email, phone, visit code..."
-              className="w-full pl-9 pr-8 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500"
+              className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500"
             />
             {searchQuery && (
               <button
@@ -231,55 +320,76 @@ export default function VisitScheduledUsersPanel({ branch }) {
                   setPage(1);
                 }}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
+                title="Clear search"
               >
                 &times;
               </button>
             )}
           </div>
 
+          {/* Export CSV Button */}
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            disabled={records.length === 0 || isLoading}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title={
+              records.length === 0
+                ? "No visitor records available to export"
+                : "Export visitor records to CSV"
+            }
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span className="hidden sm:inline">Export CSV</span>
+          </button>
+
+          {/* Refresh Button */}
           <button
             type="button"
             onClick={() => refetch()}
             disabled={isRefetching}
             className="p-2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-700"
-            title="Refresh scheduled visitors"
+            title="Refresh scheduled visitors list"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefetching ? "animate-spin" : ""}`} />
           </button>
         </div>
 
-        {/* Status Filters */}
-        <div className="flex items-center gap-1 overflow-x-auto pb-1 text-xs">
+        {/* Status Filters - High Contrast Outline Segmented Style */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
           {[
             { key: "all", label: "All", count: summary.totalScheduled },
             { key: "upcoming", label: "Upcoming", count: summary.upcomingCount },
             { key: "completed", label: "Completed", count: summary.completedCount },
             { key: "cancelled", label: "Cancelled", count: summary.cancelledCount },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => handleStatusChange(tab.key)}
-              className={`px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${
-                statusFilter === tab.key
-                  ? "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900"
-                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-              }`}
-            >
-              <span>{tab.label}</span>
-              {typeof tab.count === "number" && (
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                    statusFilter === tab.key
-                      ? "bg-slate-800 dark:bg-slate-200 text-slate-200 dark:text-slate-800"
-                      : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
-                  }`}
-                >
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
+          ].map((tab) => {
+            const isActive = statusFilter === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => handleStatusChange(tab.key)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 border ${
+                  isActive
+                    ? "border-slate-900 dark:border-slate-100 bg-slate-900/5 dark:bg-slate-100/10 text-slate-900 dark:text-slate-100 shadow-xs"
+                    : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}
+              >
+                <span>{tab.label}</span>
+                {typeof tab.count === "number" && (
+                  <span
+                    className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full border ${
+                      isActive
+                        ? "border-slate-900/30 dark:border-slate-100/30 bg-slate-900/10 dark:bg-slate-100/15 text-slate-900 dark:text-slate-100"
+                        : "border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -329,11 +439,23 @@ export default function VisitScheduledUsersPanel({ branch }) {
                 key={userRecord._id}
                 className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-all space-y-3"
               >
-                {/* Header: User name, Visit Code & Status */}
-                <div className="flex flex-wrap items-start justify-between gap-2">
+                {/* Header: Clickable Accordion */}
+                <div
+                  onClick={() => toggleExpand(userRecord._id)}
+                  className="flex flex-wrap items-start justify-between gap-2 cursor-pointer select-none group"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isExpanded}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleExpand(userRecord._id);
+                    }
+                  }}
+                >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm text-slate-900 dark:text-slate-100">
+                      <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors">
                         {userRecord.tenantName}
                       </span>
                       {userRecord.visitCode && (
@@ -367,8 +489,11 @@ export default function VisitScheduledUsersPanel({ branch }) {
                     />
                     <button
                       type="button"
-                      onClick={() => toggleExpand(userRecord._id)}
-                      className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpand(userRecord._id);
+                      }}
+                      className="p-1 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 rounded transition-colors"
                       title={isExpanded ? "Collapse details" : "Expand details"}
                       aria-expanded={isExpanded}
                     >
@@ -395,13 +520,16 @@ export default function VisitScheduledUsersPanel({ branch }) {
 
                   <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
                     <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span>Slot: <strong>{userRecord.visitSlot}</strong></span>
+                    <span>
+                      Slot: <strong>{userRecord.visitSlot}</strong>
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
                     <Home className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <span>
-                      Room: <strong>{userRecord.roomNumber}</strong> ({userRecord.roomType})
+                      Room: <strong>{userRecord.roomNumber}</strong> (
+                      {userRecord.roomType})
                     </span>
                   </div>
 
@@ -433,22 +561,27 @@ export default function VisitScheduledUsersPanel({ branch }) {
                     </div>
 
                     {/* Rejection Note */}
-                    {userRecord.scheduleRejected && userRecord.scheduleRejectionReason && (
-                      <div className="p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-200 flex items-start gap-2">
-                        <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                        <div>
-                          <strong>Rejection Reason: </strong>
-                          <span>{userRecord.scheduleRejectionReason}</span>
+                    {userRecord.scheduleRejected &&
+                      userRecord.scheduleRejectionReason && (
+                        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-start gap-2">
+                          <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                          <div>
+                            <strong className="text-rose-700 dark:text-rose-300">
+                              Rejection Reason:{" "}
+                            </strong>
+                            <span>{userRecord.scheduleRejectionReason}</span>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
                     {/* Admin Outcome Notes */}
                     {userRecord.visitOutcomeNotes && (
                       <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 flex items-start gap-2">
                         <FileText className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
                         <div>
-                          <strong>Visit Outcome Notes: </strong>
+                          <strong className="text-slate-900 dark:text-slate-100">
+                            Visit Outcome Notes:{" "}
+                          </strong>
                           <span>{userRecord.visitOutcomeNotes}</span>
                           {userRecord.visitOutcomeUpdatedByName && (
                             <span className="block text-[10px] text-slate-400 mt-1">
@@ -475,7 +608,8 @@ export default function VisitScheduledUsersPanel({ branch }) {
                               <div className="flex items-center gap-2">
                                 <Calendar className="w-3 h-3 text-slate-400" />
                                 <span>
-                                  {formatVisitDate(hist.visitDate)} ({hist.visitTime || "N/A"})
+                                  {formatVisitDate(hist.visitDate)} (
+                                  {hist.visitTime || "N/A"})
                                 </span>
                               </div>
                               <span className="font-semibold uppercase text-[10px] px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
@@ -506,7 +640,7 @@ export default function VisitScheduledUsersPanel({ branch }) {
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               className="p-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              title="Previous Page"
+              title={page <= 1 ? "Already at first page" : "Previous Page"}
             >
               <ChevronLeft size={14} />
             </button>
@@ -515,7 +649,7 @@ export default function VisitScheduledUsersPanel({ branch }) {
               disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               className="p-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              title="Next Page"
+              title={page >= totalPages ? "Already at last page" : "Next Page"}
             >
               <ChevronRight size={14} />
             </button>
@@ -525,3 +659,4 @@ export default function VisitScheduledUsersPanel({ branch }) {
     </div>
   );
 }
+

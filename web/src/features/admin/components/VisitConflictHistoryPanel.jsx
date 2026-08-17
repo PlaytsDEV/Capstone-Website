@@ -10,11 +10,13 @@ import {
   ChevronUp,
   MessageSquare,
   RefreshCw,
+  Download,
 } from "lucide-react";
 import {
   useVisitConflictHistory,
   useToggleResolveVisitConflict,
 } from "../../../shared/hooks/queries/useReservations";
+import { showNotification } from "../../../shared/utils/notification";
 
 function ConflictHistorySkeleton() {
   return (
@@ -60,8 +62,16 @@ export default function VisitConflictHistoryPanel({ branch }) {
         conflictId,
         resolved: !currentResolved,
       });
+      showNotification({
+        type: "success",
+        message: `Impact log marked as ${!currentResolved ? "Resolved" : "Unresolved"}.`,
+      });
     } catch (err) {
       console.error("Failed to update resolution status:", err);
+      showNotification({
+        type: "error",
+        message: "Failed to update resolution status. Please try again.",
+      });
     }
   };
 
@@ -69,63 +79,136 @@ export default function VisitConflictHistoryPanel({ branch }) {
     setExpandedId((prev) => (prev === id ? null : id));
   };
 
+  /* ── Export CSV for Conflict Impact Logs ── */
+  const handleExportCSV = () => {
+    if (!records || records.length === 0) {
+      showNotification({
+        type: "warning",
+        message: "No schedule impact logs available to export.",
+      });
+      return;
+    }
+
+    const headers = [
+      "Trigger",
+      "Status",
+      "Recorded Date",
+      "Saved By Email",
+      "Affected Count",
+      "Admin Note",
+      "Affected Reservations",
+    ];
+
+    const csvRows = [
+      headers.join(","),
+      ...records.map((log) => {
+        const affectedSummary = (log.affectedReservations || [])
+          .map(
+            (r) =>
+              `${r.tenantName || "Applicant"} (${r.visitDate || ""} ${
+                r.visitSlot || ""
+              })`,
+          )
+          .join(" | ");
+
+        const fields = [
+          `"${(log.trigger || "Rule Update Impact").replace(/"/g, '""')}"`,
+          `"${(log.resolved ? "Resolved" : "Unresolved").replace(/"/g, '""')}"`,
+          `"${(log.createdAt ? new Date(log.createdAt).toISOString() : "").replace(/"/g, '""')}"`,
+          `"${(log.acknowledgedBy?.email || "").replace(/"/g, '""')}"`,
+          `"${log.affectedCount || 0}"`,
+          `"${(log.adminNote || "").replace(/"/g, '""')}"`,
+          `"${affectedSummary.replace(/"/g, '""')}"`,
+        ];
+        return fields.join(",");
+      }),
+    ];
+
+    const csvContent =
+      "data:text/csv;charset=utf-8," + encodeURIComponent(csvRows.join("\n"));
+    const link = document.createElement("a");
+    link.setAttribute("href", csvContent);
+    const dateStamp = new Date().toISOString().split("T")[0];
+    link.setAttribute(
+      "download",
+      `schedule_impact_logs_${branch || "all"}_${dateStamp}.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showNotification({
+      type: "success",
+      message: `Exported ${records.length} impact log ${
+        records.length === 1 ? "record" : "records"
+      } to CSV.`,
+    });
+  };
+
   return (
     <div className="space-y-4">
-      {/* Top Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-200 dark:border-slate-800">
+      {/* Top Controls & Outline Filter Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-amber-500" />
+          <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
             Schedule Impact Audit Logs
           </h3>
-          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-            {total} {total === 1 ? "entry" : "entries"}
+          <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+            {total}
           </span>
         </div>
 
-        {/* Filters */}
+        {/* Action Controls & Filters */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-lg border border-slate-200 dark:border-slate-700/60">
-            <Filter className="w-3.5 h-3.5 text-slate-400 ml-1.5" />
-            <button
-              onClick={() => setFilterResolved("all")}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                filterResolved === "all"
-                  ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setFilterResolved("false")}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                filterResolved === "false"
-                  ? "bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-400 shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-              }`}
-            >
-              Unresolved
-            </button>
-            <button
-              onClick={() => setFilterResolved("true")}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                filterResolved === "true"
-                  ? "bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-              }`}
-            >
-              Resolved
-            </button>
+          {/* Outline Filter Buttons */}
+          <div className="flex items-center gap-1">
+            {[
+              { key: "all", label: "All" },
+              { key: "false", label: "Unresolved" },
+              { key: "true", label: "Resolved" },
+            ].map((tab) => {
+              const isActive = filterResolved === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setFilterResolved(tab.key)}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all border ${
+                    isActive
+                      ? "border-slate-900 dark:border-slate-100 bg-slate-900/5 dark:bg-slate-100/10 text-slate-900 dark:text-slate-100 shadow-xs"
+                      : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-slate-200"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
 
+          {/* Export CSV Button */}
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            disabled={records.length === 0 || isLoading}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title={
+              records.length === 0
+                ? "No impact logs available to export"
+                : "Export impact logs to CSV"
+            }
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span className="hidden sm:inline">Export</span>
+          </button>
+
+          {/* Refresh Button */}
           <button
             onClick={() => refetch()}
             disabled={isRefetching}
-            className="p-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-700"
             title="Refresh conflict logs"
           >
-            <RefreshCw className={`w-4 h-4 ${isRefetching ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefetching ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
@@ -151,33 +234,55 @@ export default function VisitConflictHistoryPanel({ branch }) {
         <div className="space-y-3">
           {records.map((log) => {
             const isExpanded = expandedId === log._id;
-            const createdDate = log.createdAt ? new Date(log.createdAt).toLocaleString() : "N/A";
+            const createdDate = log.createdAt
+              ? new Date(log.createdAt).toLocaleString("en-PH", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "N/A";
             const affectedResList = log.affectedReservations || [];
 
             return (
               <div
                 key={log._id}
-                className={`rounded-xl border transition-all ${
-                  log.resolved
-                    ? "border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 opacity-90"
-                    : "border-amber-200 dark:border-amber-900/50 bg-amber-50/20 dark:bg-amber-950/10 shadow-xs"
-                }`}
+                className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 transition-all hover:border-slate-300 dark:hover:border-slate-700 space-y-3"
               >
-                {/* Header Summary */}
-                <div className="p-4 flex flex-wrap items-center justify-between gap-3">
+                {/* Header: Clickable Accordion */}
+                <div
+                  onClick={() => toggleExpand(log._id)}
+                  className="flex flex-wrap items-center justify-between gap-3 cursor-pointer select-none group"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isExpanded}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleExpand(log._id);
+                    }
+                  }}
+                >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                      <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors">
                         {log.trigger || "Rule Update Impact"}
                       </span>
+                      {/* Transparent Status Badge with Semantic Colored Dot */}
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider ${
+                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider bg-transparent ${
                           log.resolved
-                            ? "bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50"
-                            : "bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50"
+                            ? "text-emerald-700 dark:text-emerald-300"
+                            : "text-amber-700 dark:text-amber-300"
                         }`}
                       >
-                        {log.resolved ? "Resolved" : "Unresolved"}
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            log.resolved ? "bg-emerald-500" : "bg-amber-500"
+                          }`}
+                        />
+                        <span>{log.resolved ? "Resolved" : "Unresolved"}</span>
                       </span>
                     </div>
 
@@ -200,21 +305,30 @@ export default function VisitConflictHistoryPanel({ branch }) {
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleToggleResolve(log._id, log.resolved)}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleResolve(log._id, log.resolved);
+                      }}
                       disabled={toggleResolveMutation.isLoading}
                       className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
                         log.resolved
                           ? "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          : "border-emerald-300 dark:border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                          : "border-emerald-600 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                       }`}
                     >
                       {log.resolved ? "Mark Unresolved" : "Mark Resolved"}
                     </button>
 
                     <button
-                      onClick={() => toggleExpand(log._id)}
-                      className="p-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpand(log._id);
+                      }}
+                      className="p-1 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 rounded transition-colors"
                       title={isExpanded ? "Collapse details" : "Expand details"}
+                      aria-expanded={isExpanded}
                     >
                       {isExpanded ? (
                         <ChevronUp className="w-4 h-4" />
@@ -225,12 +339,14 @@ export default function VisitConflictHistoryPanel({ branch }) {
                   </div>
                 </div>
 
-                {/* Admin Note if Present */}
+                {/* Admin Note if Present (without side-colored border) */}
                 {log.adminNote && (
-                  <div className="mx-4 mb-3 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 flex items-start gap-2">
+                  <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 flex items-start gap-2">
                     <MessageSquare className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
                     <div>
-                      <span className="font-semibold text-slate-900 dark:text-slate-100">Admin Note: </span>
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        Admin Note:{" "}
+                      </span>
                       <span>{log.adminNote}</span>
                     </div>
                   </div>
@@ -238,7 +354,7 @@ export default function VisitConflictHistoryPanel({ branch }) {
 
                 {/* Collapsible Affected Reservations List */}
                 {isExpanded && (
-                  <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-b-xl space-y-2">
+                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
                     <h5 className="text-xs font-semibold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
                       Affected Reservations ({affectedResList.length})
                     </h5>
@@ -258,7 +374,9 @@ export default function VisitConflictHistoryPanel({ branch }) {
                                 {res.tenantName}
                               </span>
                               {res.userEmail && (
-                                <span className="text-slate-400 text-[11px]">({res.userEmail})</span>
+                                <span className="text-slate-400 text-[11px]">
+                                  ({res.userEmail})
+                                </span>
                               )}
                             </div>
 
@@ -271,7 +389,7 @@ export default function VisitConflictHistoryPanel({ branch }) {
                                 <Clock className="w-3.5 h-3.5 text-slate-400" />
                                 {res.visitSlot}
                               </span>
-                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                                 {res.status}
                               </span>
                             </div>
@@ -289,3 +407,4 @@ export default function VisitConflictHistoryPanel({ branch }) {
     </div>
   );
 }
+

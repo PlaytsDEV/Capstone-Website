@@ -112,32 +112,6 @@ export default function OccupancyTrendCard({ data = {} }) {
         {hasTrend ? (
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={occupancyTrendData}>
-              <defs>
-                <linearGradient id="colorOccupied" x1="0" y1="0" x2="0" y2="1">
-                  <stop
-                    offset="5%"
-                    stopColor="var(--chart-gold)"
-                    stopOpacity={0.3}
-                  />
-                  <stop
-                    offset="95%"
-                    stopColor="var(--chart-gold)"
-                    stopOpacity={0}
-                  />
-                </linearGradient>
-                <linearGradient id="colorRate" x1="0" y1="0" x2="0" y2="1">
-                  <stop
-                    offset="5%"
-                    stopColor="var(--success)"
-                    stopOpacity={0.3}
-                  />
-                  <stop
-                    offset="95%"
-                    stopColor="var(--success)"
-                    stopOpacity={0}
-                  />
-                </linearGradient>
-              </defs>
               <CartesianGrid
                 strokeDasharray="3 3"
                 stroke="var(--border)"
@@ -177,10 +151,10 @@ export default function OccupancyTrendCard({ data = {} }) {
               <Area
                 type="monotone"
                 dataKey="occupied"
-                stroke="var(--chart-gold)"
+                stroke="var(--info)"
                 strokeWidth={2}
-                fillOpacity={1}
-                fill="url(#colorOccupied)"
+                fill="var(--info)"
+                fillOpacity={0.08}
                 name="Occupied Beds"
                 key="dashboard-occupancy-area-occupied"
               />
@@ -189,8 +163,8 @@ export default function OccupancyTrendCard({ data = {} }) {
                 dataKey="rate"
                 stroke="var(--success)"
                 strokeWidth={2}
-                fillOpacity={1}
-                fill="url(#colorRate)"
+                fill="var(--success)"
+                fillOpacity={0.08}
                 name="Occupancy Rate (%)"
                 yAxisId="right"
                 key="dashboard-occupancy-area-rate"

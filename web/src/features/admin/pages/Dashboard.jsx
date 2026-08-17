@@ -27,7 +27,7 @@ import {
   TableSkeleton,
 } from "../../../shared/components/LoadingSkeletons";
 import { AdminDashboardSkeleton } from "../components/AdminContentSkeletons";
-import { PageShell } from "../components/shared";
+import { PageShell, StatusBadge } from "../components/shared";
 import OccupancyTrendCard from "../components/dashboard/OccupancyTrendCard";
 import RevenueTrendCard from "../components/dashboard/RevenueTrendCard";
 import "../styles/design-tokens.css";
@@ -37,77 +37,77 @@ function AlertBanner({ activeTickets, pendingReservations, unresolvedInquiries }
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;
 
-  const alerts = [];
+  const items = [];
   if (activeTickets > 0)
-    alerts.push({
-      label: `${activeTickets} maintenance ticket${activeTickets === 1 ? "" : "s"}`,
+    items.push({
+      key: "maintenance",
+      label: `${activeTickets} Maintenance Ticket${activeTickets === 1 ? "" : "s"}`,
       icon: Wrench,
       to: "/admin/maintenance",
+      chipClass:
+        "border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/50",
+      iconClass: "text-rose-600 dark:text-rose-400",
     });
   if (pendingReservations > 0)
-    alerts.push({
-      label: `${pendingReservations} pending reservation${pendingReservations === 1 ? "" : "s"}`,
+    items.push({
+      key: "reservations",
+      label: `${pendingReservations} Pending Reservation${pendingReservations === 1 ? "" : "s"}`,
       icon: Calendar,
       to: "/admin/reservations",
+      chipClass:
+        "border-amber-200 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50",
+      iconClass: "text-amber-600 dark:text-amber-400",
     });
   if (unresolvedInquiries > 0)
-    alerts.push({
-      label: `${unresolvedInquiries} open inquiry${unresolvedInquiries === 1 ? "" : "s"}`,
+    items.push({
+      key: "inquiries",
+      label: `${unresolvedInquiries} Open Inquiry${unresolvedInquiries === 1 ? "" : "s"}`,
       icon: MessageSquare,
       to: "/admin/inquiries",
       state: { fromDashboard: true },
+      chipClass:
+        "border-blue-200 dark:border-blue-900/60 bg-blue-50/80 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50",
+      iconClass: "text-blue-600 dark:text-blue-400",
     });
 
-  if (alerts.length === 0) return null;
+  if (items.length === 0) return null;
 
   return (
-    <div
-      className="mb-5 flex flex-wrap items-center justify-between gap-2.5 rounded-lg border px-3.5 py-2 text-xs transition-all"
-      style={{
-        backgroundColor: "var(--dash-alert-bg)",
-        borderColor: "var(--dash-alert-border)",
-        borderLeft: "3px solid var(--warning)",
-        color: "var(--dash-alert-text)",
-      }}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider"
-          style={{ backgroundColor: "color-mix(in srgb, var(--warning) 22%, transparent)" }}
-        >
-          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--warning)" }} />
-          Action Required
-        </span>
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card px-4 py-2.5 shadow-xs transition-all">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 border-r border-border/70 pr-3">
+          <span className="h-2 w-2 rounded-full bg-amber-500" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-foreground">
+            Needs Attention
+          </span>
+        </div>
 
-        <div className="flex flex-wrap items-center gap-1 text-xs font-medium">
-          {alerts.map((item, idx) => {
+        <div className="flex flex-wrap items-center gap-2">
+          {items.map((item) => {
             const Icon = item.icon;
             return (
-              <div key={item.to} className="flex items-center gap-1">
-                {idx > 0 && <span className="opacity-40 mx-0.5">•</span>}
-                <Link
-                  to={item.to}
-                  state={item.state}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 transition-all hover:bg-black/5 dark:hover:bg-white/10 hover:underline"
-                  style={{ color: "inherit" }}
-                >
-                  <Icon className="h-3.5 w-3.5 opacity-80" />
-                  <span>{item.label}</span>
-                  <ChevronRight className="h-3 w-3 opacity-60" />
-                </Link>
-              </div>
+              <Link
+                key={item.key}
+                to={item.to}
+                state={item.state}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${item.chipClass}`}
+              >
+                <Icon className={`h-3.5 w-3.5 ${item.iconClass}`} />
+                <span>{item.label}</span>
+                <ChevronRight className="h-3 w-3 opacity-60" />
+              </Link>
             );
           })}
         </div>
       </div>
 
       <button
+        type="button"
         onClick={() => setDismissed(true)}
-        aria-label="Dismiss banner"
-        className="flex h-5 w-5 items-center justify-center rounded-md text-xs opacity-70 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-        style={{ color: "inherit" }}
+        aria-label="Dismiss queue focus toolbar"
+        className="flex h-7 w-7 items-center justify-center rounded-lg border border-transparent text-xs text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground"
       >
-        ✕
+        <span className="text-sm font-semibold leading-none">✕</span>
       </button>
     </div>
   );
@@ -163,6 +163,92 @@ function TableRowSkeleton() {
   );
 }
 
+function getReservationStatusBadgeStyle(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (
+    [
+      "approved",
+      "confirmed",
+      "checked_in",
+      "active",
+      "reserved",
+      "movein",
+      "moved_in",
+      "approved_for_payment",
+      "completed",
+      "settled",
+      "paid",
+    ].includes(normalized)
+  ) {
+    return {
+      backgroundColor: "color-mix(in srgb, var(--success) 12%, transparent)",
+      color: "var(--success)",
+      borderColor: "color-mix(in srgb, var(--success) 28%, transparent)",
+    };
+  }
+  if (
+    [
+      "pending",
+      "pending_approval",
+      "under_review",
+      "pending_application_review",
+      "needs_revision",
+      "payment_pending",
+      "visit_pending",
+      "partial",
+      "cancellation_requested",
+      "disputed",
+    ].includes(normalized)
+  ) {
+    return {
+      backgroundColor: "color-mix(in srgb, var(--warning) 15%, transparent)",
+      color: "var(--warning-dark, #92400e)",
+      borderColor: "color-mix(in srgb, var(--warning) 32%, transparent)",
+    };
+  }
+  if (
+    [
+      "viewing_preference_selected",
+      "visit_approved",
+      "inquiry",
+      "responded",
+      "new",
+    ].includes(normalized)
+  ) {
+    return {
+      backgroundColor: "color-mix(in srgb, var(--info) 12%, transparent)",
+      color: "var(--info)",
+      borderColor: "color-mix(in srgb, var(--info) 28%, transparent)",
+    };
+  }
+  if (
+    [
+      "rejected",
+      "cancelled",
+      "expired",
+      "terminated",
+      "overdue",
+      "no-show",
+      "noshow",
+      "no_show",
+      "banned",
+      "suspended",
+      "failed",
+    ].includes(normalized)
+  ) {
+    return {
+      backgroundColor: "color-mix(in srgb, var(--danger) 12%, transparent)",
+      color: "var(--danger)",
+      borderColor: "color-mix(in srgb, var(--danger) 28%, transparent)",
+    };
+  }
+  return {
+    backgroundColor: "color-mix(in srgb, var(--neutral) 12%, transparent)",
+    color: "var(--neutral)",
+    borderColor: "color-mix(in srgb, var(--neutral) 28%, transparent)",
+  };
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const isOwner = user?.role === "super_admin" || user?.role === "owner";
@@ -211,7 +297,7 @@ export default function Dashboard() {
         label: "Available Beds",
         value: kpis.availableBeds || 0,
         trend: `${occupancy.totalOccupancy || 0} currently occupied / ${occupancy.totalCapacity || 0} total`,
-        tone: "green",
+        tone: (kpis.availableBeds || 0) > 0 ? "green" : "neutral",
         icon: DoorOpen,
       },
       {
@@ -221,21 +307,24 @@ export default function Dashboard() {
           (kpis.activeTickets || 0) === 0
             ? "All facilities currently operational"
             : `${kpis.activeTickets || 0} issue${(kpis.activeTickets || 0) === 1 ? "" : "s"} requiring attention`,
-        tone: "rose",
+        tone: (kpis.activeTickets || 0) > 0 ? "rose" : "green",
         icon: Wrench,
       },
       {
         label: "Pending Reservations",
         value: reservationStatus.pending || 0,
-        trend: "Awaiting admin approval",
-        tone: "amber",
+        trend:
+          (reservationStatus.pending || 0) === 0
+            ? "No pending approvals queued"
+            : "Awaiting admin approval",
+        tone: (reservationStatus.pending || 0) > 0 ? "amber" : "neutral",
         icon: Calendar,
       },
       {
         label: "Active Bookings",
         value: kpis.activeBookings || 0,
         trend: `${kpis.activeBookings || 0} active tenant account${(kpis.activeBookings || 0) === 1 ? "" : "s"}`,
-        tone: "green",
+        tone: (kpis.activeBookings || 0) > 0 ? "green" : "neutral",
         icon: Users,
       },
     ],
@@ -286,12 +375,21 @@ export default function Dashboard() {
   const reservationSegment = (count) =>
     reservationTotal ? (count / reservationTotal) * 502.6 : 0;
 
+  const DASHBOARD_STAT_ICON_BADGES = {
+    blue: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-400",
+    green: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400",
+    rose: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-400",
+    amber: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400",
+    neutral: "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  };
+
   const metricValueStyle = {
     blue: { color: "var(--info)" },
     green: { color: "var(--success)" },
     violet: { color: "var(--chart-4)" },
-    amber: { color: "var(--warning)" },
+    amber: { color: "var(--warning-dark, #92400e)" },
     rose: { color: "var(--danger)" },
+    neutral: { color: "var(--text-primary)" },
   };
 
   const error = isError
@@ -392,7 +490,11 @@ export default function Dashboard() {
                         <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
                           {item.label}
                         </span>
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-muted-foreground">
+                        <div
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+                            DASHBOARD_STAT_ICON_BADGES[item.tone] || DASHBOARD_STAT_ICON_BADGES.neutral
+                          }`}
+                        >
                           <Icon size={15} />
                         </div>
                       </div>
@@ -450,8 +552,8 @@ export default function Dashboard() {
                 <Link
                   to="/admin/inquiries"
                   state={{ fromDashboard: true }}
-                  className="inline-flex items-center gap-1 text-[13px] font-bold transition-opacity"
-                  style={{ color: "var(--color-accent)" }}
+                  className="inline-flex items-center gap-1 text-[13px] font-bold hover:underline transition-all"
+                  style={{ color: "var(--color-primary)" }}
                 >
                   View All
                   <ChevronRight className="h-4 w-4" />
@@ -473,14 +575,9 @@ export default function Dashboard() {
                     >
                       <div className="flex items-center gap-4 min-w-0">
                         <div
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                          style={{
-                            backgroundColor:
-                              "color-mix(in srgb, var(--color-accent) 10%, transparent)",
-                            color: "var(--color-accent)",
-                          }}
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-muted-foreground"
                         >
-                          <Mail className="h-5 w-5" />
+                          <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                         </div>
 
                         <div className="min-w-0">
@@ -512,18 +609,22 @@ export default function Dashboard() {
                         </div>
                       </div>
                       <span
-                        className="inline-flex items-center rounded-lg px-3 py-1 text-[11px] font-medium"
+                        className="inline-flex items-center rounded-lg px-3 py-1 text-[11px] font-medium border"
                         style={
                           inq.status === "responded"
                             ? {
                                 backgroundColor:
                                   "color-mix(in srgb, var(--success) 12%, transparent)",
                                 color: "var(--success)",
+                                borderColor:
+                                  "color-mix(in srgb, var(--success) 24%, transparent)",
                               }
                             : {
                                 backgroundColor:
                                   "color-mix(in srgb, var(--warning) 15%, transparent)",
-                                color: "var(--warning)",
+                                color: "var(--warning-dark, #92400e)",
+                                borderColor:
+                                  "color-mix(in srgb, var(--warning) 30%, transparent)",
                               }
                         }
                       >
@@ -753,8 +854,8 @@ export default function Dashboard() {
               </div>
               <Link
                 to="/admin/reservations"
-                className="inline-flex items-center gap-1 text-[13px] font-bold transition-opacity"
-                style={{ color: "var(--color-accent)" }}
+                className="inline-flex items-center gap-1 text-[13px] font-bold hover:underline transition-all"
+                style={{ color: "var(--color-primary)" }}
               >
                 View All
                 <ChevronRight className="h-4 w-4" />
@@ -826,12 +927,7 @@ export default function Dashboard() {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div
-                              className="flex h-9 w-9 items-center justify-center rounded-lg"
-                              style={{
-                                backgroundColor:
-                                  "color-mix(in srgb, var(--color-accent) 10%, transparent)",
-                                color: "var(--color-accent)",
-                              }}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-muted-foreground"
                             >
                               <DoorOpen className="h-4 w-4" />
                             </div>
@@ -866,16 +962,7 @@ export default function Dashboard() {
                           {reservation.date}
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <span
-                            className="inline-flex rounded-lg px-2.5 py-1 text-[11px] font-medium"
-                            style={{
-                              backgroundColor:
-                                "color-mix(in srgb, var(--info) 12%, transparent)",
-                              color: "var(--info)",
-                            }}
-                          >
-                            {getReservationStatusLabel(reservation.status)}
-                          </span>
+                          <StatusBadge status={reservation.status} />
                         </td>
                       </tr>
                     ))}

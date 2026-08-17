@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Calendar, Filter, Search, SearchX, X } from "lucide-react";
+import { Calendar, Filter, Search, RotateCcw, X } from "lucide-react";
 import "./TenantFilterBarOptimized.css";
 
 export default function TenantFilterBarOptimized({
@@ -34,6 +34,11 @@ export default function TenantFilterBarOptimized({
  Boolean(dateFrom || dateTo),
  ].filter(Boolean).length;
 
+ const hasActiveFilters =
+    filterCount > 0 ||
+    Boolean(searchTerm?.trim()) ||
+    (Array.isArray(quickFilters) && quickFilters.length > 0);
+
  return (
  <div className="tenant-filter-bar-v2">
  <div className="tenant-filter-bar-v2__top">
@@ -45,16 +50,19 @@ export default function TenantFilterBarOptimized({
  onChange={(event) => setSearchTerm(event.target.value)}
  placeholder="Search by name, contact, room, or bed..."
  className="tenant-filter-bar-v2__input"
+ aria-label="Search tenants"
  />
  </div>
 
  <div className="tenant-filter-bar-v2__actions" ref={filterRef}>
  <button
  type="button"
- className={`tenant-filter-bar-v2__btn ${isFiltersOpen ? "is-active" : ""}`}
+ className={`tenant-filter-bar-v2__btn ${isFiltersOpen ? "is-active" : ""} ${filterCount > 0 ? "has-filters" : ""}`}
  onClick={() => setIsFiltersOpen((open) => !open)}
+ title={isFiltersOpen ? "Hide advanced filter options" : "Show advanced filter options"}
+ aria-expanded={isFiltersOpen}
  >
- <Filter size={15} />
+ <Filter size={14} />
  <span>Filters</span>
  {filterCount > 0 ? (
  <span className="tenant-filter-bar-v2__badge">{filterCount}</span>
@@ -65,8 +73,14 @@ export default function TenantFilterBarOptimized({
  type="button"
  className="tenant-filter-bar-v2__btn tenant-filter-bar-v2__btn--ghost"
  onClick={resetFilters}
+ disabled={!hasActiveFilters}
+ title={
+ hasActiveFilters
+ ? "Reset all search queries and active filter criteria"
+ : "No active filters or search terms to reset"
+ }
  >
- <SearchX size={15} />
+ <RotateCcw size={14} className={hasActiveFilters ? "" : "opacity-50"} />
  <span>Reset</span>
  </button>
 

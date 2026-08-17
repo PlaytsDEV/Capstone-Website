@@ -43,19 +43,17 @@ export default function VisitConflictWarningModal({
     >
       <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
             <div>
               <h3
                 id="conflict-modal-title"
-                className="text-base font-semibold text-amber-900 dark:text-amber-200"
+                className="text-base font-semibold text-slate-900 dark:text-slate-100"
               >
                 Schedule Impact Warning
               </h3>
-              <p className="text-xs text-amber-700 dark:text-amber-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 This rule change will affect {totalAffected} existing active{" "}
                 {totalAffected === 1 ? "reservation" : "reservations"}.
               </p>
@@ -64,7 +62,7 @@ export default function VisitConflictWarningModal({
           <button
             onClick={onCancel}
             disabled={isSaving}
-            className="p-1 rounded-lg text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
             aria-label="Close warning modal"
           >
             <X className="w-5 h-5" />
@@ -83,19 +81,19 @@ export default function VisitConflictWarningModal({
             {conflicts.map((group, index) => (
               <div
                 key={index}
-                className="p-4 rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20 space-y-3"
+                className="p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 space-y-3"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
                     {group.trigger || "Rule Conflict"}
                   </span>
-                  <span className="text-xs font-medium px-2 py-0.5 rounded bg-amber-200/60 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200">
+                  <span className="text-xs font-medium px-2 py-0.5 rounded bg-transparent text-amber-700 dark:text-amber-400">
                     {group.affectedCount} affected
                   </span>
                 </div>
 
                 {/* Affected Reservation Items */}
-                <div className="divide-y divide-amber-200/50 dark:divide-amber-900/30 rounded-lg border border-amber-200/60 dark:border-amber-900/40 bg-white dark:bg-slate-900 overflow-hidden">
+                <div className="divide-y divide-slate-200 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
                   {(group.reservations || []).map((res, rIdx) => (
                     <div
                       key={res.reservationId || rIdx}
@@ -114,7 +112,8 @@ export default function VisitConflictWarningModal({
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
                           <span>{res.visitSlot || "N/A"}</span>
                         </div>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold uppercase bg-transparent text-slate-700 dark:text-slate-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                           {res.status}
                         </span>
                       </div>

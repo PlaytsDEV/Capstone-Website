@@ -72,9 +72,7 @@ export default function AddBlackoutDateModal({
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400">
-              <CalendarX className="w-5 h-5" />
-            </div>
+            <CalendarX className="w-5 h-5 text-slate-700 dark:text-slate-200 shrink-0" />
             <div>
               <h3
                 id="add-blackout-modal-title"
@@ -101,11 +99,11 @@ export default function AddBlackoutDateModal({
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Duplicate Date Warning Alert */}
           {isDuplicate && (
-            <div className="p-3.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-300">
-              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 flex items-start gap-2.5 text-xs text-slate-800 dark:text-slate-200">
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
               <div>
-                <strong>Duplicate Date Detected</strong>
-                <p className="mt-0.5">
+                <strong className="text-amber-700 dark:text-amber-400 font-semibold">Duplicate Date Detected</strong>
+                <p className="mt-0.5 text-slate-600 dark:text-slate-300">
                   The date <strong>{date}</strong> is already configured as a blackout date in your schedule rules.
                 </p>
               </div>
@@ -115,16 +113,16 @@ export default function AddBlackoutDateModal({
           {/* Date Picker Input */}
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-              Blackout Calendar Date <span className="text-red-500">*</span>
+              Blackout Calendar Date <span className="text-rose-600 dark:text-rose-400">*</span>
             </label>
             <div className="relative">
-            <input
+              <input
                 type="date"
                 required
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 disabled={isLoading}
-                className={`w-full px-3.5 py-2.5 text-sm bg-white dark:bg-slate-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${
+                className={`w-full px-3.5 py-2.5 text-sm bg-[#F8FAFC] dark:bg-slate-800 border rounded-lg focus:outline-none focus:border-[#0A1628] focus:ring-2 focus:ring-[#0A1628]/10 dark:focus:border-slate-500 dark:focus:ring-slate-500/20 transition-all ${
                   isDuplicate
                     ? "border-amber-400 dark:border-amber-600 text-amber-900 dark:text-amber-100"
                     : "border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100"
@@ -147,10 +145,10 @@ export default function AddBlackoutDateModal({
                     key={chip}
                     type="button"
                     onClick={() => handleChipClick(chip)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-all ${
+                    className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-all cursor-pointer ${
                       isActive
-                        ? "bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900 dark:border-slate-100 shadow-xs"
-                        : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
+                        ? "bg-[#0A1628] text-white border-[#0A1628] dark:bg-slate-100 dark:text-slate-900 dark:border-slate-100 shadow-xs"
+                        : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750"
                     }`}
                   >
                     {chip}
@@ -176,26 +174,34 @@ export default function AddBlackoutDateModal({
                   setActiveChip("");
                 }
               }}
-              className={`w-full px-3.5 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-500/20 transition-all ${isLoading ? "opacity-60 cursor-not-allowed" : ""}`}
+              className={`w-full px-3.5 py-2.5 text-sm bg-[#F8FAFC] dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-[#0A1628] focus:ring-2 focus:ring-[#0A1628]/10 dark:focus:border-slate-500 dark:focus:ring-slate-500/20 transition-all ${isLoading ? "opacity-60 cursor-not-allowed" : ""}`}
             />
           </div>
 
           {/* Footer Actions */}
-          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
+          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              disabled={isLoading}
+              className="px-4 py-2 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-all shadow-2xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
-              <button
+            <button
               type="submit"
               disabled={!isValid || isLoading}
+              title={
+                !date
+                  ? "Please select a date"
+                  : isDuplicate
+                  ? "This date is already configured as a blackout date"
+                  : "Add this blackout date to schedule rules"
+              }
               className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg shadow-xs transition-all ${
                 isValid && !isLoading
-                  ? "bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200 cursor-pointer"
-                  : "bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed"
+                  ? "bg-[#0A1628] hover:bg-[#13243D] text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200 cursor-pointer focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                  : "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
               }`}
             >
               <Plus size={15} />

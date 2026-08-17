@@ -2,7 +2,7 @@
  * RoomAvailabilityPage — Unified Room & Inventory Management Workspace
  * Consolidated Live Occupancy & Vacancy Forecast View
  */
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   LayoutGrid,
@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar,
+  Clock,
   Download,
 } from "lucide-react";
 
@@ -31,7 +32,8 @@ import DeleteRoomModal from "../components/rooms/DeleteRoomModal";
 import DoubleDeckRoomCard from "../components/rooms/DoubleDeckRoomCard";
 import RoomBedHistoryDrawer from "../components/rooms/RoomBedHistoryDrawer";
 import AdminPageHeader from "../../../shared/components/AdminPageHeader";
-import { AdminCardGridSkeleton } from "../components/AdminContentSkeletons";
+import { AdminRoomAvailabilitySkeleton } from "../components/AdminContentSkeletons";
+import { ExportButtons } from "./analyticsTabShared.js";
 
 // Hooks & API
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
@@ -41,7 +43,6 @@ import { usePermissions } from "../../../shared/hooks/usePermissions";
 import { roomApi } from "../../../shared/api/apiClient";
 import { useQueryClient } from "@tanstack/react-query";
 import { showNotification } from "../../../shared/utils/notification";
-import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
 import {
   normalizeBranchFilterValue,
@@ -49,6 +50,10 @@ import {
 } from "../../../shared/utils/branchFilterQuery.mjs";
 import { formatRoomType, formatBranch } from "../utils/formatters";
 import { getBedDisplayLabel } from "../../../shared/utils/bedIdentifier";
+import {
+  handleExportRoomsCSV,
+  handleExportRoomsPDF,
+} from "../utils/roomExportUtils.js";
 
 // Styles
 import "../styles/admin-room-availability.css";
@@ -60,6 +65,55 @@ const getEffectiveOccupancy = (room) => {
     (b) => b.status === "occupied" || b.status === "reserved" || Boolean(b.occupiedBy?.userId)
   ).length;
   return Math.max(Number(room.currentOccupancy || 0), occupiedFromBeds);
+};
+
+const getTimelineStatusBadgeMeta = (days) => {
+  if (days == null) {
+    return {
+      bg: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700",
+      label: "Scheduled",
+      icon: Calendar,
+      dot: "bg-slate-400",
+    };
+  }
+  if (days <= 0) {
+    return {
+      bg: "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 font-bold",
+      label: days === 0 ? "Vacant Today" : `Overdue (${Math.abs(days)}d)`,
+      icon: AlertTriangle,
+      dot: "bg-rose-500",
+    };
+  }
+  if (days <= 7) {
+    return {
+      bg: "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 font-bold",
+      label: `${days} ${days === 1 ? "day" : "days"} left`,
+      icon: AlertTriangle,
+      dot: "bg-rose-500",
+    };
+  }
+  if (days <= 30) {
+    return {
+      bg: "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800 font-semibold",
+      label: `${days} days left`,
+      icon: Clock,
+      dot: "bg-amber-500",
+    };
+  }
+  if (days <= 90) {
+    return {
+      bg: "bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800 font-medium",
+      label: `${days} days left`,
+      icon: Calendar,
+      dot: "bg-sky-500",
+    };
+  }
+  return {
+    bg: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 font-medium",
+    label: `${days} days left`,
+    icon: CheckCircle2,
+    dot: "bg-slate-400",
+  };
 };
 
 function RoomAvailabilityPage() {
@@ -90,6 +144,7 @@ function RoomAvailabilityPage() {
   const [showVacancyModal, setShowVacancyModal] = useState(false);
   const [vacancySearch, setVacancySearch] = useState("");
   const [vacancyUrgencyFilter, setVacancyUrgencyFilter] = useState("all");
+  const [isExporting, setIsExporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const ROOMS_PER_PAGE = 12;
 
@@ -503,38 +558,50 @@ function RoomAvailabilityPage() {
     setSearchParams(next);
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = useCallback(() => {
     if (!filteredRooms || filteredRooms.length === 0) {
       showNotification("No room inventory records match the current filter criteria.", "info", 3000);
       return;
     }
-    exportToCSV(
-      filteredRooms.map((room) => ({
-        roomName: room.name,
-        roomNumber: room.roomNumber,
-        branch: formatBranch(room.branch),
-        type: formatRoomType(room.type),
-        floor: room.floor,
-        capacity: room.capacity,
-        currentOccupancy: getEffectiveOccupancy(room),
-        status: String(room.type || "").toLowerCase().includes("private")
-          ? `${Math.min(1, getEffectiveOccupancy(room))}/1`
-          : `${getEffectiveOccupancy(room)}/${room.capacity || 0}`,
-      })),
-      [
-        { key: "roomName", label: "Room Name" },
-        { key: "roomNumber", label: "Room Number" },
-        { key: "branch", label: "Branch" },
-        { key: "type", label: "Type" },
-        { key: "floor", label: "Floor" },
-        { key: "capacity", label: "Capacity" },
-        { key: "currentOccupancy", label: "Occupied" },
-        { key: "status", label: "Occupancy" },
-      ],
-      "room-inventory",
-    );
-    showNotification(`Successfully exported ${filteredRooms.length} room inventory record(s) to CSV.`, "success", 3000);
-  };
+    handleExportRoomsCSV({
+      rooms: filteredRooms,
+      branchFilter: isOwner ? branchFilter : (user?.branch || "all"),
+    });
+  }, [filteredRooms, isOwner, branchFilter, user?.branch]);
+
+  const handleExportPDF = useCallback(async () => {
+    if (!filteredRooms || filteredRooms.length === 0) {
+      showNotification("No room inventory records match the current filter criteria.", "info", 3000);
+      return;
+    }
+    setIsExporting(true);
+    try {
+      await handleExportRoomsPDF({
+        rooms: filteredRooms,
+        stats,
+        branchFilter: isOwner ? branchFilter : (user?.branch || "all"),
+        floorFilter,
+        roomTypeFilter,
+        roomStatusFilter,
+        searchTerm,
+      });
+    } catch (err) {
+      console.error("[RoomManagement] PDF export failed:", err);
+      showNotification(err.message || "Failed to generate room inventory PDF report.", "error", 4000);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [
+    filteredRooms,
+    stats,
+    isOwner,
+    branchFilter,
+    user?.branch,
+    floorFilter,
+    roomTypeFilter,
+    roomStatusFilter,
+    searchTerm,
+  ]);
 
   const roomFilters = [
     ...(isOwner
@@ -644,7 +711,7 @@ function RoomAvailabilityPage() {
   }, [paginatedRooms]);
 
   if (loading && !roomsData) {
-    return <AdminCardGridSkeleton />;
+    return <AdminRoomAvailabilitySkeleton />;
   }
 
   return (
@@ -663,19 +730,24 @@ function RoomAvailabilityPage() {
             >
               <Calendar className="w-4 h-4 text-amber-500" />
               <span>Check Vacancy Schedule</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-bold">
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                  vacancyKPIs.urgent > 0
+                    ? "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800"
+                    : vacancyKPIs.upcoming > 0
+                    ? "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800"
+                    : "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
+                }`}
+              >
                 {upcomingVacancies.length}
               </span>
             </button>
-            <button
-              type="button"
-              onClick={handleExportCSV}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 bg-card hover:bg-muted transition-colors text-foreground border-border shadow-xs"
-              title="Export room inventory as CSV"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export CSV</span>
-            </button>
+            <ExportButtons
+              onCsv={handleExportCSV}
+              onPdf={handleExportPDF}
+              loading={isExporting}
+              disabled={filteredRooms.length === 0}
+            />
             {can("create", "rooms") && (
               <button
                 type="button"
@@ -984,24 +1056,24 @@ function RoomAvailabilityPage() {
                   <span className="font-bold uppercase tracking-wider text-muted-foreground mr-1 text-[11px]">
                     Bed Layout:
                   </span>
-                  <span className="inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span className="inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                     Vacant
                   </span>
-                  <span className="inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-red-600 dark:bg-red-700 text-white">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-200" />
+                  <span className="inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     Occupied
                   </span>
-                  <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded bg-[#D4AF37] text-slate-950">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-800" />
+                  <span className="inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                     Reserved
                   </span>
-                  <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                  <span className="inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                     Payment Pending
                   </span>
-                  <span className="inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                  <span className="inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                     Maint
                   </span>
                   <span className="inline-flex items-center gap-1 text-muted-foreground ml-1">
@@ -1049,7 +1121,7 @@ function RoomAvailabilityPage() {
                         {/* High-Contrast Emphasized Floor Section Header */}
                         <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-card border border-border shadow-xs">
                           <div className="flex items-center gap-2.5">
-                            <div className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20">
+                            <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700">
                               <Layers className="w-4 h-4" />
                             </div>
                             <h3 className="text-sm font-bold text-foreground tracking-wide">
@@ -1238,6 +1310,18 @@ function RoomAvailabilityPage() {
                     icon: AlertTriangle,
                     count: vacancyKPIs.urgent,
                     subtext: "Immediate turnovers",
+                    cardTone:
+                      vacancyKPIs.urgent > 0
+                        ? "border-rose-200 dark:border-rose-900 bg-rose-50/25 dark:bg-rose-950/20"
+                        : "border-border bg-card",
+                    numTone:
+                      vacancyKPIs.urgent > 0
+                        ? "text-rose-700 dark:text-rose-400"
+                        : "text-foreground",
+                    iconTone:
+                      vacancyKPIs.urgent > 0
+                        ? "text-rose-600 dark:text-rose-400"
+                        : "text-muted-foreground",
                   },
                   {
                     id: "upcoming",
@@ -1245,6 +1329,18 @@ function RoomAvailabilityPage() {
                     icon: Calendar,
                     count: vacancyKPIs.upcoming,
                     subtext: "Next quarter move-outs",
+                    cardTone:
+                      vacancyKPIs.upcoming > 0
+                        ? "border-amber-200/70 dark:border-amber-900/60 bg-amber-50/20 dark:bg-amber-950/15"
+                        : "border-border bg-card",
+                    numTone:
+                      vacancyKPIs.upcoming > 0
+                        ? "text-amber-800 dark:text-amber-400"
+                        : "text-foreground",
+                    iconTone:
+                      vacancyKPIs.upcoming > 0
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-muted-foreground",
                   },
                   {
                     id: "longterm",
@@ -1252,6 +1348,9 @@ function RoomAvailabilityPage() {
                     icon: CheckCircle2,
                     count: vacancyKPIs.longTerm,
                     subtext: "Distant contract ends",
+                    cardTone: "border-border bg-card",
+                    numTone: "text-foreground",
+                    iconTone: "text-muted-foreground",
                   },
                   {
                     id: "all",
@@ -1259,19 +1358,22 @@ function RoomAvailabilityPage() {
                     icon: Bed,
                     count: vacancyKPIs.total,
                     subtext: "Active scheduled list",
+                    cardTone: "border-border bg-card",
+                    numTone: "text-foreground",
+                    iconTone: "text-muted-foreground",
                   },
                 ].map((kpi) => {
                   const Icon = kpi.icon;
                   return (
                     <div
                       key={kpi.id}
-                      className="p-3 rounded-xl border border-border bg-card text-foreground transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default"
+                      className={`p-3 rounded-xl border text-foreground transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default ${kpi.cardTone}`}
                     >
                       <div className="flex items-center justify-between text-xs font-semibold text-foreground">
                         <span>{kpi.label}</span>
-                        <Icon className="w-4 h-4 text-muted-foreground" />
+                        <Icon className={`w-4 h-4 ${kpi.iconTone}`} />
                       </div>
-                      <div className="text-2xl font-bold text-foreground mt-1">
+                      <div className={`text-2xl font-bold mt-1 ${kpi.numTone}`}>
                         {kpi.count}
                       </div>
                       <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
@@ -1307,19 +1409,33 @@ function RoomAvailabilityPage() {
                 <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-xl border border-border text-xs">
                   {[
                     { id: "all", label: `All (${upcomingVacancies.length})` },
-                    { id: "urgent", label: `Urgent (${vacancyKPIs.urgent})` },
-                    { id: "upcoming", label: `31-90 Days (${vacancyKPIs.upcoming})` },
+                    {
+                      id: "urgent",
+                      label: `Urgent (${vacancyKPIs.urgent})`,
+                      badgeTone:
+                        vacancyKPIs.urgent > 0
+                          ? "text-rose-700 dark:text-rose-300 font-bold"
+                          : "",
+                    },
+                    {
+                      id: "upcoming",
+                      label: `31-90 Days (${vacancyKPIs.upcoming})`,
+                      badgeTone:
+                        vacancyKPIs.upcoming > 0
+                          ? "text-amber-800 dark:text-amber-300 font-bold"
+                          : "",
+                    },
                     { id: "longterm", label: `90+ Days (${vacancyKPIs.longTerm})` },
                   ].map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
                       onClick={() => setVacancyUrgencyFilter(tab.id)}
-                      className={`px-3 py-1.5 rounded-lg transition-all text-[11px] font-medium cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-lg transition-all text-[11px] font-medium cursor-pointer flex items-center gap-1.5 ${
                         vacancyUrgencyFilter === tab.id
-                          ? "bg-background text-foreground shadow-xs font-semibold"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
+                          ? "bg-card text-foreground shadow-xs font-bold border border-border/80"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                      } ${tab.badgeTone || ""}`}
                     >
                       {tab.label}
                     </button>
@@ -1357,33 +1473,8 @@ function RoomAvailabilityPage() {
                           : "Scheduled";
 
                         const days = item.daysRemaining;
-                        let timelineBadge = {
-                          bg: "bg-secondary text-muted-foreground border border-border",
-                          label: "Scheduled",
-                        };
-                        if (days != null) {
-                          if (days <= 0) {
-                            timelineBadge = {
-                              bg: "bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 font-bold",
-                              label: "Vacant Today / Overdue",
-                            };
-                          } else if (days <= 30) {
-                            timelineBadge = {
-                              bg: "bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 font-semibold",
-                              label: `${days} days left`,
-                            };
-                          } else if (days <= 90) {
-                            timelineBadge = {
-                              bg: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 font-medium",
-                              label: `${days} days left`,
-                            };
-                          } else {
-                            timelineBadge = {
-                              bg: "bg-muted text-muted-foreground border border-border font-normal",
-                              label: `${days} days left`,
-                            };
-                          }
-                        }
+                        const timelineBadge = getTimelineStatusBadgeMeta(days);
+                        const TimelineIcon = timelineBadge.icon;
 
                         return (
                           <tr key={idx} className="hover:bg-muted/30 transition-colors">
@@ -1397,7 +1488,7 @@ function RoomAvailabilityPage() {
                             </td>
                             <td className="p-3.5 font-medium text-foreground">
                               <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
+                                <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold">
                                   {item.occupantName.charAt(0).toUpperCase()}
                                 </div>
                                 <span className="text-foreground font-medium">
@@ -1413,22 +1504,23 @@ function RoomAvailabilityPage() {
                             </td>
                             <td className="p-3.5">
                               <span
-                                className={`whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] ${timelineBadge.bg}`}
+                                className={`whitespace-nowrap inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] border ${timelineBadge.bg}`}
                               >
-                                {timelineBadge.label}
+                                <TimelineIcon className="w-3.5 h-3.5 shrink-0" />
+                                <span>{timelineBadge.label}</span>
                               </span>
                             </td>
                             <td className="p-3.5 pr-4 text-right">
                               <button
                                 type="button"
-                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-primary/30 text-primary bg-primary/5 hover:bg-primary hover:text-primary-foreground transition-all cursor-pointer shadow-xs ms-auto"
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 hover:bg-slate-900 hover:text-white dark:hover:bg-slate-700 dark:hover:text-white transition-all cursor-pointer shadow-xs ms-auto"
                                 onClick={() => {
                                   setShowVacancyModal(false);
                                   setSelectedRoom(item.roomObj);
                                 }}
                               >
                                 Manage Room
-                                <ChevronRight className="w-3.5 h-3.5" />
+                                <ChevronRight className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" />
                               </button>
                             </td>
                           </tr>

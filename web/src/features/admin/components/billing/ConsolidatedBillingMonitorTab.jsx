@@ -332,19 +332,19 @@ export default function ConsolidatedBillingMonitorTab({
 
                       <td className="px-4 py-3 text-center">
                         {isPaid ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 uppercase dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 uppercase dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                             <CheckCircle2 size={11} /> Paid
                           </span>
                         ) : isPartial ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 uppercase dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 uppercase dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
                             <Clock size={11} /> Partial
                           </span>
                         ) : isOverdue ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-100 px-2.5 py-0.5 text-[11px] font-bold text-rose-800 uppercase dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-rose-100 px-2.5 py-0.5 text-[11px] font-bold text-rose-800 uppercase dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
                             <AlertTriangle size={11} /> Overdue
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-800 uppercase dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-800 uppercase dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                             Unpaid
                           </span>
                         )}

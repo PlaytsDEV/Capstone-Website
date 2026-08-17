@@ -167,7 +167,7 @@ function ReservationsPage() {
   const [sortState, setSortState] = useState({ key: "createdAt", dir: "desc" });
 
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
-  const [isStatusViewExpanded, setIsStatusViewExpanded] = useState(true);
+  const [isStatusViewExpanded, setIsStatusViewExpanded] = useState(false);
   const [advancedFilters, setAdvancedFilters] = useState({
     moveIn: "any",
     applicationDate: "any",
@@ -465,7 +465,7 @@ function ReservationsPage() {
         label: "Pending Review",
         value: counts.pendingApplicationReview + counts.needsRevision,
         icon: Clock,
-        color: "orange",
+        color: "amber",
         subtext: "Needs review / action",
       },
       {
@@ -473,16 +473,16 @@ function ReservationsPage() {
         label: "Reserved",
         value: counts.approvedForPayment + counts.reserved,
         icon: CheckCircle,
-        color: "teal",
+        color: "emerald",
         subtext: "Confirmed / Approved",
       },
       {
         key: "moveIn",
-        label: "Moved In",
+        label: "Move In",
         value: counts.movedIn,
         icon: User,
-        color: "green",
-        subtext: "Checked-in residents",
+        color: "emerald",
+        subtext: "Checked-in tenants",
       },
     ],
     [counts],
@@ -497,6 +497,7 @@ function ReservationsPage() {
         icon: null,
         title: "View all active reservations",
         activeClass: "res-view-tab--active res-view-tab--primary",
+        iconActiveClass: "text-slate-900 dark:text-slate-950",
       },
       {
         id: "new",
@@ -509,6 +510,7 @@ function ReservationsPage() {
             : "text-muted-foreground",
         title: "Newly submitted applicant reservations",
         activeClass: "res-view-tab--active res-view-tab--primary",
+        iconActiveClass: "text-slate-900 dark:text-slate-950",
       },
       {
         id: "reserved",
@@ -518,6 +520,7 @@ function ReservationsPage() {
         iconColor: "text-muted-foreground",
         title: "Filter confirmed and reserved reservations",
         activeClass: "res-view-tab--active res-view-tab--primary",
+        iconActiveClass: "text-slate-900 dark:text-slate-950",
       },
       {
         id: "overdue",
@@ -530,6 +533,7 @@ function ReservationsPage() {
             : "text-muted-foreground",
         title: "Reservations past scheduled move-in date",
         activeClass: "res-view-tab--active res-view-tab--danger",
+        iconActiveClass: "text-white",
         inactiveClass:
           counts.overdue > 0 ? "text-red-700 dark:text-red-400 font-medium" : "",
       },
@@ -544,6 +548,7 @@ function ReservationsPage() {
             : "text-muted-foreground",
         title: "Review pending cancellation requests",
         activeClass: "res-view-tab--active res-view-tab--warning",
+        iconActiveClass: "text-slate-900 dark:text-slate-950",
         inactiveClass:
           counts.cancellationRequested > 0
             ? "text-amber-700 dark:text-amber-400 font-medium"
@@ -557,6 +562,7 @@ function ReservationsPage() {
         iconColor: "text-muted-foreground",
         title: "View cancelled reservations",
         activeClass: "res-view-tab--active res-view-tab--danger",
+        iconActiveClass: "text-white",
       },
       isOwner && {
         id: "archived",
@@ -566,6 +572,7 @@ function ReservationsPage() {
         iconColor: "text-muted-foreground",
         title: "View archived records",
         activeClass: "res-view-tab--active res-view-tab--muted",
+        iconActiveClass: "text-white",
       },
     ].filter(Boolean),
     [counts, isOwner],
@@ -924,10 +931,10 @@ function ReservationsPage() {
               <ProfileAvatar
                 className="res-avatar"
                 user={row.userId}
-                src={row.photoUrl || row.profileImage || row.userId?.profileImage}
                 initials={rowInitials}
-                alt={`${row.customer} profile photo`}
+                alt={`${row.customer} profile`}
                 size={36}
+                defaultOnly
               />
               <div className="res-applicant-info">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -984,6 +991,7 @@ function ReservationsPage() {
         width: "18%",
         render: (row) => (
           <StatusBadge
+            module="reservation"
             status={checkOverdueReservation(row) ? "overdue" : row.status}
           />
         ),
@@ -1132,14 +1140,12 @@ function ReservationsPage() {
                     {item.label}
                   </span>
                   <div
-                    className={`p-2 rounded-lg ${
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
                       item.color === "blue"
-                        ? "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"
-                        : item.color === "orange"
-                        ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400"
-                        : item.color === "teal"
-                        ? "bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400"
-                        : "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
+                        ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-400"
+                        : item.color === "amber"
+                        ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400"
                     }`}
                   >
                     <item.icon className="w-4 h-4" strokeWidth={2} />
@@ -1329,7 +1335,11 @@ function ReservationsPage() {
                         {Icon && (
                           <Icon
                             size={13}
-                            className={isSelected ? "text-white" : tab.iconColor}
+                            className={
+                              isSelected
+                                ? (tab.iconActiveClass || "text-slate-900 dark:text-slate-950")
+                                : tab.iconColor
+                            }
                             aria-hidden="true"
                           />
                         )}
@@ -1397,7 +1407,7 @@ function ReservationsPage() {
                       <th
                         key={col.key}
                         style={{ width: col.width }}
-                        className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground"
+                        className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground"
                         onClick={() => {
                           if (col.sortable) {
                             setSortState((prev) => ({
@@ -1415,11 +1425,11 @@ function ReservationsPage() {
                           {col.label}
                           {col.sortable &&
                             sortState.key === (col.sortKey || col.key) &&
-                            (sortState.dir === "asc" ? "↑" : "↓")}
+                            (sortState.dir === "↑" ? "↑" : "↓")}
                         </div>
                       </th>
                     ))}
-                    <th style={{ width: "80px" }} className="text-right py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th style={{ width: "80px" }} className="text-right py-2.5 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -1439,15 +1449,15 @@ function ReservationsPage() {
                           prefetchReservationDetail(row.id).catch(() => {})
                         }
                       >
-                        <td className="py-4 px-4">
+                        <td className="py-2.5 px-4">
                           <div className="flex items-center gap-3">
                             <ProfileAvatar
-                              className="w-10 h-10 rounded-full flex-shrink-0"
+                              className="w-8 h-8 rounded-full flex-shrink-0"
                               user={row.userId}
-                              src={row.photoUrl || row.profileImage || row.userId?.profileImage}
                               initials={initials(row.customer)}
-                              alt={`${row.customer} profile photo`}
-                              size={40}
+                              alt={`${row.customer} profile`}
+                              size={32}
+                              defaultOnly
                             />
                             <div>
                               <div className="flex items-center gap-2 font-medium text-foreground">
@@ -1477,7 +1487,7 @@ function ReservationsPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="py-4 px-4">
+                        <td className="py-2.5 px-4">
                           <div className="font-medium text-foreground">
                             {row.room}
                           </div>
@@ -1485,8 +1495,8 @@ function ReservationsPage() {
                             {row.roomType || "Room"}, {row.branch}
                           </div>
                         </td>
-                        <td className="py-4 px-4">
-                          <div className="flex flex-col items-start gap-1.5">
+                        <td className="py-2.5 px-4">
+                          <div className="flex flex-col items-start gap-1">
                             {isArchivedView ? (
                               <>
                                 <StatusBadge status="archived" />
@@ -1502,6 +1512,7 @@ function ReservationsPage() {
                             ) : (
                               <>
                                 <StatusBadge
+                                  module="reservation"
                                   status={
                                     checkOverdueReservation(row)
                                       ? "overdue"
@@ -1515,17 +1526,17 @@ function ReservationsPage() {
                             )}
                           </div>
                         </td>
-                        <td className="py-4 px-4 text-sm text-foreground">
+                        <td className="py-2.5 px-4 text-sm text-foreground">
                           {isArchivedView
                             ? formatShortDate(row.archivedAt)
                             : formatShortDate(row.moveInDate)}
                         </td>
-                        <td className="py-4 px-4 text-sm text-foreground">
+                        <td className="py-2.5 px-4 text-sm text-foreground">
                           {isArchivedView
                             ? row.archivedByName || "-"
                             : formatShortDate(row.createdAt)}
                         </td>
-                        <td className="py-4 px-4">
+                        <td className="py-2.5 px-4">
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={(e) => {

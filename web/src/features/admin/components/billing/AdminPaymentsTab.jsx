@@ -245,7 +245,7 @@ export default function AdminPaymentsTab({ isActive }) {
                     <td className="py-3 pr-4 text-muted-foreground">{payment.paymentMethod || "—"}</td>
                     <td className="py-3 pr-4">
                       <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                        className={`rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase ${
                           statusClasses[normalizedStatus] || "bg-muted text-muted-foreground"
                         }`}
                       >

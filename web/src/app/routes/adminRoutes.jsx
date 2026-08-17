@@ -33,7 +33,7 @@ import GlobalLoading from "../../shared/components/GlobalLoading";
 import {
   AdminDashboardSkeleton,
   AdminTablePageSkeleton,
-  AdminCardGridSkeleton,
+  AdminRoomAvailabilitySkeleton,
   AdminMaintenanceSkeleton,
   AdminAnalyticsSkeleton,
   AdminFormPageSkeleton,
@@ -76,7 +76,7 @@ export function AdminRoutes() {
       <Route
         path="room-availability"
         element={
-          <RouteShell name="RoomAvailability" fallback={<AdminCardGridSkeleton />}>
+          <RouteShell name="RoomAvailability" fallback={<AdminRoomAvailabilitySkeleton />}>
             <RoomAvailabilityPage />
           </RouteShell>
         }

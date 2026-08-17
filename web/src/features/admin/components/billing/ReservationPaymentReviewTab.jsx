@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
-  RefreshCw,
   Search,
   CreditCard,
   X,
@@ -24,10 +23,12 @@ import {
   Coins,
   TrendingUp,
   Clock,
+  Percent,
 } from "lucide-react";
 import { reservationApi } from "../../../../shared/api/reservationApi";
 import ProfileAvatar, { getProfileInitials } from "../../../../shared/components/ProfileAvatar";
 import { AdminTablePageSkeleton } from "../AdminContentSkeletons";
+import { showNotification } from "../../../../shared/utils/notification.js";
 
 const money = (value) =>
   new Intl.NumberFormat("en-PH", {
@@ -77,19 +78,23 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterTab, setFilterTab] = useState("all");
-  const [sortBy, setSortBy] = useState("newest"); // newest, oldest, amount_desc, amount_asc, name_asc
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
+  const [timeframeFilter, setTimeframeFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("newest"); // newest, oldest, name_asc, name_desc, room_asc
 
   // Interactive Action States
   const [copiedKey, setCopiedKey] = useState(null);
   const [generatingReceipt, setGeneratingReceipt] = useState(false);
-  const [actionSuccess, setActionSuccess] = useState("");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(8);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts = {}) => {
+    const isSilent = Boolean(opts?.silent);
+    if (!isSilent) {
+      setLoading(true);
+    }
     setError("");
     try {
       const response = await reservationApi.listPaymentProofReviews();
@@ -102,20 +107,58 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         : [];
       setPayments(rawList);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      if (!isSilent) {
+        setError(errorMessage(requestError));
+      }
     } finally {
-      setLoading(false);
+      if (!isSilent) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (isActive) load();
+    if (!isActive) return;
+    load();
+
+    // Automatic real-time background sync interval (every 10 seconds)
+    const interval = setInterval(() => {
+      load({ silent: true });
+    }, 10000);
+
+    // Auto-update when tab gains focus or window becomes visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        load({ silent: true });
+      }
+    };
+    const handleFocus = () => {
+      load({ silent: true });
+    };
+
+    // Real-time socket events
+    const handleSocketUpdate = () => {
+      load({ silent: true });
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("lilycrest:payment-updated", handleSocketUpdate);
+    window.addEventListener("lilycrest:reservation-updated", handleSocketUpdate);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("lilycrest:payment-updated", handleSocketUpdate);
+      window.removeEventListener("lilycrest:reservation-updated", handleSocketUpdate);
+    };
   }, [isActive, load]);
 
   // Reset pagination on filter or search changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterTab, branch, sortBy]);
+  }, [searchQuery, filterTab, paymentMethodFilter, timeframeFilter, branch, sortBy]);
 
   const normalizedPayments = useMemo(() => {
     return payments.map((p) => {
@@ -192,6 +235,16 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
     });
   }, [payments]);
 
+  // Keep selected payment in sync when real-time updates arrive
+  useEffect(() => {
+    if (selectedPayment?._id) {
+      const match = normalizedPayments.find((p) => p._id === selectedPayment._id);
+      if (match && JSON.stringify(match) !== JSON.stringify(selectedPayment)) {
+        setSelectedPayment(match);
+      }
+    }
+  }, [normalizedPayments, selectedPayment]);
+
   const branchFilteredPayments = useMemo(() => {
     if (!branch || branch === "all") return normalizedPayments;
     return normalizedPayments.filter(
@@ -227,20 +280,23 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       }
     }
 
-    const averageDeposit = confirmedCount > 0 ? totalCollected / confirmedCount : 0;
+    const totalCount = branchFilteredPayments.length;
+    const settlementRate = totalCount > 0 ? (confirmedCount / totalCount) * 100 : 100;
 
     return {
       totalCollected,
       confirmedCount,
       pendingCount,
       failedCount,
-      averageDeposit,
-      totalCount: branchFilteredPayments.length,
+      settlementRate,
+      totalCount,
     };
   }, [branchFilteredPayments]);
 
   const filteredPayments = useMemo(() => {
     let list = branchFilteredPayments;
+
+    // Status filter
     if (filterTab === "confirmed") {
       list = list.filter(
         (p) =>
@@ -260,6 +316,59 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       );
     }
 
+    // Payment Method filter
+    if (paymentMethodFilter !== "all") {
+      const pm = paymentMethodFilter.toLowerCase();
+      list = list.filter((p) => {
+        const method = String(p.paymentMethod || "").toLowerCase();
+        const src = String(p.source || "").toLowerCase();
+        if (pm === "paymongo") {
+          return method.includes("paymongo") || method.includes("card") || src.includes("paymongo");
+        }
+        if (pm === "gcash") {
+          return method.includes("gcash");
+        }
+        if (pm === "maya") {
+          return method.includes("maya");
+        }
+        if (pm === "cash") {
+          return (
+            method.includes("cash") ||
+            method.includes("manual") ||
+            method.includes("over-the-counter") ||
+            method.includes("otc")
+          );
+        }
+        return method.includes(pm);
+      });
+    }
+
+    // Timeframe filter
+    if (timeframeFilter !== "all") {
+      const now = new Date();
+      list = list.filter((p) => {
+        if (!p.submittedAt) return false;
+        const d = new Date(p.submittedAt);
+        if (isNaN(d.getTime())) return false;
+        if (timeframeFilter === "today") {
+          return (
+            d.getDate() === now.getDate() &&
+            d.getMonth() === now.getMonth() &&
+            d.getFullYear() === now.getFullYear()
+          );
+        }
+        if (timeframeFilter === "this_week") {
+          const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          return d >= sevenDaysAgo && d <= now;
+        }
+        if (timeframeFilter === "this_month") {
+          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        }
+        return true;
+      });
+    }
+
+    // Search query
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       list = list.filter((p) => {
@@ -269,13 +378,15 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         const roomStr = String(p.roomName || "").toLowerCase();
         const refStr = String(p.referenceNumber || "").toLowerCase();
         const payId = String(p.paymentId || "").toLowerCase();
+        const method = String(p.paymentMethod || "").toLowerCase();
         return (
           name.includes(q) ||
           code.includes(q) ||
           branchStr.includes(q) ||
           roomStr.includes(q) ||
           refStr.includes(q) ||
-          payId.includes(q)
+          payId.includes(q) ||
+          method.includes(q)
         );
       });
     }
@@ -286,16 +397,32 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       sorted.sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0));
     } else if (sortBy === "oldest") {
       sorted.sort((a, b) => new Date(a.submittedAt || 0) - new Date(b.submittedAt || 0));
-    } else if (sortBy === "amount_desc") {
-      sorted.sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
-    } else if (sortBy === "amount_asc") {
-      sorted.sort((a, b) => Number(a.amount || 0) - Number(b.amount || 0));
     } else if (sortBy === "name_asc") {
-      sorted.sort((a, b) => String(a.tenantFullName || "").localeCompare(String(b.tenantFullName || "")));
+      sorted.sort((a, b) =>
+        String(a.tenantFullName || "").localeCompare(String(b.tenantFullName || "")),
+      );
+    } else if (sortBy === "name_desc") {
+      sorted.sort((a, b) =>
+        String(b.tenantFullName || "").localeCompare(String(a.tenantFullName || "")),
+      );
+    } else if (sortBy === "room_asc") {
+      sorted.sort((a, b) =>
+        String(a.roomName || "").localeCompare(String(b.roomName || ""), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+      );
     }
 
     return sorted;
-  }, [branchFilteredPayments, filterTab, searchQuery, sortBy]);
+  }, [
+    branchFilteredPayments,
+    filterTab,
+    paymentMethodFilter,
+    timeframeFilter,
+    searchQuery,
+    sortBy,
+  ]);
 
   // Total pages and sliced page items
   const totalPages = Math.max(1, Math.ceil(filteredPayments.length / itemsPerPage));
@@ -347,7 +474,6 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
     if (!payment) return;
     try {
       setGeneratingReceipt(true);
-      setActionSuccess("");
       const { generateDepositReceipt } = await import(
         "../../../../shared/utils/receiptGenerator.js"
       );
@@ -376,11 +502,11 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       };
 
       await generateDepositReceipt(reservationPayload, userPayload);
-      setActionSuccess("Receipt generated and downloaded successfully.");
-      setTimeout(() => setActionSuccess(""), 3000);
+      showNotification("Receipt generated and downloaded successfully.", "success");
     } catch (err) {
       console.error("Failed to generate deposit receipt:", err);
       setError("Could not generate PDF receipt. Please try again.");
+      showNotification("Could not generate PDF receipt. Please try again.", "error");
     } finally {
       setGeneratingReceipt(false);
     }
@@ -404,19 +530,10 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={load}
-            disabled={loading}
-            className="inline-flex h-8.5 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50 cursor-pointer"
-            title="Refresh reservation payment transactions"
-          >
-            <RefreshCw
-              size={13}
-              className={loading ? "animate-spin text-muted-foreground" : "text-muted-foreground"}
-            />{" "}
-            Refresh
-          </button>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse" />
+            Live Sync
+          </span>
         </div>
       </div>
 
@@ -468,14 +585,14 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-              Average Deposit Fee
+              Settlement Rate
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-muted-foreground">
-              <TrendingUp size={15} />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-400">
+              <Percent size={15} />
             </div>
           </div>
           <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
-            {money(summaryStats.averageDeposit)}
+            {summaryStats.settlementRate.toFixed(1)}%
           </div>
         </div>
       </div>
@@ -501,25 +618,6 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         </div>
       ) : null}
 
-      {actionSuccess ? (
-        <div
-          role="status"
-          className="flex items-center justify-between rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 shadow-xs dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300"
-        >
-          <div className="flex items-center gap-2">
-            <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
-            <span>{actionSuccess}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setActionSuccess("")}
-            className="text-emerald-700 hover:text-emerald-900 transition cursor-pointer dark:text-emerald-300"
-            aria-label="Dismiss notice"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      ) : null}
 
       {/* Split-screen Master / Detail */}
       <div className="flex min-h-[580px] overflow-hidden rounded-xl border border-border bg-card shadow-xs">
@@ -527,6 +625,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         <div className="w-full md:w-[42%] shrink-0 overflow-hidden border-r border-border flex flex-col bg-card">
           {/* Search, Sort & Filter Toolbar */}
           <div className="border-b border-border bg-muted/20 p-3 space-y-2.5">
+            {/* Search & Sort Row */}
             <div className="flex items-center gap-2">
               <div className="relative flex-1 flex items-center">
                 <Search size={14} className="absolute left-3 text-muted-foreground pointer-events-none" />
@@ -535,8 +634,8 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                   maxLength={100}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search code, applicant, or reference..."
-                  className="w-full h-9 rounded-lg border border-border bg-card pl-8.5 pr-7 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none"
+                  placeholder="Search code, applicant, room, or ref..."
+                  className="w-full h-9 rounded-lg border border-border bg-card pl-9 pr-7 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none"
                 />
                 {searchQuery && (
                   <button
@@ -561,14 +660,68 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                 >
                   <option value="newest">Newest First</option>
                   <option value="oldest">Oldest First</option>
-                  <option value="amount_desc">Highest Amount</option>
-                  <option value="amount_asc">Lowest Amount</option>
-                  <option value="name_asc">Name (A–Z)</option>
+                  <option value="name_asc">Applicant (A–Z)</option>
+                  <option value="name_desc">Applicant (Z–A)</option>
+                  <option value="room_asc">Room Number</option>
                 </select>
               </div>
             </div>
 
-            {/* Filter Buttons */}
+            {/* Secondary Filter Dropdowns (Payment Method & Timeframe) */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <select
+                  value={paymentMethodFilter}
+                  onChange={(e) => setPaymentMethodFilter(e.target.value)}
+                  className="w-full h-8 rounded-lg border border-border bg-card px-2 text-[11px] font-semibold text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none cursor-pointer"
+                  title="Filter by payment method"
+                  aria-label="Filter by payment method"
+                >
+                  <option value="all">All Payment Methods</option>
+                  <option value="paymongo">PayMongo / Card</option>
+                  <option value="gcash">GCash</option>
+                  <option value="maya">Maya</option>
+                  <option value="cash">Cash / OTC</option>
+                </select>
+              </div>
+
+              <div className="flex-1">
+                <select
+                  value={timeframeFilter}
+                  onChange={(e) => setTimeframeFilter(e.target.value)}
+                  className="w-full h-8 rounded-lg border border-border bg-card px-2 text-[11px] font-semibold text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none cursor-pointer"
+                  title="Filter by timeframe"
+                  aria-label="Filter by timeframe"
+                >
+                  <option value="all">All Time</option>
+                  <option value="today">Today</option>
+                  <option value="this_week">This Week</option>
+                  <option value="this_month">This Month</option>
+                </select>
+              </div>
+
+              {(paymentMethodFilter !== "all" ||
+                timeframeFilter !== "all" ||
+                searchQuery ||
+                filterTab !== "all") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setFilterTab("all");
+                    setPaymentMethodFilter("all");
+                    setTimeframeFilter("all");
+                  }}
+                  className="h-8 shrink-0 px-2 rounded-lg border border-dashed border-border bg-card text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/80 transition cursor-pointer flex items-center gap-1"
+                  title="Reset all active filters"
+                >
+                  <X size={11} />
+                  Reset
+                </button>
+              )}
+            </div>
+
+            {/* Filter Status Buttons */}
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
               {[
                 { id: "all", label: "All", count: summaryStats.totalCount },
@@ -590,7 +743,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                   >
                     <span>{t.label}</span>
                     <span
-                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
                         isActiveTab
                           ? "bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900"
                           : "bg-muted text-muted-foreground border border-border/50"
@@ -611,8 +764,8 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                 <FileCheck2 size={32} className="text-slate-400 mb-2.5" />
                 <p className="font-bold text-card-foreground text-sm">No payment records found</p>
                 <p className="mt-1 text-[11px] max-w-xs">
-                  {searchQuery
-                    ? `No results matching "${searchQuery}". Try clearing your search.`
+                  {searchQuery || paymentMethodFilter !== "all" || timeframeFilter !== "all"
+                    ? "No reservation payments match the selected search/filters. Try clearing or resetting your filters."
                     : "No reservation payment records match the current tab filter."}
                 </p>
               </div>
@@ -638,16 +791,16 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                     <div className="flex items-center justify-between gap-2 w-full">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <ProfileAvatar
-                          src={payment.tenantProfileImage}
                           user={payment.tenantUser || { name: fullName }}
                           initials={getProfileInitials({ name: fullName })}
-                          alt={`${fullName} profile photo`}
+                          alt={`${fullName} profile`}
                           size={32}
+                          defaultOnly
                         />
                         <p className="truncate text-xs font-bold text-card-foreground leading-none">{fullName}</p>
                       </div>
                       <span
-                        className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${getStatusBadgeStyles(
+                        className={`shrink-0 rounded-md border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${getStatusBadgeStyles(
                           payment.status,
                         )}`}
                       >
@@ -808,7 +961,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                         {selectedPayment.tenantFullName}
                       </h4>
                       <span
-                        className={`rounded-full border px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${getStatusBadgeStyles(
+                        className={`rounded-md border px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${getStatusBadgeStyles(
                           selectedPayment.status,
                         )}`}
                       >
@@ -844,28 +997,41 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
               </div>
 
               {/* Action Toolbar */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2.5 pt-0.5 pb-1">
                 <button
                   type="button"
                   onClick={() => handleNavigateToReservation(selectedPayment.reservationCode)}
-                  className="inline-flex h-8.5 items-center gap-1.5 rounded-lg border border-border bg-card px-3.5 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] cursor-pointer"
+                  className="group inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border/80 bg-card px-3.5 text-xs font-semibold text-card-foreground shadow-2xs transition-all duration-150 hover:bg-muted/70 hover:border-slate-300 dark:hover:border-slate-700 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:ring-offset-1 cursor-pointer"
+                  title={`View reservation details for ${selectedPayment.reservationCode || "applicant"}`}
+                  aria-label={`View reservation details for ${selectedPayment.reservationCode || "applicant"}`}
                 >
-                  <ArrowUpRight size={13} /> View Reservation
+                  <ArrowUpRight
+                    size={14}
+                    className="text-muted-foreground transition-all duration-150 group-hover:text-card-foreground group-hover:translate-x-0.5 group-hover:-translate-y-0.5 shrink-0"
+                  />
+                  <span>View Reservation</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleDownloadReceipt(selectedPayment)}
                   disabled={generatingReceipt}
-                  className="inline-flex h-8.5 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 text-xs font-bold text-white shadow-xs transition hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 cursor-pointer dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                  className="group inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-xs font-semibold text-white shadow-2xs transition-all duration-150 hover:bg-slate-800 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/30 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:focus-visible:ring-slate-100/30 cursor-pointer shrink-0"
+                  title="Download official PDF deposit receipt"
+                  aria-label="Download official PDF deposit receipt"
                 >
                   {generatingReceipt ? (
                     <>
-                      <Loader2 size={13} className="animate-spin" /> Generating Receipt...
+                      <Loader2 size={14} className="animate-spin text-white/80 dark:text-slate-950/80 shrink-0" />
+                      <span>Generating Receipt...</span>
                     </>
                   ) : (
                     <>
-                      <Download size={13} /> Download Deposit Receipt
+                      <Download
+                        size={14}
+                        className="transition-transform duration-150 group-hover:translate-y-0.5 shrink-0"
+                      />
+                      <span>Download Deposit Receipt</span>
                     </>
                   )}
                 </button>
@@ -914,7 +1080,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
               {/* Payment Details Definition Grid */}
               <div className="rounded-xl border border-border bg-muted/10 p-3.5">
                 <h5 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2.5">
-                  Transaction Metadata
+                  Transaction Details
                 </h5>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
                   <div className="flex items-start gap-2">

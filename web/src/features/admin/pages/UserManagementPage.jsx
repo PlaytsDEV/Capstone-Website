@@ -38,6 +38,7 @@ import RestoreUserModal from "../components/users/RestoreUserModal";
 import AccountActionModal from "../components/users/AccountActionModal";
 import AccountRowActions from "../components/users/AccountRowActions";
 import AccountAccessDrawer from "../components/users/AccountAccessDrawer";
+import ProfileAvatar from "../../../shared/components/ProfileAvatar";
 import ToggleSwitch from "../../../shared/components/ToggleSwitch";
 import PhoneInput, { isValidPhoneNumber } from "../../../shared/components/PhoneInput";
 import {
@@ -1004,21 +1005,21 @@ function UserManagementPage() {
         label: "Total Accounts",
         value: stats?.total || totalUsers,
         icon: Users,
-        color: "var(--foreground)",
+        badgeClass: "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
       },
       {
         id: "active",
         label: "Active Accounts",
         value: Math.max(0, (stats?.activeCount || 0) + activeDelta),
         icon: CheckCircle2,
-        color: "var(--color-success, #059669)",
+        badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400",
       },
       {
         id: "admin",
         label: "Admin Accounts",
         value: (stats?.byRole?.branch_admin || 0) + (stats?.byRole?.owner || 0),
         icon: ShieldCheck,
-        color: "var(--info-dark, #0284c7)",
+        badgeClass: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-400",
       },
       {
         id: "blocked",
@@ -1030,14 +1031,14 @@ function UserManagementPage() {
             suspendedDelta,
         ),
         icon: Ban,
-        color: "var(--color-warning, #d97706)",
+        badgeClass: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400",
       },
       {
         id: "archived",
         label: "Archived Accounts",
         value: stats?.archivedCount || 0,
         icon: Archive,
-        color: "var(--color-danger, #e11d48)",
+        badgeClass: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-400",
       },
     ],
     [stats, totalUsers, activeDelta, suspendedDelta],
@@ -1215,8 +1216,7 @@ function UserManagementPage() {
                   {item.label}
                 </span>
                 <div
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60"
-                  style={{ color: item.color }}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${item.badgeClass}`}
                 >
                   <IconComponent size={15} />
                 </div>
@@ -1404,15 +1404,11 @@ function UserManagementPage() {
                   >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
-                        <div
-                          className="w-9 h-9 flex-none rounded-full flex items-center justify-center text-white text-xs font-bold leading-none shadow-sm"
-                          style={{ backgroundColor: getAvatarColor(u) }}
-                        >
-                          {(u.firstName && u.lastName
-                            ? `${u.firstName[0]}${u.lastName[0]}`
-                            : u.initials || "NA"
-                          ).toUpperCase()}
-                        </div>
+                        <ProfileAvatar
+                          user={u}
+                          size={36}
+                          defaultOnly
+                        />
                         <div className="min-w-0">
                           <div
                             className="text-sm font-semibold truncate"
