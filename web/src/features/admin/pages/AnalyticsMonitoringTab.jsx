@@ -24,6 +24,7 @@ import {
  RANGE_OPTIONS_SHORT,
  unwrapTableRows,
  useReportInsights,
+ getDynamicMonitoringPrompts,
 } from "./analyticsTabShared";
 
 const EVENT_COLUMNS = [
@@ -82,9 +83,14 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
   });
  }, [recentSecurityEvents, searchQuery, severityFilter]);
 
- if (isLoading && !data) {
-  return <AdminAnalyticsDetailSkeleton tab="monitoring" />;
- }
+  const monitoringPrompts = useMemo(
+    () => getDynamicMonitoringPrompts(data),
+    [data],
+  );
+
+  if (isLoading && !data) {
+   return <AdminAnalyticsDetailSkeleton tab="monitoring" />;
+  }
 
   const metricCards = [
     { icon: ShieldAlert, label: "Failed Logins", value: kpis.failedLogins || 0, tone: "rose", trend: "Authentication failures" },
@@ -170,6 +176,14 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
  });
  };
 
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "SEARCH" && action.filterValue) {
+      setSearchQuery(action.filterValue);
+      setEventPage(1);
+    }
+  };
+
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       <MetricGrid items={metricCards} />
@@ -177,9 +191,14 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
       <AnalyticsInsightSection
         reportLabel="security"
         summaryTitle="Security & System Audit Intelligence"
+        reportType="audit"
+        range={range}
+        branch={branch}
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
+        suggestedPrompts={monitoringPrompts}
+        onExecuteAction={handleExecuteAction}
       />
 
  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

@@ -34,6 +34,8 @@ import {
   RANGE_OPTIONS_SHORT,
   unwrapTableRows,
   useReportInsights,
+  detectOccupancyAnomalies,
+  getDynamicOccupancyPrompts,
 } from "./analyticsTabShared";
 import "../styles/design-tokens.css";
 import "../styles/admin-reports.css";
@@ -64,13 +66,13 @@ const INVENTORY_COLUMNS = [
       }
       if (row.occupiedBeds === 0) {
         return (
-          <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--warning-subtle, #fef3c7)", color: "var(--warning-dark, #92400e)", fontWeight: 600, border: "1px solid rgba(146, 64, 14, 0.2)" }}>
+          <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--danger-subtle, #fee2e2)", color: "var(--danger-dark, #991b1b)", fontWeight: 600, border: "1px solid rgba(153, 27, 27, 0.2)" }}>
             Vacant
           </span>
         );
       }
       return (
-        <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--info-subtle, #dbeafe)", color: "var(--info-dark, #1e40af)", fontWeight: 600, border: "1px solid rgba(30, 64, 175, 0.2)" }}>
+        <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--info-subtle, #e0f2fe)", color: "var(--info-dark, #075985)", fontWeight: 600, border: "1px solid rgba(7, 89, 133, 0.2)" }}>
           Partial
         </span>
       );
@@ -219,6 +221,11 @@ export default function AnalyticsOccupancyTab({
     });
   }, [inventory, searchQuery, typeFilter, statusFilter]);
 
+  const occupancyPrompts = useMemo(
+    () => getDynamicOccupancyPrompts(data, forecast),
+    [data, forecast],
+  );
+
   if (isLoading && !data) {
     return <AdminAnalyticsDetailSkeleton tab="occupancy" isOwner={isOwner} />;
   }
@@ -229,6 +236,8 @@ export default function AnalyticsOccupancyTab({
     text: "vs prev period",
   };
 
+  const anomalies = detectOccupancyAnomalies(kpis);
+
   const metricCards = [
     {
       icon: Bed,
@@ -237,6 +246,7 @@ export default function AnalyticsOccupancyTab({
       value: kpis.occupancyRateLabel || "0%",
       trend: occupancyDelta.text || `${occupancyDelta.label || "+0 pp"} vs prev period`,
       changeType: occupancyDelta.changeType || "neutral",
+      anomalyBadge: anomalies.occupancyRate,
     },
     {
       icon: Users,
@@ -251,6 +261,7 @@ export default function AnalyticsOccupancyTab({
       label: "Available Beds",
       value: kpis.availableBeds || 0,
       trend: "Ready for move-in",
+      anomalyBadge: anomalies.availableBeds,
     },
     {
       icon: Building,
@@ -271,6 +282,20 @@ export default function AnalyticsOccupancyTab({
     });
   const exportCsv = () => handleCsvExport("occupancy_inventory.csv", filteredInventory);
 
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "FILTER_STATUS" && action.filterValue) {
+      setStatusFilter(action.filterValue);
+      setPage(1);
+    } else if (action.actionType === "FILTER_TYPE" && action.filterValue) {
+      setTypeFilter(action.filterValue);
+      setPage(1);
+    } else if (action.actionType === "SEARCH" && action.filterValue) {
+      setSearchQuery(action.filterValue);
+      setPage(1);
+    }
+  };
+
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       <MetricGrid items={metricCards} />
@@ -278,9 +303,14 @@ export default function AnalyticsOccupancyTab({
       <AnalyticsInsightSection
         reportLabel="occupancy"
         summaryTitle="Occupancy Summary & Intelligence"
+        reportType="occupancy"
+        range={range}
+        branch={branch}
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
+        suggestedPrompts={occupancyPrompts}
+        onExecuteAction={handleExecuteAction}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -1,26 +1,33 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import {
   Download,
-  FileDown,
   Search,
-  Filter,
   RotateCcw,
   ChevronDown,
   FileSpreadsheet,
   FileText,
   LoaderCircle,
   Sparkles,
-  Calendar,
   CalendarDays,
   X,
-  Check,
 } from "lucide-react";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { exportReportPdf } from "../../../shared/utils/reportPdf";
 import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
 import { useAnalyticsInsights } from "../../../shared/hooks/queries/useAnalyticsReports";
+import { analyticsApi } from "../../../shared/api/apiClient";
 import { AnalyticsInsightPanel, ReportChartPanel, ReportMetricCard } from "../components/shared";
 import { buildRangeLabel } from "./reportCommon";
+
+export {
+  getDynamicOccupancyPrompts,
+  getDynamicBillingPrompts,
+  getDynamicOperationsPrompts,
+  getDynamicDemographicsPrompts,
+  getDynamicFinancialsPrompts,
+  getDynamicMonitoringPrompts,
+  getDynamicOverviewPrompts,
+} from "./analyticsTabUtils.js";
 
 /**
  * Reusable table filter toolbar for Analytics tables.
@@ -94,24 +101,38 @@ export function AnalyticsTableToolbar({
   );
 }
 
-
 /**
  * Safely unwrap a table field from the analytics API.
  * The backend's `buildPaginatedTable` returns `{ rows, pagination }`,
- * but some table fields are plain arrays. This helper normalizes both
- * shapes to a plain array so `.slice()` / `.length` never crash.
+ * but older API fixtures or flat tables may return a bare array.
  */
-export function unwrapTableRows(value) {
-  if (Array.isArray(value)) return value;
-  if (value && Array.isArray(value.rows)) return value.rows;
+export function unwrapTableRows(tableField) {
+  if (Array.isArray(tableField)) return tableField;
+  if (Array.isArray(tableField?.rows)) return tableField.rows;
   return [];
 }
 
+export function unwrapTablePagination(tableField) {
+  if (tableField?.pagination && typeof tableField.pagination === "object") {
+    return tableField.pagination;
+  }
+  const rows = unwrapTableRows(tableField);
+  return {
+    total: rows.length,
+    page: 1,
+    limit: rows.length || 10,
+    totalPages: 1,
+    hasPrev: false,
+    hasNext: false,
+  };
+}
+
 export const RANGE_OPTIONS_SHORT = [
-  { value: "30d", label: "Last 30 days" },
-  { value: "60d", label: "Last 60 days" },
-  { value: "90d", label: "Last 90 days" },
-  { value: "365d", label: "Last 1 year" },
+  { value: "7d", label: "Last 7 Days" },
+  { value: "30d", label: "Last 30 Days" },
+  { value: "60d", label: "Last 60 Days" },
+  { value: "90d", label: "Last 90 Days" },
+  { value: "365d", label: "Last 1 Year" },
 ];
 
 export const RANGE_OPTIONS_LONG = [
@@ -120,30 +141,25 @@ export const RANGE_OPTIONS_LONG = [
   { value: "12m", label: "Last 12 months" },
 ];
 
-export function ExportButtons({ onCsv, onPdf, disabled = false, loading = false, className = "" }) {
+export function ExportButtons({
+  onCsv,
+  onPdf,
+  loading = false,
+  disabled = false,
+  className = "",
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
-    function handleClickOutside(event) {
+    const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsOpen(false);
       }
-    }
-    function handleKeyDown(event) {
-      if (event.key === "Escape") {
-        setIsOpen(false);
-      }
-    }
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      document.addEventListener("keydown", handleKeyDown);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen]);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleAction = (fn) => {
     setIsOpen(false);
@@ -219,13 +235,13 @@ export function MetricGrid({ items }) {
           changeType={item.changeType}
           note={item.note}
           tone={item.tone}
+          anomalyBadge={item.anomalyBadge}
           onClick={item.onClick}
         />
       ))}
     </div>
   );
 }
-
 
 export function buildBranchControl({ isOwner, branch, onChange }) {
   if (!isOwner) return null;
@@ -260,12 +276,56 @@ export function useReportInsights({ reportType, range, branch }) {
 export function AnalyticsInsightSection({
   reportLabel,
   summaryTitle,
+  reportType,
+  range,
+  branch,
   data,
   isLoading,
   isError,
+  suggestedPrompts = [],
+  onExecuteAction = null,
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  const insight = data?.insight;
+  const [activeQuestion, setActiveQuestion] = useState("");
+  const [isAsking, setIsAsking] = useState(false);
+  const [customData, setCustomData] = useState(null);
+
+  useEffect(() => {
+    setActiveQuestion("");
+    setCustomData(null);
+  }, [range, branch, reportType]);
+
+  const handleAskQuestion = async (queryText) => {
+    const q = String(queryText || "").trim();
+    if (!q || isAsking) return;
+    setIsAsking(true);
+    setActiveQuestion(q);
+
+    try {
+      const response = await analyticsApi.getInsights({
+        reportType: reportType || "hub",
+        range,
+        ...(branch !== undefined ? { branch } : {}),
+        question: q,
+      });
+      const resolved = response?.data || response;
+      if (resolved?.insight) {
+        setCustomData(resolved);
+      }
+    } catch (err) {
+      console.error("Failed to query Analytics AI:", err);
+    } finally {
+      setIsAsking(false);
+    }
+  };
+
+  const handleClearQuestion = () => {
+    setActiveQuestion("");
+    setCustomData(null);
+  };
+
+  const effectiveData = customData || data;
+  const insight = effectiveData?.insight;
 
   if (!isLoading && !isError && !insight) {
     return null;
@@ -275,7 +335,7 @@ export function AnalyticsInsightSection({
     return (
       <div className="mb-6 p-3.5 rounded-xl bg-card border border-border flex items-center gap-3 text-xs text-muted-foreground">
         <LoaderCircle size={14} className="animate-spin text-primary" />
-        <span>Synthesizing AI analysis for this {reportLabel} report...</span>
+        <span>Reviewing data for the {reportLabel} report...</span>
       </div>
     );
   }
@@ -305,12 +365,12 @@ export function AnalyticsInsightSection({
               {summaryTitle || "Executive AI Summary"}
             </h3>
             <p className="text-[11px] text-muted-foreground line-clamp-1">
-              {insight.headline || `Key performance observations for ${reportLabel}`}
+              {insight.headline || `Key performance highlights for ${reportLabel}`}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <span>{collapsed ? "Show Details" : "Hide"}</span>
+          <span>{collapsed ? "Show Summary" : "Hide"}</span>
           <ChevronDown
             size={14}
             className={`transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`}
@@ -322,15 +382,92 @@ export function AnalyticsInsightSection({
         <div className="p-4">
           <AnalyticsInsightPanel
             title={summaryTitle}
-            subtitle={`AI evaluation • ${insight.confidence || "standard"} confidence`}
-            data={data}
+            subtitle={`AI summary • ${insight.confidence || "standard"} confidence`}
+            data={effectiveData}
             isLoading={false}
             isError={false}
+            onAskQuestion={handleAskQuestion}
+            onClearQuestion={handleClearQuestion}
+            onExecuteAction={onExecuteAction}
+            activeQuestion={activeQuestion}
+            isAsking={isAsking}
+            suggestedPrompts={suggestedPrompts}
           />
         </div>
       )}
     </div>
   );
+}
+
+/**
+ * Anomaly detection helper for Billing & Financials
+ */
+export function detectBillingAnomalies(kpis = {}) {
+  const collectionRate = Number(kpis.collectionRate ?? 100);
+  const overdueAmount = Number(kpis.overdueAmount ?? 0);
+  const billedAmount = Number(kpis.billedAmount ?? 0);
+
+  const badges = {};
+
+  if (collectionRate < 70) {
+    badges.collectionRate = { label: "Critical <70%", severity: "danger" };
+  } else if (collectionRate < 85) {
+    badges.collectionRate = { label: "Below Target <85%", severity: "warning" };
+  }
+
+  if (billedAmount > 0 && overdueAmount / billedAmount > 0.3) {
+    badges.overdueAmount = { label: "Overdue Spike >30%", severity: "danger" };
+  } else if (overdueAmount > 15000) {
+    badges.overdueAmount = { label: "High Overdue Arrears", severity: "warning" };
+  }
+
+  return badges;
+}
+
+/**
+ * Anomaly detection helper for Occupancy
+ */
+export function detectOccupancyAnomalies(kpis = {}) {
+  const occupancyRate = Number(kpis.occupancyRate ?? 100);
+  const unavailableBeds = Number(kpis.unavailableBeds ?? 0);
+
+  const badges = {};
+
+  if (occupancyRate < 60) {
+    badges.occupancyRate = { label: "Low Capacity <60%", severity: "danger" };
+  } else if (occupancyRate < 75) {
+    badges.occupancyRate = { label: "Below Target <75%", severity: "warning" };
+  } else if (occupancyRate >= 95) {
+    badges.occupancyRate = { label: "Peak Occupancy", severity: "success" };
+  }
+
+  if (unavailableBeds > 2) {
+    badges.availableBeds = { label: `${unavailableBeds} Offline Beds`, severity: "warning" };
+  }
+
+  return badges;
+}
+
+/**
+ * Anomaly detection helper for Operations & Maintenance
+ */
+export function detectOperationsAnomalies(kpis = {}) {
+  const slaComplianceRate = Number(kpis.slaComplianceRate ?? 100);
+  const maintenanceRequests = Number(kpis.maintenanceRequests ?? 0);
+
+  const badges = {};
+
+  if (slaComplianceRate < 70) {
+    badges.slaComplianceRate = { label: "SLA Critical <70%", severity: "danger" };
+  } else if (slaComplianceRate < 85) {
+    badges.slaComplianceRate = { label: "SLA Risk <85%", severity: "warning" };
+  }
+
+  if (maintenanceRequests > 20) {
+    badges.maintenanceRequests = { label: "High Ticket Volume", severity: "warning" };
+  }
+
+  return badges;
 }
 
 export function buildInsightPdfSections(insightData, title = "AI Summary") {
@@ -573,7 +710,10 @@ export function CardFilterSelect({
   options = RANGE_OPTIONS_SHORT,
   label = null,
   className = "",
+  selectClassName = "",
+  labelClassName = "",
   allowCustom = true,
+  ariaLabel = "Filter by duration",
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -615,9 +755,9 @@ export function CardFilterSelect({
 
   return (
     <>
-      <div className={`flex items-center gap-1.5 ${className}`}>
+      <div className={`flex items-center gap-1.5 ${className}`.trim()}>
         {label && (
-          <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">
+          <span className={`text-[11px] font-medium text-muted-foreground whitespace-nowrap ${labelClassName}`.trim()}>
             {label}
           </span>
         )}
@@ -625,7 +765,8 @@ export function CardFilterSelect({
           value={value}
           onChange={handleSelectChange}
           onClick={(e) => e.stopPropagation()}
-          className="px-2 py-1 text-xs font-semibold bg-background text-foreground border border-border/80 rounded-md shadow-xs hover:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary transition-all cursor-pointer"
+          aria-label={ariaLabel}
+          className={`px-2 py-1 text-xs font-semibold bg-background text-foreground border border-border/80 rounded-md shadow-xs hover:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary transition-all cursor-pointer ${selectClassName}`.trim()}
         >
           {computedOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>

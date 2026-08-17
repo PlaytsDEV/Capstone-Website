@@ -14,14 +14,14 @@ async function readSource(fileName) {
 test("analytics summary keeps a KPI-plus-chart overview structure", async () => {
   const source = await readSource("AnalyticsPage.jsx");
 
-  assert.match(source, /className="analytics-container"/);
+  assert.match(source, /className="analytics-container/);
   assert.match(source, /className="analytics-layout"/);
-  assert.match(source, /className="analytics-topbar"/);
+  assert.match(source, /AdminPageHeader/);
   assert.match(source, /className="analytics-main"/);
-  assert.match(source, /activeTab === "overview"/);
-  assert.match(source, /activeTab === "occupancy"/);
-  assert.match(source, /activeTab === "revenue"/);
-  assert.match(source, /activeTab === "operations"/);
+  assert.match(source, /activeTab(Normalized)? === "overview"/);
+  assert.match(source, /activeTab(Normalized)? === "occupancy"/);
+  assert.match(source, /activeTab(Normalized)? === "billing"/);
+  assert.match(source, /activeTab(Normalized)? === "operations"/);
 });
 
 test("analytics summary no longer renders the legacy stacked summary section helper", async () => {
@@ -38,12 +38,13 @@ test("analytics summary no longer renders the legacy stacked summary section hel
   assert.doesNotMatch(source, /data-summary-owner-shortcuts="true"/);
 });
 
-test("analytics summary opts into topbar and layout controls", async () => {
+test("analytics summary opts into AdminPageHeader and layout controls", async () => {
   const source = await readSource("AnalyticsPage.jsx");
 
-  assert.match(source, /className="analytics-container"/);
-  assert.match(source, /analytics-topbar-actions/);
-  assert.match(source, /analytics-tabs/);
+  assert.match(source, /className="analytics-container/);
+  assert.match(source, /AdminPageHeader/);
+  assert.match(source, /ExportButtons/);
+  assert.match(source, /analyticsTabs/);
 });
 
 
@@ -83,7 +84,7 @@ test("analytics shared utilities support 365d and custom date range calculation"
   assert.equal(buildRangeLabel("1d"), "1 day");
 
   // Check analyticsTabShared includes 365d, calculateRangeDays, and CustomDateRangeModal
-  assert.match(tabSharedSource, /value:\s*"365d",\s*label:\s*"Last 1 year"/);
+  assert.match(tabSharedSource, /value:\s*"365d",\s*label:\s*"Last 1 [yY]ear"/i);
   assert.match(tabSharedSource, /export function calculateRangeDays\(/);
   assert.match(tabSharedSource, /export function CustomDateRangeModal\(/);
   assert.match(tabSharedSource, /__custom__/);

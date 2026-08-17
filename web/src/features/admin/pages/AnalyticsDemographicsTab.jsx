@@ -30,6 +30,7 @@ import {
   RANGE_OPTIONS_LONG,
   unwrapTableRows,
   useReportInsights,
+  getDynamicDemographicsPrompts,
 } from "./analyticsTabShared";
 
 const GEO_COLUMNS = [
@@ -121,6 +122,11 @@ export default function AnalyticsDemographicsTab({
       (row.roomType && String(row.roomType).toLowerCase().includes(drilldownSearch.toLowerCase()))
     );
   }, [drilldown?.rows, drilldownSearch]);
+
+  const demographicsPrompts = useMemo(
+    () => getDynamicDemographicsPrompts(data),
+    [data],
+  );
 
   if (isLoading && !data) {
     return <AdminAnalyticsDetailSkeleton tab="demographics" isOwner={isOwner} />;
@@ -268,6 +274,14 @@ export default function AnalyticsDemographicsTab({
     });
   };
 
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "SEARCH" && action.filterValue) {
+      setGeoSearch(action.filterValue);
+      setPage(1);
+    }
+  };
+
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       <MetricGrid items={metricCards} />
@@ -275,9 +289,14 @@ export default function AnalyticsDemographicsTab({
       <AnalyticsInsightSection
         reportLabel="demographics"
         summaryTitle="Tenant Demographics Intelligence"
+        reportType="demographics"
+        range={range}
+        branch={branch}
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
+        suggestedPrompts={demographicsPrompts}
+        onExecuteAction={handleExecuteAction}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">

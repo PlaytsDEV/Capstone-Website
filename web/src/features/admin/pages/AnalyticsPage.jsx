@@ -17,6 +17,11 @@ import {
   Users,
   PanelsTopLeft,
   Target,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  DoorOpen,
+  Check,
 } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { usePermissions } from "../../../shared/hooks/usePermissions";
@@ -25,6 +30,7 @@ import {
   useOccupancyReport,
   useOperationsReport,
 } from "../../../shared/hooks/queries/useAnalyticsReports";
+import { useDashboardData } from "../../../shared/hooks/queries/useDashboard";
 import "../styles/design-tokens.css";
 import "../styles/admin-reports.css";
 import {
@@ -54,6 +60,7 @@ import AnalyticsFinancialsTab from "./AnalyticsFinancialsTab";
 import AnalyticsMonitoringTab from "./AnalyticsMonitoringTab";
 import AnalyticsDemographicsTab from "./AnalyticsDemographicsTab";
 import AnalyticsAcquisitionTab from "./AnalyticsAcquisitionTab";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 
 function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const { user } = useAuth();
@@ -169,6 +176,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const occupancyQuery = useOccupancyReport(overviewOccupancyParams);
   const billingQuery = useBillingReport(overviewBillingParams);
   const operationsQuery = useOperationsReport(overviewOperationsParams);
+  const { data: dashboardData } = useDashboardData(sharedDayParams);
 
   const occupancyData = occupancyQuery.data;
   const billingData = billingQuery.data;
@@ -179,6 +187,59 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const occupancyTrend = occupancyData?.series?.occupancyTrend || [];
   const revenueByMonth = billingData?.series?.revenueByMonth || [];
   const reservationsByPeriod = operationsData?.series?.reservationsByPeriod || [];
+
+  const pendingReservations =
+    dashboardData?.reservationStatus?.pending ?? (operationsKpis.reservations || 0);
+  const activeTickets =
+    dashboardData?.kpis?.activeTickets ??
+    (operationsKpis.unresolvedRequests || operationsKpis.maintenanceRequests || 0);
+  const unresolvedInquiries = useMemo(
+    () =>
+      dashboardData?.recentInquiries?.filter(
+        (item) => !["resolved", "closed"].includes(item.status),
+      ).length ?? (operationsKpis.openInquiries || 0),
+    [dashboardData, operationsKpis],
+  );
+  const overdueAmount =
+    billingKpis.overdueAmountLabel || billingKpis.outstandingBalanceLabel || "₱0";
+
+  const hasUrgentActions =
+    pendingReservations > 0 ||
+    activeTickets > 0 ||
+    unresolvedInquiries > 0 ||
+    (billingKpis.outstandingBalance || 0) > 0;
+
+  const roomTypes = useMemo(() => {
+    if (occupancyData?.tables?.roomTypes && occupancyData.tables.roomTypes.length > 0) {
+      return occupancyData.tables.roomTypes;
+    }
+    const totalCap = occupancyKpis.totalCapacity || 10;
+    const occBeds = occupancyKpis.occupiedBeds || 0;
+    const occRate = occupancyKpis.occupancyRate || 0;
+    return [
+      {
+        type: "private",
+        label: "Private",
+        totalBeds: Math.max(1, Math.round(totalCap * 0.2)),
+        occupiedBeds: Math.round(occBeds * 0.2),
+        occupancyRate: occRate,
+      },
+      {
+        type: "double-sharing",
+        label: "Double Sharing",
+        totalBeds: Math.max(1, Math.round(totalCap * 0.4)),
+        occupiedBeds: Math.round(occBeds * 0.4),
+        occupancyRate: occRate,
+      },
+      {
+        type: "quadruple-sharing",
+        label: "Quadruple Sharing",
+        totalBeds: Math.max(1, Math.round(totalCap * 0.4)),
+        occupiedBeds: Math.round(occBeds * 0.4),
+        occupancyRate: occRate,
+      },
+    ];
+  }, [occupancyData, occupancyKpis]);
 
   const branchLabel = formatBranch(
     occupancyData?.scope?.branch ||
@@ -200,15 +261,47 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   };
 
   const handleTabChange = (nextTab) => {
-    setActiveTab(nextTab);
+    const resolvedTab = nextTab === "revenue" ? "billing" : nextTab;
+    setActiveTab(resolvedTab);
     const nextParams = new URLSearchParams(searchParams);
-    if (nextTab === "overview") {
+    if (resolvedTab === "overview") {
       nextParams.delete("tab");
     } else {
-      nextParams.set("tab", nextTab);
+      nextParams.set("tab", resolvedTab);
     }
     setSearchParams(nextParams, { replace: true, preventScrollReset: true });
   };
+
+  const analyticsTabs = useMemo(
+    () => [
+      { id: "overview", label: "Overview", icon: LayoutGrid },
+      { id: "occupancy", label: "Occupancy", icon: BedDouble },
+      { id: "billing", label: "Billing & Revenue", icon: Receipt },
+      { id: "operations", label: "Operations", icon: Wrench },
+      { id: "demographics", label: "Demographics", icon: Users },
+      { id: "acquisition", label: "Lead Acquisition", icon: Target },
+      ...(isOwner
+        ? [
+            {
+              id: "consolidated",
+              label: "Consolidated",
+              icon: PanelsTopLeft,
+            },
+            {
+              id: "financials",
+              label: "Financials",
+              icon: PhilippinePeso,
+            },
+            {
+              id: "monitoring",
+              label: "Monitoring",
+              icon: ShieldAlert,
+            },
+          ]
+        : []),
+    ],
+    [isOwner],
+  );
 
 
 
@@ -348,77 +441,68 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     );
   };
 
+  const activeTabNormalized =
+    activeTab === "revenue" ? "billing" : activeTab === "marketing-roi" ? "acquisition" : activeTab;
+
   return (
-    <div className="analytics-container">
-      {/* Top Bar */}
-      <div className="analytics-topbar">
-        <div className="analytics-topbar-row">
-          <div>
-            <div className="analytics-topbar-title">Analytics</div>
-            <div className="analytics-topbar-sub">
-              {branchLabel} • {buildRangeLabel(range)}
-            </div>
+    <div className="analytics-container space-y-4">
+      {/* Pattern 1 Integrated Sticky Sub-Header */}
+      <AdminPageHeader
+        title="Analytics"
+        subtitle="Review occupancy, revenue, operations, and cross-branch performance trends."
+        tabs={analyticsTabs}
+        activeTab={activeTabNormalized}
+        onTabChange={handleTabChange}
+        controls={
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {isOwner ? (
+              <div className="flex items-center gap-1.5">
+                <label
+                  htmlFor="analytics-header-branch"
+                  className="text-[11px] font-medium text-muted-foreground whitespace-nowrap"
+                >
+                  Branch:
+                </label>
+                <select
+                  id="analytics-header-branch"
+                  value={branch}
+                  onChange={(e) => handleBranchChange(e.target.value)}
+                  className="h-8 px-2.5 py-1 text-xs font-semibold bg-background text-foreground border border-border/80 rounded-lg shadow-xs hover:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary transition-all cursor-pointer"
+                  aria-label="Filter by branch"
+                >
+                  <option value="all">All Branches</option>
+                  <option value="gil-puyat">Gil Puyat</option>
+                  <option value="guadalupe">Guadalupe</option>
+                </select>
+              </div>
+            ) : user?.branch ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">
+                  Branch:
+                </span>
+                <span className="h-8 inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-lg border border-border bg-muted/40 text-foreground">
+                  {branchLabel}
+                </span>
+              </div>
+            ) : null}
+
+            <CardFilterSelect
+              label="Duration:"
+              value={range}
+              onChange={handleRangeChange}
+              options={RANGE_OPTIONS_SHORT}
+              className="h-8"
+              selectClassName="h-8 px-2.5 py-1 text-xs font-semibold rounded-lg"
+              ariaLabel="Filter by duration"
+            />
           </div>
-          {activeTab === "overview" && (
-            <div className="analytics-topbar-actions">
-              <ExportButtons onCsv={exportOverviewCsv} onPdf={exportOverviewPdf} />
-            </div>
-          )}
-        </div>
-        <div className="analytics-tabs">
-          <button
-            className={`analytics-tab ${activeTab === "overview" ? "active" : ""}`}
-            onClick={() => handleTabChange("overview")}
-          >
-            <LayoutGrid className="analytics-tab-icon" />
-            Overview
-          </button>
-          <button
-            className={`analytics-tab ${activeTab === "occupancy" ? "active" : ""}`}
-            onClick={() => handleTabChange("occupancy")}
-          >
-            <BedDouble className="analytics-tab-icon" />
-            Occupancy
-          </button>
-          <button
-            className={`analytics-tab ${activeTab === "revenue" || activeTab === "billing" ? "active" : ""}`}
-            onClick={() => handleTabChange("revenue")}
-          >
-            <Receipt className="analytics-tab-icon" />
-            Billing &amp; Revenue
-          </button>
-          <button
-            className={`analytics-tab ${activeTab === "operations" ? "active" : ""}`}
-            onClick={() => handleTabChange("operations")}
-          >
-            <Wrench className="analytics-tab-icon" />
-            Operations
-          </button>
-          <button
-            className={`analytics-tab ${activeTab === "demographics" ? "active" : ""}`}
-            onClick={() => handleTabChange("demographics")}
-          >
-            <Users className="analytics-tab-icon" />
-            Demographics
-          </button>
-          <button
-            className={`analytics-tab ${activeTab === "acquisition" || activeTab === "marketing-roi" ? "active" : ""}`}
-            onClick={() => handleTabChange("acquisition")}
-          >
-            <Target className="analytics-tab-icon" />
-            Lead Acquisition
-          </button>
-          {isOwner && (
-            <button
-              className={`analytics-tab ${activeTab === "consolidated" ? "active" : ""}`}
-              onClick={() => handleTabChange("consolidated")}
-            >
-              <PanelsTopLeft className="analytics-tab-icon" />
-              Consolidated
-            </button>
-          )}
-        </div>
-      </div>
+        }
+        actions={
+          activeTabNormalized === "overview" ? (
+            <ExportButtons onCsv={exportOverviewCsv} onPdf={exportOverviewPdf} />
+          ) : null
+        }
+      />
 
       <div className="analytics-layout">
         {/* Main Content */}
@@ -426,6 +510,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
           {/* Overview Tab */}
           {activeTab === "overview" && (
             <div className="analytics-tab-content active">
+              {/* Elevated Primary KPI Grid */}
               <div className="analytics-kpi-grid">
                 <div
                   className="analytics-kpi-card interactive"
@@ -442,7 +527,11 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                   <div className={`analytics-kpi-change ${occupancyDelta.changeType || "neutral"}`}>
                     {occupancyDelta.text || `${occupancyDelta.label || "+0 pp"} vs prev period`}
                   </div>
+                  <div className="text-[11px] text-muted-foreground mt-1.5 font-medium">
+                    {occupancyKpis.occupiedBeds || 0} of {occupancyKpis.totalCapacity || 0} beds occupied
+                  </div>
                 </div>
+
                 <div
                   className="analytics-kpi-card interactive"
                   onClick={() => handleTabChange("revenue")}
@@ -460,7 +549,11 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                   <div className={`analytics-kpi-change ${revenueDelta.changeType || "neutral"}`}>
                     {revenueDelta.text || `${revenueDelta.label || "+0%"} vs prev period`}
                   </div>
+                  <div className="text-[11px] text-muted-foreground mt-1.5 font-medium">
+                    Collection rate: {billingKpis.collectionRate || 0}%
+                  </div>
                 </div>
+
                 <div
                   className="analytics-kpi-card interactive"
                   onClick={() => handleTabChange("operations")}
@@ -476,7 +569,11 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                   <div className={`analytics-kpi-change ${reservationsDelta.changeType || "neutral"}`}>
                     {reservationsDelta.text || `${reservationsDelta.label || "+0"} vs prev period`}
                   </div>
+                  <div className="text-[11px] text-muted-foreground mt-1.5 font-medium">
+                    {pendingReservations} awaiting review
+                  </div>
                 </div>
+
                 <div
                   className="analytics-kpi-card interactive"
                   onClick={() => handleTabChange("operations")}
@@ -492,9 +589,13 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                   <div className={`analytics-kpi-change ${maintenanceDelta.changeType || "neutral"}`}>
                     {maintenanceDelta.text || `${maintenanceDelta.label || "+0"} vs prev period`}
                   </div>
+                  <div className="text-[11px] text-muted-foreground mt-1.5 font-medium">
+                    {activeTickets} active ticket{activeTickets === 1 ? "" : "s"}
+                  </div>
                 </div>
               </div>
 
+              {/* 2x2 Layout: 3 Operational Charts + 1 Action & Inventory Hub */}
               <div className="analytics-charts-grid">
                 <div className="analytics-chart-card">
                   <div className="analytics-chart-card-header">
@@ -579,105 +680,190 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                   </div>
                 </div>
 
-                <div className="analytics-chart-card">
+                {/* Dedicated Operational Action Center & Live Queues */}
+                <div className="analytics-chart-card analytics-action-center-card">
                   <div className="analytics-chart-card-header">
-                    <div className="analytics-chart-card-title">Period comparison</div>
-                    <div className="analytics-chart-card-sub">Current vs previous period</div>
+                    <div>
+                      <div className="analytics-chart-card-title">Operational action center</div>
+                      <div className="analytics-chart-card-sub">
+                        Live queue status & required administrator follow-ups
+                      </div>
+                    </div>
+                    {hasUrgentActions ? (
+                      <span className="analytics-queue-pill warning">
+                        <span className="analytics-queue-pill__dot warning" />
+                        Action Required
+                      </span>
+                    ) : (
+                      <span className="analytics-queue-pill clear">
+                        <span className="analytics-queue-pill__dot clear" />
+                        All Queues Clear
+                      </span>
+                    )}
                   </div>
                   <div className="analytics-chart-card-body">
-                    <div className="analytics-metric-row">
-                      <div>
-                        <div className="analytics-metric-row-label">Occupancy rate</div>
-                        <div className="analytics-metric-row-sub">vs previous period</div>
-                      </div>
-                      <div>
-                        <div className="analytics-metric-row-val">
-                          {occupancyKpis.occupancyRateLabel || "0%"}
+                    <div className="analytics-queue-list">
+                      {/* Maintenance Queue */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate("/admin/maintenance")}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            navigate("/admin/maintenance");
+                          }
+                        }}
+                        className="analytics-queue-row"
+                        title="Manage active maintenance issues"
+                      >
+                        <div className="analytics-queue-row__main">
+                          <div className="analytics-queue-icon rose">
+                            <Wrench size={14} />
+                          </div>
+                          <div className="analytics-queue-info">
+                            <span className="analytics-queue-title">Maintenance Tickets</span>
+                            <span className="analytics-queue-desc">
+                              {activeTickets > 0
+                                ? `${activeTickets} open ticket${activeTickets === 1 ? "" : "s"} requiring technician triage`
+                                : "Zero active maintenance tickets"}
+                            </span>
+                          </div>
                         </div>
-                        <div
-                          className="analytics-metric-row-change"
-                          style={{
-                            color:
-                              occupancyDelta.changeType === "up"
-                                ? "var(--success)"
-                                : occupancyDelta.changeType === "down"
-                                  ? "var(--danger)"
-                                  : "var(--muted-foreground)",
-                          }}
-                        >
-                          {occupancyDelta.label}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="analytics-metric-row">
-                      <div>
-                        <div className="analytics-metric-row-label">Revenue collected</div>
-                        <div className="analytics-metric-row-sub">vs previous period</div>
-                      </div>
-                      <div>
-                        <div className="analytics-metric-row-val">
-                          {billingKpis.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0"}
-                        </div>
-                        <div
-                          className="analytics-metric-row-change"
-                          style={{
-                            color:
-                              revenueDelta.changeType === "up"
-                                ? "var(--success)"
-                                : revenueDelta.changeType === "down"
-                                  ? "var(--danger)"
-                                  : "var(--muted-foreground)",
-                          }}
-                        >
-                          {revenueDelta.label}
+                        <div className="analytics-queue-row__end">
+                          {activeTickets > 0 ? (
+                            <span className="analytics-queue-chip warning">
+                              {activeTickets} Open
+                            </span>
+                          ) : (
+                            <span className="analytics-queue-chip clear">
+                              <Check size={11} /> Clear
+                            </span>
+                          )}
+                          <ChevronRight size={14} className="analytics-queue-arrow" />
                         </div>
                       </div>
-                    </div>
-                    <div className="analytics-metric-row">
-                      <div>
-                        <div className="analytics-metric-row-label">Reservations</div>
-                        <div className="analytics-metric-row-sub">vs previous period</div>
-                      </div>
-                      <div>
-                        <div className="analytics-metric-row-val">
-                          {operationsKpis.reservations || 0}
+
+                      {/* Reservations Queue */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate("/admin/reservations")}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            navigate("/admin/reservations");
+                          }
+                        }}
+                        className="analytics-queue-row"
+                        title="Review pending reservations"
+                      >
+                        <div className="analytics-queue-row__main">
+                          <div className="analytics-queue-icon amber">
+                            <CalendarDays size={14} />
+                          </div>
+                          <div className="analytics-queue-info">
+                            <span className="analytics-queue-title">Pending Reservations</span>
+                            <span className="analytics-queue-desc">
+                              {pendingReservations > 0
+                                ? `${pendingReservations} booking${pendingReservations === 1 ? "" : "s"} awaiting approval`
+                                : "No pending reservations"}
+                            </span>
+                          </div>
                         </div>
-                        <div
-                          className="analytics-metric-row-change"
-                          style={{
-                            color:
-                              reservationsDelta.changeType === "up"
-                                ? "var(--success)"
-                                : reservationsDelta.changeType === "down"
-                                  ? "var(--danger)"
-                                  : "var(--muted-foreground)",
-                          }}
-                        >
-                          {reservationsDelta.label}
+                        <div className="analytics-queue-row__end">
+                          {pendingReservations > 0 ? (
+                            <span className="analytics-queue-chip warning">
+                              {pendingReservations} Pending
+                            </span>
+                          ) : (
+                            <span className="analytics-queue-chip clear">
+                              <Check size={11} /> Clear
+                            </span>
+                          )}
+                          <ChevronRight size={14} className="analytics-queue-arrow" />
                         </div>
                       </div>
-                    </div>
-                    <div className="analytics-metric-row">
-                      <div>
-                        <div className="analytics-metric-row-label">Maintenance</div>
-                        <div className="analytics-metric-row-sub">vs previous period</div>
-                      </div>
-                      <div>
-                        <div className="analytics-metric-row-val">
-                          {operationsKpis.maintenanceRequests || 0}
+
+                      {/* Inquiries Queue */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate("/admin/inquiries")}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            navigate("/admin/inquiries");
+                          }
+                        }}
+                        className="analytics-queue-row"
+                        title="View open inquiries"
+                      >
+                        <div className="analytics-queue-row__main">
+                          <div className="analytics-queue-icon blue">
+                            <Users size={14} />
+                          </div>
+                          <div className="analytics-queue-info">
+                            <span className="analytics-queue-title">Tenant Inquiries</span>
+                            <span className="analytics-queue-desc">
+                              {unresolvedInquiries > 0
+                                ? `${unresolvedInquiries} open message${unresolvedInquiries === 1 ? "" : "s"} awaiting reply`
+                                : "All inquiries addressed"}
+                            </span>
+                          </div>
                         </div>
-                        <div
-                          className="analytics-metric-row-change"
-                          style={{
-                            color:
-                              maintenanceDelta.changeType === "up"
-                                ? "var(--danger)"
-                                : maintenanceDelta.changeType === "down"
-                                  ? "var(--success)"
-                                  : "var(--muted-foreground)",
-                          }}
-                        >
-                          {maintenanceDelta.label}
+                        <div className="analytics-queue-row__end">
+                          {unresolvedInquiries > 0 ? (
+                            <span className="analytics-queue-chip warning">
+                              {unresolvedInquiries} Open
+                            </span>
+                          ) : (
+                            <span className="analytics-queue-chip clear">
+                              <Check size={11} /> Clear
+                            </span>
+                          )}
+                          <ChevronRight size={14} className="analytics-queue-arrow" />
+                        </div>
+                      </div>
+
+                      {/* Billing & Overdue Queue */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => handleTabChange("billing")}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleTabChange("billing");
+                          }
+                        }}
+                        className="analytics-queue-row"
+                        title="View overdue balances"
+                      >
+                        <div className="analytics-queue-row__main">
+                          <div className="analytics-queue-icon emerald">
+                            <PhilippinePeso size={14} />
+                          </div>
+                          <div className="analytics-queue-info">
+                            <span className="analytics-queue-title">Outstanding Balances</span>
+                            <span className="analytics-queue-desc">
+                              {(billingKpis.outstandingBalance || 0) > 0
+                                ? `${overdueAmount} pending collection`
+                                : "All accounts up to date"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="analytics-queue-row__end">
+                          {(billingKpis.outstandingBalance || 0) > 0 ? (
+                            <span className="analytics-queue-chip danger">
+                              {overdueAmount}
+                            </span>
+                          ) : (
+                            <span className="analytics-queue-chip clear">
+                              <Check size={11} /> Settled
+                            </span>
+                          )}
+                          <ChevronRight size={14} className="analytics-queue-arrow" />
                         </div>
                       </div>
                     </div>
@@ -688,18 +874,30 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
           )}
 
           {/* Detailed Reports Render */}
-          {activeTab === "occupancy" && <AnalyticsOccupancyTab {...detailSharedProps} />}
-          {(activeTab === "revenue" || activeTab === "billing" || activeTab === "financials") && (
+          {activeTabNormalized === "occupancy" && (
+            <AnalyticsOccupancyTab {...detailSharedProps} />
+          )}
+          {activeTabNormalized === "billing" && (
             <AnalyticsBillingTab {...detailSharedProps} />
           )}
-          {(activeTab === "operations" || activeTab === "monitoring") && (
+          {activeTabNormalized === "financials" && (
+            <AnalyticsFinancialsTab {...detailSharedProps} />
+          )}
+          {activeTabNormalized === "operations" && (
             <AnalyticsOperationsTab {...detailSharedProps} />
           )}
-          {activeTab === "demographics" && <AnalyticsDemographicsTab {...detailSharedProps} />}
-          {(activeTab === "acquisition" || activeTab === "marketing-roi") && (
+          {activeTabNormalized === "monitoring" && (
+            <AnalyticsMonitoringTab {...detailSharedProps} />
+          )}
+          {activeTabNormalized === "demographics" && (
+            <AnalyticsDemographicsTab {...detailSharedProps} />
+          )}
+          {activeTabNormalized === "acquisition" && (
             <AnalyticsAcquisitionTab {...detailSharedProps} />
           )}
-          {activeTab === "consolidated" && <AnalyticsConsolidatedTab {...detailSharedProps} />}
+          {activeTabNormalized === "consolidated" && (
+            <AnalyticsConsolidatedTab {...detailSharedProps} />
+          )}
         </main>
       </div>
     </div>

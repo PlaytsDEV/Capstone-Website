@@ -21,6 +21,8 @@ import {
   RANGE_OPTIONS_LONG,
   unwrapTableRows,
   useReportInsights,
+  detectBillingAnomalies,
+  getDynamicFinancialsPrompts,
 } from "./analyticsTabShared";
 
 const OVERDUE_ROOM_COLUMNS = [
@@ -76,9 +78,16 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
     });
   }, [overdueRooms, searchQuery, exposureFilter]);
 
+  const financialsPrompts = useMemo(
+    () => getDynamicFinancialsPrompts(data),
+    [data],
+  );
+
   if (isLoading && !data) {
     return <AdminAnalyticsDetailSkeleton tab="financials" />;
   }
+
+  const anomalies = detectBillingAnomalies(data?.kpis);
 
   const metricCards = [
     {
@@ -95,6 +104,7 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
       tone: "rose",
       trend: "Pending dues",
       changeType: "down",
+      anomalyBadge: anomalies.overdueAmount,
     },
     {
       icon: Receipt,
@@ -102,6 +112,7 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
       value: (data?.kpis?.overdueAmountLabel || "PHP 0").replace("PHP ", "₱"),
       tone: "amber",
       trend: "Late payments",
+      anomalyBadge: anomalies.overdueAmount,
     },
     {
       icon: TrendingUp,
@@ -109,6 +120,7 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
       value: data?.kpis?.collectionRateLabel || "0%",
       tone: "blue",
       trend: "Target: > 90%",
+      anomalyBadge: anomalies.collectionRate,
     },
   ];
 
@@ -189,6 +201,17 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
     });
   };
 
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "FILTER_STATUS" && action.filterValue) {
+      setExposureFilter(action.filterValue);
+      setPage(1);
+    } else if (action.actionType === "SEARCH" && action.filterValue) {
+      setSearchQuery(action.filterValue);
+      setPage(1);
+    }
+  };
+
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       <MetricGrid items={metricCards} />
@@ -196,9 +219,14 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
       <AnalyticsInsightSection
         reportLabel="financials"
         summaryTitle="Financial Summary"
+        reportType="financials"
+        range={range}
+        branch={branch}
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
+        suggestedPrompts={financialsPrompts}
+        onExecuteAction={handleExecuteAction}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

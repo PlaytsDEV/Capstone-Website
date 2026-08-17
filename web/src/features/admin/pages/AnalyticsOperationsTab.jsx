@@ -36,6 +36,8 @@ import {
   RANGE_OPTIONS_SHORT,
   unwrapTableRows,
   useReportInsights,
+  detectOperationsAnomalies,
+  getDynamicOperationsPrompts,
 } from "./analyticsTabShared";
 
 const MAINTENANCE_COLUMNS = [
@@ -241,6 +243,11 @@ export default function AnalyticsOperationsTab({
     });
   }, [maintenanceIssues, searchQuery, slaFilter, urgencyFilter]);
 
+  const operationsPrompts = useMemo(
+    () => getDynamicOperationsPrompts(data),
+    [data],
+  );
+
   if (isLoading && !data) {
     return <AdminAnalyticsDetailSkeleton tab="operations" isOwner={isOwner} />;
   }
@@ -271,6 +278,8 @@ export default function AnalyticsOperationsTab({
     text: "vs target",
   };
 
+  const anomalies = detectOperationsAnomalies(data?.kpis);
+
   const metricCards = [
     {
       icon: CalendarDays,
@@ -287,6 +296,7 @@ export default function AnalyticsOperationsTab({
       value: maintCount,
       trend: maintenanceDelta.text || `${maintenanceDelta.label || "+0"} vs prev period`,
       changeType: maintenanceDelta.changeType === "up" ? "down" : maintenanceDelta.changeType === "down" ? "up" : "neutral",
+      anomalyBadge: anomalies.maintenanceRequests,
     },
     {
       icon: Users,
@@ -303,6 +313,7 @@ export default function AnalyticsOperationsTab({
       value: slaRate,
       trend: slaDelta.text || `${slaDelta.label || "+0 pp"} on-time rate`,
       changeType: slaDelta.changeType || "neutral",
+      anomalyBadge: anomalies.slaComplianceRate,
     },
   ];
 
@@ -407,6 +418,17 @@ export default function AnalyticsOperationsTab({
     },
   ];
 
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "FILTER_SLA" && action.filterValue) {
+      setSlaFilter(action.filterValue);
+      setPage(1);
+    } else if (action.actionType === "SEARCH" && action.filterValue) {
+      setSearchQuery(action.filterValue);
+      setPage(1);
+    }
+  };
+
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       <MetricGrid items={metricCards} />
@@ -414,9 +436,14 @@ export default function AnalyticsOperationsTab({
       <AnalyticsInsightSection
         reportLabel="operations"
         summaryTitle="Operations & SLA Intelligence"
+        reportType="operations"
+        range={range}
+        branch={branch}
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
+        suggestedPrompts={operationsPrompts}
+        onExecuteAction={handleExecuteAction}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

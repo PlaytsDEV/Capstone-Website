@@ -37,6 +37,8 @@ import {
   RANGE_OPTIONS_SHORT,
   unwrapTableRows,
   useReportInsights,
+  detectBillingAnomalies,
+  getDynamicBillingPrompts,
 } from "./analyticsTabShared";
 
 const OVERDUE_COLUMNS = [
@@ -160,35 +162,44 @@ export default function AnalyticsBillingTab({
     });
   }, [overdueAccounts, searchQuery, statusFilter]);
 
+  const billingPrompts = useMemo(
+    () => getDynamicBillingPrompts(data),
+    [data],
+  );
+
   if (isLoading && !data) {
     return <AdminAnalyticsDetailSkeleton tab="billing" isOwner={isOwner} />;
   }
 
-  const collectedStr = data?.kpis?.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0";
-  const billedStr = data?.kpis?.billedAmountLabel?.replace("PHP ", "₱") || "₱0";
-  const overdueStr = data?.kpis?.outstandingBalanceLabel?.replace("PHP ", "₱") || "₱0";
-  const rateStr = data?.kpis?.collectionRateLabel || "0%";
+  const kpis = data?.kpis || {};
 
-  const revenueDelta = data?.kpis?.comparison?.collectedRevenue || {
+  const collectedStr = kpis.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0";
+  const billedStr = kpis.billedAmountLabel?.replace("PHP ", "₱") || "₱0";
+  const overdueStr = kpis.outstandingBalanceLabel?.replace("PHP ", "₱") || "₱0";
+  const rateStr = kpis.collectionRateLabel || "0%";
+
+  const revenueDelta = kpis.comparison?.collectedRevenue || {
     label: "+0%",
     changeType: "neutral",
     text: "vs prev period",
   };
-  const billedDelta = data?.kpis?.comparison?.billedAmount || {
+  const billedDelta = kpis.comparison?.billedAmount || {
     label: "+0%",
     changeType: "neutral",
     text: "vs prev period",
   };
-  const rateDelta = data?.kpis?.comparison?.collectionRate || {
+  const rateDelta = kpis.comparison?.collectionRate || {
     label: "+0 pp",
     changeType: "neutral",
     text: "vs prev period",
   };
-  const balanceDelta = data?.kpis?.comparison?.outstandingBalance || {
+  const balanceDelta = kpis.comparison?.outstandingBalance || {
     label: "0%",
     changeType: "neutral",
     text: "vs prev period",
   };
+
+  const anomalies = detectBillingAnomalies(kpis);
 
   const metricCards = [
     {
@@ -214,6 +225,7 @@ export default function AnalyticsBillingTab({
       value: overdueStr,
       trend: balanceDelta.text || `${balanceDelta.label || "0%"} vs prev period`,
       changeType: balanceDelta.changeType === "up" ? "down" : balanceDelta.changeType === "down" ? "up" : "neutral",
+      anomalyBadge: anomalies.overdueAmount,
     },
     {
       icon: TrendingUp,
@@ -222,6 +234,7 @@ export default function AnalyticsBillingTab({
       value: rateStr,
       trend: rateDelta.text || `${rateDelta.label || "+0 pp"} vs prev period`,
       changeType: rateDelta.changeType || "neutral",
+      anomalyBadge: anomalies.collectionRate,
     },
   ];
 
@@ -334,6 +347,17 @@ export default function AnalyticsBillingTab({
     },
   ];
 
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "FILTER_STATUS" && action.filterValue) {
+      setStatusFilter(action.filterValue);
+      setPage(1);
+    } else if (action.actionType === "SEARCH" && action.filterValue) {
+      setSearchQuery(action.filterValue);
+      setPage(1);
+    }
+  };
+
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       <MetricGrid items={metricCards} />
@@ -341,9 +365,14 @@ export default function AnalyticsBillingTab({
       <AnalyticsInsightSection
         reportLabel="billing"
         summaryTitle="Billing & Financial Intelligence"
+        reportType="billing"
+        range={range}
+        branch={branch}
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
+        suggestedPrompts={billingPrompts}
+        onExecuteAction={handleExecuteAction}
       />
 
       {isOwner && branchComparison.length > 0 && (
