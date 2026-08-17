@@ -205,8 +205,8 @@ export default function AdminPaymentsTab({ isActive }) {
           </div>
         ) : payments.length === 0 ? (
           <div className="mt-4 rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-muted">
-              <CreditCard size={20} />
+            <div className="mx-auto mb-3 flex shrink-0 items-center justify-center text-slate-500 dark:text-slate-400">
+              <CreditCard size={28} />
             </div>
             No payment transactions found for the selected filters.
           </div>

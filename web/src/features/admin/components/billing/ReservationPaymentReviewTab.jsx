@@ -522,7 +522,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4 shadow-xs">
         <div>
           <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground">
-            <CreditCard size={18} className="text-slate-600 dark:text-slate-400" />
+            <CreditCard size={18} className="text-emerald-600 dark:text-emerald-400" />
             Reservation Payments
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -530,7 +530,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:border-slate-700 dark:bg-emerald-950/40 dark:text-emerald-300">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse" />
             Live Sync
           </span>
@@ -538,15 +538,14 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       </div>
 
       {/* Top Financial KPI Summary Cards */}
-      {/* Top Financial KPI Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-4">
         <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Total Deposits Collected
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400">
-              <Coins size={15} />
+            <div className="flex shrink-0 items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <Coins size={18} />
             </div>
           </div>
           <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
@@ -559,11 +558,11 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Confirmed Settlements
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
-              <CheckCircle2 size={15} />
+            <div className="flex shrink-0 items-center justify-center text-sky-600 dark:text-sky-400">
+              <CheckCircle2 size={18} />
             </div>
           </div>
-          <div className="text-2xl font-bold tracking-tight text-blue-600 dark:text-blue-400 mt-2">
+          <div className="text-2xl font-bold tracking-tight text-sky-600 dark:text-sky-400 mt-2">
             {summaryStats.confirmedCount} Paid
           </div>
         </div>
@@ -573,8 +572,8 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Pending / In Review
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
-              <Clock size={15} />
+            <div className="flex shrink-0 items-center justify-center text-amber-600 dark:text-amber-400">
+              <Clock size={18} />
             </div>
           </div>
           <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
@@ -587,8 +586,8 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Settlement Rate
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-400">
-              <Percent size={15} />
+            <div className="flex shrink-0 items-center justify-center text-teal-600 dark:text-teal-400">
+              <Percent size={18} />
             </div>
           </div>
           <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
@@ -913,8 +912,8 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
               {/* Informative Feature Card */}
               <div className="mt-3 max-w-md w-full rounded-xl border border-border bg-muted/20 p-4 text-left space-y-3 shadow-xs">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 border border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800">
-                    <ShieldCheck size={18} className="text-emerald-700 dark:text-emerald-400" />
+                  <div className="flex shrink-0 items-center justify-center text-emerald-600 dark:text-emerald-400">
+                    <ShieldCheck size={20} />
                   </div>
                   <div>
                     <p className="text-xs font-bold text-card-foreground">Gateway Verification</p>

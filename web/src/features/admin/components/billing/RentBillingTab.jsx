@@ -717,8 +717,8 @@ export default function RentBillingTab({ isActive }) {
         <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Expected Revenue</p>
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              <DollarSign size={14} />
+            <div className="flex shrink-0 items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <DollarSign size={18} />
             </div>
           </div>
           <p className="mt-2 text-2xl font-bold tracking-tight text-card-foreground">{fmtCurrency(kpis.expected)}</p>
@@ -730,11 +730,11 @@ export default function RentBillingTab({ isActive }) {
         <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Collected</p>
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-100 text-emerald-800 font-extrabold text-[11px]">
+            <div className="text-emerald-700 dark:text-emerald-400 font-extrabold text-[12px]">
               {kpis.collectionPercent}%
             </div>
           </div>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-emerald-700">{fmtCurrency(kpis.collected)}</p>
+          <p className="mt-2 text-2xl font-bold tracking-tight text-emerald-700 dark:text-emerald-400">{fmtCurrency(kpis.collected)}</p>
           <div className="mt-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800 h-1.5 w-full">
             <div className="h-full bg-emerald-600 rounded-full transition-all duration-500" style={{ width: `${kpis.collectionPercent}%` }} />
           </div>
@@ -743,8 +743,8 @@ export default function RentBillingTab({ isActive }) {
         <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Outstanding</p>
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300">
-              <TrendingUp size={14} />
+            <div className="flex shrink-0 items-center justify-center text-amber-600 dark:text-amber-400">
+              <TrendingUp size={18} />
             </div>
           </div>
           <p className="mt-2 text-2xl font-bold tracking-tight text-card-foreground">{fmtCurrency(kpis.outstanding)}</p>
@@ -763,7 +763,7 @@ export default function RentBillingTab({ isActive }) {
           <div className="flex h-full flex-col justify-between">
             <div className="flex items-center justify-between text-card-foreground">
               <div className="flex items-center gap-2 text-xs font-bold">
-                <Clock3 size={16} className="text-slate-600 dark:text-slate-400" />
+                <Clock3 size={16} className="text-sky-600 dark:text-sky-400" />
                 Automated Cron System
               </div>
               <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200 uppercase">
@@ -858,8 +858,8 @@ export default function RentBillingTab({ isActive }) {
                 <tr>
                   <td colSpan={5} className="py-12 text-center">
                     <div className="mx-auto flex max-w-sm flex-col items-center justify-center text-muted-foreground">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mb-2.5">
-                        <CheckCircle size={24} className="text-emerald-600" />
+                      <div className="flex shrink-0 items-center justify-center mb-2.5">
+                        <CheckCircle size={28} className="text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <p className="text-sm font-bold text-card-foreground">No rent statements found</p>
                       <p className="mt-0.5 text-xs text-muted-foreground text-center">

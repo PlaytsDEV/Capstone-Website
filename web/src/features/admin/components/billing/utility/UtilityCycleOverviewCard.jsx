@@ -1,0 +1,158 @@
+import React from "react";
+import {
+  Calendar,
+  Plus,
+  Send,
+  Zap,
+  Droplets,
+  DollarSign,
+  Gauge,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
+import { getRoomLabel } from "../../../../../shared/utils/roomLabel";
+import { fmtCurrency, fmtNumber, fmtDate, getCycleLabel, EMPTY_VALUE } from "./utilityConstants";
+import { ExportButtons } from "../../../pages/analyticsTabShared";
+
+export default function UtilityCycleOverviewCard({
+  selectedRoom,
+  currentPeriod,
+  currentPeriodUsage,
+  currentPeriodCost,
+  readyRoomsCount = 0,
+  onOpenNewPeriodModal,
+  onBatchSendReady,
+  onExportCsv,
+  onExportPdf,
+  isExporting,
+  utilityType,
+  isSendingBatch,
+}) {
+  const unit = utilityType === "electricity" ? "kWh" : "cu.m.";
+  const UtilityIcon = utilityType === "electricity" ? Zap : Droplets;
+  const roomName = selectedRoom ? getRoomLabel(selectedRoom) : "Select a Room";
+  const branchLabel = selectedRoom?.branch ? String(selectedRoom.branch).toUpperCase() : "";
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs">
+      {/* Header bar with Room title, Branch, Tenant count, and Action buttons */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+        <div className="flex items-center gap-3">
+          <div className={`flex shrink-0 items-center justify-center ${
+            utilityType === "electricity"
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-sky-600 dark:text-sky-400"
+          }`}>
+            <UtilityIcon size={20} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-card-foreground">
+                {roomName}
+              </h2>
+              {branchLabel && (
+                <span className="rounded border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
+                  {branchLabel}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {selectedRoom
+                ? `${selectedRoom.activeTenantCount || 0} active tenant${selectedRoom.activeTenantCount !== 1 ? "s" : ""} in room`
+                : "Select a room from the list to view billing cycles"}
+            </p>
+          </div>
+        </div>
+
+        {/* Action CTAs */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onBatchSendReady}
+            disabled={readyRoomsCount === 0 || isSendingBatch}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+            title={
+              readyRoomsCount === 0
+                ? "No finalized utility bills are awaiting release to tenants"
+                : "Review and select finalized rooms to release statements"
+            }
+          >
+            <Send size={13} />
+            <span>Send Ready ({readyRoomsCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenNewPeriodModal}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A1628] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#13243D] active:scale-[0.98] transition-all focus-visible:ring-2 focus-visible:ring-[#D4AF37] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+          >
+            <Plus size={13} />
+            <span>New Billing Period</span>
+          </button>
+
+          <ExportButtons
+            onCsv={onExportCsv}
+            onPdf={onExportPdf}
+            loading={isExporting}
+            disabled={!selectedRoom}
+          />
+        </div>
+      </div>
+
+      {/* Cycle Highlights Section */}
+      {currentPeriod ? (
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {/* Cycle Range */}
+          <div className="rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <Calendar size={12} className="text-sky-600 dark:text-sky-400" />
+              Active Cycle Range
+            </div>
+            <p className="mt-1.5 text-sm font-bold text-card-foreground">
+              {getCycleLabel(currentPeriod)}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {fmtDate(currentPeriod.startDate)} → {fmtDate(currentPeriod.endDate || currentPeriod.targetCloseDate) || "Ongoing"}
+            </p>
+          </div>
+
+          {/* Consumption & Readings */}
+          <div className="rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <Gauge size={12} className={utilityType === "electricity" ? "text-amber-600 dark:text-amber-400" : "text-sky-600 dark:text-sky-400"} />
+              Usage & Rate
+            </div>
+            <p className="mt-1.5 text-sm font-bold text-card-foreground">
+              {currentPeriodUsage != null ? `${fmtNumber(currentPeriodUsage, 2)} ${unit}` : EMPTY_VALUE}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Rate: {fmtCurrency(currentPeriod.ratePerUnit)} / {unit}
+            </p>
+          </div>
+
+          {/* Estimated Total Charge */}
+          <div className="rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <DollarSign size={12} className="text-emerald-600 dark:text-emerald-400" />
+              Total Room Charge
+            </div>
+            <p className="mt-1.5 text-sm font-bold text-card-foreground">
+              {currentPeriodCost != null ? fmtCurrency(currentPeriodCost) : EMPTY_VALUE}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Status: <span className="font-semibold uppercase">{currentPeriod.status || "Active"}</span>
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
+          <AlertCircle size={24} className="text-amber-500 dark:text-amber-400" />
+          <p className="mt-2 font-semibold text-card-foreground">No Active Billing Period</p>
+          <p className="mt-0.5 text-[11px]">
+            Click "New Billing Period" above to create an open cycle and record meter readings.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}

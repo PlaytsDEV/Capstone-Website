@@ -88,13 +88,12 @@ export default function OverdueNoticeTracker({ branch }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground">
-            <BellRing size={18} className="text-amber-600 dark:text-amber-400" />
+            <BellRing size={18} className="text-rose-600 dark:text-rose-400" />
             3-Notice Overdue Escalation Tracker
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Formal overdue escalation state machine (Eligible → Notice 1 → Notice 2 → Notice 3 Final → Review Board).
           </p>
-
         </div>
         <div className="flex items-center gap-2.5">
           <div className="relative flex items-center w-full sm:w-56">
@@ -130,70 +129,60 @@ export default function OverdueNoticeTracker({ branch }) {
 
       {/* KPI Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-4">
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Total Overdue Debt
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
-              <DollarSign size={15} />
-            </div>
+            <DollarSign size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
           </div>
           <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
             ₱{Number(stats.totalExposure || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Overdue Accounts
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              <AlertCircle size={15} />
-            </div>
+            <AlertCircle size={18} className="text-slate-500 dark:text-slate-400 shrink-0" />
           </div>
-          <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+          <div className="text-2xl font-bold tracking-tight text-card-foreground mt-2">
             {stats.overdueAccounts || 0}
           </div>
         </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Pending Notice 1
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
-              <Clock size={15} />
-            </div>
+            <Clock size={18} className="text-sky-600 dark:text-sky-400 shrink-0" />
           </div>
-          <div className="text-2xl font-bold tracking-tight text-blue-600 dark:text-blue-400 mt-2">
+          <div className="text-2xl font-bold tracking-tight text-sky-600 dark:text-sky-400 mt-2">
             {stats.pendingNotice1Count || 0}
           </div>
         </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Notice 2 Urgent
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
-              <AlertCircle size={15} />
-            </div>
+            <AlertCircle size={18} className="text-amber-600 dark:text-amber-400 shrink-0" />
           </div>
           <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
             {stats.notice1ActiveCount || stats.notice2ActiveCount || 0}
           </div>
         </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Notice 3 / Critical
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
-              <ShieldAlert size={15} />
-            </div>
+            <ShieldAlert size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
           </div>
           <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
             {stats.notice3FinalCount || 0}
@@ -217,7 +206,7 @@ export default function OverdueNoticeTracker({ branch }) {
             onClick={() => setStageFilter(tab.key)}
             className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
               stageFilter === tab.key
-                ? "bg-slate-900 text-white shadow-xs dark:bg-slate-100 dark:text-slate-900"
+                ? "bg-[#0A1628] text-white shadow-xs dark:bg-slate-100 dark:text-slate-900"
                 : "border border-border bg-card text-muted-foreground hover:bg-muted hover:text-card-foreground"
             }`}
           >
@@ -285,16 +274,16 @@ export default function OverdueNoticeTracker({ branch }) {
                     <td className="px-4 py-3">
                       <StatusBadge status={n.noticeStage || `notice_${n.noticeCount || 1}`} />
                     </td>
-                    <td className="px-4 py-3 font-bold text-red-600">
+                    <td className="px-4 py-3 font-bold text-rose-600 dark:text-rose-400">
                       ₱{Number(n.remainingAmount || n.frozenAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td className="px-4 py-3 text-[11px] text-muted-foreground font-medium">
+                    <td className="px-4 py-3 text-[11px] font-medium">
                       {n.deliveredAt ? (
                         <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
                           Delivered: {new Date(n.deliveredAt).toLocaleDateString("en-PH")}
                         </span>
                       ) : n.noticeCount === 0 ? (
-                        <span className="text-blue-700 dark:text-blue-400 font-medium">Eligible for Notice 1</span>
+                        <span className="text-sky-700 dark:text-sky-400 font-medium">Eligible for Notice 1</span>
                       ) : (
                         <span className="text-amber-700 dark:text-amber-400 font-medium">Pending Delivery</span>
                       )}
@@ -304,26 +293,26 @@ export default function OverdueNoticeTracker({ branch }) {
                         <button
                           type="button"
                           onClick={() => handleOpenNoticeModal(n, 1)}
-                          className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-slate-300 bg-slate-100 text-[11px] font-semibold text-slate-800 hover:bg-slate-200 active:scale-[0.98] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                          className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-border bg-card text-[11px] font-semibold text-slate-800 hover:bg-muted active:scale-[0.98] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                           title="Dispatch Notice 1: Friendly Payment Reminder"
                         >
-                          N1
+                          Dispatch N1
                         </button>
                         <button
                           type="button"
                           onClick={() => handleOpenNoticeModal(n, 2)}
-                          className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-amber-300 bg-amber-50 text-[11px] font-semibold text-amber-900 hover:bg-amber-100 active:scale-[0.98] dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                          className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-border bg-card text-[11px] font-semibold text-amber-700 hover:bg-amber-50/50 active:scale-[0.98] dark:border-slate-700 dark:bg-slate-800 dark:text-amber-400 dark:hover:bg-slate-700"
                           title="Dispatch Notice 2: Urgent Demand Notice"
                         >
-                          N2
+                          Dispatch N2
                         </button>
                         <button
                           type="button"
                           onClick={() => handleOpenNoticeModal(n, 3)}
-                          className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-red-300 bg-red-600 text-[11px] font-semibold text-white hover:bg-red-700 active:scale-[0.98] dark:border-red-700 dark:bg-red-700 dark:hover:bg-red-800"
+                          className="inline-flex h-7 px-2.5 items-center justify-center rounded-md bg-rose-600 text-[11px] font-semibold text-white hover:bg-rose-700 active:scale-[0.98] dark:bg-rose-600 dark:hover:bg-rose-700"
                           title="Dispatch Notice 3 (Final): Intent to Terminate"
                         >
-                          N3 Final
+                          Dispatch N3 Final
                         </button>
                       </div>
                     </td>

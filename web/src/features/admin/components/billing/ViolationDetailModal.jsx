@@ -26,14 +26,14 @@ const getInitials = (name) => {
   return name.slice(0, 2).toUpperCase();
 };
 
-function ResidentAvatar({ avatarUrl, name, className = "h-10 w-10 text-xs" }) {
+function TenantAvatar({ avatarUrl, name, className = "h-10 w-10 text-xs" }) {
   const [imgError, setImgError] = useState(false);
 
   if (avatarUrl && !imgError) {
     return (
       <img
         src={avatarUrl}
-        alt={name || "Resident"}
+        alt={name || "Tenant"}
         onError={() => setImgError(true)}
         className={`${className} rounded-full object-cover border border-border shrink-0`}
       />
@@ -134,8 +134,8 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-100">
-              <ShieldAlert size={18} />
+            <div className="flex shrink-0 items-center justify-center text-rose-600 dark:text-rose-400">
+              <ShieldAlert size={20} />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -188,7 +188,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
           {/* Tenant & Room Card */}
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-muted/20 p-4">
             <div className="flex items-center gap-3">
-              <ResidentAvatar
+              <TenantAvatar
                 avatarUrl={violation.tenantAvatar || violation.tenantProfileImage || violation.tenantId?.profileImage}
                 name={violation.tenantName}
                 className="h-10 w-10 text-xs"
@@ -206,7 +206,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
 
             <div className="text-right">
               <span className="text-[11px] text-muted-foreground block font-medium">Assessed Penalty</span>
-              <span className="text-sm font-bold text-red-600">
+              <span className="text-sm font-bold text-rose-600 dark:text-rose-400">
                 ₱{Number(violation.penaltyApplied || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
@@ -367,7 +367,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                     className="mt-0.5 h-3.5 w-3.5 rounded border-border"
                   />
                   <label htmlFor="adjudicateChargeToBill" className="cursor-pointer text-[11px] text-card-foreground">
-                    Append penalty fee (₱{Number(violation.penaltyApplied).toFixed(2)}) to resident's current/next billing statement
+                    Append penalty fee (₱{Number(violation.penaltyApplied).toFixed(2)}) to tenant's current/next billing statement
                   </label>
                 </div>
               )}
@@ -376,7 +376,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                 <button
                   type="submit"
                   disabled={adjudicating}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white shadow-xs hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-[#0A1628] px-4 text-xs font-bold text-white shadow-xs hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
                 >
                   {adjudicating ? (
                     <>
@@ -405,7 +405,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                 <strong className="text-card-foreground">Findings & Basis:</strong> {violation.adminDecisionReason || violation.resolution || "Case closed."}
               </p>
               {violation.status === "escalated" && (
-                <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-[11px] text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300 font-medium">
+                <div className="mt-2 rounded-lg border border-border bg-card p-2.5 text-[11px] text-rose-600 dark:text-rose-400 font-medium">
                   ⚠️ This case has been formally escalated to the Administrative Termination Review Board.
                 </div>
               )}

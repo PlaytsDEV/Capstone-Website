@@ -109,8 +109,8 @@ export default function ConsolidatedBillingMonitorTab({
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Total Billed
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              <DollarSign size={15} />
+            <div className="flex shrink-0 items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <DollarSign size={18} />
             </div>
           </div>
           <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
@@ -126,8 +126,8 @@ export default function ConsolidatedBillingMonitorTab({
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Total Collected
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400">
-              <CheckCircle2 size={15} />
+            <div className="flex shrink-0 items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 size={18} />
             </div>
           </div>
           <div className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-2">
@@ -143,8 +143,8 @@ export default function ConsolidatedBillingMonitorTab({
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Outstanding Balance
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
-              <AlertTriangle size={15} />
+            <div className="flex shrink-0 items-center justify-center text-rose-600 dark:text-rose-400">
+              <AlertTriangle size={18} />
             </div>
           </div>
           <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
@@ -160,8 +160,8 @@ export default function ConsolidatedBillingMonitorTab({
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Collection Rate
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
-              <TrendingUp size={15} />
+            <div className="flex shrink-0 items-center justify-center text-sky-600 dark:text-sky-400">
+              <TrendingUp size={18} />
             </div>
           </div>
           <div className="text-2xl font-bold tracking-tight text-foreground mt-2">

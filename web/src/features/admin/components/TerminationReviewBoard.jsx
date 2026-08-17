@@ -72,7 +72,7 @@ export default function TerminationReviewBoard({ branch }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground">
-            <ShieldAlert size={18} className="text-red-600" />
+            <ShieldAlert size={18} className="text-rose-600 dark:text-rose-400" />
             Administrative Termination Review Board
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -102,7 +102,7 @@ export default function TerminationReviewBoard({ branch }) {
           <button
             type="button"
             onClick={() => setIsOpenCaseModalOpen(true)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white shadow-xs transition hover:bg-slate-800 active:scale-[0.98] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#0A1628] px-3 text-xs font-bold text-white shadow-xs transition hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
           >
             <Plus size={13} /> Open Case
           </button>
@@ -125,7 +125,7 @@ export default function TerminationReviewBoard({ branch }) {
             <thead className="bg-background">
               <tr>
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Case #</th>
-                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Resident</th>
+                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Tenant</th>
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Trigger Reason</th>
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Frozen Debt</th>
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Board Status</th>
@@ -163,7 +163,7 @@ export default function TerminationReviewBoard({ branch }) {
                           {getInitials(c.tenantName)}
                         </div>
                         <div>
-                          <p className="font-bold text-card-foreground">{c.tenantName || "Resident"}</p>
+                          <p className="font-bold text-card-foreground">{c.tenantName || "Tenant"}</p>
                           <p className="text-[11px] text-muted-foreground">
                             {c.reservationId?.roomNumber ? `Room ${c.reservationId.roomNumber}` : "Room Assigned"} · {c.branch}
                           </p>
@@ -173,7 +173,7 @@ export default function TerminationReviewBoard({ branch }) {
                     <td className="px-4 py-3 text-muted-foreground font-medium max-w-xs truncate" title={c.reason || c.triggerReason}>
                       {c.reason || c.triggerReason || "Notice 3 Exhaustion"}
                     </td>
-                    <td className="px-4 py-3 font-bold text-red-600">
+                    <td className="px-4 py-3 font-bold text-rose-600 dark:text-rose-400">
                       ₱{Number(c.balanceSnapshot || c.totalOutstandingAtOpen || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td className="px-4 py-3">
@@ -183,7 +183,7 @@ export default function TerminationReviewBoard({ branch }) {
                       <button
                         type="button"
                         onClick={() => handleOpenReview(c)}
-                        className="inline-flex h-7 px-3 items-center justify-center gap-1 rounded-md border border-slate-300 bg-slate-100 text-[11px] font-bold text-slate-800 hover:bg-slate-200 active:scale-[0.98] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                        className="inline-flex h-7 px-3 items-center justify-center gap-1 rounded-md border border-border bg-card text-[11px] font-semibold text-card-foreground hover:bg-muted active:scale-[0.98] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                       >
                         Review Case <ArrowUpRight size={11} />
                       </button>

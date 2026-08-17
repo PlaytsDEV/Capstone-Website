@@ -1,5 +1,15 @@
-import { useState, useEffect } from "react";
-import { X, Info, Zap, Calendar, AlertCircle, ArrowRight, Sparkles } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import {
+  X,
+  Info,
+  Zap,
+  Calendar,
+  AlertCircle,
+  Sparkles,
+  LoaderCircle,
+  CheckCircle2,
+  TrendingUp,
+} from "lucide-react";
 import {
   useOpenUtilityPeriod,
   useCloseUtilityPeriod,
@@ -14,9 +24,9 @@ import {
 import { fmtDate, fmtCurrency } from "../../utils/formatters";
 
 const MAX_METER_READING = 999999.99;
-const MAX_ELECTRICITY_RATE = 100.00;
-const MAX_WATER_RATE = 100000.00;
-const MAX_CYCLE_USAGE = 50000.00;
+const MAX_ELECTRICITY_RATE = 100.0;
+const MAX_WATER_RATE = 100000.0;
+const MAX_CYCLE_USAGE = 50000.0;
 
 /** Sanitize numeric string to respect maximum decimal and whole digit lengths */
 const sanitizeNumericInput = (val, maxDecimals = 2, maxWholeDigits = 6) => {
@@ -66,6 +76,16 @@ const addOneMonth = (fromDateStr) => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
+const getMonthEnd = (startDateStr) => {
+  if (!startDateStr) return "";
+  const d = new Date(startDateStr);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+};
+
 const toInputDate = (value) => {
   if (!value) return "";
   const date = new Date(value);
@@ -106,14 +126,16 @@ export default function NewBillingPeriodModal({
   periods = [],
   onSuccess,
 }) {
-  useEscapeClose(isOpen, onClose);
   const notify = useBillingNotifier();
+  const finalReadingInputRef = useRef(null);
 
   const openPeriod = useOpenUtilityPeriod(utilityType);
   const closePeriod = useCloseUtilityPeriod(utilityType);
   const deletePeriod = useDeleteUtilityPeriod(utilityType);
 
   const [generationBlocker, setGenerationBlocker] = useState(null);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+
   const [periodForm, setPeriodForm] = useState({
     startDate: get15th(),
     startReading: "",
@@ -121,6 +143,8 @@ export default function NewBillingPeriodModal({
     endReading: "",
     endDate: addOneMonth(get15th()),
   });
+
+  const [initialFormState, setInitialFormState] = useState(null);
 
   const handleStartDateChange = (e) => {
     const newStart = e.target.value;
@@ -140,30 +164,64 @@ export default function NewBillingPeriodModal({
       const startDate = continuationDate || toInputDate(new Date());
       const initialStartReading =
         continuationReading ?? latestReading?.reading ?? 0;
-      setPeriodForm({
+      const initialRate =
+        lastClosedPeriod?.ratePerUnit != null
+          ? String(lastClosedPeriod.ratePerUnit)
+          : defaultRatePerUnit !== undefined &&
+              defaultRatePerUnit !== null &&
+              defaultRatePerUnit !== ""
+            ? String(defaultRatePerUnit)
+            : "";
+
+      const initialValues = {
         startDate,
         startReading:
           initialStartReading !== undefined && initialStartReading !== null
             ? String(initialStartReading)
             : "0",
-        ratePerUnit:
-          lastClosedPeriod?.ratePerUnit != null
-            ? String(lastClosedPeriod.ratePerUnit)
-            : defaultRatePerUnit !== undefined &&
-                defaultRatePerUnit !== null &&
-                defaultRatePerUnit !== ""
-              ? String(defaultRatePerUnit)
-              : "",
+        ratePerUnit: initialRate,
         endReading: "",
         endDate: addOneMonth(startDate),
-      });
+      };
+
+      setPeriodForm(initialValues);
+      setInitialFormState(initialValues);
       setGenerationBlocker(null);
+      setShowCloseConfirm(false);
+
+      // Auto-focus the final reading input for quick typing
+      setTimeout(() => {
+        if (finalReadingInputRef.current) {
+          finalReadingInputRef.current.focus();
+        }
+      }, 80);
     }
   }, [isOpen, defaultRatePerUnit, lastClosedPeriod, latestReading]);
+
+  // Dirty state checking
+  const isDirty = Boolean(
+    initialFormState &&
+      (periodForm.endReading !== initialFormState.endReading ||
+        periodForm.startDate !== initialFormState.startDate ||
+        periodForm.endDate !== initialFormState.endDate ||
+        periodForm.ratePerUnit !== initialFormState.ratePerUnit ||
+        periodForm.startReading !== initialFormState.startReading)
+  );
+
+  const handleRequestClose = () => {
+    if (isDirty && !openPeriod.isPending && !closePeriod.isPending) {
+      setShowCloseConfirm(true);
+    } else {
+      onClose();
+    }
+  };
+
+  useEscapeClose(isOpen, handleRequestClose);
 
   if (!isOpen) return null;
 
   const isFixedRateBranch = roomBranch === "guadalupe";
+  const isElectricity = utilityType === "electricity";
 
   // Determine source of start reading for UX contextual badge
   const startReadingSource =
@@ -174,7 +232,6 @@ export default function NewBillingPeriodModal({
         : "Baseline starting reading (0 kWh)";
 
   // Calculations for live calculation preview
-  const isElectricity = utilityType === "electricity";
   const startNum = parseFloat(periodForm.startReading);
   const endNum = parseFloat(periodForm.endReading);
   const rateNum = parseFloat(periodForm.ratePerUnit);
@@ -183,7 +240,8 @@ export default function NewBillingPeriodModal({
   const isRateInvalid = !isNaN(rateNum) && (rateNum < 0 || rateNum > maxRate);
   const hasValidRate = !isNaN(rateNum) && rateNum >= 0 && rateNum <= maxRate;
 
-  const isStartReadingExceedsMax = !isNaN(startNum) && startNum > MAX_METER_READING;
+  const isStartReadingExceedsMax =
+    !isNaN(startNum) && startNum > MAX_METER_READING;
   const isEndReadingExceedsMax = !isNaN(endNum) && endNum > MAX_METER_READING;
   const isReadingLower =
     isElectricity && !isNaN(startNum) && !isNaN(endNum) && endNum < startNum;
@@ -216,8 +274,8 @@ export default function NewBillingPeriodModal({
           1,
           Math.round(
             (new Date(periodForm.endDate) - new Date(periodForm.startDate)) /
-              (1000 * 60 * 60 * 24),
-          ),
+              (1000 * 60 * 60 * 24)
+          )
         )
       : 0;
 
@@ -252,7 +310,7 @@ export default function NewBillingPeriodModal({
   const unbilledGapDays = hasUnbilledGap
     ? Math.round(
         (new Date(periodForm.startDate) - new Date(continuationDate)) /
-          (1000 * 60 * 60 * 24),
+          (1000 * 60 * 60 * 24)
       )
     : 0;
 
@@ -265,7 +323,7 @@ export default function NewBillingPeriodModal({
   const daysAheadOrBehind = lastEndDateStr
     ? Math.round(
         (new Date(lastEndDateStr) - new Date(todayDateStr)) /
-          (1000 * 60 * 60 * 24),
+          (1000 * 60 * 60 * 24)
       )
     : 0;
 
@@ -286,10 +344,10 @@ export default function NewBillingPeriodModal({
       dailyBurnRate > 35);
 
   const isFutureDate =
-    Boolean(periodForm.endDate) &&
-    new Date(periodForm.endDate) > new Date();
+    Boolean(periodForm.endDate) && new Date(periodForm.endDate) > new Date();
 
-  const isAbnormalCycleLength = cycleDays > 0 && (cycleDays < 7 || cycleDays > 45);
+  const isAbnormalCycleLength =
+    cycleDays > 0 && (cycleDays < 7 || cycleDays > 45);
 
   const buildGenerationBlocker = (error) => {
     const payload = error?.response?.data?.error || null;
@@ -306,7 +364,7 @@ export default function NewBillingPeriodModal({
     if (Array.isArray(overlaps) && overlaps.length > 0) {
       for (const overlap of overlaps.slice(0, 5)) {
         lines.push(
-          `Bed ${overlap.bedKey}: ${overlap.firstTenantName || "Tenant A"} overlaps ${overlap.secondTenantName || "Tenant B"}`,
+          `Bed ${overlap.bedKey}: ${overlap.firstTenantName || "Tenant A"} overlaps ${overlap.secondTenantName || "Tenant B"}`
         );
       }
     }
@@ -316,14 +374,14 @@ export default function NewBillingPeriodModal({
     if (Array.isArray(missingMoveIns) && missingMoveIns.length > 0) {
       for (const entry of missingMoveIns.slice(0, 5)) {
         lines.push(
-          `Missing move-in reading: ${entry.tenantName || "Tenant"} (${fmtDate(readMoveInDate(entry)) || "date required"})`,
+          `Missing move-in reading: ${entry.tenantName || "Tenant"} (${fmtDate(readMoveInDate(entry)) || "date required"})`
         );
       }
     }
     if (Array.isArray(missingMoveOuts) && missingMoveOuts.length > 0) {
       for (const entry of missingMoveOuts.slice(0, 5)) {
         lines.push(
-          `Missing move-out reading: ${entry.tenantName || "Tenant"} (${fmtDate(readMoveOutDate(entry)) || "date required"})`,
+          `Missing move-out reading: ${entry.tenantName || "Tenant"} (${fmtDate(readMoveOutDate(entry)) || "date required"})`
         );
       }
     }
@@ -333,11 +391,15 @@ export default function NewBillingPeriodModal({
 
   const handleGenerateCycle = async () => {
     if (isFixedRateBranch) {
-      return notify.warn("Guadalupe uses fixed-rate billing. Separate utility cycles cannot be generated for this branch.");
+      return notify.warn(
+        "Guadalupe uses fixed-rate billing. Separate utility cycles cannot be generated for this branch."
+      );
     }
 
     if (isDateOverlapping) {
-      return notify.warn("Dates overlap with an existing billing cycle in this room.");
+      return notify.warn(
+        "Dates overlap with an existing billing cycle in this room."
+      );
     }
 
     if (
@@ -350,19 +412,27 @@ export default function NewBillingPeriodModal({
     }
 
     if (isRateInvalid) {
-      return notify.warn(`Rate cannot be negative or exceed ₱${maxRate.toLocaleString()}.`);
+      return notify.warn(
+        `Rate cannot be negative or exceed ₱${maxRate.toLocaleString()}.`
+      );
     }
 
     if (isStartReadingExceedsMax || isEndReadingExceedsMax) {
-      return notify.warn(`Meter readings cannot exceed ${MAX_METER_READING.toLocaleString()} kWh.`);
+      return notify.warn(
+        `Meter readings cannot exceed ${MAX_METER_READING.toLocaleString()} kWh.`
+      );
     }
 
     if (isUsageExceedsMax) {
-      return notify.warn(`Calculated usage cannot exceed ${MAX_CYCLE_USAGE.toLocaleString()} kWh per cycle.`);
+      return notify.warn(
+        `Calculated usage cannot exceed ${MAX_CYCLE_USAGE.toLocaleString()} kWh per cycle.`
+      );
     }
 
     if (isReadingLower) {
-      return notify.warn("Final reading cannot be lower than opening meter reading.");
+      return notify.warn(
+        "Final reading cannot be lower than opening meter reading."
+      );
     }
 
     if (isDateInvalid) {
@@ -400,12 +470,14 @@ export default function NewBillingPeriodModal({
             utilityType === "water" ? 0 : Number(periodForm.endReading),
           endDate: periodForm.endDate,
         });
-        notify.success("Draft billing cycle created successfully. Ready for review.");
+        notify.success(
+          "Draft billing cycle created successfully. Ready for review."
+        );
         setGenerationBlocker(null);
         onClose();
       } else {
         notify.success(
-          "Billing period opened, but could not finalize automatically.",
+          "Billing period opened, but could not finalize automatically."
         );
         onClose();
       }
@@ -417,7 +489,7 @@ export default function NewBillingPeriodModal({
             onSuccess(null);
           }
           notify.warn(
-            "Cycle finalize failed, so the temporary open period was rolled back.",
+            "Cycle finalize failed, so the temporary open period was rolled back."
           );
         } catch {
           // Keep primary error context
@@ -438,69 +510,92 @@ export default function NewBillingPeriodModal({
     isEndReadingExceedsMax ||
     isUsageExceedsMax ||
     isFixedRateBranch ||
-    isDateOverlapping;
+    isDateOverlapping ||
+    !periodForm.startDate ||
+    !periodForm.endDate ||
+    !periodForm.ratePerUnit ||
+    (isElectricity && (!periodForm.startReading || !periodForm.endReading));
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !isActionDisabled) {
+      e.preventDefault();
+      handleGenerateCycle();
+    }
+  };
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
-      style={{ background: "color-mix(in srgb, var(--background) 60%, transparent)" }}
-      onClick={onClose}
+      style={{
+        background: "color-mix(in srgb, var(--background) 60%, transparent)",
+      }}
+      onClick={handleRequestClose}
     >
       <div
         className="w-full max-w-2xl rounded-2xl border border-border bg-card shadow-xl overflow-hidden"
         style={{ boxShadow: "var(--shadow-xl)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
+        {/* Header with standalone semantic icon */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div className="flex items-center gap-2.5">
-            <div className={`flex h-8 w-8 items-center justify-center rounded-lg border ${
-              isElectricity ? "border-amber-500/30 bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400" : "border-blue-500/30 bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"
-            }`}>
-              {isElectricity ? <Zap size={16} /> : <Sparkles size={16} />}
-            </div>
+          <div className="flex items-center gap-3">
+            {isElectricity ? (
+              <Zap size={22} className="text-amber-500 shrink-0" />
+            ) : (
+              <Sparkles size={22} className="text-sky-500 shrink-0" />
+            )}
             <div>
               <h2 className="text-base font-semibold text-foreground">
                 New {isElectricity ? "Electricity" : "Water"} Billing Period
               </h2>
               {roomName && (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Room: <span className="font-medium text-foreground">{roomName}</span>
-                  {tenantCount > 0 ? ` • ${tenantCount} active occupant${tenantCount > 1 ? "s" : ""}` : " • Vacant / 0 occupants"}
+                  {tenantCount > 0 ? (
+                    ` • ${tenantCount} active tenant${tenantCount > 1 ? "s" : ""}`
+                  ) : (
+                    <span className="text-amber-600 dark:text-amber-400 font-medium">
+                      {" "}• Vacant (0 active tenants)
+                    </span>
+                  )}
                 </p>
               )}
             </div>
           </div>
           <button
-            className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-card-foreground disabled:opacity-50"
-            onClick={onClose}
+            className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+            onClick={handleRequestClose}
             disabled={isPending}
             aria-label="Close"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
-        <div className="space-y-3.5 px-6 py-4 max-h-[calc(85vh-130px)] overflow-y-auto">
+        {/* Modal Body */}
+        <div className="space-y-4 px-6 py-4 max-h-[calc(85vh-130px)] overflow-y-auto">
           {/* Fixed rate branch warning */}
           {isFixedRateBranch && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              <AlertCircle size={14} className="shrink-0 mt-0.5 text-amber-500" />
+            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3.5 py-2.5 text-xs text-muted-foreground">
+              <AlertCircle size={15} className="shrink-0 mt-0.5 text-amber-500" />
               <div className="leading-relaxed">
-                <span className="font-medium text-foreground">Fixed-Rate Branch (Guadalupe):</span> Separate sub-metered utility billing cycles are not used for rooms in this branch.
+                <span className="font-medium text-foreground">
+                  Fixed-Rate Branch (Guadalupe):
+                </span>{" "}
+                Separate sub-metered utility billing cycles are not used for rooms in this branch.
               </div>
             </div>
           )}
 
           {/* Error blocker */}
           {generationBlocker && !isFixedRateBranch && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2.5 text-xs">
-              <div className="flex items-center gap-1.5 font-medium text-red-600 dark:text-red-400">
-                <AlertCircle size={14} className="shrink-0" />
+            <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 px-3.5 py-2.5 text-xs">
+              <div className="flex items-center gap-1.5 font-medium text-rose-600 dark:text-rose-400">
+                <AlertCircle size={15} className="shrink-0" />
                 <span>{generationBlocker.message}</span>
               </div>
               {generationBlocker.lines.length > 0 && (
-                <ul className="list-disc space-y-0.5 pl-5 mt-1 text-muted-foreground">
+                <ul className="list-disc space-y-0.5 pl-5 mt-1.5 text-muted-foreground">
                   {generationBlocker.lines.map((line, idx) => (
                     <li key={`${line}-${idx}`}>{line}</li>
                   ))}
@@ -511,8 +606,8 @@ export default function NewBillingPeriodModal({
 
           {/* Date Overlap Error Notice */}
           {isDateOverlapping && !isFixedRateBranch && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-600 dark:text-red-400">
-              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2.5 rounded-lg border border-rose-500/30 bg-rose-500/5 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
+              <AlertCircle size={15} className="shrink-0 mt-0.5" />
               <div className="leading-relaxed">
                 <span className="font-medium">Date Overlap:</span> The selected date range overlaps with an existing cycle in this room. Please adjust dates.
               </div>
@@ -521,8 +616,8 @@ export default function NewBillingPeriodModal({
 
           {/* Advance Bill Notice (when last bill ends after today) */}
           {isAdvanceBill && !isDateOverlapping && !isFixedRateBranch && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              <Info size={14} className="shrink-0 mt-0.5 text-blue-500" />
+            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3.5 py-2.5 text-xs text-muted-foreground">
+              <Info size={15} className="shrink-0 mt-0.5 text-sky-500" />
               <div className="leading-relaxed">
                 <span className="font-medium text-foreground">Advance Bill:</span> Room is already billed through <span className="font-medium text-foreground">{fmtDate(lastClosedPeriod.endDate)}</span>. This creates an advance bill for <span className="font-medium text-foreground">{fmtDate(periodForm.startDate)} – {fmtDate(periodForm.endDate)}</span>.
               </div>
@@ -531,8 +626,8 @@ export default function NewBillingPeriodModal({
 
           {/* Catch-Up Cycle Notice (when last bill was > 35 days ago) */}
           {isCatchUpRequired && !isDateOverlapping && !isFixedRateBranch && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              <AlertCircle size={14} className="shrink-0 mt-0.5 text-amber-500" />
+            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3.5 py-2.5 text-xs text-muted-foreground">
+              <AlertCircle size={15} className="shrink-0 mt-0.5 text-amber-500" />
               <div className="leading-relaxed">
                 <span className="font-medium text-foreground">Catch-Up Cycle:</span> Room was last billed through <span className="font-medium text-foreground">{fmtDate(lastClosedPeriod.endDate)}</span> ({daysBehind} days ago). Generating this cycle will cover <span className="font-medium text-foreground">{fmtDate(periodForm.startDate)} – {fmtDate(periodForm.endDate)}</span> to help bring the room up to date.
               </div>
@@ -541,8 +636,8 @@ export default function NewBillingPeriodModal({
 
           {/* Unbilled Gap Warning */}
           {hasUnbilledGap && !isDateOverlapping && !isFixedRateBranch && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              <AlertCircle size={14} className="shrink-0 mt-0.5 text-amber-500" />
+            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3.5 py-2.5 text-xs text-muted-foreground">
+              <AlertCircle size={15} className="shrink-0 mt-0.5 text-amber-500" />
               <div className="leading-relaxed">
                 <span className="font-medium text-foreground">Unbilled Gap:</span> Previous cycle ended on <span className="font-medium text-foreground">{fmtDate(lastClosedPeriod.endDate)}</span>. Starting on <span className="font-medium text-foreground">{fmtDate(periodForm.startDate)}</span> leaves a {unbilledGapDays}-day gap.
               </div>
@@ -551,63 +646,113 @@ export default function NewBillingPeriodModal({
 
           {/* Usage Anomaly Notice */}
           {isUsageSpike && !isDateOverlapping && !isFixedRateBranch && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              <AlertCircle size={14} className="shrink-0 mt-0.5 text-amber-500" />
+            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3.5 py-2.5 text-xs text-muted-foreground">
+              <AlertCircle size={15} className="shrink-0 mt-0.5 text-amber-500" />
               <div className="leading-relaxed">
                 <span className="font-medium text-foreground">Usage Anomaly:</span> {calculatedUsage.toLocaleString()} kWh is higher than usual
                 {previousUsage > 0 ? ` (previous cycle: ${previousUsage.toLocaleString()} kWh)` : ""}.
-                {dailyBurnRate > 35 ? ` Rate is ~${dailyBurnRate.toFixed(1)} kWh/day.` : ""}
-                {" "}Please confirm final meter digits.
+                {dailyBurnRate > 35 ? ` Burn rate is ~${dailyBurnRate.toFixed(1)} kWh/day.` : ""}
+                {" "}Please verify final meter digits before generating draft bills.
               </div>
             </div>
           )}
 
           {/* Future Date Informative Notice */}
           {isFutureDate && !isAdvanceBill && !isDateOverlapping && !isFixedRateBranch && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              <Info size={14} className="shrink-0 mt-0.5 text-blue-500" />
+            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 px-3.5 py-2.5 text-xs text-muted-foreground">
+              <Info size={15} className="shrink-0 mt-0.5 text-sky-500" />
               <div className="leading-relaxed">
-                <span className="font-medium text-foreground">Future Date:</span> Cycle end date is after today. Ensure readings reflect scheduled values.
+                <span className="font-medium text-foreground">Future Date:</span> Cycle end date is set in the future. Ensure meter readings reflect scheduled readings.
               </div>
             </div>
           )}
 
           <p className="text-xs text-muted-foreground">
-            Define the billing cycle duration, meter readings, and rate to compute draft utility charges for all active room occupants.
+            Define the billing cycle duration, meter readings, and rate to compute draft utility charges for all active room tenants.
           </p>
 
-          {/* Dates + Rate row */}
+          {/* Dates & Rate Configuration Grid */}
           <div className="grid gap-3.5 md:grid-cols-3">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
-                <Calendar size={12} /> Cycle Start
+            {/* Cycle Start */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Calendar size={13} className="text-muted-foreground" /> Cycle Start
               </label>
               <input
                 type="date"
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground focus:outline-none disabled:opacity-60"
+                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors"
                 {...ringFocus}
                 value={periodForm.startDate}
                 onChange={handleStartDateChange}
+                onKeyDown={handleKeyDown}
                 disabled={isPending || isFixedRateBranch}
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
-                <Calendar size={12} /> Cycle End
-              </label>
+            {/* Cycle End with Quick Shortcut Chips */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Calendar size={13} className="text-muted-foreground" /> Cycle End
+                </label>
+                {/* Duration Shortcut Chips */}
+                {!isFixedRateBranch && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPeriodForm((prev) => ({
+                          ...prev,
+                          endDate: addDays(prev.startDate, 30),
+                        }))
+                      }
+                      className="px-1.5 py-0.5 text-[10px] font-medium rounded border border-border bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      title="Set to 30 days after cycle start"
+                    >
+                      +30d
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPeriodForm((prev) => ({
+                          ...prev,
+                          endDate: addOneMonth(prev.startDate),
+                        }))
+                      }
+                      className="px-1.5 py-0.5 text-[10px] font-medium rounded border border-border bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      title="Set to 1 month after cycle start"
+                    >
+                      +1mo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPeriodForm((prev) => ({
+                          ...prev,
+                          endDate: getMonthEnd(prev.startDate),
+                        }))
+                      }
+                      className="px-1.5 py-0.5 text-[10px] font-medium rounded border border-border bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      title="Set to the last day of the start month"
+                    >
+                      Month End
+                    </button>
+                  </div>
+                )}
+              </div>
               <input
                 type="date"
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground focus:outline-none disabled:opacity-60"
+                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors"
                 {...ringFocus}
                 value={periodForm.endDate}
                 onChange={(e) =>
                   setPeriodForm({ ...periodForm, endDate: e.target.value })
                 }
+                onKeyDown={handleKeyDown}
                 disabled={isPending || isFixedRateBranch}
               />
               {isDateInvalid && !isFixedRateBranch ? (
-                <p className="text-[11px] font-medium text-red-500">
+                <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400">
                   Must be after cycle start
                 </p>
               ) : isAbnormalCycleLength && !isFixedRateBranch ? (
@@ -617,9 +762,10 @@ export default function NewBillingPeriodModal({
               ) : null}
             </div>
 
-            <div className="space-y-1">
+            {/* Rate Input */}
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-muted-foreground">
+                <label className="text-xs font-semibold text-foreground">
                   {utilityType === "water"
                     ? "Total Water (PHP)"
                     : `Rate (PHP/${isElectricity ? "kWh" : "cu.m."})`}
@@ -631,8 +777,10 @@ export default function NewBillingPeriodModal({
               <input
                 type="text"
                 inputMode="decimal"
-                className={`w-full rounded-lg border px-3 py-2 text-sm text-card-foreground focus:outline-none disabled:opacity-60 ${
-                  isRateInvalid && !isFixedRateBranch ? "border-red-500" : "border-border bg-card"
+                className={`w-full rounded-lg border px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors ${
+                  isRateInvalid && !isFixedRateBranch
+                    ? "border-rose-500"
+                    : "border-border bg-card"
                 }`}
                 {...ringFocus}
                 value={periodForm.ratePerUnit}
@@ -642,28 +790,30 @@ export default function NewBillingPeriodModal({
                     ratePerUnit: sanitizeNumericInput(
                       e.target.value,
                       2,
-                      isElectricity ? 3 : 6,
+                      isElectricity ? 3 : 6
                     ),
                   })
                 }
+                onKeyDown={handleKeyDown}
                 placeholder="e.g. 16.00"
                 disabled={isPending || isFixedRateBranch}
               />
               {isRateInvalid && !isFixedRateBranch && (
-                <p className="text-[11px] font-medium text-red-500">
+                <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400">
                   Rate cannot exceed ₱{maxRate.toLocaleString()}
                 </p>
               )}
             </div>
           </div>
 
-          {/* Meter readings — electricity only */}
+          {/* Electricity Meter Readings & Live Delta Badge */}
           {isElectricity ? (
-            <div className="space-y-3">
+            <div className="space-y-3 pt-1">
               <div className="grid gap-3.5 md:grid-cols-2">
-                <div className="space-y-1">
+                {/* Opening Meter Reading */}
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-muted-foreground">
+                    <label className="text-xs font-semibold text-foreground">
                       Opening Meter Reading (kWh)
                     </label>
                     <span className="text-[10px] text-muted-foreground">
@@ -673,8 +823,10 @@ export default function NewBillingPeriodModal({
                   <input
                     type="text"
                     inputMode="decimal"
-                    className={`w-full rounded-lg border px-3 py-2 text-sm text-card-foreground focus:outline-none disabled:opacity-60 ${
-                      isStartReadingExceedsMax && !isFixedRateBranch ? "border-red-500" : "border-border bg-card"
+                    className={`w-full rounded-lg border px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors ${
+                      isStartReadingExceedsMax && !isFixedRateBranch
+                        ? "border-rose-500"
+                        : "border-border bg-card"
                     }`}
                     {...ringFocus}
                     value={periodForm.startReading}
@@ -684,6 +836,7 @@ export default function NewBillingPeriodModal({
                         startReading: sanitizeNumericInput(e.target.value, 2, 6),
                       })
                     }
+                    onKeyDown={handleKeyDown}
                     placeholder={
                       latestReading?.reading != null
                         ? `Last: ${latestReading.reading}`
@@ -692,20 +845,21 @@ export default function NewBillingPeriodModal({
                     disabled={isPending || isFixedRateBranch}
                   />
                   {isStartReadingExceedsMax && !isFixedRateBranch ? (
-                    <p className="text-[11px] font-medium text-red-500 mt-1">
+                    <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 mt-1">
                       Reading cannot exceed 999,999.99 kWh
                     </p>
                   ) : (
                     <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-1">
-                      <Info size={12} className="shrink-0 text-blue-500" />
+                      <Info size={12} className="shrink-0 text-sky-500" />
                       <span className="truncate">{startReadingSource}</span>
                     </div>
                   )}
                 </div>
 
-                <div className="space-y-1">
+                {/* Final Meter Reading */}
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-muted-foreground">
+                    <label className="text-xs font-semibold text-foreground">
                       Final Reading (kWh)
                     </label>
                     <span className="text-[10px] text-muted-foreground">
@@ -713,11 +867,15 @@ export default function NewBillingPeriodModal({
                     </span>
                   </div>
                   <input
+                    ref={finalReadingInputRef}
                     type="text"
                     inputMode="decimal"
-                    className={`w-full rounded-lg border px-3 py-2 text-sm text-card-foreground focus:outline-none disabled:opacity-60 ${
-                      (isReadingLower || isEndReadingExceedsMax || isUsageExceedsMax) && !isFixedRateBranch
-                        ? "border-red-500"
+                    className={`w-full rounded-lg border px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors ${
+                      (isReadingLower ||
+                        isEndReadingExceedsMax ||
+                        isUsageExceedsMax) &&
+                      !isFixedRateBranch
+                        ? "border-rose-500"
                         : "border-border bg-card"
                     }`}
                     {...ringFocus}
@@ -728,22 +886,32 @@ export default function NewBillingPeriodModal({
                         endReading: sanitizeNumericInput(e.target.value, 2, 6),
                       })
                     }
+                    onKeyDown={handleKeyDown}
                     placeholder="e.g. 1350"
                     disabled={isPending || isFixedRateBranch}
                   />
                   {isEndReadingExceedsMax && !isFixedRateBranch ? (
-                    <p className="text-[11px] font-medium text-red-500 mt-1">
+                    <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 mt-1">
                       Reading cannot exceed 999,999.99 kWh
                     </p>
                   ) : isReadingLower && !isFixedRateBranch ? (
-                    <div className="flex items-center gap-1 text-[11px] font-medium text-red-500 mt-1">
+                    <div className="flex items-center gap-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 mt-1">
                       <AlertCircle size={12} />
-                      <span>Cannot be lower than opening reading ({periodForm.startReading})</span>
+                      <span>
+                        Cannot be lower than opening reading ({periodForm.startReading} kWh)
+                      </span>
                     </div>
                   ) : isUsageExceedsMax && !isFixedRateBranch ? (
-                    <p className="text-[11px] font-medium text-red-500 mt-1">
+                    <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 mt-1">
                       Usage (+{calculatedUsage.toLocaleString()} kWh) exceeds max limit of 50,000 kWh
                     </p>
+                  ) : hasValidReadings && !isFixedRateBranch ? (
+                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400 mt-1">
+                      <TrendingUp size={12} className="shrink-0" />
+                      <span>
+                        Δ Usage: +{calculatedUsage.toLocaleString()} kWh (~{dailyBurnRate.toFixed(1)} kWh/day)
+                      </span>
+                    </div>
                   ) : (
                     <p className="text-[11px] text-muted-foreground mt-1">
                       Current meter reading at cycle end
@@ -752,43 +920,64 @@ export default function NewBillingPeriodModal({
                 </div>
               </div>
 
-              {/* Enhanced Live Calculation Preview Card */}
-              <div className="rounded-xl border border-border bg-muted/40 p-3.5 text-sm">
+              {/* Elevated Live Cycle Calculation Preview Card */}
+              <div className="rounded-xl border border-border bg-muted/30 p-3.5 text-sm">
                 <div className="flex items-center justify-between text-xs text-muted-foreground mb-2.5">
                   <span className="font-semibold uppercase tracking-wider text-[10px] text-foreground">
                     Live Cycle Calculation Preview
                   </span>
-                  {hasValidReadings && !isFixedRateBranch && !isDateOverlapping && !isUsageExceedsMax && (
-                    <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium text-xs">
-                      <Zap size={12} /> Ready to compute
-                    </span>
-                  )}
+                  {hasValidReadings &&
+                    !isFixedRateBranch &&
+                    !isDateOverlapping &&
+                    !isUsageExceedsMax && (
+                      <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium text-xs">
+                        <CheckCircle2 size={12} /> Ready to compute
+                      </span>
+                    )}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                  <div className="rounded-lg bg-card border border-border p-2">
-                    <div className="text-[10px] font-medium text-muted-foreground uppercase">Total Usage</div>
-                    <div className="text-sm font-bold text-foreground mt-0.5">
-                      {hasValidReadings && !isFixedRateBranch ? `${calculatedUsage.toLocaleString()} kWh` : "—"}
+                  {/* Total Usage Card */}
+                  <div className="rounded-lg bg-card border border-border p-2.5">
+                    <div className="text-[10px] font-medium text-muted-foreground uppercase">
+                      Total Usage
                     </div>
-                    {cycleDays > 0 && hasValidReadings && (
-                      <div className="text-[10px] text-muted-foreground mt-0.5">
-                        ~{dailyBurnRate.toFixed(1)} kWh/day
-                      </div>
-                    )}
+                    <div className="text-sm font-bold text-foreground mt-0.5">
+                      {hasValidReadings && !isFixedRateBranch
+                        ? `${calculatedUsage.toLocaleString()} kWh`
+                        : "—"}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      {cycleDays > 0 && hasValidReadings
+                        ? `~${dailyBurnRate.toFixed(1)} kWh/day`
+                        : "Meter difference"}
+                    </div>
                   </div>
-                  <div className="rounded-lg bg-card border border-border p-2">
-                    <div className="text-[10px] font-medium text-muted-foreground uppercase">Rate</div>
+
+                  {/* Rate Card */}
+                  <div className="rounded-lg bg-card border border-border p-2.5">
+                    <div className="text-[10px] font-medium text-muted-foreground uppercase">
+                      Rate
+                    </div>
                     <div className="text-sm font-semibold text-foreground mt-0.5">
-                      {hasValidRate && !isFixedRateBranch ? `₱${rateNum.toFixed(2)}/kWh` : "—"}
+                      {hasValidRate && !isFixedRateBranch
+                        ? `₱${rateNum.toFixed(2)}/kWh`
+                        : "—"}
                     </div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
                       {cycleDays > 0 ? `${cycleDays} days cycle` : "—"}
                     </div>
                   </div>
-                  <div className="rounded-lg bg-card border border-border p-2">
-                    <div className="text-[10px] font-medium text-muted-foreground uppercase">Est. Room Total</div>
-                    <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                      {hasValidReadings && hasValidRate && !isFixedRateBranch && !isUsageExceedsMax
+
+                  {/* Estimated Room Total Card */}
+                  <div className="rounded-lg bg-card border border-border p-2.5">
+                    <div className="text-[10px] font-medium text-muted-foreground uppercase">
+                      Est. Room Total
+                    </div>
+                    <div className="text-sm font-bold text-emerald-700 dark:text-emerald-400 mt-0.5">
+                      {hasValidReadings &&
+                      hasValidRate &&
+                      !isFixedRateBranch &&
+                      !isUsageExceedsMax
                         ? fmtCurrency(estimatedTotalCost)
                         : "—"}
                     </div>
@@ -796,37 +985,46 @@ export default function NewBillingPeriodModal({
                       Full room charge
                     </div>
                   </div>
-                  <div className="rounded-lg bg-card border border-border p-2">
-                    <div className="text-[10px] font-medium text-muted-foreground uppercase">Est. Per Occupant</div>
-                    <div className="text-sm font-bold text-blue-600 dark:text-blue-400 mt-0.5">
-                      {hasValidReadings && hasValidRate && !isFixedRateBranch && !isUsageExceedsMax
+
+                  {/* Estimated Per Tenant Card */}
+                  <div className="rounded-lg bg-card border border-border p-2.5">
+                    <div className="text-[10px] font-medium text-muted-foreground uppercase">
+                      Est. Per Tenant
+                    </div>
+                    <div className="text-sm font-bold text-sky-700 dark:text-sky-400 mt-0.5">
+                      {hasValidReadings &&
+                      hasValidRate &&
+                      !isFixedRateBranch &&
+                      !isUsageExceedsMax
                         ? tenantCount > 0
                           ? fmtCurrency(estPerTenantCost)
-                          : "₱0.00 (Overhead)"
+                          : "₱0.00"
                         : "—"}
                     </div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
-                      {tenantCount > 0 ? `${tenantCount} active occupant${tenantCount > 1 ? "s" : ""}` : "Vacant room"}
+                      {tenantCount > 0 ? (
+                        `${tenantCount} active tenant${tenantCount > 1 ? "s" : ""}`
+                      ) : (
+                        <span className="text-amber-600 dark:text-amber-400 font-medium">
+                          100% Dorm Overhead
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 pt-1">
               <div
-                className="rounded-lg px-4 py-3 text-xs"
-                style={{
-                  background: "var(--muted)",
-                  color: "var(--muted-foreground)",
-                }}
+                className="rounded-lg px-4 py-3 text-xs border border-border bg-muted/30 text-muted-foreground"
               >
                 Water billing uses room occupancy overlap. Enter the total water
-                charge above and the billing engine will split it by covered calendar days for all active occupants.
+                charge above and the billing engine will split it by covered calendar days for all active tenants.
               </div>
 
               {/* Enhanced Live Preview for Water */}
-              <div className="rounded-xl border border-border bg-muted/40 p-3.5 text-sm">
+              <div className="rounded-xl border border-border bg-muted/30 p-3.5 text-sm">
                 <div className="flex items-center justify-between text-xs text-muted-foreground mb-2.5">
                   <span className="font-semibold uppercase tracking-wider text-[10px] text-foreground">
                     Water Billing Summary
@@ -839,14 +1037,20 @@ export default function NewBillingPeriodModal({
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-center">
                   <div className="rounded-lg bg-card border border-border p-2.5">
-                    <div className="text-[10px] font-medium text-muted-foreground uppercase">Total Water Charge</div>
-                    <div className="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                      {hasValidRate && !isFixedRateBranch ? fmtCurrency(rateNum) : "₱0.00"}
+                    <div className="text-[10px] font-medium text-muted-foreground uppercase">
+                      Total Water Charge
+                    </div>
+                    <div className="text-base font-bold text-emerald-700 dark:text-emerald-400 mt-0.5">
+                      {hasValidRate && !isFixedRateBranch
+                        ? fmtCurrency(rateNum)
+                        : "₱0.00"}
                     </div>
                   </div>
                   <div className="rounded-lg bg-card border border-border p-2.5">
-                    <div className="text-[10px] font-medium text-muted-foreground uppercase">Est. Per Occupant</div>
-                    <div className="text-base font-bold text-blue-600 dark:text-blue-400 mt-0.5">
+                    <div className="text-[10px] font-medium text-muted-foreground uppercase">
+                      Est. Per Tenant
+                    </div>
+                    <div className="text-base font-bold text-sky-700 dark:text-sky-400 mt-0.5">
                       {hasValidRate && !isFixedRateBranch
                         ? tenantCount > 0
                           ? fmtCurrency(rateNum / tenantCount)
@@ -860,16 +1064,44 @@ export default function NewBillingPeriodModal({
           )}
         </div>
 
-        {/* Footer */}
+        {/* Unsaved Changes Confirmation Banner */}
+        {showCloseConfirm && (
+          <div className="flex items-center justify-between border-t border-border bg-amber-500/10 px-6 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+            <span className="font-medium">
+              You have unsaved changes. Discard and close?
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCloseConfirm(false)}
+                className="px-2 py-1 rounded text-xs font-semibold hover:bg-amber-500/20 text-foreground"
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCloseConfirm(false);
+                  onClose();
+                }}
+                className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white font-semibold shadow-sm"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Footer with Primary Navy CTA & Explanatory Disabled Guidance */}
         <div className="flex items-center justify-between border-t border-border px-6 py-3.5 bg-muted/20">
           <p className="text-[11px] text-muted-foreground hidden sm:block">
             Creates draft records for admin review before dispatch.
           </p>
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2.5 ml-auto">
             <button
-              onClick={onClose}
+              onClick={handleRequestClose}
               disabled={isPending}
-              className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors"
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
@@ -877,13 +1109,16 @@ export default function NewBillingPeriodModal({
               <button
                 onClick={handleGenerateCycle}
                 disabled={isActionDisabled}
-                className="rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
-                style={{
-                  background: "var(--primary)",
-                  color: "var(--primary-foreground)",
-                }}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed bg-[#0A1628] hover:bg-[#13243D] text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
               >
-                {isPending ? "Calculating..." : "Generate Draft Bills"}
+                {isPending ? (
+                  <>
+                    <LoaderCircle size={15} className="animate-spin" />
+                    <span>Generating Draft Bills...</span>
+                  </>
+                ) : (
+                  <span>Generate Draft Bills</span>
+                )}
               </button>
               {isActionDisabled && !isPending && (
                 <div className="pointer-events-none absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 w-72 rounded-lg bg-slate-900 p-2.5 text-xs text-white shadow-xl dark:bg-slate-800 dark:text-slate-100 border border-slate-700">
@@ -894,18 +1129,18 @@ export default function NewBillingPeriodModal({
                     {isFixedRateBranch
                       ? "Guadalupe uses fixed-rate billing. Separate utility cycles cannot be generated for this branch."
                       : isDateOverlapping
-                      ? "The selected date range overlaps with an existing cycle in this room."
-                      : isStartReadingExceedsMax || isEndReadingExceedsMax
-                      ? `Meter readings cannot exceed ${MAX_METER_READING.toLocaleString()} kWh.`
-                      : isUsageExceedsMax
-                      ? `Usage exceeds maximum single-cycle limit of ${MAX_CYCLE_USAGE.toLocaleString()} kWh.`
-                      : isReadingLower
-                      ? "Final meter reading cannot be lower than opening reading."
-                      : isDateInvalid
-                      ? "Cycle end date must be after cycle start date."
-                      : isRateInvalid
-                      ? `Rate cannot exceed ₱${maxRate.toLocaleString()}.`
-                      : "Please fill in all required fields."}
+                        ? "The selected date range overlaps with an existing cycle in this room."
+                        : isStartReadingExceedsMax || isEndReadingExceedsMax
+                          ? `Meter readings cannot exceed ${MAX_METER_READING.toLocaleString()} kWh.`
+                          : isUsageExceedsMax
+                            ? `Usage exceeds maximum single-cycle limit of ${MAX_CYCLE_USAGE.toLocaleString()} kWh.`
+                            : isReadingLower
+                              ? "Final meter reading cannot be lower than opening reading."
+                              : isDateInvalid
+                                ? "Cycle end date must be after cycle start date."
+                                : isRateInvalid
+                                  ? `Rate cannot exceed ₱${maxRate.toLocaleString()}.`
+                                  : "Please fill in all required fields."}
                   </div>
                   <div className="absolute top-full right-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-800" />
                 </div>

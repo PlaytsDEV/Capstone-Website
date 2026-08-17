@@ -4,7 +4,7 @@ import {
   BellRing,
   AlertTriangle,
   Send,
-  Loader2,
+  LoaderCircle,
   CheckCircle2,
   Calendar,
   DollarSign,
@@ -14,6 +14,7 @@ import {
   Clock,
 } from "lucide-react";
 import { billingApi } from "../../../../shared/api/billingApi.js";
+import { showNotification } from "../../../../shared/utils/notification.js";
 
 const getInitials = (name) => {
   if (!name) return "TN";
@@ -25,21 +26,24 @@ const getInitials = (name) => {
 const STAGE_METADATA = {
   1: {
     badge: "Stage 1: Friendly Reminder",
-    badgeClass: "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300",
+    badgeColor: "text-sky-700 dark:text-sky-400",
+    dotColor: "bg-sky-500",
     headline: "First Overdue Payment Reminder",
     defaultNote: "Please settle your outstanding balance at your earliest convenience to maintain an account in good standing.",
     btnText: "Dispatch Notice 1",
   },
   2: {
     badge: "Stage 2: Urgent Demand",
-    badgeClass: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300",
+    badgeColor: "text-amber-700 dark:text-amber-400",
+    dotColor: "bg-amber-500",
     headline: "Urgent Payment Demand & Penalty Notice",
     defaultNote: "Your account is significantly past due and accumulating late penalties. Immediate settlement via online portal or office counter is required.",
     btnText: "Dispatch Notice 2",
   },
   3: {
     badge: "Stage 3 (Final): Intent to Terminate",
-    badgeClass: "border-red-200 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300",
+    badgeColor: "text-rose-700 dark:text-rose-400",
+    dotColor: "bg-rose-500",
     headline: "Final Notice: Pre-Termination Demand",
     defaultNote: "FINAL NOTICE: Failure to settle this balance immediately will result in referral to the Administrative Termination Review Board for lease cancellation.",
     btnText: "Dispatch Notice 3 (Final Demand)",
@@ -82,14 +86,18 @@ export default function DispatchNoticeModal({ isOpen, item, targetStage = 1, onC
         noticeMessage: noticeMessage.trim(),
       });
 
-      setSuccessMsg(`Notice ${stage} successfully dispatched and recorded.`);
+      const message = `Notice ${stage} successfully dispatched and recorded.`;
+      setSuccessMsg(message);
+      showNotification(message, "success");
       onDispatched?.();
       setTimeout(() => {
         onClose();
       }, 1100);
     } catch (err) {
       console.error("Notice dispatch error:", err);
-      setError(err.message || `Failed to dispatch Notice ${stage}.`);
+      const friendlyErr = err.message || `Unable to dispatch Notice ${stage}. Please try again.`;
+      setError(friendlyErr);
+      showNotification(friendlyErr, "error");
     } finally {
       setDispatching(false);
     }
@@ -101,15 +109,16 @@ export default function DispatchNoticeModal({ isOpen, item, targetStage = 1, onC
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-100">
-              <BellRing size={18} />
+            <div className="flex shrink-0 items-center justify-center text-amber-600 dark:text-amber-400">
+              <BellRing size={20} />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-card-foreground">
                   Dispatch Overdue Notice
                 </h2>
-                <span className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${meta.badgeClass}`}>
+                <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${meta.badgeColor}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${meta.dotColor}`} />
                   {meta.badge}
                 </span>
               </div>
@@ -130,15 +139,15 @@ export default function DispatchNoticeModal({ isOpen, item, targetStage = 1, onC
         {/* Content Body */}
         <form onSubmit={handleDispatch} className="max-h-[75vh] overflow-y-auto p-6 space-y-4">
           {error && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
-              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2.5 rounded-xl border border-border bg-card p-3 text-xs text-rose-600 dark:text-rose-400">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0 text-rose-600" />
               <span>{error}</span>
             </div>
           )}
 
           {successMsg && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
-              <CheckCircle2 size={15} className="mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2.5 rounded-xl border border-border bg-card p-3 text-xs text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-600" />
               <span>{successMsg}</span>
             </div>
           )}
@@ -158,7 +167,7 @@ export default function DispatchNoticeModal({ isOpen, item, targetStage = 1, onC
             </div>
             <div className="text-right">
               <span className="text-[10px] uppercase font-bold text-muted-foreground block">Total Balance Due</span>
-              <span className="text-sm font-bold text-red-600">
+              <span className="text-sm font-bold text-rose-600 dark:text-rose-400">
                 ₱{remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
@@ -174,7 +183,7 @@ export default function DispatchNoticeModal({ isOpen, item, targetStage = 1, onC
             </div>
             <div className="rounded-xl border border-border bg-card p-3 shadow-xs">
               <span className="text-[10px] uppercase font-bold text-muted-foreground block">Late Penalties</span>
-              <span className="text-xs font-bold text-amber-600 mt-0.5 block">
+              <span className="text-xs font-bold text-amber-600 dark:text-amber-400 mt-0.5 block">
                 ₱{penalty.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
@@ -193,7 +202,7 @@ export default function DispatchNoticeModal({ isOpen, item, targetStage = 1, onC
                 <FileText size={13} /> Official Notice Header
               </span>
               <span className="text-[11px] text-muted-foreground font-medium">
-                Multi-channel: Email + In-App Push
+                Multi-channel: Email + In-App Notice
               </span>
             </div>
             <p className="text-xs font-bold text-card-foreground">{meta.headline}</p>
@@ -208,7 +217,7 @@ export default function DispatchNoticeModal({ isOpen, item, targetStage = 1, onC
               <label className="block text-xs font-semibold text-card-foreground">
                 Administrative Message Note
               </label>
-              <span className={`text-[10px] font-medium ${noticeMessage.length >= 1900 ? "text-red-500 font-bold" : "text-muted-foreground"}`}>
+              <span className={`text-[10px] font-medium ${noticeMessage.length >= 1900 ? "text-rose-500 font-bold" : "text-muted-foreground"}`}>
                 {noticeMessage.length} / 2,000 characters
               </span>
             </div>
@@ -221,17 +230,16 @@ export default function DispatchNoticeModal({ isOpen, item, targetStage = 1, onC
               className="w-full rounded-xl border border-border bg-card p-3 text-xs font-medium text-card-foreground focus:border-slate-400 focus:outline-none"
             />
             <p className="text-[11px] text-muted-foreground">
-              This note is merged into the formal email body and in-app receipt delivered to the resident.
+              This note is included in the formal email notification and in-app statement delivered to the tenant.
             </p>
           </div>
 
-
           {stage === 3 && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300 space-y-1">
-              <div className="flex items-center gap-1.5 font-bold">
+            <div className="rounded-xl border border-border bg-card p-3 text-xs text-card-foreground space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-rose-600 dark:text-rose-400">
                 <ShieldAlert size={14} /> Review Board Auto-Referral Trigger
               </div>
-              <p className="text-[11px] leading-relaxed">
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
                 Dispatching Notice 3 (Final Demand) automatically registers an active case in the <strong>Administrative Termination Review Board</strong>.
               </p>
             </div>
@@ -249,11 +257,11 @@ export default function DispatchNoticeModal({ isOpen, item, targetStage = 1, onC
             <button
               type="submit"
               disabled={dispatching}
-              className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white shadow-xs hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+              className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-[#0A1628] px-4 text-xs font-bold text-white shadow-xs hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
             >
               {dispatching ? (
                 <>
-                  <Loader2 size={13} className="animate-spin" /> Dispatching...
+                  <LoaderCircle size={13} className="animate-spin" /> Dispatching...
                 </>
               ) : (
                 <>

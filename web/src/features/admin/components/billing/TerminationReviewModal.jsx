@@ -10,12 +10,13 @@ import {
   FileText,
   User,
   ShieldCheck,
-  Loader2,
+  LoaderCircle,
   ArrowUpRight,
   Split,
   Building,
 } from "lucide-react";
 import { billingApi } from "../../../../shared/api/billingApi.js";
+import { showNotification } from "../../../../shared/utils/notification.js";
 
 const getInitials = (name) => {
   if (!name) return "TN";
@@ -24,18 +25,17 @@ const getInitials = (name) => {
   return name.slice(0, 2).toUpperCase();
 };
 
-const getStatusBadge = (status) => {
+const getStatusBadgeInfo = (status) => {
   switch (status) {
     case "open":
-      return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300";
+      return { textColor: "text-amber-700 dark:text-amber-400", dotColor: "bg-amber-500" };
     case "under_review":
-      return "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-300";
+      return { textColor: "text-sky-700 dark:text-sky-400", dotColor: "bg-sky-500" };
     case "resolved":
-      return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300";
+      return { textColor: "text-emerald-700 dark:text-emerald-400", dotColor: "bg-emerald-500" };
     case "closed":
-      return "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300";
     default:
-      return "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300";
+      return { textColor: "text-slate-700 dark:text-slate-300", dotColor: "bg-slate-400" };
   }
 };
 
@@ -78,6 +78,7 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
 
   const isResolved = reviewCase.status === "resolved" || reviewCase.status === "closed" || Boolean(reviewCase.decision?.outcome);
   const snapshotAmount = Number(reviewCase.balanceSnapshot || reviewCase.totalOutstandingAtOpen || 0);
+  const badgeInfo = getStatusBadgeInfo(reviewCase.status);
 
   const handleDecisionSubmit = async (e) => {
     e.preventDefault();
@@ -85,7 +86,9 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
     setSuccessMsg("");
 
     if (!outcomeDetail.trim()) {
-      setError("Please provide a detailed formal explanation of the board decision terms.");
+      const errText = "Please provide a detailed formal explanation of the board decision terms.";
+      setError(errText);
+      showNotification(errText, "warning");
       return;
     }
 
@@ -117,14 +120,18 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
 
       await billingApi.updateTerminationDecision(reviewCase._id, payload);
 
-      setSuccessMsg("Board decision adjudicated and recorded successfully.");
+      const msg = "Board decision adjudicated and recorded successfully.";
+      setSuccessMsg(msg);
+      showNotification(msg, "success");
       onRefresh?.();
       setTimeout(() => {
         onClose();
       }, 1200);
     } catch (err) {
       console.error("Adjudication error:", err);
-      setError(err.message || "Failed to record board decision.");
+      const friendlyErr = err.message || "Unable to record board decision. Please try again.";
+      setError(friendlyErr);
+      showNotification(friendlyErr, "error");
     } finally {
       setAdjudicating(false);
     }
@@ -136,15 +143,16 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">
-              <ShieldAlert size={18} />
+            <div className="flex shrink-0 items-center justify-center text-rose-600 dark:text-rose-400">
+              <ShieldAlert size={20} />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-card-foreground">
                   Termination Review Case #{reviewCase.caseNumber || String(reviewCase._id).slice(-6).toUpperCase()}
                 </h2>
-                <span className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getStatusBadge(reviewCase.status)}`}>
+                <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${badgeInfo.textColor}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${badgeInfo.dotColor}`} />
                   {reviewCase.status?.replace(/_/g, " ")}
                 </span>
               </div>
@@ -169,7 +177,7 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
             onClick={() => setActiveTab("adjudication")}
             className={`border-b-2 px-3 py-2.5 transition ${
               activeTab === "adjudication"
-                ? "border-slate-900 text-slate-950 dark:border-slate-100 dark:text-slate-100"
+                ? "border-slate-900 text-slate-950 dark:border-slate-100 dark:text-slate-100 font-bold"
                 : "border-transparent text-muted-foreground hover:text-card-foreground"
             }`}
           >
@@ -180,7 +188,7 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
             onClick={() => setActiveTab("overview")}
             className={`border-b-2 px-3 py-2.5 transition ${
               activeTab === "overview"
-                ? "border-slate-900 text-slate-950 dark:border-slate-100 dark:text-slate-100"
+                ? "border-slate-900 text-slate-950 dark:border-slate-100 dark:text-slate-100 font-bold"
                 : "border-transparent text-muted-foreground hover:text-card-foreground"
             }`}
           >
@@ -191,7 +199,7 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
             onClick={() => setActiveTab("tenant")}
             className={`border-b-2 px-3 py-2.5 transition ${
               activeTab === "tenant"
-                ? "border-slate-900 text-slate-950 dark:border-slate-100 dark:text-slate-100"
+                ? "border-slate-900 text-slate-950 dark:border-slate-100 dark:text-slate-100 font-bold"
                 : "border-transparent text-muted-foreground hover:text-card-foreground"
             }`}
           >
@@ -202,15 +210,15 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
         {/* Content Body */}
         <div className="max-h-[70vh] overflow-y-auto p-6 space-y-4">
           {error && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
-              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2.5 rounded-xl border border-border bg-card p-3.5 text-xs text-rose-600 dark:text-rose-400">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0 text-rose-600" />
               <span>{error}</span>
             </div>
           )}
 
           {successMsg && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
-              <CheckCircle2 size={15} className="mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2.5 rounded-xl border border-border bg-card p-3.5 text-xs text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-600" />
               <span>{successMsg}</span>
             </div>
           )}
@@ -230,7 +238,7 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
             </div>
             <div className="text-right">
               <span className="text-[10px] uppercase font-bold text-muted-foreground block">Frozen Debt Snapshot</span>
-              <span className="text-sm font-bold text-red-600">
+              <span className="text-sm font-bold text-rose-600 dark:text-rose-400">
                 ₱{snapshotAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
@@ -240,7 +248,7 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
           {activeTab === "adjudication" && (
             <div>
               {isResolved ? (
-                <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2 text-xs">
+                <div className="rounded-xl border border-border bg-card p-4 space-y-2 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-card-foreground flex items-center gap-1.5">
                       <ShieldCheck size={16} className="text-emerald-600" />
@@ -254,7 +262,7 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
                     <strong className="text-card-foreground">Terms & Rationale:</strong> {reviewCase.decision?.outcomeDetail || "Case resolved."}
                   </p>
                   {reviewCase.paymentPlan && (
-                    <div className="mt-2 rounded-lg border border-border bg-card p-3 space-y-1 text-[11px]">
+                    <div className="mt-2 rounded-lg border border-border bg-muted/20 p-3 space-y-1 text-[11px]">
                       <span className="font-bold text-card-foreground block">Payment Plan Schedule:</span>
                       <p className="text-muted-foreground">
                         {reviewCase.paymentPlan.numberOfInstallments} Installment(s) of ₱{Number(reviewCase.paymentPlan.installmentAmount || 0).toFixed(2)} starting {reviewCase.paymentPlan.firstPaymentDue ? new Date(reviewCase.paymentPlan.firstPaymentDue).toLocaleDateString("en-PH") : "TBD"}
@@ -266,7 +274,7 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
                 <form onSubmit={handleDecisionSubmit} className="space-y-4">
                   <div className="space-y-1.5">
                     <label className="block text-xs font-semibold text-card-foreground">
-                      Board Decision Outcome <span className="text-red-500">*</span>
+                      Board Decision Outcome <span className="text-rose-500">*</span>
                     </label>
                     <select
                       value={outcome}
@@ -283,9 +291,9 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
 
                   {/* Payment Plan Sub-Form */}
                   {outcome === "payment_plan_approved" && (
-                    <div className="rounded-xl border border-border bg-muted/10 p-3.5 space-y-3 text-xs">
+                    <div className="rounded-xl border border-border bg-card p-3.5 space-y-3 text-xs">
                       <div className="flex items-center gap-1.5 font-bold text-card-foreground">
-                        <Split size={14} className="text-blue-600" /> Payment Arrangement Terms
+                        <Split size={14} className="text-sky-600" /> Payment Arrangement Terms
                       </div>
                       <div className="grid grid-cols-3 gap-2.5">
                         <div>
@@ -336,13 +344,13 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
 
                   {/* Pre-Termination Sub-Form */}
                   {outcome === "pre_termination_notice" && (
-                    <div className="rounded-xl border border-red-200 bg-red-50/40 p-3.5 space-y-3 text-xs dark:border-red-900/40 dark:bg-red-950/20">
-                      <div className="flex items-center gap-1.5 font-bold text-red-900 dark:text-red-300">
+                    <div className="rounded-xl border border-border bg-card p-3.5 space-y-3 text-xs">
+                      <div className="flex items-center gap-1.5 font-bold text-rose-600 dark:text-rose-400">
                         <AlertTriangle size={14} /> Formal Pre-Termination Notice Details
                       </div>
                       <div>
                         <label className="block text-[11px] font-semibold text-card-foreground mb-1">
-                          Mandatory Vacate-By Date <span className="text-red-500">*</span>
+                          Mandatory Vacate-By Date <span className="text-rose-500">*</span>
                         </label>
                         <input
                           type="date"
@@ -357,7 +365,7 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
                           <label className="block text-[11px] font-semibold text-card-foreground">
                             Pre-Termination Letter Text
                           </label>
-                          <span className={`text-[10px] font-medium ${noticeText.length >= 1900 ? "text-red-500 font-bold" : "text-muted-foreground"}`}>
+                          <span className={`text-[10px] font-medium ${noticeText.length >= 1900 ? "text-rose-500 font-bold" : "text-muted-foreground"}`}>
                             {noticeText.length} / 2,000 characters
                           </span>
                         </div>
@@ -375,9 +383,9 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="block text-xs font-semibold text-card-foreground">
-                        Decision Terms & Legal Rationale <span className="text-red-500">*</span>
+                        Decision Terms & Legal Rationale <span className="text-rose-500">*</span>
                       </label>
-                      <span className={`text-[10px] font-medium ${outcomeDetail.length >= 2800 ? "text-red-500 font-bold" : "text-muted-foreground"}`}>
+                      <span className={`text-[10px] font-medium ${outcomeDetail.length >= 2800 ? "text-rose-500 font-bold" : "text-muted-foreground"}`}>
                         {outcomeDetail.length} / 3,000 characters
                       </span>
                     </div>
@@ -398,7 +406,7 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
                       <label className="block text-xs font-semibold text-card-foreground">
                         Internal Board Discussion Notes (Confidential)
                       </label>
-                      <span className={`text-[10px] font-medium ${reviewNotes.length >= 4800 ? "text-red-500 font-bold" : "text-muted-foreground"}`}>
+                      <span className={`text-[10px] font-medium ${reviewNotes.length >= 4800 ? "text-rose-500 font-bold" : "text-muted-foreground"}`}>
                         {reviewNotes.length} / 5,000 characters
                       </span>
                     </div>
@@ -412,16 +420,15 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
                     />
                   </div>
 
-
                   <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
                     <button
                       type="submit"
                       disabled={adjudicating}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white shadow-xs hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-[#0A1628] px-4 text-xs font-bold text-white shadow-xs hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
                     >
                       {adjudicating ? (
                         <>
-                          <Loader2 size={13} className="animate-spin" /> Recording Decision...
+                          <LoaderCircle size={13} className="animate-spin" /> Recording Decision...
                         </>
                       ) : (
                         "Save & Action Decision"
@@ -454,8 +461,8 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
               </div>
 
               {reviewCase.triggeredByViolationId && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-3 text-[11px] space-y-1 dark:border-amber-900/40 dark:bg-amber-950/20">
-                  <span className="font-bold text-amber-900 dark:text-amber-300 block">Linked House Rule Infraction:</span>
+                <div className="rounded-xl border border-border bg-card p-3 text-[11px] space-y-1">
+                  <span className="font-bold text-card-foreground block">Linked House Rule Infraction:</span>
                   <p className="text-muted-foreground">
                     Violation Type: <strong>{reviewCase.triggeredByViolationId.violationType}</strong> · Assessed Penalty: ₱{Number(reviewCase.triggeredByViolationId.penaltyApplied || 0).toFixed(2)}
                   </p>

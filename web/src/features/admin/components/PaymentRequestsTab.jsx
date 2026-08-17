@@ -325,8 +325,8 @@ function PaymentRequestsTab() {
         <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
           Pending Verification
         </span>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
-          <Clock size={15} />
+        <div className="flex shrink-0 items-center justify-center text-amber-600 dark:text-amber-400">
+          <Clock size={18} />
         </div>
       </div>
       <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
@@ -339,8 +339,8 @@ function PaymentRequestsTab() {
         <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
           Verified Payments
         </span>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400">
-          <CheckCircle2 size={15} />
+        <div className="flex shrink-0 items-center justify-center text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 size={18} />
         </div>
       </div>
       <div className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-2">
@@ -353,8 +353,8 @@ function PaymentRequestsTab() {
         <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
           Total Revenue
         </span>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
-          <DollarSign size={15} />
+        <div className="flex shrink-0 items-center justify-center text-sky-600 dark:text-sky-400">
+          <DollarSign size={18} />
         </div>
       </div>
       <div className="text-2xl font-bold tracking-tight text-foreground mt-2">

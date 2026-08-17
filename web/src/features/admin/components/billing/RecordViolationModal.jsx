@@ -53,14 +53,14 @@ const getInitials = (name) => {
   return name.slice(0, 2).toUpperCase();
 };
 
-function ResidentAvatar({ avatarUrl, name, className = "h-7 w-7 text-[10px]" }) {
+function TenantAvatar({ avatarUrl, name, className = "h-7 w-7 text-[10px]" }) {
   const [imgError, setImgError] = useState(false);
 
   if (avatarUrl && !imgError) {
     return (
       <img
         src={avatarUrl}
-        alt={name || "Resident"}
+        alt={name || "Tenant"}
         onError={() => setImgError(true)}
         className={`${className} rounded-full object-cover border border-border shrink-0`}
       />
@@ -260,7 +260,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
     setFormError("");
 
     if (!selectedTenant) {
-      setFormError("Please select a resident for this violation record.");
+      setFormError("Please select a tenant for this violation record.");
       return;
     }
 
@@ -276,27 +276,33 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
 
     try {
       setSubmitting(true);
+
       const payload = {
         tenantId: selectedTenant.tenantId,
         reservationId: selectedTenant.reservationId,
+        branch: selectedTenant.branch || branch || "gil-puyat",
+        roomId: selectedTenant.roomId,
+        roomName: selectedTenant.roomName,
         violationType: formData.violationType,
-        customViolationDescription: formData.violationType === "custom" ? formData.customViolationDescription.trim() : null,
+        customViolationDescription: formData.customViolationDescription.trim(),
         dateOfIncident: formData.dateOfIncident,
-        timeOfIncident: formData.timeOfIncident || null,
+        timeOfIncident: formData.timeOfIncident,
         locationOfIncident: formData.locationOfIncident.trim(),
         evidenceNotes: formData.evidenceNotes.trim(),
-        evidenceUrls: evidenceUrl ? [evidenceUrl] : [],
-        penaltyApplied: penalty,
-        penaltyReason: penalty > 0 ? formData.penaltyReason.trim() : null,
-        chargeToBill: penalty > 0,
+        penaltyApplied: Number(formData.penaltyApplied) || 0,
+        penaltyReason: formData.penaltyReason.trim(),
+        chargeToBill: formData.chargeToBill,
+        evidenceUrl: evidencePreview || null,
+        evidenceUrls: evidencePreview ? [evidencePreview] : [],
       };
 
-      await billingApi.logViolation(payload);
+      await billingApi.recordViolation(payload);
+
       onSuccess?.();
       onClose();
     } catch (err) {
-      console.error("Log violation error:", err);
-      setFormError(err.message || "Failed to log violation record. Please verify inputs.");
+      console.error("Failed to record violation:", err);
+      setFormError(err.message || "Unable to save violation record. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -309,16 +315,18 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl text-card-foreground">
-        {/* Header */}
+        {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-900/50 dark:bg-amber-950/50 dark:text-amber-400">
-              <AlertTriangle size={18} />
+          <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center justify-center text-rose-600 dark:text-rose-400">
+              <ShieldAlert size={20} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-card-foreground">Record Rule Infraction</h2>
-              <p className="text-xs text-muted-foreground">
-                Document formal tenant violation, compute cumulative warning count, and assess penalty fees.
+              <h2 className="text-base font-bold text-card-foreground">
+                Log Tenant Rule Violation & Warning
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Formally record a dormitory rule infraction, upload photo proof, and assess penalty fees.
               </p>
             </div>
           </div>
@@ -331,11 +339,11 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
           </button>
         </div>
 
-        {/* Form Body */}
+        {/* Modal Form Body */}
         <form onSubmit={handleSubmit} className="max-h-[75vh] overflow-y-auto p-6 space-y-5">
           {formError && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
-              <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-600" />
+            <div className="flex items-start gap-2.5 rounded-xl border border-border bg-card p-3.5 text-xs text-rose-600 dark:text-rose-400">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0 text-rose-600" />
               <span>{formError}</span>
             </div>
           )}
@@ -343,7 +351,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
           {/* Section 1: Tenant Selection */}
           <div className="space-y-2">
             <label className="block text-xs font-bold uppercase tracking-wider text-card-foreground">
-              Resident Identification <span className="text-red-500">*</span>
+              Tenant Identification <span className="text-rose-500">*</span>
             </label>
 
             {/* Tenant Autocomplete Dropdown */}
@@ -354,7 +362,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
               >
                 {selectedTenant ? (
                   <div className="flex items-center gap-3">
-                    <ResidentAvatar
+                    <TenantAvatar
                       avatarUrl={selectedTenant.profileImage || selectedTenant.avatar}
                       name={selectedTenant.fullName}
                       className="h-7 w-7 text-[10px]"
@@ -367,7 +375,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
                     </div>
                   </div>
                 ) : (
-                  <span className="text-muted-foreground">Select an active resident...</span>
+                  <span className="text-muted-foreground">Select an active tenant...</span>
                 )}
                 <ChevronDown size={14} className="text-muted-foreground" />
               </div>
@@ -382,7 +390,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
                         autoFocus
                         value={tenantSearch}
                         onChange={(e) => setTenantSearch(e.target.value)}
-                        placeholder="Type resident name, room, or email..."
+                        placeholder="Type tenant name, room, or email..."
                         className="w-full h-8 rounded-lg border border-border bg-card pl-8 pr-3 text-xs text-card-foreground focus:border-slate-400 focus:outline-none"
                       />
                     </div>
@@ -391,13 +399,13 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
                   <div className="max-h-48 overflow-y-auto divide-y divide-border/40">
                     {loadingTenants ? (
                       <div className="p-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
-                        <Loader2 size={14} className="animate-spin" /> Loading residents...
+                        <Loader2 size={14} className="animate-spin" /> Loading tenants...
                       </div>
                     ) : filteredTenants.length === 0 ? (
                       <div className="p-4 text-center text-xs text-muted-foreground">
                         {tenantSearch
-                          ? `No residents match "${tenantSearch}".`
-                          : "No residents found for this branch."}
+                          ? `No tenants match "${tenantSearch}".`
+                          : "No tenants found for this branch."}
                       </div>
                     ) : (
                       filteredTenants.map((t) => (
@@ -418,7 +426,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
                           }`}
                         >
                           <div className="flex items-center gap-2.5">
-                            <ResidentAvatar
+                            <TenantAvatar
                               avatarUrl={t.profileImage || t.avatar}
                               name={t.fullName}
                               className="h-7 w-7 text-[10px]"
@@ -432,7 +440,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
                           </div>
                           <div className="flex items-center gap-2">
                             {t.warningCount > 0 ? (
-                              <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
+                              <span className="inline-flex items-center rounded-md border border-border bg-card px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-400">
                                 {t.warningCount} prior warning{t.warningCount > 1 ? "s" : ""}
                               </span>
                             ) : (
@@ -449,25 +457,17 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
 
             {/* Warning Count Banner */}
             {selectedTenant && (
-              <div
-                className={`flex items-center justify-between rounded-xl border p-3 text-xs transition ${
-                  currentWarning >= 3
-                    ? "border-red-300 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
-                    : currentWarning === 2
-                    ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-                    : "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
-                }`}
-              >
+              <div className="flex items-center justify-between rounded-xl border border-border bg-card p-3 text-xs">
                 <div className="flex items-center gap-2">
-                  <ShieldAlert size={16} className="shrink-0" />
+                  <ShieldAlert size={16} className={`shrink-0 ${currentWarning >= 3 ? "text-rose-600 dark:text-rose-400" : currentWarning === 2 ? "text-amber-600 dark:text-amber-400" : "text-sky-600 dark:text-sky-400"}`} />
                   <div>
-                    <span className="font-bold">
+                    <span className="font-bold text-card-foreground">
                       Formal Warning Count: #{currentWarning}
                     </span>
-                    <p className="text-[11px] opacity-90 mt-0.5">
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
                       {selectedTenant.warningCount === 0
-                        ? "This will be the resident's 1st recorded rule violation."
-                        : `Resident currently has ${selectedTenant.warningCount} prior confirmed violation(s).`}
+                        ? "This will be the tenant's 1st recorded rule violation."
+                        : `Tenant currently has ${selectedTenant.warningCount} prior confirmed violation(s).`}
                       {currentWarning >= 3 && " ⚠️ 3rd strike will trigger Escalation Review eligibility."}
                     </p>
                   </div>
@@ -612,8 +612,8 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600 mb-2 dark:bg-slate-800 dark:text-slate-300">
-                  <UploadCloud size={20} />
+                <div className="flex shrink-0 items-center justify-center text-slate-500 dark:text-slate-400 mb-2">
+                  <UploadCloud size={24} />
                 </div>
                 <p className="text-xs font-bold text-card-foreground">
                   Click to browse photo evidence
@@ -723,18 +723,18 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
 
             {/* Automatic Rent Billing Attachment Notice */}
             {Number(formData.penaltyApplied) > 0 && (
-              <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs dark:border-emerald-900/40 dark:bg-emerald-950/30">
+              <div className="flex items-start gap-2.5 rounded-xl border border-border bg-card p-3 text-xs">
                 <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                 <div className="space-y-0.5">
-                  <span className="font-bold text-emerald-900 dark:text-emerald-300 block">
+                  <span className="font-bold text-card-foreground block">
                     Automatic Rent Statement Attachment
                   </span>
-                  <p className="text-[11px] text-emerald-800 dark:text-emerald-400">
+                  <p className="text-[11px] text-muted-foreground">
                     This fine will be added as a separate line item{" "}
-                    <code className="rounded bg-emerald-100 px-1 py-0.5 font-mono text-[10px] text-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-200">
+                    <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px] text-card-foreground">
                       Violation Penalty: {VIOLATION_CATEGORIES.find((c) => c.value === formData.violationType)?.label || "Infraction"}
                     </code>{" "}
-                    to the resident's active monthly rent billing statement.
+                    to the tenant's active monthly rent billing statement.
                   </p>
                 </div>
               </div>
@@ -754,7 +754,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
             <button
               type="submit"
               disabled={submitting || uploadingImage}
-              className="inline-flex h-9 items-center gap-2 rounded-xl bg-slate-900 px-5 text-xs font-bold text-white shadow-xs transition hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+              className="inline-flex h-9 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] disabled:opacity-50 dark:bg-emerald-600 dark:text-white dark:hover:bg-emerald-700"
             >
               {submitting ? (
                 <>
