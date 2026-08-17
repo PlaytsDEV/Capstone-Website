@@ -497,6 +497,8 @@ export const USER_UPDATE_FLAT_FIELDS = [
   "workScheduleOther",
   "agreedToPrivacy",
   "agreedToCertification",
+  "targetMoveInDate",
+  "intendedMoveInDate",
   "finalMoveInDate",
   "notes",
 ];

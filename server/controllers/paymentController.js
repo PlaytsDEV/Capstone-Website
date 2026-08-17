@@ -149,6 +149,14 @@ export const createBillCheckout = async (req, res, next) => {
       throw new AppError("Bill is already paid", 400, "ALREADY_PAID");
     }
 
+    bill.remainingAmount = getBillRemainingAmount(bill);
+    bill.status = resolveBillStatus(bill);
+    const visibleBill = getVisibleBillSnapshot(bill);
+    const amountDue = visibleBill.remainingAmount;
+    if (amountDue <= 0) {
+      throw new AppError("No visible balance is currently due", 400, "NO_BALANCE_DUE");
+    }
+
     if (bill.paymongoSessionId) {
       try {
         const existing = await getCheckoutSession(bill.paymongoSessionId);
@@ -180,25 +188,22 @@ export const createBillCheckout = async (req, res, next) => {
         }
 
         if (existingUrl && existingPayments.length === 0) {
-          return sendSuccess(res, {
-            checkoutUrl: existingUrl,
-            sessionId: bill.paymongoSessionId,
-            reused: true,
-          });
+          const existingAmountCents =
+            existing?.attributes?.line_items?.[0]?.amount ??
+            Math.round(Number(existing?.attributes?.metadata?.amountDue || 0) * 100);
+          if (existingAmountCents === Math.round(amountDue * 100)) {
+            return sendSuccess(res, {
+              checkoutUrl: existingUrl,
+              sessionId: bill.paymongoSessionId,
+              reused: true,
+            });
+          }
         }
       } catch (err) {
         if (err?.code === "ALREADY_PAID") throw err;
-        // Expired or invalid session: create a fresh one below.
+        // Expired, invalid, or amount-mismatch session: create a fresh one below.
         logger.warn({ err: err.message, sessionId: bill.paymongoSessionId }, "Stale PayMongo session — creating fresh checkout");
       }
-    }
-
-    bill.remainingAmount = getBillRemainingAmount(bill);
-    bill.status = resolveBillStatus(bill);
-    const visibleBill = getVisibleBillSnapshot(bill);
-    const amountDue = visibleBill.remainingAmount;
-    if (amountDue <= 0) {
-      throw new AppError("No visible balance is currently due", 400, "NO_BALANCE_DUE");
     }
 
     const isInitialPayment = bill.billType === "initial_payment";
@@ -342,10 +347,7 @@ export const createDepositCheckout = async (req, res, next) => {
     const dbUser = await getDbUser(req.user.uid);
     if (!dbUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
-    const reservation = await Reservation.findById(resId).populate(
-      "roomId",
-      "name branch",
-    );
+    const reservation = await Reservation.findById(resId).populate("roomId");
     if (!reservation) {
       throw new AppError(
         "Reservation not found",
@@ -386,12 +388,31 @@ export const createDepositCheckout = async (req, res, next) => {
       );
     }
 
+    const amount =
+      reservation.reservationFeeAmount ?? (await getReservationFeeAmount());
+    if (
+      !reservation.reservationFeeAmount ||
+      reservation.reservationFeeAmount !== amount
+    ) {
+      reservation.reservationFeeAmount = amount;
+    }
+
+    const targetDepositCents = Math.round(amount * 100);
+
     if (reservation.paymongoSessionId) {
       try {
         const existing = await getCheckoutSession(reservation.paymongoSessionId);
         const existingUrl = existing?.attributes?.checkout_url;
         const existingPayments = existing?.attributes?.payments || [];
-        if (existingUrl && existingPayments.length === 0) {
+        const existingAmountCents =
+          existing?.attributes?.line_items?.[0]?.amount ??
+          Math.round(Number(existing?.attributes?.metadata?.amountDue || 0) * 100);
+
+        if (
+          existingUrl &&
+          existingPayments.length === 0 &&
+          existingAmountCents === targetDepositCents
+        ) {
           if (!hasReservationStatus(reservation.status, "payment_pending")) {
             reservation.status = "payment_pending";
             reservation.paymentStatus = "pending";
@@ -404,17 +425,8 @@ export const createDepositCheckout = async (req, res, next) => {
           });
         }
       } catch {
-        // Expired or invalid session: create a fresh one below.
+        // Expired, invalid, or price-mismatch session: create a fresh one below.
       }
-    }
-
-    const amount =
-      reservation.reservationFeeAmount ?? (await getReservationFeeAmount());
-    if (
-      !reservation.reservationFeeAmount ||
-      reservation.reservationFeeAmount !== amount
-    ) {
-      reservation.reservationFeeAmount = amount;
     }
 
     const roomName = reservation.roomId?.name || "Room";
@@ -425,10 +437,11 @@ export const createDepositCheckout = async (req, res, next) => {
         type: "deposit",
         reservationId: String(reservation._id),
         userId: String(dbUser._id),
+        amountDue: String(amount),
       },
       successUrl: `${FRONTEND_URL}/applicant/reservation?payment=success&session_id={id}`,
       cancelUrl: `${FRONTEND_URL}/applicant/reservation?payment=cancelled&session_id={id}`,
-      idempotencyKey: `reservation-fee:${reservation._id}:${Math.round(amount * 100)}`,
+      idempotencyKey: `reservation-fee:${reservation._id}:${targetDepositCents}`,
     });
 
     reservation.paymongoSessionId = sessionId;
@@ -463,10 +476,7 @@ export const createMoveInCheckout = async (req, res, next) => {
     const dbUser = await getDbUser(req.user.uid);
     if (!dbUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
-    const reservation = await Reservation.findById(resId).populate(
-      "roomId",
-      "name branch type price rent",
-    );
+    const reservation = await Reservation.findById(resId).populate("roomId");
     if (!reservation) {
       throw new AppError(
         "Reservation not found",
@@ -546,14 +556,41 @@ export const createMoveInCheckout = async (req, res, next) => {
       await bill.save();
       reservation.initialPaymentBillId = bill._id;
       await reservation.save({ validateModifiedOnly: true });
+    } else {
+      // Synchronize existing bill to authoritative financials
+      bill.grossAmount = grossTotal;
+      bill.reservationCreditApplied = reservationFeeCredit;
+      bill.totalAmount = remainingDue;
+      bill.remainingAmount = remainingDue;
+      bill.charges = {
+        ...(bill.charges?.toObject?.() || bill.charges || {}),
+        rent: advanceRent,
+        electricity: 0,
+        water: 0,
+        applianceFees: 0,
+        corkageFees: 0,
+        penalty: 0,
+        discount: 0,
+      };
+      await bill.save();
     }
+
+    const targetMoveInCents = Math.round(remainingDue * 100);
 
     if (bill.paymongoSessionId) {
       try {
         const existing = await getCheckoutSession(bill.paymongoSessionId);
         const existingUrl = existing?.attributes?.checkout_url;
         const existingPayments = existing?.attributes?.payments || [];
-        if (existingUrl && existingPayments.length === 0) {
+        const existingAmountCents =
+          existing?.attributes?.line_items?.[0]?.amount ??
+          Math.round(Number(existing?.attributes?.metadata?.amountDue || 0) * 100);
+
+        if (
+          existingUrl &&
+          existingPayments.length === 0 &&
+          existingAmountCents === targetMoveInCents
+        ) {
           return sendSuccess(res, {
             checkoutUrl: existingUrl,
             sessionId: bill.paymongoSessionId,
@@ -561,12 +598,12 @@ export const createMoveInCheckout = async (req, res, next) => {
           });
         }
       } catch {
-        // Expired or invalid session, create fresh one
+        // Expired, invalid, or price-mismatch session: create fresh one below
       }
     }
 
     const roomName = reservation.roomId?.name || "Room";
-    const checkoutIdempotencyKey = `movein:${reservation._id}:bill:${bill._id}:balance:${Math.round(remainingDue * 100)}`;
+    const checkoutIdempotencyKey = `movein:${reservation._id}:bill:${bill._id}:balance:${targetMoveInCents}`;
     const { checkoutUrl, sessionId } = await createCheckoutSession({
       amount: remainingDue,
       description: `Lilycrest Dormitory - Remaining Move-In Balance (${roomName})`,

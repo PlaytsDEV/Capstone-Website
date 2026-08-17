@@ -398,4 +398,75 @@ describe("generateAnalyticsInsight", () => {
     expect(result.insight.forecastHighlights.length).toBeGreaterThan(0);
     expect(result.insight.summary).toContain("You asked");
   });
+
+  test("uses Groq when configured and returns normalized insight", async () => {
+    process.env.AI_INSIGHTS_PROVIDER = "groq";
+    process.env.GROQ_API_KEY = "groq-test-key";
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GOOGLE_AI_API_KEY;
+
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                headline: "Groq generated summary for billing.",
+                summary: "Collections are steady at 72% across all units.",
+                keyFindings: ["Overdue amount is concentrated in 31-60 days bucket."],
+                anomalies: ["Unpaid room balance in Room 201."],
+                recommendedActions: ["Issue notice to Room 201 tenant."],
+                confidence: "high",
+              }),
+            },
+          },
+        ],
+      }),
+    }));
+
+    const result = await generateAnalyticsInsight({
+      reportType: "billing",
+      scope,
+      filters: billingReportData.filters,
+      reportData: billingReportData,
+    });
+
+    expect(global.fetch).toHaveBeenCalled();
+    expect(result.snapshotMeta).toMatchObject({
+      reportType: "billing",
+      provider: "groq",
+      usedFallback: false,
+    });
+    expect(result.insight.headline).toBe("Groq generated summary for billing.");
+    expect(result.insight.confidence).toBe("high");
+  });
+
+  test("includes cross-branch benchmark finding in owner hub report when multi-branch data exists", async () => {
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GOOGLE_AI_API_KEY;
+    delete process.env.GROQ_API_KEY;
+
+    const multiBranchHubData = {
+      ...hubReportData,
+      branchComparison: [
+        { label: "Gil Puyat", branch: "gil-puyat", collectionRate: 92, occupancyRate: 90 },
+        { label: "Guadalupe", branch: "guadalupe", collectionRate: 74, occupancyRate: 80 },
+      ],
+    };
+
+    const result = await generateAnalyticsInsight({
+      reportType: "hub",
+      scope: { role: "owner", branch: "all", branchesIncluded: ["gil-puyat", "guadalupe"] },
+      filters: multiBranchHubData.filters,
+      reportData: multiBranchHubData,
+    });
+
+    expect(result.snapshotMeta.usedFallback).toBe(true);
+    expect(result.snapshotMeta.provider).toBe("heuristic-fallback");
+    const hasBenchmarkFinding = result.insight.keyFindings.some((k) =>
+      k.includes("Branch benchmark:") && k.includes("Gil Puyat") && k.includes("Guadalupe"),
+    );
+    expect(hasBenchmarkFinding).toBe(true);
+  });
 });

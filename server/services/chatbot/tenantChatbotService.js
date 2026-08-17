@@ -1,24 +1,44 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "dummy-key");
-const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const getApiKey = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
+const getModelName = () => process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+
+function getGenAIClient() {
+  const key = getApiKey();
+  if (!key || key === "dummy-key") return null;
+  return new GoogleGenerativeAI(key);
+}
 
 function getSystemPrompt(contextSnapshot) {
   const branchName = contextSnapshot?.branch || "Lilycrest Residence";
   const roomNumber = contextSnapshot?.roomNumber || "304";
   const bedPosition = contextSnapshot?.bedPosition || "Bed 1";
 
-  return `You are the official Lilycrest Resident Copilot, an intelligent authenticated assistant for Lilycrest Dormitory Management System (Lilycrest DMS).
-You assist resident tenants at the ${branchName} branch (assigned to Room ${roomNumber}, ${bedPosition}).
+  return `You are the official Lilycrest Tenant Assistant, an intelligent authenticated assistant for Lilycrest Dormitory Management System (Lilycrest DMS).
+You assist tenants at the ${branchName} branch (assigned to Room ${roomNumber}, ${bedPosition}) with a warm, polite, empathetic, and friendly tone in simple, conversational English.
+
+FRIENDLY POLICIES & STEP-BY-STEP EXPLANATIONS:
+1. Pro-Rata Electricity Sharing:
+   - Your room has its own submeter measuring actual electricity consumed.
+   - Total electricity cost is divided equally among active roommates for the billing period.
+   - Water consumption and high-speed Wi-Fi are completely free and included in monthly base rent.
+2. Monthly Rent & Due Dates:
+   - Monthly bills are due on the 15th of the month and can easily be settled online via bank transfer or GCash in the Billing tab.
+3. Contract Expiration & Lease Renewal:
+   - Tenants can request a lease renewal 30 days before contract expiration under the Contracts tab.
+4. Move-Out Clearance & Security Deposit:
+   - Security deposit is fully refundable upon completing a simple move-out clearance room check.
+5. Maintenance & Repair Tickets:
+   - Submit repair tickets via the Maintenance Portal; our accredited on-site technicians attend to repairs promptly within 24-48 hours.
+6. Building Access:
+   - Main doors lock from 11:00 PM to 5:00 AM for security; 24/7 late entry is always accommodated for night-shift workers and students with a valid ID.
 
 STRICT OPERATIONAL GUIDELINES:
-1. Warm Hospitality & Tone: Answer with polite, formal Filipino hospitality (English, Tagalog, or natural Taglish with respectful "po" and "opo" when prompted in Tagalog).
-2. Grounded Facts: Answer strictly using the RESIDENT CONTEXT JSON below. NEVER invent unlisted bills, contracts, or repair records.
-3. Pro-Rata Utilities: Electricity is metered per room and shared pro-rata among room occupants. Water and Wi-Fi are 100% free and included in monthly base rent.
-4. House Rules: Building gates lock at 11:00 PM and open at 5:00 AM (24/7 late entry is permitted for night-shift workers and students with valid ID).
-5. Read-Only Safety: You are an informational assistant. You cannot alter invoice totals, approve fee waivers, or cancel contracts. Direct disputes or special requests to Branch Admin.
+1. Language & Professional Tone: Answer in warm, polite, empathetic, and friendly English only. Avoid heavy corporate jargon. Do NOT insert filler words or Tagalog honorifics like "po" or "opo". Respond strictly in English.
+2. Grounded Facts: Answer strictly using the TENANT CONTEXT JSON below. NEVER invent unlisted bills, contracts, or repair records.
+3. Read-Only Safety: You are an informational assistant. You cannot alter invoice totals, approve fee waivers, or cancel contracts. Direct disputes or special requests kindly to Branch Admin.
 
-RESIDENT CONTEXT:
+TENANT CONTEXT:
 ${JSON.stringify(contextSnapshot, null, 2)}
 `;
 }
@@ -95,11 +115,9 @@ export function determineTenantSuggestedActions(message = "", botReply = "", con
  */
 export function getTenantRuleBasedFallback(message = "", contextSnapshot = null) {
   const lower = String(message || "").toLowerCase();
-  const tenantName = contextSnapshot?.tenantName || "Resident";
+  const tenantName = contextSnapshot?.tenantName || "Tenant";
   const roomNumber = contextSnapshot?.roomNumber || "304";
   const branch = contextSnapshot?.branch || "Lilycrest";
-
-  const isTagalog = /(po\b|opo\b|magkano|ano\b|kailan|paano|meron|may\b|sira|kuryente|tubig|bayad|kontrata)/i.test(lower);
 
   // 1. Maintenance & Repair Status
   if (
@@ -121,15 +139,9 @@ export function getTenantRuleBasedFallback(message = "", contextSnapshot = null)
         )
         .join("\n\n");
 
-      if (isTagalog) {
-        return `Mayroon po kayong **${tickets.length} active maintenance request(s)** para sa Room ${roomNumber}:\n\n${ticketList}\n\nMaaari po ninyong i-check ang live updates o mag-follow up sa ating Maintenance Portal.`;
-      }
       return `Here is the current status of your maintenance requests for **Room ${roomNumber}**:\n\n${ticketList}\n\nYou can track real-time progress or submit additional photos directly on the Maintenance page.`;
     }
 
-    if (isTagalog) {
-      return `Wala po kayong active o pending maintenance tickets sa kasalukuyan para sa **Room ${roomNumber}**.\n\nKung may kailangan pong ayusin (tubig, kuryente, aircon, o lock), maaari po kayong mag-file ng bagong request sa pamamagitan ng **[New Request]** sa Maintenance page.`;
-    }
     return `You currently have **no active or scheduled maintenance requests** for **Room ${roomNumber}**.\n\nIf you are experiencing any facility issues (such as plumbing leaks, aircon maintenance, or electrical concerns), you can submit a repair request anytime from your Maintenance Portal.`;
   }
 
@@ -176,16 +188,16 @@ export function getTenantRuleBasedFallback(message = "", contextSnapshot = null)
       return `Your lease agreement for **Room ${roomNumber} (${contract.bedPosition})** at ${branch} is **${contract.status.toUpperCase()}**.\n\n• **Expiration Date**: ${endStr} (${days})\n• **Monthly Base Rate**: ${formatNum(contract.monthlyRate)}\n• **Security Deposit Held**: ${formatNum(contract.depositAmount)} (Refundable upon move-out clearance)\n\nTo request a lease renewal or submit move-out clearance, visit the Contracts & Agreements tab.`;
     }
 
-    return `Your stay records show an active resident status at **${branch}**, Room ${roomNumber}. You can inspect signed contracts and deposit receipts under the Contracts tab.`;
+    return `Your stay records show an active tenant status at **${branch}**, Room ${roomNumber}. You can inspect signed contracts and deposit receipts under the Contracts tab.`;
   }
 
   // 4. Curfew & Gate Policy
   if (lower.includes("curfew") || lower.includes("oras") || lower.includes("gate") || lower.includes("late")) {
-    return `At Lilycrest ${branch}, building security locks the main entrance from **11:00 PM to 5:00 AM**. 24/7 late entry is permitted for residents with night-shift work or class schedules upon presenting a valid company/school ID to the front desk guard.`;
+    return `At Lilycrest ${branch}, building security locks the main entrance from **11:00 PM to 5:00 AM**. 24/7 late entry is permitted for tenants with night-shift work or class schedules upon presenting a valid company or school ID to the front desk guard.`;
   }
 
   // 5. Default Greeting & Assistance
-  return `Mabuhay, ${tenantName}! I am your **Lilycrest Resident Copilot** for Room ${roomNumber} at ${branch}.\n\nI can help you with:\n1. Explaining your monthly bill & pro-rata electricity computation\n2. Tracking active maintenance and repair requests\n3. Checking lease expiration dates and security deposit refund steps\n\nHow may I assist you today?`;
+  return `Hello, ${tenantName}! I am your **Lilycrest Tenant Assistant** for Room ${roomNumber} at ${branch}.\n\nI can help you with:\n1. Explaining your monthly bill & pro-rata electricity computation\n2. Tracking active maintenance and repair requests\n3. Checking lease expiration dates and security deposit refund steps\n\nHow may I assist you today?`;
 }
 
 export async function streamTenantGeminiChatbot({
@@ -209,9 +221,9 @@ export async function streamTenantGeminiChatbot({
     }
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const genAI = getGenAIClient();
 
-  if (!apiKey || apiKey === "dummy-key") {
+  if (!genAI) {
     const fallbackReply = getTenantRuleBasedFallback(trimmedMessage, contextSnapshot);
     await simulateStreamTokens(fallbackReply, { onToken, signal });
     const actions = determineTenantSuggestedActions(trimmedMessage, fallbackReply, contextSnapshot);
@@ -222,7 +234,7 @@ export async function streamTenantGeminiChatbot({
 
   try {
     const model = genAI.getGenerativeModel({
-      model: MODEL_NAME,
+      model: getModelName(),
       systemInstruction: getSystemPrompt(contextSnapshot),
     });
 
@@ -277,9 +289,9 @@ export async function streamTenantGeminiChatbot({
 
 export async function queryTenantGeminiChatbot({ message, conversationHistory = [], contextSnapshot }) {
   const trimmedMessage = (message || "").trim();
-  const apiKey = process.env.GEMINI_API_KEY;
+  const genAI = getGenAIClient();
 
-  if (!apiKey || apiKey === "dummy-key") {
+  if (!genAI) {
     const fallbackReply = getTenantRuleBasedFallback(trimmedMessage, contextSnapshot);
     const widget = detectTenantWidgetIntent(trimmedMessage);
     const suggestedActions = determineTenantSuggestedActions(trimmedMessage, fallbackReply, contextSnapshot);
@@ -288,7 +300,7 @@ export async function queryTenantGeminiChatbot({ message, conversationHistory = 
 
   try {
     const model = genAI.getGenerativeModel({
-      model: MODEL_NAME,
+      model: getModelName(),
       systemInstruction: getSystemPrompt(contextSnapshot),
     });
 

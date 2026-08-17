@@ -2,136 +2,243 @@
 
 ## 1. Executive Summary & Objectives
 
-The **Tenant Context-Aware AI Assistant** is an authenticated, intelligent copilot embedded directly within the Lilycrest Tenant Portal ([`TenantLayout.jsx`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/shared/layouts/TenantLayout.jsx)). Unlike generic chatbots, this assistant is securely connected to the tenant's real-time account data—allowing it to explain itemized monthly billing breakdowns (including complex pro-rata electricity math), monitor lease contract deadlines, check maintenance ticket status, and provide a 1-click escalation to human branch admins.
+The **Tenant Context-Aware AI Assistant** is an authenticated, intelligent copilot embedded directly within the Lilycrest Tenant Portal ([`TenantLayout.jsx`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/shared/layouts/TenantLayout.jsx)). Unlike generic chatbots, this assistant is securely connected to the resident's live stay data—enabling it to explain itemized monthly billing breakdowns (including submetered pro-rata electricity math), monitor lease contract deadlines, check active maintenance ticket status, and provide a 1-click escalation to human branch administrators.
 
 ```mermaid
 flowchart TD
-    Tenant([Authenticated Tenant]) -->|Asks Billing / Lease Question| UI[Tenant Portal Assistant Drawer]
-    UI -->|POST /api/chatbot/tenant/query + JWT| Route[Tenant Chatbot Route]
-    Route -->|Verify Auth & Tenant Status| Guard[Tenant Auth Guard & Rate Limiter]
-    Guard -->|Query DB Models| Resolver[Tenant Dynamic Context Resolver]
+    Tenant([Authenticated Resident]) -->|Asks Question in Drawer| UI[Tenant Portal Assistant Drawer]
+    UI -->|POST /api/chatbot/tenant/stream + Bearer JWT| Route[Tenant Chatbot Route]
+    Route -->|Verify Auth & Role: tenant| Guard[Tenant Auth Guard & Rate Limiter]
+    Guard -->|Query DB Models Scoped to userId| Resolver[Tenant Dynamic Context Resolver]
     
-    subgraph Data Layer [Isolated Database Query]
-        Resolver -->|Fetch Bill & Readings| BillDB[(Bill & UtilityReading Models)]
-        Resolver -->|Fetch Active Lease| ContractDB[(Contract & Reservation Models)]
-        Resolver -->|Fetch Open Tickets| MaintDB[(MaintenanceRequest Model)]
+    subgraph Data Layer [Isolated Database Query - userId Scoped]
+        Resolver -->|Fetch Current Bill & Submeter Readings| BillDB[(Bill & UtilityReading Models)]
+        Resolver -->|Fetch Active Lease & Room Assignment| ContractDB[(Contract & Reservation Models)]
+        Resolver -->|Fetch Open Repair Tickets| MaintDB[(MaintenanceRequest Model)]
     end
     
-    Resolver -->|Construct Sanitized Context| GroundingPrompt[Strict Grounded Prompt]
-    GroundingPrompt -->|Execute| Gemini[Google Gemini 2.5 Flash Lite]
-    Gemini -->|Format Plain-English Breakdown| UI
-    UI -->|Tenant Requests Dispute / Human Review| Handoff[Bridge to Live Admin Chat Room]
+    Resolver -->|Grounded System Prompt + Context Snapshot| AICascade[Multi-Provider AI Core]
+    
+    subgraph Multi-Provider AI Cascade [aiProviderService.js]
+        AICascade -->|Primary: Ultra-Fast <500ms| Groq[Groq: Llama 3.3 70B / Llama 3.1 8B]
+        Groq -.->|Fallback on Failure| Gemini[Google Gemini: 2.5 Flash / Flash Lite]
+        Gemini -.->|Offline Fallback| LocalEngine[Deterministic Local Rule Engine]
+        AICascade -.->|Optional Reasoning Tier| OpenRouter[OpenRouter / DeepSeek]
+    end
+    
+    AICascade -->|SSE Token Stream + Widget Events| UI
+    
+    subgraph Action Destinations [Action Routing]
+        UI -->|Disputes / General Inquiries| LiveChat[Bridge to Live Admin Chat Room - /applicant/chat]
+        UI -->|Room Repairs & Facility Issues| MaintModule[Maintenance Ticket System - /applicant/maintenance]
+    end
 ```
 
 ### Key Objectives
-1. **Plain-English Billing Explanations**: Dissect complex rent, appliance surcharges, and pro-rata electricity formulas into friendly, self-explanatory summaries.
-2. **Contract & Lease Transparency**: Proactively inform tenants of remaining lease duration, move-out clearance requirements, and deposit balances.
-3. **Maintenance Self-Service**: Assist in categorizing repair tickets with photo attachments and tracking technician visits.
-4. **Strict Tenant Privacy Isolation**: Enforce zero cross-tenant data leakage by binding every prompt exclusively to `req.authUser._id`.
-5. **Seamless Staff Handoff**: Bridge complex disputes directly into the existing WebSocket human chat system (`/api/chat`).
+1. **Plain-English Billing Explanations (Hybrid Breakdown)**: Deliver concise conversational Taglish/English summaries of monthly rent, registered appliance surcharges, and exact pro-rata electricity formulas alongside rich interactive billing cards.
+2. **Contract & Lease Transparency**: Proactively inform tenants of remaining lease duration, move-out clearance requirements, security deposit status, and renewal eligibility.
+3. **Maintenance Status Tracking**: Surface real-time status updates on active room repair tickets without confusing general inquiries with maintenance tickets.
+4. **Strict Tenant Privacy Isolation**: Enforce zero cross-tenant data leakage by binding every database query strictly to `req.authUser._id`.
+5. **Multi-Provider Resilience & Sub-Second Latency**: Deliver ultra-fast streaming responses via Groq (primary) with seamless failover to Google Gemini and local offline rule engines.
+6. **Seamless Live Staff Handoff**: Bridge unresolved disputes or personal concerns directly into the WebSocket Live Chat room ([`/applicant/chat`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/pages/ChatPage.jsx)) with pre-filled context.
 
 ---
 
-## 2. Target Personas & Core User Scenarios
+## 2. Multi-Provider AI Architecture & Cascade Routing
 
-### Persona: Active Resident (Tenant Role)
-* **Demographics**: College students or working professionals residing at Lilycrest Gil Puyat or Guadalupe.
-* **Key Challenges**:
-  - Confused about why their electricity bill fluctuates between summer and rainy months.
-  - Forgetting when their contract ends or when renewal deposits are due.
-  - Wondering if an electrician has been assigned to their broken room outlet.
+The assistant relies on a tiered multi-provider core configured in [`aiProviderService.js`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/server/services/chatbot/aiProviderService.js):
 
-### Real-World Use Cases & Expected AI Outputs
+| Tier | Provider & Model | Role & SLA | Use Case |
+| :--- | :--- | :--- | :--- |
+| **Tier 1 (Primary)** | **Groq** (`llama-3.3-70b-versatile` / `llama-3.1-8b-instant`) | Ultra-low latency streaming (**< 500ms** Time-to-First-Token) | Primary conversational interface, real-time SSE token delivery, and natural Tagalog/Taglish fluency. |
+| **Tier 2 (Secondary Fallback)** | **Google Gemini** (`gemini-2.5-flash` / `gemini-2.5-flash-lite`) | High-capacity reasoning & grounding (**< 2000ms**) | Automated failover if Groq encounters rate limits, network timeouts, or service unavailability. |
+| **Tier 3 (Offline Rule Engine)** | **Lilycrest Deterministic Fallback** | Instant local response (**< 50ms**, 100% availability) | Extracts structured numbers from the context snapshot and formats exact answers even without external internet or AI API keys. |
+| **Optional Tier** | **OpenRouter / DeepSeek** (`deepseek-chat` / `qwen-2.5`) | Deep analytical reasoning | Multi-month utility anomaly trend evaluation and complex contract clause comparisons. |
 
-#### Scenario A: The "Why Is My Bill Higher?" Inquiry
-* **Tenant Input**: *"Why is my bill this month ₱4,850? Last month was only ₱4,100."*
-* **AI Context Retrieved**:
-  - Rent: ₱3,500
-  - Appliances: ₱200 (mini-ref declared)
-  - Room Electricity: ₱1,150 (Room consumed 320 kWh across 4 occupants over 30 days)
-  - Water: Free (included in base rent)
-* **AI Output**:
-  > *"Your total bill for the June 15 billing cycle is **₱4,850.00**. Here is the exact breakdown:*
-  > * * **Base Room Rent**: ₱3,500.00*
-  > * * **Registered Appliance**: ₱200.00 (Mini-refrigerator)*
-  > * * **Electricity Share**: ₱1,150.00*
-  > 
-  > *The ₱750 increase from last month is due to higher room electricity usage (Room 304 recorded 320 kWh total, split evenly across 4 active bed occupants). Your payment due date is **June 25, 2026**."*
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Tenant as Resident Tenant
+    participant Drawer as TenantAssistantDrawer (React)
+    participant API as /api/chatbot/tenant/stream
+    participant Resolver as tenantContextResolver.js
+    participant Core as aiProviderService.js
+    participant Groq as Groq (Llama 3.3 70B)
+    participant Gemini as Gemini 2.5 Flash
 
-#### Scenario B: Contract Expiration & Security Deposit Inquiry
-* **Tenant Input**: *"When does my contract end, and how do I get my deposit back?"*
-* **AI Context Retrieved**:
-  - Contract End Date: August 31, 2026
-  - Days Remaining: 42 days
-  - Security Deposit: ₱3,500.00
-  - Clearance Status: Not started
-* **AI Output**:
-  > *"Your current lease for Room 304 Bed A ends on **August 31, 2026** (42 days remaining).*
-  > 
-  > *To receive your **₱3,500.00 security deposit refund**:*
-  > *1. Submit your Move-Out Clearance request at least 30 days before your end date.*
-  > *2. Settle your final utility meter readings.*
-  > *3. Return your room key and room inventory checklist to the Guadalupe front desk.*
-  > 
-  > *Would you like me to open the Move-Out Clearance page for you?"*
+    Tenant->>Drawer: Enters query ("Bakit ₱1,150 ang kuryente ko?")
+    Drawer->>API: POST /api/chatbot/tenant/stream { message, history }
+    API->>Resolver: resolveTenantAIContext(req.authUser._id)
+    Resolver-->>API: Returns { tenantName, bill, contract, maintenance }
+    API->>Drawer: SSE Event: event: widget (billing_breakdown)
+    API->>Core: streamChatCompletion(messages)
+    
+    alt Groq Available (Primary)
+        Core->>Groq: POST /openai/v1/chat/completions (stream: true)
+        Groq-->>Core: SSE chunks
+        Core-->>API: onToken(chunk)
+        API-->>Drawer: SSE Event: event: token ("Ang inyong electricity share...")
+    else Groq Fails / Times Out
+        Core->>Gemini: POST /models/gemini-2.5-flash:streamGenerateContent
+        Gemini-->>Core: Stream chunks
+        Core-->>API: onToken(chunk)
+        API-->>Drawer: SSE Event: event: token ("Ang inyong electricity share...")
+    end
+    
+    API->>Drawer: SSE Event: event: actions (Suggested Action Pills)
+    API->>Drawer: SSE Event: event: done
+```
 
 ---
 
-## 3. UI/UX Component Architecture (React / Vite)
+## 3. Real-World Resident Scenarios & Hybrid Responses
 
-Following the Lilycrest design guidelines (solid HSL tokens, 1px borders, zero gradients, no cookie-cutter AI pills):
+### Scenario A: The "Why Is My Electricity Bill Higher?" Inquiry (Hybrid Breakdown)
+* **Tenant Message**: *"Bakit ₱1,150 ang electricity bill ko ngayong buwan? Mas mataas kaysa dati."*
+* **Grounded Context Retrieved**:
+  - Room Number: Room 304 (Quadruple Sharing, 4 active occupants)
+  - Room Total Consumption: 320 kWh for the billing period
+  - Submeter Rate: ₱14.375 / kWh $\rightarrow$ Total Room Electricity = ₱4,600.00
+  - Pro-Rata Share: $\text{₱4,600.00} \div 4 = \text{₱1,150.00}$
+  - Registered Appliances: ₱200.00 (Mini-refrigerator)
+  - Base Rent: ₱3,500.00
+  - Total Statement: ₱4,850.00 (Due Date: June 25, 2026)
+* **AI Conversational Response (Option C)**:
+  > *"Magandang araw po! Para sa billing cycle ng June 15, ang total electricity bill ng Room 304 ay **₱4,600.00** (320 kWh kabuuang konsumo). Dahil may **4 na aktibong boarders** sa inyong kwarto, ang inyong pantay na pro-rata share ay **₱1,150.00**.*
+  > 
+  > *Mayroon din po kayong **₱200.00** para sa registered mini-fridge at **₱3,500.00** base rent para sa kabuuang **₱4,850.00** na due sa **June 25, 2026**."*
+* **Injected Interactive Card**: Automatically displays [`TenantBillingBreakdownCard.jsx`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/components/assistant/cards/TenantBillingBreakdownCard.jsx) with direct action buttons:
+  - `[Pay via PayMongo]` $\rightarrow$ triggers payment modal or redirects to `/applicant/billing?action=pay`
+  - `[View Statement Breakdown]` $\rightarrow$ navigates to `/applicant/billing`
 
-### Component Hierarchy
+---
+
+### Scenario B: Lease Expiration, Clearance & Deposit Inquiry
+* **Tenant Message**: *"Kailan matatapos ang contract ko at paano ko makukuha ang security deposit?"*
+* **Grounded Context Retrieved**:
+  - Lease End Date: August 31, 2026 (42 days remaining)
+  - Security Deposit Balance: ₱3,500.00
+  - Renewal Status: Eligible for 6-month or 1-year renewal
+* **AI Conversational Response**:
+  > *"Ang inyong lease contract para sa Room 304 (Bed A) ay magtatapos sa **August 31, 2026** (**42 days** na lang po ang natitira).*
+  > 
+  > *Para sa inyong **₱3,500.00 security deposit refund**:*
+  > *1. Magsumite ng Move-Out Clearance request sa portal nang hindi bababa sa 30 days bago ang end date.*
+  > *2. I-settle ang inyong huling submeter electricity reading.*
+  > *3. Isauli ang room key at completed inventory checklist sa branch front desk.*
+  > 
+  > *Kung nais po ninyong mag-renew ng kontrata, maaari kayong mag-apply directly sa portal."*
+* **Injected Interactive Card**: Automatically displays [`TenantLeaseTimelineCard.jsx`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/components/assistant/cards/TenantLeaseTimelineCard.jsx) with action pills:
+  - `[Request Lease Renewal]` $\rightarrow$ opens [`LeaseRenewalModal.jsx`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/components/LeaseRenewalModal.jsx)
+  - `[View Contract Details]` $\rightarrow$ navigates to `/applicant/contracts`
+
+---
+
+### Scenario C: Room Repair Status vs General Inquiry
+* **Tenant Message**: *"May balita na ba sa sirang aircon sa room namin?"*
+* **Grounded Context Retrieved**:
+  - Active Ticket: `REQ-882104` (Air Conditioner Repair)
+  - Status: `IN_PROGRESS`
+  - Assigned Provider: CoolAir Services (Scheduled: Tomorrow, 2:00 PM)
+* **AI Conversational Response**:
+  > *"Opo! Ang inyong active maintenance ticket para sa aircon (**REQ-882104**) ay kasalukuyang **IN PROGRESS**. Naka-assign na po ito sa CoolAir Services at naka-schedule ang technician visit bukas ng **2:00 PM**."*
+* **Injected Interactive Card**: Displays [`TenantMaintenanceCard.jsx`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/components/assistant/cards/TenantMaintenanceCard.jsx).
+* **Clear Workflow Boundary**:
+  - To follow up on this repair $\rightarrow$ routes to [`/applicant/maintenance`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/pages/MaintenancePage.jsx) (**Maintenance Ticket Module**).
+  - To dispute a billing surcharge or talk to administrative staff $\rightarrow$ routes to [`/applicant/chat`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/pages/ChatPage.jsx) (**Live Admin Chat Room**).
+
+---
+
+## 4. UI/UX Component Architecture (React / Vite)
+
+Following the Lilycrest design standards (solid HSL tokens, 1px crisp borders, strictly zero gradients, no cookie-cutter AI templates):
+
 ```
 web/src/features/tenant/
 ├── components/
 │   ├── assistant/
-│   │   ├── TenantAssistantDrawer.jsx      # Slide-over side panel
-│   │   ├── TenantAssistantLauncher.jsx    # Persistent header or bottom helper icon
-│   │   ├── TenantBillingBreakdownCard.jsx # Formatted bill explanation summary
-│   │   ├── TenantLeaseTimelineCard.jsx    # Contract timeline pill
-│   │   ├── TenantActionButtons.jsx        # Direct links (Pay via PayMongo, Request Maintenance)
-│   │   └── TenantHumanEscalateModal.jsx   # Transfer confirmation to Branch Admin
+│   │   ├── TenantAssistantDrawer.jsx        # Slide-over responsive drawer (420px desktop / full mobile)
+│   │   ├── TenantAssistantLauncher.jsx      # Persistent portal floating / header trigger button
+│   │   ├── cards/
+│   │   │   ├── TenantBillingBreakdownCard.jsx # Submeter math + line item visual card
+│   │   │   ├── TenantLeaseTimelineCard.jsx    # Lease days remaining + deposit pill
+│   │   │   └── TenantMaintenanceCard.jsx      # Active repair ticket status badge
+│   │   ├── modals/
+│   │   │   └── TenantHumanEscalateModal.jsx   # Live Admin Chat handoff confirmation
+│   │   └── index.js
 ```
 
-### UI Behavior & Interaction Design
-* **Slide-Over Drawer**: Right-side sliding panel (420px width on desktop, full screen on mobile) that does not obstruct background table data.
-* **Contextual Suggestions**: Dynamically adapts suggestions based on the active route:
-  - When on [`/applicant/billing`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/pages/BillingPage.jsx): Prompts *"Explain my electricity charge"*, *"When is my next due date?"*, *"Show payment methods"*.
-  - When on [`/applicant/contracts`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/pages/ContractsPage.jsx): Prompts *"How do I renew my lease?"*, *"Check deposit status"*.
-  - When on [`/applicant/maintenance`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/pages/MaintenancePage.jsx): Prompts *"Track my plumbing ticket"*, *"Report a new electrical issue"*.
-* **One-Click Human Transfer**: A clear, prominent button: *"Chat with Branch Admin"*. Clicking this automatically opens a new conversation thread in [`chatRoutes.js`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/server/routes/chatRoutes.js) and tags it with the relevant category.
+### Drawer Interaction Design
+* **Slide-Over Panel**: Anchored to the right viewport (`w-[420px]` on desktop, full-width on mobile viewports).
+* **Session Persistence**: Maintains conversation history in `sessionStorage` (`lilycrest_tenant_assistant_msgs`) during page transitions across the portal.
+* **Route-Aware Quick Prompts**: Adapts prompt chips based on the tenant's active URL:
+  - On [`/applicant/billing`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/pages/BillingPage.jsx): *"Electricity math"*, *"Payment due date"*, *"Water consumption"*.
+  - On [`/applicant/contracts`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/pages/ContractsPage.jsx): *"Lease expiration"*, *"Renew contract"*, *"Deposit refund"*.
+  - On [`/applicant/maintenance`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/pages/MaintenancePage.jsx): *"Active tickets"*, *"Report issue"*, *"Technician hours"*.
+* **One-Click Human Transfer**: Persistent *"Talk to Admin"* button in the drawer header and suggested action pills that initiates the Live Chat escalation flow.
 
 ---
 
-## 4. Backend Context Resolver Architecture
+## 5. Escalation Routing vs Maintenance Ticket Separation
 
-To ensure speed and security, the backend builds an in-memory **Tenant Snapshot** for every AI query:
+To maintain architectural clarity and prevent user confusion, support channels are strictly separated by intent:
+
+```mermaid
+flowchart LR
+    Intent{Tenant Intent / Concern}
+    
+    Intent -->|Facility Failure / Broken Item\nPlumbing, AC, Lights, Locks| MaintFlow[Maintenance Ticket System]
+    MaintFlow --> MaintPage[/applicant/maintenance]
+    MaintFlow --> MaintModel[(MaintenanceRequest DB Model)]
+    MaintFlow --> TechAssignment[Technician Job Dispatch]
+    
+    Intent -->|Billing Dispute / Rent Extension\nRoommate Dispute / General Inquiries| ChatFlow[Live Admin Chat Bridge]
+    ChatFlow --> EscalateModal[TenantHumanEscalateModal]
+    EscalateModal --> ChatRoute[POST /api/chatbot/tenant/escalate]
+    ChatRoute --> LiveChatPage[/applicant/chat]
+    ChatRoute --> WSServer[(WebSocket Live Chat Thread)]
+```
+
+| Dimension | Live Admin Chat Escalation | Maintenance Ticket Workflow |
+| :--- | :--- | :--- |
+| **Primary Route** | [`/applicant/chat`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/pages/ChatPage.jsx) | [`/applicant/maintenance`](file:///d:/Portfolio/3rdYear/CapstoneSystem/Capstone-Website/web/src/features/tenant/pages/MaintenancePage.jsx) |
+| **Data Model** | `Conversation` / `Message` (Real-time WebSockets) | `MaintenanceRequest` (Strict Ticket Lifecycle) |
+| **Responsible Party** | Branch Front Desk / Admin Team | Accredited Facility Technicians / Electricians |
+| **Ticket Numbering** | N/A (Standard Chat Thread) | Formal Code: `REQ-XXXXXX` |
+| **Supported Actions** | Text discussion, bill adjustment reviews, payment agreements. | Photo uploads, urgency ratings, technician dispatch, completion sign-off. |
+
+---
+
+## 6. Backend Context Resolver & API Contracts
+
+### 1. Dynamic Context Resolver (`tenantContextResolver.js`)
+Builds an in-memory snapshot strictly bounded to `req.authUser._id`:
 
 ```javascript
-// Server-side context builder: /server/services/chatbot/tenantContextResolver.js
-export async function resolveTenantAIContext(userId) {
-  const [user, activeReservation, latestBill, openTickets] = await Promise.all([
-    User.findById(userId).select("firstName lastName email branch roomNumber roomBed").lean(),
-    Reservation.findOne({ userId, status: { $in: CURRENT_RESIDENT_STATUS_QUERY }, isArchived: false })
+// /server/services/chatbot/tenantContextResolver.js
+export async function resolveTenantAIContext(userId, fallbackAuthUser = null) {
+  // Queries strictly matching userId
+  const [dbUser, activeReservation, contract, latestBill, activeMaintenance] = await Promise.all([
+    User.findById(userId).select("firstName lastName email branch roomNumber roomBed contactNumber").lean(),
+    Reservation.findOne({ userId, isArchived: false, status: { $in: CURRENT_RESIDENT_STATUS_QUERY } })
       .populate("roomId", "name roomNumber branch type floor")
-      .lean(),
-    Bill.findOne({ tenantId: userId, isArchived: false })
-      .sort({ createdAt: -1 })
-      .lean(),
-    MaintenanceRequest.find({ tenantId: userId, status: { $in: ["pending", "in_progress"] } })
-      .sort({ createdAt: -1 })
-      .limit(3)
-      .lean(),
+      .sort({ createdAt: -1 }).lean(),
+    Contract.findOne({ tenantId: userId, isArchived: { $ne: true } })
+      .sort({ createdAt: -1 }).lean(),
+    Bill.findOne({ userId, isArchived: false })
+      .sort({ billingMonth: -1, createdAt: -1 }).lean(),
+    MaintenanceRequest.find({ userId })
+      .sort({ createdAt: -1 }).limit(5).lean(),
   ]);
 
   return {
-    tenantName: `${user.firstName} ${user.lastName}`.trim(),
-    branch: user.branch || activeReservation?.roomId?.branch,
-    roomNumber: user.roomNumber || activeReservation?.roomId?.roomNumber,
-    bedPosition: user.roomBed || activeReservation?.selectedBed?.id,
+    tenantName: `${dbUser.firstName} ${dbUser.lastName}`.trim(),
+    branch: formatBranchName(dbUser.branch || contract?.branch),
+    roomNumber: dbUser.roomNumber || contract?.roomNumber || "304",
+    bedPosition: dbUser.roomBed || contract?.bedLabel || "Bed 1",
     currentBill: latestBill ? {
-      month: latestBill.month || latestBill.billingPeriod,
+      billId: latestBill._id,
+      month: latestBill.billingMonth,
       totalAmount: latestBill.totalAmount,
       rentAmount: latestBill.rentAmount,
       electricityAmount: latestBill.electricityAmount,
@@ -141,17 +248,21 @@ export async function resolveTenantAIContext(userId) {
       status: latestBill.status,
       dueDate: latestBill.dueDate,
     } : null,
-    contract: activeReservation ? {
-      startDate: activeReservation.moveInDate,
-      endDate: activeReservation.moveOutDate,
-      depositAmount: activeReservation.depositAmount || activeReservation.totalPrice,
+    contract: contract ? {
+      contractNumber: contract.contractNumber,
+      startDate: contract.startDate,
+      endDate: contract.endDate,
+      daysRemaining: calculateDaysRemaining(contract.endDate),
+      monthlyRate: contract.monthlyRent,
+      depositAmount: contract.securityDeposit,
+      status: contract.status,
     } : null,
-    activeMaintenance: openTickets.map(t => ({
-      ticketCode: t.ticketCode || t._id,
-      category: t.request_type || t.typeLabel,
-      urgency: t.urgency,
+    activeMaintenance: activeMaintenance.map(t => ({
+      ticketCode: t.ticketNumber || String(t._id),
+      category: t.category || t.request_type,
+      urgency: t.priority || "normal",
       status: t.status,
-      submittedDate: t.createdAt,
+      scheduledDate: t.scheduledDate,
     })),
   };
 }
@@ -159,48 +270,58 @@ export async function resolveTenantAIContext(userId) {
 
 ---
 
-## 5. API Contracts & Endpoints
+### 2. API Endpoints
 
-### 1. Tenant Assistant Conversational Query
-* **Route**: `POST /api/chatbot/tenant/query`
+#### Endpoint A: Real-Time SSE Stream
+* **Route**: `POST /api/chatbot/tenant/stream`
 * **Access**: Authenticated (`verifyToken` + `role: tenant`)
-* **Rate Limit**: 30 requests / 15 minutes per user
+* **Headers**: `Content-Type: application/json` $\rightarrow$ Responds with `text/event-stream`
 * **Request Body**:
 ```json
 {
-  "message": "Can you explain why I have an appliance fee?",
-  "conversationHistory": []
+  "message": "Bakit ₱1,150 ang electricity bill ko?",
+  "conversationHistory": [
+    { "role": "user", "text": "Hello" },
+    { "role": "assistant", "text": "Mabuhay! Paano po kita matutulungan ngayon?" }
+  ]
 }
 ```
-* **Response Payload**:
-```json
-{
-  "success": true,
-  "data": {
-    "reply": "Your current bill includes an appliance fee of ₱200.00 for your registered personal mini-refrigerator in Room 304. Under dormitory policy, personal cooling appliances incur a standard monthly surcharge.",
-    "contextSnapshot": {
-      "billId": "66bc891f0923ef12019488b4",
-      "dueDate": "2026-06-25T00:00:00.000Z",
-      "status": "pending"
-    },
-    "suggestedActions": [
-      { "label": "Pay via PayMongo", "url": "/applicant/billing?action=pay" },
-      { "label": "Speak with Branch Admin", "action": "escalate_to_admin" }
-    ]
-  }
-}
+* **SSE Event Stream Protocol**:
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+
+event: widget
+data: {"type":"billing_breakdown","title":"Current Statement of Account","data":{"bill":{"totalAmount":4850,"rentAmount":3500,"electricityAmount":1150,"applianceCharges":200,"dueDate":"2026-06-25"},"waterIncluded":true}}
+
+event: token
+data: {"token":"Magandang "}
+
+event: token
+data: {"token":"araw po! Para sa "}
+
+event: token
+data: {"token":"billing cycle..."}
+
+event: actions
+data: [{"label":"View Billing Statement","url":"/applicant/billing"},{"label":"Talk to Branch Admin","action":"open_escalate_modal"}]
+
+event: done
+data: {"completed":true,"fullReply":"Magandang araw po!..."}
 ```
 
-### 2. Human Admin Escalation Bridge
+#### Endpoint B: Live Admin Chat Escalation Bridge
 * **Route**: `POST /api/chatbot/tenant/escalate`
 * **Access**: Authenticated (`verifyToken` + `role: tenant`)
 * **Request Body**:
 ```json
 {
-  "category": "billing_concern",
-  "priority": "normal",
-  "summary": "Tenant is disputing June electricity consumption pro-rata calculation.",
-  "lastBotMessage": "Your electricity share is ₱1,150.00 for June 15 cycle."
+  "category": "billing_dispute",
+  "priority": "high",
+  "summary": "Tenant requesting review of electricity share calculation for June cycle.",
+  "lastBotMessage": "Your electricity share is ₱1,150.00 based on Room 304 320 kWh usage."
 }
 ```
 * **Response Payload**:
@@ -209,27 +330,70 @@ export async function resolveTenantAIContext(userId) {
   "success": true,
   "data": {
     "conversationId": "66bc891f0923ef12019488f9",
-    "status": "open",
-    "assignedAdminName": "Guadalupe Admin Team",
-    "redirectUrl": "/applicant/chat?conversationId=66bc891f0923ef12019488f9"
+    "status": "active",
+    "assignedAdmin": "Guadalupe Front Desk Admin",
+    "redirectUrl": "/applicant/chat?conversationId=66bc891f0923ef12019488f9",
+    "message": "Escalated to live chat. Admin has received your context summary."
   }
 }
 ```
 
 ---
 
-## 6. Security, Isolation & Safety Guardrails
+## 7. Bilingual System Prompt & Safety Guardrails
 
-1. **Strict User Binding**: The backend queries only records matching `userId = req.authUser._id`. It is mathematically impossible for a tenant to prompt-inject or query another resident's room number, contact number, or payment history.
-2. **Sanitized AI System Prompt**: The system prompt instructs Gemini:
-   * *"You are Lilycrest's Tenant Assistant. You ONLY have access to the specific tenant's JSON record provided in this session. NEVER reveal internal admin notes, technician personal phone numbers, or other tenants' details."*
-3. **No Financial Mutations**: The AI assistant is strictly read-only. It cannot modify bills, approve waivers, or alter lease dates; all financial actions must go through formal admin controller routes.
+### System Prompt Definition
+```
+You are the dedicated Lilycrest Tenant AI Assistant for Lilycrest Dormitory Management System (Lilycrest DMS).
+You assist active dormitory residents with clear, professional, and courteous English, providing precise, grounded answers based on the resident's actual stay record.
+
+AUTHENTICATED TENANT PROFILE:
+- Tenant Name: {{tenantName}}
+- Branch: {{branch}}
+- Room Number: Room {{roomNumber}} ({{bedPosition}})
+- Base Monthly Rent: ₱{{monthlyRent}}/month
+
+ACTIVE LEASE CONTRACT:
+- Status: {{contractStatus}}
+- Lease End Date: {{leaseEndDate}} ({{daysRemaining}} days remaining)
+- Security Deposit: ₱{{depositAmount}}
+
+LATEST BILLING STATEMENT:
+- Total Due: ₱{{totalAmount}} (Due Date: {{dueDate}})
+- Rent: ₱{{rentAmount}} | Electricity: ₱{{electricityAmount}} | Water: Free (Included in rent)
+- Appliance Fees: ₱{{applianceAmount}}
+
+ACTIVE MAINTENANCE TICKETS:
+{{maintenanceListFormatted}}
+
+DORMITORY POLICIES:
+1. Curfew: 11:00 PM to 5:00 AM. 24/7 late entry permitted with valid student/work ID.
+2. Electricity: Metered per room submeter and split pro-rata among room occupants monthly.
+3. Amenities: High-speed Wi-Fi and Water consumption are 100% free and included in rent.
+4. Maintenance: Facility repair tickets are submitted strictly via the Maintenance Portal.
+
+STRICT BEHAVIOR RULES:
+1. Language & Tone: Always respond in clear, professional English by default. Do NOT insert filler honorifics such as "po" or "opo" in English sentences.
+2. Answer concisely (2 to 4 sentences maximum).
+3. Ground all numbers strictly on the tenant's data provided above. Never fabricate bills, dates, or ticket statuses.
+4. If the tenant has a billing dispute or unlisted concern, offer to bridge them to the Branch Admin via Live Chat.
+```
+
+### Safety & Privacy Isolation Guardrails
+1. **Mathematical User Isolation**: Every database operation queries `userId: req.authUser._id`. It is strictly impossible for a tenant to inspect another resident's room number, contact info, or payment history.
+2. **Read-Only Enclosure**: The AI assistant has zero database mutation permissions. It cannot modify invoices, alter move-out dates, or grant financial waivers.
+3. **Trace Sanitization**: Internal database stack traces and LLM provider keys are never exposed in SSE error streams or client payloads.
 
 ---
 
-## 7. Quality & Verification Gates
+## 8. Performance SLAs & Quality Verification Gates
 
-1. **Pro-Rata Math Accuracy**: Verify that electricity arithmetic explained by the AI matches the database record to 2 decimal places.
-2. **Contract Timing Accuracy**: Verify date calculation (days remaining) against current system time.
-3. **Socket Event Verification**: Verify that escalating to human emits `chat:message-new` to the branch admin dashboard in real-time.
-4. **Offline Fallback**: When Gemini API is unreachable, provide a structured rule-based fallback card with raw bill line items.
+1. **Streaming Latency SLA**:
+   - Time-to-First-Token (TTFT) via Groq: **< 500ms**
+   - Fallback failover trigger: **< 3000ms**
+2. **Pro-Rata Math Precision**:
+   - Submeter arithmetic ($Total \div Occupants$) must match the database billing charge to 2 decimal places.
+3. **Zero-Downtime Resilience**:
+   - If Groq and Gemini APIs are simultaneously unreachable, the deterministic rule-based engine must stream complete, grounded fallback answers with 100% uptime.
+4. **WebSocket Event Verification**:
+   - Escalating to Live Chat must emit `chat:message-new` to the branch admin dashboard in real-time.

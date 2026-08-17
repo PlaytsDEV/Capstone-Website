@@ -5,12 +5,19 @@ import {
   handlePublicQuery,
   handlePublicStream,
   handleLeadEscalation,
+  handleParseLead,
+  handleAdminSopQuery,
+  handleAdminSuggestReply,
+  handleAdminIssueClusters,
+  handleOwnerSupportTrends,
 } from "../controllers/chatbotController.js";
 import {
   handleTenantQuery,
   handleTenantStream,
   handleTenantEscalation,
 } from "../controllers/tenantChatbotController.js";
+import { verifyAdmin, verifyOwner } from "../middleware/auth.js";
+import { filterByBranch } from "../middleware/branchAccess.js";
 
 const router = express.Router();
 
@@ -64,10 +71,18 @@ const tenantEscalationLimiter = rateLimit({
 
 router.post("/public/query", chatbotQueryLimiter, handlePublicQuery);
 router.post("/public/stream", chatbotQueryLimiter, handlePublicStream);
+router.post("/public/parse-lead", chatbotQueryLimiter, handleParseLead);
 router.post("/public/lead-escalation", chatbotEscalationLimiter, handleLeadEscalation);
 
 router.post("/tenant/query", verifyToken, tenantChatbotQueryLimiter, handleTenantQuery);
 router.post("/tenant/stream", verifyToken, tenantChatbotQueryLimiter, handleTenantStream);
 router.post("/tenant/escalate", verifyToken, tenantEscalationLimiter, handleTenantEscalation);
+
+// Phase 3 Admin & Owner Routes
+router.post("/admin/sop-query", verifyToken, verifyAdmin, filterByBranch, chatbotQueryLimiter, handleAdminSopQuery);
+router.post("/admin/suggest-reply", verifyToken, verifyAdmin, filterByBranch, chatbotQueryLimiter, handleAdminSuggestReply);
+router.get("/admin/issue-clusters", verifyToken, verifyAdmin, filterByBranch, chatbotQueryLimiter, handleAdminIssueClusters);
+
+router.get("/owner/support-trends", verifyToken, verifyOwner, chatbotQueryLimiter, handleOwnerSupportTrends);
 
 export default router;

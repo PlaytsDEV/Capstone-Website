@@ -47,29 +47,42 @@ export async function createCheckoutSession({
 }) {
   if (!process.env.PAYMONGO_SECRET_KEY && process.env.NODE_ENV !== "production") {
     // Encode the metadata into the session ID (base64url) so it survives server restarts.
-    const encodedMeta = Buffer.from(JSON.stringify(metadata)).toString("base64url");
+    const enrichedMetadata = {
+      ...metadata,
+      amountDue: String(amount),
+    };
+    const encodedMeta = Buffer.from(JSON.stringify(enrichedMetadata)).toString("base64url");
     const mockSessionId = `cs_test_mock_${encodedMeta}`;
     const checkoutUrl = successUrl.replace("{id}", mockSessionId);
+    const amountCents = Math.round(amount * 100);
     const mockSession = {
       id: mockSessionId,
       type: "checkout_session",
       attributes: {
         status: "active",
         checkout_url: checkoutUrl,
+        line_items: [
+          {
+            currency: "PHP",
+            amount: amountCents,
+            name: description,
+            quantity: 1,
+          },
+        ],
         payments: [
           {
             id: `pay_mock_${Date.now()}`,
             type: "payment",
             attributes: {
               status: "paid",
-              amount: Math.round(amount * 100),
+              amount: amountCents,
               currency: "PHP",
               payment_method_type: "gcash",
               source: { type: "gcash" },
             },
           },
         ],
-        metadata,
+        metadata: enrichedMetadata,
       },
     };
     mockCheckoutSessions.set(mockSessionId, mockSession);
@@ -140,18 +153,28 @@ export async function getCheckoutSession(sessionId) {
     } catch {
       // If decoding fails, proceed with empty metadata (settlement skipped).
     }
+    const resolvedAmount = Number(metadata.amountDue || metadata.amount || 0);
+    const amountCents = resolvedAmount > 0 ? Math.round(resolvedAmount * 100) : 500000;
     return {
       id: sessionId,
       type: "checkout_session",
       attributes: {
         status: "active",
+        line_items: [
+          {
+            currency: "PHP",
+            amount: amountCents,
+            name: "Lilycrest Dormitory Payment",
+            quantity: 1,
+          },
+        ],
         payments: [
           {
             id: `pay_mock_${Date.now()}`,
             type: "payment",
             attributes: {
               status: "paid",
-              amount: Number(metadata.amountDue || 0) * 100 || 500000,
+              amount: amountCents,
               currency: "PHP",
               payment_method_type: "gcash",
               source: { type: "gcash" },
