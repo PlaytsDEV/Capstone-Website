@@ -41,11 +41,11 @@ function getResetPasswordPage(_req, res) {
       <form id="reset-form" class="hidden" novalidate>
         <h1>Choose a new password</h1>
         <p class="muted">For your security, this reset link expires and can only be used once.</p>
-        <div class="field"><label for="new-password">New Password</label><div class="input-row"><input id="new-password" type="password" maxlength="128" autocomplete="new-password" disabled><button class="eye" type="button" data-target="new-password" aria-label="Show password">Show</button></div></div>
+        <div class="field"><label for="new-password">New Password</label><div class="input-row"><input id="new-password" type="password" maxlength="128" autocomplete="new-password" disabled><button class="eye" type="button" data-target="new-password" aria-label="Show password" disabled>Show</button></div></div>
         <div class="rules" aria-label="Password requirements">
           <div class="rule" data-rule="minLength">At least 8 characters</div><div class="rule" data-rule="uppercase">One uppercase letter</div><div class="rule" data-rule="lowercase">One lowercase letter</div><div class="rule" data-rule="number">One number</div><div class="rule" data-rule="special">One special character</div>
         </div>
-        <div class="field"><label for="confirm-password">Confirm New Password</label><div class="input-row"><input id="confirm-password" type="password" maxlength="128" autocomplete="new-password" disabled><button class="eye" type="button" data-target="confirm-password" aria-label="Show password">Show</button></div></div>
+        <div class="field"><label for="confirm-password">Confirm New Password</label><div class="input-row"><input id="confirm-password" type="password" maxlength="128" autocomplete="new-password" disabled><button class="eye" type="button" data-target="confirm-password" aria-label="Show password" disabled>Show</button></div></div>
         <div id="form-error" class="error hidden" role="alert"></div>
         <button id="submit" class="button" type="submit" disabled>Reset Password</button>
       </form>

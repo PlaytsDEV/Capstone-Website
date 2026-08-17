@@ -12,6 +12,7 @@ export const DEVELOPMENT_ALLOWED_ORIGINS = Object.freeze([
 export const PRODUCTION_ALLOWED_ORIGINS = Object.freeze([
   "https://www.lilycrest.space",
   "https://lilycrest.space",
+  "https://api.lilycrest.space",
 ]);
 
 const parseConfiguredOrigins = (value = "", { production = false } = {}) =>
@@ -61,8 +62,13 @@ export const createCorsOriginPolicy = (environment = process.env) => {
     || environment.CORS_ORIGINS
     || environment.FRONTEND_URL;
   const configured = parseConfiguredOrigins(configuredValue, { production });
+  // Fetch sends an Origin header for same-origin JSON POSTs. Include the
+  // canonical API origin itself so server-rendered compatibility pages can
+  // call their own API without being rejected by CORS before routing.
+  const apiOrigins = parseConfiguredOrigins(environment.PUBLIC_API_URL, { production });
   const allowedOriginRules = [
     ...configured,
+    ...apiOrigins,
     ...(production ? [] : DEVELOPMENT_ALLOWED_ORIGINS),
   ].filter((origin, index, origins) => origins.indexOf(origin) === index);
 

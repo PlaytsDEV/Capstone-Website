@@ -138,12 +138,15 @@ describe('legacy reset compatibility controller', () => {
     expect(html).not.toMatch(/<script(?![^>]+src=)[^>]*>/i);
     expect(html).not.toMatch(/\sonclick=/i);
     expect(html).toContain('id="reset-form" class="hidden"');
+    expect(html.match(/<button class="eye"[^>]* disabled>/g)).toHaveLength(2);
   });
 
   test('the external compatibility script parses and verifies status before enabling the form', () => {
     const script = fs.readFileSync(path.join(__dirname, '..', 'public', 'legacy-password-reset.js'), 'utf8');
     expect(() => new Function(script)).not.toThrow();
     expect(script).toContain("fetch('/api/m/auth/reset-password/status'");
-    expect(script.indexOf('newPassword.disabled = true')).toBeLessThan(script.indexOf('newPassword.disabled = false'));
+    expect(script).toContain('setPasswordControlsEnabled(false)');
+    expect(script.indexOf('setPasswordControlsEnabled(false)')).toBeLessThan(script.indexOf('setPasswordControlsEnabled(true)'));
+    expect(script).toContain('button.disabled = !enabled');
   });
 });

@@ -9,10 +9,22 @@ describe("credentialed CORS origin policy", () => {
     const policy = createCorsOriginPolicy({
       NODE_ENV: "production",
       ALLOWED_FRONTEND_ORIGINS: "https://www.lilycrest.space,https://lilycrest.space",
+      PUBLIC_API_URL: "https://api.lilycrest.space",
     });
     expect(policy.isOriginAllowed("https://www.lilycrest.space")).toBe(true);
     expect(policy.isOriginAllowed("https://lilycrest.space")).toBe(true);
+    expect(policy.isOriginAllowed("https://api.lilycrest.space")).toBe(true);
     expect(policy.isOriginAllowed(undefined)).toBe(true);
+  });
+
+  test("allows the exact canonical API origin for same-origin browser POSTs", () => {
+    const policy = createCorsOriginPolicy({
+      NODE_ENV: "production",
+      ALLOWED_FRONTEND_ORIGINS: "https://www.lilycrest.space",
+      PUBLIC_API_URL: "https://api.lilycrest.space",
+    });
+    expect(policy.isOriginAllowed("https://api.lilycrest.space")).toBe(true);
+    expect(policy.isOriginAllowed("https://api.lilycrest.space.attacker.invalid")).toBe(false);
   });
 
   test("rejects unapproved and substring-matched origins", () => {
@@ -29,6 +41,14 @@ describe("credentialed CORS origin policy", () => {
     expect(() => createCorsOriginPolicy({ NODE_ENV: "production", CORS_ORIGINS: rule })).toThrow();
   });
 
+  test("rejects an unapproved production API origin", () => {
+    expect(() => createCorsOriginPolicy({
+      NODE_ENV: "production",
+      CORS_ORIGINS: "https://www.lilycrest.space",
+      PUBLIC_API_URL: "https://attacker.example.test",
+    })).toThrow(/approved Lilycrest origin/i);
+  });
+
   test("allows exact localhost origins only outside production", () => {
     const policy = createCorsOriginPolicy({ NODE_ENV: "development", CORS_ORIGINS: "http://localhost:8080" });
     expect(policy.isOriginAllowed("http://localhost:8080")).toBe(true);
@@ -37,8 +57,15 @@ describe("credentialed CORS origin policy", () => {
   });
 
   test("never returns a wildcard rule for credentialed HTTP or Socket.IO consumers", () => {
-    const policy = createCorsOriginPolicy({ NODE_ENV: "production", CORS_ORIGINS: "https://www.lilycrest.space" });
-    expect(policy.allowedOriginRules).toEqual(["https://www.lilycrest.space"]);
+    const policy = createCorsOriginPolicy({
+      NODE_ENV: "production",
+      CORS_ORIGINS: "https://www.lilycrest.space",
+      PUBLIC_API_URL: "https://api.lilycrest.space",
+    });
+    expect(policy.allowedOriginRules).toEqual([
+      "https://www.lilycrest.space",
+      "https://api.lilycrest.space",
+    ]);
     expect(policy.allowedOriginRules).not.toContain("*");
   });
 
