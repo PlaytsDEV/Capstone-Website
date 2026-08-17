@@ -17,6 +17,7 @@ import {
   BedHistory,
   Stay,
   Contract,
+  TenantViolation,
   ROOM_BRANCHES,
 } from "../../models/index.js";
 import { BUSINESS } from "../../config/constants.js";
@@ -1601,7 +1602,7 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
     ),
   ];
 
-  const [bills, bedHistoryRecords, stays, branchRooms, contracts] = await Promise.all([
+  const [bills, bedHistoryRecords, stays, branchRooms, contracts, violations] = await Promise.all([
     Bill.find({
       reservationId: { $in: reservationIds },
       isArchived: { $ne: true },
@@ -1634,6 +1635,15 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
     })
       .sort({ version: -1, createdAt: -1 })
       .lean(),
+    TenantViolation.find({
+      $or: [
+        { reservationId: { $in: reservationIds } },
+        { tenantId: { $in: tenantIds } },
+      ],
+      status: { $nin: ["dismissed", "resolved"] },
+    })
+      .sort({ dateOfIncident: -1, createdAt: -1 })
+      .lean(),
   ]);
 
   const billsByReservationId = new Map();
@@ -1649,7 +1659,22 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
   const staysByReservationId = new Map();
   const contractsByReservationId = new Map();
   const contractsByTenantId = new Map();
+  const violationsByReservationId = new Map();
+  const violationsByTenantId = new Map();
   const branchAvailability = new Map();
+
+  for (const violation of (violations || [])) {
+    if (violation.reservationId) {
+      const resKey = String(violation.reservationId);
+      if (!violationsByReservationId.has(resKey)) violationsByReservationId.set(resKey, []);
+      violationsByReservationId.get(resKey).push(violation);
+    }
+    if (violation.tenantId) {
+      const tenantKey = String(violation.tenantId);
+      if (!violationsByTenantId.has(tenantKey)) violationsByTenantId.set(tenantKey, []);
+      violationsByTenantId.get(tenantKey).push(violation);
+    }
+  }
 
   for (const contract of contracts) {
     if (contract.reservationId) {
@@ -1729,6 +1754,10 @@ export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
       contracts:
         contractsByReservationId.get(reservationKey) ||
         contractsByTenantId.get(tenantKey) ||
+        [],
+      violations:
+        violationsByReservationId.get(reservationKey) ||
+        violationsByTenantId.get(tenantKey) ||
         [],
       tenantStatus: reservation.userId?.tenantStatus || "applicant",
       hasAvailableBedsInBranch,

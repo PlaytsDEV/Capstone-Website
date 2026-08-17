@@ -599,12 +599,14 @@ export async function fetchBills(filter, query) {
   const { status, month, page = 1, limit = 20, search, roomId } = query;
   const skip = (parseInt(page) - 1) * parseInt(limit);
   if (status && status !== "all") filter.status = status;
-  if (month) {
+  if (month && month !== "all") {
     const d = dayjs(month);
-    filter.billingMonth = {
-      $gte: d.startOf("month").toDate(),
-      $lt: d.add(1, "month").startOf("month").toDate(),
-    };
+    if (d.isValid()) {
+      filter.billingMonth = {
+        $gte: d.startOf("month").toDate(),
+        $lt: d.add(1, "month").startOf("month").toDate(),
+      };
+    }
   }
 
   // When filtering by roomId, also pull in transfer_settlement bills whose

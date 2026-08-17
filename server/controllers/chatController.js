@@ -243,6 +243,229 @@ async function autoAssignConversation(conversation) {
   }
 }
 
+/**
+ * Resolves the tenant's profile image with fallback cascade:
+ *  1. Live User.profileImage
+ *  2. Reservation.selfiePhotoUrl / documentPrechecks.selfiePhoto.fileUrl
+ *  3. Explicit/cached tenantProfileImage
+ */
+async function resolveTenantProfileImage({
+  tenantId = null,
+  tenantEmail = "",
+  tenantUserId = "",
+  tenantProfileImage = "",
+  user = null,
+  reservation = null,
+} = {}) {
+  try {
+    if (user?.profileImage && typeof user.profileImage === "string" && user.profileImage.trim()) {
+      return user.profileImage.trim();
+    }
+
+    const resPhoto = reservation?.selfiePhotoUrl || reservation?.documentPrechecks?.selfiePhoto?.fileUrl;
+    if (resPhoto && typeof resPhoto === "string" && resPhoto.trim()) {
+      return resPhoto.trim();
+    }
+
+    if (tenantProfileImage && typeof tenantProfileImage === "string" && tenantProfileImage.trim()) {
+      return tenantProfileImage.trim();
+    }
+
+    const mongoId = tenantId && mongoose.Types.ObjectId.isValid(tenantId) ? new mongoose.Types.ObjectId(tenantId) : null;
+    const normalizedEmail = tenantEmail ? String(tenantEmail).trim().toLowerCase() : "";
+
+    let dbUser = null;
+    if (mongoId && typeof User?.findById === "function") {
+      dbUser = await User.findById(mongoId).select("profileImage email").lean();
+    }
+    if (!dbUser && normalizedEmail && typeof User?.findOne === "function") {
+      dbUser = await User.findOne({ email: normalizedEmail }).select("profileImage email").lean();
+    }
+    if (dbUser?.profileImage && typeof dbUser.profileImage === "string" && dbUser.profileImage.trim()) {
+      return dbUser.profileImage.trim();
+    }
+
+    const resConditions = [];
+    if (mongoId) resConditions.push({ userId: mongoId });
+    if (dbUser?._id) resConditions.push({ userId: dbUser._id });
+    if (normalizedEmail) resConditions.push({ email: normalizedEmail });
+
+    if (resConditions.length > 0 && typeof Reservation?.findOne === "function") {
+      const resDoc = await Reservation.findOne({
+        $or: resConditions,
+        $and: [
+          {
+            $or: [
+              { selfiePhotoUrl: { $exists: true, $ne: null, $ne: "" } },
+              { "documentPrechecks.selfiePhoto.fileUrl": { $exists: true, $ne: null, $ne: "" } },
+            ],
+          },
+        ],
+      })
+        .sort({ createdAt: -1 })
+        .select("selfiePhotoUrl documentPrechecks.selfiePhoto.fileUrl")
+        .lean();
+
+      const photo = resDoc?.selfiePhotoUrl || resDoc?.documentPrechecks?.selfiePhoto?.fileUrl;
+      if (photo && typeof photo === "string" && photo.trim()) {
+        return photo.trim();
+      }
+    }
+
+    // 6. Name-based Reservation fallback for legacy/orphaned chat records
+    const targetName = String(user?.name || user?.fullName || "").trim();
+    if (targetName && typeof Reservation?.findOne === "function") {
+      const firstWord = targetName.split(/\s+/)[0];
+      if (firstWord && firstWord.length >= 2) {
+        const resByName = await Reservation.findOne({
+          firstName: new RegExp(`^${firstWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i"),
+          selfiePhotoUrl: { $exists: true, $ne: null, $ne: "" },
+        })
+          .sort({ createdAt: -1 })
+          .select("selfiePhotoUrl")
+          .lean();
+
+        if (resByName?.selfiePhotoUrl && typeof resByName.selfiePhotoUrl === "string" && resByName.selfiePhotoUrl.trim()) {
+          return resByName.selfiePhotoUrl.trim();
+        }
+      }
+    }
+
+    return "";
+  } catch (_) {
+    return "";
+  }
+}
+
+/**
+ * Efficiently batch-resolves tenant profile photos across an array of conversation docs.
+ */
+async function batchResolveConversationPhotos(conversations = []) {
+  try {
+    if (!Array.isArray(conversations) || conversations.length === 0) return conversations;
+    if (typeof User?.find !== "function" || typeof Reservation?.find !== "function") return conversations;
+
+  const unresolved = conversations.filter((c) => {
+    const tenantObj = c.tenantId && typeof c.tenantId === "object" ? c.tenantId : null;
+    const currentPhoto = (tenantObj && tenantObj.profileImage) || c.tenantProfileImage || "";
+    return !currentPhoto;
+  });
+
+  if (unresolved.length === 0) return conversations;
+
+  const unresolvedEmails = [
+    ...new Set(
+      unresolved
+        .map((c) => String(c.tenantEmail || "").trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  const unresolvedUserIds = [
+    ...new Set(
+      unresolved
+        .map((c) => (c.tenantId && typeof c.tenantId === "object" ? c.tenantId._id : c.tenantId))
+        .filter(Boolean)
+        .map(String),
+    ),
+  ];
+  const unresolvedFirstNames = [
+    ...new Set(
+      unresolved
+        .map((c) => String(c.tenantName || "").trim().split(/\s+/)[0])
+        .filter((name) => Boolean(name) && name.length >= 2),
+    ),
+  ];
+
+  const [usersByEmail, reservations, reservationsByName] = await Promise.all([
+    unresolvedEmails.length > 0
+      ? User.find({
+          email: { $in: unresolvedEmails },
+          profileImage: { $exists: true, $ne: "" },
+        })
+          .select("_id email profileImage")
+          .lean()
+      : [],
+    Reservation.find({
+      $or: [
+        ...(unresolvedUserIds.length > 0
+          ? [{ userId: { $in: unresolvedUserIds.map((id) => new mongoose.Types.ObjectId(id)) } }]
+          : []),
+        ...(unresolvedEmails.length > 0 ? [{ email: { $in: unresolvedEmails } }] : []),
+      ],
+      $and: [
+        {
+          $or: [
+            { selfiePhotoUrl: { $exists: true, $ne: null, $ne: "" } },
+            { "documentPrechecks.selfiePhoto.fileUrl": { $exists: true, $ne: null, $ne: "" } },
+          ],
+        },
+      ],
+    })
+      .sort({ createdAt: -1 })
+      .select("userId email selfiePhotoUrl documentPrechecks.selfiePhoto.fileUrl")
+      .lean(),
+    unresolvedFirstNames.length > 0
+      ? Reservation.find({
+          firstName: { $in: unresolvedFirstNames.map((fn) => new RegExp(`^${fn.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i")) },
+          selfiePhotoUrl: { $exists: true, $ne: null, $ne: "" },
+        })
+          .sort({ createdAt: -1 })
+          .select("firstName selfiePhotoUrl")
+          .lean()
+      : [],
+  ]);
+
+  const userEmailMap = new Map(usersByEmail.map((u) => [String(u.email).toLowerCase(), u.profileImage]));
+  const resUserIdMap = new Map();
+  const resEmailMap = new Map();
+  const resNameMap = new Map();
+
+  reservations.forEach((r) => {
+    const photo = r.selfiePhotoUrl || r.documentPrechecks?.selfiePhoto?.fileUrl;
+    if (photo && typeof photo === "string" && photo.trim()) {
+      const cleanPhoto = photo.trim();
+      if (r.userId && !resUserIdMap.has(String(r.userId))) {
+        resUserIdMap.set(String(r.userId), cleanPhoto);
+      }
+      if (r.email && !resEmailMap.has(String(r.email).toLowerCase())) {
+        resEmailMap.set(String(r.email).toLowerCase(), cleanPhoto);
+      }
+    }
+  });
+
+  reservationsByName.forEach((r) => {
+    const fn = String(r.firstName || "").trim().toLowerCase();
+    if (fn && r.selfiePhotoUrl && !resNameMap.has(fn)) {
+      resNameMap.set(fn, r.selfiePhotoUrl.trim());
+    }
+  });
+
+  unresolved.forEach((c) => {
+    const tenantIdStr = c.tenantId && typeof c.tenantId === "object" ? String(c.tenantId._id) : String(c.tenantId || "");
+    const emailStr = String(c.tenantEmail || "").trim().toLowerCase();
+    const firstNameStr = String(c.tenantName || "").trim().split(/\s+/)[0].toLowerCase();
+    const resolved =
+      (emailStr && userEmailMap.get(emailStr)) ||
+      (tenantIdStr && resUserIdMap.get(tenantIdStr)) ||
+      (emailStr && resEmailMap.get(emailStr)) ||
+      (firstNameStr && resNameMap.get(firstNameStr)) ||
+      "";
+
+    if (resolved) {
+      c.tenantProfileImage = resolved;
+      if (c.tenantId && typeof c.tenantId === "object" && !c.tenantId.profileImage) {
+        c.tenantId.profileImage = resolved;
+      }
+      ChatConversation.updateOne({ _id: c._id }, { $set: { tenantProfileImage: resolved } }).catch(() => {});
+    }
+  });
+
+    return conversations;
+  } catch (_) {
+    return conversations;
+  }
+}
+
 function serializeConversation(conversation) {
   if (!conversation) return null;
   const doc =
@@ -250,11 +473,23 @@ function serializeConversation(conversation) {
       ? conversation.toObject()
       : conversation;
 
+  const tenantObj =
+    doc.tenantId && typeof doc.tenantId === "object" ? doc.tenantId : null;
+  const tenantIdStr = tenantObj
+    ? String(tenantObj._id || tenantObj.id)
+    : doc.tenantId
+    ? String(doc.tenantId)
+    : "";
+
   return {
     id: String(doc._id || doc.id),
-    tenantId: doc.tenantId ? String(doc.tenantId) : "",
-    tenantName: doc.tenantName || "Tenant",
-    tenantEmail: doc.tenantEmail || "",
+    tenantId: tenantIdStr,
+    tenantName:
+      doc.tenantName ||
+      (tenantObj ? displayName(tenantObj, "Tenant") : "Tenant"),
+    tenantEmail: doc.tenantEmail || tenantObj?.email || "",
+    tenantProfileImage:
+      doc.tenantProfileImage || tenantObj?.profileImage || "",
     branch: doc.branch || "",
     roomNumber: doc.roomNumber || "",
     roomBed: doc.roomBed || "",
@@ -289,12 +524,23 @@ function serializeMessage(message) {
   const doc =
     typeof message.toObject === "function" ? message.toObject() : message;
 
+  const senderObj =
+    doc.senderId && typeof doc.senderId === "object" ? doc.senderId : null;
+  const senderIdStr = senderObj
+    ? String(senderObj._id || senderObj.id)
+    : doc.senderId
+    ? String(doc.senderId)
+    : "";
+
   return {
     id: String(doc._id || doc.id),
     conversationId: doc.conversationId ? String(doc.conversationId) : "",
-    senderId: doc.senderId ? String(doc.senderId) : "",
-    senderName: doc.senderName || "",
+    senderId: senderIdStr,
+    senderName:
+      doc.senderName || (senderObj ? displayName(senderObj, "User") : ""),
     senderRole: doc.senderRole || "tenant",
+    senderProfileImage:
+      doc.senderProfileImage || senderObj?.profileImage || "",
     message: doc.message || "",
     readAt: doc.readAt || null,
     createdAt: doc.createdAt || null,
@@ -433,12 +679,24 @@ async function createMessageAndUpdateConversation({
   statusNote = "",
 }) {
   const now = new Date();
+  let senderPhoto = sender?.profileImage || "";
+  if (!senderPhoto && senderRole === "tenant") {
+    senderPhoto = await resolveTenantProfileImage({
+      tenantId: sender?._id || conversation.tenantId,
+      tenantEmail: sender?.email || conversation.tenantEmail,
+      tenantUserId: sender?.user_id || conversation.tenantUserId,
+      tenantProfileImage: conversation.tenantProfileImage,
+      user: sender,
+    });
+  }
+
   const chatMessage = await ChatMessage.create({
     conversationId: conversation._id,
     senderId: sender?._id || null,
     senderUserId: sender?.user_id || "",
     senderName: sender?.name || sender?.displayName || displayName(sender, "User"),
     senderRole,
+    senderProfileImage: senderPhoto,
     message,
     createdAt: now,
     updatedAt: now,
@@ -448,6 +706,7 @@ async function createMessageAndUpdateConversation({
     $set: {
       lastMessage: message,
       lastMessageAt: now,
+      ...(senderPhoto && !conversation.tenantProfileImage ? { tenantProfileImage: senderPhoto } : {}),
     },
   };
 
@@ -626,6 +885,14 @@ export async function startConversation(req, res) {
   try {
     const tenantContext = await resolveTenantContext(req);
     const tenantName = displayName(tenantContext.user, "Tenant");
+    const tenantProfileImage = await resolveTenantProfileImage({
+      tenantId: tenantContext.user._id,
+      tenantEmail: tenantContext.user.email,
+      tenantUserId: tenantContext.user.user_id,
+      tenantProfileImage: tenantContext.user.profileImage,
+      user: tenantContext.user,
+      reservation: tenantContext.activeReservation,
+    });
 
     let conversation = await ChatConversation.findOne({
       tenantId: tenantContext.user._id,
@@ -635,6 +902,9 @@ export async function startConversation(req, res) {
     if (conversation) {
       conversation.tenantName = tenantName;
       conversation.tenantEmail = tenantContext.user.email || "";
+      if (tenantProfileImage) {
+        conversation.tenantProfileImage = tenantProfileImage;
+      }
       conversation.branch = tenantContext.branch;
       conversation.roomNumber = tenantContext.roomNumber;
       conversation.roomBed = tenantContext.roomBed;
@@ -649,6 +919,7 @@ export async function startConversation(req, res) {
         tenantUserId: tenantContext.user.user_id || "",
         tenantName,
         tenantEmail: tenantContext.user.email || "",
+        tenantProfileImage,
         branch: tenantContext.branch,
         roomNumber: tenantContext.roomNumber,
         roomBed: tenantContext.roomBed,
@@ -682,9 +953,12 @@ export async function getMyConversations(req, res) {
     const conversations = await ChatConversation.find({
       tenantId: tenantContext.user._id,
     })
+      .populate("tenantId", "profileImage firstName lastName email user_id")
       .sort({ lastMessageAt: -1, updatedAt: -1 })
       .limit(50)
       .lean();
+
+    await batchResolveConversationPhotos(conversations);
 
     return res.json({
       conversations: conversations.map(serializeConversation),
@@ -705,8 +979,27 @@ export async function getConversationMessages(req, res) {
     await markAdminMessagesRead(conversation._id);
 
     const messages = await ChatMessage.find({ conversationId: conversation._id })
+      .populate("senderId", "profileImage firstName lastName role")
       .sort({ createdAt: 1 })
       .lean();
+
+    const tenantPhoto = conversation.tenantProfileImage || (await resolveTenantProfileImage({
+      tenantId: conversation.tenantId,
+      tenantEmail: conversation.tenantEmail,
+      tenantUserId: conversation.tenantUserId,
+      tenantProfileImage: conversation.tenantProfileImage,
+    }));
+
+    if (tenantPhoto && !conversation.tenantProfileImage) {
+      conversation.tenantProfileImage = tenantPhoto;
+      ChatConversation.updateOne({ _id: conversation._id }, { $set: { tenantProfileImage: tenantPhoto } }).catch(() => {});
+    }
+
+    messages.forEach((m) => {
+      if (m.senderRole === "tenant" && !m.senderProfileImage && tenantPhoto) {
+        m.senderProfileImage = tenantPhoto;
+      }
+    });
 
     return res.json({ messages: messages.map(serializeMessage) });
   } catch (error) {
@@ -810,9 +1103,12 @@ export async function getAdminConversations(req, res) {
     }
 
     const conversations = await ChatConversation.find(filter)
+      .populate("tenantId", "profileImage firstName lastName email user_id")
       .sort({ lastMessageAt: -1, updatedAt: -1 })
       .limit(200)
       .lean();
+
+    await batchResolveConversationPhotos(conversations);
 
     conversations.sort((left, right) => {
       const priorityDiff =
@@ -855,8 +1151,27 @@ export async function getAdminConversationMessages(req, res) {
     await markTenantMessagesRead(conversation._id);
 
     const messages = await ChatMessage.find({ conversationId: conversation._id })
+      .populate("senderId", "profileImage firstName lastName role")
       .sort({ createdAt: 1 })
       .lean();
+
+    const tenantPhoto = conversation.tenantProfileImage || (await resolveTenantProfileImage({
+      tenantId: conversation.tenantId,
+      tenantEmail: conversation.tenantEmail,
+      tenantUserId: conversation.tenantUserId,
+      tenantProfileImage: conversation.tenantProfileImage,
+    }));
+
+    if (tenantPhoto && !conversation.tenantProfileImage) {
+      conversation.tenantProfileImage = tenantPhoto;
+      ChatConversation.updateOne({ _id: conversation._id }, { $set: { tenantProfileImage: tenantPhoto } }).catch(() => {});
+    }
+
+    messages.forEach((m) => {
+      if (m.senderRole === "tenant" && !m.senderProfileImage && tenantPhoto) {
+        m.senderProfileImage = tenantPhoto;
+      }
+    });
 
     return res.json({ messages: messages.map(serializeMessage) });
   } catch (error) {

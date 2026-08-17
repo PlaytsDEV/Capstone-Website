@@ -788,8 +788,8 @@ const reservationSchema = new mongoose.Schema(
     },
     initialPaymentStatus: {
       type: String,
-      enum: ["unpaid", "pending", "partial", "paid"],
-      default: "unpaid",
+      enum: ["not_created", "unpaid", "pending", "partial", "paid", "reconciliation_required"],
+      default: "not_created",
       index: true,
     },
     initialPaymentBillId: {
@@ -884,16 +884,6 @@ const reservationSchema = new mongoose.Schema(
       ref: "Payment",
       default: null,
     },
-    initialPaymentBillId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Bill",
-      default: null,
-    },
-    initialPaymentStatus: {
-      type: String,
-      enum: ["not_created", "pending", "partial", "paid", "reconciliation_required"],
-      default: "not_created",
-    },
     advanceCoverageStart: { type: Date, default: null },
     advanceCoverageEnd: { type: Date, default: null },
     advanceCoverageEndExclusive: { type: Date, default: null },
@@ -981,13 +971,6 @@ const reservationSchema = new mongoose.Schema(
       type: Date,
       default: null,
       // Admin can extend the move-in deadline if tenant is late
-    },
-
-    // --- Payment ---
-    paymentStatus: {
-      type: String,
-      enum: ["pending", "partial", "paid"],
-      default: "pending",
     },
 
     // --- Notes ---

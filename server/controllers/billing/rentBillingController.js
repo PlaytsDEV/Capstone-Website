@@ -67,8 +67,9 @@ export const getRentBillableTenants = async (req, res, next) => {
     }
 
     const monthParam = req.query.month;
-    const month = monthParam ? dayjs(monthParam, "YYYY-MM", true) : dayjs();
-    if (monthParam && !month.isValid()) {
+    const isAllTime = monthParam === "all";
+    const month = (!monthParam || isAllTime) ? dayjs() : dayjs(monthParam, "YYYY-MM", true);
+    if (monthParam && !isAllTime && !month.isValid()) {
       return res.status(400).json({ error: "Invalid month format — use YYYY-MM", code: "INVALID_MONTH" });
     }
     const rooms = await Room.find({
@@ -101,20 +102,39 @@ export const getRentBillableTenants = async (req, res, next) => {
         };
       }
     });
-    const billFilters = reservationCycles
-      .filter((entry) => entry.cycle)
-      .map((entry) =>
-        buildRentDuplicateFilter(entry.reservation._id, entry.cycle, month.format("YYYY-MM")),
-      );
-    const existingBills =
-      billFilters.length > 0
-        ? await Bill.find({ $or: billFilters })
-            .select("_id reservationId status dueDate totalAmount pdfPath")
-            .lean()
-        : [];
-    const existingByReservation = new Map(
-      existingBills.map((bill) => [String(bill.reservationId), bill]),
-    );
+
+    let existingBills = [];
+    if (isAllTime) {
+      const reservationIds = reservations.map((r) => r._id);
+      existingBills = await Bill.find({
+        reservationId: { $in: reservationIds },
+        isArchived: false,
+        "charges.rent": { $gt: 0 },
+      })
+        .sort({ billingMonth: -1, createdAt: -1 })
+        .select("_id reservationId status dueDate totalAmount pdfPath billingMonth")
+        .lean();
+    } else {
+      const billFilters = reservationCycles
+        .filter((entry) => entry.cycle)
+        .map((entry) =>
+          buildRentDuplicateFilter(entry.reservation._id, entry.cycle, month.format("YYYY-MM")),
+        );
+      existingBills =
+        billFilters.length > 0
+          ? await Bill.find({ $or: billFilters })
+              .select("_id reservationId status dueDate totalAmount pdfPath")
+              .lean()
+          : [];
+    }
+
+    const existingByReservation = new Map();
+    for (const bill of existingBills) {
+      const resId = String(bill.reservationId);
+      if (!existingByReservation.has(resId)) {
+        existingByReservation.set(resId, bill);
+      }
+    }
     const search = String(req.query.search || "").trim().toLowerCase();
 
     const tenants = reservationCycles

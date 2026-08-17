@@ -63,7 +63,8 @@ describe("chat controller authoritative branch scope", () => {
     const lean = jest.fn(async () => []);
     const limit = jest.fn(() => ({ lean }));
     const sort = jest.fn(() => ({ limit }));
-    conversationFind.mockReturnValue({ sort });
+    const populate = jest.fn(() => ({ sort }));
+    conversationFind.mockReturnValue({ populate, sort });
 
     const req = adminRequest({ query: { branch: "guadalupe" } });
     const res = response();
@@ -94,7 +95,9 @@ describe("chat controller authoritative branch scope", () => {
     conversationFindOne.mockResolvedValue(conversation);
     messageUpdateMany.mockResolvedValue({});
     const lean = jest.fn(async () => []);
-    messageFind.mockReturnValue({ sort: () => ({ lean }) });
+    const sort = jest.fn(() => ({ lean }));
+    const populate = jest.fn(() => ({ sort }));
+    messageFind.mockReturnValue({ populate, sort: () => ({ lean }) });
     const req = adminRequest({
       authUser: { _id: "507f1f77bcf86cd799439012", role: "owner", permissions: [] },
       branchFilter: null,

@@ -124,7 +124,7 @@ export const getCurrentResidents = async (req, res) => {
       { err: error, requestId: req.id },
       "Fetch current residents error",
     );
-    return handleReservationError(res, error, "fetch");
+    return handleReservationError(res, error, "fetch current residents");
   }
 };
 
@@ -174,7 +174,7 @@ export const getTenantWorkspace = async (req, res) => {
       { err: error, requestId: req.id },
       "Fetch tenant workspace error",
     );
-    return handleReservationError(res, error, "fetch");
+    return handleReservationError(res, error, "fetch tenant workspace");
   }
 };
 
@@ -219,8 +219,8 @@ export const getTenantWorkspaceById = async (req, res) => {
       });
     }
 
-    const { Bill, BedHistory, Stay, Contract } = await import("../../models/index.js");
-    const [bills, bedHistoryRecords, stayHistory, branchRooms, contracts] = await Promise.all([
+    const { Bill, BedHistory, Stay, Contract, TenantViolation } = await import("../../models/index.js");
+    const [bills, bedHistoryRecords, stayHistory, branchRooms, contracts, violations] = await Promise.all([
       Bill.find({
         reservationId: reservation._id,
         isArchived: { $ne: true },
@@ -251,6 +251,15 @@ export const getTenantWorkspaceById = async (req, res) => {
       })
         .sort({ version: -1, createdAt: -1 })
         .lean(),
+      TenantViolation.find({
+        $or: [
+          { reservationId: reservation._id },
+          { tenantId: reservation.userId?._id || reservation.userId },
+        ],
+        status: { $nin: ["dismissed", "resolved"] },
+      })
+        .sort({ dateOfIncident: -1, createdAt: -1 })
+        .lean(),
     ]);
     const currentStay =
       stayHistory.find((stay) => stay.status === "active") ||
@@ -274,6 +283,7 @@ export const getTenantWorkspaceById = async (req, res) => {
       bills,
       bedHistoryRecords,
       contracts,
+      violations,
       tenantStatus: reservation.userId?.tenantStatus || "applicant",
       hasAvailableBedsInBranch,
       now: new Date(),
@@ -294,7 +304,7 @@ export const getTenantWorkspaceById = async (req, res) => {
       { err: error, requestId: req.id },
       "Fetch tenant workspace detail error",
     );
-    return handleReservationError(res, error, "fetch");
+    return handleReservationError(res, error, "fetch tenant details");
   }
 };
 
@@ -328,7 +338,7 @@ export const getTenantActionContext = async (req, res) => {
     return sendSuccess(res, context);
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Fetch tenant action context error");
-    return handleReservationError(res, error, "fetch");
+    return handleReservationError(res, error, "fetch tenant action context");
   }
 };
 

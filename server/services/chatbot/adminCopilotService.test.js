@@ -38,6 +38,6 @@ describe("adminCopilotService", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Failed to query Admin SOP Service");
+    expect(result.error).toBe("Failed to query Admin Operations Assistant Service");
   });
 });

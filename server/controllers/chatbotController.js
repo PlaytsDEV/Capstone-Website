@@ -396,8 +396,9 @@ export const handleAdminSopQuery = async (req, res, next) => {
     if (!query) {
       return res.status(400).json({ success: false, message: "Query is required" });
     }
-    const resolvedBranch = req.branchFilter || branch;
-    const result = await queryAdminSopService({ query, branch: resolvedBranch });
+    const resolvedBranch = req.branchFilter || branch || req.user?.branch;
+    const userRole = req.user?.role || "branch_admin";
+    const result = await queryAdminSopService({ query, branch: resolvedBranch, userRole });
     if (!result.success) {
       return res.status(500).json({ success: false, message: result.error });
     }
@@ -441,6 +442,9 @@ export const handleAdminIssueClusters = async (req, res, next) => {
   }
 };
 
+import { generateDailyShiftBriefing } from "../services/chatbot/adminDailyBriefingService.js";
+import { getAdminDynamicSuggestions } from "../services/chatbot/adminDynamicSuggestionsService.js";
+
 /**
  * Handle Owner Support Trends
  */
@@ -456,3 +460,36 @@ export const handleOwnerSupportTrends = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Handle Admin Daily Shift Briefing
+ */
+export const handleAdminDailyBriefing = async (req, res, next) => {
+  try {
+    const branch = req.branchFilter || req.query.branch || req.user?.branch;
+    const userRole = req.user?.role || "branch_admin";
+    const result = await generateDailyShiftBriefing({ branch, userRole });
+    if (!result.success) {
+      return res.status(500).json({ success: false, message: result.error });
+    }
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Handle Admin Dynamic Contextual Suggestions
+ */
+export const handleAdminDynamicSuggestions = async (req, res, next) => {
+  try {
+    const branch = req.branchFilter || req.query.branch || req.user?.branch;
+    const userRole = req.user?.role || "branch_admin";
+    const result = await getAdminDynamicSuggestions({ branch, userRole });
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+

@@ -148,5 +148,100 @@ describe("tenantWorkspace utilities", () => {
     ).toBe(true);
     expect(entry.roomHistory.length).toBe(0);
   });
+
+  test("generates granular overdue electricity, rent, water, and penalty warning cards", () => {
+    const entry = buildTenantWorkspaceEntry({
+      reservation: {
+        _id: "res-overdue-1",
+        status: "moveIn",
+        moveInDate: new Date("2026-01-01T00:00:00.000Z"),
+        selectedBed: { id: "bed-1", position: "lower" },
+        roomId: { _id: "room-1", name: "Room 101", branch: "gil-puyat" },
+      },
+      bills: [
+        {
+          _id: "bill-overdue-1",
+          status: "overdue",
+          isArchived: false,
+          charges: {
+            rent: 6500,
+            electricity: 1200,
+            water: 350,
+            penalty: 150,
+            discount: 0,
+          },
+          totalAmount: 8200,
+          remainingAmount: 8200,
+          dueDate: new Date("2026-04-01T00:00:00.000Z"),
+          billingCycleStart: new Date("2026-03-01T00:00:00.000Z"),
+          billingCycleEnd: new Date("2026-03-31T00:00:00.000Z"),
+        },
+      ],
+      bedHistoryRecords: [],
+      now: new Date("2026-04-15T00:00:00.000Z"),
+    });
+
+    const elecWarning = entry.warningFlags.find((w) => w.code === "overdue_electricity");
+    const rentWarning = entry.warningFlags.find((w) => w.code === "overdue_rent");
+    const waterWarning = entry.warningFlags.find((w) => w.code === "overdue_water");
+    const penaltyWarning = entry.warningFlags.find((w) => w.code === "overdue_penalty");
+
+    expect(elecWarning).toBeDefined();
+    expect(elecWarning.amount).toBe(1200);
+    expect(elecWarning.category).toBe("electricity");
+
+    expect(rentWarning).toBeDefined();
+    expect(rentWarning.amount).toBe(6500);
+    expect(rentWarning.category).toBe("rent");
+
+    expect(waterWarning).toBeDefined();
+    expect(waterWarning.amount).toBe(350);
+    expect(waterWarning.category).toBe("water");
+
+    expect(penaltyWarning).toBeDefined();
+    expect(penaltyWarning.amount).toBe(150);
+    expect(penaltyWarning.category).toBe("penalty");
+  });
+
+  test("generates structured warning flags for active unresolved tenant violations", () => {
+    const entry = buildTenantWorkspaceEntry({
+      reservation: {
+        _id: "res-violation-1",
+        status: "moveIn",
+        moveInDate: new Date("2026-01-01T00:00:00.000Z"),
+        selectedBed: { id: "bed-1", position: "lower" },
+        roomId: { _id: "room-1", name: "Room 101", branch: "gil-puyat" },
+      },
+      violations: [
+        {
+          _id: "viol-1",
+          violationType: "smoking_inside",
+          customViolationDescription: "Smoking detected in hallway near Room 101",
+          dateOfIncident: new Date("2026-04-10T14:30:00.000Z"),
+          locationOfIncident: "2nd Floor Hallway",
+          status: "confirmed",
+          penaltyAmount: 1000,
+        },
+        {
+          _id: "viol-2",
+          violationType: "cooking_in_room",
+          customViolationDescription: "",
+          dateOfIncident: new Date("2026-04-11T18:00:00.000Z"),
+          locationOfIncident: "Room 101",
+          status: "resolved", // Should be filtered out
+          penaltyAmount: 0,
+        },
+      ],
+      bedHistoryRecords: [],
+      now: new Date("2026-04-15T00:00:00.000Z"),
+    });
+
+    const activeViolations = entry.warningFlags.filter((w) => w.code === "tenant_violation");
+    expect(activeViolations.length).toBe(1);
+    expect(activeViolations[0].title).toBe("Active Violation: Smoking Inside Dormitory");
+    expect(activeViolations[0].penaltyAmount).toBe(1000);
+    expect(activeViolations[0].location).toBe("2nd Floor Hallway");
+  });
 });
+
 

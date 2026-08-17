@@ -152,6 +152,12 @@ function serializeConversation(conversation) {
     tenantId: conversation.tenantId ? String(conversation.tenantId) : '',
     tenantName: conversation.tenantName || 'Tenant',
     tenantEmail: conversation.tenantEmail || '',
+    tenantProfileImage:
+      conversation.tenantProfileImage ||
+      (conversation.tenantId && typeof conversation.tenantId === 'object'
+        ? conversation.tenantId.profileImage
+        : '') ||
+      '',
     branch: conversation.branch || '',
     roomNumber: conversation.roomNumber || '',
     roomBed: conversation.roomBed || '',
@@ -189,6 +195,12 @@ function serializeMessage(message) {
     senderId: message.senderId ? String(message.senderId) : '',
     senderName: message.senderName || '',
     senderRole: message.senderRole || 'tenant',
+    senderProfileImage:
+      message.senderProfileImage ||
+      (message.senderId && typeof message.senderId === 'object'
+        ? message.senderId.profileImage
+        : '') ||
+      '',
     message: message.message || '',
     readAt: message.readAt || null,
     createdAt: message.createdAt || null,
@@ -201,6 +213,71 @@ function tenantQuery(user) {
   if (mongoId) clauses.push({ tenantId: mongoId });
   if (user?.user_id) clauses.push({ tenantUserId: user.user_id });
   return clauses.length ? { $or: clauses } : { tenantUserId: '__none__' };
+}
+
+async function resolveTenantProfileImage(db, { tenantId, tenantEmail, tenantUserId, tenantProfileImage, user } = {}) {
+  try {
+    if (user?.profileImage && typeof user.profileImage === 'string' && user.profileImage.trim()) {
+      return user.profileImage.trim();
+    }
+    if (user?.profile_image && typeof user.profile_image === 'string' && user.profile_image.trim()) {
+      return user.profile_image.trim();
+    }
+    if (tenantProfileImage && typeof tenantProfileImage === 'string' && tenantProfileImage.trim()) {
+      return tenantProfileImage.trim();
+    }
+
+    const mongoId = toObjectId(tenantId || user?._id);
+    const normalizedEmail = String(tenantEmail || user?.email || user?.google_email || '').trim().toLowerCase();
+
+    let dbUser = null;
+    if (mongoId) {
+      try {
+        dbUser = await db.collection('users').findOne({ _id: mongoId }, { projection: { profileImage: 1, email: 1 } });
+      } catch (_) {}
+    }
+    if (!dbUser && normalizedEmail) {
+      try {
+        dbUser = await db.collection('users').findOne({ email: normalizedEmail }, { projection: { profileImage: 1, email: 1 } });
+      } catch (_) {}
+    }
+    if (dbUser?.profileImage && typeof dbUser.profileImage === 'string' && dbUser.profileImage.trim()) {
+      return dbUser.profileImage.trim();
+    }
+
+    const resConditions = [];
+    if (mongoId) resConditions.push({ userId: mongoId });
+    if (dbUser?._id) resConditions.push({ userId: dbUser._id });
+    if (normalizedEmail) resConditions.push({ email: normalizedEmail });
+
+    if (resConditions.length > 0) {
+      try {
+        const reservation = await db.collection('reservations').findOne(
+          {
+            $or: resConditions,
+            $and: [
+              {
+                $or: [
+                  { selfiePhotoUrl: { $exists: true, $ne: null, $ne: '' } },
+                  { 'documentPrechecks.selfiePhoto.fileUrl': { $exists: true, $ne: null, $ne: '' } },
+                ],
+              },
+            ],
+          },
+          { sort: { createdAt: -1 }, projection: { selfiePhotoUrl: 1, 'documentPrechecks.selfiePhoto.fileUrl': 1 } },
+        );
+
+        const photo = reservation?.selfiePhotoUrl || reservation?.documentPrechecks?.selfiePhoto?.fileUrl;
+        if (photo && typeof photo === 'string' && photo.trim()) {
+          return photo.trim();
+        }
+      } catch (_) {}
+    }
+
+    return '';
+  } catch (_) {
+    return '';
+  }
 }
 
 async function resolveTenantContext(db, user) {
@@ -287,11 +364,20 @@ async function resolveTenantContext(db, user) {
     throw error;
   }
 
+  const resolvedProfileImage = await resolveTenantProfileImage(db, {
+    tenantId: mongoId,
+    tenantEmail: user?.email || user?.google_email || '',
+    tenantUserId: user?.user_id || '',
+    tenantProfileImage: user?.profileImage || user?.profile_image || '',
+    user,
+  });
+
   return {
     user,
     mongoId,
     tenantName: displayName(user),
     tenantEmail: user?.email || user?.google_email || '',
+    tenantProfileImage: resolvedProfileImage,
     branch,
     roomNumber,
     roomBed,
@@ -373,6 +459,7 @@ async function startConversation(req, res) {
           $set: {
             tenantName: tenant.tenantName,
             tenantEmail: tenant.tenantEmail,
+            tenantProfileImage: tenant.tenantProfileImage,
             branch: tenant.branch,
             roomNumber: tenant.roomNumber,
             roomBed: tenant.roomBed,
@@ -391,6 +478,7 @@ async function startConversation(req, res) {
         tenantUserId: req.user.user_id || '',
         tenantName: tenant.tenantName,
         tenantEmail: tenant.tenantEmail,
+        tenantProfileImage: tenant.tenantProfileImage,
         branch: tenant.branch,
         roomNumber: tenant.roomNumber,
         roomBed: tenant.roomBed,

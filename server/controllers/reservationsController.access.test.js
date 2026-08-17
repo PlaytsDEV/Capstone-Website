@@ -46,6 +46,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   BedHistory: {},
   Stay: {},
   Contract: {},
+  TenantViolation: { find: jest.fn(), findOne: jest.fn(), countDocuments: jest.fn() },
   ROOM_BRANCHES: ["gil-puyat", "guadalupe"],
 }));
 

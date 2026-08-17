@@ -311,7 +311,8 @@ export const getAdminAll = async (req, res, next) => {
     const query = {};
     const limit = parseLimit(req.query.limit, MAINTENANCE_LIMIT_MAX);
     const branch = resolveAdminBranchFilter(req);
-    const status = normalizeMaintenanceStatus(req.query.status);
+    const rawStatus = req.query.status ? String(req.query.status).trim().toLowerCase() : null;
+    const rawStage = req.query.stage ? String(req.query.stage).trim().toLowerCase() : null;
     const requestType = normalizeMaintenanceType(
       req.query.request_type || req.query.category,
     );
@@ -323,11 +324,32 @@ export const getAdminAll = async (req, res, next) => {
     if (archiveFilter === "active") query.isArchived = false;
     if (archiveFilter === "archived") query.isArchived = true;
     if (branch) query.branch = branch;
-    if (status) {
-      if (!isValidMaintenanceStatus(status)) {
-        throw new AppError("Invalid maintenance status filter", 400, "INVALID_STATUS");
+    if (rawStatus && rawStatus !== "all") {
+      if (rawStatus === "under_review") {
+        query.status = { $in: ["pending", "pending_review", "viewed", "reviewed"] };
+      } else if (rawStatus === "in_progress") {
+        query.status = { $in: ["in_progress", "provider_assigned", "scheduled", "waiting_tenant"] };
+      } else if (rawStatus === "completed") {
+        query.status = { $in: ["completed", "closed"] };
+      } else if (rawStatus === "cancelled_rejected") {
+        query.status = { $in: ["cancelled", "rejected"] };
+      } else {
+        const normalized = normalizeMaintenanceStatus(rawStatus);
+        if (!isValidMaintenanceStatus(normalized)) {
+          throw new AppError("Invalid maintenance status filter", 400, "INVALID_STATUS");
+        }
+        query.status = normalized;
       }
-      query.status = status;
+    } else if (rawStage && rawStage !== "all") {
+      if (rawStage === "open_queue") {
+        query.status = { $in: ["pending", "pending_review", "viewed", "reviewed", "provider_assigned"] };
+      } else if (rawStage === "in_progress") {
+        query.status = { $in: ["in_progress", "scheduled", "waiting_tenant"] };
+      } else if (rawStage === "resolved") {
+        query.status = "resolved";
+      } else if (rawStage === "completed") {
+        query.status = { $in: ["completed", "closed"] };
+      }
     }
     if (requestType) {
       if (!MAINTENANCE_REQUEST_TYPES.includes(requestType)) {

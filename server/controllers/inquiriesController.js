@@ -113,6 +113,9 @@ export const getInquiries = async (req, res, next) => {
       status,
       branch,
       search,
+      timeframe,
+      startDate,
+      endDate,
       page = 1,
       limit = 20,
       sort = "createdAt",
@@ -137,6 +140,26 @@ export const getInquiries = async (req, res, next) => {
       queryConditions.push({
         status: status === "responded" ? "resolved" : status,
       });
+    }
+
+    if (timeframe && timeframe !== "all") {
+      const now = dayjs();
+      let fromDate;
+      if (timeframe === "7d") fromDate = now.subtract(7, "day").startOf("day").toDate();
+      else if (timeframe === "30d") fromDate = now.subtract(30, "day").startOf("day").toDate();
+      else if (timeframe === "90d") fromDate = now.subtract(90, "day").startOf("day").toDate();
+      else if (timeframe === "365d") fromDate = now.subtract(365, "day").startOf("day").toDate();
+
+      if (fromDate) {
+        queryConditions.push({
+          createdAt: { $gte: fromDate },
+        });
+      }
+    } else if (startDate || endDate) {
+      const dateCond = {};
+      if (startDate) dateCond.$gte = dayjs(startDate).startOf("day").toDate();
+      if (endDate) dateCond.$lte = dayjs(endDate).endOf("day").toDate();
+      queryConditions.push({ createdAt: dateCond });
     }
 
     if (search && search.trim()) {

@@ -25,6 +25,11 @@ const chatConversationSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    tenantProfileImage: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     branch: {
       type: String,
       required: true,

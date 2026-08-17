@@ -10,6 +10,8 @@ import {
   handleAdminSuggestReply,
   handleAdminIssueClusters,
   handleOwnerSupportTrends,
+  handleAdminDailyBriefing,
+  handleAdminDynamicSuggestions,
 } from "../controllers/chatbotController.js";
 import {
   handleTenantQuery,
@@ -82,6 +84,8 @@ router.post("/tenant/escalate", verifyToken, tenantEscalationLimiter, handleTena
 router.post("/admin/sop-query", verifyToken, verifyAdmin, filterByBranch, chatbotQueryLimiter, handleAdminSopQuery);
 router.post("/admin/suggest-reply", verifyToken, verifyAdmin, filterByBranch, chatbotQueryLimiter, handleAdminSuggestReply);
 router.get("/admin/issue-clusters", verifyToken, verifyAdmin, filterByBranch, chatbotQueryLimiter, handleAdminIssueClusters);
+router.get("/admin/daily-briefing", verifyToken, verifyAdmin, filterByBranch, chatbotQueryLimiter, handleAdminDailyBriefing);
+router.get("/admin/dynamic-suggestions", verifyToken, verifyAdmin, filterByBranch, chatbotQueryLimiter, handleAdminDynamicSuggestions);
 
 router.get("/owner/support-trends", verifyToken, verifyOwner, chatbotQueryLimiter, handleOwnerSupportTrends);
 

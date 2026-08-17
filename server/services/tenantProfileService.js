@@ -174,19 +174,23 @@ export function resolveTenantFinancialSummary({
   }
 
   const approvedRate = hasValue(monthlyRate) ? Number(monthlyRate) : null;
+  const securityDeposit = resolveSecurityDeposit(reservation);
+  const advanceRent = Number.isFinite(approvedRate)
+    ? approvedRate
+    : (Number(reservation.moveInCashOut?.monthlyAdvance) || securityDeposit || null);
   const reservationFee = hasValue(reservation.reservationFeeAmount)
     ? Number(reservation.reservationFeeAmount)
-    : null;
+    : (Number(reservation.pricingSnapshot?.reservationFeeAmount) || 2000);
 
   return {
     monthlyRate: Number.isFinite(approvedRate) ? approvedRate : null,
-    advanceRent: Number.isFinite(approvedRate) ? approvedRate : null,
-    securityDeposit: resolveSecurityDeposit(reservation),
-    reservationFee: Number.isFinite(reservationFee) ? reservationFee : null,
+    advanceRent: Number.isFinite(advanceRent) ? advanceRent : (Number.isFinite(approvedRate) ? approvedRate : null),
+    securityDeposit: Number.isFinite(securityDeposit) ? securityDeposit : (Number.isFinite(approvedRate) ? approvedRate : null),
+    reservationFee: Number.isFinite(reservationFee) ? reservationFee : 2000,
     paymentStatus: paymentStatus || reservation.paymentStatus || null,
     currentBalance: Number.isFinite(Number(currentBalance))
       ? Number(currentBalance)
-      : null,
+      : 0,
   };
 }
 

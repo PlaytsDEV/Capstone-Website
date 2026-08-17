@@ -136,13 +136,20 @@ export function buildWarningFlags({
   billingSummary,
   hasRoomHistory,
   moveOutDate,
+  violations = [],
+  visibleBills = [],
+  now = new Date(),
 }) {
   const flags = [];
 
+  // 1. Lease contract warnings
   if (leaseStatus === "expired") {
     flags.push({
+      id: "lease-expired",
       code: "lease_expired",
+      category: "contract",
       severity: WARNING_SEVERITY.error,
+      title: "Lease Contract Expired",
       message: "The lease contract for this tenant has expired.",
       details: "This tenant's rental agreement end date has already passed.",
       impact: "The tenant is still checked in, but their contract status is marked as expired.",
@@ -150,8 +157,11 @@ export function buildWarningFlags({
     });
   } else if (leaseStatus === "expiring_soon") {
     flags.push({
+      id: "lease-expiring-soon",
       code: "lease_expiring_soon",
+      category: "contract",
       severity: WARNING_SEVERITY.warning,
+      title: "Lease Ending Soon",
       message: "The lease contract is ending soon.",
       details: "This tenant's rental contract will end within the next 30 days.",
       impact: "The tenant may need to decide whether to extend their stay or prepare to move out.",
@@ -159,45 +169,322 @@ export function buildWarningFlags({
     });
   }
 
-  if (billingSummary.hasOverdue) {
-    flags.push({
-      code: "overdue_balance",
-      severity: WARNING_SEVERITY.error,
-      message: "This tenant has an overdue bill.",
-      details: "One or more payment invoices have passed their due date without payment.",
-      impact: "A daily late payment penalty rate (₱50/day) is accruing on overdue balances until paid in full. Continued non-payment leads to automated notices, service restrictions, and administrative review.",
-      recommendation: "Review payment history, verify original due date, send an urgent payment notice, or record a received payment.",
-      createdAt: billingSummary.oldestOverdueDueDate || null,
-      dueDate: billingSummary.oldestOverdueDueDate || null,
+  // 2. Granular Bill / Utility / Rent Warnings
+  const candidateBills = (visibleBills && visibleBills.length > 0)
+    ? visibleBills
+    : (billingSummary?.visibleBills || []);
+
+  const overdueBills = candidateBills.filter(
+    (entry) => entry.snapshot?.status === "overdue" || (entry.bill?.status === "overdue" && Number(entry.snapshot?.remainingAmount ?? entry.bill?.remainingAmount ?? 0) > 0)
+  );
+
+  const pendingBills = candidateBills.filter(
+    (entry) => entry.snapshot?.status !== "paid" && entry.snapshot?.status !== "overdue" && Number(entry.snapshot?.remainingAmount ?? entry.bill?.remainingAmount ?? 0) > 0
+  );
+
+  // If there are overdue bills, break down by category:
+  if (overdueBills.length > 0) {
+    let overdueRentTotal = 0;
+    let overdueElecTotal = 0;
+    let overdueWaterTotal = 0;
+    let overduePenaltyTotal = 0;
+    let latestDueDate = null;
+    let latestCycle = null;
+    let primaryBillId = null;
+
+    overdueBills.forEach(({ bill, snapshot }) => {
+      const charges = bill?.charges || {};
+      const rentAmt = Number(charges.rent || 0);
+      const elecAmt = Number(charges.electricity || 0);
+      const waterAmt = Number(charges.water || 0);
+      const penaltyAmt = Number(charges.penalty || 0);
+
+      if (rentAmt > 0) overdueRentTotal += rentAmt;
+      if (elecAmt > 0) overdueElecTotal += elecAmt;
+      if (waterAmt > 0) overdueWaterTotal += waterAmt;
+      if (penaltyAmt > 0) overduePenaltyTotal += penaltyAmt;
+
+      if (!latestDueDate || (bill.dueDate && new Date(bill.dueDate) < new Date(latestDueDate))) {
+        latestDueDate = bill.dueDate;
+        primaryBillId = bill._id;
+      }
+      if (!latestCycle) {
+        latestCycle = {
+          start: bill.billingCycleStart || bill.utilityCycleStart || null,
+          end: bill.billingCycleEnd || bill.utilityCycleEnd || null,
+          month: bill.billingMonth || null,
+        };
+      }
     });
-  } else if (billingSummary.hasOutstanding) {
-    flags.push({
-      code: "outstanding_balance",
-      severity: WARNING_SEVERITY.warning,
-      message: "This tenant has an unpaid balance.",
-      details: "There is still an open balance on the tenant's current bill.",
-      impact: "The remaining balance needs to be settled on or before the due date to avoid accruing daily late penalties (₱50/day).",
-      recommendation: "Check payment deadlines, review billing breakdown, or assist tenant with payment completion.",
-      createdAt: billingSummary.nextDueDate || null,
-      dueDate: billingSummary.nextDueDate || null,
+
+    const overdueDays = latestDueDate ? Math.max(1, Math.round((new Date(now).getTime() - new Date(latestDueDate).getTime()) / (1000 * 60 * 60 * 24))) : null;
+
+    // Overdue Electricity Flag
+    if (overdueElecTotal > 0) {
+      flags.push({
+        id: `overdue-elec-${primaryBillId || "overdue"}`,
+        code: "overdue_electricity",
+        category: "electricity",
+        severity: WARNING_SEVERITY.error,
+        title: "Overdue Electricity",
+        amount: overdueElecTotal,
+        dueDate: latestDueDate,
+        overdueDays,
+        cycle: latestCycle,
+        billId: primaryBillId,
+        message: `Overdue Electricity billing of ₱${overdueElecTotal.toLocaleString()} is ${overdueDays ? `${overdueDays} days overdue` : "past due"}.`,
+        details: "Electricity billing has passed the payment deadline without settlement.",
+        impact: "Overdue utility charges accrue daily late penalties (₱50/day) until paid in full.",
+        recommendation: "Review the electricity meter breakdown, notify tenant, or record payment.",
+        date: latestDueDate,
+        createdAt: latestDueDate,
+      });
+    }
+
+    // Overdue Rent Flag
+    if (overdueRentTotal > 0) {
+      flags.push({
+        id: `overdue-rent-${primaryBillId || "overdue"}`,
+        code: "overdue_rent",
+        category: "rent",
+        severity: WARNING_SEVERITY.error,
+        title: "Overdue Rent Billing",
+        amount: overdueRentTotal,
+        dueDate: latestDueDate,
+        overdueDays,
+        cycle: latestCycle,
+        billId: primaryBillId,
+        message: `Overdue Rent billing of ₱${overdueRentTotal.toLocaleString()} is ${overdueDays ? `${overdueDays} days overdue` : "past due"}.`,
+        details: "Monthly rent payment has passed its designated due date.",
+        impact: "Overdue rent balance is accruing late payment penalties (₱50/day).",
+        recommendation: "Review payment breakdown, verify original due date, or follow up with the tenant.",
+        date: latestDueDate,
+        createdAt: latestDueDate,
+      });
+    }
+
+    // Overdue Water Flag
+    if (overdueWaterTotal > 0) {
+      flags.push({
+        id: `overdue-water-${primaryBillId || "overdue"}`,
+        code: "overdue_water",
+        category: "water",
+        severity: WARNING_SEVERITY.error,
+        title: "Overdue Water Share",
+        amount: overdueWaterTotal,
+        dueDate: latestDueDate,
+        overdueDays,
+        cycle: latestCycle,
+        billId: primaryBillId,
+        message: `Overdue Water share of ₱${overdueWaterTotal.toLocaleString()} is ${overdueDays ? `${overdueDays} days overdue` : "past due"}.`,
+        details: "Shared water billing has passed its due date without payment.",
+        impact: "Overdue water share is subject to late payment penalties.",
+        recommendation: "Review room water billing distribution and request settlement.",
+        date: latestDueDate,
+        createdAt: latestDueDate,
+      });
+    }
+
+    // Accrued Penalty Flag
+    if (overduePenaltyTotal > 0) {
+      flags.push({
+        id: `overdue-penalty-${primaryBillId || "overdue"}`,
+        code: "overdue_penalty",
+        category: "penalty",
+        severity: WARNING_SEVERITY.error,
+        title: "Late Payment Penalties",
+        amount: overduePenaltyTotal,
+        dueDate: latestDueDate,
+        billId: primaryBillId,
+        message: `Accumulated late payment penalty of ₱${overduePenaltyTotal.toLocaleString()}.`,
+        details: "Late penalties have accrued at the rate of ₱50/day on overdue balances.",
+        impact: "Total balance will increase daily until the overdue invoices are paid.",
+        recommendation: "Review penalty calculations and ensure timely settlement.",
+        date: latestDueDate,
+      });
+    }
+
+    // Fallback if neither rent/elec/water was separated but bill is overdue
+    if (overdueElecTotal === 0 && overdueRentTotal === 0 && overdueWaterTotal === 0 && overduePenaltyTotal === 0) {
+      flags.push({
+        id: "overdue-balance-general",
+        code: "overdue_balance",
+        category: "billing",
+        severity: WARNING_SEVERITY.error,
+        title: "Overdue Payment",
+        amount: billingSummary?.currentBalance || 0,
+        dueDate: billingSummary?.oldestOverdueDueDate || latestDueDate,
+        overdueDays,
+        message: "This tenant has an overdue bill.",
+        details: "One or more payment invoices have passed their due date without payment.",
+        impact: "A daily late payment penalty rate (₱50/day) is accruing on overdue balances until paid in full.",
+        recommendation: "Review payment history, send an urgent payment reminder, or record payment.",
+        date: billingSummary?.oldestOverdueDueDate || latestDueDate,
+      });
+    }
+  } else if (billingSummary?.hasOutstanding) {
+    // Unpaid / Outstanding bills that are not yet overdue
+    let pendingRentTotal = 0;
+    let pendingElecTotal = 0;
+    let pendingWaterTotal = 0;
+    let nextDueDate = billingSummary?.nextDueDate || null;
+    let primaryBillId = null;
+
+    pendingBills.forEach(({ bill }) => {
+      const charges = bill?.charges || {};
+      const rentAmt = Number(charges.rent || 0);
+      const elecAmt = Number(charges.electricity || 0);
+      const waterAmt = Number(charges.water || 0);
+
+      if (rentAmt > 0) pendingRentTotal += rentAmt;
+      if (elecAmt > 0) pendingElecTotal += elecAmt;
+      if (waterAmt > 0) pendingWaterTotal += waterAmt;
+
+      if (!primaryBillId) primaryBillId = bill._id;
     });
+
+    if (pendingElecTotal > 0) {
+      flags.push({
+        id: `outstanding-elec-${primaryBillId || "pending"}`,
+        code: "outstanding_electricity",
+        category: "electricity",
+        severity: WARNING_SEVERITY.warning,
+        title: "Unpaid Electricity",
+        amount: pendingElecTotal,
+        dueDate: nextDueDate,
+        billId: primaryBillId,
+        message: `Current electricity balance: ₱${pendingElecTotal.toLocaleString()}.`,
+        details: "Electricity billing is awaiting payment on or before the due date.",
+        impact: "Please settle on or before the due date to avoid daily late penalties (₱50/day).",
+        recommendation: "Assist tenant with payment options before the due date.",
+        date: nextDueDate,
+      });
+    }
+
+    if (pendingRentTotal > 0) {
+      flags.push({
+        id: `outstanding-rent-${primaryBillId || "pending"}`,
+        code: "outstanding_rent",
+        category: "rent",
+        severity: WARNING_SEVERITY.warning,
+        title: "Unpaid Rent",
+        amount: pendingRentTotal,
+        dueDate: nextDueDate,
+        billId: primaryBillId,
+        message: `Current rent balance: ₱${pendingRentTotal.toLocaleString()}.`,
+        details: "Monthly rent invoice is open and due on the scheduled payment date.",
+        impact: "The remaining balance needs to be settled on or before the due date.",
+        recommendation: "Check payment records or remind tenant to complete payment.",
+        date: nextDueDate,
+      });
+    }
+
+    if (pendingWaterTotal > 0) {
+      flags.push({
+        id: `outstanding-water-${primaryBillId || "pending"}`,
+        code: "outstanding_water",
+        category: "water",
+        severity: WARNING_SEVERITY.warning,
+        title: "Unpaid Water Share",
+        amount: pendingWaterTotal,
+        dueDate: nextDueDate,
+        billId: primaryBillId,
+        message: `Current water share: ₱${pendingWaterTotal.toLocaleString()}.`,
+        details: "Water billing is pending payment before the scheduled due date.",
+        impact: "The remaining balance needs to be settled on or before the due date.",
+        recommendation: "Review water bill distribution and confirm payment schedule.",
+        date: nextDueDate,
+      });
+    }
+
+    // General fallback if no specific charge broke down
+    if (pendingElecTotal === 0 && pendingRentTotal === 0 && pendingWaterTotal === 0) {
+      flags.push({
+        id: "outstanding-balance-general",
+        code: "outstanding_balance",
+        category: "billing",
+        severity: WARNING_SEVERITY.warning,
+        title: "Unpaid Balance",
+        amount: billingSummary?.currentBalance || 0,
+        dueDate: nextDueDate,
+        message: "This tenant has an unpaid balance.",
+        details: "There is still an open balance on the tenant's current bill.",
+        impact: "The remaining balance needs to be settled on or before the due date to avoid accruing daily late penalties (₱50/day).",
+        recommendation: "Check payment deadlines, review billing breakdown, or assist tenant with payment completion.",
+        date: nextDueDate,
+      });
+    }
   }
 
-  if (billingSummary.hasPendingVerification) {
+  // 3. Active Tenant Violations
+  if (Array.isArray(violations) && violations.length > 0) {
+    const VIOLATION_TITLES = {
+      smoking_inside: "Smoking Inside Dormitory",
+      cooking_in_room: "Cooking in Room",
+      unauthorized_appliance: "Unauthorized Appliance",
+      unauthorized_visitors: "Unauthorized Visitors / Overnight Guest",
+      rfid_misuse: "RFID Misuse / Lending Access Card",
+      unauthorized_bed_transfer: "Unauthorized Bed Transfer",
+      unauthorized_room_transfer: "Unauthorized Room Transfer",
+      property_damage: "Property Damage",
+      cleanliness_issues: "Cleanliness & Sanitation Issues",
+      persistent_unpaid_bills: "Persistent Unpaid Bills",
+      custom: "House Rule Violation",
+    };
+
+    violations
+      .filter((v) => v && v.status !== "dismissed" && v.status !== "resolved")
+      .forEach((v) => {
+        const title = VIOLATION_TITLES[v.violationType] || "House Rule Violation";
+        const isCritical = v.status === "escalated" || Number(v.penaltyAmount || 0) > 0 || v.violationType === "smoking_inside" || v.violationType === "property_damage";
+
+        flags.push({
+          id: `violation-${v._id || v.id}`,
+          code: "tenant_violation",
+          category: "violation",
+          severity: isCritical ? WARNING_SEVERITY.error : WARNING_SEVERITY.warning,
+          title: `Active Violation: ${title}`,
+          violationId: String(v._id || v.id),
+          violationType: v.violationType,
+          penaltyAmount: Number(v.penaltyAmount || 0),
+          status: v.status,
+          dateOfIncident: v.dateOfIncident || v.createdAt || null,
+          location: v.locationOfIncident || "",
+          message: v.customViolationDescription || v.remarks || `Recorded violation for ${title}.`,
+          details: `Incident reported at ${v.locationOfIncident || "Dormitory"} on ${v.dateOfIncident ? new Date(v.dateOfIncident).toLocaleDateString() : "recent date"}. Status: ${v.status}.`,
+          impact: Number(v.penaltyAmount || 0) > 0
+            ? `Assessed violation penalty of ₱${Number(v.penaltyAmount).toLocaleString()} applies to account deposit/billing.`
+            : "Recorded as an official disciplinary notice on the tenant's permanent record.",
+          recommendation: "Review violation evidence, verify tenant response, or adjudicate decision.",
+          date: v.dateOfIncident || v.createdAt || null,
+          createdAt: v.dateOfIncident || v.createdAt || null,
+        });
+      });
+  }
+
+  // 4. Pending Payment Verification
+  if (billingSummary?.hasPendingVerification) {
     flags.push({
+      id: "pending-verification",
       code: "pending_payment_verification",
+      category: "payment",
       severity: WARNING_SEVERITY.warning,
+      title: "Payment Receipt Under Review",
       message: "Payment proof is waiting for admin review.",
-      details: "The tenant uploaded a payment receipt that needs your review.",
+      details: "The tenant uploaded a payment receipt that needs your verification.",
       impact: "The account balance will update as soon as you verify the payment proof.",
       recommendation: "Go to Billing & Payments to review and verify the submitted receipt.",
     });
   }
 
+  // 5. Room History Incomplete
   if (!hasRoomHistory) {
     flags.push({
+      id: "room-history-incomplete",
       code: "room_history_incomplete",
+      category: "room",
       severity: WARNING_SEVERITY.warning,
+      title: "Incomplete Room History",
       message: "Room history is incomplete for this stay.",
       details: "We don't have a complete record of room or bed transfers for this tenant's stay.",
       impact: "Utility bill calculations will automatically use the current room assignment.",
@@ -205,10 +492,14 @@ export function buildWarningFlags({
     });
   }
 
+  // 6. Move-Out Billing Notice
   if (moveOutDate) {
     flags.push({
+      id: "billing-impact-warning",
       code: "billing_impact_warning",
+      category: "stay",
       severity: WARNING_SEVERITY.info,
+      title: "Move-Out Billing Notice",
       message: "Move-out date affects bill calculation for this stay.",
       details: "A move-out date has been scheduled for this tenant.",
       impact: "Monthly rent and utility bills will be adjusted to cover only the exact days stayed.",
@@ -356,6 +647,7 @@ export function buildTenantWorkspaceEntry({
   bills = [],
   bedHistoryRecords = [],
   contracts = [],
+  violations = [],
   tenantStatus = "",
   hasAvailableBedsInBranch = true,
   now = new Date(),
@@ -374,6 +666,9 @@ export function buildTenantWorkspaceEntry({
     billingSummary,
     hasRoomHistory: roomHistory.length > 0,
     moveOutDate: readMoveOutDate(reservation),
+    violations,
+    visibleBills: billingSummary.visibleBills,
+    now,
   });
   const nextAction = buildNextAction({
     stayStatus,
@@ -459,6 +754,9 @@ export function buildTenantWorkspaceEntry({
     leaseEndDate,
     daysUntilLeaseEnd,
     monthlyRate: financialSummary.monthlyRate,
+    advanceRent: financialSummary.advanceRent,
+    securityDeposit: financialSummary.securityDeposit,
+    reservationFee: financialSummary.reservationFee,
     currentBalance: billingSummary.currentBalance,
     currentStayId: currentStay?._id ? String(currentStay._id) : String(reservation.currentStayId || ""),
     tenantStatus: normalizeTenantStatus(tenantStatus),
