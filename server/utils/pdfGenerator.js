@@ -107,30 +107,54 @@ function formatSegmentPeriod(seg) {
  * @param {number} opts.rowHeight   - Height per row (default 22)
  * @param {number} opts.fontSize    - Font size for body rows (default 9)
  */
-function drawTable(doc, { headers, widths, rows, x, rowHeight = 22, fontSize = 9 }) {
+export function drawTable(doc, { headers, widths, rows, x, rowHeight = 22, fontSize = 9 }) {
   const startX = x || doc.page.margins.left;
-  let currentY = doc.y;
   const totalWidth = widths.reduce((a, b) => a + b, 0);
+  const pageBottom = () => doc.page.height - doc.page.margins.bottom;
+
+  const drawHeaderRow = (y) => {
+    doc.rect(startX, y, totalWidth, rowHeight).fill("#1a1a2e");
+    doc.fillColor("#ffffff").fontSize(fontSize).font("Helvetica-Bold");
+    let headerX = startX;
+    for (let i = 0; i < headers.length; i++) {
+      doc.text(headers[i], headerX + 4, y + 6, {
+        width: widths[i] - 8,
+        align: i === 0 ? "left" : "right",
+        lineBreak: false,
+      });
+      headerX += widths[i];
+    }
+  };
+
+  let currentY = doc.y;
+  const firstSegmentHeight = rows.length > 0 ? rowHeight * 2 : rowHeight;
+  if (currentY + firstSegmentHeight > pageBottom()) {
+    doc.addPage();
+    currentY = doc.page.margins.top;
+  }
+  let segmentStartY = currentY;
+  let segmentRowCount = 0;
 
   // ── Header row ──────────────────────────────────────────────────────────
-  doc.rect(startX, currentY, totalWidth, rowHeight).fill("#1a1a2e");
-  doc.fillColor("#ffffff").fontSize(fontSize).font("Helvetica-Bold");
-
-  let colX = startX;
-  for (let i = 0; i < headers.length; i++) {
-    doc.text(headers[i], colX + 4, currentY + 6, {
-      width: widths[i] - 8,
-      align: i === 0 ? "left" : "right",
-      lineBreak: false,
-    });
-    colX += widths[i];
-  }
+  drawHeaderRow(currentY);
   currentY += rowHeight;
 
   // ── Data rows ────────────────────────────────────────────────────────────
   doc.font("Helvetica").fontSize(fontSize).fillColor("#1a1a2e");
 
   rows.forEach((row, rowIdx) => {
+    if (currentY + rowHeight > pageBottom()) {
+      doc.rect(startX, segmentStartY, totalWidth, (segmentRowCount + 1) * rowHeight)
+        .stroke("#dee2e6");
+      doc.addPage();
+      currentY = doc.page.margins.top;
+      segmentStartY = currentY;
+      segmentRowCount = 0;
+      drawHeaderRow(currentY);
+      currentY += rowHeight;
+      doc.font("Helvetica").fontSize(fontSize).fillColor("#1a1a2e");
+    }
+
     const isEven = rowIdx % 2 === 0;
     const bgColor = isEven ? "#f8f9fa" : "#ffffff";
     doc.rect(startX, currentY, totalWidth, rowHeight).fill(bgColor);
@@ -138,7 +162,7 @@ function drawTable(doc, { headers, widths, rows, x, rowHeight = 22, fontSize = 9
     // Draw light border bottom
     doc.rect(startX, currentY + rowHeight - 1, totalWidth, 1).fill("#dee2e6");
 
-    colX = startX;
+    let colX = startX;
     // Restore text colour (fillColor is shared with rect fill)
     const isGrayed = row._grayed === true;
     doc.fillColor(isGrayed ? "#adb5bd" : "#1a1a2e");
@@ -156,11 +180,12 @@ function drawTable(doc, { headers, widths, rows, x, rowHeight = 22, fontSize = 9
       colX += widths[i];
     }
     currentY += rowHeight;
+    segmentRowCount += 1;
   });
 
-  // Border around entire table
-  doc.rect(startX, doc.y - (rows.length * rowHeight) - rowHeight, totalWidth, (rows.length + 1) * rowHeight)
-     .stroke("#dee2e6");
+  // Border around the final page segment (earlier segments were bordered before each page break).
+  doc.rect(startX, segmentStartY, totalWidth, (segmentRowCount + 1) * rowHeight)
+    .stroke("#dee2e6");
 
   // Move cursor past the table
   doc.y = currentY + 6;
