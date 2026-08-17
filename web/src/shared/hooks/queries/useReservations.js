@@ -203,6 +203,17 @@ export function useVisitSlotVisitors(branch, date, slot, options = {}) {
   });
 }
 
+/** Get paginated scheduled users history for a branch */
+export function useVisitScheduledUsers(branch, params = {}, options = {}) {
+  return useQuery({
+    queryKey: queryKeys.reservations.visitScheduledUsers(branch, params),
+    queryFn: () => reservationApi.getVisitScheduledUsers(branch, params),
+    enabled: !!branch && options.enabled !== false,
+    staleTime: 30 * 1000,
+    ...options,
+  });
+}
+
 /** Create a new reservation */
 export function useCreateReservation() {
   const qc = useQueryClient();

@@ -37,13 +37,15 @@
   border-radius: var(--radius-lg);
   padding: 1.25rem;
   box-shadow: var(--shadow-xs);
-  transition: box-shadow var(--duration-normal) var(--ease-out),
-              transform var(--duration-normal) var(--ease-out);
+  transition: box-shadow var(--duration-normal) var(--ease-in-out),
+              transform var(--duration-normal) var(--ease-in-out),
+              border-color var(--duration-normal) var(--ease-in-out);
 }
 
 .admin-stat-card:hover {
   box-shadow: var(--shadow-card-hover);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
 }
 
 .admin-stat-label {

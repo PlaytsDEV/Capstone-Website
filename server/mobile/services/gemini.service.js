@@ -153,11 +153,11 @@ async function classifyIntent(message) {
   }
 }
 
-// Rephrase a predefined response in a warm, concise tone
+// Rephrase a predefined response in a warm, concise, and friendly tone
 async function rephraseWithTone(baseMessage, tenantContext) {
   const client = getGenAIClient();
   const model = client.getGenerativeModel({ model: DEFAULT_MODEL });
-  const prompt = `You are Lily, a warm but concise assistant for dormitory tenants. Rephrase the provided message without adding new rules. Keep it short, friendly, and use "po" occasionally. Context (optional): ${tenantContext || 'none'}.
+  const prompt = `You are Lily, a warm, friendly, approachable, and helpful assistant for Lilycrest dormitory tenants. Rephrase the provided message in simple, conversational, and polite English without corporate jargon or adding new rules. Keep it short, clear, and reassuring. Do not use filler honorifics like "po" or "opo". Context (optional): ${tenantContext || 'none'}.
 Message: ${baseMessage}`;
 
   const result = await model.generateContent({

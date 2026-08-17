@@ -32,17 +32,17 @@ export default function AnalyticsInsightsHub({
   isLoading,
   isError,
   title = "AI Insights Hub",
-  heading = "Summary, risks, forecasts, and actions",
-  loadingText = "Preparing consolidated report insights...",
-  emptyText = "No consolidated AI insight is available for this scope yet.",
+  heading = "Key highlights, trends, and suggested actions",
+  loadingText = "Reviewing dorm data and preparing insights...",
+  emptyText = "No AI summary is available for this view yet.",
+  onExecuteAction = null,
 }) {
   const insight = data?.insight;
   const snapshotMeta = data?.snapshotMeta || {};
   const providerLabel = snapshotMeta.usedFallback
-    ? "Fallback insight"
-    : snapshotMeta.provider === "gemini"
-      ? `Gemini${snapshotMeta.model ? ` ${snapshotMeta.model}` : ""}`
-      : "AI insight";
+    ? "AI Summary"
+    : "AI Insights";
+  const actionableItems = insight?.actionableItems || [];
 
   return (
     <section className="analytics-insights-hub" data-ai-insights-hub="true">
@@ -66,7 +66,7 @@ export default function AnalyticsInsightsHub({
         </div>
       ) : isError ? (
         <div className="analytics-insights-hub__state analytics-insights-hub__state--warning">
-          AI insights are unavailable right now. The charts and tables below still show the actual report data.
+          AI insights are currently unavailable. The charts and tables below still show your live dorm data.
         </div>
       ) : !insight ? (
         <div className="analytics-insights-hub__state">
@@ -82,30 +82,58 @@ export default function AnalyticsInsightsHub({
             <p>{insight.summary}</p>
           </div>
 
+          {actionableItems.length > 0 && (
+            <div className="analytics-insights-hub__actions" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.5rem", padding: "0.6rem 0.8rem", background: "var(--muted-surface, #f8fafc)", border: "1px solid var(--border-color, #e2e8f0)", borderRadius: "8px", margin: "0.5rem 0" }}>
+              <span style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "var(--foreground, #0f172a)", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                <Sparkles size={12} className="text-primary" />
+                Quick Actions:
+              </span>
+              {actionableItems.map((act, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => typeof onExecuteAction === "function" && onExecuteAction(act)}
+                  style={{
+                    fontSize: "0.72rem",
+                    fontWeight: 600,
+                    padding: "0.25rem 0.6rem",
+                    borderRadius: "6px",
+                    background: "var(--card-bg, #ffffff)",
+                    border: "1px solid var(--border-color, #cbd5e1)",
+                    color: "var(--foreground, #0f172a)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {act.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="analytics-insights-hub__grid">
             <HubList
               icon={Lightbulb}
               title="What Stands Out"
               items={insight.keyFindings}
-              emptyText="No major finding is strong enough to highlight yet."
+              emptyText="No major highlights to show right now."
             />
             <HubList
               icon={AlertTriangle}
-              title="Risks"
+              title="Things to Watch"
               items={insight.riskAlerts?.length ? insight.riskAlerts : insight.anomalies}
-              emptyText="No immediate risk signal stands out for this scope."
+              emptyText="Everything looks good—no immediate issues detected."
             />
             <HubList
               icon={TrendingUp}
-              title="Forecasts"
+              title="Upcoming Trends"
               items={insight.forecastHighlights}
-              emptyText="More occupancy history is needed before forecast highlights can be shown."
+              emptyText="More history is needed to show upcoming trends."
             />
             <HubList
               icon={CheckCircle2}
-              title="Recommended Actions"
+              title="Suggested Next Steps"
               items={insight.recommendedActions}
-              emptyText="No recommended action is available yet."
+              emptyText="No specific action needed right now."
             />
           </div>
 

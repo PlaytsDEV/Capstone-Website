@@ -26,7 +26,7 @@ export const handleTenantQuery = async (req, res, next) => {
     const userId = req.authUser?._id || req.user?.uid;
 
     const contextSnapshot = (await resolveTenantAIContext(userId, req.authUser)) || {
-      tenantName: req.authUser?.firstName ? `${req.authUser.firstName} ${req.authUser.lastName || ""}`.trim() : "Resident",
+      tenantName: req.authUser?.firstName ? `${req.authUser.firstName} ${req.authUser.lastName || ""}`.trim() : "Tenant",
       branch: req.authUser?.branch?.includes("gil") ? "Gil Puyat" : "Guadalupe",
       roomNumber: req.authUser?.roomNumber || "304",
       bedPosition: req.authUser?.roomBed || "Bed 1",
@@ -75,7 +75,7 @@ export const handleTenantStream = async (req, res, next) => {
     const userId = req.authUser?._id || req.user?.uid;
 
     const contextSnapshot = (await resolveTenantAIContext(userId, req.authUser)) || {
-      tenantName: req.authUser?.firstName ? `${req.authUser.firstName} ${req.authUser.lastName || ""}`.trim() : "Resident",
+      tenantName: req.authUser?.firstName ? `${req.authUser.firstName} ${req.authUser.lastName || ""}`.trim() : "Tenant",
       branch: req.authUser?.branch?.includes("gil") ? "Gil Puyat" : "Guadalupe",
       roomNumber: req.authUser?.roomNumber || "304",
       bedPosition: req.authUser?.roomBed || "Bed 1",
@@ -140,7 +140,7 @@ export const handleTenantEscalation = async (req, res, next) => {
     const userId = req.authUser?._id || req.user?.uid;
 
     const contextSnapshot = (await resolveTenantAIContext(userId, req.authUser)) || {
-      tenantName: req.authUser?.firstName ? `${req.authUser.firstName} ${req.authUser.lastName || ""}`.trim() : "Resident",
+      tenantName: req.authUser?.firstName ? `${req.authUser.firstName} ${req.authUser.lastName || ""}`.trim() : "Tenant",
       branch: req.authUser?.branch?.includes("gil") ? "Gil Puyat" : "Guadalupe",
       roomNumber: req.authUser?.roomNumber || "304",
       bedPosition: req.authUser?.roomBed || "Bed 1",

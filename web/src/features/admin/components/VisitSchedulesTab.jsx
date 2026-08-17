@@ -642,36 +642,33 @@ function VisitSchedulesTab() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-flow-col auto-cols-[minmax(150px,1fr)] gap-3 overflow-x-auto pb-1">
+      <div className="grid grid-flow-col auto-cols-[minmax(160px,1fr)] gap-3.5 overflow-x-auto pb-1 mb-4">
         {summaryItems.map((item) => {
           const Icon = item.icon;
 
-          const colorClass =
+          const badgeClass =
             item.color === "blue"
-              ? "text-[color:var(--info)]"
+              ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400"
               : item.color === "orange"
-              ? "text-[color:var(--warning)]"
+              ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400"
               : item.color === "green"
-              ? "text-[color:var(--success)]"
-              : "text-[color:var(--danger)]";
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"
+              : "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400";
 
           return (
             <div
               key={item.label}
-              style={{
-                backgroundColor: "var(--bg-card)",
-                borderColor: "var(--border-light)",
-                boxShadow: "0 2px 8px rgba(2,6,23,0.03)",
-              }}
-              className="border rounded-xl p-4 min-h-[108px] transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
+              className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default"
             >
-              <div className="flex items-center gap-3 mb-3">
-                <Icon className={`${colorClass} w-5 h-5 flex-shrink-0 mr-2`} />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
                   {item.label}
                 </span>
+                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${badgeClass}`}>
+                  <Icon size={15} />
+                </div>
               </div>
-              <div className={`text-[28px] font-medium leading-none ${colorClass}`}>
+              <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
                 {item.value}
               </div>
             </div>

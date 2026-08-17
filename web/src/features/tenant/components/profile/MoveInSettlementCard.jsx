@@ -22,7 +22,11 @@ import { resolveReservationFinancials } from "../../../../shared/utils/depositUt
 const fmt = (val) =>
   `PHP ${Number.isFinite(Number(val)) ? Number(val).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}`;
 
-export default function MoveInSettlementCard({ reservation, profileData }) {
+export default function MoveInSettlementCard({
+  reservation,
+  profileData,
+  defaultExpanded = false,
+}) {
   const [payingOnline, setPayingOnline] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [viewingReceipt, setViewingReceipt] = useState(false);
@@ -40,8 +44,8 @@ export default function MoveInSettlementCard({ reservation, profileData }) {
     isSettled,
   } = resolveReservationFinancials(reservation, profileData);
 
-  // Default to collapsed when settled, expanded when pending balance
-  const [isExpanded, setIsExpanded] = useState(!isSettled);
+  // Default to collapsed
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded ?? false);
 
   const handlePayOnline = async (e) => {
     if (e) e.stopPropagation();
@@ -191,20 +195,8 @@ export default function MoveInSettlementCard({ reservation, profileData }) {
                   color: "var(--text-heading, #0F172A)",
                 }}
               >
-                Move-In Financial Schedule & Settlement
+                Move-In Financial Schedule
               </h3>
-              {/* Collapsed summary snippet */}
-              {!isExpanded && (
-                <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: isSettled ? "var(--color-success, #059669)" : "var(--text-secondary, #64748B)",
-                  }}
-                >
-                  {isSettled ? "• Settled" : (remainingDue > 0 ? `• Balance Due: ${fmt(remainingDue)}` : "")}
-                </span>
-              )}
             </div>
             <p
               style={{
@@ -245,7 +237,7 @@ export default function MoveInSettlementCard({ reservation, profileData }) {
             }}
           >
             {isSettled ? <CheckCircle2 size={13} /> : <Clock size={13} />}
-            <span>{isSettled ? "1DP + 1Adv Settled" : "Due on Move-In"}</span>
+            <span>{isSettled ? "Settled" : "Due on Move-In"}</span>
           </div>
 
           {/* Quick Action in Header (only shown when collapsed to prevent redundancy with expanded actions) */}

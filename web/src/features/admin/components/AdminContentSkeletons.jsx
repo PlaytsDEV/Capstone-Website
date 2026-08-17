@@ -1443,8 +1443,13 @@ export function AdminAnalyticsSkeleton({ activeTab = "overview", isOwner = false
     { key: "revenue", labelW: "105px" },
     { key: "operations", labelW: "75px" },
     { key: "demographics", labelW: "85px" },
-    { key: "acquisition", labelW: "105px" },
-    ...(isOwner ? [{ key: "consolidated", labelW: "80px" }] : []),
+    ...(isOwner
+      ? [
+          { key: "consolidated", labelW: "80px" },
+          { key: "financials", labelW: "75px" },
+          { key: "monitoring", labelW: "80px" },
+        ]
+      : []),
   ];
 
   return (

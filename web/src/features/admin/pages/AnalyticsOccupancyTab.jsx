@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bed,
   Building,
@@ -34,6 +34,8 @@ import {
   RANGE_OPTIONS_SHORT,
   unwrapTableRows,
   useReportInsights,
+  detectOccupancyAnomalies,
+  getDynamicOccupancyPrompts,
 } from "./analyticsTabShared";
 import "../styles/design-tokens.css";
 import "../styles/admin-reports.css";
@@ -41,7 +43,7 @@ import "../styles/admin-reports.css";
 const INVENTORY_COLUMNS = [
   { key: "roomNumber", label: "Room", sortable: true },
   { key: "roomTypeLabel", label: "Type", sortable: true },
-  { key: "branch", label: "Branch", render: (row) => formatBranch(row.branch) },
+  { key: "branch", label: "Branch", render: (row) => formatBranch(row.branch), formatter: (v) => formatBranch(v) },
   { key: "capacity", label: "Capacity", sortable: true },
   { key: "occupiedBeds", label: "Occupied", sortable: true },
   { key: "availableBeds", label: "Available", sortable: true },
@@ -50,10 +52,13 @@ const INVENTORY_COLUMNS = [
     key: "occupancyRate",
     label: "Rate",
     render: (row) => `${row.occupancyRate}%`,
+    formatter: (v) => `${v}%`,
+    sortable: true,
   },
   {
     key: "status",
     label: "Status",
+    formatter: (v, row) => (row.occupancyRate >= 100 ? "Full" : row.occupiedBeds === 0 ? "Vacant" : "Partial"),
     render: (row) => {
       if (row.occupancyRate >= 100) {
         return (
@@ -64,13 +69,13 @@ const INVENTORY_COLUMNS = [
       }
       if (row.occupiedBeds === 0) {
         return (
-          <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--warning-subtle, #fef3c7)", color: "var(--warning-dark, #92400e)", fontWeight: 600, border: "1px solid rgba(146, 64, 14, 0.2)" }}>
+          <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--danger-subtle, #fee2e2)", color: "var(--danger-dark, #991b1b)", fontWeight: 600, border: "1px solid rgba(153, 27, 27, 0.2)" }}>
             Vacant
           </span>
         );
       }
       return (
-        <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--info-subtle, #dbeafe)", color: "var(--info-dark, #1e40af)", fontWeight: 600, border: "1px solid rgba(30, 64, 175, 0.2)" }}>
+        <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--info-subtle, #e0f2fe)", color: "var(--info-dark, #075985)", fontWeight: 600, border: "1px solid rgba(7, 89, 133, 0.2)" }}>
           Partial
         </span>
       );
@@ -124,6 +129,7 @@ export default function AnalyticsOccupancyTab({
   isOwner,
   onBranchChange,
   onRangeChange,
+  registerExport,
 }) {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -131,6 +137,7 @@ export default function AnalyticsOccupancyTab({
   const [statusFilter, setStatusFilter] = useState("all");
   const [pageSize, setPageSize] = useState(5);
 
+  const [occupancyMetric, setOccupancyMetric] = useState("rate");
   const [trendRange, setTrendRange] = useState(null);
   const [forecastRange, setForecastRange] = useState(null);
   const [historyRange, setHistoryRange] = useState(null);
@@ -219,15 +226,18 @@ export default function AnalyticsOccupancyTab({
     });
   }, [inventory, searchQuery, typeFilter, statusFilter]);
 
-  if (isLoading && !data) {
-    return <AdminAnalyticsDetailSkeleton tab="occupancy" isOwner={isOwner} />;
-  }
+  const occupancyPrompts = useMemo(
+    () => getDynamicOccupancyPrompts(data, forecast),
+    [data, forecast],
+  );
 
   const occupancyDelta = kpis.comparison?.occupancyRate || {
     label: "+0 pp",
     changeType: "neutral",
     text: "vs prev period",
   };
+
+  const anomalies = detectOccupancyAnomalies(kpis);
 
   const metricCards = [
     {
@@ -237,6 +247,7 @@ export default function AnalyticsOccupancyTab({
       value: kpis.occupancyRateLabel || "0%",
       trend: occupancyDelta.text || `${occupancyDelta.label || "+0 pp"} vs prev period`,
       changeType: occupancyDelta.changeType || "neutral",
+      anomalyBadge: anomalies.occupancyRate,
     },
     {
       icon: Users,
@@ -251,6 +262,7 @@ export default function AnalyticsOccupancyTab({
       label: "Available Beds",
       value: kpis.availableBeds || 0,
       trend: "Ready for move-in",
+      anomalyBadge: anomalies.availableBeds,
     },
     {
       icon: Building,
@@ -261,46 +273,208 @@ export default function AnalyticsOccupancyTab({
     },
   ];
 
-  const exportPdf = () =>
+  const exportPdf = () => {
+    const insight = insightData?.insight;
     handlePdfExport({
-      title: "Occupancy Analytics",
-      subtitle: `${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`,
-      metrics: metricCards,
-      insights: buildInsightPdfSections(insightData?.insights),
-      tables: [{ title: "Inventory", columns: INVENTORY_COLUMNS, rows: filteredInventory }],
+      title: "Occupancy Analytics Report",
+      subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
+      filename: `lilycrest-occupancy-${branch || "all"}-${range}.pdf`,
+      reportType: "Occupancy",
+      kpis: metricCards.map((item, i) => ({
+        label: item.label,
+        value: item.value,
+        sub: item.trend,
+        highlight: i === 0,
+      })),
+      aiInsight: {
+        headline: insight?.headline || "Occupancy summary",
+        summary: insight?.summary || "",
+        confidence:
+          insight?.confidence === "high"
+            ? 85
+            : insight?.confidence === "medium"
+            ? 60
+            : insight?.confidence === "low"
+            ? 35
+            : 0,
+        confidenceLabel: insight?.confidence
+          ? `${insight.confidence.charAt(0).toUpperCase() + insight.confidence.slice(1)}`
+          : "",
+        standout: insight?.keyFindings || [],
+        watch: insight?.riskAlerts || insight?.anomalies || [],
+        nextSteps: insight?.recommendedActions || [],
+      },
+      sections: [
+        {
+          title: "Room Inventory & Capacity",
+          type: "table",
+          headers: ["Room", "Type", "Branch", "Capacity", "Occupied", "Available", "Rate", "Status"],
+          rows: filteredInventory.map((item) => ({
+            Room: item.roomNumber || "-",
+            Type: item.roomTypeLabel || "-",
+            Branch: formatBranch(item.branch),
+            Capacity: item.capacity || 0,
+            Occupied: item.occupiedBeds || 0,
+            Available: item.availableBeds || 0,
+            Rate: `${item.occupancyRate || 0}%`,
+            Status: item.occupancyRate >= 100 ? "Full" : item.occupiedBeds === 0 ? "Vacant" : "Partial",
+          })),
+        },
+      ],
     });
-  const exportCsv = () => handleCsvExport("occupancy_inventory.csv", filteredInventory);
+  };
+
+  const exportCsv = () => {
+    handleCsvExport(
+      filteredInventory,
+      [
+        { key: "roomNumber", label: "Room" },
+        { key: "roomTypeLabel", label: "Type" },
+        { key: "branch", label: "Branch", formatter: (v) => formatBranch(v) },
+        { key: "capacity", label: "Capacity" },
+        { key: "occupiedBeds", label: "Occupied Beds" },
+        { key: "availableBeds", label: "Available Beds" },
+        { key: "unavailableBeds", label: "Unavailable Beds" },
+        { key: "occupancyRate", label: "Occupancy Rate (%)", formatter: (v) => `${v}%` },
+        { key: "status", label: "Status", formatter: (v, row) => (row.occupancyRate >= 100 ? "Full" : row.occupiedBeds === 0 ? "Vacant" : "Partial") },
+      ],
+      `lilycrest-occupancy-${branch || "all"}-${range}`,
+    );
+  };
+
+  useEffect(() => {
+    if (registerExport) {
+      registerExport({ exportCsv, exportPdf });
+    }
+  }, [registerExport, exportCsv, exportPdf]);
+
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="occupancy" isOwner={isOwner} />;
+  }
+
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "FILTER_STATUS" && action.filterValue) {
+      setStatusFilter(action.filterValue);
+      setPage(1);
+    } else if (action.actionType === "FILTER_TYPE" && action.filterValue) {
+      setTypeFilter(action.filterValue);
+        setPage(1);
+    } else if (action.actionType === "SEARCH" && action.filterValue) {
+      setSearchQuery(action.filterValue);
+      setPage(1);
+    }
+  };
+
+  const trendChartConfig = useMemo(() => {
+    if (occupancyMetric === "beds") {
+      return {
+        data: trend.map((item) => ({
+          label: item.label,
+          occupied: item.occupiedBeds || 0,
+          capacity: item.totalCapacity || 0,
+        })),
+        lines: [
+          { key: "occupied", label: "Occupied Beds", color: "#2563eb", strokeWidth: 2.5 },
+          { key: "capacity", label: "Total Capacity", color: "#64748b", strokeWidth: 1.75 },
+        ],
+        valueFormatter: (value) => `${value} bed${value === 1 ? "" : "s"}`,
+        subtitle: `Occupied beds vs. capacity — ${buildRangeLabel(activeTrendRange).toLowerCase()}`,
+      };
+    }
+
+    if (occupancyMetric === "byType") {
+      return {
+        data: trend.map((item) => ({
+          label: item.label,
+          private: item.byType?.["private"] ?? 0,
+          double: item.byType?.["double-sharing"] ?? 0,
+          quadruple: item.byType?.["quadruple-sharing"] ?? 0,
+        })),
+        lines: [
+          { key: "private", label: "Private", color: "#2563eb", strokeWidth: 2 },
+          { key: "double", label: "Double Sharing", color: "#16a34a", strokeWidth: 2 },
+          { key: "quadruple", label: "Quad Sharing", color: "#f59e0b", strokeWidth: 2 },
+        ],
+        valueFormatter: (value) => `${value}%`,
+        subtitle: `By room type — ${buildRangeLabel(activeTrendRange).toLowerCase()}`,
+      };
+    }
+
+    return {
+      data: trend.map((item) => ({
+        label: item.label,
+        occupancy: item.totalRate ?? 0,
+      })),
+      lines: [{ key: "occupancy", label: "Occupancy rate", color: "#2563eb", strokeWidth: 3 }],
+      valueFormatter: (value) => `${value}%`,
+      subtitle: `Daily occupancy rate — ${buildRangeLabel(activeTrendRange).toLowerCase()}`,
+    };
+  }, [activeTrendRange, occupancyMetric, trend]);
 
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
+      {isError ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-900 px-4 py-3 text-xs font-medium text-amber-800 dark:text-amber-300 mb-2">
+          Occupancy analytics could not be loaded. Please try again later.
+        </div>
+      ) : null}
+
       <MetricGrid items={metricCards} />
 
       <AnalyticsInsightSection
         reportLabel="occupancy"
-        summaryTitle="Occupancy Summary & Intelligence"
+        summaryTitle="Occupancy Intelligence"
+        reportType="occupancy"
+        range={range}
+        branch={branch}
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
+        suggestedPrompts={occupancyPrompts}
+        onExecuteAction={handleExecuteAction}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel
           title="Occupancy trend"
-          subtitle="Daily occupancy rate over the selected period"
+          subtitle={trendChartConfig.subtitle}
           actions={
-            <CardFilterSelect
-              value={activeTrendRange}
-              onChange={setTrendRange}
-            />
+            <div className="flex items-center gap-2">
+              <div className="analytics-view-mode-toggle" role="group" aria-label="Occupancy view metric">
+                <button
+                  type="button"
+                  className={`analytics-view-mode-btn ${occupancyMetric === "rate" ? "active" : ""}`}
+                  onClick={() => setOccupancyMetric("rate")}
+                >
+                  Rate %
+                </button>
+                <button
+                  type="button"
+                  className={`analytics-view-mode-btn ${occupancyMetric === "beds" ? "active" : ""}`}
+                  onClick={() => setOccupancyMetric("beds")}
+                >
+                  Beds
+                </button>
+                <button
+                  type="button"
+                  className={`analytics-view-mode-btn ${occupancyMetric === "byType" ? "active" : ""}`}
+                  onClick={() => setOccupancyMetric("byType")}
+                >
+                  By Type
+                </button>
+              </div>
+              <CardFilterSelect
+                value={activeTrendRange}
+                onChange={setTrendRange}
+              />
+            </div>
           }
         >
           <AnalyticsLineChart
-            data={trend.map((item) => ({
-              label: item.label,
-              occupancy: item.totalRate,
-            }))}
-            lines={[{ key: "occupancy", label: "Occupancy rate" }]}
-            valueFormatter={(value) => `${value}%`}
+            data={trendChartConfig.data}
+            lines={trendChartConfig.lines}
+            valueFormatter={trendChartConfig.valueFormatter}
             emptyTitle="No occupancy trend"
             emptyDescription="The branch does not have enough occupancy history for this range yet."
           />

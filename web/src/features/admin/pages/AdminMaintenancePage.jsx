@@ -44,6 +44,7 @@ import {
 } from "../../../shared/utils/maintenanceConfig";
 import { BRANCH_OPTIONS } from "../../../shared/utils/constants";
 import { DataTable, DetailDrawer, PageShell } from "../components/shared";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import { DrawerSkeleton } from "../../../shared/components/LoadingSkeletons";
 import { AdminMaintenanceSkeleton } from "../components/AdminContentSkeletons";
 
@@ -625,13 +626,12 @@ export default function AdminMaintenancePage() {
   }
 
   return (
-    <div>
-      <div className="mb-4">
-        <h1 className="mb-1 text-2xl font-semibold text-foreground">Maintenance</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Manage tenant repair requests, contractor assignments, and resolution workflows.
-        </p>
-      </div>
+    <div className="space-y-6">
+      {/* Pattern 1 Sticky Sub-Header */}
+      <AdminPageHeader
+        title="Maintenance"
+        subtitle="Review tenant repair requests, assign work, and keep response workflows up to date."
+      />
 
       <PageShell>
         <PageShell.Summary>

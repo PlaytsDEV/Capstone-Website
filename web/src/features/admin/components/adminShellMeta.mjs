@@ -115,44 +115,175 @@ const ANALYTICS_DETAILS_META = {
   },
 };
 
+const PAGE_TAB_META = {
+  "/admin/analytics": {
+    overview: "Overview",
+    occupancy: "Occupancy",
+    billing: "Billing & Revenue",
+    operations: "Operations",
+    demographics: "Demographics",
+    acquisition: "Lead Acquisition",
+    financials: "Financials",
+    monitoring: "Monitoring",
+    consolidated: "Consolidated",
+  },
+  "/admin/billing": {
+    electricity: "Electricity",
+    water: "Water",
+    rent: "Rent",
+    "reservation-payments": "Reservation Payments",
+    "overdue-notices": "Overdue Notices",
+    violations: "Violations",
+  },
+  "/admin/room-availability": {
+    rooms: "Room Inventory",
+    occupancy: "Occupancy",
+    forecast: "Vacancy Forecast",
+    blackout: "Blackout Dates",
+  },
+  "/admin/tenants": {
+    active: "Active Tenants",
+    renewals: "Lease Renewals",
+    transfers: "Room Transfers",
+    moveouts: "Move-Outs",
+    violations: "Violations",
+  },
+  "/admin/users": {
+    accounts: "User Accounts",
+    roles: "Roles & Permissions",
+    permissions: "Roles & Permissions",
+    activity: "Activity Logs",
+  },
+  "/admin/reservations": {
+    applications: "Applications",
+    pipeline: "Visit Pipeline",
+    schedules: "Visit Schedules",
+    availability: "Availability Slots",
+    conflicts: "Conflict Warnings",
+    blackout: "Blackout Dates",
+  },
+  "/admin/audit-logs": {
+    events: "Event Log",
+    security: "Security Alerts",
+    actions: "Admin Actions",
+  },
+  "/admin/maintenance": {
+    active: "Active Tickets",
+    history: "Service History",
+    schedules: "Schedules",
+  },
+  "/admin/announcements": {
+    published: "Published",
+    drafts: "Drafts",
+    scheduled: "Scheduled",
+    archived: "Archive",
+  },
+  "/admin/notifications": {
+    all: "All Alerts",
+    sla: "SLA Breaches",
+    system: "System Events",
+  },
+};
+
 export function getPageMeta(pathname, search = "") {
+  const params = new URLSearchParams(search);
+
   if (pathname.startsWith("/admin/contracts/")) {
-    return PAGE_META["/admin/contracts"];
+    const base = PAGE_META["/admin/contracts"];
+    return {
+      ...base,
+      breadcrumbs: [
+        { label: "Admin", href: "/admin/dashboard" },
+        { label: "Contracts", href: "/admin/contracts" },
+        { label: "Contract Details" },
+      ],
+    };
   }
+
   if (pathname === "/admin/analytics/details") {
-    const params = new URLSearchParams(search);
     const tab = params.get("tab") || "occupancy";
-    return ANALYTICS_DETAILS_META[tab] || ANALYTICS_DETAILS_META.occupancy;
+    const detailMeta = ANALYTICS_DETAILS_META[tab] || ANALYTICS_DETAILS_META.occupancy;
+    const tabLabel = PAGE_TAB_META["/admin/analytics"]?.[tab] || "Occupancy";
+    return {
+      ...detailMeta,
+      activeTab: tab,
+      breadcrumbs: [
+        { label: "Admin", href: "/admin/dashboard" },
+        { label: "Analytics", href: "/admin/analytics" },
+        { label: `Details - ${tabLabel}` },
+      ],
+    };
   }
 
   if (pathname === "/admin/room-availability") {
-    const params = new URLSearchParams(search);
     const tab = params.get("tab") || "rooms";
+    let subTitle = "Room Management";
+    let subDesc = PAGE_META["/admin/room-availability"].description;
 
     if (tab === "occupancy") {
-      return {
-        title: "Room Occupancy",
-        description:
-          "See who is assigned where and catch room-level conflicts early.",
-      };
+      subTitle = "Room Occupancy";
+      subDesc = "See who is assigned where and catch room-level conflicts early.";
+    } else if (tab === "forecast") {
+      subTitle = "Vacancy Forecast";
+      subDesc = "Plan around expected openings, pending reservations, and room turnover.";
     }
 
-    if (tab === "forecast") {
-      return {
-        title: "Vacancy Forecast",
-        description:
-          "Plan around expected openings, pending reservations, and room turnover.",
-      };
-    }
+    const tabLabel = PAGE_TAB_META["/admin/room-availability"]?.[tab] || "Room Inventory";
+
+    return {
+      title: subTitle,
+      description: subDesc,
+      activeTab: tab,
+      breadcrumbs: [
+        { label: "Admin", href: "/admin/dashboard" },
+        { label: "Room Management", href: "/admin/room-availability" },
+        { label: tabLabel },
+      ],
+    };
   }
 
-  return (
-    PAGE_META[pathname] || {
-      title: "Admin",
-      description:
-        "Manage daily operations, resident workflows, and branch performance.",
-    }
-  );
+  const baseMeta = PAGE_META[pathname] || {
+    title: "Admin",
+    description: "Manage daily operations, resident workflows, and branch performance.",
+  };
+
+  // Dashboard route
+  if (pathname === "/admin/dashboard") {
+    return {
+      ...baseMeta,
+      breadcrumbs: [
+        { label: "Admin", href: "/admin/dashboard" },
+        { label: "Dashboard" },
+      ],
+    };
+  }
+
+  // Check if page has sub-tabs defined
+  const tabMap = PAGE_TAB_META[pathname];
+  if (tabMap) {
+    const defaultTabKey = Object.keys(tabMap)[0];
+    const tabParam = params.get("tab");
+    const activeTabKey = tabParam && tabMap[tabParam] ? tabParam : defaultTabKey;
+    const activeTabLabel = tabMap[activeTabKey] || tabMap[defaultTabKey];
+
+    return {
+      ...baseMeta,
+      activeTab: activeTabKey,
+      breadcrumbs: [
+        { label: "Admin", href: "/admin/dashboard" },
+        { label: baseMeta.title, href: pathname },
+        { label: activeTabLabel },
+      ],
+    };
+  }
+
+  return {
+    ...baseMeta,
+    breadcrumbs: [
+      { label: "Admin", href: "/admin/dashboard" },
+      { label: baseMeta.title },
+    ],
+  };
 }
 
-export { PAGE_META, ANALYTICS_DETAILS_META };
+export { PAGE_META, ANALYTICS_DETAILS_META, PAGE_TAB_META };

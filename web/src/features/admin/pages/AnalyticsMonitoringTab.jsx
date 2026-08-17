@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ExternalLink, Globe, KeyRound, ShieldAlert } from "lucide-react";
 import { useAuditAnalytics } from "../../../shared/hooks/queries/useAnalyticsReports";
@@ -24,6 +24,7 @@ import {
  RANGE_OPTIONS_SHORT,
  unwrapTableRows,
  useReportInsights,
+ getDynamicMonitoringPrompts,
 } from "./analyticsTabShared";
 
 const EVENT_COLUMNS = [
@@ -40,51 +41,59 @@ const SUSPICIOUS_IP_COLUMNS = [
  { key: "lastSeenAt", label: "Last Seen", render: (row) => formatDateTime(row.lastSeenAt), sortable: true },
 ];
 
-export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, onRangeChange }) {
- const [eventPage, setEventPage] = useState(1);
- const [ipPage, setIpPage] = useState(1);
- const [searchQuery, setSearchQuery] = useState("");
- const [severityFilter, setSeverityFilter] = useState("all");
- const [eventPageSize, setEventPageSize] = useState(5);
- const [ipPageSize, setIpPageSize] = useState(5);
+export default function AnalyticsMonitoringTab({
+  branch,
+  range,
+  isOwner,
+  onBranchChange,
+  onRangeChange,
+  registerExport,
+}) {
+  const [eventPage, setEventPage] = useState(1);
+  const [ipPage, setIpPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [severityFilter, setSeverityFilter] = useState("all");
+  const [eventPageSize, setEventPageSize] = useState(5);
+  const [ipPageSize, setIpPageSize] = useState(5);
 
- const params = useMemo(() => ({ branch, range }), [branch, range]);
- const { data, isLoading, isError } = useAuditAnalytics(params);
+  const params = useMemo(() => ({ branch, range }), [branch, range]);
+  const { data, isLoading, isError } = useAuditAnalytics(params);
 
- const {
- data: insightData,
- isLoading: isInsightLoading,
- isError: isInsightError,
- } = useReportInsights({
- reportType: "audit",
- range,
- branch,
- });
-
- const kpis = data?.kpis || {};
- const branchSummary = Array.isArray(data?.series?.branchSummary) ? data?.series?.branchSummary : [];
- const severityDistribution = Array.isArray(data?.series?.severityDistribution) ? data?.series?.severityDistribution : [];
- const recentSecurityEvents = unwrapTableRows(data?.tables?.recentSecurityEvents);
- const suspiciousIps = Array.isArray(data?.tables?.suspiciousIps) ? data?.tables?.suspiciousIps : [];
-
- const filteredSecurityEvents = useMemo(() => {
-  return recentSecurityEvents.filter((item) => {
-   const matchSearch =
-    !searchQuery ||
-    (item.action && String(item.action).toLowerCase().includes(searchQuery.toLowerCase())) ||
-    (item.user && String(item.user).toLowerCase().includes(searchQuery.toLowerCase()));
-
-   const matchSeverity =
-    severityFilter === "all" ||
-    (item.severity && String(item.severity).toLowerCase() === severityFilter.toLowerCase());
-
-   return matchSearch && matchSeverity;
+  const {
+    data: insightData,
+    isLoading: isInsightLoading,
+    isError: isInsightError,
+  } = useReportInsights({
+    reportType: "audit",
+    range,
+    branch,
   });
- }, [recentSecurityEvents, searchQuery, severityFilter]);
 
- if (isLoading && !data) {
-  return <AdminAnalyticsDetailSkeleton tab="monitoring" />;
- }
+  const kpis = data?.kpis || {};
+  const branchSummary = Array.isArray(data?.series?.branchSummary) ? data?.series?.branchSummary : [];
+  const severityDistribution = Array.isArray(data?.series?.severityDistribution) ? data?.series?.severityDistribution : [];
+  const recentSecurityEvents = unwrapTableRows(data?.tables?.recentSecurityEvents);
+  const suspiciousIps = Array.isArray(data?.tables?.suspiciousIps) ? data?.tables?.suspiciousIps : [];
+
+  const filteredSecurityEvents = useMemo(() => {
+    return recentSecurityEvents.filter((item) => {
+      const matchSearch =
+        !searchQuery ||
+        (item.action && String(item.action).toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (item.user && String(item.user).toLowerCase().includes(searchQuery.toLowerCase()));
+
+      const matchSeverity =
+        severityFilter === "all" ||
+        (item.severity && String(item.severity).toLowerCase() === severityFilter.toLowerCase());
+
+      return matchSearch && matchSeverity;
+    });
+  }, [recentSecurityEvents, searchQuery, severityFilter]);
+
+  const monitoringPrompts = useMemo(
+    () => getDynamicMonitoringPrompts(data),
+    [data],
+  );
 
   const metricCards = [
     { icon: ShieldAlert, label: "Failed Logins", value: kpis.failedLogins || 0, tone: "rose", trend: "Authentication failures" },
@@ -93,82 +102,100 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
     { icon: Globe, label: "Unique IPs", value: kpis.uniqueFailedLoginIps || 0, tone: "green", trend: "Origin addresses" },
   ];
 
- const exportCsv = () => {
- handleCsvExport(
- recentSecurityEvents,
- [
- { key: "action", label: "Event" },
- { key: "branch", label: "Branch", formatter: (value) => formatBranch(value) },
- { key: "severity", label: "Severity" },
- { key: "user", label: "User" },
- { key: "timestamp", label: "Timestamp", formatter: (value) => formatDateTime(value) },
- ],
- `system-monitoring-${range}`,
- );
- };
+  const exportCsv = () => {
+    handleCsvExport(
+      filteredSecurityEvents,
+      [
+        { key: "action", label: "Event" },
+        { key: "branch", label: "Branch", formatter: (value) => formatBranch(value) },
+        { key: "severity", label: "Severity" },
+        { key: "user", label: "User" },
+        { key: "timestamp", label: "Timestamp", formatter: (value) => formatDateTime(value) },
+      ],
+      `lilycrest-monitoring-${branch || "all"}-${range}`,
+    );
+  };
 
- const exportPdf = () => {
- handlePdfExport({
- title: "System Monitoring",
- subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
- filename: `system-monitoring-${range}.pdf`,
- reportType: "Monitoring",
- kpis: metricCards.map((item, i) => ({
- label: item.label,
- value: item.value,
- sub: "",
- highlight: i === 0,
- })),
- aiInsight: {
- headline: insightData?.insight?.headline || "Security summary",
- summary: insightData?.insight?.summary || "",
- confidence: insightData?.insight?.confidence === "high" ? 85
- : insightData?.insight?.confidence === "medium" ? 60
- : insightData?.insight?.confidence === "low" ? 35
- : 0,
- confidenceLabel: insightData?.insight?.confidence
- ? `${insightData.insight.confidence.charAt(0).toUpperCase() + insightData.insight.confidence.slice(1)}`
- : "",
- standout: insightData?.insight?.keyFindings || [],
- watch: insightData?.insight?.riskAlerts || [],
- nextSteps: insightData?.insight?.recommendedActions || [],
- },
- sections: [
- {
- title: "Branch Security Summary",
- type: "table",
- headers: ["Branch", "Events", "Critical", "Overrides"],
- rows: branchSummary.map((item) => ({
- Branch: item.label,
- Events: item.totalEvents || 0,
- Critical: item.criticalCount || 0,
- Overrides: item.accessOverrideCount || 0,
- })),
- },
- {
- title: "Recent Security Events",
- type: "table",
- headers: ["Event", "Branch", "Severity", "Date"],
- rows: recentSecurityEvents.slice(0, 12).map((item) => ({
- Event: item.action || "-",
- Branch: formatBranch(item.branch),
- Severity: item.severity || "-",
- Date: formatDate(item.timestamp),
- })),
- },
- {
- title: "Suspicious IP Activity",
- type: "table",
- headers: ["IP Address", "Failed Logins", "Last Seen"],
- rows: suspiciousIps.slice(0, 12).map((item) => ({
- "IP Address": item.ipAddress || "-",
- "Failed Logins": item.attempts || 0,
- "Last Seen": formatDateTime(item.lastSeenAt),
- })),
- },
- ],
- });
- };
+  const exportPdf = () => {
+    handlePdfExport({
+      title: "System Monitoring & Security Analytics",
+      subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
+      filename: `lilycrest-monitoring-${branch || "all"}-${range}.pdf`,
+      reportType: "Monitoring",
+      kpis: metricCards.map((item, i) => ({
+        label: item.label,
+        value: item.value,
+        sub: "",
+        highlight: i === 0,
+      })),
+      aiInsight: {
+        headline: insightData?.insight?.headline || "Security summary",
+        summary: insightData?.insight?.summary || "",
+        confidence: insightData?.insight?.confidence === "high" ? 85
+          : insightData?.insight?.confidence === "medium" ? 60
+          : insightData?.insight?.confidence === "low" ? 35
+          : 0,
+        confidenceLabel: insightData?.insight?.confidence
+          ? `${insightData.insight.confidence.charAt(0).toUpperCase() + insightData.insight.confidence.slice(1)}`
+          : "",
+        standout: insightData?.insight?.keyFindings || [],
+        watch: insightData?.insight?.riskAlerts || [],
+        nextSteps: insightData?.insight?.recommendedActions || [],
+      },
+      sections: [
+        {
+          title: "Branch Security Summary",
+          type: "table",
+          headers: ["Branch", "Events", "Critical", "Overrides"],
+          rows: branchSummary.map((item) => ({
+            Branch: item.label,
+            Events: item.totalEvents || 0,
+            Critical: item.criticalCount || 0,
+            Overrides: item.accessOverrideCount || 0,
+          })),
+        },
+        {
+          title: "Recent Security Events",
+          type: "table",
+          headers: ["Event", "Branch", "Severity", "Date"],
+          rows: filteredSecurityEvents.slice(0, 12).map((item) => ({
+            Event: item.action || "-",
+            Branch: formatBranch(item.branch),
+            Severity: item.severity || "-",
+            Date: formatDate(item.timestamp),
+          })),
+        },
+        {
+          title: "Suspicious IP Activity",
+          type: "table",
+          headers: ["IP Address", "Failed Logins", "Last Seen"],
+          rows: suspiciousIps.slice(0, 12).map((item) => ({
+            "IP Address": item.ipAddress || "-",
+            "Failed Logins": item.attempts || 0,
+            "Last Seen": formatDateTime(item.lastSeenAt),
+          })),
+        },
+      ],
+    });
+  };
+
+  useEffect(() => {
+    if (registerExport) {
+      registerExport({ exportCsv, exportPdf });
+    }
+  }, [registerExport, exportCsv, exportPdf]);
+
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="monitoring" />;
+  }
+
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "SEARCH" && action.filterValue) {
+      setSearchQuery(action.filterValue);
+      setEventPage(1);
+    }
+  };
 
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
@@ -177,9 +204,14 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
       <AnalyticsInsightSection
         reportLabel="security"
         summaryTitle="Security & System Audit Intelligence"
+        reportType="audit"
+        range={range}
+        branch={branch}
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
+        suggestedPrompts={monitoringPrompts}
+        onExecuteAction={handleExecuteAction}
       />
 
  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

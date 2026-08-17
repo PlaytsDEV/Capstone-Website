@@ -3,8 +3,8 @@
  * LILYCREST PUBLIC AI CHATBOT CONTROLLER
  * ============================================================================
  *
- * Handles public visitor inquiries, real-time SSE streaming responses, and
- * lead escalation to the admin inquiry intake pipeline.
+ * Handles public visitor inquiries, real-time SSE streaming responses,
+ * intelligent lead parsing, and lead escalation to the admin intake pipeline.
  * ============================================================================
  */
 
@@ -14,10 +14,17 @@ import {
   streamGeminiChatbot,
 } from "../services/chatbot/chatbotService.js";
 import {
+  parseLeadFromConversation,
+} from "../services/chatbot/leadParserService.js";
+import {
   streamTenantAssistant as streamTenantAssistantService,
   queryTenantAssistantService,
   escalateTenantAssistantService,
 } from "../services/chatbot/tenantAssistantService.js";
+import { queryAdminSopService } from "../services/chatbot/adminCopilotService.js";
+import { generateAdminReplyDraft } from "../services/chatbot/adminReplyDrafterService.js";
+import { detectIssueClusters } from "../services/chatbot/issueClusterService.js";
+import { getOwnerSupportTrends } from "../services/chatbot/ownerSupportTrendsService.js";
 import Inquiry from "../models/Inquiry.js";
 
 const querySchema = z.object({
@@ -25,12 +32,25 @@ const querySchema = z.object({
   conversationHistory: z
     .array(
       z.object({
-        role: z.enum(["user", "assistant"]),
+        role: z.enum(["user", "assistant", "model"]),
         text: z.string().min(1).max(2000),
       }),
     )
     .max(50, "Conversation history is too long")
     .default([]),
+  branchFocus: z.enum(["all", "gil_puyat", "guadalupe"]).default("all").optional(),
+});
+
+const parseLeadSchema = z.object({
+  message: z.string().max(2000).optional(),
+  conversationHistory: z
+    .array(
+      z.object({
+        role: z.string(),
+        text: z.string(),
+      }),
+    )
+    .optional(),
   branchFocus: z.enum(["all", "gil_puyat", "guadalupe"]).default("all").optional(),
 });
 
@@ -42,7 +62,7 @@ const escalationSchema = z.object({
     .min(1, "Email is required")
     .trim()
     .toLowerCase(),
-  phone: z.string().min(1, "Phone number is required").max(20).trim(),
+  phone: z.string().min(1, "Phone number is required").max(25).trim(),
   preferredBranch: z.enum(["gil_puyat", "guadalupe", "any", "all"]).nullable().optional(),
   message: z.string().min(1, "Message is required").max(5000).trim(),
   preferredRoomType: z
@@ -51,6 +71,9 @@ const escalationSchema = z.object({
     .nullable()
     .optional(),
   concernCategory: z.string().max(100).optional(),
+  targetMoveInDate: z.string().nullable().optional(),
+  expectedLengthOfStay: z.string().nullable().optional(),
+  preferredViewingDate: z.string().nullable().optional(),
   source: z.string().max(100).default("chatbot_front_desk_request").optional(),
 });
 
@@ -155,13 +178,37 @@ export const handlePublicStream = async (req, res, next) => {
 };
 
 /**
+ * Intelligent Lead & Form Parsing endpoint.
+ * Analyzes conversation history and extracts structured visitor lead data.
+ */
+export const handleParseLead = async (req, res, next) => {
+  try {
+    const { message, conversationHistory, branchFocus } = parseLeadSchema.parse(req.body);
+    const input =
+      conversationHistory && conversationHistory.length > 0
+        ? conversationHistory
+        : message || "";
+    const parsedData = await parseLeadFromConversation(input, branchFocus || "all");
+    res.status(200).json({ success: true, data: parsedData });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: error.issues ? error.issues[0].message : "Validation Error",
+      });
+    }
+    next(error);
+  }
+};
+
+/**
  * Lead escalation endpoint for transferring chatbot conversations to the admin inquiry queue.
  */
 export const handleLeadEscalation = async (req, res, next) => {
   try {
     const validatedData = escalationSchema.parse(req.body);
 
-    const newInquiry = new Inquiry({
+    const inquiryPayload = {
       fullName: validatedData.name,
       email: validatedData.email,
       contactNumber: validatedData.phone,
@@ -178,10 +225,22 @@ export const handleLeadEscalation = async (req, res, next) => {
           : null,
       source: "website",
       sourceNote: validatedData.source || "chatbot_front_desk_request",
-      viewingStatus: "new",
+      viewingStatus: validatedData.preferredViewingDate ? "viewing_scheduled" : "new",
       priority: "medium",
-    });
+    };
 
+    if (validatedData.expectedLengthOfStay) {
+      inquiryPayload.expectedLengthOfStay = validatedData.expectedLengthOfStay;
+    }
+
+    if (validatedData.targetMoveInDate) {
+      const parsedDate = new Date(validatedData.targetMoveInDate);
+      if (!isNaN(parsedDate.getTime())) {
+        inquiryPayload.targetMoveInDate = parsedDate;
+      }
+    }
+
+    const newInquiry = new Inquiry(inquiryPayload);
     await newInquiry.save();
 
     res.status(200).json({
@@ -328,3 +387,72 @@ export const handleTenantEscalate = async (req, res, next) => {
   }
 };
 
+/**
+ * Handle Admin SOP Query
+ */
+export const handleAdminSopQuery = async (req, res, next) => {
+  try {
+    const { query, branch } = req.body;
+    if (!query) {
+      return res.status(400).json({ success: false, message: "Query is required" });
+    }
+    const resolvedBranch = req.branchFilter || branch;
+    const result = await queryAdminSopService({ query, branch: resolvedBranch });
+    if (!result.success) {
+      return res.status(500).json({ success: false, message: result.error });
+    }
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Handle Admin Suggest Reply
+ */
+export const handleAdminSuggestReply = async (req, res, next) => {
+  try {
+    const { conversationId, ticketCategory, urgency, recentMessages, tenantContext, tone } = req.body;
+    const branch = req.branchFilter || req.body.branch;
+    const result = await generateAdminReplyDraft({ conversationId, ticketCategory, urgency, recentMessages, tenantContext, tone, branch });
+    if (!result.success) {
+      return res.status(500).json({ success: false, message: result.error });
+    }
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Handle Admin Issue Clusters
+ */
+export const handleAdminIssueClusters = async (req, res, next) => {
+  try {
+    const { branch, timeframeHours } = req.query;
+    const resolvedBranch = req.branchFilter || branch;
+    const result = await detectIssueClusters({ branch: resolvedBranch, timeframeHours: timeframeHours ? parseInt(timeframeHours) : 24 });
+    if (!result.success) {
+      return res.status(500).json({ success: false, message: result.error });
+    }
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Handle Owner Support Trends
+ */
+export const handleOwnerSupportTrends = async (req, res, next) => {
+  try {
+    const { timeframe, branch } = req.query;
+    const result = await getOwnerSupportTrends({ timeframe, branch });
+    if (!result.success) {
+      return res.status(500).json({ success: false, message: result.error });
+    }
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};

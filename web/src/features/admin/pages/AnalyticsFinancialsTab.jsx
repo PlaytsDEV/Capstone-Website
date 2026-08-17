@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, PhilippinePeso, Receipt, TrendingUp } from "lucide-react";
 import { useFinancialsAnalytics } from "../../../shared/hooks/queries/useAnalyticsReports";
 import {
@@ -21,6 +21,8 @@ import {
   RANGE_OPTIONS_LONG,
   unwrapTableRows,
   useReportInsights,
+  detectBillingAnomalies,
+  getDynamicFinancialsPrompts,
 } from "./analyticsTabShared";
 
 const OVERDUE_ROOM_COLUMNS = [
@@ -36,7 +38,14 @@ const OVERDUE_ROOM_COLUMNS = [
   },
 ];
 
-export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, onRangeChange }) {
+export default function AnalyticsFinancialsTab({
+  branch,
+  range,
+  isOwner,
+  onBranchChange,
+  onRangeChange,
+  registerExport,
+}) {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [exposureFilter, setExposureFilter] = useState("all");
@@ -76,9 +85,12 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
     });
   }, [overdueRooms, searchQuery, exposureFilter]);
 
-  if (isLoading && !data) {
-    return <AdminAnalyticsDetailSkeleton tab="financials" />;
-  }
+  const financialsPrompts = useMemo(
+    () => getDynamicFinancialsPrompts(data),
+    [data],
+  );
+
+  const anomalies = detectBillingAnomalies(data?.kpis);
 
   const metricCards = [
     {
@@ -95,6 +107,7 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
       tone: "rose",
       trend: "Pending dues",
       changeType: "down",
+      anomalyBadge: anomalies.overdueAmount,
     },
     {
       icon: Receipt,
@@ -102,6 +115,7 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
       value: (data?.kpis?.overdueAmountLabel || "PHP 0").replace("PHP ", "₱"),
       tone: "amber",
       trend: "Late payments",
+      anomalyBadge: anomalies.overdueAmount,
     },
     {
       icon: TrendingUp,
@@ -109,28 +123,29 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
       value: data?.kpis?.collectionRateLabel || "0%",
       tone: "blue",
       trend: "Target: > 90%",
+      anomalyBadge: anomalies.collectionRate,
     },
   ];
 
   const exportCsv = () => {
     handleCsvExport(
-      overdueRooms,
+      filteredOverdueRooms,
       [
         { key: "roomName", label: "Room" },
         { key: "branch", label: "Branch", formatter: (value) => formatBranch(value) },
         { key: "tenantCount", label: "Tenants" },
         { key: "overdueCount", label: "Overdue Bills" },
-        { key: "outstandingBalance", label: "Outstanding", formatter: (value) => formatPeso(value) },
+        { key: "outstandingBalance", label: "Outstanding (₱)", formatter: (value) => formatPeso(value) },
       ],
-      `financials-overdue-rooms-${range}`,
+      `lilycrest-financials-${branch || "all"}-${range}`,
     );
   };
 
   const exportPdf = () => {
     handlePdfExport({
-      title: "Financial Overview",
+      title: "Financial Analytics Overview",
       subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
-      filename: `financial-overview-${range}.pdf`,
+      filename: `lilycrest-financials-${branch || "all"}-${range}.pdf`,
       reportType: "Financials",
       kpis: metricCards.map((item, i) => ({
         label: item.label,
@@ -178,7 +193,7 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
           title: "Top Overdue Rooms",
           type: "table",
           headers: ["Room", "Branch", "Outstanding", "Overdue Bills"],
-          rows: overdueRooms.slice(0, 12).map((item) => ({
+          rows: filteredOverdueRooms.slice(0, 12).map((item) => ({
             Room: item.roomName,
             Branch: formatBranch(item.branch),
             Outstanding: formatPeso(item.outstandingBalance),
@@ -189,6 +204,27 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
     });
   };
 
+  useEffect(() => {
+    if (registerExport) {
+      registerExport({ exportCsv, exportPdf });
+    }
+  }, [registerExport, exportCsv, exportPdf]);
+
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="financials" />;
+  }
+
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "FILTER_STATUS" && action.filterValue) {
+      setExposureFilter(action.filterValue);
+      setPage(1);
+    } else if (action.actionType === "SEARCH" && action.filterValue) {
+      setSearchQuery(action.filterValue);
+      setPage(1);
+    }
+  };
+
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       <MetricGrid items={metricCards} />
@@ -196,9 +232,14 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
       <AnalyticsInsightSection
         reportLabel="financials"
         summaryTitle="Financial Summary"
+        reportType="financials"
+        range={range}
+        branch={branch}
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
+        suggestedPrompts={financialsPrompts}
+        onExecuteAction={handleExecuteAction}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

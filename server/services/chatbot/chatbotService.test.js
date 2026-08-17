@@ -130,7 +130,7 @@ describe("chatbotService", () => {
 
     it("should provide utilities billing information", () => {
       const reply = getRuleBasedFallback("Paano po ang bayad sa kuryente at tubig?");
-      expect(reply).toContain("Libre po ang konsumo sa tubig");
+      expect(reply).toContain("Libre ang konsumo sa tubig");
       expect(reply).toContain("ika-15 ng buwan");
     });
 

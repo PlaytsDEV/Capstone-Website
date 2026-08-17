@@ -28,8 +28,18 @@ await jest.unstable_mockModule("../config/paymongo.js", () => ({
   getCheckoutSession,
 }));
 
+function MockBill(data) {
+  Object.assign(this, data);
+  this.save = jest.fn(async function save() {
+    return this;
+  });
+}
+MockBill.findById = billFindById;
+MockBill.findOne = billFindOne;
+MockBill.updateMany = jest.fn().mockResolvedValue({ acknowledged: true });
+
 await jest.unstable_mockModule("../models/index.js", () => ({
-  Bill: { findById: billFindById, findOne: billFindOne },
+  Bill: MockBill,
   Payment: { getPaymentsForBill: paymentGetPaymentsForBill },
   Reservation: { findById: reservationFindById, updateOne: reservationUpdateOne },
   User: { findOne: userFindOne, findById: userFindById, find: userFind },
@@ -103,6 +113,7 @@ await jest.unstable_mockModule(
 const {
   createBillCheckout,
   createDepositCheckout,
+  createMoveInCheckout,
   checkSessionStatus,
   getPaymentsForBill,
 } = await import("./paymentController.js");
@@ -200,16 +211,22 @@ describe("paymentController", () => {
       _id: "bill_existing",
       userId: "tenant_1",
       status: "pending",
+      remainingAmount: 5000,
+      totalAmount: 5000,
       paymongoSessionId: "cs_existing",
       save: jest.fn(),
     };
 
     userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
     billFindById.mockResolvedValue(bill);
+    getBillRemainingAmount.mockReturnValue(5000);
+    resolveBillStatus.mockReturnValue("pending");
     getCheckoutSession.mockResolvedValue({
       attributes: {
         checkout_url: "https://checkout.test/cs_existing",
         payments: [],
+        line_items: [{ amount: 500000 }],
+        metadata: { amountDue: "5000" },
       },
     });
 
@@ -829,5 +846,142 @@ describe("paymentController", () => {
     expect(paymentGetPaymentsForBill).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
     expect(next.mock.calls[0][0].code).toBe("FORBIDDEN");
+  });
+
+  test("creates move-in checkout with exact price matching remaining balance (PHP 25,000)", async () => {
+    const reservation = {
+      _id: "res_movein_1",
+      userId: "tenant_1",
+      roomId: {
+        _id: "room_1",
+        name: "Private Room 101",
+        branch: "gil-puyat",
+        type: "private",
+        price: 13500,
+        monthlyPrice: 13500,
+        capacity: 1,
+      },
+      reservationFeeAmount: 2000,
+      initialPaymentStatus: "pending",
+      paymentStatus: "pending",
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+    billFindById.mockResolvedValue(null);
+    billFindOne.mockResolvedValue(null);
+    createCheckoutSession.mockResolvedValue({
+      checkoutUrl: "https://checkout.test/cs_movein_25000",
+      sessionId: "cs_movein_25000",
+    });
+
+    const req = { params: { resId: "res_movein_1" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await createMoveInCheckout(req, res, next);
+
+    expect(createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 25000,
+        description: expect.stringContaining("Private Room 101"),
+        metadata: expect.objectContaining({
+          type: "bill",
+          purpose: "initial_payment",
+          amountDue: "25000",
+        }),
+      }),
+    );
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        checkoutUrl: "https://checkout.test/cs_movein_25000",
+        sessionId: "cs_movein_25000",
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("createMoveInCheckout replaces stale session when existing session amount differs from remaining balance", async () => {
+    const bill = {
+      _id: "bill_initial_old",
+      userId: "tenant_1",
+      status: "pending",
+      paymongoSessionId: "cs_old_stale",
+      grossAmount: 10800,
+      totalAmount: 8800,
+      remainingAmount: 8800,
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+
+    const reservation = {
+      _id: "res_movein_2",
+      userId: "tenant_1",
+      roomId: {
+        _id: "room_1",
+        name: "Private Room 101",
+        branch: "gil-puyat",
+        type: "private",
+        price: 13500,
+        monthlyPrice: 13500,
+        capacity: 1,
+      },
+      initialPaymentBillId: "bill_initial_old",
+      reservationFeeAmount: 2000,
+      initialPaymentStatus: "pending",
+      paymentStatus: "paid",
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+    billFindById.mockResolvedValue(bill);
+    getCheckoutSession.mockResolvedValue({
+      attributes: {
+        checkout_url: "https://checkout.test/cs_old_stale",
+        payments: [],
+        line_items: [{ amount: 880000 }], // 8,800.00 old amount
+        metadata: { amountDue: "8800" },
+      },
+    });
+    createCheckoutSession.mockResolvedValue({
+      checkoutUrl: "https://checkout.test/cs_fresh_25000",
+      sessionId: "cs_fresh_25000",
+    });
+
+    const req = { params: { resId: "res_movein_2" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await createMoveInCheckout(req, res, next);
+
+    // Old session should NOT be reused because 8,800 != 25,000
+    expect(createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 25000,
+      }),
+    );
+    // Bill should be updated with new amounts
+    expect(bill.totalAmount).toBe(25000);
+    expect(bill.remainingAmount).toBe(25000);
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        checkoutUrl: "https://checkout.test/cs_fresh_25000",
+        sessionId: "cs_fresh_25000",
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
   });
 });

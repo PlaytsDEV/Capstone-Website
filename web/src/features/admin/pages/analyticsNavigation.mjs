@@ -1,18 +1,19 @@
 export const ANALYTICS_SUMMARY_PATH = "/admin/analytics";
 export const ANALYTICS_DETAILS_PATH = "/admin/analytics/details";
 
-export const ANALYTICS_SUMMARY_RANGES = ["30d", "60d", "90d", "365d"];
+export const ANALYTICS_SUMMARY_RANGES = ["7d", "30d", "60d", "90d", "365d"];
 export const BASE_ANALYTICS_TABS = ["occupancy", "billing", "operations", "demographics", "acquisition"];
-export const OWNER_ANALYTICS_TABS = ["consolidated", "financials", "monitoring"];
+export const OWNER_ANALYTICS_TABS = ["consolidated", "financials", "monitoring", "support"];
 export const TAB_RANGE_OPTIONS = {
-  occupancy: ["30d", "60d", "90d", "365d"],
+  occupancy: ["7d", "30d", "60d", "90d", "365d"],
   billing: ["3m", "6m", "12m"],
-  operations: ["30d", "60d", "90d", "365d"],
+  operations: ["7d", "30d", "60d", "90d", "365d"],
   demographics: ["3m", "6m", "12m"],
-  acquisition: ["30d", "60d", "90d", "365d"],
-  consolidated: ["30d", "60d", "90d", "365d"],
+  acquisition: ["7d", "30d", "60d", "90d", "365d"],
+  consolidated: ["7d", "30d", "60d", "90d", "365d"],
   financials: ["3m", "6m", "12m"],
-  monitoring: ["30d", "60d", "90d", "365d"],
+  monitoring: ["7d", "30d", "60d", "90d", "365d"],
+  support: ["7d", "30d", "60d", "90d", "365d"],
 };
 export const TAB_ALIASES = Object.freeze({
   "marketing-roi": "acquisition",
@@ -21,6 +22,7 @@ export const TAB_ALIASES = Object.freeze({
 });
 export const OWNER_BRANCH_OPTIONS = ["all", "gil-puyat", "guadalupe"];
 export const SUMMARY_TO_MONTH_RANGE = {
+  "7d": "1m",
   "30d": "3m",
   "60d": "6m",
   "90d": "12m",
@@ -28,6 +30,7 @@ export const SUMMARY_TO_MONTH_RANGE = {
   "1y": "12m",
 };
 export const MONTH_TO_SUMMARY_RANGE = {
+  "1m": "7d",
   "3m": "30d",
   "6m": "60d",
   "12m": "90d",
@@ -69,12 +72,12 @@ export function getAnalyticsDetailsRange(tab, requestedRange) {
       const months = Math.min(Math.max(Math.ceil(days / 30), 1), 24);
       return `${months}m`;
     }
-    return allowedRanges[0];
+    return allowedRanges.includes("3m") ? "3m" : allowedRanges[0];
   }
   if (isValidCustomDayRange(requestedRange)) {
     return requestedRange;
   }
-  return allowedRanges[0];
+  return allowedRanges.includes("30d") ? "30d" : allowedRanges[0];
 }
 
 export function getSummaryDetailRange(tab, summaryRange) {
@@ -102,7 +105,7 @@ export function normalizeAnalyticsSummaryState({
   const isAllowed =
     ANALYTICS_SUMMARY_RANGES.includes(requestedRange) ||
     isValidCustomDayRange(requestedRange);
-  const range = isAllowed ? requestedRange : ANALYTICS_SUMMARY_RANGES[0];
+  const range = isAllowed ? requestedRange : "30d";
 
   const branch = isOwner
     ? OWNER_BRANCH_OPTIONS.includes(requestedBranch)
@@ -147,7 +150,7 @@ export function normalizeAnalyticsState({
 
 export function buildAnalyticsDetailsHref({
   tab = BASE_ANALYTICS_TABS[0],
-  range = ANALYTICS_SUMMARY_RANGES[0],
+  range = "30d",
   branch,
   isOwner = false,
 }) {
@@ -167,7 +170,7 @@ export function getDetailSummaryRange(range) {
 }
 
 export function buildAnalyticsSummaryHref({
-  range = ANALYTICS_SUMMARY_RANGES[0],
+  range = "30d",
   branch,
   isOwner = false,
 }) {

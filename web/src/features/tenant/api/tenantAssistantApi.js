@@ -16,8 +16,7 @@
  * =============================================================================
  */
 
-import { authFetch, getFreshToken } from "../../../shared/api/httpClient";
-import { API_BASE_URL } from "../../../shared/api/baseUrl";
+import { authFetch, protectedFetch } from "../../../shared/api/httpClient";
 
 /**
  * Send a non-streaming conversational query to the Tenant Assistant.
@@ -73,11 +72,6 @@ export const streamTenantAssistant = async ({
   let emittedContextSnapshot = null;
 
   try {
-    const token = await getFreshToken();
-    if (!token) {
-      throw new Error("Authentication token is unavailable. Please log in again.");
-    }
-
     const formattedHistory = Array.isArray(conversationHistory)
       ? conversationHistory.map((msg) => ({
           role: msg.role === "user" ? "user" : "model",
@@ -85,12 +79,10 @@ export const streamTenantAssistant = async ({
         }))
       : [];
 
-    const response = await fetch(`${API_BASE_URL}/chatbot/tenant/stream`, {
+    const response = await protectedFetch("/chatbot/tenant/stream", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         Accept: "text/event-stream",
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         message: message?.trim() || "",

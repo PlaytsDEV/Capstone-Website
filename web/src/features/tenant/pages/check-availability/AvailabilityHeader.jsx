@@ -281,10 +281,10 @@ const AvailabilityHeader = React.memo(({
                       </div>
                     </div>
                     {/* Nav links */}
-                    <div className="py-1.5 px-2">
+                    <div>
                       <Link
                         to="/applicant/profile"
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150"
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors duration-150"
                         style={{ color: "var(--text-body)" }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.backgroundColor = "color-mix(in srgb, var(--primary) 8%, transparent)";
@@ -318,7 +318,6 @@ const AvailabilityHeader = React.memo(({
                     </div>
                     {/* Sign Out */}
                     <div
-                      className="px-2 pb-2 pt-1"
                       style={{ borderTop: "1px solid var(--border-divider)" }}
                     >
                       <button
@@ -326,7 +325,7 @@ const AvailabilityHeader = React.memo(({
                           setShowUserMenu(false);
                           onLogout();
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150"
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors duration-150 text-left"
                         style={{ color: "var(--danger-dark, #dc2626)" }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.backgroundColor = "color-mix(in srgb, var(--danger, #dc2626) 10%, transparent)";

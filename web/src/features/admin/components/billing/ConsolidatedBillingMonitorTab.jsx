@@ -103,70 +103,70 @@ export default function ConsolidatedBillingMonitorTab({
   return (
     <div className="space-y-5">
       {/* KPI Overview Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Total Billed
             </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-              <DollarSign size={16} />
-            </span>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <DollarSign size={15} />
+            </div>
           </div>
-          <p className="mt-2 text-xl font-bold text-card-foreground">
+          <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
             {fmtCurrency(kpis.totalBilled)}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground font-medium">
             {kpis.totalRecords} statement(s) for selected month
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Total Collected
             </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-              <CheckCircle2 size={16} />
-            </span>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400">
+              <CheckCircle2 size={15} />
+            </div>
           </div>
-          <p className="mt-2 text-xl font-bold text-emerald-600 dark:text-emerald-400">
+          <div className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-2">
             {fmtCurrency(kpis.totalCollected)}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground font-medium">
             {kpis.paidCount} tenant(s) fully settled
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Outstanding Balance
             </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-              <AlertTriangle size={16} />
-            </span>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
+              <AlertTriangle size={15} />
+            </div>
           </div>
-          <p className="mt-2 text-xl font-bold text-rose-600 dark:text-rose-400">
+          <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
             {fmtCurrency(kpis.totalOutstanding)}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground font-medium">
             {kpis.overdueCount || 0} overdue account(s)
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Collection Rate
             </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
-              <TrendingUp size={16} />
-            </span>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
+              <TrendingUp size={15} />
+            </div>
           </div>
-          <p className="mt-2 text-xl font-bold text-card-foreground">
+          <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
             {kpis.collectionRate}%
-          </p>
+          </div>
           <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
               className="h-full bg-emerald-600 transition-all duration-300"

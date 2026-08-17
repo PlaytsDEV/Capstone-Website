@@ -16,7 +16,7 @@ export default function MarketingSourceReport() {
       try {
         setLoading(true);
         const res = await inquiryApi.getMarketingRoi();
-        setReport(res.data || []);
+        setReport(Array.isArray(res) ? res : res?.data || []);
       } catch (err) {
         console.error("ROI report fetch error:", err);
       } finally {

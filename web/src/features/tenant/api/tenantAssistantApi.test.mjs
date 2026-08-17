@@ -20,10 +20,9 @@ test("queryTenantAssistant targets /chatbot/tenant/query via authFetch", () => {
   assert.match(apiSource, /method:\s*"POST"/);
 });
 
-test("streamTenantAssistant targets /chatbot/tenant/stream with Bearer token and text/event-stream", () => {
+test("streamTenantAssistant targets /chatbot/tenant/stream with protectedFetch and text/event-stream", () => {
   assert.match(apiSource, /\/chatbot\/tenant\/stream/);
-  assert.match(apiSource, /getFreshToken/);
-  assert.match(apiSource, /Authorization:\s*`Bearer \$\{token\}`/);
+  assert.match(apiSource, /protectedFetch/);
   assert.match(apiSource, /Accept:\s*"text\/event-stream"/);
   assert.match(apiSource, /response\.body\.getReader\(\)/);
   assert.match(apiSource, /TextDecoder\("utf-8"\)/);

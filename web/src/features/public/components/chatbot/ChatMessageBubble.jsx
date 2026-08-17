@@ -186,6 +186,7 @@ function renderRichWidget(widget, index, handlers) {
  */
 export function ChatMessageBubble({
   message,
+  isLatestAssistant = true,
   onSelectPrompt,
   onOpenEscalation,
   onOpenWidget,
@@ -206,6 +207,7 @@ export function ChatMessageBubble({
     : [];
 
   const handleActionClick = (action) => {
+    if (!isLatestAssistant) return;
     if (action.url) {
       if (action.url.startsWith("/")) {
         navigate(action.url);
@@ -359,7 +361,12 @@ export function ChatMessageBubble({
 
             {/* Action Chips */}
             {!isUser && Array.isArray(message.suggestedActions) && message.suggestedActions.length > 0 && !isStreaming && (
-              <div className="mt-3 pt-2.5 border-t flex flex-wrap gap-1.5" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
+              <div
+                className={`mt-3 pt-2.5 border-t flex flex-wrap gap-1.5 transition-opacity ${
+                  isLatestAssistant ? "opacity-100" : "opacity-45 pointer-events-none select-none"
+                }`}
+                style={{ borderColor: "var(--lp-border, #E6D9B2)" }}
+              >
                 {message.suggestedActions.map((action, idx) => {
                   const isEscalationAction =
                     action.action === "open_escalation_form" || action.action === "escalate";
@@ -377,42 +384,51 @@ export function ChatMessageBubble({
                     <button
                       key={idx}
                       type="button"
+                      disabled={!isLatestAssistant}
                       onClick={() => handleActionClick(action)}
-                      className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer shadow-xs focus:outline-none active:scale-95"
+                      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold transition-all duration-150 shadow-xs focus:outline-none ${
+                        isLatestAssistant
+                          ? "cursor-pointer active:scale-95"
+                          : "cursor-default opacity-70"
+                      }`}
                       style={{
                         backgroundColor: isAccentPill
-                          ? "rgba(212, 175, 55, 0.14)"
-                          : "var(--surface-input, #f8fafc)",
-                        color: isAccentPill ? "#92400E" : "var(--lp-text, #162f53)",
+                          ? "#FDF8E7"
+                          : "#F8FAFC",
+                        color: isAccentPill ? "#78350F" : "#0A1628",
                         border: isAccentPill
-                          ? "1px solid var(--lp-accent, #D4AF37)"
-                          : "1px solid var(--lp-border, #E6D9B2)",
+                          ? "1.5px solid #D4AF37"
+                          : "1.5px solid #CBD5E1",
                         animation: `chipPopIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 60}ms forwards`,
                         opacity: 0,
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = "translateY(-1.5px) scale(1.02)";
-                        e.currentTarget.style.backgroundColor = isAccentPill ? "rgba(212, 175, 55, 0.22)" : "rgba(212, 175, 55, 0.10)";
-                        e.currentTarget.style.borderColor = "var(--lp-accent, #D4AF37)";
-                        e.currentTarget.style.boxShadow = "0 3px 8px rgba(10, 22, 40, 0.08)";
+                        if (isLatestAssistant) {
+                          e.currentTarget.style.transform = "translateY(-1.5px) scale(1.02)";
+                          e.currentTarget.style.backgroundColor = isAccentPill ? "#F9EFC7" : "#EDF2F7";
+                          e.currentTarget.style.borderColor = isAccentPill ? "#B9921F" : "#94A3B8";
+                          e.currentTarget.style.boxShadow = "0 3px 8px rgba(10, 22, 40, 0.08)";
+                        }
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = "translateY(0) scale(1)";
-                        e.currentTarget.style.backgroundColor = isAccentPill ? "rgba(212, 175, 55, 0.14)" : "var(--surface-input, #f8fafc)";
-                        e.currentTarget.style.borderColor = isAccentPill ? "var(--lp-accent, #D4AF37)" : "var(--lp-border, #E6D9B2)";
-                        e.currentTarget.style.boxShadow = "";
+                        if (isLatestAssistant) {
+                          e.currentTarget.style.transform = "translateY(0) scale(1)";
+                          e.currentTarget.style.backgroundColor = isAccentPill ? "#FDF8E7" : "#F8FAFC";
+                          e.currentTarget.style.borderColor = isAccentPill ? "#D4AF37" : "#CBD5E1";
+                          e.currentTarget.style.boxShadow = "";
+                        }
                       }}
                     >
-                      {isEscalationAction && <Headphones className="w-3 h-3 text-amber-600" />}
-                      {isViewingAction && <Calendar className="w-3 h-3 text-amber-600" />}
-                      {isBudgetAction && <Calculator className="w-3 h-3 text-amber-600" />}
-                      {isKycAction && <ShieldCheck className="w-3 h-3 text-amber-600" />}
-                      {isRoomAction && <Bed className="w-3 h-3 text-amber-600" />}
-                      {isNavAction && <ArrowUpRight className="w-3 h-3 text-amber-600" />}
+                      {isEscalationAction && <Headphones className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />}
+                      {isViewingAction && <Calendar className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />}
+                      {isBudgetAction && <Calculator className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />}
+                      {isKycAction && <ShieldCheck className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />}
+                      {isRoomAction && <Bed className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />}
+                      {isNavAction && <ArrowUpRight className="w-3.5 h-3.5 text-slate-800 flex-shrink-0" />}
                       {!isEscalationAction && !isViewingAction && !isBudgetAction && !isKycAction && !isRoomAction && !isNavAction && (
-                        <HelpCircle className="w-3 h-3 text-amber-600" />
+                        <HelpCircle className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />
                       )}
-                      <span>{action.label}</span>
+                      <span className="font-bold tracking-tight">{action.label}</span>
                     </button>
                   );
                 })}

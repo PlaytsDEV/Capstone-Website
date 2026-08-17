@@ -298,76 +298,65 @@ export default function Dashboard() {
     ? "Some dashboard data failed to load. Showing partial data."
     : null;
 
+  const dashboardControls = (
+    <div className="flex flex-wrap items-center gap-3">
+      {isOwner && (
+        <div className="flex items-center gap-2">
+          <label htmlFor="dashboard-branch-select" className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+            Branch:
+          </label>
+          <select
+            id="dashboard-branch-select"
+            value={branch}
+            onChange={(e) => setBranch(e.target.value)}
+            className="rounded-lg border px-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary"
+            style={{
+              borderColor: "var(--border-light)",
+              backgroundColor: "var(--bg-card)",
+              color: "var(--text-primary)",
+            }}
+          >
+            <option value="all">All Branches</option>
+            <option value="gil-puyat">Gil Puyat</option>
+            <option value="guadalupe">Guadalupe</option>
+          </select>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <label htmlFor="dashboard-range-select" className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+          Range:
+        </label>
+        <select
+          id="dashboard-range-select"
+          value={range}
+          onChange={(e) => setRange(e.target.value)}
+          className="rounded-lg border px-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary"
+          style={{
+            borderColor: "var(--border-light)",
+            backgroundColor: "var(--bg-card)",
+            color: "var(--text-primary)",
+          }}
+        >
+          <option value="7d">Last 7 Days</option>
+          <option value="30d">Last 30 Days</option>
+          <option value="60d">Last 60 Days</option>
+          <option value="90d">Last 90 Days</option>
+          <option value="365d">Last 1 Year</option>
+          <option value="12m">Last 12 Months</option>
+        </select>
+      </div>
+    </div>
+  );
+
   return (
     <div className="dashboard-page-bg">
-      <PageShell>
+      <PageShell
+        title="Dashboard"
+        subtitle="Monitor branch activity, queue pressure, and urgent follow-up from one operations view."
+        controls={dashboardControls}
+      >
         <PageShell.Summary>
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1
-                className="mb-1 text-2xl font-semibold"
-                style={{ color: "var(--color-text-primary)" }}
-              >
-                Dashboard
-              </h1>
-              <p
-                className="text-sm"
-                style={{ color: "var(--color-text-secondary)" }}
-              >
-                Monitor branch activity, guest pressures, and agent follow-up from
-                one operations view
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              {isOwner && (
-                <div className="flex items-center gap-2">
-                  <label htmlFor="dashboard-branch-select" className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-                    Branch:
-                  </label>
-                  <select
-                    id="dashboard-branch-select"
-                    value={branch}
-                    onChange={(e) => setBranch(e.target.value)}
-                    className="rounded-lg border px-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary"
-                    style={{
-                      borderColor: "var(--border-light)",
-                      backgroundColor: "var(--bg-card)",
-                      color: "var(--text-primary)",
-                    }}
-                  >
-                    <option value="all">All Branches</option>
-                    <option value="gil-puyat">Gil Puyat</option>
-                    <option value="guadalupe">Guadalupe</option>
-                  </select>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2">
-                <label htmlFor="dashboard-range-select" className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-                  Range:
-                </label>
-                <select
-                  id="dashboard-range-select"
-                  value={range}
-                  onChange={(e) => setRange(e.target.value)}
-                  className="rounded-lg border px-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary"
-                  style={{
-                    borderColor: "var(--border-light)",
-                    backgroundColor: "var(--bg-card)",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  <option value="7d">Last 7 Days</option>
-                  <option value="30d">Last 30 Days</option>
-                  <option value="60d">Last 60 Days</option>
-                  <option value="90d">Last 90 Days</option>
-                  <option value="365d">Last 1 Year</option>
-                  <option value="12m">Last 12 Months</option>
-                </select>
-              </div>
-            </div>
-          </div>
 
           {error && (
             <div
@@ -397,41 +386,32 @@ export default function Dashboard() {
                   return (
                     <article
                       key={item.label}
-                      className="dash-card-hover rounded-xl border p-5"
-                      style={{
-                        borderColor: "var(--border-light)",
-                        backgroundColor: "var(--bg-card)",
-                      }}
+                      className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default"
                     >
-                      <div className="mb-3 flex items-start justify-between">
-                        <span
-                          className="text-[11px] font-bold uppercase tracking-wider"
-                          style={{ color: "var(--text-muted)" }}
-                        >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
                           {item.label}
                         </span>
-                        <Icon
-                          className="h-4 w-4"
-                          style={{ color: "var(--text-muted)", opacity: 0.7 }}
-                        />
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-muted-foreground">
+                          <Icon size={15} />
+                        </div>
                       </div>
-                      <div className="flex flex-col gap-1">
+                      <div className="mt-2">
                         <p
-                          className="text-3xl font-bold leading-none tracking-tight"
+                          className="text-2xl font-bold tracking-tight"
                           style={
                             metricValueStyle[item.tone] || {
-                              color: "var(--text-primary)",
+                              color: "var(--foreground)",
                             }
                           }
                         >
                           {item.value}
                         </p>
-                        <p
-                          className="text-[11px] font-medium"
-                          style={{ color: "var(--text-muted)", opacity: 0.8 }}
-                        >
-                          {item.trend}
-                        </p>
+                        {item.trend && (
+                          <p className="mt-1 text-[11px] text-muted-foreground font-medium">
+                            {item.trend}
+                          </p>
+                        )}
                       </div>
                     </article>
                   );

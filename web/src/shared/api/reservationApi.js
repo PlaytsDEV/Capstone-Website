@@ -130,6 +130,18 @@ export const reservationApi = {
   },
 
   /**
+   * Get scheduled users/visits history for a branch.
+   */
+  getVisitScheduledUsers: (branch, params = {}) => {
+    const searchParams = new URLSearchParams({ branch });
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.limit) searchParams.set("limit", String(params.limit));
+    if (params.status) searchParams.set("status", String(params.status));
+    if (params.search) searchParams.set("search", String(params.search));
+    return authFetch(`/reservations/visit-availability/scheduled-users?${searchParams.toString()}`);
+  },
+
+  /**
    * Get reservation by ID
    */
   getById: (reservationId) =>

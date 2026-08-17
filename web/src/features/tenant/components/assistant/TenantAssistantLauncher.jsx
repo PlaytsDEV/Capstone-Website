@@ -16,7 +16,7 @@ export default function TenantAssistantLauncher({ onClick, isOpen = false }) {
       onClick={onClick}
       className="tenant-assistant-launcher"
       aria-label="Open Lilycrest AI Assistant"
-      title="Lilycrest AI Assistant (Resident Copilot)"
+      title="Lilycrest Tenant Assistant"
     >
       <div className="relative flex items-center justify-center">
         <Bot className="w-5 h-5" aria-hidden="true" />

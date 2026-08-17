@@ -283,19 +283,19 @@ export const buildBillingIntelligenceSnapshot = ({
 const buildDefaultDisputePreventionNote = (normalized, snapshot) => {
   const roomName = snapshot?.room?.name || "This electricity period";
   if (["blocked", "high", "medium"].includes(normalized.riskLevel)) {
-    return `${roomName} should be reviewed before publishing because unresolved validation, allocation, or usage signals can make the charge harder to explain during a tenant dispute.`;
+    return `${roomName} should be checked before sending bills so that meter readings and charges are easy to explain if a tenant asks.`;
   }
 
-  return "Keep the reading source, allocation basis, and review notes available so tenant questions can be answered from the deterministic billing record.";
+  return "Keep the meter reading and calculation breakdown on hand so you can answer any tenant questions clearly and easily.";
 };
 
 const buildDefaultTenantExplanationDraft = (snapshot, normalized) => {
   if (["blocked", "high"].includes(normalized.riskLevel)) {
-    return "A tenant-facing explanation should be finalized only after the admin resolves the current billing review items.";
+    return "A tenant-facing explanation will be ready once the admin finishes reviewing the current billing items.";
   }
 
   const roomName = snapshot?.room?.name || "your room";
-  return `The electricity charge for ${roomName} is based on recorded meter readings and the dormitory's utility allocation rules. The admin office can provide the reading and allocation breakdown if you need to review the charge.`;
+  return `The electricity charge for ${roomName} is based on the room's actual submeter readings and is split equally among roommates. Please reach out to the admin office if you would like to view the reading breakdown.`;
 };
 
 const normalizeBillingInsight = (insight, provider, usedFallback, snapshot = null) => {
@@ -370,10 +370,10 @@ const buildHeuristicInsight = (snapshot) => {
 
   if (!snapshot.period.id) {
     return {
-      headline: "There is not enough billing data for an AI review.",
-      summary: "No electricity period was available in the billing snapshot.",
+      headline: "Not enough billing data yet for an AI review.",
+      summary: "No electricity period was selected in the billing snapshot.",
       riskLevel: "low",
-      keyFindings: ["Select an electricity billing period before requesting AI review."],
+      keyFindings: ["Please select an electricity billing period before requesting AI review."],
       recommendedActions: ["Open a room with an active, closed, or revised electricity cycle."],
       riskDrivers: ["No electricity period was included in the billing snapshot."],
       reviewChecklist: ["Select a valid electricity billing period before requesting AI review."],
@@ -400,7 +400,9 @@ const buildHeuristicInsight = (snapshot) => {
     comparison?.previousPeriodId
       ? comparison.usageDeltaPercent == null
         ? "A previous electricity period is available, but percentage usage change could not be computed."
-        : `Current usage is ${Math.abs(comparison.usageDeltaPercent)}% ${comparison.usageDeltaPercent >= 0 ? "higher" : "lower"} than the previous comparable period.`
+        : comparison.usageDeltaPercent >= 25
+          ? `Electricity usage jumped by ${comparison.usageDeltaPercent}% compared to last month.`
+          : `Current usage is ${Math.abs(comparison.usageDeltaPercent)}% ${comparison.usageDeltaPercent >= 0 ? "higher" : "lower"} than the previous comparable period.`
       : "No previous electricity period comparison is available in the snapshot.",
     snapshot.tenantSummary.count > 0
       ? `${snapshot.tenantSummary.count} tenant allocation summary item(s) are present.`
@@ -418,7 +420,7 @@ const buildHeuristicInsight = (snapshot) => {
       ? "Use the forecast as an early warning only; close the period with actual readings before billing."
       : null,
     comparison?.previousPeriodId
-      ? "Document the previous-period comparison if usage changed materially before publishing."
+      ? "Take note of the usage change from last month in case tenants ask about their bill."
       : "Add a review note that no previous electricity period was available for comparison.",
     "Keep deterministic billing rules as the final source of truth for sending decisions.",
   ].filter(Boolean);
@@ -433,7 +435,7 @@ const buildHeuristicInsight = (snapshot) => {
       ? `Anomaly rules classify usage as ${anomalyRisk} risk.`
       : null,
     hasUsageIncrease
-      ? `Usage increased by ${comparison.usageDeltaPercent}% compared with the previous period.`
+      ? `Electricity usage jumped by ${comparison.usageDeltaPercent}% compared to last month.`
       : null,
     snapshot.forecast?.confidence === "low"
       ? "Open-period forecast has low confidence."
@@ -446,10 +448,10 @@ const buildHeuristicInsight = (snapshot) => {
       ? "Resolve or document each deterministic validation issue before sending bills."
       : "Confirm there are no unresolved deterministic validation warnings.",
     anomalyRisk !== "none"
-      ? "Compare anomaly reasons with tenant move-in, move-out, and appliance events."
+      ? "Compare anomaly reasons with tenant move-in, move-out, and appliance records."
       : "Check that usage looks reasonable against room occupancy for the period.",
     comparison?.previousPeriodId
-      ? "Compare current usage and charge against the previous electricity period."
+      ? "Compare current usage and charges against the previous electricity period."
       : "Record that no previous electricity period comparison was available.",
     snapshot.tenantSummary.count > 0
       ? "Verify tenant allocation totals match the generated bill breakdown."
@@ -551,18 +553,20 @@ const billingInsightResponseSchema = {
 
 const buildGeminiPrompt = (snapshot) =>
   [
-    "You are an assistant for dormitory utility billing review.",
-    "Explain the electricity billing period using only the provided snapshot.",
-    "Write for a busy dormitory owner or admin. Be short, plain, and practical.",
+    "You are a friendly, helpful assistant for dormitory utility billing review.",
+    "Explain the electricity billing period using only the provided snapshot data.",
+    "Write in simple, friendly, everyday English for a busy dormitory manager or admin.",
+    "Use plain words: say 'Electricity usage jumped by 30% compared to last month...' instead of complex statistical phrasing.",
+    "Avoid heavy corporate jargon or buzzwords.",
     "Your output is advisory only. Do not approve, reject, edit, waive, send, or block a bill.",
     "Treat deterministic validation and billing rules as the source of truth.",
     "Do not invent readings, charges, tenants, dates, policy, payment status, or missing data.",
-    "Recommend human review actions only.",
-    "Explain why the risk could create a billing dispute before publishing.",
-    "Use riskDrivers for concise reasons behind the risk level.",
-    "Use reviewChecklist for concrete admin verification steps; keep each item short.",
-    "Use disputePreventionNote as one short owner-friendly sentence.",
-    "Use tenantExplanationDraft only as draft text for later human review; do not say it was sent.",
+    "Recommend practical, human-friendly review actions only.",
+    "Explain simply why any usage spike or reading issue is worth checking before sending bills.",
+    "Use riskDrivers for concise, plain-English reasons behind the risk level.",
+    "Use reviewChecklist for concrete, simple verification steps; keep each item short.",
+    "Use disputePreventionNote as one short, friendly sentence.",
+    "Use tenantExplanationDraft only as friendly draft text for later human review; do not say it was sent.",
     "Avoid repeating the same fact across sections.",
     "",
     "Billing snapshot:",

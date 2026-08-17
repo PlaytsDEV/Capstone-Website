@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import UtilityBillingTab from "../components/billing/UtilityBillingTab";
 import RentBillingTab from "../components/billing/RentBillingTab";
@@ -256,9 +257,30 @@ const normalizeViolationRows = (data) => {
 const AdminBillingPage = () => {
   const { user } = useAuth();
   const isOwner = user?.role === "owner";
+  const [searchParams, setSearchParams] = useSearchParams();
   const [branchFilter, setBranchFilter] = useState("");
   const effectiveBranch = isOwner ? branchFilter : (user?.branch || "");
-  const [activeTab, setActiveTab] = useState(() => (user?.branch === "guadalupe" ? "rent" : "electricity"));
+  
+  const requestedTab = searchParams.get("tab");
+  const defaultTab = user?.branch === "guadalupe" ? "rent" : "electricity";
+  const [activeTab, setActiveTabState] = useState(() => requestedTab || defaultTab);
+
+  const setActiveTab = useCallback(
+    (nextTab) => {
+      setActiveTabState(nextTab);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set("tab", nextTab);
+      setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    const tabInUrl = searchParams.get("tab");
+    if (tabInUrl && tabInUrl !== activeTab) {
+      setActiveTabState(tabInUrl);
+    }
+  }, [searchParams, activeTab]);
 
   const [preset, setPreset] = useState("all");
   const [startDate, setStartDate] = useState("");
@@ -269,14 +291,14 @@ const AdminBillingPage = () => {
     if (effectiveBranch === "guadalupe" && (activeTab === "electricity" || activeTab === "water")) {
       setActiveTab("rent");
     }
-  }, [effectiveBranch, activeTab]);
+  }, [effectiveBranch, activeTab, setActiveTab]);
 
   const handleBranchChange = useCallback((newBranch) => {
     setBranchFilter(newBranch);
     if (newBranch === "guadalupe" && (activeTab === "electricity" || activeTab === "water")) {
       setActiveTab("rent");
     }
-  }, [activeTab]);
+  }, [activeTab, setActiveTab]);
 
   const handlePresetChange = useCallback((newPreset) => {
     setPreset(newPreset);
@@ -471,30 +493,21 @@ const AdminBillingPage = () => {
 
   return (
     <div className="space-y-4">
-      <header className="space-y-3.5">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-card-foreground">Billing Workspace</h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Generate utility & rent statements, review reservation deposits, track overdue balance escalations, and log tenant violations.
-          </p>
-        </div>
+      <BillingToolbar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        branchFilter={isOwner ? branchFilter : undefined}
+        onBranchChange={isOwner ? handleBranchChange : undefined}
+        preset={preset}
+        onPresetChange={handlePresetChange}
+        isOwner={isOwner}
+        user={user}
+        onExportCsv={handleExportCsv}
+        onExportPdf={handleExportPdf}
+        isExporting={isExporting}
+      />
 
-        <BillingToolbar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          branchFilter={isOwner ? branchFilter : undefined}
-          onBranchChange={isOwner ? handleBranchChange : undefined}
-          preset={preset}
-          onPresetChange={handlePresetChange}
-          isOwner={isOwner}
-          user={user}
-          onExportCsv={handleExportCsv}
-          onExportPdf={handleExportPdf}
-          isExporting={isExporting}
-        />
-      </header>
-
-      <div className="mt-5 min-h-[680px]">
+      <div className="min-h-[680px]">
         <section
           role="tabpanel"
           id="billing-panel-electricity"

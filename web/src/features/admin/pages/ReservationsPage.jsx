@@ -52,6 +52,7 @@ import VisitSchedulesTab from "../components/VisitSchedulesTab";
 import VisitAvailabilityTab from "../components/VisitAvailabilityTab";
 import InquiriesPage from "./InquiriesPage";
 import Pagination from "../../../shared/components/Pagination";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import {
   ActionBar,
@@ -125,7 +126,30 @@ function ReservationsPage() {
   const queryClient = useQueryClient();
   const isOwner = user?.role === "owner";
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState("reservations");
+  const requestedTab = searchParams.get("tab");
+  const [activeTab, setActiveTabState] = useState(() => requestedTab || "reservations");
+
+  const handleTabChange = useCallback(
+    (nextTab) => {
+      setActiveTabState(nextTab);
+      const nextParams = new URLSearchParams(searchParams);
+      if (nextTab === "reservations") {
+        nextParams.delete("tab");
+      } else {
+        nextParams.set("tab", nextTab);
+      }
+      setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    const tabInUrl = searchParams.get("tab") || "reservations";
+    if (tabInUrl !== activeTab) {
+      setActiveTabState(tabInUrl);
+    }
+  }, [searchParams, activeTab]);
+
   const [searchTerm, setSearchTerm] = useState(
     () => searchParams.get("search") || "",
   );
@@ -549,10 +573,10 @@ function ReservationsPage() {
 
   const tabs = useMemo(
     () => [
-      { key: "reservations", label: "Reservations" },
-      { key: "visits", label: "Visit Schedules" },
-      { key: "availability", label: "Availability Rules" },
-      { key: "inquiries", label: "Inquiries" },
+      { id: "reservations", label: "Reservations" },
+      { id: "visits", label: "Visit Schedules" },
+      { id: "availability", label: "Availability Rules" },
+      { id: "inquiries", label: "Inquiries" },
     ],
     [],
   );
@@ -1081,38 +1105,14 @@ function ReservationsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground mb-1">
-            Reservations
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Review applications, confirm documents, and move accepted tenants
-            toward assignment.
-          </p>
-        </div>
-      </div>
-
-      <div className="border-b" style={{ borderColor: "var(--border-light)" }}>
-        <div className="flex gap-6">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`pb-3 px-1 text-sm font-medium transition-colors relative ${
-                activeTab === tab.key
-                  ? "text-[color:var(--primary)]"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {tab.label}
-              {activeTab === tab.key && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[color:var(--primary)]" />
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Pattern 1 Sticky Sub-Header */}
+      <AdminPageHeader
+        title="Reservations"
+        subtitle="Review applications, confirm documents, and move accepted residents toward assignment."
+        tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+      />
 
       {activeTab === "reservations" && (
         <>
@@ -1125,7 +1125,7 @@ function ReservationsPage() {
                   borderColor: "var(--border-light)",
                   boxShadow: "0 1px 2px rgba(0, 0, 0, 0.02)",
                 }}
-                className="border rounded-xl p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
+                className="border rounded-xl p-4 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">

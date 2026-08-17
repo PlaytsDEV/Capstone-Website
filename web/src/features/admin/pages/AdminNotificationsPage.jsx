@@ -27,6 +27,7 @@ import {
 } from "../../../shared/hooks/queries/useNotifications";
 import SummaryBar from "../components/shared/SummaryBar";
 import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import {
   cleanNotificationMessage,
   formatNotificationTitle,
@@ -605,44 +606,40 @@ export default function AdminNotificationsPage() {
 
   return (
     <div className="admin-notif-page">
-      {/* ── Header ── */}
-      <header className="admin-notif-page__header">
-        <div className="admin-notif-page__title-group">
-          <h1 className="admin-notif-page__title">
-            Notifications
+      {/* ── Pattern 1 Sticky Sub-Header ── */}
+      <AdminPageHeader
+        title="Notifications"
+        subtitle="Review SLA breaches, billing alerts, maintenance updates, and system events."
+        actions={
+          <div className="flex items-center gap-2">
             {unreadCount > 0 && (
-              <span className="admin-notif-page__unread-badge">
+              <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-700 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/50">
                 {unreadCount} Unread
               </span>
             )}
-          </h1>
-          <p className="admin-notif-page__subtitle">
-            System alerts, cancellation reviews, SLA breaches, and workflow
-            updates.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          className="admin-notif-page__mark-all-btn"
-          onClick={handleMarkAllRead}
-          disabled={markAllMutation.isPending || unreadCount === 0}
-          title={
-            unreadCount === 0
-              ? "All notifications are already marked as read"
-              : "Mark all unread notifications as read"
-          }
-        >
-          {markAllMutation.isPending ? (
-            <Loader2 size={15} className="admin-notif__spin" />
-          ) : (
-            <CheckCheck size={15} />
-          )}
-          <span>
-            {markAllMutation.isPending ? "Marking as read..." : "Mark all read"}
-          </span>
-        </button>
-      </header>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleMarkAllRead}
+              disabled={markAllMutation.isPending || unreadCount === 0}
+              title={
+                unreadCount === 0
+                  ? "All notifications are already marked as read"
+                  : "Mark all unread notifications as read"
+              }
+            >
+              {markAllMutation.isPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <CheckCheck size={14} />
+              )}
+              <span>
+                {markAllMutation.isPending ? "Marking as read..." : "Mark all read"}
+              </span>
+            </button>
+          </div>
+        }
+      />
 
       {/* ── SummaryBar KPI Metrics ── */}
       <section className="admin-notif-page__summary" aria-label="Key Metrics">

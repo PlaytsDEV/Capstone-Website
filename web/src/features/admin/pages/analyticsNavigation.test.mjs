@@ -29,6 +29,7 @@ test("owners get owner-only tabs", () => {
     "consolidated",
     "financials",
     "monitoring",
+    "support",
   ]);
 });
 
@@ -170,4 +171,44 @@ test("supports 365d and custom day range like 346d in summary and detailed state
     isOwner: true,
   });
   assert.equal(billingCustom.range, "12m");
+});
+
+test("supports 7d short day range across summary and detail mappings", () => {
+  const summary7 = normalizeAnalyticsSummaryState({
+    requestedRange: "7d",
+    requestedBranch: "all",
+    isOwner: true,
+  });
+  assert.equal(summary7.range, "7d");
+
+  const detail7 = normalizeAnalyticsState({
+    requestedTab: "occupancy",
+    requestedRange: "7d",
+    requestedBranch: "all",
+    isOwner: true,
+  });
+  assert.equal(detail7.range, "7d");
+
+  const billing7 = normalizeAnalyticsState({
+    requestedTab: "billing",
+    requestedRange: "7d",
+    requestedBranch: "all",
+    isOwner: true,
+  });
+  assert.equal(billing7.range, "1m");
+
+  const hrefBilling7 = buildAnalyticsDetailsHref({
+    tab: "billing",
+    range: "7d",
+    branch: "all",
+    isOwner: true,
+  });
+  assert.equal(hrefBilling7, "/admin/analytics/details?tab=billing&range=1m&branch=all");
+
+  const hrefSummary1m = buildAnalyticsSummaryHref({
+    range: "1m",
+    branch: "all",
+    isOwner: true,
+  });
+  assert.equal(hrefSummary1m, "/admin/analytics?range=7d&branch=all");
 });

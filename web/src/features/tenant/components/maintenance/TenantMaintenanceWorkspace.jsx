@@ -1497,7 +1497,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                           <div className="resolution-confirmation-banner">
                             <div>
                               <h4>Was your maintenance issue resolved?</h4>
-                              <p>Our facilities team has marked this repair as resolved. Please inspect the completed repair and submit your resident rating.</p>
+                              <p>Our team has completed this repair. Please check the work and share your feedback.</p>
                             </div>
                             <div className="resolution-banner-actions">
                               <button
@@ -1511,7 +1511,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                                   setVerifyFeedback("");
                                 }}
                               >
-                                <Check size={14} /> Review &amp; Verify Resolution
+                                <Check size={14} /> Confirm &amp; Rate Repair
                               </button>
                               <button
                                 type="button"
@@ -1539,13 +1539,13 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                               gap: 6,
                             }}
                           >
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--foreground, #0F172A)", fontSize: 12, fontWeight: 700 }}>
-                                <CheckCircle2 size={15} className="text-emerald-600" />
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--success-dark, #15803D)", fontWeight: 600, fontSize: 13 }}>
+                                <CheckCircle2 size={15} />
                                 <span>Resolution verified by resident on {fmtDate(request.resolutionConfirmation?.confirmedAt)}</span>
                               </div>
                               {request.resolutionConfirmation?.rating ? (
-                                <div style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--foreground, #0F172A)", fontSize: 12, fontWeight: 700 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, color: "var(--foreground)" }}>
                                   <div style={{ display: "flex", gap: 2 }}>
                                     {[1, 2, 3, 4, 5].map((s) => (
                                       <Star
@@ -1570,7 +1570,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                             ) : null}
 
                             <div style={{ marginTop: 2, paddingTop: 6, borderTop: "1px solid var(--border, #E2E8F0)", fontSize: 11, color: "var(--muted-foreground, #64748B)" }}>
-                              Observation window active: Ticket will automatically finalize as Completed after 7 days of inactivity.
+                              Review period active: This request will automatically close after 7 days if no further issues are reported.
                             </div>
                           </div>
                         ) : null}
@@ -1851,7 +1851,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                       ? {
                           opacity: 0.85,
                           cursor: "default",
-                          background: "var(--muted)",
+                          background: "transparent",
                           borderStyle: "solid",
                         }
                       : attachmentCount > 0
@@ -1922,7 +1922,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     style={{
                       marginTop: 10,
                       border: "1px dashed #2563EB",
-                      background: "rgba(37, 99, 235, 0.05)",
+                      background: "transparent",
                       display: "flex",
                       alignItems: "center",
                       gap: 8,
@@ -2661,10 +2661,10 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-danger"
                 onClick={() => handleConfirmResolution(rejectResolutionModalRequest, false, rejectionFeedback)}
                 disabled={!rejectionFeedback.trim() || confirmResolutionMutation.isPending}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#DC2626", borderColor: "#DC2626" }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
               >
                 {confirmResolutionMutation.isPending ? <LoaderCircle size={14} className="admin-announcements-spin" /> : <RefreshCcw size={14} />}
                 <span>{confirmResolutionMutation.isPending ? "Sending..." : "Return to In Progress"}</span>
@@ -2703,7 +2703,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <CheckCircle2 size={18} color="#16A34A" />
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--foreground)" }}>
-                  Rate &amp; Verify Resolution
+                  Rate &amp; Confirm Repair
                 </h3>
               </div>
               <button
@@ -2774,12 +2774,12 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             {/* Feedback Comments */}
             <div style={{ marginBottom: 14 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: "var(--foreground)" }}>
-                Resident Feedback <span style={{ fontWeight: 400, color: "var(--muted-foreground)" }}>(Optional)</span>
+                Your Feedback <span style={{ fontWeight: 400, color: "var(--muted-foreground)" }}>(Optional)</span>
               </label>
               <textarea
                 className="form-control"
                 rows="3"
-                placeholder="Share your experience (e.g. technician punctuality, work quality, cleanliness)..."
+                placeholder="Share your experience (e.g. work quality, cleanliness, technician)..."
                 value={verifyFeedback}
                 onChange={(e) => setVerifyFeedback(e.target.value)}
               />
@@ -2798,7 +2798,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 lineHeight: 1.4,
               }}
             >
-              <strong>7-Day Observation Period:</strong> Submitting will record your verification in the Resolved stage. The ticket will automatically close as Completed after 7 days of inactivity.
+              <strong>7-Day Review Period:</strong> Submitting will confirm the repair as resolved. If everything stays in working order, this request will automatically close after 7 days.
             </div>
 
             <div className="maintenance-modal-actions">
@@ -2812,7 +2812,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-success"
                 onClick={() =>
                   handleConfirmResolution(verifyModalRequest, true, {
                     rating: verifyRating,
@@ -2820,10 +2820,10 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                   })
                 }
                 disabled={confirmResolutionMutation.isPending}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#16A34A", borderColor: "#16A34A" }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
               >
                 {confirmResolutionMutation.isPending ? <LoaderCircle size={14} className="admin-announcements-spin" /> : <Check size={14} />}
-                <span>{confirmResolutionMutation.isPending ? "Submitting..." : "Submit Review & Verify"}</span>
+                <span>{confirmResolutionMutation.isPending ? "Submitting..." : "Submit Review"}</span>
               </button>
             </div>
           </div>

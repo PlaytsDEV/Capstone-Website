@@ -8,7 +8,6 @@ import {
   CalendarX,
   Users,
   RefreshCw,
-  Sliders,
   CheckCircle2,
   AlertCircle,
   Sun,
@@ -637,26 +636,16 @@ function VisitAvailabilityTab() {
 
   return (
     <div className="visit-avail-redesign">
-      {/* HEADER SECTION */}
-      <div className="visit-avail-header">
-        <div className="visit-avail-header__title">
-          <div className="visit-avail-badge">
-            <Sliders size={14} />
-            <span>Schedule Control System</span>
-          </div>
-          <h2>Physical Visit & Viewing Availability Rules</h2>
-          <p>
-            Configure weekly operating days, custom time slots, per-slot visitor caps, and blackout dates per branch.
-          </p>
-        </div>
-
-        <div className="visit-avail-header__controls">
+      {/* TOOLBAR CONTROLS BAR */}
+      <div className="visit-avail-toolbar">
+        <div className="visit-avail-toolbar__left">
           <div className="visit-avail-branch-picker">
             <Building2 size={15} />
             <select
               value={branch}
               disabled={isBranchAdmin}
               onChange={(event) => setBranch(event.target.value)}
+              aria-label="Select branch for availability rules"
             >
               {branchOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -683,7 +672,9 @@ function VisitAvailabilityTab() {
               </button>
             </div>
           )}
+        </div>
 
+        <div className="visit-avail-toolbar__actions">
           <button
             type="button"
             className="res-action-btn res-action-btn--secondary"

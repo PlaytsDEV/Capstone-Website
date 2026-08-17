@@ -451,14 +451,14 @@ async function sendMessage(req, res) {
           userMessage, contextLines, knowledgeHints, conversationHistory, isEmotional
         ) + "\n\nIMPORTANT: This message has been flagged for admin attention. Acknowledge the tenant's concern empathetically, let them know an admin will follow up shortly, and reassure them. Keep it to 2-3 warm sentences.";
         const { text } = await sendGeminiMessage(sessionId, escalationPrompt);
-        aiResponse = text || "I completely understand your concern po, and I want to make sure it gets properly handled. I've flagged this for our admin team and they'll reach out to you shortly. If it's urgent, you can also call us directly at +63 912 345 6789.";
+        aiResponse = text || "I completely understand your concern, and I want to make sure it gets properly handled. I've flagged this for our admin team and they'll reach out to you shortly. If it's urgent, you can also call us directly at +63 912 345 6789.";
       } else if (isGreeting(userMessage) && userMessage.trim().split(/\s+/).length <= 4) {
         // Pure greeting — warm, personalized, mentions context if useful
         const greetingPrompt = buildAIPrompt(
           userMessage, contextLines, [], conversationHistory, false
         ) + '\n\nThis is a greeting. Respond warmly, introduce yourself briefly as Lily, and ask how you can help. Mention the time of day naturally. Keep it to 1-2 sentences.';
         const { text } = await sendGeminiMessage(sessionId, greetingPrompt);
-        aiResponse = text || `${getTimeOfDayGreeting()} I'm Lily, your LilyCrest dorm assistant. How can I help you today po?`;
+        aiResponse = text || `${getTimeOfDayGreeting()} I'm Lily, your LilyCrest dorm assistant. How can I help you today?`;
         meta.intent = 'greeting';
         meta.confidence = 1;
       } else {
@@ -491,22 +491,22 @@ async function sendMessage(req, res) {
           // AI returned code or empty — retry with a plain prompt
           const retryPrompt = `${CHATBOT_SYSTEM_PROMPT}\n\nThe tenant asked: "${userMessage}"\n\nRespond naturally and helpfully in plain conversational text. Do NOT include any code, formatting symbols, or technical syntax.`;
           const retry = await sendGeminiMessage(sessionId, retryPrompt);
-          aiResponse = retry.text || "I'm here to help po! Could you rephrase your question? Feel free to ask me anything about billing, maintenance, house rules, or your stay at LilyCrest.";
+          aiResponse = retry.text || "I'm here to help! Could you rephrase your question? Feel free to ask me anything about billing, maintenance, house rules, or your stay at LilyCrest.";
         }
       }
     } catch (modelError) {
       logChatEvent('ai_error', { sessionId, error: modelError?.message });
-      aiResponse = "I'm having a bit of trouble connecting right now po. Please try again in a moment — or if it's urgent, you can reach the admin office directly at +63 912 345 6789.";
+      aiResponse = "I'm having a bit of trouble connecting right now. Please try again in a moment — or if it's urgent, you can reach the admin office directly at +63 912 345 6789.";
     }
 
     // Clean the response
     const responseText = typeof aiResponse === 'string' ? aiResponse : String(aiResponse ?? '');
     let cleanResponse = sanitizeResponse(responseText.replace('[NEEDS_ADMIN]', '').trim())
-      || "I'm here to help po. Could you tell me more about what you need?";
+      || "I'm here to help. Could you tell me more about what you need?";
 
     // Final code check
     if (looksLikeCode(cleanResponse)) {
-      cleanResponse = "I'm here to help po. Could you rephrase your question? You can ask me about billing, maintenance, house rules, or anything about your stay.";
+      cleanResponse = "I'm here to help. Could you rephrase your question? You can ask me about billing, maintenance, house rules, or anything about your stay.";
     }
 
     // Update in-memory session history

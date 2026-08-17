@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CalendarDays,
@@ -36,6 +36,8 @@ import {
   RANGE_OPTIONS_SHORT,
   unwrapTableRows,
   useReportInsights,
+  detectOperationsAnomalies,
+  getDynamicOperationsPrompts,
 } from "./analyticsTabShared";
 
 const MAINTENANCE_COLUMNS = [
@@ -171,6 +173,7 @@ export default function AnalyticsOperationsTab({
   isOwner,
   onBranchChange,
   onRangeChange,
+  registerExport,
 }) {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -241,9 +244,10 @@ export default function AnalyticsOperationsTab({
     });
   }, [maintenanceIssues, searchQuery, slaFilter, urgencyFilter]);
 
-  if (isLoading && !data) {
-    return <AdminAnalyticsDetailSkeleton tab="operations" isOwner={isOwner} />;
-  }
+  const operationsPrompts = useMemo(
+    () => getDynamicOperationsPrompts(data),
+    [data],
+  );
 
   const resCount = data?.kpis?.reservations || 0;
   const inqCount = data?.kpis?.inquiries || 0;
@@ -271,6 +275,8 @@ export default function AnalyticsOperationsTab({
     text: "vs target",
   };
 
+  const anomalies = detectOperationsAnomalies(data?.kpis);
+
   const metricCards = [
     {
       icon: CalendarDays,
@@ -287,6 +293,7 @@ export default function AnalyticsOperationsTab({
       value: maintCount,
       trend: maintenanceDelta.text || `${maintenanceDelta.label || "+0"} vs prev period`,
       changeType: maintenanceDelta.changeType === "up" ? "down" : maintenanceDelta.changeType === "down" ? "up" : "neutral",
+      anomalyBadge: anomalies.maintenanceRequests,
     },
     {
       icon: Users,
@@ -303,6 +310,7 @@ export default function AnalyticsOperationsTab({
       value: slaRate,
       trend: slaDelta.text || `${slaDelta.label || "+0 pp"} on-time rate`,
       changeType: slaDelta.changeType || "neutral",
+      anomalyBadge: anomalies.slaComplianceRate,
     },
   ];
 
@@ -320,15 +328,15 @@ export default function AnalyticsOperationsTab({
         { key: "resolutionHours", label: "Resolution Hours" },
         { key: "slaState", label: "SLA State" },
       ],
-      `operations-report-${range}`,
+      `lilycrest-operations-${branch || "all"}-${range}`,
     );
   };
 
   const exportPdf = () => {
     handlePdfExport({
-      title: "Operations Report",
+      title: "Operations Analytics Report",
       subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
-      filename: `operations-report-${range}.pdf`,
+      filename: `lilycrest-operations-${branch || "all"}-${range}.pdf`,
       reportType: "Operations",
       kpis: metricCards.map((item, i) => ({
         label: item.label,
@@ -376,6 +384,16 @@ export default function AnalyticsOperationsTab({
     });
   };
 
+  useEffect(() => {
+    if (registerExport) {
+      registerExport({ exportCsv, exportPdf });
+    }
+  }, [registerExport, exportCsv, exportPdf]);
+
+  if (isLoading && !data) {
+    return <AdminAnalyticsDetailSkeleton tab="operations" isOwner={isOwner} />;
+  }
+
   const periodComparisonRows = [
     {
       label: "Reservations",
@@ -407,6 +425,17 @@ export default function AnalyticsOperationsTab({
     },
   ];
 
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "FILTER_SLA" && action.filterValue) {
+      setSlaFilter(action.filterValue);
+      setPage(1);
+    } else if (action.actionType === "SEARCH" && action.filterValue) {
+      setSearchQuery(action.filterValue);
+      setPage(1);
+    }
+  };
+
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       <MetricGrid items={metricCards} />
@@ -414,9 +443,14 @@ export default function AnalyticsOperationsTab({
       <AnalyticsInsightSection
         reportLabel="operations"
         summaryTitle="Operations & SLA Intelligence"
+        reportType="operations"
+        range={range}
+        branch={branch}
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
+        suggestedPrompts={operationsPrompts}
+        onExecuteAction={handleExecuteAction}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

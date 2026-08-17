@@ -7,6 +7,7 @@ import {
   Headphones,
   ShieldCheck,
   Sparkles,
+  Clock,
 } from "lucide-react";
 import ChatMessageList from "./ChatMessageList";
 import ChatLeadEscalationForm from "./ChatLeadEscalationForm";
@@ -15,7 +16,9 @@ import { chatbotApi } from "../../../../shared/api/chatbotApi";
 
 const STORAGE_KEY = "lc_chatbot_history_v1";
 const LAST_ACTIVE_KEY = "lc_chatbot_last_active_v1";
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes of inactivity
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes of inactivity
+const WARNING_BEFORE_TIMEOUT_MS = 2 * 60 * 1000; // Show warning 2 minutes before reset (at 13 minutes idle)
+const WARNING_THRESHOLD_MS = INACTIVITY_TIMEOUT_MS - WARNING_BEFORE_TIMEOUT_MS; // 13 minutes (780,000 ms)
 
 const INITIAL_MESSAGE = {
   id: "welcome-msg",
@@ -34,7 +37,8 @@ const INITIAL_MESSAGE = {
  * PublicChatbotModal
  *
  * 380px x 560px (desktop) / full-screen (mobile < 640px) conversational modal.
- * Built with solid HSL tokens, 1px crisp borders, zero gradients, and real-time SSE streaming.
+ * Built with solid HSL tokens, 1px crisp borders, zero gradients, 15-minute inactivity lifecycle with warning,
+ * prompt auto-dismissal, and real-time SSE streaming.
  */
 export function PublicChatbotModal({
   isOpen,
@@ -72,6 +76,9 @@ export function PublicChatbotModal({
   const [isEscalating, setIsEscalating] = useState(false);
   const [escalationContext, setEscalationContext] = useState("");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showInactivityWarning, setShowInactivityWarning] = useState(false);
+  const [inactivitySecondsLeft, setInactivitySecondsLeft] = useState(120);
+  const [sessionExpiryNotice, setSessionExpiryNotice] = useState(null);
 
   const inputRef = useRef(null);
   const abortControllerRef = useRef(null);
@@ -80,6 +87,7 @@ export function PublicChatbotModal({
   const touchActivity = useCallback(() => {
     try {
       sessionStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
+      setShowInactivityWarning(false);
     } catch {
       // Ignore
     }
@@ -87,6 +95,7 @@ export function PublicChatbotModal({
 
   // Direct local widget injection handler (e.g. clicking widget suggestion chips)
   const handleOpenWidget = useCallback((widgetDescriptor) => {
+    touchActivity();
     const widgetType = widgetDescriptor?.type || widgetDescriptor;
     let descriptionText = "Here is the interactive tool you requested:";
     let defaultActions = [];
@@ -134,7 +143,7 @@ export function PublicChatbotModal({
     };
 
     setMessages((prev) => [...prev, injectedMessage]);
-  }, []);
+  }, [touchActivity]);
 
   // Send message handler with SSE Streaming support
   const handleSendMessage = useCallback(
@@ -173,9 +182,9 @@ export function PublicChatbotModal({
       setIsTyping(true);
       touchActivity();
 
-      // Format conversation history for backend context (last 10 turns)
+      // Format conversation history for backend context (pruned to last 8 clean turns)
       const conversationHistory = messages
-        .slice(-10)
+        .slice(-8)
         .filter((m) => m.text && !m.isError)
         .map((m) => ({
           role: m.role,
@@ -294,41 +303,72 @@ export function PublicChatbotModal({
     }
   }, [messages]);
 
-  // Periodic and focus-based inactivity timeout watcher (30 minutes)
+  // Periodic and focus-based inactivity timeout watcher (15 minutes with 2-minute warning)
   useEffect(() => {
     const checkInactivity = () => {
       try {
         const lastActive = sessionStorage.getItem(LAST_ACTIVE_KEY);
-        if (lastActive) {
-          const lastActiveTime = parseInt(lastActive, 10);
-          if (!isNaN(lastActiveTime) && Date.now() - lastActiveTime > INACTIVITY_TIMEOUT_MS) {
-            // Auto-reset conversation to initial greeting
-            const resetMsg = [
-              {
-                ...INITIAL_MESSAGE,
-                id: `welcome-${Date.now()}`,
-                timestamp: Date.now(),
-              },
-            ];
-            setMessages(resetMsg);
-            setIsEscalating(false);
-            sessionStorage.removeItem(STORAGE_KEY);
-            sessionStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
+        if (!lastActive) return;
+
+        const lastActiveTime = parseInt(lastActive, 10);
+        if (isNaN(lastActiveTime)) return;
+
+        const idleMs = Date.now() - lastActiveTime;
+
+        // 15-Minute Expiration Reset
+        if (idleMs >= INACTIVITY_TIMEOUT_MS) {
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
           }
+          const resetMsg = [
+            {
+              ...INITIAL_MESSAGE,
+              id: `welcome-${Date.now()}`,
+              timestamp: Date.now(),
+            },
+          ];
+          setMessages(resetMsg);
+          setIsEscalating(false);
+          setIsTyping(false);
+          setShowInactivityWarning(false);
+          setSessionExpiryNotice("Session reset due to 15 minutes of inactivity.");
+          sessionStorage.removeItem(STORAGE_KEY);
+          sessionStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
+          return;
+        }
+
+        // 13-Minute Warning Trigger (shown only if visitor has started chatting)
+        const hasUserChatted = messages.length > 1 || messages.some((m) => m.role === "user");
+        if (idleMs >= WARNING_THRESHOLD_MS && hasUserChatted) {
+          const secondsLeft = Math.max(0, Math.ceil((INACTIVITY_TIMEOUT_MS - idleMs) / 1000));
+          setInactivitySecondsLeft(secondsLeft);
+          setShowInactivityWarning(true);
+        } else if (idleMs < WARNING_THRESHOLD_MS && showInactivityWarning) {
+          setShowInactivityWarning(false);
         }
       } catch {
         // Ignore
       }
     };
 
-    const interval = setInterval(checkInactivity, 30000);
+    const interval = setInterval(checkInactivity, 1000);
     window.addEventListener("focus", checkInactivity);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("focus", checkInactivity);
     };
-  }, []);
+  }, [messages, showInactivityWarning]);
+
+  // Auto-dismiss session reset expiry banner after 6 seconds
+  useEffect(() => {
+    if (sessionExpiryNotice) {
+      const timer = setTimeout(() => {
+        setSessionExpiryNotice(null);
+      }, 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [sessionExpiryNotice]);
 
   // Focus input and touch activity on open
   useEffect(() => {
@@ -345,13 +385,13 @@ export function PublicChatbotModal({
   // Escape key closes modal (when confirmation modal is not open)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === "Escape" && isOpen && !showClearConfirm) {
-        onClose();
+      if (e.key === "Escape" && isOpen && !showClearConfirm && !showInactivityWarning) {
+        handleModalClose();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose, showClearConfirm]);
+  }, [isOpen, showClearConfirm, showInactivityWarning]);
 
   // Cleanup active stream on unmount
   useEffect(() => {
@@ -380,6 +420,13 @@ export function PublicChatbotModal({
     }
   };
 
+  const handleModalClose = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    onClose();
+  };
+
   const handleClearHistory = () => {
     setShowClearConfirm(true);
   };
@@ -402,6 +449,7 @@ export function PublicChatbotModal({
     setMessages(reset);
     setIsEscalating(false);
     setIsTyping(false);
+    setShowInactivityWarning(false);
     try {
       sessionStorage.removeItem(STORAGE_KEY);
       sessionStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
@@ -411,7 +459,13 @@ export function PublicChatbotModal({
     setShowClearConfirm(false);
   };
 
+  const handleExtendSession = () => {
+    touchActivity();
+    setShowInactivityWarning(false);
+  };
+
   const handleOpenEscalation = (action) => {
+    touchActivity();
     setEscalationContext(action?.prompt || input || "Assistance request from AI chat");
     setIsEscalating(true);
   };
@@ -507,10 +561,13 @@ export function PublicChatbotModal({
             {/* Request Staff Assistance Shortcut */}
             <button
               type="button"
-              onClick={() => setIsEscalating(!isEscalating)}
+              onClick={() => {
+                touchActivity();
+                setIsEscalating(!isEscalating);
+              }}
               title="Request Front Desk Assistance"
               aria-label="Request Front Desk Assistance"
-              className="p-1.5 rounded-lg text-slate-600 hover:text-amber-700 hover:bg-amber-50 dark:text-slate-300 dark:hover:text-amber-400 dark:hover:bg-amber-950/30 transition-colors"
+              className="p-1.5 rounded-lg text-slate-600 hover:text-amber-700 hover:bg-amber-50 dark:text-slate-300 dark:hover:text-amber-400 dark:hover:bg-amber-950/30 transition-colors cursor-pointer"
             >
               <Headphones className="w-3.5 h-3.5" />
             </button>
@@ -521,7 +578,7 @@ export function PublicChatbotModal({
               onClick={handleClearHistory}
               title="Reset conversation"
               aria-label="Reset conversation"
-              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
@@ -529,23 +586,127 @@ export function PublicChatbotModal({
             {/* Close Modal */}
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleModalClose}
               title="Close chatbot"
               aria-label="Close chatbot window"
-              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
+        {/* Expiry Notice Banner */}
+        {sessionExpiryNotice && (
+          <div
+            className="px-3 py-1.5 flex items-center justify-between text-[11px] font-medium border-b flex-shrink-0"
+            style={{
+              backgroundColor: "rgba(217, 119, 6, 0.08)",
+              borderColor: "var(--lp-border, #E6D9B2)",
+              color: "#B45309",
+            }}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="truncate">{sessionExpiryNotice}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSessionExpiryNotice(null)}
+              className="p-0.5 rounded-sm hover:opacity-75 transition-opacity ml-1 flex-shrink-0 cursor-pointer"
+              aria-label="Dismiss notice"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
         {/* Body / Active View */}
         <div className="flex-1 overflow-hidden flex flex-col relative" style={{ backgroundColor: "var(--lp-bg, #ffffff)" }}>
+          {/* Inactivity Warning Dialog Overlay */}
+          {showInactivityWarning && (
+            <div
+              className="absolute inset-0 z-50 flex items-center justify-center p-4"
+              style={{
+                backgroundColor: "rgba(10, 22, 40, 0.55)",
+                backdropFilter: "blur(2px)",
+              }}
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="inactivity-warning-title"
+            >
+              <div
+                className="w-full max-w-[300px] rounded-2xl p-4 shadow-2xl text-center space-y-3"
+                style={{
+                  backgroundColor: "var(--lp-bg-card, #ffffff)",
+                  border: "1px solid var(--lp-border, #E6D9B2)",
+                }}
+              >
+                <div
+                  className="w-10 h-10 rounded-full mx-auto flex items-center justify-center"
+                  style={{
+                    backgroundColor: "rgba(217, 119, 6, 0.12)",
+                    color: "#D97706",
+                  }}
+                >
+                  <Clock className="w-5 h-5 animate-pulse" />
+                </div>
+
+                <div className="space-y-1">
+                  <h4
+                    id="inactivity-warning-title"
+                    className="text-sm font-bold tracking-tight"
+                    style={{ color: "var(--lp-text, #162f53)" }}
+                  >
+                    Session Expiring Soon
+                  </h4>
+                  <p
+                    className="text-xs leading-relaxed"
+                    style={{ color: "var(--lp-text-secondary, #64748B)" }}
+                  >
+                    Your chat session has been idle and will reset in{" "}
+                    <strong className="font-semibold text-amber-700 dark:text-amber-400">
+                      {Math.floor(inactivitySecondsLeft / 60)}:{String(inactivitySecondsLeft % 60).padStart(2, "0")}
+                    </strong>{" "}
+                    to protect your privacy.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleConfirmClear}
+                    className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                    style={{
+                      backgroundColor: "var(--surface-input, #f8fafc)",
+                      color: "var(--lp-text-secondary, #64748B)",
+                      border: "1px solid var(--lp-border, #E6D9B2)",
+                    }}
+                  >
+                    Reset Now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExtendSession}
+                    className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-white transition-all cursor-pointer shadow-xs active:scale-95"
+                    style={{
+                      backgroundColor: "var(--lp-navy, #0A1628)",
+                      border: "1px solid var(--lp-navy, #0A1628)",
+                    }}
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {isEscalating ? (
             <div className="flex-1 overflow-y-auto px-2 py-1.5">
               <ChatLeadEscalationForm
                 initialBranch="all"
                 initialMessage={escalationContext}
+                conversationHistory={messages}
                 onCancel={() => setIsEscalating(false)}
                 onSuccessSubmitted={() => {
                   touchActivity();
@@ -559,9 +720,11 @@ export function PublicChatbotModal({
                 <ChatMessageList
                   messages={messages}
                   isTyping={isTyping}
+                  showQuickPrompts={messages.filter((m) => m.role === "user").length === 0}
                   onSelectPrompt={handleSendMessage}
                   onOpenEscalation={handleOpenEscalation}
                   onOpenWidget={handleOpenWidget}
+                  onScrollActivity={touchActivity}
                   onRetry={() => {
                     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
                     if (lastUserMsg) {
@@ -573,35 +736,40 @@ export function PublicChatbotModal({
 
               {/* Quick Actions Bar */}
               <div
-                className="px-3 py-1.5 border-t flex items-center gap-1.5 overflow-x-auto no-scrollbar select-none text-[11px] flex-shrink-0"
+                className="px-3 py-2 border-t flex items-center gap-1.5 overflow-x-auto no-scrollbar select-none text-xs flex-shrink-0"
                 style={{
-                  backgroundColor: "var(--lp-bg, #ffffff)",
+                  backgroundColor: "#ffffff",
                   borderColor: "var(--lp-border, #E6D9B2)",
                 }}
               >
                 <button
                   type="button"
                   onClick={() => handleOpenWidget("kyc_checklist")}
-                  className="flex-shrink-0 inline-flex items-center gap-1 py-1 px-2 rounded-lg font-medium transition-colors hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg text-xs font-bold transition-colors hover:bg-amber-50 cursor-pointer shadow-xs"
                   style={{
-                    color: "var(--lp-text, #162f53)",
-                    border: "1px solid var(--lp-border, #E6D9B2)",
+                    color: "#0A1628",
+                    backgroundColor: "#f8fafc",
+                    border: "1px solid #cbd5e1",
                   }}
                 >
-                  <ShieldCheck className="w-3 h-3 text-amber-600" />
-                  <span>ID Requirements</span>
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-800" />
+                  <span className="font-bold text-[#0A1628]">ID Requirements</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsEscalating(true)}
-                  className="flex-shrink-0 inline-flex items-center gap-1 py-1 px-2 rounded-lg font-medium transition-colors hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                  onClick={() => {
+                    touchActivity();
+                    setIsEscalating(true);
+                  }}
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg text-xs font-bold transition-colors hover:bg-amber-50 cursor-pointer shadow-xs"
                   style={{
-                    color: "var(--lp-text, #162f53)",
-                    border: "1px solid var(--lp-border, #E6D9B2)",
+                    color: "#0A1628",
+                    backgroundColor: "#f8fafc",
+                    border: "1px solid #cbd5e1",
                   }}
                 >
-                  <Headphones className="w-3 h-3 text-amber-600" />
-                  <span>Front Desk Assistance</span>
+                  <Headphones className="w-3.5 h-3.5 text-amber-800" />
+                  <span className="font-bold text-[#0A1628]">Front Desk Assistance</span>
                 </button>
               </div>
 
@@ -625,7 +793,10 @@ export function PublicChatbotModal({
                       ref={inputRef}
                       rows={1}
                       value={input}
-                      onChange={(e) => setInput(e.target.value)}
+                      onChange={(e) => {
+                        setInput(e.target.value);
+                        touchActivity();
+                      }}
                       onKeyDown={handleKeyDown}
                       placeholder="Ask about rates, curfews, or locations..."
                       disabled={isTyping}
@@ -657,10 +828,6 @@ export function PublicChatbotModal({
 
                 <div className="flex items-center justify-between mt-1 px-1 text-[10px]" style={{ color: "var(--lp-text-muted, #94A3B8)" }}>
                   <span>Press Enter to send</span>
-                  <span className="flex items-center gap-1">
-                    <Sparkles className="w-2.5 h-2.5 text-amber-500" />
-                    <span>Gemini 2.5 AI</span>
-                  </span>
                 </div>
               </div>
             </>

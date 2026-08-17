@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * LILYCREST TENANT CONTEXT-AWARE AI ASSISTANT SERVICE (PHASE 2)
+ * LILYCREST TENANT CONTEXT-AWARE AI ASSISTANT SERVICE (PHASE 2 MULTI-PROVIDER)
  * ============================================================================
  *
  * Provides real-time, grounded conversational assistance for authenticated tenants.
@@ -9,9 +9,9 @@
  *
  * Features:
  * - Real-time MongoDB context retrieval (User, Contract, Room, Bill, MaintenanceRequest)
- * - Grounded LLM generation with Gemini 2.5 Flash
+ * - Ultra-low-latency streaming via Groq Llama 3.3 / Gemini 2.5 Flash
  * - Natural Tagalog/Taglish conversational fluency with polite Filipino hospitality
- * - Server-Sent Events (SSE) token streaming with low latency
+ * - Server-Sent Events (SSE) token streaming
  * - Rich UI widget intent detection (Billing Breakdown, Lease Timeline, Maintenance Card)
  * - Dynamic suggested action pills with route links
  * - Zero-downtime offline rule-based fallback streaming
@@ -20,6 +20,11 @@
 
 import { User, Contract, Room, Bill, MaintenanceRequest, Inquiry } from "../../models/index.js";
 import { APPLIANCE_FEES } from "./knowledgeBase.js";
+import {
+  streamChatCompletion,
+  generateChatCompletion,
+  buildStandardMessages,
+} from "./aiProviderService.js";
 
 /**
  * Gathers complete live stay context for an authenticated tenant.
@@ -58,264 +63,175 @@ export async function getTenantStayContext(userId) {
       .sort({ billingMonth: -1, createdAt: -1 })
       .lean();
 
-    // 4. Fetch active or recent maintenance requests
+    // 4. Fetch recent maintenance tickets
     const recentMaintenance = await MaintenanceRequest.find({
-      user_id: String(user._id),
-      status: { $nin: ["cancelled"] },
+      userId: user._id,
     })
       .sort({ createdAt: -1 })
-      .limit(5)
+      .limit(3)
       .lean();
 
-    // Compute Lease Timeline metrics
-    let leaseDaysRemaining = null;
-    let leaseProgressPercent = null;
-    if (contract?.leaseStartDate && contract?.leaseEndDate) {
-      const start = new Date(contract.leaseStartDate).getTime();
-      const end = new Date(contract.leaseEndDate).getTime();
-      const now = Date.now();
-      const totalDuration = Math.max(end - start, 1);
-      const elapsed = Math.max(0, now - start);
+    const branchName =
+      contract?.branch ||
+      room?.branch ||
+      user.branch ||
+      "Guadalupe";
 
-      leaseDaysRemaining = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
-      leaseProgressPercent = Math.min(100, Math.max(0, Math.round((elapsed / totalDuration) * 100)));
+    const roomNumber =
+      room?.roomNumber ||
+      contract?.roomNumber ||
+      user.roomNumber ||
+      "Unassigned";
+
+    const bedLabel =
+      contract?.bedLabel ||
+      user.bedNumber ||
+      "Bed 1";
+
+    const roomType =
+      room?.roomType ||
+      contract?.roomType ||
+      "Double Sharing";
+
+    let daysRemaining = null;
+    if (contract?.endDate) {
+      const end = new Date(contract.endDate);
+      const now = new Date();
+      const diffTime = end.getTime() - now.getTime();
+      daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
     }
 
     return {
       user: {
         id: String(user._id),
-        name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username || "Tenant",
+        name: user.name || "Tenant",
         email: user.email,
-        phone: user.phoneNumber || user.contactNumber || "N/A",
-        branch: user.branch || contract?.branch || "Guadalupe",
-        accountStatus: user.accountStatus || "active",
+        phone: user.phone || "N/A",
+        role: user.role,
+        branch: branchName,
       },
       contract: contract
         ? {
-            contractNumber: contract.contractNumber,
+            id: String(contract._id),
+            contractNumber: contract.contractNumber || "N/A",
             status: contract.status,
-            branch: contract.branch,
-            roomNumber: contract.roomNumber || room?.roomNumber || "Unassigned",
-            bedLabel: contract.bedLabel || "Bed A",
-            roomType: contract.roomType || "Shared",
-            leaseStartDate: contract.leaseStartDate ? new Date(contract.leaseStartDate).toISOString().split("T")[0] : null,
-            leaseEndDate: contract.leaseEndDate ? new Date(contract.leaseEndDate).toISOString().split("T")[0] : null,
-            leaseDurationMonths: contract.leaseDurationMonths || 6,
-            daysRemaining: leaseDaysRemaining,
-            progressPercent: leaseProgressPercent,
-            monthlyRate: contract.approvedMonthlyRate || contract.regularMonthlyRate || 0,
-            securityDeposit: contract.securityDepositAmount || 0,
-            advanceRent: contract.advanceRentAmount || 0,
+            roomNumber,
+            bedLabel,
+            roomType,
+            branch: branchName,
+            monthlyRent: contract.monthlyRent || room?.monthlyRate || 5500,
+            securityDeposit: contract.securityDeposit || 5500,
+            leaseStartDate: contract.startDate ? new Date(contract.startDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "N/A",
+            leaseEndDate: contract.endDate ? new Date(contract.endDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "N/A",
+            daysRemaining,
+            isExpiringSoon: daysRemaining !== null && daysRemaining <= 30,
           }
         : null,
-      room: room
-        ? {
-            roomNumber: room.roomNumber,
-            branch: room.branch,
-            floor: room.floor,
-            roomType: room.roomType,
-            capacity: room.capacity,
-            activeOccupants: room.currentOccupancy || 1,
-          }
-        : null,
+      room: {
+        number: roomNumber,
+        type: roomType,
+        branch: branchName,
+        floor: room?.floor || 1,
+        capacity: room?.capacity || 2,
+        currentOccupants: room?.currentOccupants || 1,
+      },
       bill: latestBill
         ? {
             id: String(latestBill._id),
-            billingMonth: latestBill.billingMonth ? new Date(latestBill.billingMonth).toISOString().split("T")[0] : null,
-            dueDate: latestBill.dueDate ? new Date(latestBill.dueDate).toISOString().split("T")[0] : null,
-            status: latestBill.status || "pending",
-            proRataDays: latestBill.proRataDays || null,
-            rentAmount: latestBill.charges?.rent || 0,
-            electricityAmount: latestBill.charges?.electricity || 0,
-            waterAmount: 0,
-            isWaterFree: true,
-            applianceFees: latestBill.charges?.applianceFees || 0,
-            penalties: latestBill.charges?.penalty || 0,
-            discount: latestBill.charges?.discount || 0,
+            invoiceNumber: latestBill.invoiceNumber || "N/A",
+            billingMonth: latestBill.billingMonth || new Date().toISOString().slice(0, 7),
             totalAmount: latestBill.totalAmount || 0,
-            remainingAmount: latestBill.remainingAmount !== undefined ? latestBill.remainingAmount : latestBill.totalAmount || 0,
+            rentAmount: latestBill.rentAmount || 0,
+            electricityAmount: latestBill.electricityAmount || 0,
+            waterAmount: latestBill.waterAmount || 0,
+            applianceCharges: latestBill.applianceCharges || 0,
+            lateFee: latestBill.lateFee || 0,
+            status: latestBill.status || "unpaid",
+            dueDate: latestBill.dueDate ? new Date(latestBill.dueDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "15th of the month",
           }
         : null,
       maintenance: recentMaintenance.map((m) => ({
         id: String(m._id),
-        ticketNumber: m.ticketNumber || m.request_id || "MNT-ACTIVE",
-        type: m.request_type || "General",
-        description: m.description,
-        urgency: m.urgency || "normal",
+        ticketNumber: m.ticketNumber || `REQ-${String(m._id).slice(-6).toUpperCase()}`,
+        issueTitle: m.issueTitle || m.title || m.category || "Maintenance Request",
+        category: m.category || "General",
         status: m.status || "pending",
-        providerName: m.providerDetails?.tenantVisibleLabel || m.assigned_to || "Assigned Facility Technician",
-        scheduledDate: m.schedule?.scheduledDate ? new Date(m.schedule.scheduledDate).toISOString().split("T")[0] : null,
-        createdAt: m.createdAt ? new Date(m.createdAt).toISOString().split("T")[0] : null,
+        priority: m.priority || "medium",
+        createdAt: new Date(m.createdAt).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }),
       })),
     };
-  } catch (error) {
-    console.error("Error gathering tenant stay context:", error);
+  } catch (err) {
+    console.error("[TenantAssistant] Error retrieving tenant stay context:", err.message);
     return null;
   }
 }
 
 /**
- * Builds the dynamic system prompt grounded on the tenant's database records.
- *
- * @param {Object} context - Tenant stay context
- * @returns {string}
- */
-export function buildTenantSystemPrompt(context) {
-  const user = context?.user || {};
-  const contract = context?.contract;
-  const bill = context?.bill;
-  const maintenance = context?.maintenance || [];
-
-  return `
-You are the official Lilycrest AI Resident Assistant for Lilycrest Dormitory Management System (Lilycrest DMS).
-You are speaking directly to resident tenant ${user.name} (${user.email}) at Lilycrest ${user.branch || "Dormitory"}.
-
-You embody warm, respectful Filipino hospitality (Mabuhay!), answering inquiries with polite professionalism and natural Tagalog/Taglish fluency (using respectful honorifics "po" and "opo" when addressed in Tagalog/Taglish).
-
-TENANT'S REAL-TIME GROUNDED PROFILE & STAY RECORD:
-- Tenant Name: ${user.name}
-- Branch: ${user.branch || "Not Specified"}
-- Account Status: ${user.accountStatus}
-
-CONTRACT & LEASE DETAILS:
-${
-  contract
-    ? `- Contract Number: ${contract.contractNumber}
-- Room Number: ${contract.roomNumber} (${contract.bedLabel}, ${contract.roomType})
-- Lease Term: ${contract.leaseStartDate || "N/A"} to ${contract.leaseEndDate || "N/A"} (${contract.leaseDurationMonths} months)
-- Days Remaining on Lease: ${contract.daysRemaining !== null ? `${contract.daysRemaining} days (${contract.progressPercent}% completed)` : "N/A"}
-- Monthly Rate: ₱${Number(contract.monthlyRate).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-- Security Deposit: ₱${Number(contract.securityDeposit).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-- Status: ${contract.status}`
-    : "- No active contract record found on file."
-}
-
-LATEST BILLING SNAPSHOT:
-${
-  bill
-    ? `- Billing Period: ${bill.billingMonth || "Current Cycle"}
-- Due Date: ${bill.dueDate || "15th of the month"}
-- Payment Status: ${bill.status.toUpperCase()}
-- Monthly Base Rent: ₱${Number(bill.rentAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-- Submetered Electricity Share: ₱${Number(bill.electricityAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-- Water Consumption: ₱0.00 (FREE & INCLUDED in rent)
-- Appliance Surcharges: ₱${Number(bill.applianceFees).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-- Late Penalties: ₱${Number(bill.penalties).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-- Net Total Amount: ₱${Number(bill.totalAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-- Remaining Balance: ₱${Number(bill.remainingAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
-    : "- No active billing statement record found."
-}
-
-ACTIVE MAINTENANCE TICKETS (${maintenance.length}):
-${
-  maintenance.length > 0
-    ? maintenance
-        .map(
-          (m, i) =>
-            `${i + 1}. Ticket ${m.ticketNumber}: ${m.type} (${m.urgency.toUpperCase()} urgency) - Status: ${m.status.toUpperCase()}${
-              m.scheduledDate ? ` - Scheduled on: ${m.scheduledDate}` : ""
-            }${m.providerName ? ` - Tech: ${m.providerName}` : ""}`,
-        )
-        .join("\n")
-    : "- No active or pending maintenance requests found."
-}
-
-STRICT GROUNDING & BEHAVIOR RULES:
-1. Grounding: Answer strictly using facts from the TENANT'S PROFILE above. When asked about their rent, electricity, due dates, contract expiration, or maintenance, cite their exact numbers and dates.
-2. Concise Responses: Keep replies concise (3 to 4 sentences maximum per turn), clear, and courteous.
-3. Utility Rules:
-   - Water and high-speed Wi-Fi are 100% FREE and included in rent.
-   - Electricity is submetered per room and divided pro-rata among room occupants monthly.
-   - Laptops and phones are free; appliances (mini-fridge ₱200/mo, rice cooker ₱150/mo, fan ₱100/mo) carry monthly fees.
-4. Curfew & Gate Hours: Main gate locks at 11:00 PM and opens at 5:00 AM. 24/7 entry permitted with company/school ID.
-5. Escalation: If a tenant requests human admin intervention or expresses an unresolved complaint, encourage escalating using the "Escalate to Admin" button.
-`;
-}
-
-/**
- * Detects tenant widget intent and packages data from stay context.
- *
- * @param {string} message - User query text
- * @param {Object} context - Tenant stay context
- * @returns {Object|null} Rich widget payload or null
+ * Detects whether the tenant message warrants a rich context widget.
  */
 export function detectTenantWidgetIntent(message = "", context = null) {
   const text = (message || "").toLowerCase();
 
-  // 1. Billing Breakdown Intent
+  // 1. Billing & Electricity Breakdown Intent
   if (
     text.includes("bill") ||
-    text.includes("kuryente") ||
-    text.includes("electric") ||
     text.includes("bayad") ||
-    text.includes("magkano") ||
-    text.includes("rent") ||
-    text.includes("due date") ||
-    text.includes("breakdown") ||
-    text.includes("penalty") ||
-    text.includes("appliance") ||
+    text.includes("electric") ||
+    text.includes("kuryente") ||
     text.includes("tubig") ||
+    text.includes("water") ||
+    text.includes("invoice") ||
+    text.includes("due date") ||
+    text.includes("magkano") ||
     text.includes("statement")
   ) {
-    if (context?.bill) {
-      return {
-        type: "billing_breakdown",
-        title: "Monthly Billing Statement",
-        data: {
-          billingMonth: context.bill.billingMonth,
-          dueDate: context.bill.dueDate,
-          status: context.bill.status,
-          rentAmount: context.bill.rentAmount,
-          electricityAmount: context.bill.electricityAmount,
+    return {
+      type: "billing_breakdown",
+      title: "Current Statement of Account",
+      data: {
+        bill: context?.bill || {
+          status: "paid",
+          totalAmount: 0,
+          electricityAmount: 0,
           waterAmount: 0,
-          isWaterFree: true,
-          applianceFees: context.bill.applianceFees,
-          penalties: context.bill.penalties,
-          discount: context.bill.discount,
-          totalAmount: context.bill.totalAmount,
-          remainingAmount: context.bill.remainingAmount,
-          roomNumber: context.contract?.roomNumber || "Your Room",
-          branch: context.contract?.branch || context.user?.branch || "Lilycrest",
+          rentAmount: context?.contract?.monthlyRent || 5500,
+          dueDate: "15th of the month",
         },
-      };
-    }
+        contract: context?.contract,
+        waterIncluded: true,
+        electricityNote: "Electricity is metered per room and shared pro-rata among room occupants.",
+      },
+    };
   }
 
-  // 2. Lease Timeline Intent
+  // 2. Lease Timeline & Contract Intent
   if (
     text.includes("contract") ||
     text.includes("lease") ||
-    text.includes("expire") ||
-    text.includes("matapos") ||
-    text.includes("renewal") ||
+    text.includes("kailan matatapos") ||
     text.includes("renew") ||
     text.includes("deposit") ||
-    text.includes("refund") ||
     text.includes("move out") ||
     text.includes("clearance") ||
-    text.includes("timeline") ||
-    text.includes("days remaining")
+    text.includes("kontrata")
   ) {
-    if (context?.contract) {
-      return {
-        type: "lease_timeline",
-        title: "Lease Contract Timeline",
-        data: {
-          contractNumber: context.contract.contractNumber,
-          roomNumber: context.contract.roomNumber,
-          bedLabel: context.contract.bedLabel,
-          roomType: context.contract.roomType,
-          leaseStartDate: context.contract.leaseStartDate,
-          leaseEndDate: context.contract.leaseEndDate,
-          leaseDurationMonths: context.contract.leaseDurationMonths,
-          daysRemaining: context.contract.daysRemaining,
-          progressPercent: context.contract.progressPercent,
-          monthlyRate: context.contract.monthlyRate,
-          securityDeposit: context.contract.securityDeposit,
-          status: context.contract.status,
+    return {
+      type: "lease_timeline",
+      title: "Your Lease & Tenancy Status",
+      data: {
+        contract: context?.contract || {
+          status: "active",
+          roomNumber: context?.room?.number || "Unassigned",
+          bedLabel: "Bed 1",
+          leaseStartDate: "Active",
+          leaseEndDate: "Active Lease",
+          daysRemaining: null,
+          monthlyRent: 5500,
         },
-      };
-    }
+        user: context?.user,
+        renewalEligible: true,
+      },
+    };
   }
 
   // 3. Maintenance Ticket Intent
@@ -323,50 +239,104 @@ export function detectTenantWidgetIntent(message = "", context = null) {
     text.includes("maintenance") ||
     text.includes("repair") ||
     text.includes("sira") ||
-    text.includes("ticket") ||
-    text.includes("technician") ||
-    text.includes("ayusin") ||
+    text.includes("ayos") ||
     text.includes("aircon") ||
-    text.includes("gripo") ||
-    text.includes("plumbing") ||
-    text.includes("ilaw") ||
-    text.includes("leak")
+    text.includes("faucet") ||
+    text.includes("banyo") ||
+    text.includes("ticket") ||
+    text.includes("technician")
   ) {
-    const activeTicket = context?.maintenance?.[0];
-    if (activeTicket) {
-      return {
-        type: "maintenance_status",
-        title: "Active Maintenance Request",
-        data: {
-          ticketNumber: activeTicket.ticketNumber,
-          type: activeTicket.type,
-          description: activeTicket.description,
-          urgency: activeTicket.urgency,
-          status: activeTicket.status,
-          providerName: activeTicket.providerName,
-          scheduledDate: activeTicket.scheduledDate,
-          createdAt: activeTicket.createdAt,
-        },
-      };
-    }
+    return {
+      type: "maintenance_summary",
+      title: "Maintenance & Repair Requests",
+      data: {
+        roomNumber: context?.room?.number || "Your Room",
+        tickets: context?.maintenance || [],
+        canSubmitNew: true,
+      },
+    };
   }
 
   return null;
 }
 
 /**
- * Determines dynamic suggested actions for tenant queries.
- *
- * @param {string} message
- * @param {string} botReply
- * @param {Object} context
- * @returns {Array<{label: string, url?: string, action?: string, prompt?: string}>}
+ * Builds the contextual system prompt grounded on the tenant's exact database profile.
+ */
+export function buildTenantSystemPrompt(context) {
+  const user = context?.user;
+  const contract = context?.contract;
+  const bill = context?.bill;
+  const maintenance = context?.maintenance || [];
+
+  return `
+You are the dedicated Lilycrest Tenant AI Assistant for Lilycrest Dormitory Management System (Lilycrest DMS).
+You assist active dormitory tenants with a warm, polite, empathetic, and friendly tone in clear, conversational English.
+
+AUTHENTICATED TENANT PROFILE:
+- Tenant Name: ${user?.name || "Tenant"}
+- Branch: ${user?.branch || "Guadalupe Branch (Makati City)"}
+- Room Number: Room ${contract?.roomNumber || user?.roomNumber || "Unassigned"} (${contract?.bedLabel || "Bed 1"})
+- Room Type: ${contract?.roomType || "Double Sharing"}
+- Base Monthly Rent: ₱${contract?.monthlyRent ? Number(contract.monthlyRent).toLocaleString() : "5,500"}/month
+
+ACTIVE LEASE CONTRACT:
+- Contract Status: ${contract?.status || "active"}
+- Lease Start: ${contract?.leaseStartDate || "Active"}
+- Lease End: ${contract?.leaseEndDate || "Active"}
+- Days Remaining: ${contract?.daysRemaining !== null ? `${contract.daysRemaining} days` : "Ongoing"}
+- Expiring Soon: ${contract?.isExpiringSoon ? "YES (within 30 days)" : "NO"}
+
+LATEST BILLING STATEMENT:
+- Status: ${bill?.status?.toUpperCase() || "NO UNPAID BILLS"}
+- Total Due: ₱${bill?.totalAmount ? Number(bill.totalAmount).toLocaleString() : "0.00"}
+- Due Date: ${bill?.dueDate || "15th of the month"}
+- Rent Amount: ₱${bill?.rentAmount ? Number(bill.rentAmount).toLocaleString() : "0.00"}
+- Electricity Share (Pro-Rata): ₱${bill?.electricityAmount ? Number(bill.electricityAmount).toLocaleString() : "0.00"}
+- Water: Free (Included in rent)
+
+ACTIVE MAINTENANCE TICKETS:
+${
+  maintenance.length > 0
+    ? maintenance.map((m) => `- [${m.ticketNumber}] ${m.issueTitle} (Status: ${m.status.toUpperCase()}, Priority: ${m.priority})`).join("\n")
+    : "No active maintenance tickets."
+}
+
+FRIENDLY DORMITORY POLICIES & STEP-BY-STEP EXPLANATIONS:
+1. Pro-Rata Electricity Sharing:
+   - Your room has its own electric submeter that measures actual kilowatt-hours used.
+   - Total electricity charges are divided equally among active roommates for the billing period.
+   - Water consumption and high-speed Wi-Fi are completely free and included in your rent!
+2. Monthly Rent & Due Dates:
+   - Rent is billed on a monthly cycle, due on the 15th of each month.
+   - Payments can easily and securely be settled via online bank transfer or GCash in your Billing tab.
+3. Contract Expiration & Lease Renewal:
+   - You can easily request a lease renewal 30 days before your contract expires directly from the Contracts tab.
+4. Move-Out Clearance & Security Deposit:
+   - Your security deposit is held safely and is fully refundable upon completing a smooth move-out room check.
+5. Maintenance & Repair Tickets:
+   - If anything needs fixing (plumbing, lights, aircon), submit a ticket under the Maintenance tab.
+   - Our accredited on-site technicians attend to repairs promptly within 24-48 hours.
+6. Building Hours & Curfew:
+   - Building gates lock from 11:00 PM to 5:00 AM for security.
+   - 24/7 late entry is always welcomed for tenants with night shifts or late study hours with a valid ID.
+
+STRICT BEHAVIOR RULES:
+1. Tone & Phrasing: Always write in warm, polite, empathetic, and friendly English only. Keep explanations simple, reassuring, and free of heavy corporate jargon. Do NOT insert Tagalog terms or filler honorifics such as "po" or "opo".
+2. Conciseness: Answer helpfully in 2 to 4 clear, well-structured sentences.
+3. Factual Grounding: Ground all answers strictly on the tenant's data above. Never fabricate bills, dates, or ticket statuses.
+4. Escalation: If a tenant has a dispute or urgent concern, kindly offer to connect them directly with the Branch Admin.
+`;
+}
+
+/**
+ * Determines suggested action pills for the tenant assistant.
  */
 export function determineTenantSuggestedActions(message = "", botReply = "", context = null) {
   const actions = [];
   const text = `${message} ${botReply}`.toLowerCase();
 
-  // Billing direct links
+  // Billing links
   if (text.includes("bill") || text.includes("bayad") || text.includes("electric") || text.includes("kuryente") || text.includes("penalty")) {
     actions.push({ label: "View Billing Statement", url: "/applicant/billing" });
     actions.push({ label: "Check Electricity Share", prompt: "How was my electricity share computed this month?" });
@@ -409,15 +379,10 @@ export function determineTenantSuggestedActions(message = "", botReply = "", con
 
 /**
  * Generates accurate rule-based fallback responses grounded on the tenant context.
- *
- * @param {string} message
- * @param {Object} context
- * @returns {string}
  */
 export function getTenantRuleBasedFallback(message = "", context = null) {
   const rawText = (message || "").trim();
   const text = rawText.toLowerCase();
-  const isTagalog = /(po\b|opo\b|magkano|ano\b|saan\b|kailan|paano|meron|may\b|kwarto|kuryente|tubig|gamit|pwede|pede|sira|ayusin|kamusta|salamat)/i.test(rawText);
 
   const user = context?.user;
   const contract = context?.contract;
@@ -428,83 +393,43 @@ export function getTenantRuleBasedFallback(message = "", context = null) {
   if (text.includes("electric") || text.includes("kuryente") || text.includes("meter")) {
     if (bill) {
       const elecFormatted = `₱${Number(bill.electricityAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
-      if (isTagalog) {
-        return `Ang inyong pro-rata submetered electricity share po para sa buwang ito ay **${elecFormatted}**. Libre po ang inyong konsumo sa tubig! Maaari po ninyong makita ang buong detalye sa inyong [Billing Page](/applicant/billing).`;
-      }
-      return `Your pro-rata submetered electricity share for the current period is **${elecFormatted}**. Water consumption is 100% free and included in your rent! You can review full invoice details on your [Billing Page](/applicant/billing).`;
+      return `Hello! Your submetered electricity share for the current period is **${elecFormatted}**. This is computed by dividing your room's actual submeter usage equally among roommates. Water and high-speed Wi-Fi are 100% free and included in your rent! You can review full details on your [Billing Page](/applicant/billing).`;
     }
-    return isTagalog
-      ? "Ang kuryente po sa inyong kwarto ay sinusukat via submeter at hinahati pro-rata sa mga aktibong boarders. Libre po ang tubig at Wi-Fi!"
-      : "Room electricity is submetered monthly and shared pro-rata among room occupants. Water and Wi-Fi are free and included in your rent.";
+    return "Your room electricity is measured monthly with a dedicated submeter and shared equally among roommates. Water and high-speed Wi-Fi are completely free and included in your rent.";
   }
 
   if (text.includes("bill") || text.includes("bayad") || text.includes("rent") || text.includes("due date") || text.includes("magkano")) {
     if (bill) {
       const totalFormatted = `₱${Number(bill.totalAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
       const dueFormatted = bill.dueDate || "15th of the month";
-      if (isTagalog) {
-        return `Ang inyong kasalukuyang total bill po ay **${totalFormatted}** na may due date sa **${dueFormatted}** (Status: ${bill.status.toUpperCase()}). Maaari po kayong magbayad online o mag-upload ng proof of payment sa [Billing Page](/applicant/billing).`;
-      }
-      return `Your total billing balance is **${totalFormatted}**, due on **${dueFormatted}** (Payment Status: ${bill.status.toUpperCase()}). You may settle this online or upload proof of payment via your [Billing Page](/applicant/billing).`;
+      return `Hello! Your total billing balance is **${totalFormatted}**, due on **${dueFormatted}** (Status: ${bill.status.toUpperCase()}). You can easily settle this online via GCash or bank transfer on your [Billing Page](/applicant/billing).`;
     }
   }
 
   // 2. Contract & Lease Inquiries
-  if (text.includes("contract") || text.includes("lease") || text.includes("expire") || text.includes("matapos") || text.includes("renew") || text.includes("deposit")) {
+  if (text.includes("contract") || text.includes("lease") || text.includes("expire") || text.includes("matapos") || text.includes("renew") || text.includes("deposit") || text.includes("clearance") || text.includes("move out") || text.includes("move-out")) {
     if (contract) {
       const endFormatted = contract.leaseEndDate || "N/A";
-      const days = contract.daysRemaining !== null ? `${contract.daysRemaining} araw` : "N/A";
       const daysEn = contract.daysRemaining !== null ? `${contract.daysRemaining} days` : "N/A";
-      if (isTagalog) {
-        return `Ang inyong lease sa Room **${contract.roomNumber}** (${contract.bedLabel}) ay magtatapos sa **${endFormatted}** (${days} na lang po ang natitira). Maaari po kayong mag-request ng renewal sa inyong [Contracts Page](/applicant/contracts).`;
-      }
-      return `Your lease for Room **${contract.roomNumber}** (${contract.bedLabel}) is scheduled to end on **${endFormatted}** (${daysEn} remaining). You can request an extension or review your signed lease on the [Contracts Page](/applicant/contracts).`;
+      return `Your lease for Room **${contract.roomNumber}** (${contract.bedLabel}) ends on **${endFormatted}** (${daysEn} remaining). If you'd like to extend your stay, you can request a lease renewal directly from your [Contracts Page](/applicant/contracts). For move-outs, your security deposit is fully refundable upon completing a quick room clearance check.`;
     }
   }
 
   // 3. Maintenance Inquiries
-  if (text.includes("maintenance") || text.includes("repair") || text.includes("sira") || text.includes("ticket") || text.includes("aircon") || text.includes("gripo")) {
-    const active = maintenance[0];
-    if (active) {
-      if (isTagalog) {
-        return `Ang inyong active ticket **${active.ticketNumber}** (${active.type}) ay kasalukuyang nasa status na **${active.status.toUpperCase()}**.${
-          active.scheduledDate ? ` Nakatakda po itong bisitahin sa ${active.scheduledDate}.` : ""
-        } Maaari po ninyong i-track sa [Maintenance Workspace](/applicant/maintenance).`;
-      }
-      return `Your active request **${active.ticketNumber}** (${active.type}) is currently **${active.status.toUpperCase()}**.${
-        active.scheduledDate ? ` Service is scheduled for ${active.scheduledDate}.` : ""
-      } You can track updates in your [Maintenance Workspace](/applicant/maintenance).`;
+  if (text.includes("maintenance") || text.includes("repair") || text.includes("sira") || text.includes("ticket") || text.includes("ayos")) {
+    if (maintenance.length > 0) {
+      const latest = maintenance[0];
+      return `You have an active repair request: **${latest.ticketNumber}** (${latest.issueTitle}) with status **${latest.status.toUpperCase()}**. Our on-site technicians attend to repairs within 24-48 hours. You can follow updates on your [Maintenance Page](/applicant/maintenance).`;
     }
-    return isTagalog
-      ? "Wala po kayong active na maintenance ticket sa kasalukuyan. Maaari po kayong mag-submit ng bagong request sa ating [Maintenance Portal](/applicant/maintenance)."
-      : "You have no active maintenance tickets right now. You can submit a new repair request anytime through the [Maintenance Portal](/applicant/maintenance).";
+    return "You currently have no pending maintenance tickets! If anything in your room needs repair (such as plumbing, lighting, or air conditioning), feel free to submit a request on your [Maintenance Page](/applicant/maintenance) and our team will attend to it promptly.";
   }
 
-  // 4. Curfew & House Rules
-  if (text.includes("curfew") || text.includes("gate") || text.includes("oras") || text.includes("late")) {
-    return isTagalog
-      ? "Ang main gate po ay nakasara mula 11:00 PM hanggang 5:00 AM. Pinapayagan po ang 24/7 late entry para sa mga may night shift o academic schedule basta magpakita ng valid ID sa lobby guard."
-      : "Building gates are secured between 11:00 PM and 5:00 AM. 24/7 late entry is permitted for night-shift employees or students upon presenting a valid ID to the on-duty guard.";
-  }
-
-  // 5. Greeting
-  if (text.includes("kamusta") || text.includes("hello") || text.includes("hi") || text.includes("mabuhay")) {
-    const tenantName = user?.name || "Resident";
-    if (isTagalog) {
-      return `Mabuhay ${tenantName}! Ako po ang inyong Lilycrest AI Assistant. Maaari po kayong magtanong tungkol sa inyong monthly bill, electricity share, contract timeline, o maintenance tickets!`;
-    }
-    return `Hello ${tenantName}! I am your Lilycrest Resident Assistant. Feel free to ask about your monthly billing statement, electricity breakdown, lease dates, or active maintenance requests.`;
-  }
-
-  return isTagalog
-    ? "Nandito po ako upang tumulong sa inyong pananatili sa Lilycrest. Maaari po kayong magtanong tungkol sa inyong bill, kuryente, kontrata, o maintenance repairs!"
-    : "I am here to assist with your stay at Lilycrest. You can ask about your monthly bill, electricity charges, lease timeline, or active maintenance tickets.";
+  // Default Greeting / Help
+  return "Hello! I am your Lilycrest Tenant Assistant, here to help make your stay smooth and comfortable. Feel free to ask about your monthly bill, electricity share, lease timeline, or maintenance requests.";
 }
 
 /**
- * Streams Gemini LLM response with real-time SSE token delivery grounded on tenant stay context.
- *
- * @param {Object} options
+ * Streams LLM response with real-time SSE token delivery grounded on tenant stay context.
  */
 export async function streamTenantAssistant({
   userId,
@@ -530,127 +455,15 @@ export async function streamTenantAssistant({
     }
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  // Fallback to offline rule-based streaming if no Gemini key
-  if (!apiKey) {
-    const fallbackReply = getTenantRuleBasedFallback(trimmedMessage, context);
-    await simulateStream(fallbackReply, { onToken, signal });
-    const actions = determineTenantSuggestedActions(trimmedMessage, fallbackReply, context);
-    onActions?.(actions);
-    onDone?.({
-      fullReply: fallbackReply,
-      widget,
-      suggestedActions: actions,
-      canEscalate: true,
-    });
-    return;
-  }
-
   const systemPrompt = buildTenantSystemPrompt(context);
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${apiKey}&alt=sse`;
-
-  const contents = [
-    {
-      role: "user",
-      parts: [{ text: systemPrompt }],
-    },
-    {
-      role: "model",
-      parts: [{ text: "Opo, naiintindihan ko po. I will assist the tenant with accurate, courteous, and grounded information based on their residency records." }],
-    },
-  ];
-
-  if (Array.isArray(conversationHistory)) {
-    for (const msg of conversationHistory) {
-      if (msg && msg.text) {
-        contents.push({
-          role: msg.role === "assistant" ? "model" : "user",
-          parts: [{ text: msg.text }],
-        });
-      }
-    }
-  }
-
-  contents.push({
-    role: "user",
-    parts: [{ text: trimmedMessage }],
-  });
-
-  const localAbort = new AbortController();
-  const timeoutId = setTimeout(() => localAbort.abort(), 20000);
-
-  const handleCallerAbort = () => localAbort.abort();
-  if (signal) {
-    signal.addEventListener("abort", handleCallerAbort);
-  }
-
-  let fullReply = "";
+  const messages = buildStandardMessages(systemPrompt, trimmedMessage, conversationHistory);
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents }),
-      signal: localAbort.signal,
+    const fullReply = await streamChatCompletion({
+      messages,
+      onToken,
+      signal,
     });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`Gemini stream error: ${response.status} ${response.statusText}`);
-    }
-
-    if (response.body) {
-      const decoder = new TextDecoder("utf-8");
-      let lineBuffer = "";
-
-      const parseAndEmitLines = (chunk) => {
-        lineBuffer += chunk;
-        const lines = lineBuffer.split("\n");
-        lineBuffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith("data:")) continue;
-          const jsonStr = trimmed.replace(/^data:\s*/, "");
-          if (jsonStr === "[DONE]") continue;
-
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const candidates = parsed?.candidates || [];
-            for (const cand of candidates) {
-              const parts = cand?.content?.parts || [];
-              for (const part of parts) {
-                if (part.text) {
-                  fullReply += part.text;
-                  onToken?.(part.text);
-                }
-              }
-            }
-          } catch {
-            // Ignore incomplete chunks
-          }
-        }
-      };
-
-      if (typeof response.body.getReader === "function") {
-        const reader = response.body.getReader();
-        while (true) {
-          if (signal?.aborted || localAbort.signal.aborted) break;
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (value) {
-            parseAndEmitLines(decoder.decode(value, { stream: true }));
-          }
-        }
-      }
-    }
-
-    if (!fullReply) {
-      throw new Error("Empty response from Gemini stream");
-    }
 
     const actions = determineTenantSuggestedActions(trimmedMessage, fullReply, context);
     onActions?.(actions);
@@ -661,8 +474,11 @@ export async function streamTenantAssistant({
       canEscalate: true,
     });
   } catch (err) {
-    clearTimeout(timeoutId);
     if (signal?.aborted) return;
+
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[TenantAssistant] Streaming failed, using rule-based fallback:", err?.message);
+    }
 
     // Fallback to grounded rule-based streaming
     const fallbackReply = getTenantRuleBasedFallback(trimmedMessage, context);
@@ -675,10 +491,6 @@ export async function streamTenantAssistant({
       suggestedActions: actions,
       canEscalate: true,
     });
-  } finally {
-    if (signal) {
-      signal.removeEventListener("abort", handleCallerAbort);
-    }
   }
 }
 
@@ -689,68 +501,36 @@ export async function queryTenantAssistantService({ userId, message, conversatio
   const trimmedMessage = (message || "").trim();
   const context = await getTenantStayContext(userId);
   const widget = detectTenantWidgetIntent(trimmedMessage, context);
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey) {
-    const reply = getTenantRuleBasedFallback(trimmedMessage, context);
-    return {
-      reply,
-      widget,
-      suggestedActions: determineTenantSuggestedActions(trimmedMessage, reply, context),
-      canEscalate: true,
-    };
-  }
-
   const systemPrompt = buildTenantSystemPrompt(context);
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  const messages = buildStandardMessages(systemPrompt, trimmedMessage, conversationHistory);
 
-  const contents = [
-    { role: "user", parts: [{ text: systemPrompt }] },
-    { role: "model", parts: [{ text: "Opo, naiintindihan ko po. I am grounded on the tenant profile and ready to assist." }] },
-  ];
+  try {
+    const reply = await generateChatCompletion({
+      messages,
+      temperature: 0.65,
+    });
 
-  if (Array.isArray(conversationHistory)) {
-    for (const msg of conversationHistory) {
-      if (msg && msg.text) {
-        contents.push({
-          role: msg.role === "assistant" ? "model" : "user",
-          parts: [{ text: msg.text }],
-        });
-      }
+    if (reply) {
+      return {
+        reply,
+        widget,
+        suggestedActions: determineTenantSuggestedActions(trimmedMessage, reply, context),
+        canEscalate: true,
+      };
+    }
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[TenantAssistant] Query failed, using rule-based fallback:", err?.message);
     }
   }
 
-  contents.push({ role: "user", parts: [{ text: trimmedMessage }] });
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents }),
-    });
-
-    if (!res.ok) throw new Error(`Gemini query error: ${res.statusText}`);
-
-    const data = await res.json();
-    const reply = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
-    if (!reply) throw new Error("Empty reply");
-
-    return {
-      reply,
-      widget,
-      suggestedActions: determineTenantSuggestedActions(trimmedMessage, reply, context),
-      canEscalate: true,
-    };
-  } catch {
-    const reply = getTenantRuleBasedFallback(trimmedMessage, context);
-    return {
-      reply,
-      widget,
-      suggestedActions: determineTenantSuggestedActions(trimmedMessage, reply, context),
-      canEscalate: true,
-    };
-  }
+  const fallbackReply = getTenantRuleBasedFallback(trimmedMessage, context);
+  return {
+    reply: fallbackReply,
+    widget,
+    suggestedActions: determineTenantSuggestedActions(trimmedMessage, fallbackReply, context),
+    canEscalate: true,
+  };
 }
 
 /**
@@ -761,7 +541,7 @@ export async function escalateTenantAssistantService({ userId, category, priorit
   const user = context?.user;
 
   const inquiry = new Inquiry({
-    fullName: user?.name || "Resident Tenant",
+    fullName: user?.name || "Tenant",
     email: user?.email || "tenant@lilycrest.com",
     contactNumber: user?.phone || "09000000000",
     preferredBranch: context?.contract?.branch || user?.branch || "guadalupe",

@@ -18,14 +18,17 @@ import {
 } from "../components/shared";
 import { buildRangeLabel, formatBranch, formatDate, formatDateTime } from "./reportCommon";
 import {
- AnalyticsInsightSection,
- buildBranchControl,
- ExportButtons,
- handleCsvExport,
- handlePdfExport,
- MetricGrid,
- RANGE_OPTIONS_SHORT,
- useReportInsights,
+  AnalyticsInsightSection,
+  buildBranchControl,
+  ExportButtons,
+  handleCsvExport,
+  handlePdfExport,
+  MetricGrid,
+  RANGE_OPTIONS_SHORT,
+  useReportInsights,
+  detectOccupancyAnomalies,
+  detectOperationsAnomalies,
+  getDynamicOverviewPrompts,
 } from "./analyticsTabShared";
 
 function ForecastCards({ forecast }) {
@@ -45,7 +48,7 @@ function ForecastCards({ forecast }) {
  <p className="text-sm font-medium text-card-foreground">{forecast.insights?.headline}</p>
  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
  {projectedMonths.map((item) => (
- <div key={item.month} className="bg-muted rounded-xl p-4 border border-border flex flex-col gap-1">
+ <div key={item.month} className="bg-muted rounded-xl p-4 border border-border flex flex-col gap-1 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{item.label}</span>
  <div className="text-2xl font-bold text-foreground">{item.projectedOccupancyRate}%</div>
  <p className="text-xs text-muted-foreground mt-1">
@@ -111,10 +114,13 @@ export default function AnalyticsOverviewTab({
  baseline: item.baselineRate,
  }));
 
+ const occAnomalies = detectOccupancyAnomalies(kpis);
+ const opsAnomalies = detectOperationsAnomalies(kpis);
+
  const metricCards = [
- { label: "Occupancy Rate", value: kpis.occupancyRateLabel || "0%", tone: "blue" },
+ { label: "Occupancy Rate", value: kpis.occupancyRateLabel || "0%", tone: "blue", anomalyBadge: occAnomalies.occupancyRate },
  { label: "Collected", value: kpis.revenueLabel || "PHP 0", tone: "green" },
- { label: "Active Tickets", value: kpis.activeTickets || 0, tone: "amber" },
+ { label: "Active Tickets", value: kpis.activeTickets || 0, tone: "amber", anomalyBadge: opsAnomalies.maintenanceRequests },
  { label: "Inquiries", value: kpis.inquiries || 0, tone: "rose" },
  ];
 
@@ -190,7 +196,12 @@ export default function AnalyticsOverviewTab({
  });
  };
 
- return (
+  const overviewPrompts = useMemo(
+    () => getDynamicOverviewPrompts(data, { forecast }),
+    [data, forecast],
+  );
+
+  return (
  <AnalyticsTabLayout
  header={
  <AnalyticsToolbar
@@ -207,9 +218,13 @@ export default function AnalyticsOverviewTab({
   <AnalyticsInsightSection
    reportLabel="overview"
    summaryTitle="Executive Overview Summary"
+   reportType="hub"
+   range={range}
+   branch={branch}
    data={insightData}
    isLoading={isInsightLoading}
    isError={isInsightError}
+   suggestedPrompts={overviewPrompts}
   />
 
  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

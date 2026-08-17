@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   Bed,
@@ -25,19 +25,30 @@ import {
   ReportChartPanel,
 } from "../components/shared";
 import { AdminAnalyticsDetailSkeleton } from "../components/AdminContentSkeletons";
+import { buildRangeLabel, formatBranch, formatPeso } from "./reportCommon";
 import {
   buildAnalyticsDetailsHref,
   getSummaryDetailRange,
 } from "./analyticsNavigation.mjs";
-import { buildRangeLabel, formatBranch, formatPeso } from "./reportCommon";
 import {
+  AnalyticsInsightSection,
   ExportButtons,
   MetricGrid,
   RANGE_OPTIONS_SHORT,
   buildBranchControl,
   handleCsvExport,
   handlePdfExport,
+  detectOccupancyAnomalies,
+  detectBillingAnomalies,
+  detectOperationsAnomalies,
 } from "./analyticsTabShared";
+
+const CONSOLIDATED_PROMPTS = [
+  "How are our branches performing overall?",
+  "Which branch has the highest occupancy?",
+  "Which branch has the highest overdue balance?",
+  "Where are the biggest operational bottlenecks?",
+];
 
 function toNumber(value) {
   const number = Number(value);
@@ -98,7 +109,10 @@ export default function AnalyticsConsolidatedTab({
   isOwner,
   onBranchChange,
   onRangeChange,
+  registerExport,
 }) {
+  const navigate = useNavigate();
+  const [occupancyMetric, setOccupancyMetric] = useState("rate");
   const effectiveBranch = isOwner ? branch : undefined;
   const monthRange = getSummaryDetailRange("billing", range);
 
@@ -134,16 +148,6 @@ export default function AnalyticsConsolidatedTab({
   const operationsData = operationsQuery.data;
   const financialsData = financialsQuery.data;
 
-  const isInitialLoading =
-    (dashboardQuery.isLoading && !dashboardData) ||
-    (occupancyQuery.isLoading && !occupancyData) ||
-    (billingQuery.isLoading && !billingData) ||
-    (operationsQuery.isLoading && !operationsData);
-
-  if (isInitialLoading) {
-    return <AdminAnalyticsDetailSkeleton tab="consolidated" isOwner={isOwner} />;
-  }
-
   const branchRows = mergeBranchRows(
     dashboardData?.branchComparison,
     financialsData?.series?.branchComparison,
@@ -152,6 +156,52 @@ export default function AnalyticsConsolidatedTab({
   const revenueByMonth = billingData?.series?.revenueByMonth || [];
   const reservationsByPeriod = operationsData?.series?.reservationsByPeriod || [];
   const maintenanceByType = operationsData?.series?.maintenanceByType || [];
+
+  const occupancyChartConfig = useMemo(() => {
+    if (occupancyMetric === "beds") {
+      return {
+        data: occupancyTrend.map((item) => ({
+          label: item.label,
+          occupied: item.occupiedBeds || 0,
+          capacity: item.totalCapacity || 0,
+        })),
+        lines: [
+          { key: "occupied", label: "Occupied Beds", color: "#2563eb", strokeWidth: 2.5 },
+          { key: "capacity", label: "Total Capacity", color: "#64748b", strokeWidth: 1.75 },
+        ],
+        valueFormatter: (value) => `${value} bed${value === 1 ? "" : "s"}`,
+        subtitle: `Occupied beds vs. capacity for selected branch scope`,
+      };
+    }
+
+    if (occupancyMetric === "byType") {
+      return {
+        data: occupancyTrend.map((item) => ({
+          label: item.label,
+          private: item.byType?.["private"] ?? 0,
+          double: item.byType?.["double-sharing"] ?? 0,
+          quadruple: item.byType?.["quadruple-sharing"] ?? 0,
+        })),
+        lines: [
+          { key: "private", label: "Private", color: "#2563eb", strokeWidth: 2 },
+          { key: "double", label: "Double Sharing", color: "#16a34a", strokeWidth: 2 },
+          { key: "quadruple", label: "Quad Sharing", color: "#f59e0b", strokeWidth: 2 },
+        ],
+        valueFormatter: (value) => `${value}%`,
+        subtitle: `Occupancy by room type for selected branch scope`,
+      };
+    }
+
+    return {
+      data: occupancyTrend.map((item) => ({
+        label: item.label,
+        occupancy: item.totalRate ?? 0,
+      })),
+      lines: [{ key: "occupancy", label: "Occupancy rate", color: "#2563eb", strokeWidth: 3 }],
+      valueFormatter: (value) => `${value}%`,
+      subtitle: `Daily occupancy rate for the selected branch scope`,
+    };
+  }, [occupancyMetric, occupancyTrend]);
   const scopeBranch =
     dashboardData?.scope?.branch ||
     occupancyData?.scope?.branch ||
@@ -165,6 +215,10 @@ export default function AnalyticsConsolidatedTab({
     financialsQuery.isError,
   ].some(Boolean);
 
+  const occAnomalies = detectOccupancyAnomalies(occupancyData?.kpis || dashboardData?.kpis || {});
+  const billAnomalies = detectBillingAnomalies(billingData?.kpis || financialsData?.kpis || {});
+  const opsAnomalies = detectOperationsAnomalies(operationsData?.kpis || dashboardData?.kpis || {});
+
   const metricCards = [
     {
       icon: Bed,
@@ -172,6 +226,7 @@ export default function AnalyticsConsolidatedTab({
       label: "Consolidated Occupancy",
       value: occupancyData?.kpis?.occupancyRateLabel || dashboardData?.kpis?.occupancyRateLabel || "0%",
       trend: "Cross-branch average",
+      anomalyBadge: occAnomalies.occupancyRate,
     },
     {
       icon: PhilippinePeso,
@@ -179,6 +234,7 @@ export default function AnalyticsConsolidatedTab({
       label: "Consolidated Revenue",
       value: (billingData?.kpis?.collectedRevenueLabel || dashboardData?.kpis?.revenueLabel || "PHP 0").replace("PHP ", "₱"),
       trend: "Total collections",
+      anomalyBadge: billAnomalies.collectionRate,
     },
     {
       icon: AlertCircle,
@@ -187,6 +243,7 @@ export default function AnalyticsConsolidatedTab({
       value: (financialsData?.kpis?.outstandingBalanceLabel || billingData?.kpis?.outstandingBalanceLabel || "PHP 0").replace("PHP ", "₱"),
       trend: "Pending balance",
       changeType: "down",
+      anomalyBadge: billAnomalies.overdueAmount,
     },
     {
       icon: Wrench,
@@ -194,6 +251,7 @@ export default function AnalyticsConsolidatedTab({
       label: "Active Work Orders",
       value: dashboardData?.kpis?.activeTickets ?? operationsData?.kpis?.maintenanceRequests ?? 0,
       trend: "All branches",
+      anomalyBadge: opsAnomalies.maintenanceRequests,
     },
   ];
 
@@ -202,25 +260,25 @@ export default function AnalyticsConsolidatedTab({
       branchRows,
       [
         { key: "label", label: "Branch" },
-        { key: "occupancyRate", label: "Occupancy Rate", formatter: (value) => `${value}%` },
+        { key: "occupancyRate", label: "Occupancy Rate (%)", formatter: (value) => `${value}%` },
         { key: "totalCapacity", label: "Total Capacity" },
         { key: "availableBeds", label: "Available Beds" },
-        { key: "collectedRevenue", label: "Collected", formatter: (value) => formatPeso(value) },
-        { key: "overdueAmount", label: "Overdue Amount", formatter: (value) => formatPeso(value) },
-        { key: "collectionRate", label: "Collection Rate", formatter: (value) => `${value}%` },
+        { key: "collectedRevenue", label: "Collected (₱)", formatter: (value) => formatPeso(value) },
+        { key: "overdueAmount", label: "Overdue Amount (₱)", formatter: (value) => formatPeso(value) },
+        { key: "collectionRate", label: "Collection Rate (%)", formatter: (value) => `${value}%` },
         { key: "activeTickets", label: "Open Maintenance" },
         { key: "inquiries", label: "Inquiries" },
       ],
-      `consolidated-report-${range}`,
+      `lilycrest-consolidated-${branch || "all"}-${range}`,
     );
   };
 
   const exportPdf = () => {
     const insight = insightsQuery.data?.insight || insightsQuery.data || {};
     handlePdfExport({
-      title: "Consolidated Owner Report",
+      title: "Consolidated Owner Analytics Report",
       subtitle: `${buildRangeLabel(range)} operations / ${buildRangeLabel(monthRange)} billing - ${formatBranch(scopeBranch)}`,
-      filename: `consolidated-report-${range}.pdf`,
+      filename: `lilycrest-consolidated-${branch || "all"}-${range}.pdf`,
       reportType: "Consolidated",
       kpis: metricCards.map((item, i) => ({
         label: item.label,
@@ -252,7 +310,7 @@ export default function AnalyticsConsolidatedTab({
             Occupancy: `${item.occupancyRate || 0}%`,
             Collected: formatPeso(item.collectedRevenue || 0),
             Overdue: formatPeso(item.overdueAmount || 0),
-            "Open Maintenance": item.activeTickets || 0,
+            "Open Maintenance": String(item.activeTickets || 0),
           })),
         },
         {
@@ -280,6 +338,29 @@ export default function AnalyticsConsolidatedTab({
     });
   };
 
+  useEffect(() => {
+    if (registerExport) {
+      registerExport({ exportCsv, exportPdf });
+    }
+  }, [registerExport, exportCsv, exportPdf]);
+
+  const isInitialLoading =
+    (dashboardQuery.isLoading && !dashboardData) ||
+    (occupancyQuery.isLoading && !occupancyData) ||
+    (billingQuery.isLoading && !billingData) ||
+    (operationsQuery.isLoading && !operationsData);
+
+  if (isInitialLoading) {
+    return <AdminAnalyticsDetailSkeleton tab="consolidated" isOwner={isOwner} />;
+  }
+
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "NAVIGATE_TAB" && action.filterValue) {
+      navigate(buildAnalyticsDetailsHref({ tab: action.filterValue, range, branch, isOwner }));
+    }
+  };
+
   return (
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       {isError ? (
@@ -290,14 +371,17 @@ export default function AnalyticsConsolidatedTab({
 
       <MetricGrid items={metricCards} />
 
-      <AnalyticsInsightsHub
-        title="AI Consolidated Report"
-        heading="Cross-report risks, forecasts, and actions"
-        loadingText="Preparing consolidated report insights..."
-        emptyText="No consolidated AI report is available for this scope yet."
+      <AnalyticsInsightSection
+        reportLabel="consolidated"
+        summaryTitle="Consolidated Portfolio Intelligence"
+        reportType="hub"
+        range={range}
+        branch={branch}
         data={insightsQuery.data}
         isLoading={insightsQuery.isLoading}
         isError={insightsQuery.isError}
+        suggestedPrompts={CONSOLIDATED_PROMPTS}
+        onExecuteAction={handleExecuteAction}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
@@ -348,13 +432,40 @@ export default function AnalyticsConsolidatedTab({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
         <ReportChartPanel
           title="Occupancy trend"
-          subtitle="Daily occupancy rate for the selected branch scope"
-          actions={<DrilldownLink tab="occupancy" range={range} branch={branch} label="Open occupancy" />}
+          subtitle={occupancyChartConfig.subtitle}
+          actions={
+            <div className="flex items-center gap-2">
+              <div className="analytics-view-mode-toggle" role="group" aria-label="Occupancy view metric">
+                <button
+                  type="button"
+                  className={`analytics-view-mode-btn ${occupancyMetric === "rate" ? "active" : ""}`}
+                  onClick={() => setOccupancyMetric("rate")}
+                >
+                  Rate %
+                </button>
+                <button
+                  type="button"
+                  className={`analytics-view-mode-btn ${occupancyMetric === "beds" ? "active" : ""}`}
+                  onClick={() => setOccupancyMetric("beds")}
+                >
+                  Beds
+                </button>
+                <button
+                  type="button"
+                  className={`analytics-view-mode-btn ${occupancyMetric === "byType" ? "active" : ""}`}
+                  onClick={() => setOccupancyMetric("byType")}
+                >
+                  By Type
+                </button>
+              </div>
+              <DrilldownLink tab="occupancy" range={range} branch={branch} label="Open occupancy" />
+            </div>
+          }
         >
           <AnalyticsLineChart
-            data={occupancyTrend.map((item) => ({ label: item.label, occupancy: item.totalRate }))}
-            lines={[{ key: "occupancy", label: "Occupancy rate", color: "#2563eb" }]}
-            valueFormatter={(value) => `${value}%`}
+            data={occupancyChartConfig.data}
+            lines={occupancyChartConfig.lines}
+            valueFormatter={occupancyChartConfig.valueFormatter}
             emptyTitle="No occupancy trend"
             emptyDescription="Occupancy trend data will appear after room history is available."
           />

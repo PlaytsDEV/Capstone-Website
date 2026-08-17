@@ -1,0 +1,129 @@
+/* =============================================================================
+   ADMIN PAGE HEADER - Pattern 1 Unified Sticky Sub-Header (Lilycrest DMS)
+   Strict solid HSL tokens, 0 gradients, high-density 2-tier layout
+   ============================================================================= */
+
+.admin-page-header {
+  width: calc(100% + (var(--admin-content-padding, 24px) * 2));
+  margin: calc(-1 * var(--admin-content-padding, 24px)) calc(-1 * var(--admin-content-padding, 24px)) 1rem calc(-1 * var(--admin-content-padding, 24px));
+  background: var(--bg-card, #ffffff);
+  border-bottom: 1px solid var(--border-light, #e2e8f0);
+  padding: 0.75rem var(--admin-content-padding, 24px) 0;
+  transition: background-color var(--duration-fast, 150ms) ease,
+    border-color var(--duration-fast, 150ms) ease;
+}
+
+@media (max-width: 768px) {
+  .admin-page-header {
+    width: calc(100% + 32px);
+    margin: -16px -16px 1rem -16px;
+    padding: 0.75rem 16px 0;
+  }
+}
+
+.admin-page-header--sticky {
+  position: sticky;
+  top: calc(-1 * var(--admin-content-padding, 24px));
+  z-index: 15;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+@media (max-width: 768px) {
+  .admin-page-header--sticky {
+    top: -16px;
+  }
+}
+
+/* ── Tier 1: Top Row (Heading on Left, Controls & Actions on Right) ── */
+.admin-page-header-top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .admin-page-header-top {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+  }
+}
+
+.admin-page-header-heading {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 0.125rem;
+}
+
+.admin-page-header-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--text-primary, #0f172a);
+  margin: 0;
+  line-height: 1.25;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-page-header-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted, #64748b);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.admin-page-header-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+@media (min-width: 768px) {
+  .admin-page-header-side {
+    gap: 0.75rem;
+  }
+}
+
+.admin-page-header-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── Tier 2: Tabs Row (Full-width underneath Title) ── */
+.admin-page-header-tabs-row {
+  width: 100%;
+}
+
+.admin-page-header-tabs {
+  border-bottom: none;
+  min-height: 44px;
+  width: 100%;
+}
+
+/* When header has tabs, reduce top row bottom padding for optimal spacing */
+.admin-page-header--with-tabs .admin-page-header-top {
+  padding-bottom: 0.5rem;
+}
+
+/* ── Extra Content Row (Optional Children) ── */
+.admin-page-header-extra {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border-light, #e2e8f0);
+}

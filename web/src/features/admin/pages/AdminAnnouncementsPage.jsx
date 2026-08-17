@@ -47,6 +47,7 @@ import {
 import AdminAnnouncementModal from "../components/AdminAnnouncementModal";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import Pagination from "../../../shared/components/Pagination";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 
 const INITIAL_FORM = {
@@ -803,23 +804,21 @@ export default function AdminAnnouncementsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-card-foreground">Announcements</h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Compose and broadcast branch announcements, reminders, and official policies
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <ExportDropdown
-            onExportCSV={handleExportCSV}
-            onExportPDF={handleExportPDF}
-            disabled={filteredAnnouncements.length === 0}
-            loading={isExporting}
-          />
-        </div>
-      </header>
+      {/* Pattern 1 Sticky Sub-Header */}
+      <AdminPageHeader
+        title="Announcements"
+        subtitle="Compose and broadcast branch announcements, reminders, and official policies."
+        actions={
+          <div className="flex items-center gap-2">
+            <ExportDropdown
+              onExportCSV={handleExportCSV}
+              onExportPDF={handleExportPDF}
+              disabled={filteredAnnouncements.length === 0}
+              loading={isExporting}
+            />
+          </div>
+        }
+      />
 
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -847,14 +846,18 @@ export default function AdminAnnouncementsPage() {
         ].map(({ label, value, icon: Icon }) => (
           <div
             key={label}
-            className="flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
+            className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default"
           >
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
-              <p className="mt-1.5 text-2xl font-bold tracking-tight text-card-foreground tabular-nums">{value}</p>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                {label}
+              </span>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-muted-foreground">
+                <Icon size={15} />
+              </div>
             </div>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/50 text-card-foreground">
-              <Icon size={18} />
+            <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+              {value}
             </div>
           </div>
         ))}

@@ -50,6 +50,7 @@ import {
 import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import RolePermissionsPage from "../../owner/pages/RolePermissionsPage";
 import AdminTabs from "../../../shared/components/AdminTabs";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import { ExportButtons } from "./analyticsTabShared.js";
 import {
   handleExportUsersCSV,
@@ -1140,69 +1141,50 @@ function UserManagementPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1
-            className="mb-1 text-2xl font-semibold"
-            style={{ color: "var(--foreground)" }}
-          >
-            Accounts & Access
-          </h1>
-          <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-            Manage access credentials, verify account states, and configure role access permissions.
-          </p>
-        </div>
+      {/* Pattern 1 Sticky Sub-Header */}
+      <AdminPageHeader
+        title="Accounts & Access"
+        subtitle="Manage user accounts, credentials, and configure granular branch admin access permissions."
+        tabs={isOwner ? userManagementTabs : []}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        actions={
+          activeTab === "users" ? (
+            <div className="flex items-center gap-2.5">
+              <ExportButtons
+                onCsv={handleExportCSV}
+                onPdf={handleExportPDF}
+                loading={isExportingPdf}
+                disabled={loading}
+              />
 
-        {activeTab === "users" && (
-          <div className="flex items-center gap-2.5">
-            <ExportButtons
-              onCsv={handleExportCSV}
-              onPdf={handleExportPDF}
-              loading={isExportingPdf}
-              disabled={loading}
-            />
-
-            {isOwner && (
-              <button
-                id="btn-add-user"
-                onClick={() => {
-                  setAddForm({
-                    username: "",
-                    firstName: "",
-                    lastName: "",
-                    email: "",
-                    phone: "",
-                    role: "applicant",
-                    branch: "",
-                    password: "",
-                  });
-                  setAddFormErrors({});
-                  setIsAddModalOpen(true);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
-                style={{
-                  backgroundColor: "var(--primary)",
-                  color: "var(--primary-foreground)",
-                }}
-              >
-                <UserPlus className="h-4 w-4" />
-                <span>Add User</span>
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Owner Navigation Tabs */}
-      {isOwner && (
-        <AdminTabs
-          tabs={userManagementTabs}
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          ariaLabel="User accounts and roles management tabs"
-        />
-      )}
+              {isOwner && (
+                <button
+                  id="btn-add-user"
+                  onClick={() => {
+                    setAddForm({
+                      username: "",
+                      firstName: "",
+                      lastName: "",
+                      email: "",
+                      phone: "",
+                      role: "applicant",
+                      branch: "",
+                      password: "",
+                    });
+                    setAddFormErrors({});
+                    setIsAddModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-xs"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  <span>Add User</span>
+                </button>
+              )}
+            </div>
+          ) : null
+        }
+      />
 
       {activeTab === "roles" && isOwner ? (
         <RolePermissionsPage isEmbedded={true} />
@@ -1215,33 +1197,21 @@ function UserManagementPage() {
           return (
             <div
               key={item.id}
-              className="rounded-lg p-4 text-left relative overflow-hidden bg-card transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5"
-              style={{
-                border: "1px solid var(--border)",
-              }}
+              className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default"
             >
-              <div className="flex items-center justify-between mb-2">
-                <span
-                  className="text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: "var(--muted-foreground)" }}
-                >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
                   {item.label}
                 </span>
                 <div
-                  className="h-8 w-8 rounded-lg flex items-center justify-center"
-                  style={{
-                    backgroundColor: "var(--muted)",
-                    color: item.color,
-                  }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60"
+                  style={{ color: item.color }}
                 >
-                  <IconComponent className="h-4 w-4" />
+                  <IconComponent size={15} />
                 </div>
               </div>
 
-              <div
-                className="text-3xl font-bold tracking-tight"
-                style={{ color: "var(--foreground)" }}
-              >
+              <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
                 {item.value}
               </div>
             </div>

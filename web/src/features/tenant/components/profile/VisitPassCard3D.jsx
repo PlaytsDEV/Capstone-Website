@@ -2,10 +2,9 @@ import React, { useState, useRef } from "react";
 
 /* ─── safe date helpers ─────────────────────────────────────── */
 function parseSafeDate(dateStr) {
- if (!dateStr) return null;
- const clean = String(dateStr).split("T")[0];
- const d = new Date(clean + "T12:00:00");
- return isNaN(d) ? null : d;
+  if (!dateStr) return null;
+  const d = dateStr instanceof Date ? dateStr : (typeof dateStr === "string" && dateStr.length === 10 && !dateStr.includes("T") ? new Date(dateStr + "T12:00:00") : new Date(dateStr));
+  return isNaN(d.getTime()) ? null : d;
 }
 function fmtDateFull(dateStr) {
  const d = parseSafeDate(dateStr);

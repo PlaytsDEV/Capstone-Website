@@ -65,41 +65,42 @@ export function ChatQuickPrompts({ onSelectPrompt, disabled = false }) {
               type="button"
               disabled={disabled}
               onClick={() => onSelectPrompt(item.prompt)}
-              className="flex items-start gap-2 p-2.5 rounded-xl text-left text-xs font-medium transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group focus:outline-none active:scale-95 shadow-xs"
+              className="flex items-start gap-2 p-2.5 rounded-xl text-left text-xs font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group focus:outline-none active:scale-95 shadow-xs"
               style={{
-                backgroundColor: "var(--lp-bg-card, #ffffff)",
-                border: "1px solid var(--lp-border, #E6D9B2)",
-                color: "var(--lp-text, #162f53)",
+                backgroundColor: "#FFFFFF",
+                border: "1px solid #CBD5E1",
+                color: "#0A1628",
                 animation: `promptCardIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 60}ms forwards`,
                 opacity: 0,
               }}
               onMouseEnter={(e) => {
                 if (!disabled) {
-                  e.currentTarget.style.borderColor = "var(--lp-accent, #D4AF37)";
-                  e.currentTarget.style.backgroundColor = "var(--lp-icon-bg, rgba(212, 175, 55, 0.08))";
+                  e.currentTarget.style.borderColor = "#D4AF37";
+                  e.currentTarget.style.backgroundColor = "#FDF8E7";
                   e.currentTarget.style.transform = "translateY(-2px) scale(1.01)";
                   e.currentTarget.style.boxShadow = "0 4px 10px rgba(10, 22, 40, 0.08)";
                 }
               }}
               onMouseLeave={(e) => {
                 if (!disabled) {
-                  e.currentTarget.style.borderColor = "var(--lp-border, #E6D9B2)";
-                  e.currentTarget.style.backgroundColor = "var(--lp-bg-card, #ffffff)";
+                  e.currentTarget.style.borderColor = "#CBD5E1";
+                  e.currentTarget.style.backgroundColor = "#FFFFFF";
                   e.currentTarget.style.transform = "translateY(0) scale(1)";
                   e.currentTarget.style.boxShadow = "";
                 }
               }}
             >
               <div
-                className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform duration-200 group-hover:scale-115 group-hover:rotate-6"
+                className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform duration-200 group-hover:scale-110"
                 style={{
-                  backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.12))",
-                  color: "var(--lp-accent, #D4AF37)",
+                  backgroundColor: "#FDF8E7",
+                  color: "#B45309",
+                  border: "1px solid #F3E4B0",
                 }}
               >
-                <Icon className="w-3 h-3" />
+                <Icon className="w-3.5 h-3.5 text-amber-800" />
               </div>
-              <span className="leading-snug flex-1 group-hover:text-amber-700 dark:group-hover:text-amber-300 transition-colors duration-150">
+              <span className="leading-snug flex-1 font-bold text-[#0A1628] group-hover:text-amber-900 transition-colors duration-150">
                 {item.label}
               </span>
             </button>

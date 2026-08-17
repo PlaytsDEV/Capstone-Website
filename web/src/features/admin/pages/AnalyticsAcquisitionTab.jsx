@@ -12,18 +12,26 @@ import {
   DataTable,
   ReportChartPanel,
 } from "../components/shared";
-import { AdminAnalyticsDetailSkeleton } from "../components/AdminContentSkeletons";
-import { buildRangeLabel, formatBranch } from "./reportCommon";
 import {
+  AnalyticsInsightSection,
   AnalyticsTableToolbar,
   ExportButtons,
   handleCsvExport,
   handlePdfExport,
   MetricGrid,
+  useReportInsights,
 } from "./analyticsTabShared";
 import InquiryPipelineBoard from "../components/InquiryPipelineBoard";
+import { AdminAnalyticsDetailSkeleton } from "../components/AdminContentSkeletons";
 import "../styles/design-tokens.css";
 import "../styles/admin-reports.css";
+
+const ACQUISITION_PROMPTS = [
+  "Which marketing channels have the highest conversion rate?",
+  "How can we convert more leads into move-ins?",
+  "Which channels bring in the most viewings?",
+  "Where should we focus our marketing efforts?",
+];
 
 const CHANNEL_COLUMNS = [
   { key: "channel", label: "Marketing Channel", sortable: true },
@@ -82,6 +90,9 @@ export default function AnalyticsAcquisitionTab({
   branch,
   range = "30d",
   isOwner = false,
+  onBranchChange,
+  onRangeChange,
+  registerExport,
 }) {
   const [report, setReport] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -90,11 +101,29 @@ export default function AnalyticsAcquisitionTab({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
+  const {
+    data: insightData,
+    isLoading: isInsightLoading,
+    isError: isInsightError,
+  } = useReportInsights({
+    reportType: "operations",
+    range,
+    branch: isOwner ? branch : undefined,
+  });
+
+  const handleExecuteAction = (action) => {
+    if (!action) return;
+    if (action.actionType === "SEARCH" && action.filterValue) {
+      setSearchQuery(action.filterValue);
+      setPage(1);
+    }
+  };
+
   const fetchRoi = async () => {
     try {
       setLoading(true);
       const res = await inquiryApi.getMarketingRoi();
-      setReport(res.data || []);
+      setReport(Array.isArray(res) ? res : res?.data || []);
     } catch (err) {
       console.error("Acquisition report fetch error:", err);
     } finally {
@@ -157,6 +186,12 @@ export default function AnalyticsAcquisitionTab({
       label: "Conversion Rate",
       value: `${overallConversionRate}%`,
       trend: "Overall lead-to-lease",
+      anomalyBadge:
+        overallConversionRate >= 30
+          ? { label: "High Funnel Yield", severity: "success" }
+          : overallConversionRate < 10 && totalLeads > 5
+          ? { label: "Low Velocity <10%", severity: "warning" }
+          : null,
     },
   ];
 
@@ -194,15 +229,15 @@ export default function AnalyticsAcquisitionTab({
         { key: "convertedCount", label: "Converted Tenants" },
         { key: "conversionRate", label: "Conversion Rate (%)" },
       ],
-      `lead-acquisition-${range}`,
+      `lilycrest-acquisition-${branch || "all"}-${range}`,
     );
   };
 
   const exportPdf = () => {
     handlePdfExport({
-      title: "Lead Acquisition & Channel Performance",
+      title: "Lead Acquisition & Channel Performance Report",
       subtitle: `${isOwner ? formatBranch(branch) : "Branch Scope"} • ${buildRangeLabel(range)}`,
-      filename: `lead-acquisition-${range}.pdf`,
+      filename: `lilycrest-acquisition-${branch || "all"}-${range}.pdf`,
       reportType: "Acquisition",
       kpis: metricCards.map((item, i) => ({
         label: item.label,
@@ -227,6 +262,12 @@ export default function AnalyticsAcquisitionTab({
     });
   };
 
+  useEffect(() => {
+    if (registerExport) {
+      registerExport({ exportCsv, exportPdf });
+    }
+  }, [registerExport, exportCsv, exportPdf]);
+
   if (loading && report.length === 0) {
     return <AdminAnalyticsDetailSkeleton tab="operations" isOwner={isOwner} />;
   }
@@ -235,6 +276,19 @@ export default function AnalyticsAcquisitionTab({
     <div className="analytics-tab-content flex flex-col gap-6 w-full pt-1">
       {/* 4 Executive KPI Cards */}
       <MetricGrid items={metricCards} />
+
+      <AnalyticsInsightSection
+        reportLabel="acquisition"
+        summaryTitle="Lead Acquisition & Conversion Intelligence"
+        reportType="operations"
+        range={range}
+        branch={branch}
+        data={insightData}
+        isLoading={isInsightLoading}
+        isError={isInsightError}
+        suggestedPrompts={ACQUISITION_PROMPTS}
+        onExecuteAction={handleExecuteAction}
+      />
 
       {/* 2-Column Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">

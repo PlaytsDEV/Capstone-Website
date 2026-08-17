@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { backupApi } from "../../../shared/api/backupApi";
 import { AdminSystemBackupSkeleton } from "../components/AdminContentSkeletons";
+import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import "../styles/admin-backup.css";
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
@@ -484,18 +485,13 @@ export default function SystemBackupPage({ isEmbedded = false }) {
   }
 
   return (
-    <div className={`backup-page ${isEmbedded ? "backup-page--embedded" : ""}`}>
+    <div className={`backup-page space-y-4 ${isEmbedded ? "backup-page--embedded" : ""}`}>
       {/* Header */}
       {!isEmbedded && (
-        <div className="backup-page__header">
-          <h1 className="backup-page__title">
-            <Database size={24} className="backup-page__title-icon" />
-            System Backup
-          </h1>
-          <p className="backup-page__subtitle">
-            Configure automatic backups or create manual snapshots of the entire database.
-          </p>
-        </div>
+        <AdminPageHeader
+          title="System Backup"
+          subtitle="Configure automatic backups and manage database snapshots and recovery points."
+        />
       )}
 
       {/* Configuration Card */}

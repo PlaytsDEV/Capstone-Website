@@ -421,53 +421,62 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       </div>
 
       {/* Top Financial KPI Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-        <div className="rounded-xl border border-border bg-card p-3.5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+      {/* Top Financial KPI Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-4">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Total Deposits Collected
             </span>
-            <Coins size={15} className="text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400">
+              <Coins size={15} />
+            </div>
           </div>
-          <p className="text-base font-bold text-card-foreground mt-1">
+          <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
             {money(summaryStats.totalCollected)}
-          </p>
+          </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-3.5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Confirmed Settlements
             </span>
-            <CheckCircle2 size={15} className="text-blue-600 dark:text-blue-400" />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
+              <CheckCircle2 size={15} />
+            </div>
           </div>
-          <p className="text-base font-bold text-card-foreground mt-1">
+          <div className="text-2xl font-bold tracking-tight text-blue-600 dark:text-blue-400 mt-2">
             {summaryStats.confirmedCount} Paid
-          </p>
+          </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-3.5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Pending / In Review
             </span>
-            <Clock size={15} className="text-amber-600 dark:text-amber-400" />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+              <Clock size={15} />
+            </div>
           </div>
-          <p className="text-base font-bold text-card-foreground mt-1">
+          <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
             {summaryStats.pendingCount} Pending
-          </p>
+          </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-3.5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Average Deposit Fee
             </span>
-            <TrendingUp size={15} className="text-slate-600 dark:text-slate-400" />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-muted-foreground">
+              <TrendingUp size={15} />
+            </div>
           </div>
-          <p className="text-base font-bold text-card-foreground mt-1">
+          <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
             {money(summaryStats.averageDeposit)}
-          </p>
+          </div>
         </div>
       </div>
 

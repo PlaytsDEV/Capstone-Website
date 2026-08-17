@@ -5,6 +5,7 @@ import { showNotification } from "../../../shared/utils/notification";
 import getFriendlyError from "../../../shared/utils/friendlyError";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
+import AdminReplyDraftButton from "./copilot/AdminReplyDraftButton";
 import "../styles/inquiry-details-modal.css";
 
 /* ── Module-level helpers ── */
@@ -611,6 +612,24 @@ export default function InquiryDetailsModal({ inquiry, onClose, onUpdate }) {
                   handleSubmitResponse(e);
                 }}
               >
+                <AdminReplyDraftButton 
+                  conversationId={currentInquiry?._id}
+                  ticketCategory={currentInquiry?.subject || "prospective_inquiry"}
+                  urgency="normal"
+                  recentMessages={
+                    currentInquiry?.message
+                      ? [{ senderRole: "prospective_tenant", message: currentInquiry.message }]
+                      : []
+                  }
+                  tenantContext={{
+                    name: currentInquiry?.name || currentInquiry?.fullName,
+                    email: currentInquiry?.email,
+                    preferredRoom: preferredRoom,
+                  }}
+                  branch={currentInquiry?.branch || currentInquiry?.preferredBranch}
+                  onDraftGenerated={(draft) => setResponse(draft)}
+                  disabled={isSubmitting}
+                />
                 <textarea
                   ref={textareaRef}
                   className="inquiry-details-modal-response-textarea"

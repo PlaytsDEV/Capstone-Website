@@ -129,46 +129,75 @@ export default function OverdueNoticeTracker({ branch }) {
       </div>
 
       {/* KPI Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-        <div className="rounded-xl border border-border bg-card p-3 shadow-xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-            Total Overdue Debt
-          </span>
-          <p className="text-sm font-bold text-red-600 mt-0.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-4">
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+              Total Overdue Debt
+            </span>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
+              <DollarSign size={15} />
+            </div>
+          </div>
+          <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
             ₱{Number(stats.totalExposure || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
+          </div>
         </div>
-        <div className="rounded-xl border border-border bg-card p-3 shadow-xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-            Overdue Accounts
-          </span>
-          <p className="text-sm font-bold text-card-foreground mt-0.5">
-            {stats.overdueAccounts || 0} Account(s)
-          </p>
+
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+              Overdue Accounts
+            </span>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <AlertCircle size={15} />
+            </div>
+          </div>
+          <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+            {stats.overdueAccounts || 0}
+          </div>
         </div>
-        <div className="rounded-xl border border-border bg-card p-3 shadow-xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-            Pending Notice 1
-          </span>
-          <p className="text-sm font-bold text-blue-600 mt-0.5">
-            {stats.pendingNotice1Count || 0} Pending
-          </p>
+
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+              Pending Notice 1
+            </span>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
+              <Clock size={15} />
+            </div>
+          </div>
+          <div className="text-2xl font-bold tracking-tight text-blue-600 dark:text-blue-400 mt-2">
+            {stats.pendingNotice1Count || 0}
+          </div>
         </div>
-        <div className="rounded-xl border border-border bg-card p-3 shadow-xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-            Notice 2 Urgent
-          </span>
-          <p className="text-sm font-bold text-amber-600 mt-0.5">
-            {stats.notice1ActiveCount || stats.notice2ActiveCount || 0} Active
-          </p>
+
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+              Notice 2 Urgent
+            </span>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+              <AlertCircle size={15} />
+            </div>
+          </div>
+          <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
+            {stats.notice1ActiveCount || stats.notice2ActiveCount || 0}
+          </div>
         </div>
-        <div className="rounded-xl border border-border bg-card p-3 shadow-xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-            Notice 3 / Critical
-          </span>
-          <p className="text-sm font-bold text-red-600 mt-0.5">
-            {stats.notice3FinalCount || 0} Escalated
-          </p>
+
+        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+              Notice 3 / Critical
+            </span>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
+              <ShieldAlert size={15} />
+            </div>
+          </div>
+          <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
+            {stats.notice3FinalCount || 0}
+          </div>
         </div>
       </div>
 

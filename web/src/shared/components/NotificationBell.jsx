@@ -28,6 +28,7 @@ import {
   Info,
   FileText,
   Slash,
+  Wrench,
 } from "lucide-react";
 
 function NotificationBellIcon({ type }) {
@@ -36,24 +37,27 @@ function NotificationBellIcon({ type }) {
     case "reservation_created":
     case "bill_generated":
       return <FileText {...iconProps} style={{ color: "#2563EB" }} />;
+    case "maintenance_update":
+    case "maintenance_new":
+      return <Wrench {...iconProps} style={{ color: "#2563EB" }} />;
     case "reservation_approved":
     case "reservation_confirmed":
     case "payment_verified":
     case "payment_approved":
-      return <CheckCircle2 {...iconProps} style={{ color: "#10B981" }} />;
+      return <CheckCircle2 {...iconProps} style={{ color: "#059669" }} />;
     case "reservation_rejected":
     case "reservation_cancelled":
     case "payment_rejected":
     case "visit_rejected":
-      return <XCircle {...iconProps} style={{ color: "#EF4444" }} />;
+      return <XCircle {...iconProps} style={{ color: "#DC2626" }} />;
     case "reservation_expired":
-      return <Clock {...iconProps} style={{ color: "#F59E0B" }} />;
+      return <Clock {...iconProps} style={{ color: "#D97706" }} />;
     case "reservation_noshow":
-      return <Slash {...iconProps} style={{ color: "#EF4444" }} />;
+      return <Slash {...iconProps} style={{ color: "#DC2626" }} />;
     case "payment_received":
-      return <CreditCard {...iconProps} style={{ color: "#4F46E5" }} />;
+      return <CreditCard {...iconProps} style={{ color: "#059669" }} />;
     case "visit_approved":
-      return <Home {...iconProps} style={{ color: "#0284C7" }} />;
+      return <Home {...iconProps} style={{ color: "#059669" }} />;
     case "account_suspended":
     case "account_banned":
       return <Lock {...iconProps} style={{ color: "#DC2626" }} />;
@@ -62,7 +66,7 @@ function NotificationBellIcon({ type }) {
     case "announcement":
       return <Megaphone {...iconProps} style={{ color: "#2563EB" }} />;
     default:
-      return <Info {...iconProps} style={{ color: "#6B7280" }} />;
+      return <Info {...iconProps} style={{ color: "#64748B" }} />;
   }
 }
 

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Clock, CheckCircle2, DollarSign } from "lucide-react";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
@@ -317,66 +318,50 @@ function PaymentRequestsTab() {
   </div>
  </div>
 
- {/* Stats */}
- <div style={{ display: "flex", gap: "16px", marginBottom: "24px", flexWrap: "wrap" }}>
- {[
- {
- label: "Pending Verification",
- value: pendingPayments.length,
- bg: "#FEF3C7",
- border: "#FDE68A",
- labelColor: "#92400E",
- valueColor: "#B45309",
- },
- {
- label: "Verified Payments",
- value: verifiedPayments.length,
- bg: "#D1FAE5",
- border: "#A7F3D0",
- labelColor: "#047857",
- valueColor: "#059669",
- },
- {
- label: "Total Revenue",
- value: `₱${verifiedPayments.reduce((s, p) => s + p.totalPrice, 0).toLocaleString()}`,
- bg: "#E0EBF5",
- border: "#BFDBFE",
- labelColor: "#1a1a1a",
- valueColor: "#1a1a1a",
- },
- ].map((stat) => (
- <div
- key={stat.label}
- style={{
- flex: 1,
- minWidth: "140px",
- padding: "20px",
- backgroundColor: stat.bg,
- borderRadius: "12px",
- border: `1px solid ${stat.border}`,
- }}
- >
- <p
- style={{
- fontSize: "14px",
- color: stat.labelColor,
- marginBottom: "4px",
- }}
- >
- {stat.label}
- </p>
- <p
- style={{
- fontSize: "28px",
- fontWeight: "700",
- color: stat.valueColor,
- }}
- >
- {stat.value}
- </p>
- </div>
- ))}
- </div>
+  {/* Stats */}
+  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-6">
+    <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+          Pending Verification
+        </span>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+          <Clock size={15} />
+        </div>
+      </div>
+      <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
+        {pendingPayments.length}
+      </div>
+    </div>
+
+    <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+          Verified Payments
+        </span>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400">
+          <CheckCircle2 size={15} />
+        </div>
+      </div>
+      <div className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-2">
+        {verifiedPayments.length}
+      </div>
+    </div>
+
+    <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+          Total Revenue
+        </span>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
+          <DollarSign size={15} />
+        </div>
+      </div>
+      <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+        ₱{verifiedPayments.reduce((s, p) => s + p.totalPrice, 0).toLocaleString()}
+      </div>
+    </div>
+  </div>
 
  <PaymentTable
  title={`💳 Pending Payment Verification (${pendingPayments.length})`}

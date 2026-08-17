@@ -109,7 +109,7 @@ export async function resolveTenantAIContext(userId, fallbackAuthUser = null) {
     `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
     user?.name ||
     user?.fullName ||
-    "Lilycrest Resident";
+    "Tenant";
 
   const roomNumber =
     user?.roomNumber ||
