@@ -7,10 +7,10 @@ import {
   getFirebaseErrorMessage,
 } from "../../../../shared/utils/authValidation.js";
 
-test("PASSWORD_RULES contains exactly 6 security criteria", () => {
-  assert.equal(PASSWORD_RULES.length, 6);
+test("PASSWORD_RULES contains exactly the five visible security criteria", () => {
+  assert.equal(PASSWORD_RULES.length, 5);
   const ids = PASSWORD_RULES.map((r) => r.id);
-  assert.deepEqual(ids, ["length", "uppercase", "lowercase", "number", "special", "no-spaces"]);
+  assert.deepEqual(ids, ["length", "uppercase", "lowercase", "number", "special"]);
 });
 
 test("evaluatePasswordRules verifies length rule (>= 8 characters)", () => {
@@ -65,13 +65,9 @@ test("evaluatePasswordRules verifies special character rule", () => {
 
 test("evaluatePasswordRules rejects passwords containing spaces", () => {
   const withSpace = evaluatePasswordRules("Strong Pass 123!");
-  const spaceRule = withSpace.results.find((r) => r.id === "no-spaces");
-  assert.equal(spaceRule.passed, false);
   assert.equal(withSpace.allPassed, false);
 
   const noSpace = evaluatePasswordRules("StrongPass123!");
-  const noSpaceRule = noSpace.results.find((r) => r.id === "no-spaces");
-  assert.equal(noSpaceRule.passed, true);
   assert.equal(noSpace.allPassed, true);
 });
 

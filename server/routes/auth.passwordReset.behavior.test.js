@@ -41,9 +41,9 @@ await jest.unstable_mockModule('../models/index.js', () => ({
   User: { findOne: async (q) => state.users.find((u) => u.firebaseUid === q.firebaseUid) || null }, UserSession: {},
 }));
 await jest.unstable_mockModule('../services/sessionInvalidationService.js', () => ({
-  invalidateUserSessions: async ({ user, reason }) => coreModule.invalidateUserSessionsCore({
+  invalidateUserSessions: async ({ user, firebaseUid, reason }) => coreModule.invalidateUserSessionsCore({
     db: db(), adminAuth: { revokeRefreshTokens: async (uid) => { state.firebase.push(uid); } },
-    userId: user.user_id, mongoId: user._id, firebaseUid: user.firebaseUid, reason,
+    userId: user?.user_id, mongoId: user?._id, firebaseUid: firebaseUid || user?.firebaseUid, reason,
     audit: async (event) => state.audits.push(event),
   }),
 }));
@@ -84,9 +84,9 @@ describe('web password reset finalization endpoint', () => {
     expect(result.status).toBe(401); expect(result.body).toEqual(expect.objectContaining({ code: 'AUTHENTICATION_FAILED' })); expect(state.users[0].securityVersion).toBe(2); expect(state.firebase).toEqual([]);
   });
 
-  test('unknown verified identity is enumeration-safe and causes no invalidation', async () => {
+  test('unknown verified identity still revokes Firebase refresh tokens without touching Mongo sessions', async () => {
     verifyIdToken.mockResolvedValueOnce({ uid: 'unknown' }); const result = await request({ userId: 'u1' });
-    expect(result.status).toBe(200); expect(result.body).toEqual({ message: 'Password reset finalized', sessionCleanupComplete: true }); expect(state.users[0].securityVersion).toBe(2); expect(state.firebase).toEqual([]);
+    expect(result.status).toBe(200); expect(result.body).toEqual({ message: 'Password reset finalized', sessionCleanupComplete: true }); expect(state.users[0].securityVersion).toBe(2); expect(state.firebase).toEqual(['unknown']);
   });
 
   test('partial physical cleanup is observable after logical invalidation succeeds', async () => {

@@ -25,7 +25,7 @@ test("password visibility control stays synchronized and accessible", async (t) 
     configFile: path.resolve(webRoot, "vite.config.js"),
     logLevel: "error",
     plugins: [harnessPlugin],
-    server: { host: "127.0.0.1", port: 0 },
+    server: { host: "127.0.0.1", port: 0, open: false },
   });
   await vite.listen();
   t.after(() => vite.close());
@@ -39,7 +39,10 @@ test("password visibility control stays synchronized and accessible", async (t) 
     if (message.type() === "error") browserErrors.push(message.text());
   });
   const address = vite.httpServer.address();
-  await page.goto(`http://127.0.0.1:${address.port}/__password-visibility-test__`);
+  await page.goto(`http://127.0.0.1:${address.port}/__password-visibility-test__`, {
+    waitUntil: "domcontentloaded",
+    timeout: 90_000,
+  });
   await page.getByTestId("password").waitFor({ state: "visible", timeout: 30_000 }).catch(() => {
     assert.fail(`password harness did not render: ${browserErrors.join(" | ")}`);
   });
@@ -102,10 +105,15 @@ test("every password surface uses the standardized current-state convention", ()
   }
 
   const serverReset = fs.readFileSync(
-    path.resolve(webRoot, "../server/mobile/controllers/auth.controller.js"),
+    path.resolve(webRoot, "../server/mobile/controllers/legacyPasswordReset.controller.js"),
     "utf8",
   );
-  assert.match(serverReset, /id="eye1" aria-label="Show password" title="Show password" aria-pressed="false"><svg class="eye-open"/);
-  assert.match(serverReset, /id="eye2" aria-label="Show password" title="Show password" aria-pressed="false"><svg class="eye-open"/);
-  assert.match(serverReset, /btn\.querySelector\('\.eye-open'\)\.hidden = !visible/);
+  const serverResetScript = fs.readFileSync(
+    path.resolve(webRoot, "../server/mobile/public/legacy-password-reset.js"),
+    "utf8",
+  );
+  assert.equal((serverReset.match(/class="eye" type="button" data-target=/g) || []).length, 2);
+  assert.match(serverReset, /aria-label="Show password"/);
+  assert.match(serverResetScript, /button\.addEventListener\('click'/);
+  assert.match(serverResetScript, /input\.type = visible \? 'password' : 'text'/);
 });

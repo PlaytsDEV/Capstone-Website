@@ -60,6 +60,9 @@ async function startAppWithDb(seededDb) {
   jest.resetModules();
   db = seededDb;
   jest.unstable_mockModule("mongoose", () => ({ default: { connection: { db } } }));
+  jest.unstable_mockModule("../controllers/passwordResetController.js", () => ({
+    requestMobileTenantPasswordReset: jest.fn((_req, res) => res.status(202).json({ message: "accepted" })),
+  }));
   const { default: mobileAuthRoutes } = await import("./mobileAuthRoutes.js");
 
   app = express();
