@@ -20,8 +20,8 @@ export default function AdminRoomOccupantsCard({ roomDetails, occupants = [], on
       {/* Room Header */}
       <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-border">
         <div className="flex items-center gap-2">
-          <div className="p-2 rounded-lg bg-muted border border-border text-primary shrink-0">
-            <Home size={16} />
+          <div className="flex shrink-0 items-center justify-center text-primary">
+            <Home size={18} />
           </div>
           <div>
             <h4 className="font-bold text-sm text-foreground">Room {roomDetails.roomNumber}</h4>

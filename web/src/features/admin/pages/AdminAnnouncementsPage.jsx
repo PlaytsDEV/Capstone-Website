@@ -827,23 +827,27 @@ export default function AdminAnnouncementsPage() {
             label: "TOTAL DRAFTS",
             value: stats.drafts,
             icon: ScrollText,
+            iconColor: "text-slate-500 dark:text-slate-400",
           },
           {
             label: "ACTIVE NOTICES",
             value: stats.active,
             icon: Megaphone,
+            iconColor: "text-emerald-600 dark:text-emerald-400",
           },
           {
             label: "SCHEDULED",
             value: stats.scheduled,
             icon: CalendarDays,
+            iconColor: "text-amber-600 dark:text-amber-400",
           },
           {
             label: "TOTAL PUBLISHED",
             value: stats.sent,
             icon: Send,
+            iconColor: "text-sky-600 dark:text-sky-400",
           },
-        ].map(({ label, value, icon: Icon }) => (
+        ].map(({ label, value, icon: Icon, iconColor }) => (
           <div
             key={label}
             className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default"
@@ -852,8 +856,8 @@ export default function AdminAnnouncementsPage() {
               <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
                 {label}
               </span>
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-muted-foreground">
-                <Icon size={15} />
+              <div className={`flex shrink-0 items-center justify-center ${iconColor}`}>
+                <Icon size={18} />
               </div>
             </div>
             <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
@@ -868,8 +872,8 @@ export default function AdminAnnouncementsPage() {
         <section className="col-span-12 flex h-[820px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs xl:col-span-5">
           <div className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-card-foreground">
-                <Megaphone size={16} />
+              <div className="flex shrink-0 items-center justify-center text-sky-600 dark:text-sky-400">
+                <Megaphone size={20} />
               </div>
               <div>
                 <h2 className="text-base font-semibold leading-none text-card-foreground">
@@ -1261,8 +1265,8 @@ export default function AdminAnnouncementsPage() {
           {/* Header */}
           <div className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-card-foreground">
-                <Clock size={16} />
+              <div className="flex shrink-0 items-center justify-center text-amber-600 dark:text-amber-400">
+                <Clock size={20} />
               </div>
               <div>
                 <h2 className="text-base font-semibold leading-none text-card-foreground">

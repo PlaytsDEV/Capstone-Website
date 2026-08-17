@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Check, Clock3, FileText, Image as ImageIcon, Loader2, Paperclip } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Check, ChevronDown, Clock3, FileText, Image as ImageIcon, Loader2, Paperclip } from "lucide-react";
 import {
   buildTimelineActor,
   fmtDateTime,
@@ -110,15 +110,24 @@ export function MaintenanceTimeline({
   onRemoveAttachment,
   canRemoveAttachments = false,
 }) {
+  const [expandedKeys, setExpandedKeys] = useState({});
   const [visibleCount, setVisibleCount] = useState(TIMELINE_PAGE_SIZE);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const sentinelRef = useRef(null);
 
-  // Reset pagination when the underlying items collection changes
+  // Reset pagination and keep collapsed by default when underlying items collection changes
   useEffect(() => {
     setVisibleCount(Math.min(items.length, TIMELINE_PAGE_SIZE));
     setIsLoadingMore(false);
+    setExpandedKeys({});
   }, [items]);
+
+  const toggleItem = useCallback((key) => {
+    setExpandedKeys((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  }, []);
 
   const loadMoreItems = useCallback(() => {
     if (visibleCount >= items.length || isLoadingMore) return;
@@ -147,6 +156,29 @@ export function MaintenanceTimeline({
     return () => observer.disconnect();
   }, [loadMoreItems]);
 
+  const visibleItems = useMemo(
+    () => items.slice(0, visibleCount),
+    [items, visibleCount],
+  );
+  const hasMore = visibleCount < items.length;
+
+  const allVisibleExpanded = useMemo(() => {
+    if (visibleItems.length === 0) return false;
+    return visibleItems.every((item) => Boolean(expandedKeys[item.key]));
+  }, [visibleItems, expandedKeys]);
+
+  const handleToggleAll = useCallback(() => {
+    if (allVisibleExpanded) {
+      setExpandedKeys({});
+    } else {
+      const next = {};
+      visibleItems.forEach((item) => {
+        next[item.key] = true;
+      });
+      setExpandedKeys(next);
+    }
+  }, [allVisibleExpanded, visibleItems]);
+
   if (!items.length) {
     return (
       <div className="flex items-center gap-2 text-xs text-slate-500 py-4">
@@ -156,70 +188,109 @@ export function MaintenanceTimeline({
     );
   }
 
-  const visibleItems = items.slice(0, visibleCount);
-  const hasMore = visibleCount < items.length;
-
   return (
     <div className="space-y-3">
-      {visibleItems.map((item) => (
-        <article
-          key={item.key}
-          className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-sm space-y-2"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <strong className="block text-xs font-bold text-slate-900 dark:text-slate-100">
-                {item.title}
-              </strong>
-              <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">
-                {fmtDateTime(item.timestamp)}
-                {item.meta ? ` - ${item.meta}` : ""}
-              </span>
-            </div>
-            <SectionBadge tone={item.visibility === "tenant" ? "blue" : "amber"}>
-              {getTimelineVisibility(item)}
-            </SectionBadge>
-          </div>
+      {/* Quick Global Expand / Collapse Control */}
+      {visibleItems.length > 0 && (
+        <div className="flex items-center justify-between pb-0.5 text-xs">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+            {allVisibleExpanded ? "All entries expanded" : "Click any entry to view full details"}
+          </span>
+          <button
+            type="button"
+            onClick={handleToggleAll}
+            className="font-semibold text-primary dark:text-sky-400 hover:underline cursor-pointer transition text-xs"
+          >
+            {allVisibleExpanded ? "Collapse All" : "Expand All"}
+          </button>
+        </div>
+      )}
 
-          <div className="text-[11px] text-slate-500 dark:text-slate-400">
-            {item.actorPrefix || "Updated by"}:{" "}
-            <span className="font-semibold text-slate-700 dark:text-slate-300">
-              {buildTimelineActor({
-                role: item.actorRole,
-                name: item.actorName,
-                fallback: "Unknown admin",
-              })}
-            </span>
-          </div>
+      {visibleItems.map((item) => {
+        const isExpanded = Boolean(expandedKeys[item.key]);
 
-          {item.message && (
-            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50/70 dark:bg-slate-800/40 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-              {item.type === "attachment_removed" ? `Reason: ${item.message}` : item.message}
-            </p>
-          )}
+        return (
+          <article
+            key={item.key}
+            className={`rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-all duration-200 ${
+              isExpanded ? "p-3.5 space-y-2.5" : "p-3"
+            }`}
+          >
+            {/* Clickable Header Row */}
+            <button
+              type="button"
+              onClick={() => toggleItem(item.key)}
+              aria-expanded={isExpanded}
+              className="w-full text-left flex items-center justify-between gap-2.5 group cursor-pointer select-none"
+            >
+              <div className="min-w-0 flex-1">
+                <strong className="block text-xs font-bold text-slate-900 dark:text-slate-100 group-hover:text-primary dark:group-hover:text-sky-400 transition-colors">
+                  {item.title}
+                </strong>
+                <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">
+                  {fmtDateTime(item.timestamp)}
+                  {item.meta ? ` - ${item.meta}` : ""}
+                </span>
+              </div>
 
-          {item.attachmentName && (
-            <p className="text-xs text-slate-500">File: {item.attachmentName}</p>
-          )}
-          {item.branch && (
-            <p className="text-xs text-slate-500">Branch: {formatBranchLabel(item.branch)}</p>
-          )}
-          {item.providerName && (
-            <p className="text-xs text-slate-500">Provider: {item.providerName}</p>
-          )}
-          {item.previousProviderName && (
-            <p className="text-[11px] text-slate-400">Previous provider: {item.previousProviderName}</p>
-          )}
+              <div className="flex items-center gap-2 shrink-0">
+                <SectionBadge tone={item.visibility === "tenant" ? "blue" : "amber"}>
+                  {getTimelineVisibility(item)}
+                </SectionBadge>
+                <div className="p-1 rounded-md text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-200 transition-colors">
+                  <ChevronDown
+                    size={15}
+                    className={`transition-transform duration-200 ${isExpanded ? "rotate-180" : "rotate-0"}`}
+                  />
+                </div>
+              </div>
+            </button>
 
-          <TimelineAttachmentList
-            attachments={item.attachments}
-            targets={item.attachmentTargets}
-            onRemove={onRemoveAttachment}
-            canRemove={canRemoveAttachments}
-            removed={item.removed}
-          />
-        </article>
-      ))}
+            {/* Collapsible Details Body */}
+            {isExpanded && (
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-2 text-xs">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {item.actorPrefix || "Updated by"}:{" "}
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    {buildTimelineActor({
+                      role: item.actorRole,
+                      name: item.actorName,
+                      fallback: "Unknown admin",
+                    })}
+                  </span>
+                </div>
+
+                {item.message && (
+                  <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50/70 dark:bg-slate-800/40 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
+                    {item.type === "attachment_removed" ? `Reason: ${item.message}` : item.message}
+                  </p>
+                )}
+
+                {item.attachmentName && (
+                  <p className="text-xs text-slate-500">File: {item.attachmentName}</p>
+                )}
+                {item.branch && (
+                  <p className="text-xs text-slate-500">Branch: {formatBranchLabel(item.branch)}</p>
+                )}
+                {item.providerName && (
+                  <p className="text-xs text-slate-500">Provider: {item.providerName}</p>
+                )}
+                {item.previousProviderName && (
+                  <p className="text-[11px] text-slate-400">Previous provider: {item.previousProviderName}</p>
+                )}
+
+                <TimelineAttachmentList
+                  attachments={item.attachments}
+                  targets={item.attachmentTargets}
+                  onRemove={onRemoveAttachment}
+                  canRemove={canRemoveAttachments}
+                  removed={item.removed}
+                />
+              </div>
+            )}
+          </article>
+        );
+      })}
 
       {/* Loading Skeleton Indicator when fetching more items */}
       {isLoadingMore && (

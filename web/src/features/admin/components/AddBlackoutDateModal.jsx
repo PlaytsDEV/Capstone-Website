@@ -200,7 +200,7 @@ export default function AddBlackoutDateModal({
               }
               className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg shadow-xs transition-all ${
                 isValid && !isLoading
-                  ? "bg-[#0A1628] hover:bg-[#13243D] text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200 cursor-pointer focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                  ? "bg-[#0A1628] hover:bg-[#13243D] text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200 cursor-pointer focus-visible:ring-2 focus-visible:ring-slate-500"
                   : "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
               }`}
             >

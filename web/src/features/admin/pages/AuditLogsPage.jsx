@@ -359,7 +359,11 @@ const AuditLogsPage = () => {
         id: key,
         key,
         label: key === AUDIT_TRAIL_TAB ? "Audit Trail" : "Security Signals",
-        icon: key === AUDIT_TRAIL_TAB ? FileText : Shield,
+        icon: key === AUDIT_TRAIL_TAB ? FileText : ShieldAlert,
+        iconClassName:
+          key === AUDIT_TRAIL_TAB
+            ? "text-sky-500 dark:text-sky-400"
+            : "text-rose-500 dark:text-rose-400",
         badge: isSignals && signalCount > 0 ? signalCount : undefined,
         badgeVariant: "danger",
       };

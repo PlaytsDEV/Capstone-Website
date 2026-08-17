@@ -36,8 +36,8 @@ export default function AdminDailyBriefingCard({ briefing, onCloseDrawer }) {
       {/* Header */}
       <div className="flex items-start justify-between gap-2 pb-3 border-b border-border">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 shrink-0">
-            <Sun size={18} />
+          <div className="flex shrink-0 items-center justify-center text-amber-600 dark:text-amber-400">
+            <Sun size={20} />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -159,7 +159,7 @@ export default function AdminDailyBriefingCard({ briefing, onCloseDrawer }) {
           </div>
           {announcements.map((ann, idx) => (
             <div key={idx} className="p-2 rounded bg-muted/20 border border-border text-[11px] text-foreground font-medium">
-              📢 {ann.title}
+              {ann.title}
             </div>
           ))}
         </div>

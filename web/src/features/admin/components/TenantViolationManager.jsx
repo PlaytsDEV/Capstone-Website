@@ -53,14 +53,14 @@ const getInitials = (name) => {
   return name.slice(0, 2).toUpperCase();
 };
 
-function ResidentAvatar({ avatarUrl, name, className = "h-8 w-8 text-[11px]" }) {
+function TenantAvatar({ avatarUrl, name, className = "h-8 w-8 text-[11px]" }) {
   const [imgError, setImgError] = useState(false);
 
   if (avatarUrl && !imgError) {
     return (
       <img
         src={avatarUrl}
-        alt={name || "Resident"}
+        alt={name || "Tenant"}
         onError={() => setImgError(true)}
         className={`${className} rounded-full object-cover border border-border shrink-0`}
       />
@@ -162,16 +162,14 @@ export default function TenantViolationManager({ branch }) {
     <div className="space-y-4">
       {/* Top KPI Metrics Banner */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-4">
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Total Infractions
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              <FileText size={15} />
-            </div>
+            <FileText size={18} className="text-slate-500 dark:text-slate-400 shrink-0" />
           </div>
-          <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
+          <div className="text-2xl font-bold tracking-tight text-card-foreground mt-2">
             {stats.total}
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground font-medium">
@@ -179,14 +177,12 @@ export default function TenantViolationManager({ branch }) {
           </p>
         </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Active Warnings
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
-              <AlertTriangle size={15} />
-            </div>
+            <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400 shrink-0" />
           </div>
           <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
             {stats.activeWarnings}
@@ -196,14 +192,12 @@ export default function TenantViolationManager({ branch }) {
           </p>
         </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Assessed Penalties
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
-              <DollarSign size={15} />
-            </div>
+            <DollarSign size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
           </div>
           <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
             ₱{Number(stats.totalPenalties || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -213,14 +207,12 @@ export default function TenantViolationManager({ branch }) {
           </p>
         </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Escalated Cases
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
-              <ShieldAlert size={15} />
-            </div>
+            <ShieldAlert size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
           </div>
           <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
             {stats.escalatedCases}
@@ -237,7 +229,7 @@ export default function TenantViolationManager({ branch }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground">
-              <AlertTriangle size={18} className="text-amber-500" />
+              <AlertTriangle size={18} className="text-rose-600 dark:text-rose-400" />
               Tenant Violation & Warning Log
             </h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
@@ -251,7 +243,7 @@ export default function TenantViolationManager({ branch }) {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search violation or resident..."
+                placeholder="Search violation or tenant..."
                 className="w-full h-8 rounded-lg border border-border bg-card pl-8 pr-7 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
               />
               {searchQuery && (
@@ -278,7 +270,7 @@ export default function TenantViolationManager({ branch }) {
             <button
               type="button"
               onClick={() => setRecordModalOpen(true)}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 text-xs font-bold text-white shadow-xs transition hover:bg-slate-800 active:scale-[0.98] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#0A1628] px-3.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
               title="Log new tenant rule infraction"
             >
               <Plus size={14} /> Log Violation
@@ -297,7 +289,7 @@ export default function TenantViolationManager({ branch }) {
                 onClick={() => setStatusFilter(tab.id)}
                 className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                   statusFilter === tab.id
-                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950"
+                    ? "bg-[#0A1628] text-white shadow-xs dark:bg-slate-100 dark:text-slate-950"
                     : "border border-border bg-card text-muted-foreground hover:bg-muted hover:text-card-foreground"
                 }`}
               >
@@ -333,7 +325,7 @@ export default function TenantViolationManager({ branch }) {
                     Logged Date
                   </th>
                   <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
-                    Resident & Room
+                    Tenant & Room
                   </th>
                   <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
                     Category

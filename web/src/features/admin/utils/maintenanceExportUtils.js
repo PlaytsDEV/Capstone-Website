@@ -29,7 +29,7 @@ export const MAINTENANCE_CSV_COLUMNS = [
   { key: "providerContact", label: "Contractor Contact Number" },
   { key: "actualCost", label: "Total Repair Cost (PHP)" },
   { key: "costAttribution", label: "Cost Attribution" },
-  { key: "slaState", label: "SLA State" },
+  { key: "slaState", label: "Turnaround Status" },
   { key: "description", label: "Issue Description" },
   { key: "adminNotes", label: "Admin / Work Log Notes" },
   { key: "submittedAt", label: "Submitted Date & Time" },
@@ -242,17 +242,17 @@ export function resolveCostAttribution(req = {}) {
 }
 
 /**
- * Resolve SLA state label.
+ * Resolve turnaround state label.
  */
 export function resolveSlaStateLabel(req = {}) {
   if (req.slaState?.label) {
     const l = req.slaState.label;
-    if (l === "delayed" || l === "overdue") return "SLA Overdue";
+    if (l === "delayed" || l === "overdue") return "Delayed";
     if (l === "priority" || l === "due_soon") return "Due Soon";
     if (l === "closed" || l === "completed") return "Completed";
     return "On Track";
   }
-  if (req.isOverdue) return "SLA Overdue";
+  if (req.isOverdue) return "Delayed";
   return "On Track";
 }
 
@@ -418,7 +418,7 @@ export async function handleExportMaintenancePDF({
   const activeUrgencyLabel =
     !urgencyFilter || urgencyFilter === "all" ? null : `Urgency: ${getMaintenanceUrgencyMeta(urgencyFilter).label}`;
   const activeSlaLabel =
-    !slaFilter || slaFilter === "all" ? null : `SLA: ${slaFilter}`;
+    !slaFilter || slaFilter === "all" ? null : `Turnaround: ${slaFilter}`;
   const dateRangeLabel =
     dateFrom || dateTo ? `Date Range: ${dateFrom || "Start"} to ${dateTo || "Present"}` : null;
 

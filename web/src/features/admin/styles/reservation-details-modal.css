@@ -1067,15 +1067,11 @@
 }
 
 .rdm-stage-guide-icon-wrap {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: #e2e8f0;
-  color: #475569;
+  color: #0284c7;
 }
 
 .rdm-stage-guide-msg {
@@ -1670,12 +1666,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  color: #0f172a;
+  color: #0284c7;
   flex-shrink: 0;
 }
 

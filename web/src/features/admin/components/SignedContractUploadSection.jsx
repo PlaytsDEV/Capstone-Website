@@ -345,8 +345,8 @@ export default function SignedContractUploadSection({
                         className="w-12 h-12 object-cover rounded-lg border border-border flex-shrink-0 bg-background"
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0 border border-primary/20">
-                        <FileText className="w-6 h-6" />
+                      <div className="flex shrink-0 items-center justify-center text-primary">
+                        <FileText className="w-8 h-8" />
                       </div>
                     )}
                     <div className="min-w-0">
@@ -468,8 +468,8 @@ export default function SignedContractUploadSection({
               className="bg-card border border-border rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
             >
               <div className="flex items-start gap-3 min-w-0">
-                <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <FileCheck className="w-5 h-5" />
+                <div className="flex shrink-0 items-center justify-center text-primary mt-0.5">
+                  <FileCheck className="w-6 h-6" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">

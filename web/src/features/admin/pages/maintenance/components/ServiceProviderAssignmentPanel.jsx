@@ -889,8 +889,8 @@ export function ServiceProviderAssignmentPanel({
             </div>
           ) : providers.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/30 p-5 text-center space-y-3">
-              <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-slate-200/70 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                <BookOpen size={16} />
+              <div className="mx-auto flex shrink-0 items-center justify-center text-slate-500 dark:text-slate-400">
+                <BookOpen size={24} />
               </div>
               <div className="space-y-1 max-w-sm mx-auto">
                 <h5 className="text-xs font-bold text-slate-900 dark:text-slate-100">

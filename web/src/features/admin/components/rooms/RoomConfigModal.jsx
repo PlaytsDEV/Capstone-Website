@@ -13,6 +13,7 @@ import {
   Building2,
   DollarSign,
   ExternalLink,
+  Eye,
   FileText,
   Hash,
   Image as ImageIcon,
@@ -31,6 +32,7 @@ import {
 } from "lucide-react";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 import { roomApi } from "../../../../shared/api/roomApi";
+import { showNotification } from "../../../../shared/utils/notification";
 import BedOccupantDetailModal from "./BedOccupantDetailModal";
 
 const makeImageId = () =>
@@ -70,10 +72,8 @@ export default function RoomConfigModal({
   const [draftRoom, setDraftRoom] = useState(room);
   const [isEditing, setIsEditing] = useState(false);
   const [imagesState, setImagesState] = useState([]);
-  const [activeMenuBedId, setActiveMenuBedId] = useState(null);
+  const [activeMenuBedIndex, setActiveMenuBedIndex] = useState(null);
   const [selectedOccupantBed, setSelectedOccupantBed] = useState(null);
-  const [repairing, setRepairing] = useState(false);
-  const [repairMsg, setRepairMsg] = useState(null);
   const [newAmenityInput, setNewAmenityInput] = useState("");
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
@@ -113,6 +113,11 @@ export default function RoomConfigModal({
     const origAmenities = getNormalizedAmenities(room?.amenities).join(",");
     const draftAmenities = getNormalizedAmenities(draftRoom?.amenities).join(",");
     if (origAmenities !== draftAmenities) return true;
+
+    const origBeds = JSON.stringify((room?.beds || []).map((b) => ({ id: b.id, position: b.position, status: b.status })));
+    const draftBeds = JSON.stringify((draftRoom?.beds || []).map((b) => ({ id: b.id, position: b.position, status: b.status })));
+    if (origBeds !== draftBeds) return true;
+
     return false;
   };
 
@@ -218,7 +223,7 @@ export default function RoomConfigModal({
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!e.target.closest(".bed-action-menu")) {
-        setActiveMenuBedId(null);
+        setActiveMenuBedIndex(null);
       }
     };
     document.addEventListener("pointerdown", handleClickOutside);
@@ -270,10 +275,10 @@ export default function RoomConfigModal({
     setImagesState((prev) => prev.filter((entry) => entry.id !== imageId));
   };
 
-  const handleToggleMaintenance = (bedId) => {
+  const handleToggleMaintenance = (targetIndex) => {
     setBeds((beds) =>
-      beds.map((bed) => {
-        if (bed.id !== bedId) return bed;
+      beds.map((bed, idx) => {
+        if (idx !== targetIndex) return bed;
         const currentStatus = getBedStatus(bed);
         if (["occupied", "reserved", "locked"].includes(currentStatus)) {
           return bed;
@@ -286,19 +291,18 @@ export default function RoomConfigModal({
     );
   };
 
-  const handleBedFieldChange = (bedId, field, value) => {
+  const handleBedFieldChange = (targetIndex, field, value) => {
     setBeds((beds) =>
-      beds.map((bed) => (bed.id === bedId ? { ...bed, [field]: value } : bed)),
+      beds.map((bed, idx) => (idx === targetIndex ? { ...bed, [field]: value } : bed)),
     );
   };
 
   const handleAddBed = () => {
     if (isMaxBedsReached) {
-      alert(
-        `Cannot add more beds. Maximum limit of ${maxBeds} beds reached for ${formatRoomType(
-          roomType,
-        )} room.`,
-      );
+      showNotification({
+        message: `Maximum limit of ${maxBeds} beds reached for ${formatRoomType(roomType)} room.`,
+        type: "warning",
+      });
       return;
     }
     setBeds((beds) => [
@@ -311,22 +315,21 @@ export default function RoomConfigModal({
     ]);
   };
 
-  const handleMoveBed = (bedId, direction) => {
+  const handleMoveBed = (targetIndex, direction) => {
     setBeds((beds) => {
-      const index = beds.findIndex((bed) => bed.id === bedId);
-      const nextIndex = direction === "up" ? index - 1 : index + 1;
-      if (index === -1 || nextIndex < 0 || nextIndex >= beds.length) {
+      const nextIndex = direction === "up" ? targetIndex - 1 : targetIndex + 1;
+      if (targetIndex < 0 || nextIndex < 0 || nextIndex >= beds.length) {
         return beds;
       }
       const nextBeds = [...beds];
-      const [movedBed] = nextBeds.splice(index, 1);
+      const [movedBed] = nextBeds.splice(targetIndex, 1);
       nextBeds.splice(nextIndex, 0, movedBed);
       return nextBeds;
     });
   };
 
-  const handleRemoveBed = (bedId) => {
-    setBeds((beds) => beds.filter((bed) => bed.id !== bedId));
+  const handleRemoveBed = (targetIndex) => {
+    setBeds((beds) => beds.filter((_, idx) => idx !== targetIndex));
   };
 
   const handleOpenOccupantDetails = (bed) => {
@@ -344,36 +347,54 @@ export default function RoomConfigModal({
     const bedIds = (draftRoom.beds || []).map((b) => String(b.id || "").trim().toLowerCase());
     const uniqueBedIds = new Set(bedIds);
     if (bedIds.length !== uniqueBedIds.size) {
-      alert("Each bed must have a unique Code (e.g. bed-1, bed-2). Duplicate bed codes are not allowed.");
+      showNotification({
+        message: "Each bed must have a unique code (e.g. bed-1, bed-2). Duplicate bed codes are not allowed.",
+        type: "warning",
+      });
       return;
     }
 
     // 2. Room Name validation
     const nameVal = (draftRoom.name || "").trim();
     if (!nameVal) {
-      alert("Room name is required.");
+      showNotification({
+        message: "Room name is required.",
+        type: "warning",
+      });
       return;
     }
     if (nameVal.length > 50) {
-      alert("Room name cannot exceed 50 characters.");
+      showNotification({
+        message: "Room name cannot exceed 50 characters.",
+        type: "warning",
+      });
       return;
     }
 
     // 3. Room Number validation
     const roomNumVal = (draftRoom.roomNumber || "").trim();
     if (!roomNumVal) {
-      alert("Room number is required.");
+      showNotification({
+        message: "Room number is required.",
+        type: "warning",
+      });
       return;
     }
     if (roomNumVal.length > 10) {
-      alert("Room number cannot exceed 10 digits.");
+      showNotification({
+        message: "Room number cannot exceed 10 digits.",
+        type: "warning",
+      });
       return;
     }
 
     // 4. Base Price validation
     const priceVal = Number(draftRoom.price || 0);
     if (priceVal < 0 || priceVal > 1000000) {
-      alert("Base price must be between ₱0 and ₱1,000,000.");
+      showNotification({
+        message: "Base price must be between ₱0 and ₱1,000,000.",
+        type: "warning",
+      });
       return;
     }
 
@@ -415,91 +436,55 @@ export default function RoomConfigModal({
       } else {
         await roomApi.update(draftRoom._id, updatedDraft);
         qc.invalidateQueries({ queryKey: ["rooms"] });
+        showNotification({
+          message: "Room configuration saved successfully.",
+          type: "success",
+        });
         onClose();
       }
     } catch (err) {
       console.error("Failed to save room details:", err);
+      showNotification({
+        message: "Unable to save room changes. Please review the details and try again.",
+        type: "error",
+      });
     } finally {
       setSaving(false);
     }
   };
 
-  const hasDrift =
-    !isPrivate &&
-    (draftRoom.currentOccupancy || 0) > 0 &&
-    (draftRoom.beds || []).every((b) => getBedStatus(b) === "available");
-
-  const reservationIdCounts = {};
-  for (const bed of draftRoom.beds || []) {
-    const s = getBedStatus(bed);
-    const rid = bed.occupiedBy?.reservationId;
-    if ((s === "reserved" || s === "occupied") && rid) {
-      const key = String(rid);
-      reservationIdCounts[key] = (reservationIdCounts[key] || 0) + 1;
-    }
-  }
-  const hasDualBedPointer =
-    !isPrivate && Object.values(reservationIdCounts).some((count) => count > 1);
-
-  const handleRepairOccupancy = async () => {
-    setRepairing(true);
-    setRepairMsg(null);
-    try {
-      const res = await roomApi.repairOccupancy(draftRoom._id);
-      const corrected = res?.data?.corrected || res?.corrected;
-      const repairedRoom = res?.data?.room || res?.room;
-      if (repairedRoom) {
-        setDraftRoom((prev) => ({
-          ...prev,
-          currentOccupancy: repairedRoom.currentOccupancy,
-          available: repairedRoom.available,
-          beds: repairedRoom.beds || prev.beds,
-        }));
-      }
-      qc.invalidateQueries({ queryKey: ["rooms"] });
-      const from = corrected?.from?.currentOccupancy ?? "?";
-      const to = corrected?.to?.currentOccupancy ?? repairedRoom?.currentOccupancy ?? "?";
-      setRepairMsg({
-        type: "success",
-        text: `Occupancy corrected: ${from} → ${to}`,
-      });
-    } catch (err) {
-      console.error("Repair occupancy failed:", err);
-      setRepairMsg({
-        type: "error",
-        text: err?.message || "Repair failed. Please try again.",
-      });
-    } finally {
-      setRepairing(false);
-    }
-  };
-
   if (!draftRoom) return null;
-
-  const occupancyPercent = Math.min(
-    100,
-    Math.round(
-      ((isPrivate
-        ? Math.min(1, draftRoom.currentOccupancy || 0)
-        : draftRoom.currentOccupancy || 0) /
-        (isPrivate ? 1 : draftRoom.capacity || 1)) *
-        100,
-    ),
-  );
 
   // Group beds by bunk pairs (2 beds per bunk)
   const bedsArray = draftRoom.beds || [];
   const bunksList = [];
   for (let i = 0; i < bedsArray.length; i += 2) {
     const bunkLetter = String.fromCharCode(65 + Math.floor(i / 2));
+    const bunkBeds = bedsArray.slice(i, i + 2).map((bed, offset) => ({
+      ...bed,
+      bunkBlock: bunkLetter,
+      globalIndex: i + offset,
+    }));
+    const occupiedInBunk = bunkBeds.filter((b) => {
+      const st = getBedStatus(b);
+      return (
+        ["occupied", "reserved", "locked"].includes(st) ||
+        b.available === false ||
+        Boolean(b.occupiedBy?.userId) ||
+        Boolean(b.occupiedBy?.name) ||
+        Boolean(b.tenantName) ||
+        Boolean(b.userName)
+      );
+    }).length;
+    const maintenanceInBunk = bunkBeds.filter((b) => getBedStatus(b) === "maintenance").length;
+    const availableInBunk = Math.max(0, bunkBeds.length - occupiedInBunk - maintenanceInBunk);
     bunksList.push({
       bunkBlock: bunkLetter,
       bunkLabel: `Bunk ${bunkLetter}`,
-      beds: bedsArray.slice(i, i + 2).map((bed, offset) => ({
-        ...bed,
-        bunkBlock: bunkLetter,
-        globalIndex: i + offset,
-      })),
+      beds: bunkBeds,
+      occupiedCount: occupiedInBunk,
+      availableCount: availableInBunk,
+      maintenanceCount: maintenanceInBunk,
     });
   }
 
@@ -512,7 +497,9 @@ export default function RoomConfigModal({
         {/* Header */}
         <div className="admin-modal-header rfm-header">
           <div className="rfm-header__title-block">
-            <Building2 size={20} className="rfm-header__icon" />
+            <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-[#0A1628] dark:text-[#D4AF37] border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
+              <Building2 size={20} />
+            </div>
             <div>
               <h2>Configure Room: {draftRoom.name || `Room ${draftRoom.roomNumber}`}</h2>
               <div className="room-config-modal__header-badges">
@@ -523,9 +510,18 @@ export default function RoomConfigModal({
                 <span className="room-config-modal__badge">
                   Floor {draftRoom.floor}
                 </span>
-                {isEditing && (
+                <span className="room-config-modal__badge">
+                  {formatRoomType(roomType)}
+                </span>
+                {isEditing ? (
                   <span className="room-config-modal__badge room-config-modal__badge--editing">
+                    <Pencil size={11} className="text-amber-600 dark:text-amber-400" />
                     Editing Mode Active
+                  </span>
+                ) : (
+                  <span className="room-config-modal__badge">
+                    <Eye size={11} className="text-slate-500" />
+                    View Mode
                   </span>
                 )}
               </div>
@@ -537,7 +533,7 @@ export default function RoomConfigModal({
               type="button"
               className={`room-config-modal__icon-btn ${isEditing ? "rfm-type-card--active" : ""}`}
               onClick={handleAttemptToggleEdit}
-              aria-label={isEditing ? "View mode" : "Edit room configuration"}
+              aria-label={isEditing ? "Switch to view mode" : "Edit room configuration"}
               title={isEditing ? "Switch to View Mode" : "Edit Room Details"}
             >
               <Pencil size={16} />
@@ -720,17 +716,17 @@ export default function RoomConfigModal({
             ) : (
               <div className="info-grid">
                 <div className="info-tile">
-                  <span className="info-tile__label">Type</span>
+                  <span className="info-tile__label">Room Type</span>
                   <span className="info-tile__value">{formatRoomType(draftRoom.type)}</span>
                 </div>
                 <div className="info-tile">
-                  <span className="info-tile__label">Capacity</span>
-                  <span className="info-tile__value">{draftRoom.capacity} pax</span>
+                  <span className="info-tile__label">Total Capacity</span>
+                  <span className="info-tile__value">{draftRoom.capacity} pax ({draftRoom.beds?.length || 0} beds)</span>
                 </div>
                 <div className="info-tile">
                   <span className="info-tile__label">Base Price</span>
                   <span className="info-tile__value info-tile__value--price">
-                    ₱{Number(draftRoom.price || 0).toLocaleString()}
+                    ₱{Number(draftRoom.price || 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">/ mo</span>
                   </span>
                 </div>
               </div>
@@ -830,11 +826,13 @@ export default function RoomConfigModal({
                   type="button"
                   className="btn-secondary btn-sm"
                   onClick={handleAddBed}
-                  disabled={isMaxBedsReached}
+                  disabled={!isEditing || isMaxBedsReached}
                   title={
-                    isMaxBedsReached
-                      ? `Maximum ${maxBeds} beds allowed for ${formatRoomType(roomType)}`
-                      : "Add Bed"
+                    !isEditing
+                      ? "Switch to Edit Mode to add beds"
+                      : isMaxBedsReached
+                        ? `Maximum ${maxBeds} beds allowed for ${formatRoomType(roomType)}`
+                        : "Add Bed"
                   }
                 >
                   <Plus size={14} />
@@ -853,23 +851,36 @@ export default function RoomConfigModal({
               <div className="bed-list">
                 {bunksList.length > 0 ? (
                   bunksList.map((bunkGroup) => (
-                    <div key={bunkGroup.bunkLabel} className="rfm-bunk-card">
-                      <div className="rfm-bunk-card__header" style={{ justifyContent: "space-between" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          <Bed size={13} className="rfm-bunk-card__icon" />
-                          <span className="rfm-bunk-card__title">{bunkGroup.bunkLabel}</span>
+                    <div key={bunkGroup.bunkLabel} className="rcm-bunk-card">
+                      <div className="rcm-bunk-card__header">
+                        <div className="rcm-bunk-card__title-group">
+                          <Bed size={15} className="rcm-bunk-card__icon" />
+                          <span className="rcm-bunk-card__title">{bunkGroup.bunkLabel}</span>
                         </div>
-                        <span className="room-config-modal__badge" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>
-                          {bunkGroup.beds.length} {bunkGroup.beds.length === 1 ? "Bed" : "Beds"}
+                        <span className="rcm-bunk-card__summary-badge">
+                          {bunkGroup.beds.length} {bunkGroup.beds.length === 1 ? "Deck" : "Decks"}
+                          {bunkGroup.occupiedCount === 0 && bunkGroup.maintenanceCount === 0 && " • All Available"}
+                          {bunkGroup.occupiedCount === bunkGroup.beds.length && " • Fully Occupied"}
+                          {bunkGroup.maintenanceCount === bunkGroup.beds.length && " • In Maintenance"}
+                          {!(bunkGroup.occupiedCount === 0 && bunkGroup.maintenanceCount === 0) &&
+                            !(bunkGroup.occupiedCount === bunkGroup.beds.length) &&
+                            !(bunkGroup.maintenanceCount === bunkGroup.beds.length) && (
+                              ` • ${[
+                                bunkGroup.occupiedCount > 0 ? `${bunkGroup.occupiedCount} Occupied` : null,
+                                bunkGroup.availableCount > 0 ? `${bunkGroup.availableCount} Available` : null,
+                                bunkGroup.maintenanceCount > 0 ? `${bunkGroup.maintenanceCount} Maint` : null,
+                              ].filter(Boolean).join(", ")}`
+                            )}
                         </span>
                       </div>
 
-                      <div className="rfm-bunk-card__body">
+                      <div className="rcm-bunk-card__body">
                         {bunkGroup.beds.map((bed) => {
                           const index = bed.globalIndex;
                           const rawStatus = getBedStatus(bed);
                           const normStatus = String(rawStatus || "").toLowerCase();
                           const isLocked = ["occupied", "reserved", "locked"].includes(normStatus);
+                          const isInputDisabled = !isEditing || isLocked;
                           const occupant = bed.occupiedBy || {};
                           const occupantName =
                             occupant.name ||
@@ -888,103 +899,150 @@ export default function RoomConfigModal({
                             Boolean(occupant.reservationId);
 
                           const isUpper = bed.position === "upper";
+                          const isBedActiveMenu = activeMenuBedIndex === index;
 
                           return (
                             <div
-                              key={`${bed.id || "bed"}-${index}`}
-                              className={`bed-item flex-nowrap whitespace-nowrap${activeMenuBedId === bed.id ? " bed-item--menu-active" : ""}`}
+                              key={bed._id ? `bed-${bed._id}` : `bed-slot-${index}`}
+                              className={`rcm-deck-row ${isBedActiveMenu ? "rcm-deck-row--active-menu" : ""}`}
                             >
-                              <div className="bed-info flex-nowrap items-center min-w-0 flex-1 whitespace-nowrap gap-3">
-                                <span className="bed-label-tag shrink-0 w-36 truncate font-semibold">
-                                  {bunkGroup.bunkLabel} — {isUpper ? "Upper" : "Lower"}
-                                </span>
+                              <div className="rcm-deck-main">
+                                {/* Deck Label with Arrow Icon */}
+                                <div className="rcm-deck-tag">
+                                  {isUpper ? (
+                                    <ArrowUp size={13} className="rcm-deck-tag__icon-upper shrink-0" />
+                                  ) : (
+                                    <ArrowDown size={13} className="rcm-deck-tag__icon-lower shrink-0" />
+                                  )}
+                                  <span>{isUpper ? "Upper Deck" : "Lower Deck"}</span>
+                                </div>
 
-                                <div className="bed-field-group shrink-0">
+                                {/* Framed Bed Code Box with Hash Icon */}
+                                <div
+                                  className={`rcm-bed-code-box ${isInputDisabled ? "rcm-bed-code-box--disabled" : ""}`}
+                                  title={
+                                    !isEditing
+                                      ? "Switch to Edit Mode to rename bed"
+                                      : isLocked
+                                        ? "Bed code locked while occupied"
+                                        : "Bed Code (e.g. bed-1)"
+                                  }
+                                >
+                                  <Hash size={13} className="text-slate-400 shrink-0" />
                                   <input
-                                    className="bed-id w-28"
                                     value={bed.id || ""}
                                     onChange={(event) =>
-                                      handleBedFieldChange(bed.id, "id", event.target.value)
+                                      handleBedFieldChange(index, "id", event.target.value)
                                     }
-                                    disabled={isLocked}
-                                    placeholder="Bed Code"
-                                    title="Bed Code (e.g. bed-1)"
+                                    disabled={isInputDisabled}
+                                    readOnly={!isEditing}
+                                    placeholder="Bed ID"
                                   />
                                 </div>
 
-                                <div className="bed-field-group shrink-0">
-                                  <select
-                                    className="bed-position"
-                                    value={bed.position || "lower"}
-                                    onChange={(event) =>
-                                      handleBedFieldChange(
-                                        bed.id,
-                                        "position",
-                                        event.target.value,
-                                      )
-                                    }
-                                    disabled={isLocked}
-                                    title="Bed Position"
-                                  >
-                                    <option value="lower">Lower Deck</option>
-                                    <option value="upper">Upper Deck</option>
-                                  </select>
-                                </div>
+                                {/* Deck Position Selector */}
+                                <select
+                                  className="rcm-deck-select"
+                                  value={bed.position || "lower"}
+                                  onChange={(event) =>
+                                    handleBedFieldChange(
+                                      index,
+                                      "position",
+                                      event.target.value,
+                                    )
+                                  }
+                                  disabled={isInputDisabled}
+                                  title={
+                                    !isEditing
+                                      ? "Switch to Edit Mode to change deck position"
+                                      : isLocked
+                                        ? "Position locked while occupied"
+                                        : "Change Bed Deck Position"
+                                  }
+                                >
+                                  <option value="lower">Lower Deck</option>
+                                  <option value="upper">Upper Deck</option>
+                                </select>
 
+                                {/* Rich Tenant Card or Semantic Status Badge */}
                                 {isOccupiedOrReserved ? (
-                                  <div className="shrink-0">
-                                    <button
-                                      type="button"
-                                      className={`bed-occupant-badge bed-occupant-badge--${
-                                        normStatus === "reserved" ? "reserved"
-                                        : normStatus === "locked" ? "locked"
-                                        : "occupied"
+                                  <button
+                                    type="button"
+                                    className={`rcm-tenant-btn ${
+                                      normStatus === "reserved" || normStatus === "locked"
+                                        ? "rcm-tenant-btn--reserved"
+                                        : ""
+                                    }`}
+                                    onClick={() => handleOpenOccupantDetails(bed)}
+                                    title={`View tenant profile for ${occupantName || "tenant"}`}
+                                  >
+                                    <span className="rcm-tenant-btn__avatar">
+                                      {occupantName ? occupantName.charAt(0).toUpperCase() : <User size={11} />}
+                                    </span>
+                                    <span className="rcm-tenant-btn__name">
+                                      {occupantName || (
+                                        normStatus === "reserved" ? "Reserved"
+                                        : normStatus === "locked" ? "Payment Pending"
+                                        : "Occupied"
+                                      )}
+                                    </span>
+                                    <span
+                                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                        normStatus === "reserved" || normStatus === "locked"
+                                          ? "bg-amber-500"
+                                          : "bg-rose-500"
                                       }`}
-                                      onClick={() => handleOpenOccupantDetails(bed)}
-                                      title={`View summary for ${occupantName || "occupant"}`}
-                                    >
-                                      <User size={13} className="bed-occupant-icon" />
-                                      <span className="bed-occupant-name truncate max-w-[120px]">
-                                        {occupantName || (
-                                          normStatus === "reserved" ? "Reserved"
-                                          : normStatus === "locked" ? "Payment Pending"
-                                          : "Occupied"
-                                        )}
-                                      </span>
-                                      <ExternalLink size={12} className="bed-occupant-link-icon shrink-0" />
-                                    </button>
-                                  </div>
+                                    />
+                                    <ExternalLink size={12} className="rcm-tenant-btn__link-icon" />
+                                  </button>
                                 ) : (
-                                  <span className={`status-badge status-badge--${normStatus} shrink-0`}>
-                                    {rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1)}
+                                  <span className={`rcm-status-tag ${
+                                    normStatus === "maintenance"
+                                      ? "rcm-status-tag--maintenance"
+                                      : "rcm-status-tag--available"
+                                  }`}>
+                                    <span
+                                      className={`w-2 h-2 rounded-full shrink-0 ${
+                                        normStatus === "maintenance"
+                                          ? "bg-slate-400"
+                                          : "bg-emerald-500"
+                                      }`}
+                                    />
+                                    <span>
+                                      {normStatus === "maintenance" ? "Maintenance" : "Available"}
+                                    </span>
                                   </span>
                                 )}
                               </div>
 
+                              {/* Action Menu (⋮) */}
                               <div className="bed-action-menu shrink-0">
                                 <button
                                   type="button"
-                                  className={`bed-menu-trigger${activeMenuBedId === bed.id ? " bed-menu-trigger--active" : ""}`}
+                                  className={`rcm-action-menu-btn ${
+                                    isBedActiveMenu ? "rcm-action-menu-btn--active" : ""
+                                  }`}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setActiveMenuBedId(activeMenuBedId === bed.id ? null : bed.id);
+                                    setActiveMenuBedIndex(isBedActiveMenu ? null : index);
                                   }}
                                   aria-label="Bed options"
                                   title="Bed options"
                                 >
-                                  <MoreVertical size={16} />
+                                  <MoreVertical size={15} />
                                 </button>
 
-                                {activeMenuBedId === bed.id && (
+                                {isBedActiveMenu && (
                                   <div className="bed-menu-dropdown">
                                     <button
                                       type="button"
                                       className="bed-menu-item"
                                       onClick={() => {
-                                        handleToggleMaintenance(bed.id);
-                                        setActiveMenuBedId(null);
+                                        handleToggleMaintenance(index);
+                                        setActiveMenuBedIndex(null);
                                       }}
                                       disabled={isLocked}
+                                      title={isLocked ? "Cannot put occupied bed into maintenance" : undefined}
                                     >
                                       <Lock size={14} />
                                       {normStatus === "maintenance" ? "Unlock Bed" : "Maintenance Mode"}
@@ -994,26 +1052,28 @@ export default function RoomConfigModal({
                                       type="button"
                                       className="bed-menu-item"
                                       onClick={() => {
-                                        handleMoveBed(bed.id, "up");
-                                        setActiveMenuBedId(null);
+                                        handleMoveBed(index, "up");
+                                        setActiveMenuBedIndex(null);
                                       }}
-                                      disabled={index === 0}
+                                      disabled={!isEditing || index === 0}
+                                      title={!isEditing ? "Switch to Edit Mode to reorder beds" : index === 0 ? "Already at the top" : undefined}
                                     >
                                       <ArrowUp size={14} />
-                                      Move Up
+                                      Move Deck Up
                                     </button>
 
                                     <button
                                       type="button"
                                       className="bed-menu-item"
                                       onClick={() => {
-                                        handleMoveBed(bed.id, "down");
-                                        setActiveMenuBedId(null);
+                                        handleMoveBed(index, "down");
+                                        setActiveMenuBedIndex(null);
                                       }}
-                                      disabled={index === draftRoom.beds.length - 1}
+                                      disabled={!isEditing || index === (draftRoom.beds?.length || 0) - 1}
+                                      title={!isEditing ? "Switch to Edit Mode to reorder beds" : index === (draftRoom.beds?.length || 0) - 1 ? "Already at the bottom" : undefined}
                                     >
                                       <ArrowDown size={14} />
-                                      Move Down
+                                      Move Deck Down
                                     </button>
 
                                     <div className="bed-menu-divider" />
@@ -1022,10 +1082,11 @@ export default function RoomConfigModal({
                                       type="button"
                                       className="bed-menu-item bed-menu-item--danger"
                                       onClick={() => {
-                                        handleRemoveBed(bed.id);
-                                        setActiveMenuBedId(null);
+                                        handleRemoveBed(index);
+                                        setActiveMenuBedIndex(null);
                                       }}
-                                      disabled={isLocked}
+                                      disabled={!isEditing || isLocked}
+                                      title={!isEditing ? "Switch to Edit Mode to remove bed" : isLocked ? "Cannot remove an occupied or reserved bed" : undefined}
                                     >
                                       <Trash2 size={14} />
                                       Remove Bed
@@ -1047,82 +1108,6 @@ export default function RoomConfigModal({
               </div>
             </div>
           )}
-
-          {/* Section: Current Occupancy */}
-          <div className="rfm-section">
-            <div className="occupancy-header">
-              <div className="rfm-section-label" style={{ marginBottom: 0 }}>
-                <Users size={13} />
-                Current Occupancy
-              </div>
-              <span className="occupancy-percentage-tag">
-                {occupancyPercent}% Occupied
-              </span>
-            </div>
-            <div className="occupancy-bar">
-              <div
-                className="occupancy-fill"
-                style={{ width: `${occupancyPercent}%` }}
-              />
-            </div>
-            <p className="occupancy-label">
-              {isPrivate
-                ? `${Math.min(1, draftRoom.currentOccupancy || 0)} of 1 room currently occupied`
-                : `${draftRoom.currentOccupancy || 0} of ${draftRoom.capacity || 1} beds currently occupied`}
-            </p>
-
-            {hasDrift && (
-              <div className="occupancy-drift-alert">
-                <div className="occupancy-drift-alert__content">
-                  <ShieldAlert size={16} className="text-amber-600 flex-shrink-0" />
-                  <span>
-                    Counter mismatch detected &mdash; no active reservations but
-                    occupancy shows {draftRoom.currentOccupancy}.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="btn-repair-occupancy"
-                  onClick={handleRepairOccupancy}
-                  disabled={repairing}
-                >
-                  {repairing && <Loader2 size={13} className="animate-spin mr-1" />}
-                  {repairing ? "Repairing…" : "Repair Occupancy"}
-                </button>
-              </div>
-            )}
-
-            {!hasDrift && hasDualBedPointer && (
-              <div className="occupancy-drift-alert occupancy-drift-alert--warning">
-                <div className="occupancy-drift-alert__content">
-                  <ShieldAlert size={16} className="text-amber-600 flex-shrink-0" />
-                  <span>
-                    Stale bed pointer detected &mdash; the same reservation appears
-                    on multiple beds. Tap Repair Beds to fix.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="btn-repair-occupancy"
-                  onClick={handleRepairOccupancy}
-                  disabled={repairing}
-                >
-                  {repairing && <Loader2 size={13} className="animate-spin mr-1" />}
-                  {repairing ? "Repairing…" : "Repair Beds"}
-                </button>
-              </div>
-            )}
-
-            {repairMsg && (
-              <p
-                className={`occupancy-repair-msg occupancy-repair-msg--${
-                  repairMsg.type
-                }`}
-              >
-                {repairMsg.text}
-              </p>
-            )}
-          </div>
         </div>
 
         {/* Footer */}
@@ -1132,9 +1117,10 @@ export default function RoomConfigModal({
           </button>
           <button
             type="button"
-            className="btn-primary"
+            className="btn-primary btn-primary--emerald"
             onClick={handleSaveAll}
             disabled={saving}
+            title={saving ? "Saving room changes..." : "Save all room changes"}
           >
             {saving && <Loader2 size={15} className="animate-spin mr-1.5" />}
             {saving ? "Saving Changes..." : "Save All Room Changes"}

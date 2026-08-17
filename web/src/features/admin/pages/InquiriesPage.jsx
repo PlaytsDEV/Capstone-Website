@@ -64,11 +64,11 @@ function fmtDate(dateStr) {
   });
 }
 
-const KPI_ICON_BADGES = {
-  sky: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-400",
-  amber: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400",
-  emerald: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400",
-  slate: "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
+const KPI_ICON_COLORS = {
+  sky: "text-sky-600 dark:text-sky-400",
+  amber: "text-amber-600 dark:text-amber-400",
+  emerald: "text-emerald-600 dark:text-emerald-400",
+  slate: "text-slate-500 dark:text-slate-400",
 };
 
 function InquiriesPage({ isEmbedded = false }) {
@@ -241,8 +241,8 @@ function InquiriesPage({ isEmbedded = false }) {
                       {item.label}
                     </span>
                     <div
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
-                        KPI_ICON_BADGES[item.color] || KPI_ICON_BADGES.slate
+                      className={`flex shrink-0 items-center justify-center ${
+                        KPI_ICON_COLORS[item.color] || KPI_ICON_COLORS.slate
                       }`}
                     >
                       <Icon className="w-4 h-4" strokeWidth={2} />

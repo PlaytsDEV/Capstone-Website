@@ -39,7 +39,7 @@ import "../styles/admin-notifications.css";
 
 const TYPE_META = {
   sla_breach: {
-    label: "SLA Breach",
+    label: "Turnaround Delay",
     icon: AlertTriangle,
     priority: "critical",
     variant: "critical",
@@ -654,7 +654,7 @@ export default function AdminNotificationsPage() {
       value: kpiMetrics.actionRequired,
       icon: AlertTriangle,
       color: "rose",
-      description: "Cancellations & SLA breaches",
+      description: "Cancellations & turnaround delays",
     },
     {
       key: "operations",
@@ -671,7 +671,7 @@ export default function AdminNotificationsPage() {
       {/* ── Sticky Sub-Header ── */}
       <AdminPageHeader
         title="Notifications"
-        subtitle="Review SLA breaches, billing alerts, maintenance updates, and system events."
+        subtitle="Review turnaround delays, billing alerts, maintenance updates, and system events."
         actions={
           <div className="flex items-center gap-2">
             {unreadCount > 0 && (

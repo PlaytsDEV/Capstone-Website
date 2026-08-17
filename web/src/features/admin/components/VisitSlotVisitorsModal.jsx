@@ -165,10 +165,32 @@ export default function VisitSlotVisitorsModal({
                       </span>
 
                       {/* Status Badge */}
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold uppercase bg-transparent text-slate-700 dark:text-slate-300">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                        {visitor.status}
-                      </span>
+                      {(() => {
+                        const s = (visitor.status || "").toLowerCase();
+                        const isConfirmed = s === "confirmed" || s === "scheduled";
+                        const isPending = s === "pending" || s === "requested";
+                        const isCancelled = s === "cancelled" || s === "rejected";
+                        const dotClass = isConfirmed
+                          ? "bg-emerald-500"
+                          : isPending
+                            ? "bg-amber-500"
+                            : isCancelled
+                              ? "bg-rose-500"
+                              : "bg-slate-400";
+                        const textClass = isConfirmed
+                          ? "text-emerald-700 dark:text-emerald-400"
+                          : isPending
+                            ? "text-amber-700 dark:text-amber-400"
+                            : isCancelled
+                              ? "text-rose-700 dark:text-rose-400"
+                              : "text-slate-700 dark:text-slate-300";
+                        return (
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold uppercase bg-transparent ${textClass}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+                            {visitor.status}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
 

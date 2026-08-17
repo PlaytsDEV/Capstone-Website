@@ -168,8 +168,8 @@ export default function RoomBedHistoryDrawer({ roomId, onClose }) {
                                         >
                                           <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                              <div className="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/60 flex items-center justify-center text-amber-800 dark:text-amber-200 font-bold text-[10px]">
-                                                <Wrench className="w-3.5 h-3.5" />
+                                              <div className="flex shrink-0 items-center justify-center text-amber-600 dark:text-amber-400">
+                                                <Wrench className="w-4 h-4" />
                                               </div>
                                               <div>
                                                 <span className="font-bold text-foreground">

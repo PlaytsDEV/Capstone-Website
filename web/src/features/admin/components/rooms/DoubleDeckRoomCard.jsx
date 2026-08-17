@@ -34,13 +34,13 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
   const getStatusBadge = () => {
     switch (statusKey) {
       case "full":
-        return { label: "Full", bg: "bg-rose-50 dark:bg-rose-950/40", text: "text-rose-700 dark:text-rose-300", border: "border-rose-200 dark:border-rose-900" };
+        return { label: "Full", dot: "bg-rose-500", text: "text-rose-700 dark:text-rose-400" };
       case "partial":
-        return { label: "Partial", bg: "bg-amber-50 dark:bg-amber-950/40", text: "text-amber-800 dark:text-amber-300", border: "border-amber-200 dark:border-amber-800" };
+        return { label: "Partial", dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400" };
       case "maintenance":
-        return { label: "Maintenance", bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-700 dark:text-slate-300", border: "border-slate-300 dark:border-slate-700" };
+        return { label: "Maintenance", dot: "bg-slate-400", text: "text-slate-700 dark:text-slate-300" };
       default:
-        return { label: "Available", bg: "bg-emerald-50 dark:bg-emerald-950/40", text: "text-emerald-800 dark:text-emerald-300", border: "border-emerald-200 dark:border-emerald-800" };
+        return { label: "Available", dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400" };
     }
   };
 
@@ -74,7 +74,15 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
   const { bunks, singleBeds } = getBunkStructures();
 
   const getDeckPillStyle = (bed) => {
-    if (!bed) return { bg: "bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700", text: "text-slate-400", label: "Empty", dot: "bg-slate-300" };
+    if (!bed) {
+      return {
+        bg: "bg-slate-100 dark:bg-slate-800",
+        border: "border-slate-200 dark:border-slate-700",
+        text: "text-slate-600 dark:text-slate-400",
+        label: "Empty",
+        dot: "bg-slate-400",
+      };
+    }
 
     const bedStatus = String(bed.status || "").toLowerCase().trim();
     const isLocked = bedStatus === "locked";
@@ -84,42 +92,48 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
 
     if (isOcc) {
       return {
-        bg: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800",
-        text: "text-emerald-800 dark:text-emerald-300",
+        bg: "bg-rose-50/80 dark:bg-rose-950/30",
+        border: "border-slate-200 dark:border-slate-700",
+        text: "text-rose-700 dark:text-rose-400 font-semibold",
         label: bed.occupiedBy?.fullName ? bed.occupiedBy.fullName.split(" ")[0] : "Occupied",
-        dot: "bg-emerald-500",
+        dot: "bg-rose-500",
       };
     }
     if (isRes) {
       return {
-        bg: "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800",
-        text: "text-amber-800 dark:text-amber-300",
+        bg: "bg-amber-50/80 dark:bg-amber-950/30",
+        border: "border-slate-200 dark:border-slate-700",
+        text: "text-amber-700 dark:text-amber-400 font-medium",
         label: "Reserved",
         dot: "bg-amber-500",
       };
     }
     if (isLocked) {
       return {
-        bg: "bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-700",
-        text: "text-amber-800 dark:text-amber-300",
+        bg: "bg-amber-50/80 dark:bg-amber-950/30",
+        border: "border-slate-200 dark:border-slate-700",
+        text: "text-amber-700 dark:text-amber-400 font-medium",
         label: bed.occupiedBy?.fullName ? `${bed.occupiedBy.fullName.split(" ")[0]} (Paying)` : "Payment Pending",
         dot: "bg-amber-500",
       };
     }
     if (isMaint) {
       return {
-        bg: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700",
-        text: "text-slate-600 dark:text-slate-400",
+        bg: "bg-slate-100 dark:bg-slate-800",
+        border: "border-slate-200 dark:border-slate-700",
+        text: "text-slate-700 dark:text-slate-300 font-medium",
         label: "Maint",
         dot: "bg-slate-400",
       };
     }
 
+    // Default Vacant (Green)
     return {
-      bg: "bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700",
-      text: "text-slate-700 dark:text-slate-300",
+      bg: "bg-emerald-50/80 dark:bg-emerald-950/30",
+      border: "border-slate-200 dark:border-slate-700",
+      text: "text-emerald-700 dark:text-emerald-400 font-medium",
       label: "Vacant",
-      dot: "bg-slate-400",
+      dot: "bg-emerald-500",
     };
   };
 
@@ -156,7 +170,8 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
         </div>
 
         <div className="flex flex-col items-end gap-1">
-          <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
+          <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 bg-transparent flex items-center gap-1.5 ${statusStyle.text}`}>
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusStyle.dot}`} />
             {statusStyle.label}
           </span>
           <span
@@ -211,7 +226,7 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
                         {bunk.bunkBlock}-U
                       </span>
                     </div>
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-semibold flex items-center gap-1 shrink-0 ${upperStyle.bg}`}>
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-medium border border-slate-200 dark:border-slate-700 flex items-center gap-1 shrink-0 ${upperStyle.bg} ${upperStyle.text}`}>
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${upperStyle.dot}`} />
                       <span className="truncate max-w-[90px]">{upperStyle.label}</span>
                     </span>
@@ -230,7 +245,7 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
                         {bunk.bunkBlock}-L
                       </span>
                     </div>
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-semibold flex items-center gap-1 shrink-0 ${lowerStyle.bg}`}>
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-medium border border-slate-200 dark:border-slate-700 flex items-center gap-1 shrink-0 ${lowerStyle.bg} ${lowerStyle.text}`}>
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${lowerStyle.dot}`} />
                       <span className="truncate max-w-[90px]">{lowerStyle.label}</span>
                     </span>
@@ -247,7 +262,8 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
             <Bed className="w-4 h-4 text-slate-800 dark:text-slate-200" />
             <span className="font-semibold text-foreground">Single Bed Unit</span>
           </div>
-          <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider border ${getStatusBadge().bg} ${getStatusBadge().text} ${getStatusBadge().border}`}>
+          <span className={`text-[10px] px-2 py-0.5 rounded font-medium border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 ${effectiveOccupancy > 0 ? "bg-rose-50/80 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400" : "bg-emerald-50/80 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400"}`}>
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${effectiveOccupancy > 0 ? "bg-rose-500" : "bg-emerald-500"}`} />
             {effectiveOccupancy > 0 ? "Occupied" : "Vacant"}
           </span>
         </div>

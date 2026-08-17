@@ -30,8 +30,11 @@ import { useAuth } from "../../../shared/hooks/useAuth";
 import useChatSocket from "../../../shared/hooks/useChatSocket.js";
 import { showConfirmation, showNotification } from "../../../shared/utils/notification";
 import { BRANCH_DISPLAY_NAMES, BRANCH_OPTIONS } from "../../../shared/utils/constants";
-import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
-import { AdminChatSkeleton } from "../components/AdminContentSkeletons";
+import {
+  AdminChatSkeleton,
+  ChatConversationListSkeleton,
+  ChatMessageFeedSkeleton,
+} from "../components/AdminContentSkeletons";
 import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 import AdminIssueClusterBanner from "../components/copilot/AdminIssueClusterBanner";
 import AdminReplyDraftButton from "../components/copilot/AdminReplyDraftButton";
@@ -743,8 +746,8 @@ export default function AdminChatPage() {
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Total Threads
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              <MessageSquareText size={15} />
+            <div className="flex shrink-0 items-center justify-center text-slate-500 dark:text-slate-400">
+              <MessageSquareText size={18} />
             </div>
           </div>
           <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
@@ -757,8 +760,8 @@ export default function AdminChatPage() {
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Unread
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
-              <CircleAlert size={15} />
+            <div className="flex shrink-0 items-center justify-center text-sky-600 dark:text-sky-400">
+              <CircleAlert size={18} />
             </div>
           </div>
           <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
@@ -771,8 +774,8 @@ export default function AdminChatPage() {
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Urgent Priority
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
-              <AlertTriangle size={15} />
+            <div className="flex shrink-0 items-center justify-center text-rose-600 dark:text-rose-400">
+              <AlertTriangle size={18} />
             </div>
           </div>
           <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
@@ -785,8 +788,8 @@ export default function AdminChatPage() {
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               Assigned to Me
             </span>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400">
-              <UserCheck size={15} />
+            <div className="flex shrink-0 items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <UserCheck size={18} />
             </div>
           </div>
           <div className="text-2xl font-bold tracking-tight text-foreground mt-2">
@@ -960,7 +963,7 @@ export default function AdminChatPage() {
           {/* Conversation List */}
           <div className="flex-1 overflow-y-auto p-2 space-y-2">
             {listLoading ? (
-              <ListSkeleton rows={7} avatar style={{ padding: 8 }} />
+              <ChatConversationListSkeleton count={7} />
             ) : listError ? (
               <div className="p-6 text-center text-xs text-destructive space-y-2">
                 <XCircle size={22} className="mx-auto" />
@@ -1243,7 +1246,7 @@ export default function AdminChatPage() {
               {/* Message Feed */}
               <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-muted/15">
                 {messagesLoading ? (
-                  <ListSkeleton rows={5} avatar style={{ padding: 12 }} />
+                  <ChatMessageFeedSkeleton count={5} />
                 ) : messages.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground p-8 space-y-2">
                     <MessageSquare size={32} className="text-muted-foreground/50" />
@@ -1459,8 +1462,8 @@ export default function AdminChatPage() {
           <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-400">
-                  <Lock size={16} />
+                <div className="flex shrink-0 items-center justify-center text-rose-600 dark:text-rose-400">
+                  <Lock size={18} />
                 </div>
                 <h3 className="text-sm font-bold text-foreground">Resolve & Close Conversation</h3>
               </div>

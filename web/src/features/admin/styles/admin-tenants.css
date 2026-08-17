@@ -1430,11 +1430,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: #dc2626;
-  color: #fff;
-  border-radius: 8px;
+  color: #e11d48;
   flex-shrink: 0;
 }
 

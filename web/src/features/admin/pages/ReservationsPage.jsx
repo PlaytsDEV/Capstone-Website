@@ -5,6 +5,8 @@ import {
   ArrowUpDown,
   Building2,
   Calendar,
+  CalendarCheck,
+  CalendarDays,
   CheckCircle,
   ChevronDown,
   Clock,
@@ -12,6 +14,7 @@ import {
   Download,
   History,
   Layers,
+  MessageSquare,
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
@@ -580,10 +583,10 @@ function ReservationsPage() {
 
   const tabs = useMemo(
     () => [
-      { id: "reservations", label: "Reservations" },
-      { id: "visits", label: "Visit Schedules" },
-      { id: "availability", label: "Availability Rules" },
-      { id: "inquiries", label: "Inquiries" },
+      { id: "reservations", label: "Reservations", icon: CalendarCheck, iconClassName: "text-emerald-600 dark:text-emerald-400" },
+      { id: "visits", label: "Visit Schedules", icon: CalendarDays, iconClassName: "text-amber-500 dark:text-amber-400" },
+      { id: "availability", label: "Availability Rules", icon: SlidersHorizontal, iconClassName: "text-sky-500 dark:text-sky-400" },
+      { id: "inquiries", label: "Inquiries", icon: MessageSquare, iconClassName: "text-blue-500 dark:text-blue-400" },
     ],
     [],
   );
@@ -1140,12 +1143,12 @@ function ReservationsPage() {
                     {item.label}
                   </span>
                   <div
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+                    className={`flex shrink-0 items-center justify-center ${
                       item.color === "blue"
-                        ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-400"
+                        ? "text-sky-600 dark:text-sky-400"
                         : item.color === "amber"
-                        ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
-                        : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400"
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-emerald-600 dark:text-emerald-400"
                     }`}
                   >
                     <item.icon className="w-4 h-4" strokeWidth={2} />

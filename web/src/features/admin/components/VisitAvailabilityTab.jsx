@@ -312,10 +312,10 @@ function VisitAvailabilityTab() {
       await updateSettings.mutateAsync({ branch, data: payload });
       setWarningModalOpen(false);
       setConflictReport(null);
-      showNotification(successMessage || "Blackout dates saved", "success", 3000);
+      showNotification(successMessage || "Blackout dates saved successfully.", "success", 3000);
     } catch (error) {
       showNotification(
-        error?.response?.data?.error || "Failed to save blackout date.",
+        error?.response?.data?.message || error?.response?.data?.error || "Unable to save blackout date. Please review the details and try again.",
         "error",
         4000,
       );
@@ -334,7 +334,7 @@ function VisitAvailabilityTab() {
     setDraft((previous) => ({ ...previous, blackoutDates: newBlackoutDates }));
     setEditingBlackoutIndex(null);
     await persistBlackouts(newBlackoutDates, {
-      successMessage: "Blackout date updated and saved",
+      successMessage: "Blackout date updated successfully.",
     });
   };
 
@@ -342,7 +342,7 @@ function VisitAvailabilityTab() {
     const newBlackoutDates = [{ date, reason }, ...draft.blackoutDates];
     setDraft((previous) => ({ ...previous, blackoutDates: newBlackoutDates }));
     await persistBlackouts(newBlackoutDates, {
-      successMessage: `Blackout date added — ${date} is now blocked for visits`,
+      successMessage: `Blackout date added successfully — visit bookings are blocked for ${date}.`,
     });
   };
 
@@ -360,7 +360,7 @@ function VisitAvailabilityTab() {
     setDraft((previous) => ({ ...previous, blackoutDates: newBlackoutDates }));
     await persistBlackouts(newBlackoutDates, {
       skipConflictCheck: true,
-      successMessage: "Blackout date removed",
+      successMessage: "Blackout date removed successfully.",
     });
   };
 
@@ -387,7 +387,7 @@ function VisitAvailabilityTab() {
     setDraft((previous) => ({ ...previous, blackoutDates: active }));
     await persistBlackouts(active, {
       skipConflictCheck: true,
-      successMessage: `Removed ${expired.length} expired blackout date(s) and saved`,
+      successMessage: `Successfully removed ${expired.length} expired blackout ${expired.length === 1 ? "date" : "dates"}.`,
     });
   };
 
@@ -412,7 +412,7 @@ function VisitAvailabilityTab() {
   const resetToDefault = () => {
     setDraft(createDefaultDraft());
     setSelectedDay(null);
-    showNotification("Reset to standard defaults", "info", 2500);
+    showNotification("Schedule reset to standard defaults. Click Save Changes to apply.", "info", 3000);
   };
 
   const discardChanges = () => {
@@ -424,7 +424,7 @@ function VisitAvailabilityTab() {
       dayOverrides: settings.dayOverrides || {},
     });
     setSelectedDay(null);
-    showNotification("Discarded unsaved changes", "info", 2500);
+    showNotification("Unsaved changes discarded.", "info", 2500);
   };
 
   /**
@@ -538,10 +538,10 @@ function VisitAvailabilityTab() {
         blackoutDates: payload.blackoutDates,
         dayOverrides: payload.dayOverrides || {},
       });
-      showNotification("Visit availability rules saved successfully", "success", 3000);
+      showNotification("Operating schedule updated successfully.", "success", 3000);
     } catch (error) {
       showNotification(
-        error?.response?.data?.error || "Failed to save visit availability rules.",
+        error?.response?.data?.message || error?.response?.data?.error || "Unable to update operating schedule. Please review the details and try again.",
         "error",
         4000,
       );
@@ -575,7 +575,7 @@ function VisitAvailabilityTab() {
       await executeSave(payload);
     } catch (error) {
       showNotification(
-        error?.response?.data?.error || "Failed to verify schedule conflicts before saving.",
+        error?.response?.data?.message || error?.response?.data?.error || "Unable to verify schedule conflicts before saving. Please try again.",
         "error",
         4000,
       );
@@ -920,7 +920,13 @@ function VisitAvailabilityTab() {
                                     e.stopPropagation();
                                     updateDaySlotCapacity(activeDay, slot.label, Math.max(0, Number(effectiveCapacity) - 1));
                                   }}
-                                  title="Decrease capacity"
+                                  title={
+                                    !effectiveEnabled
+                                      ? "Enable this time slot to adjust visitor capacity"
+                                      : Number(effectiveCapacity) <= 0
+                                        ? "Capacity cannot be decreased below 0"
+                                        : "Decrease capacity by 1"
+                                  }
                                   aria-label={`Decrease capacity for ${slot.label}`}
                                 >
                                   -
@@ -945,7 +951,11 @@ function VisitAvailabilityTab() {
                                     e.stopPropagation();
                                     updateDaySlotCapacity(activeDay, slot.label, Number(effectiveCapacity) + 1);
                                   }}
-                                  title="Increase capacity"
+                                  title={
+                                    !effectiveEnabled
+                                      ? "Enable this time slot to adjust visitor capacity"
+                                      : "Increase capacity by 1"
+                                  }
                                   aria-label={`Increase capacity for ${slot.label}`}
                                 >
                                   +

@@ -11,7 +11,6 @@ import {
   Sparkles,
   RotateCcw,
   User,
-  Bot,
   ChevronRight,
   UserSearch,
   Search,
@@ -28,7 +27,7 @@ import { chatbotApi } from "../../../../shared/api/chatbotApi";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 
 const SUGGESTED_PROMPTS = [
-  { label: "☀️ Today's Shift Briefing", prompt: "Today's Shift Briefing" },
+  { label: "Today's Shift Briefing", prompt: "Today's Shift Briefing" },
   { label: "Move-out clearance checklist", prompt: "Move-out clearance checklist" },
   { label: "Lost room key policy", prompt: "Lost room key policy" },
   { label: "Utility late penalty rules", prompt: "Utility late penalty rules" },
@@ -92,7 +91,7 @@ const DEFAULT_SOPS = {
 const INITIAL_MESSAGE = {
   id: "init-1",
   sender: "assistant",
-  text: "Hello! I am your Lilycrest Operations Assistant. Click \"☀️ Today's Shift Briefing\" for your daily operations standup, search tenant records, or ask about any dormitory procedure.",
+  text: "Hello! I am your Lilycrest Operations Assistant. Click \"Today's Shift Briefing\" for your daily operations standup, search tenant records, or ask about any dormitory procedure.",
   timestamp: new Date(),
 };
 
@@ -431,8 +430,8 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             if (msg.briefing) {
               return (
                 <div key={msg.id} className="flex items-start gap-2.5">
-                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-foreground shrink-0 mt-0.5">
-                    <Bot size={15} />
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary shrink-0 mt-0.5" aria-hidden="true">
+                    <Sparkles size={14} className="text-primary" />
                   </div>
                   <div className="max-w-[90%] flex-1 space-y-2">
                     <AdminDailyBriefingCard briefing={msg.briefing} onCloseDrawer={onClose} />
@@ -445,8 +444,8 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             if (msg.tenant) {
               return (
                 <div key={msg.id} className="flex items-start gap-2.5">
-                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-foreground shrink-0 mt-0.5">
-                    <Bot size={15} />
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary shrink-0 mt-0.5" aria-hidden="true">
+                    <Sparkles size={14} className="text-primary" />
                   </div>
                   <div className="max-w-[90%] flex-1 space-y-2">
                     <AdminTenantInfoCard tenant={msg.tenant} onCloseDrawer={onClose} />
@@ -459,8 +458,8 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             if (msg.roomDetails) {
               return (
                 <div key={msg.id} className="flex items-start gap-2.5">
-                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-foreground shrink-0 mt-0.5">
-                    <Bot size={15} />
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary shrink-0 mt-0.5" aria-hidden="true">
+                    <Sparkles size={14} className="text-primary" />
                   </div>
                   <div className="max-w-[90%] flex-1 space-y-2">
                     <AdminRoomOccupantsCard
@@ -478,8 +477,8 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             if (msg.candidates && msg.candidates.length > 0) {
               return (
                 <div key={msg.id} className="flex items-start gap-2.5">
-                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-foreground shrink-0 mt-0.5">
-                    <Bot size={15} />
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary shrink-0 mt-0.5" aria-hidden="true">
+                    <Sparkles size={14} className="text-primary" />
                   </div>
                   <div className="max-w-[90%] space-y-2">
                     <div className="rounded-2xl rounded-tl-xs bg-card border border-border p-3.5 text-xs text-foreground leading-relaxed shadow-xs space-y-2.5">
@@ -524,8 +523,8 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
 
             return (
               <div key={msg.id} className="flex items-start gap-2.5">
-                <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-foreground shrink-0 mt-0.5">
-                  <Bot size={15} />
+                <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary shrink-0 mt-0.5" aria-hidden="true">
+                  <Sparkles size={14} className="text-primary" />
                 </div>
                 <div className="max-w-[90%] space-y-2">
                   <div className="rounded-2xl rounded-tl-xs bg-card border border-border p-3.5 text-xs text-foreground leading-relaxed shadow-xs space-y-2.5">
@@ -598,8 +597,8 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
 
           {loading && (
             <div className="flex items-start gap-2.5">
-              <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-foreground shrink-0 mt-0.5">
-                <Bot size={15} />
+              <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary shrink-0 mt-0.5" aria-hidden="true">
+                <Sparkles size={14} className="text-primary" />
               </div>
               <div className="rounded-2xl rounded-tl-xs bg-card border border-border p-3 text-xs text-muted-foreground flex items-center gap-2 shadow-xs">
                 <LoaderCircle size={14} className="animate-spin text-primary" />
@@ -679,7 +678,7 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                 placeholder={
                   isListening
                     ? "Listening... Speak your question now..."
-                    : "Ask SOP, search tenant name, or click ☀️ Shift Briefing..."
+                    : "Ask SOP, search tenant name, or click Shift Briefing..."
                 }
                 disabled={loading}
                 className={`w-full pl-3.5 pr-10 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-none transition-colors ${
@@ -722,7 +721,7 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             </button>
           </form>
           <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground px-1">
-            <span>Press Enter to send · 🎙️ Voice enabled</span>
+            <span>Press Enter to send · Voice enabled</span>
             <span>Lilycrest Ground Operations Advisor</span>
           </div>
         </footer>

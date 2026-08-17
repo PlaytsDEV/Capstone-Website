@@ -226,7 +226,7 @@ export function MaintenanceDetailModal({
     return incomingRequest;
   }, [incomingRequest, localRequestOverride]);
 
-  const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'conversation' | 'proof' | 'timeline'
+  const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'conversation' | 'timeline'
   const [isCopiedId, setIsCopiedId] = useState(false);
   const [lightboxImage, setLightboxImage] = useState(null);
   const [lightboxZoom, setLightboxZoom] = useState(1);
@@ -295,9 +295,7 @@ export function MaintenanceDetailModal({
   const [proofNote, setProofNote] = useState("");
   const [proofTouched, setProofTouched] = useState(false);
   const [isDraggingProof, setIsDraggingProof] = useState(false);
-  const [isUploadingProof, setIsUploadingProof] = useState(false);
   const [isSubmittingUnified, setIsSubmittingUnified] = useState(false);
-  const [showProofUploader, setShowProofUploader] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
   const proofFileInputRef = useRef(null);
 
@@ -500,86 +498,6 @@ export function MaintenanceDetailModal({
     }
   };
 
-  const handleUploadAndSaveProof = async () => {
-    if (!proofFile) {
-      showNotification({
-        title: "Proof Photo Required",
-        message: "Please select a completion proof photo before saving.",
-        type: "warning",
-      });
-      return;
-    }
-
-    try {
-      setIsUploadingProof(true);
-      const reqId = request?.request_id || request?.id || request?._id;
-      const uploadRes = await maintenanceApi.uploadAdminMaintenanceAttachment(
-        reqId,
-        proofFile,
-        { visibility: "tenant_admin" },
-      );
-
-      const rawAttachment =
-        uploadRes?.data?.attachment || uploadRes?.attachment || uploadRes?.data || uploadRes;
-      const fileUrl =
-        rawAttachment?.url || rawAttachment?.downloadUrl || rawAttachment?.uri || rawAttachment?.src;
-
-      const attachment = {
-        id: rawAttachment?.id || rawAttachment?.storagePath || fileUrl,
-        name: rawAttachment?.name || rawAttachment?.originalName || proofFile.name,
-        uri: fileUrl,
-        url: fileUrl,
-        downloadUrl: fileUrl,
-        type: rawAttachment?.type || rawAttachment?.mimeType || proofFile.type || "image/png",
-        mimeType: rawAttachment?.mimeType || rawAttachment?.type || proofFile.type || "image/png",
-        size: rawAttachment?.size || proofFile.size,
-        visibility: "tenant_admin",
-        storagePath: rawAttachment?.storagePath || null,
-        provider: rawAttachment?.provider || null,
-      };
-
-      const result = await saveProofMutation.mutateAsync({
-        requestId: reqId,
-        payload: {
-          note: proofNote.trim() || "Resolution proof verified and uploaded.",
-          attachments: [attachment],
-          status: "resolved",
-        },
-      });
-
-      const updatedRequest =
-        result?.request || result?.data?.request || (result?.status ? result : null);
-
-      // 1. Immediately advance to next stage (Stage 4: Resolved) FIRST!
-      if (updatedRequest) {
-        setLocalRequestOverride(updatedRequest);
-      } else {
-        setLocalRequestOverride((prev) => ({
-          ...(prev || request),
-          status: "resolved",
-        }));
-      }
-
-      showNotification({
-        title: "Resolution Proof Saved",
-        message: "Proof photo saved. Ticket is now Resolved (Awaiting Tenant Verification).",
-        type: "success",
-      });
-
-      // 2. NOW safely reset proof inputs
-      handleClearProofFile();
-      setProofNote("");
-      setShowProofUploader(false);
-    } catch (err) {
-      showNotification({
-        title: "Upload Failed",
-        message: err?.message || "Failed to upload resolution proof.",
-        type: "error",
-      });
-    } finally {
-      setIsUploadingProof(false);
-    }
-  };
 
   // Unified Multi-Card Next Action for Stage 3 (In Progress -> Resolved)
   const handleUnifiedCompleteAndResolve = async () => {
@@ -681,7 +599,6 @@ export function MaintenanceDetailModal({
       handleClearProofFile();
       setProofNote("");
       setProofTouched(false);
-      setShowProofUploader(false);
     } catch (err) {
       showNotification({
         title: "Resolution Failed",
@@ -703,7 +620,6 @@ export function MaintenanceDetailModal({
       setProofTouched(false);
       setIsDraggingProof(false);
       setCopiedPhone(false);
-      setShowProofUploader(false);
       setShowScheduler(false);
       setShowProviderAssigner(false);
       setScheduleDate("");
@@ -981,27 +897,6 @@ export function MaintenanceDetailModal({
               )}
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab("proof")}
-              className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition cursor-pointer shrink-0 ${
-                activeTab === "proof"
-                  ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 border-[#0A1628] dark:border-slate-100 shadow-2xs font-bold"
-                  : "border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
-              }`}
-            >
-              <ShieldCheck size={14} />
-              <span>Proof &amp; Completion Report</span>
-              {workLogAttachments.length > 0 && (
-                <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
-                  activeTab === "proof"
-                    ? "bg-white/20 text-white dark:bg-slate-900/30 dark:text-slate-900"
-                    : "bg-transparent text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-                }`}>
-                  {workLogAttachments.length}
-                </span>
-              )}
-            </button>
 
             <button
               type="button"
@@ -1651,8 +1546,8 @@ export function MaintenanceDetailModal({
                                       : "border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600 bg-slate-50/50 dark:bg-slate-800/30"
                                 }`}
                               >
-                                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 mb-2">
-                                  <Upload size={16} />
+                                <div className="flex shrink-0 items-center justify-center text-slate-500 dark:text-slate-400 mb-2">
+                                  <Upload size={22} />
                                 </div>
                                 <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
                                   Click to upload photo proof or drag &amp; drop
@@ -1731,6 +1626,7 @@ export function MaintenanceDetailModal({
                         request={request}
                         disabled={isLocked}
                         hideStandaloneAction={true}
+                        defaultSummaryMode={false}
                       />
 
                       {/* Unified Stage 3 Primary Action Footer Bar */}
@@ -1860,8 +1756,12 @@ export function MaintenanceDetailModal({
                             <button
                               type="button"
                               onClick={async () => {
-                                setLocalRequestOverride((prev) => ({ ...(prev || request), status: "in_progress" }));
-                                await onQuickStatusChange?.(rawRequestId, "in_progress");
+                                try {
+                                  await onQuickStatusChange?.(rawRequestId, "in_progress");
+                                  setLocalRequestOverride((prev) => ({ ...(prev || request), status: "in_progress" }));
+                                } catch {
+                                  setLocalRequestOverride(null);
+                                }
                               }}
                               title="Reopen this ticket for additional maintenance servicing"
                               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 active:scale-[0.98] shadow-xs transition cursor-pointer"
@@ -1873,8 +1773,12 @@ export function MaintenanceDetailModal({
                             <button
                               type="button"
                               onClick={async () => {
-                                setLocalRequestOverride((prev) => ({ ...(prev || request), status: "completed" }));
-                                await onQuickStatusChange?.(rawRequestId, "completed");
+                                try {
+                                  await onQuickStatusChange?.(rawRequestId, "completed");
+                                  setLocalRequestOverride((prev) => ({ ...(prev || request), status: "completed" }));
+                                } catch {
+                                  setLocalRequestOverride(null);
+                                }
                               }}
                               title="Manually verify and mark this ticket as Completed immediately (in-person confirmation)"
                               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-sm active:scale-[0.98] transition cursor-pointer"
@@ -1997,7 +1901,11 @@ export function MaintenanceDetailModal({
                         </div>
                       </div>
 
-                      <CostAttributionCard request={request} disabled={isLocked} />
+                      <CostAttributionCard
+                        request={request}
+                        disabled={isLocked}
+                        defaultSummaryMode={true}
+                      />
                     </div>
                   )}
 
@@ -2182,7 +2090,11 @@ export function MaintenanceDetailModal({
                         </div>
                       </div>
 
-                      <CostAttributionCard request={request} disabled={isLocked} />
+                      <CostAttributionCard
+                        request={request}
+                        disabled={isLocked}
+                        defaultSummaryMode={true}
+                      />
                     </div>
                   )}
                 </div>
@@ -2231,108 +2143,7 @@ export function MaintenanceDetailModal({
               )}
 
               {/* ═══════════════════════════════════════════ */}
-              {/* TAB 3: PROOF & COMPLETION REPORT            */}
-              {/* ═══════════════════════════════════════════ */}
-              {activeTab === "proof" && (
-                <div className="space-y-4">
-                  {/* Proof of Resolution Card */}
-                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck size={16} className="text-emerald-600" />
-                        <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
-                          Proof of Work &amp; Resolution Photos
-                        </h3>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowProofUploader((v) => !v)}
-                        className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 hover:underline cursor-pointer"
-                      >
-                        <Plus size={12} />
-                        <span>{showProofUploader ? "Close Upload" : "Add Resolution Photo"}</span>
-                      </button>
-                    </div>
-
-                    {/* Proof Upload Box */}
-                    {showProofUploader && (
-                      <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-2">
-                        <span className="text-[11px] font-bold uppercase text-slate-900 dark:text-slate-100 block">
-                          Upload Completed Repair Proof
-                        </span>
-                        <input
-                          ref={proofFileInputRef}
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp"
-                          onChange={handleSelectProofFile}
-                          className="text-xs"
-                        />
-                        <input
-                          type="text"
-                          value={proofNote}
-                          onChange={(e) => setProofNote(e.target.value)}
-                          placeholder="Resolution notes (e.g. pipe replaced, leak sealed)"
-                          className="h-8 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-xs"
-                        />
-                        <div className="flex justify-end gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={handleClearProofFile}
-                            className="px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleUploadAndSaveProof}
-                            disabled={!proofFile || isUploadingProof}
-                            title={!proofFile ? "Attach photo proof first" : "Save photo proof and mark ticket as Resolved"}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 active:scale-[0.98] cursor-pointer shadow-xs"
-                          >
-                            {isUploadingProof ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />}
-                            <span>{isUploadingProof ? "Saving..." : "Save Proof & Mark Resolved"}</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {workLogAttachments.length === 0 && !showProofUploader ? (
-                      <div className="flex h-36 flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 p-4 text-center">
-                        <ShieldCheck size={24} className="text-slate-400 mb-1" />
-                        <p className="text-xs text-slate-500">No resolution proof uploaded yet.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-2">
-                        {workLogAttachments.map((att, idx) => (
-                          <AttachmentThumbnail
-                            key={idx}
-                            attachment={att}
-                            index={idx}
-                            onPreviewImage={setLightboxImage}
-                            tag="Resolution Proof (After)"
-                            size="large"
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Post-Resolution Contractor Rating (Only shown once resolved or completed) */}
-                  {(request?.status === "resolved" || request?.status === "completed" || request?.status === "closed") && (
-                    <div className="pt-2">
-                      <ProviderRatingCard
-                        request={request}
-                        isSubmitting={isRatingProvider}
-                        onSubmitRating={onRateProvider}
-                        disabled={isLocked && Boolean(request?.providerRating?.rating)}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ═══════════════════════════════════════════ */}
-              {/* TAB 4: AUDIT & TIMELINE                     */}
+              {/* TAB 3: AUDIT & TIMELINE                     */}
               {/* ═══════════════════════════════════════════ */}
               {activeTab === "timeline" && (
                 <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
@@ -2455,8 +2266,8 @@ export function MaintenanceDetailModal({
               >
                 {isPdf ? (
                   <div className="flex flex-col items-center justify-center p-8 bg-slate-900 border border-slate-700 rounded-2xl text-white space-y-4 max-w-md text-center shadow-2xl">
-                    <div className="h-16 w-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-500 shadow-inner">
-                      <FileText size={36} />
+                    <div className="flex shrink-0 items-center justify-center text-rose-500">
+                      <FileText size={42} />
                     </div>
                     <div>
                       <h4 className="font-bold text-sm text-white mb-1">{activeName}</h4>

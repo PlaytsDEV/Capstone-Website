@@ -195,15 +195,10 @@
 }
 
 .pe-category-icon-box {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm, 4px);
-  background: #eff6ff;
-  color: #1e3a8a;
-  border: 1px solid #bfdbfe;
   display: flex;
   align-items: center;
   justify-content: center;
+  color: #0284c7;
   flex-shrink: 0;
 }
 

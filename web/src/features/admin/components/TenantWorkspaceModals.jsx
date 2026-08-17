@@ -383,8 +383,8 @@ export function RenewLeaseModal({
                   className="bg-card border border-border rounded-xl p-3 flex items-center justify-between gap-3 shadow-2xs"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0">
-                      <History className="w-4 h-4" />
+                    <div className="flex shrink-0 items-center justify-center text-slate-500 dark:text-slate-400">
+                      <History className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-semibold text-foreground truncate">
