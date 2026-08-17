@@ -179,7 +179,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EMAIL_MAX = 254;
 const PHONE_REGEX = /^\+63\d{10}$/;
 const ADDRESS_MAX = 200;
-const PICTURE_MAX_BYTES = 2 * 1024 * 1024; // 2 MB base64 payload
+const PICTURE_URL_MAX = 4096;
 const DOC_MAX_BYTES = 5 * 1024 * 1024; // 5 MB for document uploads
 
 function sanitize(str) {
@@ -225,13 +225,18 @@ function validateField(field, value) {
     }
     case 'picture': {
       if (typeof value !== 'string') return { ok: false, error: 'Picture must be a string.' };
-      if (!value.startsWith('data:image/') && !value.startsWith('http')) {
-        return { ok: false, error: 'Invalid image format.' };
+      const clean = value.trim();
+      if (!clean) return { ok: true, value: '' };
+      if (clean.length > PICTURE_URL_MAX) return { ok: false, error: 'Picture URL is too long.' };
+      try {
+        const parsed = new URL(clean);
+        if (parsed.protocol !== 'https:') {
+          return { ok: false, error: 'Picture must use a permanent HTTPS URL.' };
+        }
+      } catch (_) {
+        return { ok: false, error: 'Picture must use a valid permanent HTTPS URL.' };
       }
-      if (value.length > PICTURE_MAX_BYTES) {
-        return { ok: false, error: 'Image is too large (max 2 MB).' };
-      }
-      return { ok: true, value };
+      return { ok: true, value: clean };
     }
     default:
       return { ok: false, error: `Unknown field: ${field}` };

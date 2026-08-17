@@ -31,7 +31,7 @@ function response() {
 describe('googleSignIn success path', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test('returns the updated user without an extra users lookup after session creation', async () => {
+  test('returns canonical stored profile fields without allowing Firebase metadata to overwrite them', async () => {
     const storedUser = {
       _id: 'mongo-id-1',
       user_id: 'U1',
@@ -41,8 +41,8 @@ describe('googleSignIn success path', () => {
       accountStatus: 'active',
       tenantStatus: 'active',
       securityVersion: 3,
-      name: 'Old Name',
-      picture: null,
+      name: 'Canonical Name',
+      picture: 'https://example.test/canonical.png',
     };
 
     let usersFindOneCalls = 0;
@@ -54,7 +54,7 @@ describe('googleSignIn success path', () => {
         if (query.user_id) return storedUser; // createSession's securityVersion fetch
         return null;
       },
-      async updateOne() { return { modifiedCount: 1 }; },
+      updateOne: jest.fn(async () => ({ modifiedCount: 1 })),
     };
     const sessionsCollection = {
       async findOne() { return null; }, // no recent session — normal rotation path
@@ -73,8 +73,8 @@ describe('googleSignIn success path', () => {
     mockVerifyFirebaseIdToken.mockResolvedValue({
       uid: 'uid-1',
       email: 'tenant@example.test',
-      name: 'New Name',
-      picture: 'https://example.test/pic.png',
+      name: 'Stale Firebase Name',
+      picture: 'https://example.test/stale-firebase.png',
     });
 
     const res = response();
@@ -86,11 +86,14 @@ describe('googleSignIn success path', () => {
       user_id: 'U1',
       role: 'tenant',
       tenantStatus: 'active',
-      name: 'New Name',
-      picture: 'https://example.test/pic.png',
+      name: 'Canonical Name',
+      picture: 'https://example.test/canonical.png',
       google_email: 'tenant@example.test',
     }));
     expect(res.body.user._id).toBeUndefined();
+    const persistedSet = usersCollection.updateOne.mock.calls[0][1].$set;
+    expect(persistedSet.name).toBeUndefined();
+    expect(persistedSet.picture).toBeUndefined();
 
     // Exactly 3 users.findOne calls: (1) the email-match tenant lookup,
     // (2) the firebase_uid conflict check, (3) createSession's

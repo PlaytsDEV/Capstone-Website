@@ -165,6 +165,64 @@ describe("mobile Upload route (HTTP behavior)", () => {
     });
   });
 
+  describe("profile context (canonical permanent profile image)", () => {
+    function base64OfSize(bytes) {
+      return Buffer.alloc(bytes, 1).toString("base64");
+    }
+
+    test("accepts a supported image under 2MB and forces the authenticated tenant profile namespace", async () => {
+      await startApp();
+      const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mimeType: "image/png",
+          fileName: "avatar.png",
+          dataBase64: tinyPngBase64,
+          context: "profile",
+          folder: "client-controlled",
+          entityId: "someone-else",
+        }),
+      });
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.storagePath).toMatch(/^profile-images\/tenant-a\/profile\//);
+      expect(saveMock).toHaveBeenCalledTimes(1);
+    });
+
+    test("rejects a profile image over 2MB even when the client asks for a larger limit", async () => {
+      await startApp();
+      const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mimeType: "image/png",
+          dataBase64: base64OfSize(2 * 1024 * 1024 + 1),
+          context: "profile",
+          maxBytes: 9 * 1024 * 1024,
+        }),
+      });
+      expect(res.status).toBe(400);
+      expect(saveMock).not.toHaveBeenCalled();
+    });
+
+    test("rejects a non-image in profile context even when generic uploads allow it", async () => {
+      await startApp();
+      const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mimeType: "application/pdf",
+          fileName: "not-an-avatar.pdf",
+          dataBase64: Buffer.from("pdf").toString("base64"),
+          context: "profile",
+        }),
+      });
+      expect(res.status).toBe(400);
+      expect(saveMock).not.toHaveBeenCalled();
+    });
+  });
+
   test("no resolvable Firebase bucket → 503, not a crash", async () => {
     await startApp({ bucketName: null });
     const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {

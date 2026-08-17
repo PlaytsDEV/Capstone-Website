@@ -47,6 +47,10 @@ const router = express.Router();
 
 const MAX_FIREBASE_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const MAINTENANCE_MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+export const PROFILE_MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
+const PROFILE_UPLOAD_MIME_TYPES = new Set([
+  "image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif",
+]);
 const ALLOWED_FIREBASE_UPLOAD_MIME_TYPES = new Set([
   "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/bmp",
   "image/heic", "image/heif", "application/pdf", "application/msword",
@@ -80,7 +84,17 @@ function safeFileName(fileName = "", mimeType = "application/octet-stream") {
 function decodeBase64Payload(value = "") {
   const normalized = String(value || "").trim();
   const raw = normalized.replace(/^data:[^;]+;base64,/i, "");
-  if (!raw || !/^[a-zA-Z0-9+/]+={0,2}$/.test(raw)) return null;
+  if (!raw) return null;
+
+  // Avoid a single quantified regexp over multi-megabyte input: under the
+  // complete test workload V8 can overflow its regexp call stack before the
+  // byte ceiling is evaluated. Validate content and terminal padding with
+  // bounded operations instead.
+  const firstPadding = raw.indexOf("=");
+  const content = firstPadding >= 0 ? raw.slice(0, firstPadding) : raw;
+  const padding = firstPadding >= 0 ? raw.slice(firstPadding) : "";
+  if (!content || /[^a-zA-Z0-9+/]/.test(content)) return null;
+  if (padding && padding !== "=" && padding !== "==") return null;
   return Buffer.from(raw, "base64");
 }
 
@@ -99,7 +113,11 @@ router.post("/upload/firebase-storage", mobileTenantAuth, async (req, res) => {
     // Client input may only tighten this ceiling, never loosen it — the
     // maintenance context ceiling is a server-defined maximum, not a
     // suggestion the client can override upward.
-    const contextCeiling = context === "maintenance" ? MAINTENANCE_MAX_UPLOAD_BYTES : MAX_FIREBASE_UPLOAD_BYTES;
+    const contextCeiling = context === "maintenance"
+      ? MAINTENANCE_MAX_UPLOAD_BYTES
+      : context === "profile"
+        ? PROFILE_MAX_UPLOAD_BYTES
+        : MAX_FIREBASE_UPLOAD_BYTES;
     const requestedMaxBytes = Number(req.body?.maxBytes);
     const maxBytes = Number.isFinite(requestedMaxBytes)
       ? Math.min(Math.max(1, requestedMaxBytes), contextCeiling)
@@ -110,6 +128,9 @@ router.post("/upload/firebase-storage", mobileTenantAuth, async (req, res) => {
     }
     if (!ALLOWED_FIREBASE_UPLOAD_MIME_TYPES.has(mimeType)) {
       return res.status(400).json({ detail: "Unsupported file type." });
+    }
+    if (context === "profile" && !PROFILE_UPLOAD_MIME_TYPES.has(mimeType)) {
+      return res.status(400).json({ detail: "Profile picture must be a supported image." });
     }
     if (requestedAllowedTypes && !requestedAllowedTypes.has(mimeType)) {
       return res.status(400).json({ detail: "Unsupported file type." });
@@ -123,9 +144,15 @@ router.post("/upload/firebase-storage", mobileTenantAuth, async (req, res) => {
       return res.status(503).json({ detail: "File uploads are not configured." });
     }
 
-    const folder = sanitizePathSegment(req.body?.folder, "tenant-uploads");
+    // Profile uploads have a server-owned namespace as well as a server-owned
+    // size/type policy. Client input cannot redirect them into another area.
+    const folder = context === "profile"
+      ? "profile-images"
+      : sanitizePathSegment(req.body?.folder, "tenant-uploads");
     const tenantId = sanitizePathSegment(req.mobileTenant.user_id || "unknown-tenant", "unknown-tenant");
-    const entityId = sanitizePathSegment(req.body?.entityId, "temp");
+    const entityId = context === "profile"
+      ? "profile"
+      : sanitizePathSegment(req.body?.entityId, "temp");
     const storagePath = [folder, tenantId, entityId, `${Date.now()}-${fileName}`].join("/");
 
     const downloadToken = crypto.randomUUID();

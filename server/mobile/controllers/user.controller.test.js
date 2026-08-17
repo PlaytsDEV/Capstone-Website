@@ -157,6 +157,62 @@ describe('user.controller updateMe — field allowlist + username cooldown', () 
     expect(res.statusCode).toBe(200);
     expect(users.t1.username).toBe('firstchange');
   });
+
+  test('updated fields and a permanent profile image survive a fresh canonical getMe request', async () => {
+    const picture = 'https://firebasestorage.googleapis.com/v0/b/bucket/o/profile-images%2Ft1%2Fprofile%2Favatar.jpg?alt=media';
+    const users = {
+      t1: { user_id: 't1', username: 'ana', phone: '+639171111111', picture: 'https://example.test/old.jpg', role: 'tenant' },
+    };
+    mockGetDb.mockReturnValue(makeDb(users));
+
+    const mutationRes = response();
+    await updateMe({
+      user: { user_id: 't1' },
+      body: { phone: '+639172222222', picture, user_id: 't2' },
+    }, mutationRes);
+    expect(mutationRes.statusCode).toBe(200);
+    expect(mutationRes.body.phone).toBe('+639172222222');
+    expect(mutationRes.body.picture).toBe(picture);
+
+    // A distinct request object represents a fresh authenticated session;
+    // the values must come back from the users collection, not request/cache.
+    const freshRes = response();
+    await getMe({ user: { user_id: 't1' } }, freshRes);
+    expect(freshRes.body.phone).toBe('+639172222222');
+    expect(freshRes.body.picture).toBe(picture);
+  });
+
+  test('profile picture persistence rejects data/local/non-HTTPS references', async () => {
+    const invalidPictures = [
+      'data:image/jpeg;base64,AAAA',
+      'file:///data/user/0/app/cache/avatar.jpg',
+      'http://example.test/avatar.jpg',
+    ];
+    for (const picture of invalidPictures) {
+      const users = { t1: { user_id: 't1', picture: 'https://example.test/canonical.jpg' } };
+      mockGetDb.mockReturnValue(makeDb(users));
+      const res = response();
+      await updateMe({ user: { user_id: 't1' }, body: { picture } }, res);
+      expect(res.statusCode).toBe(400);
+      expect(users.t1.picture).toBe('https://example.test/canonical.jpg');
+    }
+  });
+
+  test('session identity scopes profile mutation so Tenant A cannot modify Tenant B', async () => {
+    const users = {
+      t1: { user_id: 't1', phone: '+639171111111' },
+      t2: { user_id: 't2', phone: '+639172222222' },
+    };
+    mockGetDb.mockReturnValue(makeDb(users));
+    const res = response();
+    await updateMe({
+      user: { user_id: 't1' },
+      body: { user_id: 't2', phone: '+639179999999' },
+    }, res);
+    expect(res.statusCode).toBe(200);
+    expect(users.t1.phone).toBe('+639179999999');
+    expect(users.t2.phone).toBe('+639172222222');
+  });
 });
 
 describe('user.controller getMe / updateMe — Branch object', () => {
