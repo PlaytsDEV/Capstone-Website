@@ -36,35 +36,51 @@ export const validateEmail = (email) => {
   return null; // Valid
 };
 
-/** Password strength calculator and rules definition */
-const SPECIAL_CHARS_REGEX = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>?/]/;
+/** Canonical Lilycrest new-password contract (mirrored in server/security/passwordPolicy.cjs). */
+export const NEW_PASSWORD_MIN_LENGTH = 8;
+export const NEW_PASSWORD_MAX_LENGTH = 128;
+const SPECIAL_CHARS_REGEX = /[^A-Za-z0-9\s]/;
 
 export const PASSWORD_RULES = [
-  { id: "length", label: "At least 8 characters", test: (value) => typeof value === "string" && value.length >= 8 },
-  { id: "uppercase", label: "At least 1 uppercase letter", test: (value) => /[A-Z]/.test(value || "") },
-  { id: "lowercase", label: "At least 1 lowercase letter", test: (value) => /[a-z]/.test(value || "") },
-  { id: "number", label: "At least 1 number", test: (value) => /\d/.test(value || "") },
-  { id: "special", label: "At least 1 special character", test: (value) => SPECIAL_CHARS_REGEX.test(value || "") || /[^A-Za-z0-9]/.test(value || "") },
-  { id: "no-spaces", label: "No spaces allowed", test: (value) => typeof value === "string" && value.length > 0 && !/\s/.test(value) },
+  { id: "length", label: "At least 8 characters", test: (value) => typeof value === "string" && value.length >= NEW_PASSWORD_MIN_LENGTH },
+  { id: "uppercase", label: "One uppercase letter", test: (value) => /[A-Z]/.test(value || "") },
+  { id: "lowercase", label: "One lowercase letter", test: (value) => /[a-z]/.test(value || "") },
+  { id: "number", label: "One number", test: (value) => /\d/.test(value || "") },
+  { id: "special", label: "One special character", test: (value) => SPECIAL_CHARS_REGEX.test(value || "") },
 ];
+
+export const evaluateNewPassword = (password = "") => {
+  const value = typeof password === "string" ? password : "";
+  const checks = {
+    minLength: value.length >= NEW_PASSWORD_MIN_LENGTH,
+    maxLength: value.length <= NEW_PASSWORD_MAX_LENGTH,
+    uppercase: /[A-Z]/.test(value),
+    lowercase: /[a-z]/.test(value),
+    number: /\d/.test(value),
+    special: SPECIAL_CHARS_REGEX.test(value),
+    noWhitespace: !/\s/.test(value),
+  };
+  return { ...checks, valid: Boolean(value) && Object.values(checks).every(Boolean) };
+};
 
 export const evaluatePasswordRules = (password = "") => {
   const results = PASSWORD_RULES.map((rule) => ({
     ...rule,
     passed: rule.test(password),
   }));
-  const allPassed = results.every((r) => r.passed);
+  const allPassed = evaluateNewPassword(password).valid;
   return { results, allPassed };
 };
 
 export const calculatePasswordStrength = (password = "") => {
+  const checks = evaluateNewPassword(password);
   const requirements = {
-    length: typeof password === "string" && password.length >= 8,
-    uppercase: /[A-Z]/.test(password || ""),
-    lowercase: /[a-z]/.test(password || ""),
-    number: /\d/.test(password || ""),
-    special: SPECIAL_CHARS_REGEX.test(password || "") || /[^A-Za-z0-9]/.test(password || ""),
-    noSpaces: typeof password === "string" && password.length > 0 && !/\s/.test(password),
+    length: checks.minLength,
+    uppercase: checks.uppercase,
+    lowercase: checks.lowercase,
+    number: checks.number,
+    special: checks.special,
+    noSpaces: checks.noWhitespace,
   };
 
   const metRequirements = Object.values(requirements).filter(Boolean).length;
@@ -111,19 +127,14 @@ export const calculatePasswordStrength = (password = "") => {
  */
 export const validatePassword = (password) => {
   if (!password) return "Password is required";
-  if (password.length < 8)
-    return "Your password must be at least 8 characters long.";
-
-  const { requirements } = calculatePasswordStrength(password);
-  const missing = [];
-  if (!requirements.uppercase) missing.push("an uppercase letter");
-  if (!requirements.lowercase) missing.push("a lowercase letter");
-  if (!requirements.number) missing.push("a number");
-  if (!requirements.special) missing.push("a special character");
-
-  if (missing.length > 2) {
-    return `Your password needs at least ${missing.join(", ")}.`;
-  }
+  const checks = evaluateNewPassword(password);
+  if (!checks.noWhitespace) return "Your password cannot contain whitespace.";
+  if (!checks.minLength) return `Your password must be at least ${NEW_PASSWORD_MIN_LENGTH} characters long.`;
+  if (!checks.maxLength) return `Your password must be ${NEW_PASSWORD_MAX_LENGTH} characters or fewer.`;
+  if (!checks.uppercase) return "Your password needs an uppercase letter.";
+  if (!checks.lowercase) return "Your password needs a lowercase letter.";
+  if (!checks.number) return "Your password needs a number.";
+  if (!checks.special) return "Your password needs a special character.";
   return null; // Valid
 };
 
