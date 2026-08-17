@@ -192,6 +192,31 @@ describe("toMobileBill", () => {
   });
 });
 
+describe("toMobileBill statement_version (PDF cache-busting)", () => {
+  // The mobile app keys its on-device statement/receipt PDF cache as
+  // `${billId}_v${statement_version}` (see frontend/app/bill-details.jsx,
+  // billing-history.jsx). If this bridge never surfaced a version that
+  // changes when the underlying bill changes, a bill edited server-side
+  // (e.g. a utility charge posting) could keep serving a stale cached PDF
+  // to a device that already fetched it once, indefinitely.
+  test("is present on every bill response", () => {
+    const mobileBill = toMobileBill(makeBill());
+    expect(mobileBill.statement_version).toBeTruthy();
+    expect(typeof mobileBill.statement_version).toBe("string");
+  });
+
+  test("changes when the bill's updatedAt advances (a real server-side change bumps the cache key)", () => {
+    const before = toMobileBill(makeBill({ updatedAt: new Date("2026-05-02T00:00:00Z") }));
+    const after = toMobileBill(makeBill({ updatedAt: new Date("2026-05-03T00:00:00Z") }));
+    expect(after.statement_version).not.toBe(before.statement_version);
+  });
+
+  test("falls back to createdAt so a never-updated bill still has a stable, present version", () => {
+    const mobileBill = toMobileBill(makeBill({ updatedAt: undefined, createdAt: new Date("2026-05-01T00:00:00Z") }));
+    expect(mobileBill.statement_version).toBe(String(new Date("2026-05-01T00:00:00Z").getTime()));
+  });
+});
+
 describe("toMobileBill utility_deadlines", () => {
   // Regression for the exact bug this bridge reconciliation phase was
   // built to close: a bill with an electricity/water charge but no

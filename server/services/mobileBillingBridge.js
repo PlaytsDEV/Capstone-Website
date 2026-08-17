@@ -300,6 +300,18 @@ export function toMobileBill(bill, { electricityBreakdown = null, waterBreakdown
     additional_charges: bill.additionalCharges || [],
     payment_proof_status: bill.paymentProof?.verificationStatus || "none",
     created_at: bill.createdAt || null,
+    // Cache-busting version for the mobile app's on-device statement/receipt
+    // PDF cache (see frontend/app/bill-details.jsx and billing-history.jsx,
+    // which key the cached file as `${billId}_v${statement_version}`). Any
+    // server-side change to this bill (e.g. a utility charge posting,
+    // payment recorded, status transition) advances bill.updatedAt via
+    // Mongoose timestamps, which changes this value and forces the app to
+    // refetch instead of serving a stale cached PDF. Falls back to createdAt
+    // so a never-updated bill still has a stable, present version string.
+    statement_version: String(
+      (bill.updatedAt || bill.createdAt || new Date()).getTime?.()
+      ?? new Date(bill.updatedAt || bill.createdAt || Date.now()).getTime(),
+    ),
     utility_deadlines: mobileUtilityDeadlines(bill, charges),
     electricity_breakdown: formattedElectricityBreakdown,
     water_breakdown: formattedWaterBreakdown,
