@@ -45,7 +45,10 @@ function fakeDb({
       }
       if (name === "notification_reads") {
         return {
-          find: () => ({ project: () => ({ toArray: async () => reads, catch: () => reads }) }),
+          find: (query) => ({ project: () => ({
+            toArray: async () => reads.filter((row) => !row.user_id || row.user_id === query.user_id),
+            catch: () => reads.filter((row) => !row.user_id || row.user_id === query.user_id),
+          }) }),
           updateOne: async (filter, update, opts) => { updates.notification_reads.push({ filter, update, opts }); },
         };
       }
@@ -57,7 +60,10 @@ function fakeDb({
       }
       if (name === "notification_dismissals") {
         return {
-          find: () => ({ project: () => ({ toArray: async () => dismissals, catch: () => dismissals }) }),
+          find: (query) => ({ project: () => ({
+            toArray: async () => dismissals.filter((row) => !row.user_id || row.user_id === query.user_id),
+            catch: () => dismissals.filter((row) => !row.user_id || row.user_id === query.user_id),
+          }) }),
           updateOne: async (filter, update, opts) => { updates.notification_dismissals.push({ filter, update, opts }); },
         };
       }
@@ -278,6 +284,65 @@ describe("mobileNotificationBridge — dismiss/clear (P1 notification cleanup)",
     await clearNotifications(db, "tenant-a");
     expect(db.updates.notificationsUpdateMany.length).toBe(0);
   });
+
+  test("dismissal survives a fresh service/session context, remains tenant-specific, and leaves the source event intact", async () => {
+    const sourceEvent = {
+      notification_id: "event-a", type: "maintenance_update", request_id: "request-1",
+      title: "Request updated", created_at: new Date("2026-08-01T00:00:00Z"),
+    };
+    const mutationDb = fakeDb({ notifications: [sourceEvent] });
+    const dismissed = await dismissNotification(mutationDb, "tenant-a", "event-a");
+    expect(dismissed.status).toBe(200);
+    const write = mutationDb.updates.notification_dismissals[0];
+    const persistedRow = { ...write.filter, ...write.update.$set, ...write.update.$setOnInsert };
+
+    const freshSessionDb = fakeDb({ notifications: [sourceEvent], dismissals: [persistedRow] });
+    expect(await listUserNotifications(freshSessionDb, "tenant-a")).toEqual([]);
+    expect(await listUserNotifications(freshSessionDb, "tenant-b")).toHaveLength(1);
+    expect(sourceEvent.notification_id).toBe("event-a");
+  });
+
+  test("a later event for the same source is not suppressed by the old event's dismissal", async () => {
+    const eventA = {
+      notification_id: "event-a", type: "maintenance_update", request_id: "request-1",
+      title: "First update", created_at: new Date("2026-08-01T00:00:00Z"),
+    };
+    const eventB = {
+      notification_id: "event-b", type: "maintenance_update", request_id: "request-1",
+      title: "Later update", created_at: new Date("2026-08-02T00:00:00Z"),
+    };
+    const dismissalKey = buildNotificationKey(eventA);
+    expect(dismissalKey).not.toBe(buildNotificationKey(eventB));
+    const freshDb = fakeDb({
+      notifications: [eventA, eventB],
+      dismissals: [{ user_id: "tenant-a", notification_key: dismissalKey, dismissed_at: new Date("2026-08-01T12:00:00Z") }],
+    });
+    expect((await listUserNotifications(freshDb, "tenant-a")).map((item) => item.notification_id)).toEqual(["event-b"]);
+  });
+
+  test("legacy source-level dismissal hides only events that existed when it was recorded", async () => {
+    const db = fakeDb({
+      notifications: [
+        { notification_id: "old", type: "maintenance_update", request_id: "request-1", created_at: new Date("2026-08-01T00:00:00Z") },
+        { notification_id: "new", type: "maintenance_update", request_id: "request-1", created_at: new Date("2026-08-03T00:00:00Z") },
+      ],
+      dismissals: [{ user_id: "tenant-a", notification_key: "maintenance_update:request-1", dismissed_at: new Date("2026-08-02T00:00:00Z") }],
+    });
+    expect((await listUserNotifications(db, "tenant-a")).map((item) => item.notification_id)).toEqual(["new"]);
+  });
+
+  test("bulk clear survives a fresh service/session context while a later event remains visible", async () => {
+    const mutationDb = fakeDb({});
+    const cleared = await clearNotifications(mutationDb, "tenant-a");
+    const oldEvent = { notification_id: "old", title: "old", created_at: new Date(cleared.cleared_before.getTime() - 1) };
+    const newEvent = { notification_id: "new", title: "new", created_at: new Date(cleared.cleared_before.getTime() + 1) };
+    const freshSessionDb = fakeDb({
+      notifications: [oldEvent, newEvent],
+      clearState: { user_id: "tenant-a", cleared_before: cleared.cleared_before },
+    });
+    expect((await listUserNotifications(freshSessionDb, "tenant-a")).map((item) => item.notification_id)).toEqual(["new"]);
+    expect([oldEvent, newEvent]).toHaveLength(2);
+  });
 });
 
 // Regression coverage for the bill-release notification audit: the mobile
@@ -359,6 +424,16 @@ function filteringFakeDb({ notifications = [] } = {}) {
 }
 
 describe("mobileNotificationBridge — canonical Notification model compatibility (bill-release notification fix)", () => {
+  test("uses canonical Notification.dedupeKey as stable event identity", () => {
+    const normalized = sanitizeStoredNotification({
+      _id: new ObjectId("66e000000000000000000099"),
+      dedupeKey: "bill_released:bill-1:v2",
+      title: "Bill released",
+    });
+    expect(normalized.dedup_key).toBe("bill_released:bill-1:v2");
+    expect(buildNotificationKey(normalized)).toBe("bill_released:bill-1:v2");
+  });
+
   const tenantMongoId = new ObjectId();
   const tenantUserId = "tenant-a";
 
