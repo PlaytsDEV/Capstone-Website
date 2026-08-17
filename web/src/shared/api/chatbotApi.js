@@ -276,10 +276,114 @@ export const escalateChatbotLead = async (leadData) => {
   });
 };
 
+/**
+ * Parse structured lead details (name, email, phone, room, branch) from conversation history.
+ *
+ * @param {Object} payload
+ * @param {Array<{role: string, text: string}>} [payload.conversationHistory=[]]
+ * @param {string} [payload.message=""]
+ * @param {string} [payload.branchFocus="all"]
+ * @returns {Promise<Object>}
+ */
+export const parseChatbotLead = async ({ conversationHistory = [], message = "", branchFocus = "all" }) => {
+  return publicFetch("/chatbot/public/parse-lead", {
+    method: "POST",
+    body: JSON.stringify({
+      conversationHistory: Array.isArray(conversationHistory) ? conversationHistory : [],
+      message: message?.trim() || "",
+      branchFocus,
+    }),
+  });
+};
+
+/**
+ * Query the Admin SOP Copilot Assistant.
+ *
+ * @param {Object} payload
+ * @param {string} payload.query - Policy query text
+ * @param {string} [payload.branch] - Branch scoping
+ * @returns {Promise<Object>}
+ */
+export const queryAdminSop = async ({ query, branch }) => {
+  return authFetch("/chatbot/admin/sop-query", {
+    method: "POST",
+    body: JSON.stringify({
+      query: query?.trim() || "",
+      branch,
+    }),
+  });
+};
+
+/**
+ * Request an AI reply draft for admin chat or inquiry conversations.
+ *
+ * @param {Object} payload
+ * @param {string} [payload.conversationId]
+ * @param {string} [payload.ticketCategory]
+ * @param {string} [payload.urgency]
+ * @param {Array<{senderRole: string, message: string}>} [payload.recentMessages]
+ * @param {Object} [payload.tenantContext]
+ * @param {string} [payload.tone="Formal"]
+ * @param {string} [payload.branch]
+ * @returns {Promise<Object>}
+ */
+export const suggestAdminReply = async (payload) => {
+  return authFetch("/chatbot/admin/suggest-reply", {
+    method: "POST",
+    body: JSON.stringify({
+      conversationId: payload.conversationId,
+      ticketCategory: payload.ticketCategory || "general_inquiry",
+      urgency: payload.urgency || "normal",
+      recentMessages: payload.recentMessages || [],
+      tenantContext: payload.tenantContext,
+      tone: payload.tone || "Formal",
+      branch: payload.branch,
+    }),
+  });
+};
+
+/**
+ * Fetch detected issue clusters for branch admins.
+ *
+ * @param {Object} [params]
+ * @param {string} [params.branch]
+ * @param {number} [params.timeframeHours=24]
+ * @returns {Promise<Object>}
+ */
+export const getAdminIssueClusters = async ({ branch, timeframeHours = 24 } = {}) => {
+  const queryParams = new URLSearchParams();
+  if (branch) queryParams.set("branch", branch);
+  if (timeframeHours) queryParams.set("timeframeHours", String(timeframeHours));
+  const qs = queryParams.toString();
+  return authFetch(`/chatbot/admin/issue-clusters${qs ? `?${qs}` : ""}`);
+};
+
+/**
+ * Fetch cross-branch support trends and executive memo for dorm owners.
+ *
+ * @param {Object} [params]
+ * @param {string} [params.timeframe="30d"]
+ * @param {string} [params.branch="All"]
+ * @returns {Promise<Object>}
+ */
+export const getOwnerSupportTrends = async ({ timeframe = "30d", branch = "All" } = {}) => {
+  const queryParams = new URLSearchParams();
+  if (timeframe) queryParams.set("timeframe", timeframe);
+  if (branch) queryParams.set("branch", branch);
+  const qs = queryParams.toString();
+  return authFetch(`/chatbot/owner/support-trends${qs ? `?${qs}` : ""}`);
+};
+
 export const chatbotApi = {
   streamPublicChatbot,
   queryPublicChatbot,
   escalateChatbotLead,
+  parseChatbotLead,
+  queryAdminSop,
+  suggestAdminReply,
+  getAdminIssueClusters,
+  getOwnerSupportTrends,
 };
 
 export default chatbotApi;
+

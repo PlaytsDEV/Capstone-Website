@@ -43,8 +43,8 @@ export default function TenantLeaseTimelineCard({ data, onCloseDrawer }) {
     <div className="tenant-snapshot-card" role="region" aria-label="Lease Agreement Timeline">
       <div className="tenant-snapshot-header">
         <div className="tenant-snapshot-title">
-          <FileText className="w-4 h-4 text-slate-700 dark:text-slate-200" aria-hidden="true" />
-          <span>Lease Agreement</span>
+          <FileText className="w-3.5 h-3.5 text-slate-700 dark:text-slate-200 flex-shrink-0" aria-hidden="true" />
+          <span className="truncate">Lease Agreement</span>
         </div>
         <span className={`tenant-snapshot-badge ${status}`} aria-label={`Contract Status: ${status}`}>
           {status}

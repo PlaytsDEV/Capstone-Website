@@ -17,35 +17,10 @@ import DeadlineBadge from "../../../../shared/components/DeadlineBadge";
 import {
  canReservationAccessPayment,
  hasReservationStatus,
+ readMoveInDate,
 } from "../../../../shared/utils/lifecycleNaming";
 import { resolveReservationFinancials } from "../../../../shared/utils/depositUtils";
-
-function parseSafeDate(dateStr) {
- if (!dateStr) return null;
- const clean = String(dateStr).split("T")[0];
- const d = new Date(clean + "T12:00:00");
- return isNaN(d) ? null : d;
-}
-
-function fmtDate(dateStr) {
- const d = parseSafeDate(dateStr);
- if (!d) return "-";
- return d.toLocaleDateString("en-US", {
- weekday: "short",
- month: "short",
- day: "numeric",
- });
-}
-
-function fmtDateLong(dateStr) {
- const d = parseSafeDate(dateStr);
- if (!d) return "-";
- return d.toLocaleDateString("en-US", {
- month: "long",
- day: "numeric",
- year: "numeric",
- });
-}
+import { fmtDate, fmtShortDate } from "../../../../shared/utils/dateFormat";
 
 export default function ReservationSidePanel({ reservation, onClick, profileData }) {
   const navigate = useNavigate();
@@ -202,37 +177,52 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
  label: "Room Selected",
  };
 
- return (
- <div
- style={S.card}
- onClick={onClick}
- role={onClick ? "button" : undefined}
- tabIndex={onClick ? 0 : undefined}
- onMouseEnter={(e) => {
-   e.currentTarget.style.transform = "translateY(-2px)";
-   e.currentTarget.style.boxShadow = "0 6px 18px rgba(15, 23, 42, 0.08)";
-   e.currentTarget.style.borderColor = "var(--border-subtle, #CBD5E1)";
- }}
- onMouseLeave={(e) => {
-   e.currentTarget.style.transform = "none";
-   e.currentTarget.style.boxShadow = "0 4px 14px rgba(15, 23, 42, 0.04)";
-   e.currentTarget.style.borderColor = "var(--border-card, #E2E8F0)";
- }}
- >
- <div style={S.headerShell}>
- <div style={S.roomSection}>
- <div style={S.roomIconWrap}>
- <Home size={20} color="var(--text-secondary, #64748B)" />
- </div>
- <div style={S.roomInfo}>
- <h3 style={S.roomName}>{roomName}</h3>
- <div style={S.roomBranch}>
- <MapPin size={13} style={{ marginRight: 4 }} />
- {branch}
- </div>
- </div>
- </div>
- </div>
+  return (
+    <div
+      style={{
+        ...S.card,
+        background: isDark ? "var(--surface-card, #0F1B2D)" : "#FFFFFF",
+        borderColor: isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)",
+      }}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = "0 6px 18px rgba(15, 23, 42, 0.08)";
+        e.currentTarget.style.borderColor = isDark ? "var(--border-card, #3B506D)" : "var(--border-subtle, #CBD5E1)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "none";
+        e.currentTarget.style.boxShadow = "0 4px 14px rgba(15, 23, 42, 0.04)";
+        e.currentTarget.style.borderColor = isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)";
+      }}
+    >
+      <div
+        style={{
+          ...S.headerShell,
+          borderColor: isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)",
+        }}
+      >
+        <div style={S.roomSection}>
+          <div
+            style={{
+              ...S.roomIconWrap,
+              background: isDark ? "rgba(212, 175, 55, 0.2)" : "rgba(212, 175, 55, 0.14)",
+              borderColor: isDark ? "rgba(212, 175, 55, 0.35)" : "rgba(212, 175, 55, 0.26)",
+            }}
+          >
+            <Home size={20} color={isDark ? "#F8FAFC" : "var(--text-secondary, #64748B)"} />
+          </div>
+          <div style={S.roomInfo}>
+            <h3 style={{ ...S.roomName, color: isDark ? "#FFFFFF" : "var(--text-heading, #0F172A)" }}>{roomName}</h3>
+            <div style={{ ...S.roomBranch, color: isDark ? "#94A3B8" : "var(--text-secondary, #64748B)" }}>
+              <MapPin size={13} style={{ marginRight: 4 }} />
+              {branch}
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div
         style={{
@@ -245,23 +235,26 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
         {hasVisit && (
           <>
             <DetailRow
-              icon={<Calendar size={15} color="var(--text-secondary, #94A3B8)" />}
+              icon={<Calendar size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
               label="Visit Date"
               value={fmtDate(reservation.visitDate)}
+              isDark={isDark}
             />
             <DetailRow
-              icon={<Clock size={15} color="var(--text-secondary, #94A3B8)" />}
+              icon={<Clock size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
               label="Visit Time"
               value={reservation.visitTime}
+              isDark={isDark}
             />
           </>
         )}
 
         {panelState === "preference" && viewingPrefLabel && (
           <DetailRow
-            icon={<Calendar size={15} color="var(--text-secondary, #94A3B8)" />}
+            icon={<Calendar size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
             label="Preference"
             value={viewingPrefLabel}
+            isDark={isDark}
           />
         )}
 
@@ -278,26 +271,40 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
 
           return (
             <DetailRow
-              icon={<Ticket size={15} color="var(--text-secondary, #94A3B8)" />}
+              icon={<Ticket size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
               label={codeLabel}
               value={codeValue}
               mono
-              highlight
+              isDark={isDark}
             />
           );
         })()}
 
-        {reservation.targetMoveInDate && (
-          <DetailRow
-            icon={<Calendar size={15} color="var(--text-secondary, #94A3B8)" />}
-            label="Move-in"
-            value={fmtDateLong(reservation.targetMoveInDate)}
-          />
-        )}
+        {(() => {
+          const moveInDateValue =
+            readMoveInDate(reservation) || reservation.targetMoveInDate;
+          if (!moveInDateValue) return null;
+
+          const isScheduleConfirmed =
+            isConfirmed ||
+            hasReservationStatus(status, "reserved", "moveIn", "moveOut");
+          const moveInLabel = isScheduleConfirmed
+            ? "Move-in"
+            : "Move-in";
+
+          return (
+            <DetailRow
+              icon={<Calendar size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
+              label={moveInLabel}
+              value={fmtDate(moveInDateValue)}
+              isDark={isDark}
+            />
+          );
+        })()}
 
         {hasApplication && (
           <DetailRow
-            icon={<FileText size={15} color="var(--text-secondary, #94A3B8)" />}
+            icon={<FileText size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
             label="Application"
             value={
               pendingReview
@@ -308,28 +315,42 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
                 ? "Approved"
                 : "Submitted"
             }
-            success={paymentReady}
+            color={
+              paymentReady
+                ? (isDark ? "#34D399" : "#059669")
+                : pendingReview
+                ? (isDark ? "#FBBF24" : "#D97706")
+                : needsRevision
+                ? (isDark ? "#F87171" : "#DC2626")
+                : (isDark ? "#34D399" : "#059669")
+            }
+            isDark={isDark}
           />
         )}
 
         {isConfirmed && (
           <>
             <DetailRow
-              icon={<CreditCard size={15} color="var(--text-secondary, #94A3B8)" />}
+              icon={<CreditCard size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
               label="Reservation Fee"
               value="Paid (₱2,000)"
-              success
+              color={isDark ? "#34D399" : "#059669"}
+              isDark={isDark}
             />
             <DetailRow
-              icon={<CreditCard size={15} color="var(--text-secondary, #94A3B8)" />}
+              icon={<CreditCard size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
               label="Advance & Deposit"
               value={
                 isMoveInSettled
                   ? "Settled"
                   : `₱${moveInRemainingDue.toLocaleString()}`
               }
-              success={isMoveInSettled}
-              highlight={!isMoveInSettled}
+              color={
+                isMoveInSettled
+                  ? (isDark ? "#34D399" : "#059669")
+                  : undefined
+              }
+              isDark={isDark}
             />
           </>
         )}
@@ -367,7 +388,12 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
       )}
 
       {isConfirmed && (
-        <div style={S.footerShell}>
+        <div
+          style={{
+            ...S.footerShell,
+            borderColor: isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)",
+          }}
+        >
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -407,43 +433,55 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
               View Lease Contract
             </button>
           )}
- <button
- onClick={(e) => {
- e.stopPropagation();
- navigate("/applicant/profile", { state: { tab: "reservation" } });
- }}
- style={{
- ...S.subtleLink,
- color: isDark ? "#C8D3E4" : S.subtleLink.color,
- }}
- onMouseEnter={(e) => {
- e.currentTarget.style.color = "var(--color-accent, #D4AF37)";
- }}
- onMouseLeave={(e) => {
- e.currentTarget.style.color = "";
- }}
- >
- View full reservation {"\u2192"}
- </button>
- </div>
- )}
- </div>
- );
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate("/applicant/profile", { state: { tab: "reservation" } });
+            }}
+            style={{
+              ...S.subtleLink,
+              color: isDark ? "#C8D3E4" : S.subtleLink.color,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = isDark ? "#93C5FD" : "#1D4ED8";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = isDark ? "#C8D3E4" : S.subtleLink.color;
+            }}
+          >
+            View full reservation {"\u2192"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
-function DetailRow({ icon, label, value, mono, highlight, success }) {
+function DetailRow({ icon, label, value, mono, color, isDark }) {
   return (
-    <div style={S.detailRow}>
+    <div
+      style={{
+        ...S.detailRow,
+        background: isDark ? "rgba(255, 255, 255, 0.03)" : "var(--surface-card, #FFFFFF)",
+        borderColor: isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)",
+      }}
+    >
       <div style={S.detailLeft}>
         {icon}
-        <span style={S.detailLabel}>{label}</span>
+        <span
+          style={{
+            ...S.detailLabel,
+            color: isDark ? "#94A3B8" : "var(--text-secondary, #64748B)",
+          }}
+        >
+          {label}
+        </span>
       </div>
       <span
         style={{
           ...S.detailValue,
+          color: color || (isDark ? "#F8FAFC" : "var(--text-heading, #0F172A)"),
           ...(mono ? S.mono : {}),
-          ...(highlight ? { color: "var(--color-accent, #D4AF37)", fontWeight: 700 } : {}),
-          ...(success ? { color: "#059669", fontWeight: 700 } : {}),
         }}
       >
         {value}

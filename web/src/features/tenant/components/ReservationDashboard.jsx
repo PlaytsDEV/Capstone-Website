@@ -1096,6 +1096,13 @@ export default function ReservationDashboard({
               )
             : null;
 
+          const confirmedMoveIn = readMoveInDate(reservation);
+          const requestedMoveIn = reservation.targetMoveInDate;
+          const hasDateDivergence =
+            confirmedMoveIn &&
+            requestedMoveIn &&
+            formatDate(confirmedMoveIn) !== formatDate(requestedMoveIn);
+
           return (
             <div style={styles.confirmedDashboard}>
               {daysLeft !== null && (
@@ -1122,6 +1129,17 @@ export default function ReservationDashboard({
                       <div style={styles.countdownDate}>
                         {formatDate(moveIn)}
                       </div>
+                      {hasDateDivergence && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "var(--text-secondary, #64748B)",
+                            marginTop: 2,
+                          }}
+                        >
+                          Requested: {formatDate(requestedMoveIn)}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div style={styles.countdownBadge}>
@@ -1135,7 +1153,9 @@ export default function ReservationDashboard({
                         Today!
                       </span>
                     ) : (
-                      <span style={{ color: "#94A3B8" }}>Passed</span>
+                      <span style={{ color: "#64748B", fontWeight: 600 }}>
+                        Passed
+                      </span>
                     )}
                   </div>
                 </div>

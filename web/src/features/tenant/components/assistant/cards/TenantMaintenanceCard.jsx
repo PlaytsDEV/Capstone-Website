@@ -69,10 +69,10 @@ export default function TenantMaintenanceCard({ data, onCloseDrawer }) {
     <div className="tenant-snapshot-card" role="region" aria-label="Maintenance Ticket Snapshot">
       <div className="tenant-snapshot-header">
         <div className="tenant-snapshot-title">
-          <Wrench className="w-4 h-4 text-slate-700 dark:text-slate-200" aria-hidden="true" />
-          <span>Ticket {ticketCode}</span>
+          <Wrench className="w-3.5 h-3.5 text-slate-700 dark:text-slate-200 flex-shrink-0" aria-hidden="true" />
+          <span className="truncate">Ticket {ticketCode}</span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <span className={`tenant-snapshot-badge ${urgency}`} aria-label={`Urgency: ${urgency}`}>
             {urgency}
           </span>

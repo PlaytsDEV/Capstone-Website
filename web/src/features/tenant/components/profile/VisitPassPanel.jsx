@@ -6,10 +6,9 @@ import { Calendar, Clock, MapPin, QrCode, X } from "lucide-react";
 // a full ISO string from the DB (2026-03-27T00:00:00.000Z).
 // Parsing at noon avoids timezone-driven day shifts.
 function parseSafeDate(dateStr) {
- if (!dateStr) return null;
- const clean = String(dateStr).split("T")[0]; // strip time if present
- const d = new Date(clean + "T12:00:00");
- return isNaN(d) ? null : d;
+  if (!dateStr) return null;
+  const d = dateStr instanceof Date ? dateStr : (typeof dateStr === "string" && dateStr.length === 10 && !dateStr.includes("T") ? new Date(dateStr + "T12:00:00") : new Date(dateStr));
+  return isNaN(d.getTime()) ? null : d;
 }
 
 function fmtDateFull(dateStr) {

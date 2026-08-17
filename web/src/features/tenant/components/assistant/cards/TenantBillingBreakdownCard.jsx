@@ -36,8 +36,8 @@ export default function TenantBillingBreakdownCard({ data, onCloseDrawer }) {
     <div className="tenant-snapshot-card" role="region" aria-label="Billing Statement Breakdown">
       <div className="tenant-snapshot-header">
         <div className="tenant-snapshot-title">
-          <ReceiptText className="w-4 h-4 text-slate-700 dark:text-slate-200" aria-hidden="true" />
-          <span>{formattedMonth}</span>
+          <ReceiptText className="w-3.5 h-3.5 text-slate-700 dark:text-slate-200 flex-shrink-0" aria-hidden="true" />
+          <span className="truncate">{formattedMonth}</span>
         </div>
         <span className={`tenant-snapshot-badge ${status}`} aria-label={`Status: ${status}`}>
           {status}

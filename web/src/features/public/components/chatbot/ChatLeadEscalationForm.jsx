@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { User, Mail, Phone, Building, HelpCircle, CheckCircle2, Loader2, ArrowLeft, Send, Headphones } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { User, Mail, Phone, Building, HelpCircle, CheckCircle2, Loader2, ArrowLeft, Send, Headphones, Sparkles } from "lucide-react";
 import { chatbotApi } from "../../../../shared/api/chatbotApi";
 
 const BRANCH_OPTIONS = [
@@ -22,10 +22,12 @@ const MSG_MAX = 500;
  * ChatLeadEscalationForm
  *
  * Dedicated modal form for visitors to request Front Desk staff assistance or a callback.
+ * Enhanced with Qwen/Llama intelligent conversation parsing.
  */
 export function ChatLeadEscalationForm({
   initialBranch = "all",
   initialMessage = "",
+  conversationHistory = [],
   onCancel,
   onSuccessSubmitted,
 }) {
@@ -40,8 +42,69 @@ export function ChatLeadEscalationForm({
 
   const [touched, setTouched] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
+  const [isAutoFilled, setIsAutoFilled] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submittedRequest, setSubmittedRequest] = useState(null);
+
+  // Auto-parse lead info from conversation history on mount
+  useEffect(() => {
+    let isMounted = true;
+    const hasUserMessages = Array.isArray(conversationHistory) && conversationHistory.some((m) => m.role === "user");
+
+    if (hasUserMessages) {
+      setIsParsing(true);
+      chatbotApi
+        .parseChatbotLead({ conversationHistory, branchFocus: initialBranch })
+        .then((res) => {
+          if (!isMounted || !res?.data) return;
+          const lead = res.data;
+
+          setFormData((prev) => {
+            const updated = { ...prev };
+            let hasFilled = false;
+
+            if (lead.name && !prev.name) {
+              updated.name = lead.name;
+              hasFilled = true;
+            }
+            if (lead.email && !prev.email) {
+              updated.email = lead.email;
+              hasFilled = true;
+            }
+            if (lead.phone && !prev.phone) {
+              const clean = lead.phone.replace(/\D/g, "");
+              const formatted = clean.startsWith("63") ? clean.slice(2) : clean.startsWith("0") ? clean.slice(1) : clean;
+              updated.phone = formatted.slice(0, 10);
+              hasFilled = true;
+            }
+            if (lead.preferredBranch && lead.preferredBranch !== "all" && prev.preferredBranch === "all") {
+              updated.preferredBranch = lead.preferredBranch;
+              hasFilled = true;
+            }
+            if (lead.viewingRequested && prev.concernCategory === "general_inquiry") {
+              updated.concernCategory = "ocular_visit";
+              hasFilled = true;
+            }
+
+            if (hasFilled) {
+              setIsAutoFilled(true);
+            }
+            return updated;
+          });
+        })
+        .catch(() => {
+          // Non-fatal if parsing fails
+        })
+        .finally(() => {
+          if (isMounted) setIsParsing(false);
+        });
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [conversationHistory, initialBranch]);
 
   // Field validation helpers
   const validate = () => {
@@ -211,6 +274,13 @@ export function ChatLeadEscalationForm({
         </div>
       </div>
 
+      {isAutoFilled && (
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-[11px] border border-amber-200 dark:border-amber-900/50 mb-2">
+          <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+          <span>Details pre-filled from your chat. Please review and confirm.</span>
+        </div>
+      )}
+
       {submitError && (
         <div className="p-2 mb-2 rounded-lg text-xs bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
           {submitError}
@@ -275,18 +345,19 @@ export function ChatLeadEscalationForm({
         {/* Phone */}
         <div>
           <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
-            Mobile Number <span className="text-red-500">*</span>
+            Contact Number <span className="text-red-500">*</span>
           </label>
-          <div className="relative flex">
+          <div className="relative flex items-center">
             <span
-              className="inline-flex items-center px-2.5 text-xs font-medium border border-r-0 rounded-l-lg select-none"
+              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-l-lg border border-r-0 text-[11px] font-medium select-none flex-shrink-0"
               style={{
-                backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.1))",
+                backgroundColor: "var(--surface-neutral, #e2e8f0)",
                 borderColor: touched.phone && errors.phone ? "#ef4444" : "var(--lp-border, #E6D9B2)",
                 color: "var(--lp-text, #162f53)",
               }}
             >
-              +63
+              <Phone className="w-3 h-3 text-slate-400" />
+              <span>+63</span>
             </span>
             <input
               type="tel"
@@ -295,6 +366,7 @@ export function ChatLeadEscalationForm({
               value={formatPhoneDisplay(formData.phone)}
               onChange={handlePhoneChange}
               onBlur={() => handleBlur("phone")}
+              maxLength={12}
               className={`w-full text-xs px-2.5 py-1.5 rounded-r-lg border outline-none transition-all ${
                 touched.phone && errors.phone
                   ? "border-red-500 bg-red-50/50"
@@ -308,64 +380,70 @@ export function ChatLeadEscalationForm({
           )}
         </div>
 
-        {/* Target Branch */}
+        {/* Branch Preference */}
         <div>
           <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
-            Target Branch
+            Preferred Branch
           </label>
-          <select
-            name="preferredBranch"
-            value={formData.preferredBranch}
-            onChange={handleChange}
-            className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none focus:border-amber-500"
-            style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
-          >
-            {BRANCH_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <Building className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <select
+              name="preferredBranch"
+              value={formData.preferredBranch}
+              onChange={handleChange}
+              className="w-full text-xs pl-8 pr-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none focus:border-amber-500"
+              style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
+            >
+              {BRANCH_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* Concern Topic */}
+        {/* Category of Concern */}
         <div>
           <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
-            Topic / Concern
+            Topic of Concern
           </label>
-          <select
-            name="concernCategory"
-            value={formData.concernCategory}
-            onChange={handleChange}
-            className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none focus:border-amber-500"
-            style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
-          >
-            {CONCERN_CATEGORIES.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <HelpCircle className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <select
+              name="concernCategory"
+              value={formData.concernCategory}
+              onChange={handleChange}
+              className="w-full text-xs pl-8 pr-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none focus:border-amber-500"
+              style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
+            >
+              {CONCERN_CATEGORIES.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* Message / Question */}
+        {/* Message */}
         <div>
-          <div className="flex justify-between items-center mb-0.5">
-            <label className="text-[11px] font-semibold" style={{ color: "var(--lp-text, #162f53)" }}>
-              Concern Details
+          <div className="flex items-center justify-between mb-0.5">
+            <label className="block text-[11px] font-semibold" style={{ color: "var(--lp-text, #162f53)" }}>
+              Message / Specific Question
             </label>
-            <span className="text-[10px]" style={{ color: "var(--lp-text-muted, #94A3B8)" }}>
+            <span className="text-[10px] text-slate-400">
               {formData.message.length}/{MSG_MAX}
             </span>
           </div>
           <textarea
             name="message"
-            rows={2}
-            placeholder="Describe your question or assistance needed..."
+            rows={3}
+            placeholder="Tell us what you need assistance with..."
             value={formData.message}
             onChange={handleChange}
             maxLength={MSG_MAX}
-            className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none resize-none focus:border-amber-500"
+            className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 outline-none resize-none focus:border-amber-500"
             style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
           />
         </div>
@@ -376,32 +454,25 @@ export function ChatLeadEscalationForm({
             type="button"
             onClick={onCancel}
             disabled={isSubmitting}
-            className="flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800"
-            style={{
-              borderColor: "var(--lp-border, #E6D9B2)",
-              color: "var(--lp-text-secondary, #475569)",
-              backgroundColor: "transparent",
-            }}
+            className="flex-1 py-1.5 px-3 rounded-lg text-xs font-medium border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            style={{ color: "var(--lp-text-secondary, #475569)" }}
           >
-            Back to Chat
+            Cancel
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || !isValid}
-            className="flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold text-white transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm focus:outline-none active:scale-95"
-            style={{
-              backgroundColor: "var(--lp-accent, #D4AF37)",
-              border: "1px solid var(--lp-accent, #D4AF37)",
-            }}
+            disabled={isSubmitting}
+            className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold text-white flex items-center justify-center gap-1.5 transition-all shadow-sm disabled:opacity-50"
+            style={{ backgroundColor: "var(--lp-navy, #0A1628)" }}
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 <span>Submitting...</span>
               </>
             ) : (
               <>
-                <Send className="w-3 h-3 text-white" />
+                <Send className="w-3.5 h-3.5" />
                 <span>Submit Request</span>
               </>
             )}

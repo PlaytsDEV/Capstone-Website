@@ -213,7 +213,7 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
       <div className="space-y-2.5 text-xs">
         {/* Branch Selector */}
         <div>
-          <label htmlFor="tour-branch-select" className="block text-[11px] font-semibold mb-1" style={{ color: "var(--lp-text, #162f53)" }}>
+          <label htmlFor="tour-branch-select" className="block text-[11px] font-bold mb-1" style={{ color: "#0A1628" }}>
             Select Branch <span className="text-red-500">*</span>
           </label>
           <div className="grid grid-cols-2 gap-1.5">
@@ -221,11 +221,11 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
               id="tour-branch-gil-puyat"
               type="button"
               onClick={() => setBranch("gil_puyat")}
-              className="py-1.5 px-2 rounded-lg text-xs font-semibold text-center transition-all cursor-pointer border"
+              className="py-1.5 px-2 rounded-lg text-xs font-bold text-center transition-all cursor-pointer border shadow-xs"
               style={{
-                backgroundColor: branch === "gil_puyat" ? "var(--lp-icon-bg, rgba(212, 175, 55, 0.15))" : "var(--surface-input, #f8fafc)",
-                borderColor: branch === "gil_puyat" ? "var(--lp-accent, #D4AF37)" : "var(--lp-border, #E6D9B2)",
-                color: branch === "gil_puyat" ? "#B45309" : "var(--lp-text, #162f53)",
+                backgroundColor: branch === "gil_puyat" ? "#0A1628" : "#FFFFFF",
+                borderColor: branch === "gil_puyat" ? "#0A1628" : "#CBD5E1",
+                color: branch === "gil_puyat" ? "#FFFFFF" : "#0A1628",
               }}
             >
               Gil Puyat (Pasay)
@@ -234,11 +234,11 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
               id="tour-branch-guadalupe"
               type="button"
               onClick={() => setBranch("guadalupe")}
-              className="py-1.5 px-2 rounded-lg text-xs font-semibold text-center transition-all cursor-pointer border"
+              className="py-1.5 px-2 rounded-lg text-xs font-bold text-center transition-all cursor-pointer border shadow-xs"
               style={{
-                backgroundColor: branch === "guadalupe" ? "var(--lp-icon-bg, rgba(212, 175, 55, 0.15))" : "var(--surface-input, #f8fafc)",
-                borderColor: branch === "guadalupe" ? "var(--lp-accent, #D4AF37)" : "var(--lp-border, #E6D9B2)",
-                color: branch === "guadalupe" ? "#B45309" : "var(--lp-text, #162f53)",
+                backgroundColor: branch === "guadalupe" ? "#0A1628" : "#FFFFFF",
+                borderColor: branch === "guadalupe" ? "#0A1628" : "#CBD5E1",
+                color: branch === "guadalupe" ? "#FFFFFF" : "#0A1628",
               }}
             >
               Guadalupe (Makati)
@@ -250,7 +250,7 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {/* Date Picker */}
           <div>
-            <label htmlFor="tour-date-input" className="block text-[11px] font-semibold mb-1" style={{ color: "var(--lp-text, #162f53)" }}>
+            <label htmlFor="tour-date-input" className="block text-[11px] font-bold mb-1" style={{ color: "#0A1628" }}>
               Tour Date <span className="text-red-500">*</span>
             </label>
             <input
@@ -259,18 +259,18 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
               min={getTomorrowDateString()}
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full py-1.5 px-2.5 rounded-lg border text-xs outline-none"
+              className="w-full py-1.5 px-2.5 rounded-lg border text-xs outline-none font-medium"
               style={{
                 backgroundColor: "var(--surface-input, #f8fafc)",
                 borderColor: touched.date && errors.date ? "#ef4444" : "var(--lp-border, #E6D9B2)",
-                color: "var(--lp-text, #162f53)",
+                color: "#0A1628",
               }}
             />
           </div>
 
           {/* Time Slot Chips */}
           <div>
-            <span className="block text-[11px] font-semibold mb-1" style={{ color: "var(--lp-text, #162f53)" }}>
+            <span className="block text-[11px] font-bold mb-1" style={{ color: "#0A1628" }}>
               Time Slot <span className="text-red-500">*</span>
             </span>
             <div className="grid grid-cols-2 gap-1">
@@ -279,11 +279,11 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
                   key={slot}
                   type="button"
                   onClick={() => setTimeSlot(slot)}
-                  className="py-1 px-1 rounded-md text-[10px] font-medium text-center transition-all cursor-pointer border"
+                  className="py-1.5 px-1 rounded-md text-[11px] font-bold text-center transition-all cursor-pointer border shadow-xs"
                   style={{
-                    backgroundColor: timeSlot === slot ? "var(--lp-icon-bg, rgba(212, 175, 55, 0.15))" : "var(--surface-input, #f8fafc)",
-                    borderColor: timeSlot === slot ? "var(--lp-accent, #D4AF37)" : "var(--lp-border, #E6D9B2)",
-                    color: timeSlot === slot ? "#B45309" : "var(--lp-text, #162f53)",
+                    backgroundColor: timeSlot === slot ? "#0A1628" : "#FFFFFF",
+                    borderColor: timeSlot === slot ? "#0A1628" : "#CBD5E1",
+                    color: timeSlot === slot ? "#FFFFFF" : "#0A1628",
                   }}
                 >
                   {slot}
@@ -370,28 +370,28 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full mt-3.5 py-2 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+        className="w-full mt-3.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
         style={{
-          backgroundColor: "var(--lp-accent, #D4AF37)",
-          border: "1px solid var(--lp-accent, #D4AF37)",
-          color: "#ffffff",
+          backgroundColor: "#0A1628",
+          border: "1px solid #0A1628",
+          color: "#FFFFFF",
         }}
         onMouseEnter={(e) => {
-          if (!isSubmitting) e.currentTarget.style.backgroundColor = "var(--color-accent-hover, #B9921F)";
+          if (!isSubmitting) e.currentTarget.style.backgroundColor = "#1A2C4E";
         }}
         onMouseLeave={(e) => {
-          if (!isSubmitting) e.currentTarget.style.backgroundColor = "var(--lp-accent, #D4AF37)";
+          if (!isSubmitting) e.currentTarget.style.backgroundColor = "#0A1628";
         }}
       >
         {isSubmitting ? (
           <>
-            <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
-            <span>Scheduling Dorm Tour...</span>
+            <LoaderCircle className="w-3.5 h-3.5 animate-spin text-white" />
+            <span className="text-white font-bold">Scheduling Dorm Tour...</span>
           </>
         ) : (
           <>
-            <Calendar className="w-3.5 h-3.5" />
-            <span>Confirm & Book Dorm Tour</span>
+            <Calendar className="w-3.5 h-3.5 text-white" />
+            <span className="text-white font-bold">Confirm & Book Dorm Tour</span>
           </>
         )}
       </button>

@@ -153,7 +153,10 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
 
   // Welcome message if conversation is empty
   const tenantDisplayName =
-    `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || user?.username || "Resident";
+    `${user?.firstName || ""}`.trim() ||
+    `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
+    user?.username ||
+    "Tenant";
 
   const branchLabel = formatBranch(user?.branch || contextSnapshot?.branch);
   const roomLabel = user?.roomNumber || contextSnapshot?.roomNumber || "304";
@@ -373,7 +376,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
         className={`tenant-assistant-drawer ${isOpen ? "open" : ""}`}
         role="dialog"
         aria-modal="true"
-        aria-label="Lilycrest Resident Copilot Assistant"
+        aria-label="Lilycrest Tenant Assistant"
       >
         {/* Header */}
         <div className="tenant-assistant-header">
@@ -382,7 +385,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
               <div className="tenant-assistant-avatar-badge" aria-hidden="true">
                 <Bot className="w-4 h-4" />
               </div>
-              <span className="tenant-assistant-title">Resident Copilot</span>
+              <span className="tenant-assistant-title">Tenant Assistant</span>
             </div>
 
             <div className="tenant-assistant-header-actions">
@@ -440,17 +443,17 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
             <div className="tenant-msg-row assistant">
               <div className="tenant-msg-meta">
                 <Bot className="w-3.5 h-3.5" />
-                <span>Resident Copilot</span>
+                <span>Tenant Assistant</span>
               </div>
               <div className="tenant-msg-bubble">
                 <p className="font-semibold text-slate-900 dark:text-slate-100 mb-1">
-                  Mabuhay, {tenantDisplayName}! 👋
+                  Hello, {tenantDisplayName}! 👋
                 </p>
                 <p>
-                  I am your <strong>Lilycrest Resident Copilot</strong>. I have real-time access to your room allocation, submetered utility breakdown, active lease agreement, and maintenance tickets.
+                  I am your <strong>Lilycrest Tenant Assistant</strong>. I have real-time access to your room assignment, submetered utility breakdown, active lease agreement, and maintenance tickets.
                 </p>
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  Feel free to ask about your monthly billing line items, lease renewal timeline, or report room repair concerns.
+                  Feel free to ask about your monthly billing line items, electricity share, lease renewal timeline, or report room repair concerns.
                 </p>
               </div>
             </div>
@@ -463,7 +466,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                 {msg.role === "assistant" ? (
                   <>
                     <Bot className="w-3.5 h-3.5" />
-                    <span>Resident Copilot</span>
+                    <span>Tenant Assistant</span>
                   </>
                 ) : (
                   <span>You</span>
@@ -529,7 +532,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
             <div className="tenant-msg-row assistant">
               <div className="tenant-msg-meta">
                 <Bot className="w-3.5 h-3.5" />
-                <span>Resident Copilot</span>
+                <span>Tenant Assistant</span>
               </div>
               <div className="tenant-msg-bubble">
                 {streamingText ? (
@@ -567,7 +570,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
         <div className="tenant-quick-prompts-container">
           <div className="tenant-quick-prompts-label">
             <Sparkles className="w-3 h-3 text-amber-500" />
-            <span>Quick Resident Prompts</span>
+            <span>Quick Tenant Prompts</span>
           </div>
           <div className="tenant-quick-prompts-scroll">
             {activeRoutePrompts.map((item, idx) => {
@@ -598,10 +601,10 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
               value={inputMessage}
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about bills, kuryente, lease, or repairs..."
+              placeholder="Ask about bills, electricity, lease, or repairs..."
               disabled={isStreaming}
               className="tenant-assistant-textarea"
-              aria-label="Ask Lilycrest Resident Copilot"
+              aria-label="Ask Lilycrest Tenant Assistant"
             />
 
             <button

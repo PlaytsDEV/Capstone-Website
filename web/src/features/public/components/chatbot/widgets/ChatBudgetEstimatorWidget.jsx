@@ -208,21 +208,21 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
       <button
         type="button"
         onClick={handleViewRooms}
-        className="w-full py-2 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none active:scale-98 shadow-xs"
+        className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none active:scale-98 shadow-xs"
         style={{
-          backgroundColor: "var(--lp-accent, #D4AF37)",
-          border: "1px solid var(--lp-accent, #D4AF37)",
-          color: "#ffffff",
+          backgroundColor: "#0A1628",
+          border: "1px solid #0A1628",
+          color: "#FFFFFF",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = "var(--color-accent-hover, #B9921F)";
+          e.currentTarget.style.backgroundColor = "#1A2C4E";
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "var(--lp-accent, #D4AF37)";
+          e.currentTarget.style.backgroundColor = "#0A1628";
         }}
       >
-        <span>View Available {recommendation.roomTypeParam} Rooms</span>
-        <ArrowUpRight className="w-3.5 h-3.5" />
+        <span className="text-white font-bold">View Available {recommendation.roomTypeParam} Rooms</span>
+        <ArrowUpRight className="w-3.5 h-3.5 text-white" />
       </button>
     </div>
   );
