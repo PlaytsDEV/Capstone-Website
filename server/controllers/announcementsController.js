@@ -11,7 +11,6 @@ import { sendSuccess, AppError } from "../middleware/errorHandler.js";
 import { clean } from "../utils/sanitize.js";
 import auditLogger from "../utils/auditLogger.js";
 import {
-  buildRecipientQuery,
   dispatchAnnouncementNotifications,
   fetchAnnouncementRecipients,
   isAnnouncementLive,
@@ -244,7 +243,7 @@ const populateAnnouncementAudience = async (announcements) => {
 
   await Promise.all(
     targetBranches.map(async (targetBranch) => {
-      const recipientCount = await User.countDocuments(buildRecipientQuery(targetBranch));
+      const recipientCount = (await fetchAnnouncementRecipients({ targetBranch })).length;
       audienceCounts.set(targetBranch, recipientCount);
     }),
   );
@@ -680,7 +679,7 @@ export const createAnnouncement = async (req, res, next) => {
 
     const recipients =
       announcement.requiresAcknowledgment || isAnnouncementLive(announcement)
-        ? await fetchAnnouncementRecipients(targetBranch)
+        ? await fetchAnnouncementRecipients(announcement)
         : [];
 
     if (
@@ -858,7 +857,7 @@ export const updateAnnouncement = async (req, res, next) => {
     await announcement.save();
     const recipients =
       announcement.requiresAcknowledgment || isAnnouncementLive(announcement)
-        ? await fetchAnnouncementRecipients(announcement.targetBranch)
+        ? await fetchAnnouncementRecipients(announcement)
         : [];
 
     if (

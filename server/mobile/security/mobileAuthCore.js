@@ -71,7 +71,7 @@ function createMobileAuth({ getDb, audit = async () => {} }) {
       if (branchScoped) {
         const branch = String(req.user.branch || '').trim();
         if (!branch) return res.status(403).json({ detail: 'Administrative branch access is required.', code: 'BRANCH_ACCESS_DENIED' });
-        const requested = req.body?.branch ?? req.body?.branchId ?? req.body?.branch_id ?? req.query?.branch ?? req.params?.branch;
+        const requested = req.body?.targetBranch ?? req.body?.branch ?? req.body?.branchId ?? req.body?.branch_id ?? req.query?.branch ?? req.params?.branch;
         if (requested && String(requested) !== branch) return res.status(403).json({ detail: 'Administrative branch access is required.', code: 'BRANCH_ACCESS_DENIED' });
         req.mobileBranchScope = branch;
       }

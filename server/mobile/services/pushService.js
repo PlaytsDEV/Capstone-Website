@@ -1,5 +1,6 @@
 const { getDb } = require('../config/database');
 const { admin } = require('../config/firebase');
+const { filterAnnouncementRecipients } = require('./announcementAudience.service');
 
 const DEFAULT_CHANNEL_ID = 'default';
 const MULTICAST_CHUNK_SIZE = 500;
@@ -376,16 +377,33 @@ async function notifyNewAnnouncement(db, announcement) {
   const title = isUrgent ? `Urgent: ${announcement.title}` : announcement.title;
   const body = clipText(announcement.content, 110);
 
-  return sendPushToAllTenants(db, {
+  const candidates = await db.collection('users').find({
+    role: 'tenant',
+    tenantStatus: 'active',
+    accountStatus: 'active',
+    isArchived: { $ne: true },
+  }).toArray();
+  const recipients = await filterAnnouncementRecipients(
+    db,
+    announcement,
+    candidates,
+    { requireLive: true },
+  );
+  const tokens = recipients.flatMap((tenant) =>
+    extractUserPushTokens(tenant).map((entry) => entry.token));
+  if (!tokens.length) return 0;
+
+  const result = await sendMulticast(tokens, {
     title,
     body,
     data: {
       type: 'announcement',
-      announcement_id: announcement.announcement_id,
+      announcement_id: announcement.announcement_id || String(announcement._id || ''),
       screen: 'announcements',
       url: '/(tabs)/announcements',
     },
   });
+  return result.successCount;
 }
 
 async function notifyAdminChatAccepted(userId, adminName, sessionId) {

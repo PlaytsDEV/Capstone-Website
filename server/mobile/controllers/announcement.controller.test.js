@@ -3,7 +3,12 @@ jest.mock('../config/database.js', () => ({ getDb: (...args) => mockGetDb(...arg
 jest.mock('../services/pushService.js', () => ({ notifyNewAnnouncement: jest.fn() }));
 jest.mock('uuid', () => ({ v4: () => 'test-uuid-0000-0000-0000-000000000000' }));
 
-const { getAllAnnouncements, dismissAnnouncement, dismissAnnouncementsBulk } = require('./announcement.controller.js');
+const {
+  getAllAnnouncements,
+  dismissAnnouncement,
+  dismissAnnouncementsBulk,
+  restoreAnnouncement,
+} = require('./announcement.controller.js');
 
 function response() {
   return {
@@ -32,7 +37,9 @@ function makeDb({ announcements = [], branchSource = null, users = [], dismissal
             return { sort: () => ({ toArray: async () => docs }), toArray: async () => docs };
           },
           findOne: async (query) => {
-            const wantedId = query?.$and?.map((clause) => clause.announcement_id).find(Boolean);
+            const wantedId = query?.announcement_id
+              || query?.$or?.map((clause) => clause.announcement_id).find(Boolean)
+              || query?.$and?.map((clause) => clause.announcement_id).find(Boolean);
             return announcements.find((doc) => doc.announcement_id === wantedId) || null;
           },
         };
@@ -43,11 +50,23 @@ function makeDb({ announcements = [], branchSource = null, users = [], dismissal
       if (name === 'roomoccupancyhistories') {
         return { findOne: async () => (branchSource?.tier === 'occupancy' ? branchSource.doc : null) };
       }
+      if (name === 'stays') {
+        return { findOne: async () => (['stay', 'occupancy'].includes(branchSource?.tier) ? branchSource.doc : null) };
+      }
       if (name === 'bedhistories') {
         return { findOne: async () => (branchSource?.tier === 'bedhistory' ? branchSource.doc : null) };
       }
       if (name === 'reservations') {
         return { findOne: async () => (branchSource?.tier === 'reservation' ? branchSource.doc : null) };
+      }
+      if (name === 'rooms') {
+        return { findOne: async () => {
+          if (!['reservation', 'room'].includes(branchSource?.tier)) return null;
+          return { branch: branchSource?.doc?.roomBranch || branchSource?.doc?.branch || null };
+        } };
+      }
+      if (name === 'contracts') {
+        return { findOne: async () => (branchSource?.tier === 'contract' ? branchSource.doc : null) };
       }
       if (name === 'announcement_dismissals') {
         return {
@@ -79,6 +98,13 @@ function makeDb({ announcements = [], branchSource = null, users = [], dismissal
               }
             });
             return { acknowledged: true };
+          },
+          deleteOne: async (filter) => {
+            const index = dismissalStore.findIndex(
+              (row) => row.user_id === filter.user_id && row.announcement_id === filter.announcement_id,
+            );
+            if (index >= 0) dismissalStore.splice(index, 1);
+            return { acknowledged: true, deletedCount: index >= 0 ? 1 : 0 };
           },
         };
       }
@@ -234,6 +260,27 @@ describe('announcement.controller dismissAnnouncement — News-tab-only per-tena
     const listRes = response();
     await getAllAnnouncements(req, listRes);
     expect(listRes.body).toEqual([]);
+  });
+
+  test('Undo restores the same tenant\'s archived announcement without mutating the shared document', async () => {
+    const db = makeDb({
+      announcements: [{ announcement_id: 'a1', title: 'Global notice', content: 'x' }],
+      branchSource: { tier: 'occupancy', doc: { branch: 'guadalupe' } },
+    });
+    mockGetDb.mockReturnValue(db);
+    const req = { user: { user_id: 't1', _id: 'mongo1' }, params: { announcementId: 'a1' } };
+
+    await dismissAnnouncement(req, response());
+    expect(db.__dismissalStore).toHaveLength(1);
+
+    const restoreRes = response();
+    await restoreAnnouncement(req, restoreRes);
+    expect(restoreRes.body).toEqual({ status: 'restored', announcement_id: 'a1' });
+    expect(db.__dismissalStore).toHaveLength(0);
+
+    const listRes = response();
+    await getAllAnnouncements(req, listRes);
+    expect(listRes.body.map((item) => item.announcement_id)).toEqual(['a1']);
   });
 
   test('dismissal never mutates or deletes the shared announcement document — it stays visible to every other tenant', async () => {

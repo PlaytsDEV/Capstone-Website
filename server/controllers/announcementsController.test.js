@@ -216,7 +216,9 @@ describe("announcementsController", () => {
         visibility: "tenants-only",
       }),
     );
-    expect(fetchAnnouncementRecipients).toHaveBeenCalledWith("gil-puyat");
+    expect(fetchAnnouncementRecipients).toHaveBeenCalledWith(
+      expect.objectContaining({ targetBranch: "gil-puyat" }),
+    );
     expect(dispatchAnnouncementNotifications).toHaveBeenCalledWith(
       expect.objectContaining({ _id: "announcement-1" }),
       { recipients: [{ _id: "tenant-1" }, { _id: "tenant-2" }] },
@@ -266,7 +268,9 @@ describe("announcementsController", () => {
         targetBranch: "both",
       }),
     );
-    expect(fetchAnnouncementRecipients).toHaveBeenCalledWith("both");
+    expect(fetchAnnouncementRecipients).toHaveBeenCalledWith(
+      expect.objectContaining({ targetBranch: "both" }),
+    );
   });
 
   test("future scheduled announcements do not dispatch immediately", async () => {

@@ -7,20 +7,23 @@
  * managing announcement audience acknowledgments.
  */
 
+import mongoose from "mongoose";
 import { Announcement, AcknowledgmentAccount, User } from "../../models/index.js";
-import { ROOM_BRANCHES } from "../../config/branches.js";
 import { createNotification } from "./notificationService.js";
 import { emitToUser } from "../../utils/socket.js";
 import { sendMobilePushAnnouncement } from "./mobilePushService.js";
 import logger from "../../middleware/logger.js";
+import announcementAudiencePolicy from "../../mobile/services/announcementAudience.service.js";
+
+const { filterAnnouncementRecipients } = announcementAudiencePolicy;
 
 export const ANNOUNCEMENT_NOTIFICATION_URL = "/applicant/announcements";
 
-export const buildRecipientQuery = (targetBranch) => ({
+export const buildRecipientQuery = () => ({
   role: "tenant",
+  tenantStatus: "active",
   isArchived: false,
   accountStatus: "active",
-  branch: targetBranch === "both" ? { $in: ROOM_BRANCHES } : targetBranch,
 });
 
 export const isAnnouncementLive = (announcement, now = new Date()) =>
@@ -51,8 +54,13 @@ export const buildNotificationPayload = (notification) => {
   };
 };
 
-export const fetchAnnouncementRecipients = async (targetBranch) =>
-  User.find(buildRecipientQuery(targetBranch)).select("_id").lean();
+export const fetchAnnouncementRecipients = async (announcementOrTargetBranch) => {
+  const announcement = typeof announcementOrTargetBranch === "string"
+    ? { targetBranch: announcementOrTargetBranch }
+    : announcementOrTargetBranch;
+  const candidates = await User.find(buildRecipientQuery()).select("_id user_id").lean();
+  return filterAnnouncementRecipients(mongoose.connection.db, announcement, candidates);
+};
 
 export const upsertAnnouncementAcknowledgmentAudience = async (
   announcement,
@@ -63,7 +71,7 @@ export const upsertAnnouncementAcknowledgmentAudience = async (
   }
 
   const resolvedRecipients =
-    recipients || (await fetchAnnouncementRecipients(announcement.targetBranch));
+    recipients || (await fetchAnnouncementRecipients(announcement));
 
   await AcknowledgmentAccount.createForAnnouncement(
     announcement._id,
@@ -89,8 +97,9 @@ export const dispatchAnnouncementNotifications = async (
     };
   }
 
-  const resolvedRecipients =
-    recipients || (await fetchAnnouncementRecipients(announcement.targetBranch));
+  const resolvedRecipients = recipients
+    ? await filterAnnouncementRecipients(mongoose.connection.db, announcement, recipients)
+    : await fetchAnnouncementRecipients(announcement);
 
   if (announcement.requiresAcknowledgment && resolvedRecipients.length > 0) {
     await upsertAnnouncementAcknowledgmentAudience(announcement, resolvedRecipients);
@@ -126,7 +135,11 @@ export const dispatchAnnouncementNotifications = async (
         "announcement",
         announcement.title,
         buildAnnouncementNotificationMessage(announcement.content),
-        { actionUrl: ANNOUNCEMENT_NOTIFICATION_URL },
+        {
+          actionUrl: ANNOUNCEMENT_NOTIFICATION_URL,
+          entityType: "announcement",
+          entityId: String(announcement._id),
+        },
       );
 
       if (notification) {
