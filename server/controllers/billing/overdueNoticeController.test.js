@@ -18,6 +18,7 @@ const mockFindOneNotice = jest.fn();
 const mockFindReviews = jest.fn();
 const mockFindOneReview = jest.fn();
 const mockFindByIdReview = jest.fn();
+const mockBillingNotice = jest.fn();
 
 await jest.unstable_mockModule("../../models/index.js", () => {
   class MockOverdueNotice {
@@ -121,7 +122,7 @@ await jest.unstable_mockModule("../../config/email.js", () => ({
 
 await jest.unstable_mockModule("../../services/notifications/notificationService.js", () => {
   const notifyObj = {
-    billingNotice: jest.fn().mockResolvedValue({ _id: new mongoose.Types.ObjectId() }),
+    billingNotice: mockBillingNotice,
   };
   return {
     default: notifyObj,
@@ -142,6 +143,7 @@ describe("OverdueNoticeController Tests", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockBillingNotice.mockResolvedValue({ _id: new mongoose.Types.ObjectId() });
 
     req = {
       user: {
@@ -318,6 +320,18 @@ describe("OverdueNoticeController Tests", () => {
       const response = res.json.mock.calls[0][0];
       expect(response.success).toBe(true);
       expect(response.data.overdueNoticeCount).toBe(1);
+      expect(mockBillingNotice).toHaveBeenCalledWith(
+        billDoc.userId._id,
+        expect.objectContaining({
+          notificationType: "bill_due_reminder",
+          billId,
+          eventId: expect.any(mongoose.Types.ObjectId),
+          pushType: "overdue_notice",
+        }),
+      );
+      expect(mockNoticeSave.mock.invocationCallOrder[0]).toBeLessThan(
+        mockBillingNotice.mock.invocationCallOrder[0],
+      );
     });
 
     test("auto-escalates to TerminationReview when Notice 3 Final is dispatched", async () => {

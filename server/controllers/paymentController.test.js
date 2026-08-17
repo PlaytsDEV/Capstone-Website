@@ -19,6 +19,7 @@ const resolveBillStatus = jest.fn();
 const settlePaymongoBill = jest.fn();
 const sendSuccess = jest.fn();
 const notifyGeneral = jest.fn();
+const notifyPaymentApproved = jest.fn();
 const settleReservationDeposit = jest.fn();
 const auditLog = jest.fn();
 const mockLean = (value) => ({ lean: jest.fn().mockResolvedValue(value) });
@@ -101,7 +102,7 @@ await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
 }));
 
 await jest.unstable_mockModule("../utils/notificationService.js", () => ({
-  notify: { general: notifyGeneral },
+  notify: { general: notifyGeneral, paymentApproved: notifyPaymentApproved },
 }));
 await jest.unstable_mockModule("../utils/auditLogger.js", () => ({
   default: { log: auditLog },
@@ -139,6 +140,8 @@ describe("paymentController", () => {
     settlePaymongoBill.mockReset();
     sendSuccess.mockReset();
     notifyGeneral.mockReset();
+    notifyPaymentApproved.mockReset();
+    notifyPaymentApproved.mockResolvedValue({});
     settleReservationDeposit.mockReset();
     auditLog.mockReset();
     auditLog.mockResolvedValue(undefined);
@@ -574,6 +577,7 @@ describe("paymentController", () => {
       reason: "settled",
       appliedAmount: 5000,
       bill,
+      payment: { _id: "ledger-payment-2" },
     });
     userFindById.mockReturnValue({
       lean: jest.fn().mockResolvedValue({
@@ -617,6 +621,12 @@ describe("paymentController", () => {
         currency: "PHP",
       },
     });
+    expect(notifyPaymentApproved).toHaveBeenCalledWith(
+      "tenant_1",
+      "March 2026",
+      5000,
+      { billId: "bill_2", eventId: "ledger-payment-2" },
+    );
     expect(sendPaymentApprovedEmail).toHaveBeenCalledWith(
       expect.objectContaining({ paidAmount: 5000 }),
     );
@@ -645,6 +655,7 @@ describe("paymentController", () => {
       reason: "settled",
       appliedAmount: 4500,
       bill,
+      payment: { _id: "ledger-payment-3" },
     });
     userFindById.mockReturnValue({
       lean: jest.fn().mockResolvedValue({
@@ -687,6 +698,12 @@ describe("paymentController", () => {
         currency: "PHP",
       },
     });
+    expect(notifyPaymentApproved).toHaveBeenCalledWith(
+      "tenant_1",
+      "April 2026",
+      4500,
+      { billId: "bill_3", eventId: "ledger-payment-3" },
+    );
     expect(sendPaymentApprovedEmail).toHaveBeenCalledWith(
       expect.objectContaining({ paidAmount: 4500 }),
     );

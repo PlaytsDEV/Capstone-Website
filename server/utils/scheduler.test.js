@@ -29,6 +29,7 @@ const notify = {
   reservationNoShow: jest.fn(),
   penaltyApplied: jest.fn(),
   billDueReminder: jest.fn(),
+  billingNotice: jest.fn(),
 };
 
 const makePopulateChain = (result) => {
@@ -166,6 +167,7 @@ describe("scheduler jobs", () => {
     notify.reservationNoShow.mockReset();
     notify.penaltyApplied.mockReset();
     notify.billDueReminder.mockReset();
+    notify.billingNotice.mockReset();
   });
 
   test("expireStaleReservations cancels stale reservations and syncs lifecycle", async () => {
@@ -337,7 +339,14 @@ describe("scheduler jobs", () => {
       }),
       { $set: { status: "overdue" } },
     );
-    expect(notify.general).toHaveBeenCalledTimes(1);
+    expect(notify.billingNotice).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        notificationType: "bill_due_reminder",
+        billId: "bill-1",
+        eventId: "status:overdue",
+      }),
+    );
   });
 
   test("computeOverduePenalties skips overdue bills that do not have due dates", async () => {
@@ -360,6 +369,39 @@ describe("scheduler jobs", () => {
     expect(noDueDateBill.save).not.toHaveBeenCalled();
     expect(syncBillAmounts).not.toHaveBeenCalled();
     expect(notify.penaltyApplied).not.toHaveBeenCalled();
+  });
+
+  test("computeOverduePenalties persists the first penalty before emitting its stable bill event", async () => {
+    const overdueBill = {
+      _id: "bill-penalty-1",
+      status: "overdue",
+      dueDate: dayjs().subtract(2, "day").toDate(),
+      billingMonth: new Date("2026-08-01T00:00:00.000Z"),
+      charges: { rent: 5000, penalty: 0 },
+      penaltyDetails: { ratePerDay: 50, daysLate: 0, appliedAt: null },
+      userId: { _id: "user-1" },
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+    billFind.mockReturnValue(makePopulateChain([overdueBill]));
+
+    await scheduler.computeOverduePenalties();
+
+    expect(overdueBill.save).toHaveBeenCalledTimes(1);
+    expect(notify.penaltyApplied).toHaveBeenCalledWith(
+      "user-1",
+      "August 2026",
+      expect.any(Number),
+      expect.any(Number),
+      {
+        billId: "bill-penalty-1",
+        eventId: overdueBill.penaltyDetails.appliedAt,
+      },
+    );
+    expect(overdueBill.save.mock.invocationCallOrder[0]).toBeLessThan(
+      notify.penaltyApplied.mock.invocationCallOrder[0],
+    );
   });
 
   test("dispatchScheduledAnnouncements runs the scheduled announcement dispatcher", async () => {

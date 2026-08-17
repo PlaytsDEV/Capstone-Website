@@ -10,6 +10,7 @@ const messageCreate = jest.fn();
 const reservationFindOne = jest.fn();
 const userFindById = jest.fn();
 const userFind = jest.fn();
+const notifyAdminReply = jest.fn();
 
 await jest.unstable_mockModule("../models/index.js", () => ({
   ChatConversation: {
@@ -28,7 +29,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
 }));
 
 await jest.unstable_mockModule("../utils/notificationService.js", () => ({
-  notify: { general: jest.fn() },
+  notify: { general: jest.fn(), adminReply: notifyAdminReply },
 }));
 
 await jest.unstable_mockModule("../utils/socket.js", () => ({
@@ -39,6 +40,7 @@ await jest.unstable_mockModule("../utils/socket.js", () => ({
 const {
   getAdminConversations,
   getAdminConversationMessages,
+  sendAdminMessage,
   sendTenantMessage,
 } = await import("./chatController.js");
 
@@ -120,6 +122,81 @@ describe("chat controller authoritative branch scope", () => {
 
     expect(conversationFindOne).toHaveBeenCalledWith({ _id: expect.any(Object) });
     expect(res.statusCode).toBe(200);
+  });
+
+  test("admin reply notifies the conversation owner only after the ChatMessage is persisted", async () => {
+    const conversationId = "507f1f77bcf86cd799439011";
+    const tenantId = "507f1f77bcf86cd799439099";
+    const messageId = "507f1f77bcf86cd799439014";
+    const conversation = {
+      _id: conversationId,
+      tenantId,
+      tenantName: "Ava Guest",
+      branch: "gil-puyat",
+      status: "open",
+      priority: "normal",
+      statusHistory: [],
+    };
+    const persistedMessage = {
+      _id: messageId,
+      conversationId,
+      senderId: "507f1f77bcf86cd799439012",
+      senderName: "Branch Admin",
+      senderRole: "admin",
+      message: "We are checking this now.",
+      createdAt: new Date(),
+    };
+
+    conversationFindOne.mockResolvedValue(conversation);
+    messageCreate.mockResolvedValue(persistedMessage);
+    conversationFindByIdAndUpdate.mockResolvedValue({
+      ...conversation,
+      status: "waiting_tenant",
+      unreadTenantCount: 1,
+      lastMessage: persistedMessage.message,
+    });
+    notifyAdminReply.mockResolvedValue({});
+
+    const req = adminRequest({
+      params: { conversationId },
+      body: { message: persistedMessage.message },
+    });
+    const res = response();
+    await sendAdminMessage(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(messageCreate).toHaveBeenCalledTimes(1);
+    expect(notifyAdminReply).toHaveBeenCalledWith(
+      tenantId,
+      conversationId,
+      messageId,
+    );
+    expect(messageCreate.mock.invocationCallOrder[0]).toBeLessThan(
+      notifyAdminReply.mock.invocationCallOrder[0],
+    );
+  });
+
+  test("a failed admin ChatMessage write never emits a tenant success notification", async () => {
+    const conversationId = "507f1f77bcf86cd799439011";
+    conversationFindOne.mockResolvedValue({
+      _id: conversationId,
+      tenantId: "507f1f77bcf86cd799439099",
+      branch: "gil-puyat",
+      status: "open",
+    });
+    messageCreate.mockRejectedValue(new Error("message persistence failed"));
+
+    const res = response();
+    await sendAdminMessage(
+      adminRequest({
+        params: { conversationId },
+        body: { message: "This must not notify." },
+      }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(500);
+    expect(notifyAdminReply).not.toHaveBeenCalled();
   });
 
   test("tenant reply reopens a closed shared conversation and clears closure metadata", async () => {
@@ -207,5 +284,6 @@ describe("chat controller authoritative branch scope", () => {
       }),
       { new: true },
     );
+    expect(notifyAdminReply).not.toHaveBeenCalled();
   });
 });
