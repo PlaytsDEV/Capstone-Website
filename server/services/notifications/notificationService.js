@@ -49,6 +49,51 @@ async function createNotification(userId, type, title, message, options = {}) {
   }
 }
 
+// Same as createNotification, but the row is only ever written once per
+// dedupeKey — a second call with the same key is a no-op (not an error),
+// covering retries, redeploy-triggered re-runs, and duplicate admin
+// submissions. Concurrency safety comes from the DB-level unique sparse
+// index on dedupeKey (see Notification.js), not an in-memory check: two
+// concurrent inserts with the same key race at the database, and exactly
+// one wins — an app-level "find then insert" check would have a race
+// window here that this doesn't.
+async function createNotificationOnce(userId, type, title, message, dedupeKey, options = {}) {
+  try {
+    const notification = new Notification({
+      userId,
+      type,
+      title,
+      message,
+      actionUrl: options.actionUrl || null,
+      entityType: options.entityType || "",
+      entityId: options.entityId || null,
+      dedupeKey,
+    });
+    await notification.save();
+    if (options.emitRealtime !== false) {
+      try {
+        emitToUser(userId, "notification:new", buildRealtimeNotificationPayload(notification));
+      } catch (emitError) {
+        logger.warn(
+          { err: emitError, userId: String(userId || ""), type },
+          "[Notification] Realtime delivery failed",
+        );
+      }
+    }
+    return { notification, created: true };
+  } catch (error) {
+    if (error?.code === 11000) {
+      logger.info(
+        { userId: String(userId || ""), type, dedupeKey },
+        "[Notification] Duplicate event suppressed (dedupeKey already delivered)",
+      );
+      return { notification: null, created: false };
+    }
+    console.error("⚠️ Failed to create notification:", error.message);
+    return { notification: null, created: false };
+  }
+}
+
 async function createNotificationWithPush(
   userId,
   type,
@@ -57,7 +102,20 @@ async function createNotificationWithPush(
   options = {},
   pushSender = null,
 ) {
-  const notification = await createNotification(userId, type, title, message, options);
+  let notification;
+  let created = true;
+  if (options.dedupeKey) {
+    ({ notification, created } = await createNotificationOnce(userId, type, title, message, options.dedupeKey, options));
+  } else {
+    notification = await createNotification(userId, type, title, message, options);
+  }
+
+  // A duplicate event (same dedupeKey already delivered) must not also
+  // re-send the OS push — the tenant already saw this in-app and/or on
+  // their device the first time.
+  if (!created) {
+    return notification;
+  }
 
   if (typeof pushSender !== "function") {
     return notification;
@@ -391,6 +449,69 @@ const notify = {
             billing_id: billId ? String(billId) : "",
             screen: "billing",
             url: billId ? `/bill-details?billId=${String(billId)}` : "/(tabs)/billing",
+          },
+        }),
+    );
+  },
+
+  // Fired once a contract document actually becomes available to the tenant
+  // — after generatePreparedContractPdf() (contractController.js's
+  // generatePreparedContract) or publishFinalContract() succeeds. Until this
+  // existed, the tenant mobile app's Lease Contract screen could sit on
+  // "Preparing Contract" indefinitely with zero signal that admin action had
+  // actually happened — the tenant had to manually reopen the screen to find
+  // out. Mirrors utilityChargeAvailable's createNotificationWithPush +
+  // entityId pattern so the mobile app's push-tap routing (which already
+  // knows how to deep-link entityType "contract") needs no changes.
+  // `version` must uniquely identify the actual document that became
+  // available (preparedDocument's generatedVersion, or finalDocument's
+  // sourceVersion) — it is the entire idempotency guarantee: retrying the
+  // same generate/publish call for the SAME version dedupes via the unique
+  // dedupeKey below, while a genuinely new version (regeneration, a later
+  // publish) is a distinct key and gets its own notification.
+  contractDocumentReady: (userId, variant, contractId, version) => {
+    const normalizedVariant = String(variant || "").trim().toLowerCase();
+    const normalizedVersion = Number(version);
+    if (
+      !userId
+      || !contractId
+      || !["prepared", "final"].includes(normalizedVariant)
+      || !Number.isInteger(normalizedVersion)
+      || normalizedVersion < 1
+    ) {
+      return Promise.reject(new Error("A tenant, contract, prepared/final variant, and positive document version are required."));
+    }
+
+    const isFinal = normalizedVariant === "final";
+    const title = isFinal ? "Final Contract Ready" : "Contract Ready for Signing";
+    const message = isFinal
+      ? "Your final notarized lease contract is now available to view and download."
+      : "Your lease contract has been prepared and is ready for your review and in-person signing.";
+    const normalizedContractId = String(contractId);
+    // The unique index is { userId, dedupeKey }, so an identical contract
+    // reference in another tenant's scope remains an independent event.
+    const dedupeKey = `contract_document_ready:${normalizedContractId}:${normalizedVariant}:${normalizedVersion}`;
+
+    return createNotificationWithPush(
+      userId,
+      "contract_document_ready",
+      title,
+      message,
+      {
+        entityType: "contract",
+        entityId: normalizedContractId,
+        actionUrl: "/tenant/documents",
+        dedupeKey,
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "contract_document_ready",
+            contract_id: normalizedContractId,
+            screen: "contract",
+            url: "/contract-viewer",
           },
         }),
     );

@@ -26,4 +26,24 @@ describe("secure prepared Contract responses", () => {
     expect(source).toMatch(/financialWorkflowVersion:\s*reservation\?\.financialWorkflowVersion/);
     expect(source).toMatch(/reservationFeePaymentStatus:\s*reservation\?\.reservationFeePaymentStatus/);
   });
+
+  test("document-ready notifications follow the canonical prepared and final writes", () => {
+    const preparedStart = source.indexOf("export const generatePreparedContract");
+    const preparedEnd = source.indexOf("export const streamPreparedContract", preparedStart);
+    const preparedFlow = source.slice(preparedStart, preparedEnd);
+    expect(preparedFlow.indexOf("await generatePreparedContractPdf")).toBeGreaterThan(-1);
+    expect(preparedFlow.indexOf(".contractDocumentReady(")).toBeGreaterThan(
+      preparedFlow.indexOf("await generatePreparedContractPdf"),
+    );
+    expect(preparedFlow).toMatch(/document\.version/);
+
+    const finalStart = source.indexOf("export const publishContract");
+    const finalEnd = source.indexOf("const streamFinal", finalStart);
+    const finalFlow = source.slice(finalStart, finalEnd);
+    expect(finalFlow.indexOf("await publishFinalContract")).toBeGreaterThan(-1);
+    expect(finalFlow.indexOf(".contractDocumentReady(")).toBeGreaterThan(
+      finalFlow.indexOf("await publishFinalContract"),
+    );
+    expect(finalFlow).toMatch(/finalDocument\?\.sourceVersion/);
+  });
 });

@@ -707,6 +707,9 @@ export const publishContract = async (req, res) => {
     await publicationAudit(req, before, contract, "Publication review completed");
     await publicationAudit(req, before, contract,
       `Final Contract published at ${contract.publishedAt?.toISOString()}`);
+    notify
+      .contractDocumentReady(contract.tenantId, "final", contract._id, contract.finalDocument?.sourceVersion)
+      .catch((e) => logger.warn({ err: e }, "Contract-published tenant notification failed (non-fatal)"));
     res.json({
       success: true,
       status: contract.status,
@@ -965,6 +968,9 @@ export const generatePreparedContract = async (req, res) => {
         "Earlier prepared Contract version superseded",
       );
     }
+    notify
+      .contractDocumentReady(result.contract.tenantId, "prepared", result.contract._id, document.version)
+      .catch((e) => logger.warn({ err: e }, "Contract-prepared tenant notification failed (non-fatal)"));
     res.status(201).json({
       success: true,
       contract: {

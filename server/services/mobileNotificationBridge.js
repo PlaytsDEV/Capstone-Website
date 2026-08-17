@@ -133,9 +133,19 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
   const authorName = resolveAuthorName(doc, authorNameMap, "LilyCrest System");
   const type = normalizeString(doc.type || "notification") || "notification";
   // entityId/entityType are how the canonical Notification model attaches a
-  // bill reference (models/Notification.js + notificationService.js); the
-  // legacy shape used billing_id/data.billing_id/data.bill_id instead.
-  const isCanonicalBillEntity = normalizeString(doc.entityType).toLowerCase() === "bill" && doc.entityId;
+  // bill or Contract reference (models/Notification.js +
+  // notificationService.js); the legacy shape used data payload fields.
+  const entityType = normalizeString(doc.entityType).toLowerCase();
+  const entityId = normalizeString(String(doc.entityId || ""));
+  const isCanonicalBillEntity = entityType === "bill" && entityId;
+  const isCanonicalContractEntity = entityType === "contract" && entityId;
+  const data = sanitizePayload(doc.data);
+  if (isCanonicalContractEntity) {
+    data.type ||= type;
+    data.contract_id ||= entityId;
+    data.screen ||= "contract";
+    data.url ||= "/contract-viewer";
+  }
   return {
     notification_id: doc.notification_id || doc._id?.toString?.() || "",
     title: normalizeString(doc.title) || "Notification",
@@ -150,13 +160,20 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
     updated_at: doc.updated_at || doc.updatedAt || doc.created_at || doc.createdAt || new Date(),
     type,
     source: normalizeString(doc.source || "system") || "system",
-    data: sanitizePayload(doc.data),
-    url: normalizeString(doc.url || doc.data?.url || doc.actionUrl || ""),
+    data,
+    // Canonical actionUrl is a web route. Contract notifications need the
+    // Expo route when projected through the mobile bridge.
+    url: normalizeString(
+      doc.url || doc.data?.url || (isCanonicalContractEntity ? "/contract-viewer" : doc.actionUrl) || "",
+    ),
     read: doc.read === true || doc.isRead === true,
     announcement_id: normalizeString(doc.announcement_id || doc.data?.announcement_id || ""),
     billing_id: normalizeString(
       doc.billing_id || doc.data?.billing_id || doc.data?.bill_id
-        || (isCanonicalBillEntity ? String(doc.entityId) : ""),
+        || (isCanonicalBillEntity ? entityId : ""),
+    ),
+    contract_id: normalizeString(
+      doc.contract_id || doc.data?.contract_id || (isCanonicalContractEntity ? entityId : ""),
     ),
     request_id: normalizeString(doc.request_id || doc.data?.request_id || ""),
     session_id: normalizeString(doc.session_id || doc.data?.session_id || ""),
