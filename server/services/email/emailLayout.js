@@ -91,7 +91,7 @@ export const renderLilycrestEmail = ({
         <table role="presentation" style="max-width:560px;margin:0 auto;background-color:${THEME.cardBg};border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
           <tr>
             <td style="background:linear-gradient(135deg,${THEME.navy} 0%,${THEME.navyLight} 100%);padding:32px 40px;text-align:center;border-bottom:3px solid ${THEME.gold};">
-              <img src="${escapeHtml(getLogoUrl())}" alt="Lilycrest" width="56" height="56" style="display:block;margin:0 auto 12px;max-width:56px;height:auto;">
+              <img src="${escapeHtml(getLogoUrl())}" alt="Lilycrest" width="56" height="56" style="display:block;margin:0 auto 12px;max-width:56px;height:auto;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;">
               <h1 style="margin:0;color:#FFFFFF;font-size:22px;font-weight:700;letter-spacing:0.5px;">LilyCrest Dormitory</h1>
               <p style="margin:6px 0 0;color:${THEME.gold};font-size:13px;">${escapeHtml(branchName)} Branch — Tenant Portal</p>
             </td>
