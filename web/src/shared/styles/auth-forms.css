@@ -40,6 +40,19 @@
   box-shadow: none;
 }
 
+.floating-field__wrapper.has-error {
+  border-color: var(--fi-error, #ef4444);
+}
+
+.floating-field__wrapper.has-error:hover {
+  border-color: var(--fi-error, #ef4444);
+}
+
+.floating-field__wrapper.has-error.focused {
+  border-color: var(--fi-error, #ef4444);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
 /* ── Input ── */
 .floating-field__input {
   width: 100%;
@@ -112,11 +125,11 @@
 }
 
 .floating-field__wrapper.has-error .floating-field__label {
-  color: var(--fi-error);
+  color: var(--fi-label-active);
 }
 
 .floating-field__wrapper.is-valid:not(.focused) .floating-field__label {
-  color: var(--fi-valid);
+  color: var(--fi-label-active);
 }
 
 /* ── End Adornment (eye toggle, etc.) ── */
@@ -225,17 +238,16 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 10px 0 16px;
+  padding: 0 4px 0 16px;
   background: transparent;
   border: none;
-  border-right: 1px solid var(--fi-border);
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
   height: 24px;
   font-family: var(--font-sans);
   color: var(--fi-text);
-  transition: color 0.15s ease, border-color 0.2s ease;
+  transition: color 0.15s ease;
 }
 
 .floating-field__phone-btn:hover {
@@ -243,10 +255,10 @@
 }
 
 .floating-field__phone-flag {
-  font-size: 16px;
-  line-height: 1;
-  display: inline-block;
-  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .floating-field__phone-dial-code {
@@ -263,7 +275,7 @@
   min-width: 0;
   border: none;
   outline: none;
-  padding: 0 10px 0 14px;
+  padding: 0 12px 0 6px;
   font-size: 15px;
   font-weight: 450;
   font-family: var(--font-sans);

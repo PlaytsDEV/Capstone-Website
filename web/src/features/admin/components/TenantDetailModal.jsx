@@ -904,7 +904,7 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
           {/* HEADER */}
           <div className="px-6 py-4 border-b border-border bg-card flex-shrink-0 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-11 h-11 rounded-full flex items-center justify-center text-primary-foreground font-bold text-base bg-primary flex-shrink-0 shadow-sm">
+              <div className="w-11 h-11 rounded-full flex items-center justify-center text-white bg-[#0A1628] dark:text-[#0A1628] dark:bg-[#D4AF37] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 font-bold text-base flex-shrink-0 shadow-sm">
                 {tenant.initials || getInitials(tenant.name)}
               </div>
               <div className="min-w-0">

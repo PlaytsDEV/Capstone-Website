@@ -180,7 +180,7 @@ export default function OpenTerminationCaseModal({ isOpen, branch, onClose, onCr
 
           {selectedTenant && (
             <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 p-3 text-xs">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-800 border border-slate-200 text-xs font-bold dark:bg-slate-800 dark:text-slate-100">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 text-xs font-bold shadow-xs">
                 {getInitials(selectedTenant.fullName)}
               </div>
               <div>

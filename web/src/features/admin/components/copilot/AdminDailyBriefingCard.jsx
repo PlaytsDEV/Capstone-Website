@@ -1,17 +1,5 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Sun,
-  LogIn,
-  LogOut,
-  Wrench,
-  CreditCard,
-  BellRing,
-  Calendar,
-  ArrowRight,
-  CheckCircle2,
-  AlertTriangle,
-} from "lucide-react";
 
 const formatCurrency = (amount) =>
   new Intl.NumberFormat("en-PH", {
@@ -35,18 +23,12 @@ export default function AdminDailyBriefingCard({ briefing, onCloseDrawer }) {
     <div className="rounded-xl border border-border bg-card p-4 space-y-3.5 shadow-xs text-xs">
       {/* Header */}
       <div className="flex items-start justify-between gap-2 pb-3 border-b border-border">
-        <div className="flex items-center gap-2.5">
-          <div className="flex shrink-0 items-center justify-center text-amber-600 dark:text-amber-400">
-            <Sun size={20} />
+        <div>
+          <div className="flex items-center gap-2">
+            <h4 className="font-bold text-sm text-foreground">{briefing.title || "Daily Shift Briefing"}</h4>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h4 className="font-bold text-sm text-foreground">{briefing.title || "Daily Shift Briefing"}</h4>
-            </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
-              <Calendar size={11} className="shrink-0" />
-              <span>{briefing.dateString}</span>
-            </div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            <span>{briefing.dateString}</span>
           </div>
         </div>
 
@@ -60,9 +42,8 @@ export default function AdminDailyBriefingCard({ briefing, onCloseDrawer }) {
       <div className="grid grid-cols-3 gap-2">
         {/* Move Ins */}
         <div className="p-2 rounded-lg bg-muted/30 border border-border space-y-0.5 text-center">
-          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center justify-center gap-1">
-            <LogIn size={11} className="text-emerald-600" />
-            <span>Move-Ins</span>
+          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            Move-Ins
           </div>
           <div className="text-base font-bold text-foreground">{stats.moveInsCount || 0}</div>
           <div className="text-[10px] text-muted-foreground">Today</div>
@@ -70,9 +51,8 @@ export default function AdminDailyBriefingCard({ briefing, onCloseDrawer }) {
 
         {/* Urgent Maintenance */}
         <div className="p-2 rounded-lg bg-muted/30 border border-border space-y-0.5 text-center">
-          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center justify-center gap-1">
-            <Wrench size={11} className="text-rose-600" />
-            <span>Urgent Fix</span>
+          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            Urgent Fix
           </div>
           <div className={`text-base font-bold ${stats.urgentMaintenanceCount > 0 ? "text-rose-600 dark:text-rose-400" : "text-foreground"}`}>
             {stats.urgentMaintenanceCount || 0}
@@ -82,9 +62,8 @@ export default function AdminDailyBriefingCard({ briefing, onCloseDrawer }) {
 
         {/* Collections */}
         <div className="p-2 rounded-lg bg-muted/30 border border-border space-y-0.5 text-center">
-          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center justify-center gap-1">
-            <CreditCard size={11} className="text-primary" />
-            <span>Collected</span>
+          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            Collected
           </div>
           <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate">
             {formatCurrency(stats.paymentsCollectedYesterday || 0)}
@@ -95,11 +74,8 @@ export default function AdminDailyBriefingCard({ briefing, onCloseDrawer }) {
 
       {/* Today's Expected Move-Ins */}
       <div className="space-y-1.5">
-        <div className="flex items-center justify-between text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-          <div className="flex items-center gap-1.5">
-            <LogIn size={12} className="text-emerald-600" />
-            <span>Expected Move-Ins Today ({moveIns.length})</span>
-          </div>
+        <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+          Expected Move-Ins Today ({moveIns.length})
         </div>
 
         {moveIns.length === 0 ? (
@@ -126,11 +102,8 @@ export default function AdminDailyBriefingCard({ briefing, onCloseDrawer }) {
       {/* Urgent Maintenance Needing Action */}
       {maintenance.length > 0 && (
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-            <div className="flex items-center gap-1.5">
-              <AlertTriangle size={12} className="text-rose-600" />
-              <span>Urgent Maintenance Pending ({maintenance.length})</span>
-            </div>
+          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+            Urgent Maintenance Pending ({maintenance.length})
           </div>
 
           <div className="space-y-1">
@@ -153,9 +126,8 @@ export default function AdminDailyBriefingCard({ briefing, onCloseDrawer }) {
       {/* Active Branch Announcements */}
       {announcements.length > 0 && (
         <div className="space-y-1">
-          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-            <BellRing size={11} className="text-primary" />
-            <span>Active Branch Notice:</span>
+          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            Active Branch Notice:
           </div>
           {announcements.map((ann, idx) => (
             <div key={idx} className="p-2 rounded bg-muted/20 border border-border text-[11px] text-foreground font-medium">

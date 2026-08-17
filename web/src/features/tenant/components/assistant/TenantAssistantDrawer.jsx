@@ -1,25 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "react-router-dom";
-import {
-  X,
-  Send,
-  RotateCcw,
-  Sparkles,
-  Bot,
-  UserCheck,
-  LoaderCircle,
-  Headphones,
-  ArrowRight,
-  Receipt,
-  FileText,
-  Wrench,
-  HelpCircle,
-  Building2,
-  AlertCircle,
-  Zap,
-  ShieldCheck,
-  PlusCircle,
-} from "lucide-react";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { streamTenantAssistant } from "../../api/tenantAssistantApi";
 import TenantBillingBreakdownCard from "./cards/TenantBillingBreakdownCard";
@@ -32,33 +12,33 @@ const STORAGE_KEY = "lilycrest_tenant_assistant_msgs";
 
 const CATEGORIZED_PROMPTS = {
   applicant: [
-    { icon: ShieldCheck, label: "Reservation status", prompt: "What is my current reservation status?" },
-    { icon: Receipt, label: "Deposit payment steps", prompt: "How do I settle the advance rent and security deposit?" },
-    { icon: FileText, label: "Accepted KYC IDs", prompt: "What valid IDs are accepted for identity verification?" },
-    { icon: Building2, label: "Viewing schedule", prompt: "How can I schedule an in-person room viewing appointment?" },
+    { label: "Reservation status", prompt: "What is my current reservation status?" },
+    { label: "Deposit payment steps", prompt: "How do I settle the advance rent and security deposit?" },
+    { label: "Accepted KYC IDs", prompt: "What valid IDs are accepted for identity verification?" },
+    { label: "Viewing schedule", prompt: "How can I schedule an in-person room viewing appointment?" },
   ],
   billing: [
-    { icon: Zap, label: "Electricity math", prompt: "How was my submetered electricity share computed this month?" },
-    { icon: Receipt, label: "Payment due date", prompt: "When is my current bill due and how do I settle it?" },
-    { icon: ShieldCheck, label: "Water consumption", prompt: "Is water really free and included in my monthly rent?" },
+    { label: "Electricity math", prompt: "How was my submetered electricity share computed this month?" },
+    { label: "Payment due date", prompt: "When is my current bill due and how do I settle it?" },
+    { label: "Water consumption", prompt: "Is water really free and included in my monthly rent?" },
   ],
   contracts: [
-    { icon: FileText, label: "Lease expiration", prompt: "When does my current lease contract expire and how many days are left?" },
-    { icon: PlusCircle, label: "Renew contract", prompt: "What are the steps to request a lease renewal?" },
-    { icon: ShieldCheck, label: "Deposit refund", prompt: "How does the security deposit refund and move-out clearance work?" },
+    { label: "Lease expiration", prompt: "When does my current lease contract expire and how many days are left?" },
+    { label: "Renew contract", prompt: "What are the steps to request a lease renewal?" },
+    { label: "Deposit refund", prompt: "How does the security deposit refund and move-out clearance work?" },
   ],
   maintenance: [
-    { icon: Wrench, label: "Active tickets", prompt: "What is the current status of my room repair requests?" },
-    { icon: PlusCircle, label: "Report issue", prompt: "How do I submit an urgent plumbing or air-conditioning issue?" },
-    { icon: HelpCircle, label: "Technician hours", prompt: "What are the available hours for on-site technician repairs?" },
+    { label: "Active tickets", prompt: "What is the current status of my room repair requests?" },
+    { label: "Report issue", prompt: "How do I submit an urgent plumbing or air-conditioning issue?" },
+    { label: "Technician hours", prompt: "What are the available hours for on-site technician repairs?" },
   ],
   default: [
-    { icon: Wrench, label: "Active tickets", prompt: "Do I have any active maintenance tickets scheduled?" },
-    { icon: PlusCircle, label: "Report issue", prompt: "How do I submit an urgent plumbing or air-conditioning issue?" },
-    { icon: Receipt, label: "Bill breakdown", prompt: "Can you show my current monthly bill breakdown?" },
-    { icon: Zap, label: "Electricity math", prompt: "How was my submetered electricity share computed this month?" },
-    { icon: FileText, label: "Lease timeline", prompt: "How many days are left on my lease agreement?" },
-    { icon: ShieldCheck, label: "Deposit refund", prompt: "How does the security deposit refund and move-out clearance work?" },
+    { label: "Active tickets", prompt: "Do I have any active maintenance tickets scheduled?" },
+    { label: "Report issue", prompt: "How do I submit an urgent plumbing or air-conditioning issue?" },
+    { label: "Bill breakdown", prompt: "Can you show my current monthly bill breakdown?" },
+    { label: "Electricity math", prompt: "How was my submetered electricity share computed this month?" },
+    { label: "Lease timeline", prompt: "How many days are left on my lease agreement?" },
+    { label: "Deposit refund", prompt: "How does the security deposit refund and move-out clearance work?" },
   ],
 };
 
@@ -358,7 +338,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
       );
     }
 
-    if (type === "maintenance_status" || type === "maintenance_tracker") {
+    if (type === "maintenance_status" || type === "maintenance_tracker" || type === "maintenance_card") {
       const ticket = widgetData?.activeMaintenance?.[0] || widgetData;
       return (
         <TenantMaintenanceCard
@@ -391,9 +371,6 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
         <div className="tenant-assistant-header">
           <div className="tenant-assistant-header-top">
             <div className="tenant-assistant-header-brand">
-              <div className="tenant-assistant-avatar-badge" aria-hidden="true">
-                <Bot className="w-4 h-4" />
-              </div>
               <span className="tenant-assistant-title">{isApplicant ? "Applicant Assistant" : "Tenant Assistant"}</span>
             </div>
 
@@ -404,7 +381,6 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                 className="tenant-assistant-escalate-btn"
                 title="Speak directly with Branch Admin"
               >
-                <Headphones className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
                 <span>Admin Help</span>
               </button>
 
@@ -412,22 +388,22 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                 <button
                   type="button"
                   onClick={handleClearHistory}
-                  className="tenant-assistant-icon-btn"
+                  className="tenant-assistant-icon-btn text-xs font-semibold px-2 py-1"
                   aria-label="Clear chat history"
                   title="Clear conversation"
                 >
-                  <RotateCcw className="w-4 h-4" aria-hidden="true" />
+                  Reset
                 </button>
               )}
 
               <button
                 type="button"
                 onClick={onClose}
-                className="tenant-assistant-icon-btn"
+                className="tenant-assistant-icon-btn text-xs font-semibold px-2 py-1"
                 aria-label="Close assistant drawer"
                 title="Close drawer (Esc)"
               >
-                <X className="w-4 h-4" aria-hidden="true" />
+                Close
               </button>
             </div>
           </div>
@@ -455,7 +431,6 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
           {messages.length === 0 && (
             <div className="tenant-msg-row assistant">
               <div className="tenant-msg-meta">
-                <Bot className="w-3.5 h-3.5" />
                 <span>{isApplicant ? "Applicant Assistant" : "Tenant Assistant"}</span>
               </div>
               <div className="tenant-msg-bubble">
@@ -490,10 +465,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
             <div key={index} className={`tenant-msg-row ${msg.role}`}>
               <div className="tenant-msg-meta">
                 {msg.role === "assistant" ? (
-                  <>
-                    <Bot className="w-3.5 h-3.5" />
-                    <span>Tenant Assistant</span>
-                  </>
+                  <span>Tenant Assistant</span>
                 ) : (
                   <span>You</span>
                 )}
@@ -501,12 +473,9 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
 
               {msg.isError ? (
                 <div className="tenant-msg-error-card">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-semibold mb-0.5">Connection Notice</p>
-                      <p>{msg.content}</p>
-                    </div>
+                  <div>
+                    <p className="font-semibold mb-0.5">Connection Notice</p>
+                    <p>{msg.content}</p>
                   </div>
                   <div className="tenant-msg-error-actions">
                     <button
@@ -514,7 +483,6 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                       onClick={() => handleSendMessage(messages[index - 1]?.content || "Check my maintenance status")}
                       className="tenant-msg-retry-btn"
                     >
-                      <RotateCcw className="w-3 h-3" />
                       <span>Retry Question</span>
                     </button>
                     <button
@@ -522,7 +490,6 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                       onClick={() => setIsEscalateOpen(true)}
                       className="tenant-msg-retry-btn"
                     >
-                      <Headphones className="w-3 h-3" />
                       <span>Speak with Admin</span>
                     </button>
                   </div>
@@ -545,7 +512,6 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                       className="tenant-action-suggestion-chip"
                     >
                       <span>{typeof act === "string" ? act : act.label}</span>
-                      <ArrowRight className="w-3 h-3 text-slate-400" aria-hidden="true" />
                     </button>
                   ))}
                 </div>
@@ -557,7 +523,6 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
           {isStreaming && (
             <div className="tenant-msg-row assistant">
               <div className="tenant-msg-meta">
-                <Bot className="w-3.5 h-3.5" />
                 <span>Tenant Assistant</span>
               </div>
               <div className="tenant-msg-bubble">
@@ -583,7 +548,6 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                       className="tenant-action-suggestion-chip"
                     >
                       <span>{typeof act === "string" ? act : act.label}</span>
-                      <ArrowRight className="w-3 h-3 text-slate-400" aria-hidden="true" />
                     </button>
                   ))}
                 </div>
@@ -595,12 +559,10 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
         {/* Categorized Route-Aware Quick Prompt Pills */}
         <div className="tenant-quick-prompts-container">
           <div className="tenant-quick-prompts-label">
-            <Sparkles className="w-3 h-3 text-amber-500" />
             <span>Quick Tenant Prompts</span>
           </div>
           <div className="tenant-quick-prompts-scroll">
             {activeRoutePrompts.map((item, idx) => {
-              const IconComp = item.icon || Sparkles;
               return (
                 <button
                   key={idx}
@@ -609,7 +571,6 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                   disabled={isStreaming}
                   className="tenant-quick-prompt-pill"
                 >
-                  <IconComp className="w-3.5 h-3.5 text-slate-500" />
                   <span>{item.label}</span>
                 </button>
               );
@@ -637,15 +598,11 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
               type="button"
               onClick={() => handleSendMessage()}
               disabled={!inputMessage.trim() || isStreaming}
-              className="tenant-assistant-send-btn"
+              className="tenant-assistant-send-btn text-xs font-bold px-3 py-1.5"
               aria-label="Send message"
               title="Send (Enter)"
             >
-              {isStreaming ? (
-                <LoaderCircle className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
+              <span>{isStreaming ? "Sending..." : "Send"}</span>
             </button>
           </div>
 

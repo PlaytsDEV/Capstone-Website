@@ -82,6 +82,25 @@ const detectCountryFromE164 = (e164) => {
 };
 
 /**
+ * CountryFlag — Renders country flag emoji with accessible attributes and fallback.
+ */
+const CountryFlag = ({ code, fallbackFlag }) => (
+  <span
+    style={{
+      fontSize: 18,
+      lineHeight: 1,
+      display: "inline-flex",
+      alignItems: "center",
+      userSelect: "none",
+    }}
+    role="img"
+    aria-label={code ? `${code} flag` : "flag"}
+  >
+    {fallbackFlag || "🌐"}
+  </span>
+);
+
+/**
  * PhoneInput — Smart international phone input backed by libphonenumber-js.
  *
  * Behaviors:
@@ -211,65 +230,70 @@ const PhoneInput = ({
  // Detect country using libphonenumber-js first, then prefix fallback
  const detectedCountry = detectCountryFromE164(cleaned);
 
- if (detectedCountry) {
- // Country detected — extract local number and strip leading 0
- const dialDigits = detectedCountry.dialCode.replace(/\D/g, "");
- let local = numericPart.slice(dialDigits.length);
- if (local.startsWith("0")) local = local.slice(1);
- const maxL = getExpectedLength(detectedCountry.code);
- const truncated = local.slice(0, maxL);
- setSelectedCountry(detectedCountry);
- setLocalNumber(truncated);
- onChange?.(truncated ? detectedCountry.dialCode + truncated : detectedCountry.dialCode);
- } else {
- // Still building country code prefix
- setLocalNumber(cleaned);
- onChange?.("");
- }
- return;
- }
+    if (detectedCountry) {
+      // Country detected — extract local number and strip leading 0
+      const dialDigits = detectedCountry.dialCode.replace(/\D/g, "");
+      let local = numericPart.slice(dialDigits.length);
+      if (local.startsWith("0")) local = local.slice(1);
+      const maxL = getExpectedLength(detectedCountry.code);
+      const truncated = local.slice(0, maxL);
+      setSelectedCountry(detectedCountry);
+      setLocalNumber(truncated);
+      onChange?.(
+        truncated
+          ? detectedCountry.dialCode + truncated
+          : detectedCountry.dialCode
+      );
+    } else {
+      // Still building country code prefix
+      setLocalNumber(cleaned);
+      onChange?.("");
+    }
+    return;
+  }
 
- // ── MODE 2: Local digit mode ───────────────────────────────
- let digits = raw.replace(/\D/g, "");
+  // ── MODE 2: Local digit mode ───────────────────────────────
+  let digits = raw.replace(/\D/g, "");
 
- // Handle accidental pasting of country code prefix without "+", e.g. 630917... or 63917...
- if (selectedCountry?.dialCode === "+63") {
-   if (digits.startsWith("630") && digits.length > 10) {
-     digits = digits.slice(3);
-   } else if (digits.startsWith("63") && digits.length > 10) {
-     digits = digits.slice(2);
-   }
- }
+  // Handle accidental pasting of country code prefix without "+", e.g. 630917... or 63917...
+  if (selectedCountry?.dialCode === "+63") {
+    if (digits.startsWith("630") && digits.length > 10) {
+      digits = digits.slice(3);
+    } else if (digits.startsWith("63") && digits.length > 10) {
+      digits = digits.slice(2);
+    }
+  }
 
- // Auto-convert leading "0" (e.g. PH: "09171..." → "9171...")
- if (digits.startsWith("0")) digits = digits.slice(1);
+  // Auto-convert leading "0" (e.g. PH: "09171..." → "9171...")
+  if (digits.startsWith("0")) digits = digits.slice(1);
 
- const truncated = digits.slice(0, expectedLength);
- setLocalNumber(truncated);
- if (!selectedCountry) return;
- onChange?.(truncated ? selectedCountry.dialCode + truncated : "");
- };
+  const truncated = digits.slice(0, expectedLength);
+  setLocalNumber(truncated);
+  if (!selectedCountry) return;
+  onChange?.(truncated ? selectedCountry.dialCode + truncated : "");
+};
 
- /* ── Counter state ───────────────────────────────────────────── */
- const displayLength = localNumber.startsWith("+")
- ? Math.max(0, localNumber.length - 1)
- : localNumber.length;
 
- const counterColor =
- displayLength === 0
- ? "var(--fi-label, #94a3b8)"
- : displayLength < expectedLength
- ? "#f59e0b"
- : "#10b981";
+  /* ── Counter state ───────────────────────────────────────────── */
+  const displayLength = localNumber.startsWith("+")
+    ? Math.max(0, localNumber.length - 1)
+    : localNumber.length;
 
- /* ── Validation ──────────────────────────────────────────────── */
- const showError = hasError || !!error;
+  const counterColor =
+    displayLength === 0
+      ? "var(--fi-label, #94a3b8)"
+      : displayLength < expectedLength
+      ? "#f59e0b"
+      : "#10b981";
 
- /* ── Placeholder ─────────────────────────────────────────────── */
- const getPlaceholder = () => {
- if (!selectedCountry) return "Select country first";
- return getExamplePlaceholder(selectedCountry.code, expectedLength);
- };
+  /* ── Validation ──────────────────────────────────────────────── */
+  const showError = hasError || !!error;
+
+  /* ── Placeholder ─────────────────────────────────────────────── */
+  const getPlaceholder = () => {
+    if (!selectedCountry) return "Select country first";
+    return getExamplePlaceholder(selectedCountry.code, expectedLength);
+  };
 
   /* ──────────────────────────────────────────────────────────────
      AUTH STYLE — matches .floating-field__wrapper exactly
@@ -283,7 +307,9 @@ const PhoneInput = ({
       focused ? "focused" : "",
       showError ? "has-error" : "",
       valid && !focused ? "is-valid" : "",
-    ].filter(Boolean).join(" ");
+    ]
+      .filter(Boolean)
+      .join(" ");
 
     return (
       <div ref={wrapRef} className={`floating-field ${className || ""}`}>
@@ -298,10 +324,13 @@ const PhoneInput = ({
             className="floating-field__phone-row"
             onFocus={() => setFocused(true)}
             onBlur={(e) => {
-              if (!wrapRef.current?.contains(e.relatedTarget)) setFocused(false);
+              if (!wrapRef.current?.contains(e.relatedTarget)) {
+                setFocused(false);
+                onBlur?.(e);
+              }
             }}
           >
-            {/* Country picker */}
+            {/* Country picker (borderless) */}
             <button
               type="button"
               className="floating-field__phone-btn"
@@ -310,7 +339,10 @@ const PhoneInput = ({
               {selectedCountry ? (
                 <>
                   <span className="floating-field__phone-flag">
-                    {selectedCountry.flag}
+                    <CountryFlag
+                      code={selectedCountry.code}
+                      fallbackFlag={selectedCountry.flag}
+                    />
                   </span>
                   <span className="floating-field__phone-dial-code">
                     {selectedCountry.dialCode}
@@ -344,7 +376,11 @@ const PhoneInput = ({
               inputMode="numeric"
               value={localNumber}
               onChange={handleLocalChange}
-              onBlur={onBlur}
+              onBlur={(e) => {
+                if (!wrapRef.current?.contains(e.relatedTarget)) {
+                  onBlur?.(e);
+                }
+              }}
               maxLength={localNumber.startsWith("+") ? 16 : expectedLength}
               placeholder={getPlaceholder()}
               aria-invalid={showError}
@@ -366,7 +402,11 @@ const PhoneInput = ({
         </div>
 
         {error && (
-          <span id={phoneErrorId} className="floating-field__error" role="alert">
+          <span
+            id={phoneErrorId}
+            className="floating-field__error"
+            role="alert"
+          >
             {error}
           </span>
         )}
@@ -405,12 +445,15 @@ const PhoneInput = ({
         onFocus={(e) => {
           if (!showError) {
             e.currentTarget.style.borderColor = "#94a3b8";
-            e.currentTarget.style.boxShadow = "0 0 0 1px rgba(148,163,184,0.15)";
+            e.currentTarget.style.boxShadow =
+              "0 0 0 1px rgba(148,163,184,0.15)";
           }
         }}
         onBlur={(e) => {
           if (!e.currentTarget.contains(e.relatedTarget)) {
-            e.currentTarget.style.borderColor = showError ? "#dc2626" : "#D1D5DB";
+            e.currentTarget.style.borderColor = showError
+              ? "#dc2626"
+              : "#D1D5DB";
             e.currentTarget.style.boxShadow = showError
               ? "0 0 0 3px rgba(220,38,38,0.08)"
               : "none";
@@ -423,20 +466,26 @@ const PhoneInput = ({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 4,
-            padding: "0 10px",
+            gap: 6,
+            padding: "0 8px 0 10px",
             background: "transparent",
             border: "none",
-            borderRight: "1.5px solid #E5E7EB",
             cursor: "pointer",
             whiteSpace: "nowrap",
             flexShrink: 0,
-            minWidth: 84,
+            minWidth: 78,
             fontFamily: "var(--font-sans), inherit",
           }}
         >
-          <span style={{ fontSize: 18, lineHeight: 1 }}>
-            {selectedCountry ? selectedCountry.flag : "🌐"}
+          <span style={{ display: "inline-flex", alignItems: "center" }}>
+            {selectedCountry ? (
+              <CountryFlag
+                code={selectedCountry.code}
+                fallbackFlag={selectedCountry.flag}
+              />
+            ) : (
+              "🌐"
+            )}
           </span>
           <span
             style={{
@@ -471,7 +520,7 @@ const PhoneInput = ({
             flex: 1,
             border: "none",
             outline: "none",
-            padding: "10px 12px",
+            padding: "10px 12px 10px 4px",
             fontSize: 14,
             fontFamily: "var(--font-sans), inherit",
             color: "var(--text-heading, #111827)",
@@ -685,8 +734,14 @@ const CountryOption = ({ country, selected, onSelect }) => (
         : "transparent";
     }}
   >
-    <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>
-      {country.flag}
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        flexShrink: 0,
+      }}
+    >
+      <CountryFlag code={country.code} fallbackFlag={country.flag} />
     </span>
     <span
       style={{
@@ -717,4 +772,5 @@ const CountryOption = ({ country, selected, onSelect }) => (
 
 export { isValidPhoneNumber }; // re-export for use in form validation
 export default PhoneInput;
+
 

@@ -69,7 +69,7 @@ function TenantAvatar({ avatarUrl, name, className = "h-7 w-7 text-[10px]" }) {
 
   return (
     <div
-      className={`flex ${className} shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-800 border border-slate-200 font-bold dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700`}
+      className={`flex ${className} shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 font-bold shadow-xs`}
     >
       {getInitials(name || "")}
     </div>

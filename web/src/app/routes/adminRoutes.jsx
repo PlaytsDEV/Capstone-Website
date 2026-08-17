@@ -68,25 +68,31 @@ export function AdminRoutes() {
       <Route
         path="reservations"
         element={
-          <RouteShell name="Reservations" fallback={<AdminTablePageSkeleton />}>
-            <ReservationsPage />
-          </RouteShell>
+          <RequirePermission permission="manageReservations">
+            <RouteShell name="Reservations" fallback={<AdminTablePageSkeleton />}>
+              <ReservationsPage />
+            </RouteShell>
+          </RequirePermission>
         }
       />
       <Route
         path="room-availability"
         element={
-          <RouteShell name="RoomAvailability" fallback={<AdminRoomAvailabilitySkeleton />}>
-            <RoomAvailabilityPage />
-          </RouteShell>
+          <RequirePermission permission="manageRooms">
+            <RouteShell name="RoomAvailability" fallback={<AdminRoomAvailabilitySkeleton />}>
+              <RoomAvailabilityPage />
+            </RouteShell>
+          </RequirePermission>
         }
       />
       <Route
         path="tenants"
         element={
-          <RouteShell name="Tenants" fallback={<AdminTablePageSkeleton />}>
-            <TenantsWorkspacePage />
-          </RouteShell>
+          <RequirePermission permission="manageTenants">
+            <RouteShell name="Tenants" fallback={<AdminTablePageSkeleton />}>
+              <TenantsWorkspacePage />
+            </RouteShell>
+          </RequirePermission>
         }
       />
       <Route
@@ -120,17 +126,21 @@ export function AdminRoutes() {
       <Route
         path="billing"
         element={
-          <RouteShell name="AdminBilling" fallback={<AdminTablePageSkeleton />}>
-            <AdminBillingPage />
-          </RouteShell>
+          <RequirePermission permission="manageBilling">
+            <RouteShell name="AdminBilling" fallback={<AdminTablePageSkeleton />}>
+              <AdminBillingPage />
+            </RouteShell>
+          </RequirePermission>
         }
       />
       <Route
         path="announcements"
         element={
-          <RouteShell name="AdminAnnouncements" fallback={<AdminTablePageSkeleton />}>
-            <AdminAnnouncementsPage />
-          </RouteShell>
+          <RequirePermission permission="manageAnnouncements">
+            <RouteShell name="AdminAnnouncements" fallback={<AdminTablePageSkeleton />}>
+              <AdminAnnouncementsPage />
+            </RouteShell>
+          </RequirePermission>
         }
       />
       <Route
@@ -144,33 +154,41 @@ export function AdminRoutes() {
       <Route
         path="maintenance"
         element={
-          <RouteShell name="AdminMaintenance" fallback={<AdminMaintenanceSkeleton />}>
-            <MaintenancePage />
-          </RouteShell>
+          <RequirePermission permission="manageMaintenance">
+            <RouteShell name="AdminMaintenance" fallback={<AdminMaintenanceSkeleton />}>
+              <MaintenancePage />
+            </RouteShell>
+          </RequirePermission>
         }
       />
       <Route
         path="analytics"
         element={
-          <RouteShell name="Analytics" fallback={<AdminAnalyticsSkeleton />}>
-            <AnalyticsPage />
-          </RouteShell>
+          <RequirePermission permission="viewReports">
+            <RouteShell name="Analytics" fallback={<AdminAnalyticsSkeleton />}>
+              <AnalyticsPage />
+            </RouteShell>
+          </RequirePermission>
         }
       />
       <Route
         path="analytics/details"
         element={
-          <RouteShell name="AnalyticsDetails" fallback={<AdminAnalyticsSkeleton />}>
-            <AnalyticsDetailsPage />
-          </RouteShell>
+          <RequirePermission permission="viewReports">
+            <RouteShell name="AnalyticsDetails" fallback={<AdminAnalyticsSkeleton />}>
+              <AnalyticsDetailsPage />
+            </RouteShell>
+          </RequirePermission>
         }
       />
       <Route
         path="inquiries"
         element={
-          <RouteShell name="Inquiries" fallback={<AdminTablePageSkeleton />}>
-            <InquiriesPage />
-          </RouteShell>
+          <RequirePermission permission="manageReservations">
+            <RouteShell name="Inquiries" fallback={<AdminTablePageSkeleton />}>
+              <InquiriesPage />
+            </RouteShell>
+          </RequirePermission>
         }
       />
       <Route
