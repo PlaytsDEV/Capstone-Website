@@ -7,6 +7,7 @@ import { logBillingAudit } from "../../utils/billingAudit.js";
 import { computePenalty, fetchPenaltySettings } from "../../utils/penaltyCalculator.js";
 import { syncBillAmounts, resolveBillStatus } from "../../utils/billingPolicy.js";
 import { isAdminRole, isOwnerRole } from "../../config/roles.js";
+import { isBillPdfStale } from "../../services/billPdfCache.js";
 import {
   getAdminInfo,
   loadRentBillForAdmin,
@@ -226,7 +227,8 @@ export const downloadBillPdf = async (req, res, next) => {
     if (
       !absolutePdfPath ||
       !absolutePdfPath.startsWith(safePdfRoot) ||
-      !fs.existsSync(absolutePdfPath)
+      !fs.existsSync(absolutePdfPath) ||
+      isBillPdfStale(bill)
     ) {
       const reservation = bill.reservationId
         ? await Reservation.findById(bill.reservationId._id || bill.reservationId)
