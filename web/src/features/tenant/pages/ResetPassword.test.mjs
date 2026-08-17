@@ -64,20 +64,37 @@ test("a network failure from confirmPasswordReset is retryable, not classified a
     source.indexOf("} else {", source.indexOf('error?.code === "auth/network-request-failed"')),
   );
   assert.doesNotMatch(networkBranch, /setStatus\("error"\)/);
-  assert.match(networkBranch, /Network error/);
+  assert.match(networkBranch, /Check your connection/);
 });
 
-test("any other confirmPasswordReset failure (invalid/expired/used oobCode) still shows link-unavailable", () => {
+test("action-code failures are classified without leaking Firebase errors", () => {
   const catchBody = source.slice(
     source.indexOf("} catch (error) {"),
     source.indexOf("submitInFlightRef.current = false;\n      setSubmitting(false);\n      return;"),
   );
-  assert.match(catchBody, /\} else \{\s*setStatus\("error"\);\s*setErrorMessage\("This reset link is invalid or has expired\."\);/);
+  assert.match(catchBody, /setStatus\(classifyResetActionError\(error\)\)/);
+  assert.match(source, /auth\/expired-action-code/);
+  assert.match(source, /auth\/invalid-action-code/);
+  assert.match(source, /already been used or is no longer valid/);
+  assert.match(source, /reset link has expired/);
+});
+
+test("the form is only rendered for the verified ready state", () => {
+  assert.match(source, /status === "ready" && \(/);
+  assert.match(source, /verifyPasswordResetCode\(auth, oobCode\)[\s\S]*setStatus\("ready"\)/);
+  assert.match(source, /status !== "ready" \|\| !currentPasswordValid/);
+});
+
+test("the visible checklist has five rows and hidden rules still gate submission", () => {
+  assert.match(source, /PASSWORD_RULES\.map/);
+  assert.match(source, /evaluateNewPassword\(password\)\.valid/);
+  assert.doesNotMatch(source, /label:\s*"No spaces/);
+  assert.match(source, /maxLength=\{NEW_PASSWORD_MAX_LENGTH\}/);
 });
 
 test("double submission is blocked by a synchronous ref guard, not state alone", () => {
   assert.match(source, /const submitInFlightRef = useRef\(false\);/);
-  assert.match(source, /if \(!canSubmit \|\| !oobCode \|\| submitInFlightRef\.current\) return;/);
+  assert.match(source, /status !== "ready"[\s\S]{0,180}submitInFlightRef\.current\) return;/);
   assert.match(source, /submitInFlightRef\.current = true;\s*setSubmitting\(true\);/);
 });
 

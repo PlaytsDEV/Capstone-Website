@@ -5,6 +5,8 @@ import {
   validatePassword,
   getFirebaseErrorMessage,
   evaluatePasswordRules,
+  evaluateNewPassword,
+  NEW_PASSWORD_MAX_LENGTH,
   calculatePasswordStrength,
 } from "./authValidation.js";
 
@@ -21,7 +23,7 @@ test("validatePassword explains what's missing in plain language", () => {
   assert.equal(validatePassword("Str0ng!Pass"), null);
 });
 
-test("evaluatePasswordRules tests all 6 requirements accurately", () => {
+test("evaluatePasswordRules exposes five checklist rows while enforcing hidden whitespace and maximum rules", () => {
   const empty = evaluatePasswordRules("");
   assert.equal(empty.allPassed, false);
 
@@ -35,9 +37,23 @@ test("evaluatePasswordRules tests all 6 requirements accurately", () => {
   assert.equal(full.results.every((r) => r.passed), true);
 
   const withSpaces = evaluatePasswordRules("Str0ng! Pass");
-  const spaceRule = withSpaces.results.find((r) => r.id === "no-spaces");
-  assert.equal(spaceRule.passed, false);
+  assert.deepEqual(withSpaces.results.map((rule) => rule.id), ["length", "uppercase", "lowercase", "number", "special"]);
   assert.equal(withSpaces.allPassed, false);
+});
+
+test("canonical new-password boundary matrix", () => {
+  const cases = [
+    ["", false], ["Aa1!aaa", false], ["Aa1!aaaa", true],
+    ["aa1!aaaa", false], ["AA1!AAAA", false], ["Aaa!aaaa", false], ["Aaa1aaaa", false],
+    ["Aa1! aaab", false], [" Aa1!aaab", false], ["Aa1!aaab ", false],
+    ["Aa1!\taaab", false], ["Aa1!\naaab", false], ["Lilycrest2026#Secure", true],
+    [`Aa1!${"x".repeat(NEW_PASSWORD_MAX_LENGTH - 4)}`, true],
+    [`Aa1!${"x".repeat(NEW_PASSWORD_MAX_LENGTH - 3)}`, false],
+  ];
+  for (const [password, expected] of cases) {
+    assert.equal(evaluateNewPassword(password).valid, expected, JSON.stringify(password));
+    assert.equal(validatePassword(password) === null, expected, JSON.stringify(password));
+  }
 });
 
 test("calculatePasswordStrength calculates tiers and labels appropriately", () => {

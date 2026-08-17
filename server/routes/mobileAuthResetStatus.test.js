@@ -17,11 +17,21 @@ function hash(rawToken) {
   return crypto.createHash("sha256").update(rawToken).digest("hex");
 }
 
-function makeDb(tokenDocs = []) {
+function makeDb(tokenDocs = [], users = [{
+  user_id: "tenant-a",
+  role: "tenant",
+  accountStatus: "active",
+  tenantStatus: "active",
+}]) {
   const findOneCalls = [];
   return {
     findOneCalls,
     collection(name) {
+      if (name === "users") {
+        return {
+          findOne: jest.fn(async (query) => users.find((user) => user.user_id === query.user_id) || null),
+        };
+      }
       if (name !== "password_reset_tokens") {
         throw new Error(`unexpected collection: ${name}`);
       }
@@ -29,11 +39,12 @@ function makeDb(tokenDocs = []) {
         findOne: jest.fn(async (query) => {
           findOneCalls.push(query);
           return (
-            tokenDocs.find(
+            tokenDocs.map((doc) => ({ user_id: "tenant-a", ...doc })).find(
               (doc) =>
                 doc.hashedToken === query.hashedToken &&
                 doc.used === query.used &&
-                doc.expiresAt > query.expiresAt.$gt,
+                doc.expiresAt > query.expiresAt.$gt &&
+                (!query.processingId || !("processingId" in doc)),
             ) || null
           );
         }),
@@ -47,10 +58,17 @@ let server;
 let baseUrl;
 let db;
 
+function mockCanonicalPasswordResetController() {
+  jest.unstable_mockModule("../controllers/passwordResetController.js", () => ({
+    requestMobileTenantPasswordReset: jest.fn((_req, res) => res.status(202).json({ message: "accepted" })),
+  }));
+}
+
 async function startAppWithDb(seededDb) {
   jest.resetModules();
   db = seededDb;
   jest.unstable_mockModule("mongoose", () => ({ default: { connection: { db } } }));
+  mockCanonicalPasswordResetController();
   const { default: mobileAuthRoutes } = await import("./mobileAuthRoutes.js");
 
   app = express();
@@ -107,6 +125,28 @@ describe("POST /api/m/auth/reset-password/status", () => {
     expect(status).toBe(200);
     expect(body).toEqual({ valid: false });
   });
+
+  test("a token currently claimed by reset processing reports valid: false", async () => {
+    const rawToken = "processing-token";
+    await startAppWithDb(
+      makeDb([{ hashedToken: hash(rawToken), used: false, expiresAt: new Date(Date.now() + 60000), processingId: "claim-1" }]),
+    );
+    const result = await postStatus({ token: rawToken });
+    expect(result.body).toEqual({ valid: false });
+  });
+
+  test.each(["applicant", "admin", "branch_admin", "owner", "staff"])(
+    "a token tied to %s reports valid: false",
+    async (role) => {
+      const rawToken = `role-${role}`;
+      await startAppWithDb(makeDb(
+        [{ hashedToken: hash(rawToken), used: false, expiresAt: new Date(Date.now() + 60000) }],
+        [{ user_id: "tenant-a", role, accountStatus: "active", tenantStatus: "active" }],
+      ));
+      const result = await postStatus({ token: rawToken });
+      expect(result.body).toEqual({ valid: false });
+    },
+  );
 
   test("an unknown/never-issued token reports valid: false", async () => {
     await startAppWithDb(makeDb([]));
@@ -182,6 +222,7 @@ describe("POST /api/m/auth/reset-password/status", () => {
       },
     };
     jest.unstable_mockModule("mongoose", () => ({ default: { connection: { db } } }));
+    mockCanonicalPasswordResetController();
     const { default: mobileAuthRoutes } = await import("./mobileAuthRoutes.js");
     app = express();
     app.use(express.json());
@@ -201,6 +242,7 @@ describe("POST /api/m/auth/reset-password/status route precedence", () => {
     jest.resetModules();
     db = makeDb([{ hashedToken: hash("precedence-token"), used: false, expiresAt: new Date(Date.now() + 60000) }]);
     jest.unstable_mockModule("mongoose", () => ({ default: { connection: { db } } }));
+    mockCanonicalPasswordResetController();
     const { default: mobileAuthRoutes } = await import("./mobileAuthRoutes.js");
 
     app = express();
@@ -238,6 +280,7 @@ describe("POST /api/m/auth/reset-password/status — non-consuming lifecycle aga
       hashedToken,
       used: false,
       expiresAt: { $gt: new Date("2026-01-01T00:00:00.000Z") },
+      processingId: { $exists: false },
     });
 
     await startAppWithDb(makeDb([{ hashedToken, used: false, expiresAt: new Date(Date.now() + 60000) }]));

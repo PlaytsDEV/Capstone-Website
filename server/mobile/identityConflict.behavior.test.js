@@ -11,6 +11,11 @@ jest.mock('./config/firebase.js', () => ({
   admin: { auth: () => ({ updateUser: mockUpdateUser, revokeRefreshTokens: mockRevokeRefreshTokens }) },
 }));
 jest.mock('axios', () => ({ post: (...args) => mockAxiosPost(...args) }));
+jest.mock('./services/emailService.js', () => ({
+  sendPasswordChangedEmail: jest.fn(async () => {}),
+  sendPasswordResetEmail: jest.fn(async () => {}),
+  sendLoginOtpEmail: jest.fn(async () => {}),
+}));
 
 const controller = require('./controllers/auth.controller.js');
 
@@ -97,5 +102,32 @@ describe('mobile Firebase UID identity conflicts', () => {
     expect(results.map((r) => [r.statusCode, r.body.code])).toEqual([[401, 'AUTHENTICATION_FAILED'], [401, 'AUTHENTICATION_FAILED']]);
     expect(fixture.state.userUpdates).toEqual([]); expect(fixture.state.sessionInserts).toBe(0); expect(fixture.state.audits).toHaveLength(4);
     expect(JSON.stringify(fixture.state.audits)).not.toContain('b@example.test');
+  });
+
+  test('login passes a legacy whitespace password to Firebase exactly as entered', async () => {
+    const fixture = conflictDb();
+    mockGetDb.mockReturnValue(fixture.db);
+    mockAxiosPost.mockResolvedValue({ data: { localId: 'uid-a' } });
+    const password = 'Legacy Pass1!';
+    const res = response();
+    await controller.login({ body: { email: 'b@example.test', password }, headers: {}, ip: '127.0.0.1' }, res);
+    expect(mockAxiosPost.mock.calls[0][1].password).toBe(password);
+  });
+
+  test('change password reauthentication preserves the exact current credential', async () => {
+    const fixture = conflictDb();
+    mockGetDb.mockReturnValue(fixture.db);
+    mockAxiosPost.mockResolvedValue({ data: { localId: 'uid-b' } });
+    mockUpdateUser.mockResolvedValue({});
+    const currentPassword = 'Legacy Pass1!';
+    const res = response();
+    await controller.changePassword({
+      body: { current_password: currentPassword, new_password: 'ModernPass2!' },
+      user: fixture.state.users[1],
+      headers: {},
+      ip: '127.0.0.1',
+    }, res);
+    expect(mockAxiosPost.mock.calls[0][1].password).toBe(currentPassword);
+    expect(res.statusCode).toBe(200);
   });
 });

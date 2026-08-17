@@ -67,6 +67,9 @@ jest.unstable_mockModule("../services/mobileDocumentBridge.js", () => ({ buildPo
 jest.unstable_mockModule("../services/mobileUserDocumentService.js", () => ({
   listUserDocuments: jest.fn(), uploadUserDocument: jest.fn(), getUserDocumentContent: jest.fn(), deleteUserDocument: jest.fn(),
 }));
+jest.unstable_mockModule("../controllers/passwordResetController.js", () => ({
+  requestMobileTenantPasswordReset: jest.fn((_req, res) => res.status(202).json({ message: "accepted" })),
+}));
 jest.unstable_mockModule("mongoose", () => ({ default: { connection: { db: {} } } }));
 jest.unstable_mockModule("../services/mobileNotificationBridge.js", () => ({
   listUserNotifications: jest.fn(), markNotificationRead: jest.fn(), markAllNotificationsRead: jest.fn(),

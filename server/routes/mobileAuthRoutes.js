@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * MOBILE AUTH ROUTES (session-teardown + reset-token status bridge)
+ * MOBILE AUTH ROUTES (canonical reset request + session/reset bridges)
  * ============================================================================
  *
  * Closes two gaps the mobile/canonical reconciliation audit found in the
@@ -23,10 +23,10 @@
  *
  * Mounted at /api/m BEFORE mobileRoutes (the vendored mobile backend copy)
  * — same pattern as mobileContractRoutes.js, mobileBillingRoutes.js, etc. —
- * so these definitions fully supersede the vendored router for these two
- * paths. Every other /api/m/auth/* path (login, OTP, logout, forgot/reset
- * password itself, ...) is untouched and continues to fall through to the
- * vendored router unchanged.
+ * so these definitions supersede the vendored router for their exact paths.
+ * Forgot Password is deliberately intercepted here so old and new mobile
+ * builds use the website's Firebase action-code authority. Login, OTP,
+ * logout, password change, and legacy-token completion still fall through.
  *
  * Session teardown uses the dedicated middleware/mobileSessionTeardownAuth.js
  * resolver, NOT mobileTenantAuth — see that file's header for why a relaxed,
@@ -49,6 +49,7 @@ import { createRequire } from "module";
 
 import { mobileSessionTeardownAuth } from "../middleware/mobileSessionTeardownAuth.js";
 import { authLimiter } from "../middleware/rateLimiter.js";
+import { requestMobileTenantPasswordReset } from "../controllers/passwordResetController.js";
 
 const router = express.Router();
 const asyncRoute = (handler) => (req, res, next) =>
@@ -57,11 +58,21 @@ const asyncRoute = (handler) => (req, res, next) =>
 const { hashResetToken, resetTokenEligibilityFilter } = createRequire(import.meta.url)(
   "../mobile/security/resetTokenEligibility.js",
 );
+const { evaluateTenant } = createRequire(import.meta.url)(
+  "../security/mobileTenantEligibility.cjs",
+);
 
 // IMPORTANT: mobileSessionTeardownAuth is attached per-route below, NEVER
 // via router.use() at the router level — see the identical note in
 // routes/mobileBillingRoutes.js (a router-level router.use() would also
 // incorrectly gate unrelated /api/m/* paths mounted after this router).
+
+// Canonical reset-request alias for already-shipped mobile builds. This route
+// deliberately dispatches to the exact web reset controller: Firebase owns
+// the action code, and Lilycrest's shared Resend/SMTP pipeline owns delivery.
+// It is mounted before the vendored mobile router, whose former handler
+// created an incompatible password_reset_tokens credential.
+router.post("/auth/forgot-password", authLimiter, requestMobileTenantPasswordReset);
 
 router.post("/auth/session-teardown", mobileSessionTeardownAuth, asyncRoute(async (req, res) => {
   const db = mongoose.connection.db;
@@ -114,7 +125,10 @@ router.post("/auth/reset-password/status", authLimiter, asyncRoute(async (req, r
     const record = await db.collection("password_reset_tokens").findOne(
       resetTokenEligibilityFilter(hashedToken),
     );
-    res.json({ valid: Boolean(record) });
+    const user = record?.user_id
+      ? await db.collection("users").findOne({ user_id: record.user_id })
+      : null;
+    res.json({ valid: Boolean(record) && evaluateTenant(user).allowed });
   } catch (error) {
     console.error("[mobileAuthRoutes] reset-password/status check failed:", error?.message);
     res.status(500).json({ valid: false });

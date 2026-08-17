@@ -292,8 +292,9 @@ app.use("/api/m", mobilePaymongoRoutes);
 app.use("/api/m", mobileDocumentRoutes);
 // Session-teardown bridge — must be mounted before mobileRoutes (the
 // vendored mobile backend copy, which never defined this path) so
-// POST /api/m/auth/session-teardown is answered instead of 404ing. Every
-// other /api/m/auth/* path is untouched and still falls through below.
+// It also owns reset status and, critically, the Forgot Password alias that
+// dispatches to the website's Firebase action-code controller. Login,
+// password change, and temporary legacy-token completion fall through.
 app.use("/api/m", mobileAuthRoutes);
 // Notification + Firebase-storage-upload bridges — Phase 4 cutover audit
 // found neither path was defined anywhere under /api/m (bridge or vendored),
