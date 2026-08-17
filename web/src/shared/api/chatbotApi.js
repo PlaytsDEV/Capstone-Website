@@ -12,7 +12,7 @@
  * =============================================================================
  */
 
-import { publicFetch } from "./httpClient.js";
+import { publicFetch, authFetch } from "./httpClient.js";
 import { API_BASE_URL } from "./baseUrl.js";
 
 /**
@@ -314,6 +314,10 @@ export const queryAdminSop = async ({ query, branch }) => {
   });
 };
 
+export const queryAdminAssistant = queryAdminSop;
+export const queryAdminCopilot = queryAdminSop;
+
+
 /**
  * Request an AI reply draft for admin chat or inquiry conversations.
  *
@@ -374,6 +378,20 @@ export const getOwnerSupportTrends = async ({ timeframe = "30d", branch = "All" 
   return authFetch(`/chatbot/owner/support-trends${qs ? `?${qs}` : ""}`);
 };
 
+/**
+ * Fetch dynamic, context-aware suggestions for branch admins.
+ *
+ * @param {Object} [params]
+ * @param {string} [params.branch]
+ * @returns {Promise<Object>}
+ */
+export const getAdminDynamicSuggestions = async ({ branch } = {}) => {
+  const queryParams = new URLSearchParams();
+  if (branch) queryParams.set("branch", branch);
+  const qs = queryParams.toString();
+  return authFetch(`/chatbot/admin/dynamic-suggestions${qs ? `?${qs}` : ""}`);
+};
+
 export const chatbotApi = {
   streamPublicChatbot,
   queryPublicChatbot,
@@ -383,7 +401,9 @@ export const chatbotApi = {
   suggestAdminReply,
   getAdminIssueClusters,
   getOwnerSupportTrends,
+  getAdminDynamicSuggestions,
 };
 
 export default chatbotApi;
+
 

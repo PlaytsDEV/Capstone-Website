@@ -73,8 +73,18 @@ export const showNotification = (
     message = String(message || "");
   }
 
-  if (!message.trim()) {
+  // Sanitize message to ensure friendly, simple, professional copy and eliminate technical/system errors
+  message = sanitizeToastMessage(message, resolvedType);
+
+  if (!message || !message.trim()) {
     return null;
+  }
+
+  // Automatically ensure error and warning toasts have comfortable reading durations
+  if (resolvedType === "error" && resolvedDuration === 3000) {
+    resolvedDuration = 5000;
+  } else if (resolvedType === "warning" && resolvedDuration === 3000) {
+    resolvedDuration = 4000;
   }
 
   const now = Date.now();
@@ -243,3 +253,55 @@ export const summarizeAnnouncementMessage = (message) => {
   }
   return cleaned;
 };
+
+/**
+ * Automatically sanitizes toast messages to ensure friendly, simple, and professional copy.
+ * Strips technical jargon, database errors, and "system error" phrasing while enforcing Lilycrest terminology.
+ */
+export const sanitizeToastMessage = (rawMessage, type = "info") => {
+  if (!rawMessage || typeof rawMessage !== "string") return rawMessage;
+
+  let message = rawMessage.trim();
+
+  // 1. Technical & System Error Replacements
+  const serverErrorRegex =
+    /\b(system\s*error|internal\s*server\s*error|500\s*internal|server\s*error\s*:\s*500|502\s*bad\s*gateway|503\s*service|504\s*gateway)\b/i;
+  const networkErrorRegex =
+    /\b(failed\s*to\s*fetch|networkerror|econnrefused|etimedout|network\s*error|axioserror)\b/i;
+  const databaseErrorRegex =
+    /\b(mongoose|cast\s*to\s*objectid|validationerror\b|duplicate\s*key\s*error|e11000|is not a valid enum value|not a valid enum|validation failed)\b/i;
+  const genericErrorRegex =
+    /^(an\s*error\s*occurred\.?|something\s*went\s*wrong\.?|error\s*occurred\.?)$/i;
+
+  if (serverErrorRegex.test(message)) {
+    return "Unable to complete your request right now. Please check your connection and try again.";
+  }
+
+  if (networkErrorRegex.test(message)) {
+    return "Unable to connect to the server. Please check your internet connection and try again.";
+  }
+
+  if (databaseErrorRegex.test(message)) {
+    return "Unable to process this request. Please verify the details and try again.";
+  }
+
+  if (genericErrorRegex.test(message)) {
+    return "Unable to complete your request right now. Please try again.";
+  }
+
+  // 2. Lilycrest Terminology Invariants
+  message = message
+    .replace(/\bResidents\b/g, "Tenants")
+    .replace(/\bresidents\b/g, "tenants")
+    .replace(/\bResident\b/g, "Tenant")
+    .replace(/\bresident\b/g, "tenant")
+    .replace(/\bCopilot\b/g, "Assistant")
+    .replace(/\bcopilot\b/g, "assistant")
+    .replace(/\bSuper\s*Admin\b/g, "Owner")
+    .replace(/\bsuper\s*admin\b/g, "owner")
+    .replace(/\bRental\s*Fee\b/g, "Rent")
+    .replace(/\brental\s*fee\b/g, "rent");
+
+  return cleanNotificationMessage(message);
+};
+

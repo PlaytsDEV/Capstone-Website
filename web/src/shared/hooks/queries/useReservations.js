@@ -113,6 +113,7 @@ export function useVisitAvailability(params = {}, options = {}) {
     queryFn: () => reservationApi.getVisitAvailability(params),
     enabled: !!params.branch,
     staleTime: 15 * 1000,
+    placeholderData: keepPreviousData,
     ...options,
   });
 }
@@ -123,6 +124,7 @@ export function useVisitAvailabilitySettings(branch, options = {}) {
     queryFn: () => reservationApi.getVisitAvailabilitySettings(branch),
     enabled: !!branch,
     staleTime: 30 * 1000,
+    placeholderData: keepPreviousData,
     ...options,
   });
 }

@@ -78,7 +78,7 @@ export const RESERVATION_STATUS_LABELS = Object.freeze({
   approved_for_payment: "Approved for Payment",
   payment_pending: "Payment Pending",
   reserved: "Reserved",
-  moveIn: "Moved In",
+  moveIn: "Move In",
   moveOut: "Moved Out",
   rejected: "Rejected",
   cancelled: "Cancelled",
@@ -90,84 +90,98 @@ export const RESERVATION_STATUS_APPEARANCE = Object.freeze({
     label: RESERVATION_STATUS_LABELS.pending,
     color: "#b45309",
     bg: "#fffbeb",
+    border: "#fde68a",
     dot: "#f59e0b",
   },
   viewing_preference_selected: {
     label: RESERVATION_STATUS_LABELS.viewing_preference_selected,
     color: "#1d4ed8",
     bg: "#eff6ff",
+    border: "#bfdbfe",
     dot: "#3b82f6",
   },
   visit_pending: {
     label: RESERVATION_STATUS_LABELS.visit_pending,
     color: "#1d4ed8",
     bg: "#eff6ff",
+    border: "#bfdbfe",
     dot: "#3b82f6",
   },
   visit_approved: {
     label: RESERVATION_STATUS_LABELS.visit_approved,
-    color: "#6d28d9",
-    bg: "#f5f3ff",
-    dot: "#8b5cf6",
+    color: "#1d4ed8",
+    bg: "#eff6ff",
+    border: "#bfdbfe",
+    dot: "#3b82f6",
   },
   pending_application_review: {
     label: RESERVATION_STATUS_LABELS.pending_application_review,
     color: "#b45309",
     bg: "#fffbeb",
+    border: "#fde68a",
     dot: "#f59e0b",
   },
   needs_revision: {
     label: RESERVATION_STATUS_LABELS.needs_revision,
     color: "#b45309",
-    bg: "#fff7ed",
-    dot: "#f97316",
+    bg: "#fffbeb",
+    border: "#fde68a",
+    dot: "#f59e0b",
   },
   approved_for_payment: {
     label: RESERVATION_STATUS_LABELS.approved_for_payment,
-    color: "#0f766e",
-    bg: "#ecfeff",
-    dot: "#14b8a6",
+    color: "#047857",
+    bg: "#ecfdf5",
+    border: "#a7f3d0",
+    dot: "#10b981",
   },
   payment_pending: {
     label: RESERVATION_STATUS_LABELS.payment_pending,
     color: "#b45309",
     bg: "#fffbeb",
+    border: "#fde68a",
     dot: "#f59e0b",
   },
   reserved: {
     label: RESERVATION_STATUS_LABELS.reserved,
     color: "#047857",
     bg: "#ecfdf5",
+    border: "#a7f3d0",
     dot: "#10b981",
   },
   moveIn: {
     label: RESERVATION_STATUS_LABELS.moveIn,
     color: "#047857",
     bg: "#ecfdf5",
+    border: "#a7f3d0",
     dot: "#10b981",
   },
   moveOut: {
     label: RESERVATION_STATUS_LABELS.moveOut,
     color: "#64748b",
     bg: "#f8fafc",
+    border: "#e2e8f0",
     dot: "#94a3b8",
   },
   rejected: {
     label: RESERVATION_STATUS_LABELS.rejected,
     color: "#dc2626",
     bg: "#fef2f2",
+    border: "#fecaca",
     dot: "#ef4444",
   },
   cancelled: {
     label: RESERVATION_STATUS_LABELS.cancelled,
     color: "#dc2626",
     bg: "#fef2f2",
+    border: "#fecaca",
     dot: "#ef4444",
   },
   archived: {
     label: RESERVATION_STATUS_LABELS.archived,
     color: "#475569",
     bg: "#f8fafc",
+    border: "#e2e8f0",
     dot: "#94a3b8",
   },
 });
@@ -190,7 +204,7 @@ export const RESERVATION_STAGE_MAP = Object.freeze({
   approved_for_payment: { step: 4, total: 5, label: "Approved for Payment" },
   payment_pending: { step: 4, total: 5, label: "Payment Pending" },
   reserved: { step: 5, total: 5, label: "Confirmed" },
-  moveIn: { step: 6, total: 6, label: "Moved In" },
+  moveIn: { step: 6, total: 6, label: "Move In" },
   moveOut: { step: 6, total: 6, label: "Completed" },
   rejected: { step: 0, label: "Rejected" },
   cancelled: { step: 0, label: "Cancelled" },
@@ -288,6 +302,10 @@ export const readMoveOutDate = (value) => value?.moveOutDate ?? null;
 export const getReservationStatusLabel = (status) => {
   const normalized = normalizeReservationStatus(status);
   if (!normalized) return "Unknown";
+
+  if (RESERVATION_STATUS_LABELS[normalized]) {
+    return RESERVATION_STATUS_LABELS[normalized];
+  }
 
   return String(normalized)
     .replace(/_/g, " ")

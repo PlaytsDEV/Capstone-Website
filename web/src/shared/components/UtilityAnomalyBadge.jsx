@@ -19,8 +19,8 @@ export default function UtilityAnomalyBadge({
 }) {
   if (!isRollover && !isSpike && !vacantBedOverhead) {
     return (
-      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 ${className}`}>
-        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Normal Consumption
+      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-transparent text-emerald-600 dark:text-emerald-400 ${className}`}>
+        <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-500" /> Normal Consumption
       </span>
     );
   }
@@ -28,14 +28,14 @@ export default function UtilityAnomalyBadge({
   return (
     <div className={`inline-flex flex-wrap items-center gap-2 text-xs ${className}`}>
       {isRollover && (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-medium bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-medium bg-transparent text-sky-600 dark:text-sky-400">
           <RotateCcw className="w-3.5 h-3.5 shrink-0" /> Meter Rollover
         </span>
       )}
 
       {isSpike && (
         <span
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-medium bg-transparent text-amber-600 dark:text-amber-400"
           title={`Abnormal consumption spike exceeding ${spikeThreshold} kWh threshold`}
         >
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Consumption Spike (&gt;{spikeThreshold} kWh)
@@ -43,7 +43,7 @@ export default function UtilityAnomalyBadge({
       )}
 
       {vacantBedOverhead > 0 && (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-medium bg-transparent text-slate-700 dark:text-slate-300">
           <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Owner Absorbed: ₱{vacantBedOverhead.toLocaleString()}
         </span>
       )}

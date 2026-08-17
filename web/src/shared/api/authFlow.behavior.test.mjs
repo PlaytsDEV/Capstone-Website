@@ -148,7 +148,7 @@ test("specialized protected uploads and downloads use the central credentialed t
 
 test("functional role routing preserves applicant, tenant, admin, and owner destinations", () => {
   assert.equal(getAuthenticatedUserDestination({ role: "applicant" }), "/applicant/check-availability");
-  assert.equal(getAuthenticatedUserDestination({ role: "tenant" }), "/applicant/check-availability");
+  assert.equal(getAuthenticatedUserDestination({ role: "tenant" }), "/applicant/profile");
   assert.equal(getAuthenticatedUserDestination({ role: "branch_admin" }), "/admin/dashboard");
   assert.equal(getAuthenticatedUserDestination({ role: "owner" }), "/admin/dashboard");
   assert.equal(isOtpDeliveryAccepted({ requiresOtp: true, code: "OTP_REQUIRED" }), true);

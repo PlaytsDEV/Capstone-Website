@@ -32,7 +32,7 @@ export default function BranchKpiSummaryCard({
           </div>
         </div>
 
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-transparent text-emerald-600 dark:text-emerald-400">
           <ShieldCheck className="w-3.5 h-3.5" /> Isolated Ledger
         </span>
       </div>

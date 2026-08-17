@@ -102,14 +102,15 @@ html {
   --focus-outline: 1.5px solid rgba(15, 23, 42, 0.45);
 
   --chart-gold: var(--color-accent);
---success: var(--color-success);
---border: var(--border-card);
---popover: var(--surface-elevated);
---foreground: var(--text-body);
---muted-foreground: var(--text-muted);
---card: var(--surface-card);
---muted: var(--surface-muted);
-
+  --primary: var(--color-primary);
+  --primary-foreground: #ffffff;
+  --success: var(--color-success);
+  --border: var(--border-card);
+  --popover: var(--surface-elevated);
+  --foreground: var(--text-body);
+  --muted-foreground: var(--text-muted);
+  --card: var(--surface-card);
+  --muted: var(--surface-muted);
 }
 
 html {

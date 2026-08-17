@@ -21,22 +21,22 @@ export default function MaintenanceSlaBadge({
 
   const getPriorityStyle = () => {
     if (isEmergency || normPriority === "emergency") {
-      return "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30";
+      return "text-rose-600 dark:text-rose-400";
     }
     if (normPriority === "urgent") {
-      return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30";
+      return "text-amber-600 dark:text-amber-400";
     }
     if (normPriority === "high") {
-      return "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30";
+      return "text-amber-700 dark:text-amber-400";
     }
-    return "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20";
+    return "text-slate-600 dark:text-slate-400";
   };
 
   return (
     <div className={`inline-flex flex-wrap items-center gap-2 text-xs ${className}`}>
-      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-semibold uppercase tracking-wider border ${getPriorityStyle()}`}>
+      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-semibold uppercase tracking-wider bg-transparent ${getPriorityStyle()}`}>
         {isEmergency || normPriority === "emergency" ? (
-          <Zap className="w-3.5 h-3.5 text-rose-500 fill-rose-500/20" />
+          <Zap className="w-3.5 h-3.5 text-rose-500" />
         ) : (
           <Clock className="w-3.5 h-3.5" />
         )}
@@ -44,13 +44,13 @@ export default function MaintenanceSlaBadge({
       </span>
 
       {isEscalated && (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-medium bg-transparent text-rose-600 dark:text-rose-400">
           <AlertTriangle className="w-3.5 h-3.5" /> Timeline Escalated
         </span>
       )}
 
       {isTenantDamage && (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-medium bg-transparent text-rose-600 dark:text-rose-400">
           <ShieldAlert className="w-3.5 h-3.5" /> Tenant Damage Billable
         </span>
       )}

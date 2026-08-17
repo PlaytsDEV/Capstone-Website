@@ -10,6 +10,7 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
+import { formatStageStatus } from "./stageUtils.js";
 
 export const MAINTENANCE_REQUEST_TYPE_META = Object.freeze({
   maintenance: { label: "General Maintenance", icon: Wrench, color: "#F59E0B" },
@@ -176,11 +177,11 @@ export const MAINTENANCE_STATUS_META = Object.freeze({
     variant: "error",
   },
   resolved: {
-    label: "Resolved (Awaiting Verification)",
+    label: "Resolved",
     shortLabel: "Resolved",
-    bg: "#FEF9C3",
-    color: "#854D0E",
-    variant: "warning",
+    bg: "#DCFCE7",
+    color: "#15803D",
+    variant: "success",
   },
   completed: {
     label: "Completed",
@@ -276,8 +277,15 @@ export const formatMaintenanceType = (requestType) =>
 export const formatMaintenanceUrgency = (urgency) =>
   getMaintenanceUrgencyMeta(urgency).label;
 
-export const formatMaintenanceStatus = (status) =>
-  getMaintenanceStatusMeta(status).label;
+export const formatMaintenanceStatus = (status, options = {}) => {
+  if (options?.includeStage) {
+    return formatStageStatus("maintenance", status);
+  }
+  return getMaintenanceStatusMeta(status).label;
+};
+
+export const formatMaintenanceStatusWithStage = (status) =>
+  formatStageStatus("maintenance", status);
 
 // ═══════════════════════════════════════════════════════════════
 // CANONICAL MAINTENANCE STAGE PIPELINE (5 Unified Stages)

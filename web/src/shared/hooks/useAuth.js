@@ -585,6 +585,10 @@ export const AuthProvider = ({ children }) => {
       return "/admin/dashboard";
     }
 
+    if (user?.role === USER_ROLES.TENANT) {
+      return "/applicant/profile";
+    }
+
     return "/applicant/check-availability";
   };
 

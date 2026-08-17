@@ -22,10 +22,15 @@ export default function ProfileAvatar({
   size = 32,
   className = "",
   style,
+  defaultOnly = false,
   ...props
 }) {
   const label = initials || getProfileInitials(user);
-  const imageSrc = src || user?.profileImage || user?.profileImageUrl || user?.avatar || user?.photoUrl;
+  const imageSrc = defaultOnly
+    ? null
+    : (src && typeof src === "string" && src.trim()
+        ? src.trim()
+        : (user?.profileImage || user?.profileImageUrl || user?.avatar || user?.photoUrl || user?.selfiePhotoUrl || null));
   // Falls back to the initials avatar instead of a browser broken-image icon
   // when the URL is missing, invalid, expired, or the request fails for any
   // other reason. Re-arms whenever the source actually changes (e.g. the

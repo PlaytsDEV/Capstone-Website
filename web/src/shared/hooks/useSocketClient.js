@@ -191,6 +191,11 @@ export default function useSocketClient() {
         }
         qc.invalidateQueries({ queryKey: ["reservations"] });
         qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
+        qc.invalidateQueries({ queryKey: ["reservation-payments"] });
+        qc.invalidateQueries({ queryKey: ["billing"] });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("lilycrest:payment-updated", { detail: data }));
+        }
       });
 
       socket.on("reservation:updated", (data) => {
@@ -201,6 +206,11 @@ export default function useSocketClient() {
         qc.refetchQueries({ queryKey: ["reservations"], type: "active" });
         qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
         qc.invalidateQueries({ queryKey: ["dashboard"] });
+        qc.invalidateQueries({ queryKey: ["reservation-payments"] });
+        qc.invalidateQueries({ queryKey: ["billing"] });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("lilycrest:reservation-updated", { detail: data }));
+        }
       });
 
       socket.on("visit:updated", (data) => {

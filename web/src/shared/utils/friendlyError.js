@@ -27,7 +27,8 @@ const ERROR_MAP = [
   // MongoDB / database
   [/E11000|duplicate\s*key/i, "This record already exists. Please use different details."],
   [/cast\s*to\s*objectid|invalid.*id|invalid.*identifier/i, "The requested item could not be found or has an invalid identifier."],
-  [/validation\s*failed/i, "Some required information is missing. Please check your input."],
+  [/is\s*not\s*a\s*valid\s*enum\s*value|not\s*a\s*valid\s*enum|validation\s*failed/i, "Some required information is invalid or missing. Please check your details and try again."],
+  [/validationerror/i, "Some required information is invalid. Please check your details and try again."],
 
   // Not found
   [/not\s*found|404/i, "The requested item could not be found. It may have been removed."],
@@ -68,7 +69,7 @@ export function getFriendlyError(error, fallback = "Something went wrong. Please
     error instanceof EvalError ||
     error instanceof URIError ||
     (error && typeof error === "object" && ["TypeError", "ReferenceError", "SyntaxError", "RangeError"].includes(error?.name)) ||
-    /TypeError|ReferenceError|SyntaxError|RangeError|MongoError|CastError|ValidationError:\s*path|at\s+\w|Internal\s*Server\s*Error|is not a function|cannot read propert|is not defined|undefined is not|null is not|objects are not valid as a react child|maximum call stack|chunkloaderror/i.test(rawMsg);
+    /TypeError|ReferenceError|SyntaxError|RangeError|MongoError|CastError|ValidationError|is not a valid enum value|not a valid enum|at\s+\w|Internal\s*Server\s*Error|is not a function|cannot read propert|is not defined|undefined is not|null is not|objects are not valid as a react child|maximum call stack|chunkloaderror/i.test(rawMsg);
 
   // If the server sent a clean domain message (no stack trace or internal code errors), use it directly
   if (serverMsg && typeof serverMsg === "string" && !isCodeError) {

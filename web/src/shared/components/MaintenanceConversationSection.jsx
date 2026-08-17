@@ -323,6 +323,7 @@ export function MaintenanceConversationSection({
             <button
               type="submit"
               className="chat-btn-send"
+              title="Send reply to this conversation thread"
               disabled={isSending || isUploading || (!message.trim() && stagedAttachments.length === 0)}
             >
               {isSending ? (
