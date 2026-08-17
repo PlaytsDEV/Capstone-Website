@@ -230,7 +230,16 @@ router.post("/request-password-reset", authLimiter, requestPasswordReset);
 router.post("/finalize-password-reset", authLimiter, verifyToken, async (req, res, next) => {
   try {
     const user = await User.findOne({ firebaseUid: req.user.uid });
-    const invalidation = user ? await invalidateUserSessions({ user, reason: "web_password_reset", req }) : null;
+    // A Firebase identity can exist before its Lilycrest profile is created
+    // (for example, an interrupted registration). Refresh-token revocation is
+    // still required in that case, so always finalize against the verified
+    // Firebase UID and add Mongo/web/mobile session identifiers when present.
+    const invalidation = await invalidateUserSessions({
+      user: user || undefined,
+      firebaseUid: req.user.uid,
+      reason: "web_password_reset",
+      req,
+    });
     return res.json({ message: "Password reset finalized", sessionCleanupComplete: !invalidation?.failures?.length });
   } catch (error) { return next(error); }
 });

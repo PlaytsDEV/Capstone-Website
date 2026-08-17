@@ -8,15 +8,37 @@ import { authApi } from "../../../shared/api/authApi";
 import { clearApplicationSession } from "../../../shared/api/authSession";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import Lounge from "../../../assets/images/facilities/RD Lounge Area.jpg";
+import {
+  NEW_PASSWORD_MAX_LENGTH,
+  PASSWORD_RULES,
+  evaluateNewPassword,
+} from "../../../shared/utils/authValidation";
 
-const rules = [
-  { label: "At least 8 characters", test: (value) => value.length >= 8 },
-  { label: "At least 1 uppercase letter", test: (value) => /[A-Z]/.test(value) },
-  { label: "At least 1 lowercase letter", test: (value) => /[a-z]/.test(value) },
-  { label: "At least 1 number", test: (value) => /\d/.test(value) },
-  { label: "At least 1 special character", test: (value) => /[^A-Za-z0-9]/.test(value) },
-  { label: "No spaces allowed", test: (value) => !/\s/.test(value) },
-];
+export const classifyResetActionError = (error) => {
+  if (error?.code === "auth/expired-action-code") return "expired";
+  if (error?.code === "auth/invalid-action-code") return "invalid";
+  if (error?.code === "auth/network-request-failed") return "network";
+  return "provider";
+};
+
+const RESET_ERROR_CONTENT = {
+  expired: {
+    title: "Reset link expired",
+    message: "This password reset link has expired. Request a new one to continue.",
+  },
+  invalid: {
+    title: "Reset link unavailable",
+    message: "This password reset link has already been used or is no longer valid.",
+  },
+  network: {
+    title: "Unable to verify link",
+    message: "We couldn't verify this reset link. Check your connection and try again.",
+  },
+  provider: {
+    title: "Unable to verify link",
+    message: "We couldn't verify this reset link right now. Please try again.",
+  },
+};
 
 function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -28,6 +50,7 @@ function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [verificationAttempt, setVerificationAttempt] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   // A ref, not state, so a second submit that lands before React commits the
@@ -38,19 +61,20 @@ function ResetPassword() {
 
   useEffect(() => {
     if (!oobCode) {
-      setStatus("error");
+      setStatus("invalid");
       return;
     }
 
+    setStatus("checking");
     verifyPasswordResetCode(auth, oobCode)
       .then((verifiedEmail) => {
         setEmail(verifiedEmail);
         setStatus("ready");
       })
-      .catch(() => {
-        setStatus("error");
+      .catch((error) => {
+        setStatus(classifyResetActionError(error));
       });
-  }, [oobCode]);
+  }, [oobCode, verificationAttempt]);
 
   useEffect(() => {
     if (status !== "success") return undefined;
@@ -61,16 +85,19 @@ function ResetPassword() {
   }, [navigate, status]);
 
   const ruleState = useMemo(
-    () => rules.map((rule) => ({ ...rule, passed: rule.test(password) })),
+    () => PASSWORD_RULES.map((rule) => ({ ...rule, passed: rule.test(password) })),
     [password],
   );
-  const passwordValid = ruleState.every((rule) => rule.passed);
+  const passwordValid = evaluateNewPassword(password).valid;
   const confirmValid = Boolean(confirmPassword) && confirmPassword === password;
   const canSubmit = status === "ready" && passwordValid && confirmValid && !submitting;
+  const resetErrorContent = RESET_ERROR_CONTENT[status];
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!canSubmit || !oobCode || submitInFlightRef.current) return;
+    const currentPasswordValid = evaluateNewPassword(password).valid;
+    const currentConfirmationValid = Boolean(confirmPassword) && confirmPassword === password;
+    if (status !== "ready" || !currentPasswordValid || !currentConfirmationValid || !oobCode || submitInFlightRef.current) return;
 
     submitInFlightRef.current = true;
     setSubmitting(true);
@@ -86,10 +113,9 @@ function ResetPassword() {
       if (error?.code === "auth/weak-password") {
         setErrorMessage("Please choose a stronger password that meets all the requirements below.");
       } else if (error?.code === "auth/network-request-failed") {
-        setErrorMessage("Network error. Please check your connection and try again.");
+        setErrorMessage("We couldn't update your password. Check your connection and try again.");
       } else {
-        setStatus("error");
-        setErrorMessage("This reset link is invalid or has expired.");
+        setStatus(classifyResetActionError(error));
       }
       submitInFlightRef.current = false;
       setSubmitting(false);
@@ -102,6 +128,8 @@ function ResetPassword() {
     // must never downgrade the user's view of an already-successful reset
     // back to an "invalid/expired link" state if it happens to fail.
     setStatus("success");
+    setPassword("");
+    setConfirmPassword("");
     // If this browser tab already had an established Lilycrest session
     // (SESSION_ESTABLISHED_KEY) from *before* this reset — e.g. the user
     // opened "Forgot Password" while still signed in, or reused an
@@ -153,10 +181,13 @@ function ResetPassword() {
           id={id}
           type={visible ? "text" : "password"}
           value={value}
-          onChange={onChange}
+          onChange={(event) => {
+            if (!/\s/.test(event.target.value)) onChange(event);
+          }}
           onKeyDown={(e) => { if (e.key === " ") e.preventDefault(); }}
           onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
           autoComplete={autoComplete}
+          maxLength={NEW_PASSWORD_MAX_LENGTH}
           className="w-full px-4 py-4 pr-12 rounded-xl bg-gray-50 border border-gray-200 focus:border-gray-300 focus:outline-none text-gray-900 font-light placeholder:text-gray-400 transition-colors"
           disabled={submitting}
         />
@@ -282,16 +313,26 @@ function ResetPassword() {
             </div>
           )}
 
-          {status === "error" && (
+          {resetErrorContent && (
             <div className="text-center">
               <XCircle className="mx-auto mb-5" style={{ width: 56, height: 56, color: "#EF4444" }} />
               <h1 className="text-3xl font-light mb-3 tracking-tight" style={{ color: "#0A1628" }}>
-                Reset link unavailable
+                {resetErrorContent.title}
               </h1>
               <p className="text-gray-600 font-light mb-8">
-                This reset link is invalid or has expired.
+                {resetErrorContent.message}
               </p>
               <div className="space-y-3">
+                {(status === "network" || status === "provider") && (
+                  <button
+                    type="button"
+                    onClick={() => setVerificationAttempt((attempt) => attempt + 1)}
+                    className="block w-full py-4 rounded-xl text-white font-light hover:opacity-90 transition-opacity text-base"
+                    style={{ backgroundColor: "#0A1628" }}
+                  >
+                    Try again
+                  </button>
+                )}
                 <Link
                   to="/forgot-password"
                   className="block w-full py-4 rounded-xl text-white font-light hover:opacity-90 transition-opacity text-base"

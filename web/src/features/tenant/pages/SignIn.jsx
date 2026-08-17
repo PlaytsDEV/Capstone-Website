@@ -204,8 +204,7 @@ function SignIn() {
  let error = null;
  if (fieldName === "email") error = validateEmail(value);
  else if (fieldName === "password") {
- if (!value || !value.trim()) error = "Password is required";
- else if (/\s/.test(value)) error = "Password cannot contain spaces";
+ if (!value) error = "Password is required";
  }
  setValidationErrors((prev) => ({ ...prev, [fieldName]: error }));
  setFieldValid((prev) => ({ ...prev, [fieldName]: !error }));
@@ -257,19 +256,8 @@ function SignIn() {
  }, 100);
  return false;
  }
- if (!formData.password.trim()) {
+ if (!formData.password) {
  showNotification("Password is required", "error");
- setTimeout(() => {
- const el = document.getElementById("password");
- if (el) {
- el.scrollIntoView({ behavior: "smooth", block: "center" });
- el.focus();
- }
- }, 100);
- return false;
- }
- if (/\s/.test(formData.password)) {
- showNotification("Password cannot contain spaces", "error");
  setTimeout(() => {
  const el = document.getElementById("password");
  if (el) {
@@ -588,7 +576,7 @@ function SignIn() {
  disabled={resending || resendCooldown > 0}
  className="verify-banner__action"
  onClick={async () => {
- if (!formData.password.trim()) {
+ if (!formData.password) {
  showNotification(
  "Please re-enter your password to resend the verification email.",
  "warning",

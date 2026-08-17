@@ -21,6 +21,7 @@ import {
   PASSWORD_RULES,
   evaluatePasswordRules,
   calculatePasswordStrength,
+  NEW_PASSWORD_MAX_LENGTH,
 } from "../../../../shared/utils/authValidation";
 
 const STRENGTH_CONFIG = {
@@ -119,7 +120,7 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
       } else if (!isAllRulesPassed) {
         nextErrors.new = "New password must meet all security requirements below.";
       } else if (isSameAsCurrent) {
-        nextErrors.new = "New password must be different from current password.";
+        nextErrors.new = "Your new password must be different from your current password.";
       } else {
         delete nextErrors.new;
       }
@@ -151,7 +152,7 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
     if (isSameAsCurrent) {
       setFieldErrors((prev) => ({
         ...prev,
-        new: "New password must be different from current password.",
+        new: "Your new password must be different from your current password.",
       }));
       return;
     }
@@ -208,10 +209,10 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
         setGeneralError(
           "Too many failed attempts. For your security, please wait a few moments before trying again.",
         );
+      } else if (error.code === "auth/network-request-failed") {
+        setGeneralError("We couldn't update your password. Check your connection and try again.");
       } else {
-        setGeneralError(
-          "Failed to update password. Please check your internet connection and try again.",
-        );
+        setGeneralError("We couldn't update your password right now. Please try again.");
       }
     } finally {
       submitInFlightRef.current = false;
@@ -378,6 +379,7 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
             name="newPassword"
             value={newPassword}
             onChange={(e) => {
+              if (/\s/.test(e.target.value)) return;
               setNewPassword(e.target.value);
               if (fieldErrors.new) {
                 setFieldErrors((prev) => ({ ...prev, new: null }));
@@ -401,6 +403,7 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
             aria-invalid={Boolean(touched.new && fieldErrors.new)}
             aria-describedby="new-pw-requirements"
             autoComplete="new-password"
+            maxLength={NEW_PASSWORD_MAX_LENGTH}
             className="st-input"
             style={{
               backgroundColor: "var(--surface-card, var(--card, #FFFFFF))",
@@ -538,7 +541,7 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
             }}
           >
             <AlertCircle size={13} />
-            New password must be different from current password.
+            Your new password must be different from your current password.
           </p>
         )}
       </div>
@@ -563,6 +566,7 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
             name="confirmPassword"
             value={confirmPassword}
             onChange={(e) => {
+              if (/\s/.test(e.target.value)) return;
               setConfirmPassword(e.target.value);
               if (fieldErrors.confirm) {
                 setFieldErrors((prev) => ({ ...prev, confirm: null }));
@@ -583,6 +587,7 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
             aria-invalid={Boolean(touched.confirm && (fieldErrors.confirm || (confirmPassword && !isMatch)))}
             aria-describedby={fieldErrors.confirm ? "confirm-pw-error" : undefined}
             autoComplete="new-password"
+            maxLength={NEW_PASSWORD_MAX_LENGTH}
             className="st-input"
             style={{
               backgroundColor: "var(--surface-card, var(--card, #FFFFFF))",

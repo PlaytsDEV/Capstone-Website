@@ -102,6 +102,15 @@ describe('Phase 0 mobile authentication behavior', () => {
     expect((await run(auth.admin, { user: { user_id: 't', role: 'tenant', tenantStatus: 'active', accountStatus: 'active' } })).res.statusCode).toBe(403);
   });
 
+  test.each(['applicant', 'admin', 'branch_admin', 'owner', 'staff'])('%s cannot enter an active-tenant password route', async (role) => {
+    const auth = createMobileAuth({ getDb: () => { throw new Error('unused'); } });
+    const result = await run(auth.activeTenant, {
+      user: { user_id: 'u1', role, accountStatus: 'active', tenantStatus: 'active' },
+    });
+    expect(result.res.statusCode).toBe(403);
+    expect(result.nextCalled).toBe(false);
+  });
+
   test('optional auth treats restricted identity as anonymous', async () => {
     const { db } = database({ user: { user_id: 'u1', role: 'tenant', tenantStatus: 'active', accountStatus: 'suspended' }, session: { user_id: 'u1', session_token: 'good', expires_at: new Date(Date.now() + 10000), security_version: 0 } });
     const auth = createMobileAuth({ getDb: () => db }); const req = { headers: { authorization: 'Bearer good' }, cookies: {} };

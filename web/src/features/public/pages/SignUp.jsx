@@ -32,6 +32,7 @@ import {
   validateEmail,
   validatePassword,
   calculatePasswordStrength,
+  NEW_PASSWORD_MAX_LENGTH,
   sanitizeName,
   generateUsername,
 } from "../../../shared/utils/authValidation";
@@ -60,8 +61,8 @@ const FIELD_LIMITS = {
   firstName: 50,
   lastName: 50,
   email: 254,
-  password: 64,
-  confirmPassword: 64,
+  password: NEW_PASSWORD_MAX_LENGTH,
+  confirmPassword: NEW_PASSWORD_MAX_LENGTH,
 };
 
 function SignUp() {
@@ -130,8 +131,11 @@ function SignUp() {
   const handleChange = (e) => {
     const { name, value } = e.target;
     // phone is now handled separately by PhoneInput — skip old guards
-    const sanitizedValue =
-      name === "firstName" || name === "lastName" ? sanitizeName(value) : value;
+    const sanitizedValue = name === "firstName" || name === "lastName"
+      ? sanitizeName(value)
+      : name === "password" || name === "confirmPassword"
+        ? value.replace(/\s/g, "")
+        : value;
     const limit = FIELD_LIMITS[name];
     const nextValue = limit ? sanitizedValue.slice(0, limit) : sanitizedValue;
     setFormData({ ...formData, [name]: nextValue });
@@ -186,6 +190,7 @@ function SignUp() {
         return validatePassword(value);
       case "confirmPassword":
         if (!value) return "Please confirm your password.";
+        if (/\s/.test(value)) return "Your password can't contain whitespace.";
         if (value.length > FIELD_LIMITS.confirmPassword)
           return `Confirm password must be ${FIELD_LIMITS.confirmPassword} characters or fewer.`;
         if (value !== formData.password) return "The passwords you entered do not match.";

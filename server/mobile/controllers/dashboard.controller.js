@@ -23,6 +23,20 @@ function loadMobileBillingBridge() {
   return mobileBillingBridgePromise;
 }
 
+// The "which bill is current" selection rule (NON_DRAFT_BILL_FILTER /
+// CURRENT_BILL_SORT / selectCurrentBillFromList) lives in
+// services/billing/currentBillResolver.js — the SAME canonical module
+// controllers/billing/billingQueryController.js (web) and
+// routes/mobileBillingRoutes.js (mobile Billing tab) import directly, so
+// Home can never resolve a different "current" bill than they do.
+let currentBillResolverPromise = null;
+function loadCurrentBillResolver() {
+  if (!currentBillResolverPromise) {
+    currentBillResolverPromise = import('../../services/billing/currentBillResolver.js');
+  }
+  return currentBillResolverPromise;
+}
+
 // Convert slug like 'quadruple-sharing' → 'Quadruple Sharing'
 function formatRoomType(type) {
   if (!type) return 'Standard';
@@ -202,14 +216,24 @@ async function getDashboard(req, res) {
     // Primary: 'bills' collection (keyed by MongoDB ObjectId userId)
     let billing = [];
 
+    // currentRawBill drives latest_bill below — resolved via the SAME
+    // selectCurrentBillFromList() rule /billing/me/latest and web's
+    // getCurrentBilling use (see services/billing/currentBillResolver.js),
+    // never plain array order, so a pre-generated next-cycle bill (later
+    // billingCycleStart, still-draft utilityDispatch) can't outrank the
+    // tenant's actual current bill here.
+    let currentRawBill = null;
+
     if (mongoId) {
+      const { toMobileBill } = await loadMobileBillingBridge();
+      const { NON_DRAFT_BILL_FILTER, CURRENT_BILL_SORT, selectCurrentBillFromList } =
+        await loadCurrentBillResolver();
       const bills = await db.collection('bills')
-        .find({ userId: mongoId })
-        .sort({ dueDate: -1 })
+        .find({ userId: mongoId, ...NON_DRAFT_BILL_FILTER })
+        .sort(CURRENT_BILL_SORT)
         .limit(10)
         .toArray();
 
-      const { toMobileBill } = await loadMobileBillingBridge();
       billing = bills.map((b) => ({
         ...toMobileBill(b),
         // toMobileBill() doesn't carry these — dashboard-specific extras,
@@ -218,6 +242,7 @@ async function getDashboard(req, res) {
         charges: b.charges,
         reservation_id: b.reservationId?.toString(),
       }));
+      currentRawBill = selectCurrentBillFromList(bills);
     }
 
     // Fallback: old 'billing' collection (keyed by string user_id)
@@ -230,7 +255,9 @@ async function getDashboard(req, res) {
       billing = oldBilling.map((b) => ({ ...b, _id: undefined }));
     }
 
-    const latestBill = billing[0] || null;
+    const latestBill = currentRawBill
+      ? billing.find((b) => b.billing_id === String(currentRawBill._id)) || billing[0] || null
+      : billing[0] || null;
 
     // ── Maintenance ──────────────────────────────────────────────────────────
     // Read from canonical + legacy collections and de-duplicate by request_id.

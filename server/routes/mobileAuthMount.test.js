@@ -61,6 +61,11 @@ jest.unstable_mockModule("../services/mobileBillingBridge.js", () => ({
   formatMobileElectricityBreakdown: jest.fn(() => null),
   formatMobileWaterBreakdown: jest.fn(() => null),
 }));
+jest.unstable_mockModule("../services/billing/currentBillResolver.js", () => ({
+  NON_DRAFT_BILL_FILTER: { status: { $ne: "draft" }, isArchived: false },
+  CURRENT_BILL_SORT: { billingCycleStart: -1, billingMonth: -1, createdAt: -1 },
+  selectCurrentBillFromList: jest.fn((bills) => (Array.isArray(bills) ? bills[0] || null : null)),
+}));
 jest.unstable_mockModule("../services/mobileDocumentBridge.js", () => ({ buildPolicyDocumentPdf: jest.fn(() => null), POLICY_DOCUMENT_IDS: [] }));
 jest.unstable_mockModule("../services/mobileUserDocumentService.js", () => ({
   listUserDocuments: jest.fn(), uploadUserDocument: jest.fn(), getUserDocumentContent: jest.fn(), deleteUserDocument: jest.fn(),
@@ -89,7 +94,6 @@ beforeEach(async () => {
   vendoredAuthStandIn.post("/auth/login/verify-otp", (req, res) => res.status(200).json({ ok: true, route: "vendored-auth-verify-otp" }));
   vendoredAuthStandIn.post("/auth/login/resend-otp", (req, res) => res.status(200).json({ ok: true, route: "vendored-auth-resend-otp" }));
   vendoredAuthStandIn.post("/auth/google", (req, res) => res.status(200).json({ ok: true, route: "vendored-auth-google" }));
-  vendoredAuthStandIn.post("/auth/forgot-password", (req, res) => res.status(200).json({ ok: true, route: "vendored-forgot-password" }));
   app.use("/api/m", vendoredAuthStandIn);
 
   await new Promise((resolve) => { server = app.listen(0, "127.0.0.1", resolve); });
@@ -106,7 +110,6 @@ describe("no canonical /api/m bridge shadows the public mobile auth routes", () 
     "/api/m/auth/login/verify-otp",
     "/api/m/auth/login/resend-otp",
     "/api/m/auth/google",
-    "/api/m/auth/forgot-password",
   ])("unauthenticated POST %s reaches the vendored auth router, not a 401 from any bridge's mobileTenantAuth", async (path) => {
     const res = await fetch(`${baseUrl}${path}`, {
       method: "POST",

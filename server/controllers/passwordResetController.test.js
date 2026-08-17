@@ -62,7 +62,7 @@ await jest.unstable_mockModule("../middleware/logger.js", () => ({
   default: { info: loggerInfo, error: loggerError, warn: loggerWarn },
 }));
 
-const { requestPasswordReset } = await import("./passwordResetController.js");
+const { requestPasswordReset, requestMobileTenantPasswordReset } = await import("./passwordResetController.js");
 
 const REGISTERED_EMAIL = "known-tenant@example.test";
 const UNREGISTERED_EMAIL = "nobody@example.test";
@@ -78,6 +78,7 @@ const REWRITTEN_LINK = "https://www.lilycrest.space/auth-action?mode=resetPasswo
 const app = express();
 app.use(express.json());
 app.post("/api/auth/request-password-reset", requestPasswordReset);
+app.post("/api/m/auth/forgot-password", requestMobileTenantPasswordReset);
 
 let server;
 let baseUrl;
@@ -97,10 +98,13 @@ beforeEach(() => {
   state.users = [
     {
       _id: "user-1",
+      user_id: "tenant-1",
       firebaseUid: FIREBASE_UID,
       firstName: "Jose",
       lastName: "Cruz",
       role: "tenant",
+      accountStatus: "active",
+      tenantStatus: "active",
       passwordResetLastSentAt: null,
       passwordResetDeliveredAt: null,
       passwordResetSendReservedAt: null,
@@ -111,8 +115,8 @@ beforeEach(() => {
   sendPasswordResetLinkEmail.mockResolvedValue({ success: true, provider: "smtp", attempts: [] });
 });
 
-const post = async (body) => {
-  const response = await fetch(`${baseUrl}/api/auth/request-password-reset`, {
+const post = async (body, requestPath = "/api/auth/request-password-reset") => {
+  const response = await fetch(`${baseUrl}${requestPath}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -196,6 +200,45 @@ describe("requestPasswordReset — enumeration safety", () => {
     expect(successResult.body).toEqual(cooldownResult.body);
     expect(successResult.status).toBe(unknownResult.status);
     expect(successResult.status).toBe(cooldownResult.status);
+  });
+});
+
+describe("requestMobileTenantPasswordReset — server-derived tenant eligibility", () => {
+  const mobilePath = "/api/m/auth/forgot-password";
+
+  test("an authoritative active tenant receives the canonical Firebase reset email", async () => {
+    getUserByEmail.mockResolvedValue({ uid: FIREBASE_UID, email: REGISTERED_EMAIL });
+    const result = await post({ email: REGISTERED_EMAIL, role: "owner" }, mobilePath);
+    expect(result).toEqual({ status: 200, body: { message: GENERIC_MESSAGE } });
+    expect(generatePasswordResetLink).toHaveBeenCalledTimes(1);
+    expect(sendPasswordResetLinkEmail).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(["applicant", "admin", "branch_admin", "owner", "staff"])(
+    "%s receives the generic response without reset generation",
+    async (role) => {
+      state.users[0].role = role;
+      getUserByEmail.mockResolvedValue({ uid: FIREBASE_UID, email: REGISTERED_EMAIL });
+      const result = await post({ email: REGISTERED_EMAIL, role: "tenant" }, mobilePath);
+      expect(result).toEqual({ status: 200, body: { message: GENERIC_MESSAGE } });
+      expect(generatePasswordResetLink).not.toHaveBeenCalled();
+      expect(sendPasswordResetLinkEmail).not.toHaveBeenCalled();
+    },
+  );
+
+  test("a Firebase identity with no application profile receives no mobile reset", async () => {
+    state.users = [];
+    getUserByEmail.mockResolvedValue({ uid: "unknown-profile", email: UNREGISTERED_EMAIL });
+    const result = await post({ email: UNREGISTERED_EMAIL }, mobilePath);
+    expect(result).toEqual({ status: 200, body: { message: GENERIC_MESSAGE } });
+    expect(generatePasswordResetLink).not.toHaveBeenCalled();
+  });
+
+  test("an unknown email is indistinguishable and generates nothing", async () => {
+    getUserByEmail.mockRejectedValue(Object.assign(new Error("no user"), { code: "auth/user-not-found" }));
+    const result = await post({ email: UNREGISTERED_EMAIL, role: "tenant" }, mobilePath);
+    expect(result).toEqual({ status: 200, body: { message: GENERIC_MESSAGE } });
+    expect(generatePasswordResetLink).not.toHaveBeenCalled();
   });
 });
 
