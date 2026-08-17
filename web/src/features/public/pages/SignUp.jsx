@@ -95,6 +95,14 @@ function SignUp() {
   const [touched, setTouched] = useState({});
   const [fieldValid, setFieldValid] = useState({});
   const [capsLockActive, setCapsLockActive] = useState(false);
+  const debounceTimersRef = useRef({});
+
+  // Cleanup pending debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(debounceTimersRef.current).forEach((timer) => clearTimeout(timer));
+    };
+  }, []);
 
   const handlePasswordKey = (e) => {
     if (e.getModifierState) {
@@ -201,42 +209,56 @@ function SignUp() {
           : value;
     const limit = FIELD_LIMITS[name];
     const nextValue = limit ? sanitizedValue.slice(0, limit) : sanitizedValue;
+    
+    // Immediate state update for responsive typing latency
     setFormData((prev) => ({ ...prev, [name]: nextValue }));
 
-    if (name === "password") {
-      setPasswordStrength(calculatePasswordStrength(nextValue));
+    // Debounce validation calculations so floating label animations remain at 60fps
+    if (debounceTimersRef.current[name]) {
+      clearTimeout(debounceTimersRef.current[name]);
     }
 
-    // If the field has already been touched (blurred or submitted),
-    // revalidate immediately so the error clears as soon as it is fixed.
-    if (touched[name]) {
-      const error = getFieldError(name, nextValue);
-      setValidationErrors((prev) => ({ ...prev, [name]: error }));
-      setFieldValid((prev) => ({ ...prev, [name]: !error }));
-      if (name === "password" && formData.confirmPassword) {
-        const confirmErr = getFieldError(
-          "confirmPassword",
-          formData.confirmPassword,
-          nextValue,
-        );
-        setValidationErrors((prev) => ({
-          ...prev,
-          confirmPassword: confirmErr,
-        }));
-        setFieldValid((prev) => ({ ...prev, confirmPassword: !confirmErr }));
+    debounceTimersRef.current[name] = setTimeout(() => {
+      if (name === "password") {
+        setPasswordStrength(calculatePasswordStrength(nextValue));
       }
-    } else {
-      // Keep internal validity state in sync silently without displaying errors prematurely
-      const error = getFieldError(name, nextValue);
-      setFieldValid((prev) => ({ ...prev, [name]: !error }));
-    }
+
+      if (touched[name]) {
+        const error = getFieldError(name, nextValue);
+        setValidationErrors((prev) => ({ ...prev, [name]: error }));
+        setFieldValid((prev) => ({ ...prev, [name]: !error }));
+        if (name === "password" && formData.confirmPassword) {
+          const confirmErr = getFieldError(
+            "confirmPassword",
+            formData.confirmPassword,
+            nextValue,
+          );
+          setValidationErrors((prev) => ({
+            ...prev,
+            confirmPassword: confirmErr,
+          }));
+          setFieldValid((prev) => ({ ...prev, confirmPassword: !confirmErr }));
+        }
+      } else {
+        const error = getFieldError(name, nextValue);
+        setFieldValid((prev) => ({ ...prev, [name]: !error }));
+      }
+    }, 250);
   };
 
   const handleBlur = (fieldName) => {
-    setTouched((prev) => ({ ...prev, [fieldName]: true }));
-    const error = getFieldError(fieldName, formData[fieldName]);
-    setValidationErrors((prev) => ({ ...prev, [fieldName]: error }));
-    setFieldValid((prev) => ({ ...prev, [fieldName]: !error }));
+    if (debounceTimersRef.current[fieldName]) {
+      clearTimeout(debounceTimersRef.current[fieldName]);
+    }
+    const val = formData[fieldName];
+    // Only display format errors on blur if the user actually typed a value
+    // Empty/required field errors are reserved for when the user clicks submit
+    if (val && val.trim()) {
+      setTouched((prev) => ({ ...prev, [fieldName]: true }));
+      const error = getFieldError(fieldName, val);
+      setValidationErrors((prev) => ({ ...prev, [fieldName]: error }));
+      setFieldValid((prev) => ({ ...prev, [fieldName]: !error }));
+    }
     if (fieldName === "password" || fieldName === "confirmPassword") {
       setCapsLockActive(false);
     }
@@ -245,21 +267,33 @@ function SignUp() {
   // Called directly by PhoneInput with the E.164 value
   const handlePhoneChange = (e164) => {
     setFormData((prev) => ({ ...prev, phone: e164 }));
-    const isValid = e164 && e164.startsWith("+") && isValidPhoneNumber(e164);
-    setFieldValid((prev) => ({ ...prev, phone: isValid }));
-
-    // Revalidate live only if the user has already touched/blurred the phone field
-    if (touched.phone) {
-      const error = getFieldError("phone", e164);
-      setValidationErrors((prev) => ({ ...prev, phone: error }));
+    
+    if (debounceTimersRef.current.phone) {
+      clearTimeout(debounceTimersRef.current.phone);
     }
+
+    debounceTimersRef.current.phone = setTimeout(() => {
+      const isValid = e164 && e164.startsWith("+") && isValidPhoneNumber(e164);
+      setFieldValid((prev) => ({ ...prev, phone: isValid }));
+
+      if (touched.phone) {
+        const error = getFieldError("phone", e164);
+        setValidationErrors((prev) => ({ ...prev, phone: error }));
+      }
+    }, 250);
   };
 
   const handlePhoneBlur = () => {
-    setTouched((prev) => ({ ...prev, phone: true }));
-    const error = getFieldError("phone", formData.phone);
-    setValidationErrors((prev) => ({ ...prev, phone: error }));
-    setFieldValid((prev) => ({ ...prev, phone: !error }));
+    if (debounceTimersRef.current.phone) {
+      clearTimeout(debounceTimersRef.current.phone);
+    }
+    const val = formData.phone;
+    if (val && val.trim() && val !== "+63") {
+      setTouched((prev) => ({ ...prev, phone: true }));
+      const error = getFieldError("phone", val);
+      setValidationErrors((prev) => ({ ...prev, phone: error }));
+      setFieldValid((prev) => ({ ...prev, phone: !error }));
+    }
   };
 
   const isFormValid = () =>
@@ -368,9 +402,11 @@ function SignUp() {
 
     sessionStorage.removeItem("lilycrest_pending_email");
     localStorage.removeItem("lilycrest_pending_email");
+    sessionStorage.setItem("lilycrest_pending_verification_email", formData.email);
 
     if (firebaseUser.emailVerified || response?.user?.isEmailVerified) {
       await auth.signOut();
+      sessionStorage.removeItem("lilycrest_pending_verification_email");
       appNavigate("/signin", {
         replace: true,
         state: { email: formData.email },
@@ -383,7 +419,7 @@ function SignUp() {
     const continuePath = normalizeInternalContinuation(requestedContinuation);
     try {
       await authApi.sendEmailVerification(continuePath);
-      navigate("/auth-action?state=sent", { replace: true });
+      navigate("/auth-action?state=sent", { replace: true, state: { email: formData.email } });
     } catch (deliveryError) {
       if (deliveryError.response?.data?.state === "VERIFICATION_EMAIL_SEND_FAILED") {
         showNotification(

@@ -12,7 +12,7 @@
  * - Comprehensive error handling
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import PasswordVisibilityButton from "../../../shared/components/PasswordVisibilityButton";
 import {
@@ -74,7 +74,6 @@ function SignIn() {
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [fieldValid, setFieldValid] = useState({});
-  const [debounceTimer, setDebounceTimer] = useState(null);
   const [rememberMe, setRememberMe] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [lockoutUntil, setLockoutUntil] = useState(null);
@@ -85,6 +84,14 @@ function SignIn() {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [verifiedSuccess, setVerifiedSuccess] = useState(false);
   const [capsLockActive, setCapsLockActive] = useState(false);
+  const debounceTimersRef = useRef({});
+
+  // Cleanup pending debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(debounceTimersRef.current).forEach((timer) => clearTimeout(timer));
+    };
+  }, []);
 
   const handlePasswordKey = (e) => {
     if (e.getModifierState) {
@@ -100,15 +107,27 @@ function SignIn() {
     }
   }, []);
 
-  // Load remembered or pending registration email on mount.
+  // Load remembered or pending registration / verified email on mount.
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isVerifiedRedirect = params.get("verified") === "true";
+    const queryEmail = params.get("email");
     const locationStateEmail = location.state?.email;
+    const verifiedSessionEmail =
+      sessionStorage.getItem("lilycrest_verified_email") ||
+      sessionStorage.getItem("lilycrest_pending_verification_email");
     const pendingEmail =
       sessionStorage.getItem("lilycrest_pending_email") ||
       localStorage.getItem("lilycrest_pending_email");
     const savedEmail = localStorage.getItem("lilycrest_remember_email");
 
-    const activePrefill = locationStateEmail || pendingEmail;
+    const activePrefill = (
+      locationStateEmail ||
+      verifiedSessionEmail ||
+      pendingEmail ||
+      queryEmail ||
+      ""
+    ).trim();
 
     if (activePrefill) {
       setFormData((prev) => ({ ...prev, email: activePrefill }));
@@ -118,6 +137,8 @@ function SignIn() {
 
       // Clean up temporary storage and history state immediately so refresh (F5) leaves form blank
       sessionStorage.removeItem("lilycrest_pending_email");
+      sessionStorage.removeItem("lilycrest_verified_email");
+      sessionStorage.removeItem("lilycrest_pending_verification_email");
       localStorage.removeItem("lilycrest_pending_email");
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (savedEmail) {
@@ -128,11 +149,12 @@ function SignIn() {
     }
 
     // Show success banner if redirected from email verification
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("verified") === "true") {
+    if (isVerifiedRedirect) {
       setUnverifiedEmail(null);
       setVerifiedSuccess(true);
       sessionStorage.removeItem("lilycrest_pending_email");
+      sessionStorage.removeItem("lilycrest_verified_email");
+      sessionStorage.removeItem("lilycrest_pending_verification_email");
       localStorage.removeItem("lilycrest_pending_email");
       window.history.replaceState({}, document.title, window.location.pathname);
       setTimeout(() => {
@@ -140,7 +162,7 @@ function SignIn() {
         if (pw) pw.focus();
       }, 200);
     }
-  }, []);
+  }, [location.state]);
 
  // ── Lockout countdown timer ────────────────────────────────
  useEffect(() => {
@@ -191,26 +213,51 @@ function SignIn() {
  }
  };
 
- // ── Form handling ──────────────────────────────────────────
- const handleChange = (e) => {
- const { name, value } = e.target;
- setFormData({ ...formData, [name]: value });
- setTouched({ ...touched, [name]: true });
- if (debounceTimer) clearTimeout(debounceTimer);
- setDebounceTimer(setTimeout(() => validateField(name, value), 300));
- };
+  // ── Form handling ──────────────────────────────────────────
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    const sanitizedValue = name === "password" ? value.replace(/\s/g, "") : value;
+    setFormData((prev) => ({ ...prev, [name]: sanitizedValue }));
+    
+    if (debounceTimersRef.current[name]) {
+      clearTimeout(debounceTimersRef.current[name]);
+    }
 
- const validateField = (fieldName, value) => {
- let error = null;
- if (fieldName === "email") error = validateEmail(value);
- else if (fieldName === "password") {
- if (!value) error = "Password is required";
- }
- setValidationErrors((prev) => ({ ...prev, [fieldName]: error }));
- setFieldValid((prev) => ({ ...prev, [fieldName]: !error }));
- };
+    debounceTimersRef.current[name] = setTimeout(() => {
+      if (touched[name]) {
+        validateField(name, sanitizedValue);
+      } else {
+        const error = name === "email" ? validateEmail(sanitizedValue) : !sanitizedValue ? "Password is required" : null;
+        setFieldValid((prev) => ({ ...prev, [name]: !error }));
+      }
+    }, 250);
+  };
 
- const isFormValid = () => fieldValid.email && fieldValid.password;
+  const handleBlur = (fieldName) => {
+    if (debounceTimersRef.current[fieldName]) {
+      clearTimeout(debounceTimersRef.current[fieldName]);
+    }
+    const val = formData[fieldName];
+    if (val && val.trim()) {
+      setTouched((prev) => ({ ...prev, [fieldName]: true }));
+      validateField(fieldName, val);
+    }
+    if (fieldName === "password") {
+      setCapsLockActive(false);
+    }
+  };
+
+  const validateField = (fieldName, value) => {
+    let error = null;
+    if (fieldName === "email") error = validateEmail(value);
+    else if (fieldName === "password") {
+      if (!value) error = "Password is required";
+    }
+    setValidationErrors((prev) => ({ ...prev, [fieldName]: error }));
+    setFieldValid((prev) => ({ ...prev, [fieldName]: !error }));
+  };
+
+  const isFormValid = () => fieldValid.email && fieldValid.password;
 
  const hasAdminClaims = (tokenResult) =>
  Boolean(tokenResult?.claims?.branch_admin || tokenResult?.claims?.owner);
@@ -640,6 +687,7 @@ function SignIn() {
  type="email"
  value={formData.email}
  onChange={handleChange}
+ onBlur={() => handleBlur("email")}
  disabled={submitting}
  autoComplete="email"
  error={touched.email ? validationErrors.email : null}
@@ -654,10 +702,7 @@ function SignIn() {
  onChange={handleChange}
  onKeyDown={handlePasswordKey}
  onKeyUp={handlePasswordKey}
- onBlur={() => {
- setTouched((prev) => ({ ...prev, password: true }));
- setCapsLockActive(false);
- }}
+ onBlur={() => handleBlur("password")}
  onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
  disabled={submitting}
  autoComplete="current-password"

@@ -104,9 +104,10 @@
   font-weight: 400;
   color: var(--fi-label);
   pointer-events: none;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), top 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s ease;
   transform-origin: left center;
   line-height: 1;
+  will-change: transform, top;
 }
 
 /* Float up when focused, has value, or wrapper is active — inside the field, no bg needed */
@@ -114,7 +115,7 @@
 .floating-field__input:not(:placeholder-shown) ~ .floating-field__label,
 .floating-field__wrapper.active .floating-field__label {
   top: 8px;
-  transform: scale(0.72);
+  transform: translateY(0) scale(0.72);
   color: var(--fi-label-active);
   font-weight: 500;
   padding: 0;
@@ -164,10 +165,22 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--fi-error);
-  margin-top: 6px;
+  margin-top: 5px;
   padding-left: 4px;
   overflow-wrap: anywhere;
   max-width: 100%;
+  animation: authErrorFadeIn 0.15s ease-out;
+}
+
+@keyframes authErrorFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ── Character Counter ── */
@@ -699,6 +712,11 @@
 }
 
 .auth-spinner {
+  display: inline-block;
+  transform-origin: center center;
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
   animation: auth-spin 1s linear infinite;
 }
 

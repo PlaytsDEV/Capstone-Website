@@ -6,6 +6,57 @@
 /** Advanced email validation — checks format, domain structure, consecutive dots, valid characters */
 const EMAIL_FORMAT_MESSAGE = "Enter a valid email address, such as name@example.com.";
 
+export const COMMON_DOMAIN_TYPOS = {
+  "gmaill.com": "gmail.com",
+  "gmial.com": "gmail.com",
+  "gmai.com": "gmail.com",
+  "gmaik.com": "gmail.com",
+  "gamil.com": "gmail.com",
+  "gmal.com": "gmail.com",
+  "gmaill.co": "gmail.com",
+  "gmaiil.com": "gmail.com",
+  "gmeil.com": "gmail.com",
+  "gmail.con": "gmail.com",
+  "gmail.cm": "gmail.com",
+  "yaho.com": "yahoo.com",
+  "yahooo.com": "yahoo.com",
+  "yahu.com": "yahoo.com",
+  "yahoo.con": "yahoo.com",
+  "yaho.cm": "yahoo.com",
+  "hotmial.com": "hotmail.com",
+  "hotmai.com": "hotmail.com",
+  "hotmaill.com": "hotmail.com",
+  "hotmali.com": "hotmail.com",
+  "hotmil.com": "hotmail.com",
+  "hotmail.con": "hotmail.com",
+  "oulook.com": "outlook.com",
+  "outlok.com": "outlook.com",
+  "outloo.com": "outlook.com",
+  "outllok.com": "outlook.com",
+  "outlokk.com": "outlook.com",
+  "outlook.con": "outlook.com",
+  "iclud.com": "icloud.com",
+  "icoud.com": "icloud.com",
+  "icluod.com": "icloud.com",
+};
+
+/** Detect common domain typos and return suggested correction */
+export const checkEmailDomainTypo = (email) => {
+  if (!email || typeof email !== "string" || !email.includes("@")) return null;
+  const parts = email.trim().toLowerCase().split("@");
+  if (parts.length !== 2) return null;
+  const domain = parts[1];
+  const suggestedDomain = COMMON_DOMAIN_TYPOS[domain];
+  if (suggestedDomain) {
+    return {
+      invalidDomain: domain,
+      suggestedDomain,
+      suggestedEmail: `${parts[0]}@${suggestedDomain}`,
+    };
+  }
+  return null;
+};
+
 export const validateEmail = (email) => {
   if (!email || !email.trim()) return "Email address is required";
   const basicRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -18,6 +69,11 @@ export const validateEmail = (email) => {
   if (localPart.length === 0 || localPart.length > 64)
     return EMAIL_FORMAT_MESSAGE;
   if (domain.length === 0 || domain.length > 255) return EMAIL_FORMAT_MESSAGE;
+
+  const typo = checkEmailDomainTypo(email);
+  if (typo) {
+    return `Did you mean ${typo.suggestedEmail}? Please check your email domain.`;
+  }
 
   const domainParts = domain.split(".");
   if (domainParts.length < 2) return EMAIL_FORMAT_MESSAGE;
