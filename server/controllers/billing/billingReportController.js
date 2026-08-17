@@ -46,16 +46,16 @@ export const sendRentBill = async (req, res, next) => {
       return res.status(404).json({ error: "Tenant not found" });
     }
 
+    bill.sentAt = new Date();
+    bill.issuedAt = bill.issuedAt || bill.sentAt;
+    await bill.save();
+
     const delivery = await deliverBillNotification({
       bill,
       tenant,
       room,
       billType: "rent",
     });
-
-    bill.sentAt = new Date();
-    bill.issuedAt = bill.issuedAt || bill.sentAt;
-    await bill.save();
 
     await logBillingAudit(req, {
       admin,
