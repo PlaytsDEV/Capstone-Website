@@ -3,7 +3,7 @@ jest.mock('../config/database.js', () => ({ getDb: (...args) => mockGetDb(...arg
 jest.mock('../services/pushService.js', () => ({ notifyNewAnnouncement: jest.fn() }));
 jest.mock('uuid', () => ({ v4: () => 'test-uuid-0000-0000-0000-000000000000' }));
 
-const { getAllAnnouncements } = require('./announcement.controller.js');
+const { getAllAnnouncements, dismissAnnouncement, dismissAnnouncementsBulk } = require('./announcement.controller.js');
 
 function response() {
   return {
@@ -14,11 +14,28 @@ function response() {
   };
 }
 
-function makeDb({ announcements = [], branchSource = null, users = [] } = {}) {
+function makeDb({ announcements = [], branchSource = null, users = [], dismissals = [] } = {}) {
+  const dismissalStore = [...dismissals];
   return {
     collection(name) {
       if (name === 'announcements') {
-        return { find: () => ({ sort: () => ({ toArray: async () => announcements }) }) };
+        return {
+          find: (query) => {
+            let docs = announcements;
+            const idClause = query?.$and?.find(
+              (clause) => Array.isArray(clause.$or) && clause.$or.some((c) => c.announcement_id !== undefined || c._id !== undefined),
+            );
+            if (idClause) {
+              const wantedIds = idClause.$or.map((c) => c.announcement_id).filter(Boolean);
+              docs = docs.filter((doc) => wantedIds.includes(doc.announcement_id));
+            }
+            return { sort: () => ({ toArray: async () => docs }), toArray: async () => docs };
+          },
+          findOne: async (query) => {
+            const wantedId = query?.$and?.map((clause) => clause.announcement_id).find(Boolean);
+            return announcements.find((doc) => doc.announcement_id === wantedId) || null;
+          },
+        };
       }
       if (name === 'users') {
         return { find: () => ({ toArray: async () => users }) };
@@ -32,8 +49,42 @@ function makeDb({ announcements = [], branchSource = null, users = [] } = {}) {
       if (name === 'reservations') {
         return { findOne: async () => (branchSource?.tier === 'reservation' ? branchSource.doc : null) };
       }
+      if (name === 'announcement_dismissals') {
+        return {
+          find: (query) => ({
+            project: () => ({
+              toArray: async () => dismissalStore.filter((row) => row.user_id === query.user_id),
+            }),
+          }),
+          updateOne: async (filter, update) => {
+            const existing = dismissalStore.find(
+              (row) => row.user_id === filter.user_id && row.announcement_id === filter.announcement_id,
+            );
+            if (existing) {
+              Object.assign(existing, update.$set);
+            } else {
+              dismissalStore.push({ ...filter, ...update.$set, ...update.$setOnInsert });
+            }
+            return { acknowledged: true };
+          },
+          bulkWrite: async (operations) => {
+            operations.forEach(({ updateOne: { filter, update } }) => {
+              const existing = dismissalStore.find(
+                (row) => row.user_id === filter.user_id && row.announcement_id === filter.announcement_id,
+              );
+              if (existing) {
+                Object.assign(existing, update.$set);
+              } else {
+                dismissalStore.push({ ...filter, ...update.$set, ...update.$setOnInsert });
+              }
+            });
+            return { acknowledged: true };
+          },
+        };
+      }
       throw new Error(`unexpected collection: ${name}`);
     },
+    __dismissalStore: dismissalStore,
   };
 }
 
@@ -161,5 +212,193 @@ describe('announcement.controller getAllAnnouncements — branch visibility', ()
     expect(res.body.length).toBe(1);
     expect(res.body[0].author_name).toBe('LilyCrest Admin');
     expect(res.body[0].author_name).not.toBe(unknownAdminId);
+  });
+});
+
+describe('announcement.controller dismissAnnouncement — News-tab-only per-tenant hide', () => {
+  beforeEach(() => { mockGetDb.mockReset(); });
+
+  test('dismissing an announcement removes it from that tenant\'s own News tab feed', async () => {
+    const db = makeDb({
+      announcements: [{ announcement_id: 'a1', title: 'Global notice', content: 'x' }],
+      branchSource: { tier: 'occupancy', doc: { branch: 'guadalupe' } },
+    });
+    mockGetDb.mockReturnValue(db);
+
+    const req = { user: { user_id: 't1', _id: 'mongo1' }, params: { announcementId: 'a1' } };
+    const dismissRes = response();
+    await dismissAnnouncement(req, dismissRes);
+    expect(dismissRes.statusCode).toBe(200);
+    expect(dismissRes.body.status).toBe('dismissed');
+
+    const listRes = response();
+    await getAllAnnouncements(req, listRes);
+    expect(listRes.body).toEqual([]);
+  });
+
+  test('dismissal never mutates or deletes the shared announcement document — it stays visible to every other tenant', async () => {
+    const db = makeDb({
+      announcements: [{ announcement_id: 'a1', title: 'Global notice', content: 'x' }],
+      branchSource: { tier: 'occupancy', doc: { branch: 'guadalupe' } },
+    });
+    mockGetDb.mockReturnValue(db);
+
+    const dismisser = { user: { user_id: 't1', _id: 'mongo1' }, params: { announcementId: 'a1' } };
+    await dismissAnnouncement(dismisser, response());
+
+    // The underlying document is untouched.
+    expect(db.__dismissalStore.length).toBe(1);
+    const rawDoc = (await db.collection('announcements').find().sort().toArray())[0];
+    expect(rawDoc).toEqual({ announcement_id: 'a1', title: 'Global notice', content: 'x' });
+
+    // A different tenant still sees it — dismissal is per-tenant, not global.
+    const otherTenant = { user: { user_id: 't2', _id: 'mongo2' } };
+    const otherRes = response();
+    await getAllAnnouncements(otherTenant, otherRes);
+    expect(otherRes.body.length).toBe(1);
+  });
+
+  test('dismissing an announcement never affects that tenant\'s Home bell feed (separate persistence, not shared with notification_dismissals)', async () => {
+    const db = makeDb({
+      announcements: [{ announcement_id: 'a1', title: 'Global notice', content: 'x' }],
+      branchSource: { tier: 'occupancy', doc: { branch: 'guadalupe' } },
+    });
+    mockGetDb.mockReturnValue(db);
+
+    const req = { user: { user_id: 't1', _id: 'mongo1' }, params: { announcementId: 'a1' } };
+    await dismissAnnouncement(req, response());
+
+    // dismissAnnouncement only ever wrote to announcement_dismissals, never
+    // to notification_dismissals (the Home bell's own collection) — proven
+    // here by the mock db throwing on any other collection name it wasn't
+    // told to expect, which it did not.
+    expect(db.__dismissalStore).toEqual([
+      expect.objectContaining({ user_id: 't1', announcement_id: 'a1' }),
+    ]);
+  });
+
+  test('cannot dismiss an announcement outside the caller\'s own branch (404, not a silent no-op)', async () => {
+    const db = makeDb({
+      announcements: [{ announcement_id: 'a1', title: 'Branch B notice', content: 'x', branch: 'gil-puyat' }],
+      branchSource: { tier: 'occupancy', doc: { branch: 'guadalupe' } },
+    });
+    mockGetDb.mockReturnValue(db);
+
+    const req = { user: { user_id: 't1', _id: 'mongo1' }, params: { announcementId: 'a1' } };
+    const res = response();
+    await dismissAnnouncement(req, res);
+
+    expect(res.statusCode).toBe(404);
+    expect(db.__dismissalStore.length).toBe(0);
+  });
+
+  test('unauthenticated dismiss attempt is rejected (401), never resolved to a guessed tenant', async () => {
+    const db = makeDb({ announcements: [{ announcement_id: 'a1', title: 'x', content: 'x' }] });
+    mockGetDb.mockReturnValue(db);
+
+    const req = { user: null, params: { announcementId: 'a1' } };
+    const res = response();
+    await dismissAnnouncement(req, res);
+
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('announcement.controller dismissAnnouncementsBulk — batched News-tab-only per-tenant hide', () => {
+  beforeEach(() => { mockGetDb.mockReset(); });
+
+  test('bulk-dismissing several announcements hides all of them from that tenant\'s News tab only', async () => {
+    const db = makeDb({
+      announcements: [
+        { announcement_id: 'ann_a1', title: 'One', content: 'x' },
+        { announcement_id: 'ann_a2', title: 'Two', content: 'x' },
+        { announcement_id: 'ann_a3', title: 'Three', content: 'x' },
+      ],
+      branchSource: { tier: 'occupancy', doc: { branch: 'guadalupe' } },
+    });
+    mockGetDb.mockReturnValue(db);
+
+    const req = { user: { user_id: 't1', _id: 'mongo1' }, body: { ids: ['ann_a1', 'ann_a2'] } };
+    const res = response();
+    await dismissAnnouncementsBulk(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ status: 'dismissed', announcement_ids: ['ann_a1', 'ann_a2'] });
+
+    const listReq = { user: { user_id: 't1', _id: 'mongo1' } };
+    const listRes = response();
+    await getAllAnnouncements(listReq, listRes);
+    expect(listRes.body.map((a) => a.announcement_id)).toEqual(['ann_a3']);
+
+    // Never mutates the shared documents or another tenant's view.
+    const otherRes = response();
+    await getAllAnnouncements({ user: { user_id: 't2', _id: 'mongo2' } }, otherRes);
+    expect(otherRes.body.length).toBe(3);
+  });
+
+  test('rejects the whole batch (404) if any id does not exist, and writes no dismissal rows at all', async () => {
+    const db = makeDb({
+      announcements: [{ announcement_id: 'ann_a1', title: 'One', content: 'x' }],
+      branchSource: { tier: 'occupancy', doc: { branch: 'guadalupe' } },
+    });
+    mockGetDb.mockReturnValue(db);
+
+    const req = { user: { user_id: 't1', _id: 'mongo1' }, body: { ids: ['ann_a1', 'ann_doesnotexist1'] } };
+    const res = response();
+    await dismissAnnouncementsBulk(req, res);
+
+    expect(res.statusCode).toBe(404);
+    expect(db.__dismissalStore.length).toBe(0);
+  });
+
+  test('rejects a batch containing an announcement outside the caller\'s own branch (404), writes nothing', async () => {
+    const db = makeDb({
+      announcements: [
+        { announcement_id: 'ann_a1', title: 'Own branch', content: 'x', branch: 'guadalupe' },
+        { announcement_id: 'ann_a2', title: 'Other branch', content: 'x', branch: 'gil-puyat' },
+      ],
+      branchSource: { tier: 'occupancy', doc: { branch: 'guadalupe' } },
+    });
+    mockGetDb.mockReturnValue(db);
+
+    const req = { user: { user_id: 't1', _id: 'mongo1' }, body: { ids: ['ann_a1', 'ann_a2'] } };
+    const res = response();
+    await dismissAnnouncementsBulk(req, res);
+
+    expect(res.statusCode).toBe(404);
+    expect(db.__dismissalStore.length).toBe(0);
+  });
+
+  test('rejects an empty ids array (400)', async () => {
+    const db = makeDb({ announcements: [] });
+    mockGetDb.mockReturnValue(db);
+    const res = response();
+    await dismissAnnouncementsBulk({ user: { user_id: 't1' }, body: { ids: [] } }, res);
+    expect(res.statusCode).toBe(400);
+  });
+
+  test('rejects more than 100 ids (400)', async () => {
+    const db = makeDb({ announcements: [] });
+    mockGetDb.mockReturnValue(db);
+    const tooMany = Array.from({ length: 101 }, (_, i) => `ann_${i.toString(16).padStart(8, '0')}`);
+    const res = response();
+    await dismissAnnouncementsBulk({ user: { user_id: 't1' }, body: { ids: tooMany } }, res);
+    expect(res.statusCode).toBe(400);
+  });
+
+  test('rejects malformed ids (400)', async () => {
+    const db = makeDb({ announcements: [] });
+    mockGetDb.mockReturnValue(db);
+    const res = response();
+    await dismissAnnouncementsBulk({ user: { user_id: 't1' }, body: { ids: ['<script>alert(1)</script>'] } }, res);
+    expect(res.statusCode).toBe(400);
+  });
+
+  test('unauthenticated bulk-dismiss attempt is rejected (401)', async () => {
+    const db = makeDb({ announcements: [{ announcement_id: 'a1', title: 'x', content: 'x' }] });
+    mockGetDb.mockReturnValue(db);
+    const res = response();
+    await dismissAnnouncementsBulk({ user: null, body: { ids: ['a1'] } }, res);
+    expect(res.statusCode).toBe(401);
   });
 });

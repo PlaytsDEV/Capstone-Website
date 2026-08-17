@@ -31,6 +31,7 @@ import { toMobileBill, isMobileEffectivelyPaid, toMobilePaymentMethodLabel } fro
 import { formatMobileElectricityBreakdown, formatMobileWaterBreakdown } from "../services/mobileBillingBridge.js";
 import { getVisibleBillCharges, getVisibleBillSnapshot } from "../utils/billingPolicy.js";
 import { generateBillReceiptPdf } from "../utils/pdfGenerator.js";
+import { isBillPdfStale } from "../services/billPdfCache.js";
 import {
   generateRentBillPdf,
   formatBillReference,
@@ -170,7 +171,12 @@ router.get("/billing/:billingId/pdf", mobileTenantAuth, asyncRoute(async (req, r
   let absolutePdfPath = bill.pdfPath ? path.resolve(SERVER_ROOT, bill.pdfPath) : null;
   const safePdfRoot = path.resolve(BILL_PDF_ROOT);
 
-  if (!absolutePdfPath || !absolutePdfPath.startsWith(safePdfRoot) || !fs.existsSync(absolutePdfPath)) {
+  if (
+    !absolutePdfPath ||
+    !absolutePdfPath.startsWith(safePdfRoot) ||
+    !fs.existsSync(absolutePdfPath) ||
+    isBillPdfStale(bill)
+  ) {
     const reservation = bill.reservationId
       ? await Reservation.findById(bill.reservationId)
           .populate("userId", "firstName lastName email")

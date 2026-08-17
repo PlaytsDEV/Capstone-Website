@@ -1,7 +1,7 @@
 const axios = require('axios');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
-const { ObjectId } = require('mongodb');
+const { Types: { ObjectId } } = require('mongoose');
 const { getDb } = require('../config/database');
 const { PRESENTATION_BILLS, mapRealBill } = require('./billing.controller');
 const { notifyPaymentConfirmed } = require('../services/pushService');

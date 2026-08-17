@@ -76,6 +76,30 @@ describe('chat.controller.js resolveTenantContext — shared branch resolver', (
     expect(res.body.conversation.branch).toBe('gil-puyat');
   });
 
+  test('a differently-cased raw bedhistory branch does not clobber an already-resolved authoritative branch', async () => {
+    // Regression guard: resolveTenantContext used to overwrite the
+    // authoritative (normalized) branch from resolveRequesterBranchCode()
+    // with a *raw* bedhistories.branch value ("branch = bedHistory.branch ||
+    // branch"), bypassing normalizedBranchReference(). A raw value cased
+    // differently from the canonical 'guadalupe'/'gil-puyat' codes (e.g.
+    // "Guadalupe") then failed the VALID_BRANCHES.has(branch) check below,
+    // incorrectly rejecting a perfectly resolvable tenant with "No active
+    // tenant." even though resolveRequesterBranchCode() already found it.
+    const tenantId = new ObjectId();
+    const db = makeDb({
+      contractDoc: { tenantId, isCurrent: true, branch: 'guadalupe' },
+      bedHistoryDoc: { tenantId, status: 'active', branch: 'Guadalupe' },
+    });
+    mockGetDb.mockReturnValue(db);
+
+    const req = { user: { user_id: 't1', _id: tenantId, role: 'tenant' }, body: { category: 'general_inquiry' } };
+    const res = response();
+    await startConversation(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.conversation.branch).toBe('guadalupe');
+  });
+
   test('resolves via roomoccupancyhistories (a tier the old lookup skipped entirely)', async () => {
     const tenantId = new ObjectId();
     const db = makeDb({

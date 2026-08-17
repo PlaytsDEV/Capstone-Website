@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const { ObjectId } = require('mongodb');
+const { Types: { ObjectId } } = require('mongoose');
 const { getDb } = require('../config/database');
 const { notifyMaintenanceStatusChange } = require('../services/pushService');
 const { admin, resolveFirebaseStorageBucket } = require('../config/firebase');

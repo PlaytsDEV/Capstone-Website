@@ -51,6 +51,7 @@ import { computePenalty, fetchPenaltySettings } from "../../utils/penaltyCalcula
 import notify from "../../utils/notificationService.js";
 import { sendDraftUtilityBills } from "../../utils/utilityBillFlow.js";
 import { generateBillPdf } from "../../utils/pdfGenerator.js";
+import { recordBillPdfGeneration } from "../../services/billPdfCache.js";
 import { logBillingAudit } from "../../utils/billingAudit.js";
 import { isWaterBillableRoom } from "../../utils/utilityFlowRules.js";
 import {
@@ -1101,9 +1102,7 @@ export async function generateRentBillPdf({ bill, reservation }) {
     tenant,
   });
 
-  bill.pdfPath = pdfPath;
-  bill.pdfGeneratedAt = new Date();
-  await bill.save();
+  await recordBillPdfGeneration(bill, pdfPath);
   return pdfPath;
 }
 

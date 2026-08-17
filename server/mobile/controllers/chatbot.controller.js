@@ -1,4 +1,4 @@
-const { ObjectId } = require('mongodb');
+const { Types: { ObjectId } } = require('mongoose');
 const { getDb } = require('../config/database');
 const {
   CHATBOT_SYSTEM_PROMPT,
@@ -533,7 +533,10 @@ async function sendMessage(req, res) {
     console.error('Chatbot error:', error);
     res.status(500).json({
       response: "I'm having trouble connecting right now po. Please try again, or contact the admin office at +63 912 345 6789.",
-      detail: error.message,
+      error: {
+        code: 'LILY_TEMPORARILY_UNAVAILABLE',
+        message: 'Lily is temporarily unavailable. Please try again.',
+      },
     });
   }
 }

@@ -97,4 +97,11 @@ describe("mobile Billing route safety", () => {
     expect(receiptHandler).toContain("generateBillReceiptPdf");
     expect(receiptHandler).not.toContain("generateRentBillPdf");
   });
+
+  test("the statement route delegates stale-cache detection to the shared canonical resolver", () => {
+    const pdfHandler = routes.split('router.get("/billing/:billingId/pdf"')[1]?.split("router.")[0] || "";
+    expect(pdfHandler.length).toBeGreaterThan(0);
+    expect(routes).toContain('import { isBillPdfStale } from "../services/billPdfCache.js"');
+    expect(pdfHandler).toMatch(/isBillPdfStale\(bill\)/);
+  });
 });
