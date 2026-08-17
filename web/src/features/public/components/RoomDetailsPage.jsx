@@ -4,6 +4,15 @@ import Navbar from "../components/Navbar";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+const sanitizeSvg = (svgString) => {
+  if (typeof svgString !== "string") return "";
+  return svgString
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/\son\w+\s*=\s*(['"]).*?\1/gi, "")
+    .replace(/\son\w+\s*=\s*[^\s>]+/gi, "")
+    .replace(/href\s*=\s*(['"])\s*javascript:[^'"]*\1/gi, "");
+};
+
 function RoomDetailsPage({
   roomTitle,
   roomSubtitle,
@@ -203,7 +212,7 @@ function RoomDetailsPage({
               <div key={index} className="room-details-amenity-card">
                 <div
                   className="room-details-amenity-icon"
-                  dangerouslySetInnerHTML={{ __html: amenity.icon }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeSvg(amenity.icon) }}
                 />
                 <h4>{amenity.title}</h4>
                 <p>{amenity.description}</p>

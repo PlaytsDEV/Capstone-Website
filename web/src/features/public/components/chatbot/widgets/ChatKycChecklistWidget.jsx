@@ -1,22 +1,10 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  ShieldCheck,
-  CheckSquare,
-  Square,
-  GraduationCap,
-  Briefcase,
-  IdCard,
-  Receipt,
-  ArrowUpRight,
-  Sparkles,
-} from "lucide-react";
 
 const KYC_ITEMS = [
   {
     id: "primary_id",
     category: "Primary Government ID (1 required)",
-    icon: IdCard,
     items: [
       "Philippine Passport",
       "UMID (Unified Multi-Purpose ID)",
@@ -28,7 +16,6 @@ const KYC_ITEMS = [
   {
     id: "enrollment_or_employment",
     category: "Proof of Status (Choose one)",
-    icon: GraduationCap,
     items: [
       "Student: Valid Student ID + Current Certificate of Registration (COR)",
       "Employed: Company ID + Certificate of Employment (COE) or 1-Month Payslip",
@@ -37,7 +24,6 @@ const KYC_ITEMS = [
   {
     id: "financial_deposit",
     category: "Move-In Advance & Deposit",
-    icon: Receipt,
     items: [
       "1-Month Advance Rental Payment",
       "1-Month Security Deposit (Refundable upon contract end)",
@@ -78,31 +64,18 @@ export function ChatKycChecklistWidget({ onStartApplication }) {
       }}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{
-            backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.12))",
-            color: "var(--lp-accent, #B45309)",
-            border: "1px solid var(--lp-border, #E6D9B2)",
-          }}
-        >
-          <ShieldCheck className="w-4 h-4 text-amber-600" />
-        </div>
-        <div>
-          <h4 className="text-xs sm:text-sm font-bold" style={{ color: "var(--lp-text, #162f53)" }}>
-            Application Documents Checklist
-          </h4>
-          <p className="text-[10px]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
-            Standard tenant requirements for lease verification and room check-in.
-          </p>
-        </div>
+      <div className="mb-3 pb-2 border-b" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
+        <h4 className="text-xs sm:text-sm font-bold" style={{ color: "var(--lp-text, #162f53)" }}>
+          Application Documents Checklist
+        </h4>
+        <p className="text-[10px]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
+          Standard tenant requirements for lease verification and room check-in.
+        </p>
       </div>
 
       {/* Sections */}
       <div className="space-y-3 mb-3.5">
         {KYC_ITEMS.map((section) => {
-          const Icon = section.icon;
           return (
             <div
               key={section.id}
@@ -112,14 +85,13 @@ export function ChatKycChecklistWidget({ onStartApplication }) {
                 border: "1px solid var(--lp-border, #E6D9B2)",
               }}
             >
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Icon className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+              <div className="mb-1.5">
                 <span className="text-[11px] font-bold" style={{ color: "var(--lp-text, #162f53)" }}>
                   {section.category}
                 </span>
               </div>
 
-              <ul className="space-y-1 pl-1">
+              <ul className="space-y-1.5 pl-1">
                 {section.items.map((item, idx) => {
                   const itemKey = `${section.id}-${idx}`;
                   const isChecked = Boolean(checkedMap[itemKey]);
@@ -133,11 +105,12 @@ export function ChatKycChecklistWidget({ onStartApplication }) {
                         color: isChecked ? "var(--color-success, #059669)" : "var(--lp-text-secondary, #475569)",
                       }}
                     >
-                      {isChecked ? (
-                        <CheckSquare className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
-                      ) : (
-                        <Square className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-600 flex-shrink-0 mt-0.5 transition-colors" />
-                      )}
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        readOnly
+                        className="rounded border-slate-400 text-amber-600 focus:ring-0 cursor-pointer mt-0.5"
+                      />
                       <span className={isChecked ? "line-through opacity-80" : ""}>{item}</span>
                     </li>
                   );
@@ -150,14 +123,13 @@ export function ChatKycChecklistWidget({ onStartApplication }) {
 
       {/* Digital Application Note */}
       <div
-        className="p-2 rounded-lg mb-3 text-[10px] leading-relaxed flex items-center gap-2"
+        className="p-2 rounded-lg mb-3 text-[10px] leading-relaxed"
         style={{
           backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.08))",
           border: "1px solid var(--lp-border, #E6D9B2)",
           color: "var(--lp-text, #162f53)",
         }}
       >
-        <Sparkles className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
         <span>You can upload digital PDF or JPG copies directly during the 5-step online reservation flow.</span>
       </div>
 
@@ -165,7 +137,7 @@ export function ChatKycChecklistWidget({ onStartApplication }) {
       <button
         type="button"
         onClick={handleApply}
-        className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none active:scale-98 shadow-xs"
+        className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center focus:outline-none active:scale-98 shadow-xs"
         style={{
           backgroundColor: "#0A1628",
           border: "1px solid #0A1628",
@@ -178,9 +150,7 @@ export function ChatKycChecklistWidget({ onStartApplication }) {
           e.currentTarget.style.backgroundColor = "#0A1628";
         }}
       >
-        <ShieldCheck className="w-3.5 h-3.5 text-white" />
         <span className="text-white font-bold">Start Online Reservation</span>
-        <ArrowUpRight className="w-3.5 h-3.5 text-white" />
       </button>
     </div>
   );

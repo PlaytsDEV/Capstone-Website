@@ -1,17 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Bot,
-  User,
-  ArrowUpRight,
-  Calendar,
-  HelpCircle,
-  Calculator,
-  ShieldCheck,
-  Bed,
-  Headphones,
-} from "lucide-react";
-import {
   ChatRoomShowcaseCard,
   ChatViewingBookingCard,
   ChatBudgetEstimatorWidget,
@@ -313,7 +302,7 @@ export function ChatMessageBubble({
           aria-hidden="true"
         >
           {isUser ? (
-            <User className="w-4 h-4 text-white" />
+            <span className="text-[10px] font-bold text-white">You</span>
           ) : (
             <img
               src="/lilycrest-logo.png"
@@ -375,7 +364,6 @@ export function ChatMessageBubble({
                   const isBudgetAction = action.action === "open_budget_widget" || action.action === "calculate_budget";
                   const isKycAction = action.action === "open_kyc_widget" || action.action === "view_requirements";
                   const isRoomAction = action.action === "open_room_showcase";
-                  const isNavAction = Boolean(action.url);
 
                   const isAccentPill =
                     isEscalationAction || isViewingAction || isBudgetAction || isKycAction || isRoomAction;
@@ -419,15 +407,6 @@ export function ChatMessageBubble({
                         }
                       }}
                     >
-                      {isEscalationAction && <Headphones className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />}
-                      {isViewingAction && <Calendar className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />}
-                      {isBudgetAction && <Calculator className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />}
-                      {isKycAction && <ShieldCheck className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />}
-                      {isRoomAction && <Bed className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />}
-                      {isNavAction && <ArrowUpRight className="w-3.5 h-3.5 text-slate-800 flex-shrink-0" />}
-                      {!isEscalationAction && !isViewingAction && !isBudgetAction && !isKycAction && !isRoomAction && !isNavAction && (
-                        <HelpCircle className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />
-                      )}
                       <span className="font-bold tracking-tight">{action.label}</span>
                     </button>
                   );

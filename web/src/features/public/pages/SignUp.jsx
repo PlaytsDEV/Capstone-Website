@@ -52,7 +52,7 @@ import PrivacyModal from "../../tenant/modals/PrivacyModal";
 import "../../../shared/styles/auth-forms.css";
 import "../styles/tenant-signup.css";
 import "../../../shared/styles/notification.css";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import hero1 from "../../../assets/images/hero1.jpg";
 import { normalizeInternalContinuation } from "../../../shared/utils/emailVerificationFlow";
 
@@ -112,7 +112,6 @@ function SignUp() {
       special: false,
     },
   });
-  const [debounceTimer, setDebounceTimer] = useState(null);
   // Guard: prevents session lock from auto-redirecting while social
   // auth duplicate check is in progress
   const socialAuthRef = useRef(false);
@@ -127,73 +126,46 @@ function SignUp() {
     }
   }, [authLoading, isAuthenticated, user, navigate]);
 
-  // ── Form handling ──────────────────────────────────────────
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    // phone is now handled separately by PhoneInput — skip old guards
-    const sanitizedValue = name === "firstName" || name === "lastName"
-      ? sanitizeName(value)
-      : name === "password" || name === "confirmPassword"
-        ? value.replace(/\s/g, "")
-        : value;
-    const limit = FIELD_LIMITS[name];
-    const nextValue = limit ? sanitizedValue.slice(0, limit) : sanitizedValue;
-    setFormData({ ...formData, [name]: nextValue });
-    setTouched({ ...touched, [name]: true });
-    if (debounceTimer) clearTimeout(debounceTimer);
-    if (name === "password")
-      setPasswordStrength(calculatePasswordStrength(nextValue));
-    const timer = setTimeout(() => validateField(name, nextValue), 300);
-    setDebounceTimer(timer);
-  };
-
-  // Called directly by PhoneInput with the E.164 value
-  const handlePhoneChange = (e164) => {
-    setFormData((prev) => ({ ...prev, phone: e164 }));
-    setTouched((prev) => ({ ...prev, phone: true }));
-    // Use libphonenumber-js for accurate per-country validation
-    const isValid = e164 && e164.startsWith("+") && isValidPhoneNumber(e164);
-    const error = isValid
-      ? null
-      : "Enter a valid phone number, including the country code.";
-    setValidationErrors((prev) => ({ ...prev, phone: error }));
-    setFieldValid((prev) => ({ ...prev, phone: isValid }));
-  };
-
-  // Pure per-field validator shared by real-time and submit-time validation
-  // so both paths always agree on the same message.
-  const getFieldError = (fieldName, value) => {
+  // Pure per-field validator shared by blur, real-time recovery, and submit
+  const getFieldError = (fieldName, value, customPasswordValue = null) => {
+    const activePassword =
+      customPasswordValue !== null ? customPasswordValue : formData.password;
     switch (fieldName) {
       case "firstName":
-        if (!value.trim()) return "Please enter your first name.";
+        if (!value || !value.trim()) return "Please enter your first name.";
         if (value.length > FIELD_LIMITS.firstName)
           return `First name must be ${FIELD_LIMITS.firstName} characters or fewer.`;
         return null;
       case "lastName":
-        if (!value.trim()) return "Please enter your last name.";
+        if (!value || !value.trim()) return "Please enter your last name.";
         if (value.length > FIELD_LIMITS.lastName)
           return `Last name must be ${FIELD_LIMITS.lastName} characters or fewer.`;
         return null;
       case "email":
+        if (!value || !value.trim()) return "Please enter your email address.";
         if (value.length > FIELD_LIMITS.email)
           return `Email address must be ${FIELD_LIMITS.email} characters or fewer.`;
         return validateEmail(value);
       case "phone":
         if (!value || !value.trim()) return "Please enter your phone number.";
+        if (value.startsWith("+63") && !isValidPhoneNumber(value.trim()))
+          return "Please enter a complete 10-digit mobile number (e.g., 917 123 4567).";
         if (!value.startsWith("+") || !isValidPhoneNumber(value.trim()))
           return "Enter a valid phone number, including the country code.";
         return null;
       case "password":
+        if (!value) return "Please enter a password.";
         if (value.length > FIELD_LIMITS.password)
           return `Password must be ${FIELD_LIMITS.password} characters or fewer.`;
-        if (/\s/.test(value)) return "Your password can't contain spaces.";
+        if (/\s/.test(value)) return "Your password cannot contain spaces.";
         return validatePassword(value);
       case "confirmPassword":
         if (!value) return "Please confirm your password.";
-        if (/\s/.test(value)) return "Your password can't contain whitespace.";
+        if (/\s/.test(value)) return "Your password cannot contain whitespace.";
         if (value.length > FIELD_LIMITS.confirmPassword)
           return `Confirm password must be ${FIELD_LIMITS.confirmPassword} characters or fewer.`;
-        if (value !== formData.password) return "The passwords you entered do not match.";
+        if (value !== activePassword)
+          return "The passwords you entered do not match.";
         return null;
       default:
         return null;
@@ -204,8 +176,90 @@ function SignUp() {
     const error = getFieldError(fieldName, value);
     setValidationErrors((prev) => ({ ...prev, [fieldName]: error }));
     setFieldValid((prev) => ({ ...prev, [fieldName]: !error }));
-    if (fieldName === "password" && formData.confirmPassword)
-      validateField("confirmPassword", formData.confirmPassword);
+    if (fieldName === "password" && formData.confirmPassword) {
+      const confirmErr = getFieldError(
+        "confirmPassword",
+        formData.confirmPassword,
+        value,
+      );
+      setValidationErrors((prev) => ({
+        ...prev,
+        confirmPassword: confirmErr,
+      }));
+      setFieldValid((prev) => ({ ...prev, confirmPassword: !confirmErr }));
+    }
+  };
+
+  // ── Form handling ──────────────────────────────────────────
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    const sanitizedValue =
+      name === "firstName" || name === "lastName"
+        ? sanitizeName(value)
+        : name === "password" || name === "confirmPassword"
+          ? value.replace(/\s/g, "")
+          : value;
+    const limit = FIELD_LIMITS[name];
+    const nextValue = limit ? sanitizedValue.slice(0, limit) : sanitizedValue;
+    setFormData((prev) => ({ ...prev, [name]: nextValue }));
+
+    if (name === "password") {
+      setPasswordStrength(calculatePasswordStrength(nextValue));
+    }
+
+    // If the field has already been touched (blurred or submitted),
+    // revalidate immediately so the error clears as soon as it is fixed.
+    if (touched[name]) {
+      const error = getFieldError(name, nextValue);
+      setValidationErrors((prev) => ({ ...prev, [name]: error }));
+      setFieldValid((prev) => ({ ...prev, [name]: !error }));
+      if (name === "password" && formData.confirmPassword) {
+        const confirmErr = getFieldError(
+          "confirmPassword",
+          formData.confirmPassword,
+          nextValue,
+        );
+        setValidationErrors((prev) => ({
+          ...prev,
+          confirmPassword: confirmErr,
+        }));
+        setFieldValid((prev) => ({ ...prev, confirmPassword: !confirmErr }));
+      }
+    } else {
+      // Keep internal validity state in sync silently without displaying errors prematurely
+      const error = getFieldError(name, nextValue);
+      setFieldValid((prev) => ({ ...prev, [name]: !error }));
+    }
+  };
+
+  const handleBlur = (fieldName) => {
+    setTouched((prev) => ({ ...prev, [fieldName]: true }));
+    const error = getFieldError(fieldName, formData[fieldName]);
+    setValidationErrors((prev) => ({ ...prev, [fieldName]: error }));
+    setFieldValid((prev) => ({ ...prev, [fieldName]: !error }));
+    if (fieldName === "password" || fieldName === "confirmPassword") {
+      setCapsLockActive(false);
+    }
+  };
+
+  // Called directly by PhoneInput with the E.164 value
+  const handlePhoneChange = (e164) => {
+    setFormData((prev) => ({ ...prev, phone: e164 }));
+    const isValid = e164 && e164.startsWith("+") && isValidPhoneNumber(e164);
+    setFieldValid((prev) => ({ ...prev, phone: isValid }));
+
+    // Revalidate live only if the user has already touched/blurred the phone field
+    if (touched.phone) {
+      const error = getFieldError("phone", e164);
+      setValidationErrors((prev) => ({ ...prev, phone: error }));
+    }
+  };
+
+  const handlePhoneBlur = () => {
+    setTouched((prev) => ({ ...prev, phone: true }));
+    const error = getFieldError("phone", formData.phone);
+    setValidationErrors((prev) => ({ ...prev, phone: error }));
+    setFieldValid((prev) => ({ ...prev, phone: !error }));
   };
 
   const isFormValid = () =>
@@ -633,6 +687,7 @@ function SignUp() {
                   name="firstName"
                   value={formData.firstName}
                   onChange={handleChange}
+                  onBlur={() => handleBlur("firstName")}
                   maxLength={FIELD_LIMITS.firstName}
                   disabled={loading}
                   error={touched.firstName ? validationErrors.firstName : null}
@@ -643,6 +698,7 @@ function SignUp() {
                   name="lastName"
                   value={formData.lastName}
                   onChange={handleChange}
+                  onBlur={() => handleBlur("lastName")}
                   maxLength={FIELD_LIMITS.lastName}
                   disabled={loading}
                   error={touched.lastName ? validationErrors.lastName : null}
@@ -656,6 +712,7 @@ function SignUp() {
                 type="email"
                 value={formData.email}
                 onChange={handleChange}
+                onBlur={() => handleBlur("email")}
                 maxLength={FIELD_LIMITS.email}
                 disabled={loading}
                 autoComplete="email"
@@ -668,6 +725,7 @@ function SignUp() {
                 label="Phone number"
                 value={formData.phone}
                 onChange={handlePhoneChange}
+                onBlur={handlePhoneBlur}
                 hasError={touched.phone && !fieldValid.phone}
                 valid={touched.phone && fieldValid.phone}
                 error={touched.phone ? validationErrors.phone : null}
@@ -683,10 +741,7 @@ function SignUp() {
                   onChange={handleChange}
                   onKeyDown={handlePasswordKey}
                   onKeyUp={handlePasswordKey}
-                  onBlur={() => {
-                    validateField("password", formData.password);
-                    setCapsLockActive(false);
-                  }}
+                  onBlur={() => handleBlur("password")}
                   maxLength={FIELD_LIMITS.password}
                   onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
                   disabled={loading}
@@ -807,10 +862,7 @@ function SignUp() {
                 onChange={handleChange}
                 onKeyDown={handlePasswordKey}
                 onKeyUp={handlePasswordKey}
-                onBlur={() => {
-                  validateField("confirmPassword", formData.confirmPassword);
-                  setCapsLockActive(false);
-                }}
+                onBlur={() => handleBlur("confirmPassword")}
                 maxLength={FIELD_LIMITS.confirmPassword}
                 onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
                 disabled={loading}
@@ -881,7 +933,14 @@ function SignUp() {
                 className="auth-btn-primary"
                 disabled={loading}
               >
-                {loading ? "Creating Account..." : "Create account"}
+                {loading ? (
+                  <>
+                    <Loader2 size={18} className="auth-spinner" />
+                    <span>Creating Account...</span>
+                  </>
+                ) : (
+                  "Create account"
+                )}
               </button>
 
               <SocialAuthButtons
