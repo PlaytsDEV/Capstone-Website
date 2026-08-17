@@ -21,13 +21,17 @@ export default function TenantBillingBreakdownCard({ data, onCloseDrawer }) {
   const remaining = data.remainingAmount !== undefined ? Number(data.remainingAmount) : total;
 
   const status = (data.status || "pending").toLowerCase();
+  const isPaid = status === "paid" || remaining <= 0;
+
   const formattedMonth = data.billingMonth || data.month
     ? new Date(data.billingMonth || data.month).toLocaleDateString("en-US", { month: "short", year: "numeric" })
     : "Current Statement";
 
   const formattedDueDate = data.dueDate
-    ? new Date(data.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    : "15th of the month";
+    ? (data.dueDate.includes("T") || !isNaN(Date.parse(data.dueDate))
+        ? new Date(data.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        : data.dueDate)
+    : "Monthly lease cycle";
 
   const formatCurrency = (val) =>
     `₱${Number(val || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -96,8 +100,12 @@ export default function TenantBillingBreakdownCard({ data, onCloseDrawer }) {
         <div className="tenant-snapshot-cell col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
           <div className="flex items-center justify-between">
             <div>
-              <span className="tenant-snapshot-cell-label">Total Amount Due</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 block">Due {formattedDueDate}</span>
+              <span className="tenant-snapshot-cell-label">
+                {isPaid ? "Total Balance" : "Total Amount Due"}
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 block">
+                {isPaid ? "Statement Settled" : `Due ${formattedDueDate}`}
+              </span>
             </div>
             <span className="tenant-snapshot-cell-val highlight">{formatCurrency(remaining)}</span>
           </div>

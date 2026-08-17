@@ -177,7 +177,7 @@ export default function BranchManagementPage() {
           <div className="sa-branches-overview-top">
             <span className="sa-branches-overview-label">Network Occupancy</span>
             <div className="sa-branches-overview-icon-badge">
-              <TrendingUp size={16} />
+              <TrendingUp size={18} className="text-sky-600 dark:text-sky-400" />
             </div>
           </div>
           <strong className="sa-branches-overview-value">
@@ -195,7 +195,7 @@ export default function BranchManagementPage() {
               Available Capacity
             </span>
             <div className="sa-branches-overview-icon-badge">
-              <BedDouble size={16} />
+              <BedDouble size={18} className="text-emerald-600 dark:text-emerald-400" />
             </div>
           </div>
           <strong className="sa-branches-overview-value">
@@ -209,14 +209,15 @@ export default function BranchManagementPage() {
         <article className="sa-branches-overview-card">
           <div className="sa-branches-overview-top">
             <span className="sa-branches-overview-label">Overdue Billing</span>
-            <div
-              className={`sa-branches-overview-icon-badge ${
-                comparisonSummary.overdueBillingCount > 0
-                  ? "sa-branches-overview-icon-badge--danger"
-                  : ""
-              }`}
-            >
-              <CreditCard size={16} />
+            <div className="sa-branches-overview-icon-badge">
+              <CreditCard
+                size={18}
+                className={
+                  comparisonSummary.overdueBillingCount > 0
+                    ? "text-rose-600 dark:text-rose-400"
+                    : "text-slate-400 dark:text-slate-500"
+                }
+              />
             </div>
           </div>
           <strong className="sa-branches-overview-value">
@@ -232,14 +233,15 @@ export default function BranchManagementPage() {
         <article className="sa-branches-overview-card">
           <div className="sa-branches-overview-top">
             <span className="sa-branches-overview-label">Open Workload</span>
-            <div
-              className={`sa-branches-overview-icon-badge ${
-                comparisonSummary.unresolvedWorkloadCount > 0
-                  ? "sa-branches-overview-icon-badge--warning"
-                  : ""
-              }`}
-            >
-              <Clock size={16} />
+            <div className="sa-branches-overview-icon-badge">
+              <Clock
+                size={18}
+                className={
+                  comparisonSummary.unresolvedWorkloadCount > 0
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-slate-400 dark:text-slate-500"
+                }
+              />
             </div>
           </div>
           <strong className="sa-branches-overview-value">
@@ -279,11 +281,7 @@ export default function BranchManagementPage() {
                 <div className="sa-branch-card-header">
                   <div
                     className="sa-branch-icon"
-                    style={{
-                      background: branch.surface,
-                      color: branch.color,
-                      border: `1px solid ${branch.borderColor}`,
-                    }}
+                    style={{ color: branch.color }}
                   >
                     <Building2 size={24} />
                   </div>
@@ -299,14 +297,14 @@ export default function BranchManagementPage() {
                             key={warning}
                             className="sa-branch-warning-badge"
                           >
-                            <AlertTriangle size={12} />
+                            <span className="sa-branch-warning-dot" />
                             {warning}
                           </span>
                         ))}
                       </div>
                     ) : (
                       <span className="sa-branch-health-pill">
-                        <CheckCircle2 size={13} />
+                        <span className="sa-branch-health-dot" />
                         Stable
                       </span>
                     )}
@@ -366,7 +364,7 @@ export default function BranchManagementPage() {
                       title="Open Room Availability workspace for this branch"
                     >
                       <div className="sa-branch-tile-top">
-                        <DoorClosed size={16} className="sa-branch-tile-icon" />
+                        <DoorClosed size={16} className="sa-branch-tile-icon text-slate-500 dark:text-slate-400" />
                         <ArrowUpRight
                           size={14}
                           className="sa-branch-tile-jump"
@@ -389,7 +387,7 @@ export default function BranchManagementPage() {
                       title="Inspect bed capacity and occupancy distribution"
                     >
                       <div className="sa-branch-tile-top">
-                        <BedDouble size={16} className="sa-branch-tile-icon" />
+                        <BedDouble size={16} className="sa-branch-tile-icon text-emerald-600 dark:text-emerald-400" />
                         <ArrowUpRight
                           size={14}
                           className="sa-branch-tile-jump"
@@ -414,7 +412,7 @@ export default function BranchManagementPage() {
                       title="Review active tenant directory for this branch"
                     >
                       <div className="sa-branch-tile-top">
-                        <Users size={16} className="sa-branch-tile-icon" />
+                        <Users size={16} className="sa-branch-tile-icon text-sky-600 dark:text-sky-400" />
                         <ArrowUpRight
                           size={14}
                           className="sa-branch-tile-jump"
@@ -439,7 +437,14 @@ export default function BranchManagementPage() {
                       title="Manage assigned branch administrators"
                     >
                       <div className="sa-branch-tile-top">
-                        <UserCog size={16} className="sa-branch-tile-icon" />
+                        <UserCog
+                          size={16}
+                          className={`sa-branch-tile-icon ${
+                            hasNoAdmin
+                              ? "text-rose-600 dark:text-rose-400"
+                              : "text-slate-600 dark:text-slate-400"
+                          }`}
+                        />
                         {hasNoAdmin && (
                           <span
                             className="sa-branch-tile-dot sa-branch-tile-dot--danger"
@@ -472,7 +477,14 @@ export default function BranchManagementPage() {
                       title="Inspect overdue accounts and financial ledger"
                     >
                       <div className="sa-branch-tile-top">
-                        <CreditCard size={16} className="sa-branch-tile-icon" />
+                        <CreditCard
+                          size={16}
+                          className={`sa-branch-tile-icon ${
+                            hasOverdue
+                              ? "text-rose-600 dark:text-rose-400"
+                              : "text-slate-400 dark:text-slate-500"
+                          }`}
+                        />
                         {hasOverdue && (
                           <span
                             className="sa-branch-tile-dot sa-branch-tile-dot--danger"
@@ -504,7 +516,14 @@ export default function BranchManagementPage() {
                       title="Review open maintenance requests and dispatch"
                     >
                       <div className="sa-branch-tile-top">
-                        <Hammer size={16} className="sa-branch-tile-icon" />
+                        <Hammer
+                          size={16}
+                          className={`sa-branch-tile-icon ${
+                            hasMaintenance
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-slate-400 dark:text-slate-500"
+                          }`}
+                        />
                         {hasMaintenance && (
                           <span
                             className="sa-branch-tile-dot sa-branch-tile-dot--warning"
@@ -536,7 +555,14 @@ export default function BranchManagementPage() {
                       title="Process pending reservation applications"
                     >
                       <div className="sa-branch-tile-top">
-                        <Building2 size={16} className="sa-branch-tile-icon" />
+                        <Building2
+                          size={16}
+                          className={`sa-branch-tile-icon ${
+                            hasReservations
+                              ? "text-sky-600 dark:text-sky-400"
+                              : "text-slate-400 dark:text-slate-500"
+                          }`}
+                        />
                         {hasReservations && (
                           <span
                             className="sa-branch-tile-dot sa-branch-tile-dot--info"
@@ -570,7 +596,11 @@ export default function BranchManagementPage() {
                       <div className="sa-branch-tile-top">
                         <MessageSquare
                           size={16}
-                          className="sa-branch-tile-icon"
+                          className={`sa-branch-tile-icon ${
+                            hasInquiries
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-slate-400 dark:text-slate-500"
+                          }`}
                         />
                         {hasInquiries && (
                           <span

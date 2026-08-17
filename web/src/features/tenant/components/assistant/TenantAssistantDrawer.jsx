@@ -447,7 +447,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
               </div>
               <div className="tenant-msg-bubble">
                 <p className="font-semibold text-slate-900 dark:text-slate-100 mb-1">
-                  Hello, {tenantDisplayName}! 👋
+                  Hello, {tenantDisplayName}!
                 </p>
                 <p>
                   I am your <strong>Lilycrest Tenant Assistant</strong>. I have real-time access to your room assignment, submetered utility breakdown, active lease agreement, and maintenance tickets.

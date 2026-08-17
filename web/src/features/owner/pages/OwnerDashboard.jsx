@@ -157,12 +157,12 @@ export default function OwnerDashboard() {
 
  <section className="sa2-stats">
  {stats.map((stat, index) => {
- const { color, bg } = STAT_ACCENTS[index];
+ const { color } = STAT_ACCENTS[index];
  const Icon = stat.Icon;
  return (
  <div key={stat.label} className="sa2-stat" style={{ "--accent": color }}>
- <div className="sa2-stat-icon" style={{ background: bg, color }}>
- <Icon size={16} strokeWidth={2} />
+ <div className="sa2-stat-icon" style={{ color }}>
+ <Icon size={18} strokeWidth={2} />
  </div>
  <span className="sa2-stat-value">{isLoading ? "-" : stat.value}</span>
  <span className="sa2-stat-label">{stat.label}</span>

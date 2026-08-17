@@ -39,28 +39,28 @@ const emptyStyle = {
 
 // ── Stay Card ───────────────────────────────────────────────
 const StayCard = ({ stay, isCurrent }) => {
- const room = stay.roomId || {};
- const status = stay.status || stay.reservationStatus || "unknown";
+  const room = stay.roomId || {};
+  const status = stay.status || stay.reservationStatus || "unknown";
 
- const statusConfig = {
- "reserved": { color: "#10B981", bg: "#ECFDF5", label: "Reserved" },
- moveIn: { color: "#059669", bg: "#DCFCE7", label: "Move In" },
- moveOut: { color: "#6B7280", bg: "#F3F4F6", label: "Completed" },
- "cancelled": { color: "#EF4444", bg: "#FEF2F2", label: "Cancelled" },
- };
- const statusKey = hasReservationStatus(status, "moveIn")
- ? "moveIn"
- : hasReservationStatus(status, "moveOut")
- ? "moveOut"
- : status;
- const { color, bg, label } = statusConfig[statusKey] || statusConfig.moveOut;
+  const statusConfig = {
+    reserved: { color: "#059669", label: "Reserved" },
+    moveIn: { color: "#059669", label: "Move In" },
+    moveOut: { color: "#6B7280", label: "Completed" },
+    cancelled: { color: "#DC2626", label: "Cancelled" },
+  };
+  const statusKey = hasReservationStatus(status, "moveIn")
+    ? "moveIn"
+    : hasReservationStatus(status, "moveOut")
+    ? "moveOut"
+    : status;
+  const { color, label } = statusConfig[statusKey] || statusConfig.moveOut;
 
- const branchDisplay =
- room.branch === "gil-puyat" ? "Gil Puyat"
- : room.branch === "guadalupe" ? "Guadalupe"
- : room.branch || "—";
+  const branchDisplay =
+    room.branch === "gil-puyat" ? "Gil Puyat"
+    : room.branch === "guadalupe" ? "Guadalupe"
+    : room.branch || "—";
 
- const storedImages = Array.isArray(room.images)
+  const storedImages = Array.isArray(room.images)
     ? room.images.filter((img) => typeof img === "string" && img.trim())
     : [];
   const roomImage =
@@ -70,114 +70,117 @@ const StayCard = ({ stay, isCurrent }) => {
       ? getRoomImages(room.type, room.branch)[0]
       : null;
 
- return (
- <div
- style={{
- backgroundColor: "#fff",
- borderRadius: 12,
- border: "1px solid #E8EBF0",
- padding: "20px 24px",
- display: "flex",
- alignItems: "flex-start",
- gap: 16,
- transition: "box-shadow 0.15s",
- }}
- onMouseEnter={(e) => {
- e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)";
- }}
- onMouseLeave={(e) => {
- e.currentTarget.style.boxShadow = "none";
- }}
- >
- {/* Room image or icon */}
- <div
- style={{
- width: 56,
- height: 56,
- borderRadius: 12,
- overflow: "hidden",
- flexShrink: 0,
- background: "#F1F5F9",
- display: "flex",
- alignItems: "center",
- justifyContent: "center",
- }}
- >
- {roomImage ? (
- <img
- src={roomImage}
- alt={room.name}
- style={{ width: "100%", height: "100%", objectFit: "cover" }}
- onError={(e) => {
- e.currentTarget.style.display = "none";
- e.currentTarget.parentElement.innerHTML =
- `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
- }}
- />
- ) : (
- <Home size={22} style={{ color: "#94A3B8" }} />
- )}
- </div>
+  return (
+    <div
+      style={{
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        border: "1px solid #E8EBF0",
+        padding: "20px 24px",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 16,
+        transition: "box-shadow 0.15s",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.boxShadow = "none";
+      }}
+    >
+      {/* Room image or icon */}
+      <div
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 12,
+          overflow: "hidden",
+          flexShrink: 0,
+          background: "#F1F5F9",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {roomImage ? (
+          <img
+            src={roomImage}
+            alt={room.name}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+              e.currentTarget.parentElement.innerHTML =
+                `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
+            }}
+          />
+        ) : (
+          <Home size={22} style={{ color: "#94A3B8" }} />
+        )}
+      </div>
 
- {/* Details */}
- <div style={{ flex: 1, minWidth: 0 }}>
- <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
- <span style={{ fontSize: 15, fontWeight: 600, color: "#0A1628" }}>
- {room.name || "Room"}
- </span>
- <span
- style={{
- fontSize: 11,
- fontWeight: 600,
- color,
- backgroundColor: bg,
- padding: "2px 8px",
- borderRadius: 6,
- }}
- >
- {label}
- </span>
- </div>
+      {/* Details */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <span style={{ fontSize: 15, fontWeight: 600, color: "#0A1628" }}>
+            {room.name || "Room"}
+          </span>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              fontSize: 11,
+              fontWeight: 600,
+              color,
+              background: "transparent",
+            }}
+          >
+            <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: color }} />
+            {label}
+          </span>
+        </div>
 
- <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", marginTop: 6 }}>
- <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#64748B" }}>
- <MapPin size={12} /> {branchDisplay}
- </span>
- <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#64748B" }}>
- <Bed size={12} /> {room.type || "—"}
- </span>
- {stay.createdAt && (
- <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#64748B" }}>
- <Calendar size={12} /> {dayjs(stay.createdAt).format("MMM D, YYYY")}
- </span>
- )}
- </div>
- </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", marginTop: 6 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#64748B" }}>
+            <MapPin size={12} /> {branchDisplay}
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#64748B" }}>
+            <Bed size={12} /> {room.type || "—"}
+          </span>
+          {stay.createdAt && (
+            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#64748B" }}>
+              <Calendar size={12} /> {dayjs(stay.createdAt).format("MMM D, YYYY")}
+            </span>
+          )}
+        </div>
+      </div>
 
- {/* Price */}
- <div style={{ textAlign: "right", flexShrink: 0 }}>
- <span style={{ fontSize: 15, fontWeight: 700, color: "#E8734A" }}>
- ₱{(stay.monthlyRent || stay.totalPrice || room.price || 0).toLocaleString()}
- </span>
- <span style={{ display: "block", fontSize: 11, color: "#94A3B8", marginTop: 2 }}>
- /month
- </span>
- </div>
- </div>
- );
+      {/* Price */}
+      <div style={{ textAlign: "right", flexShrink: 0 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: "#0A1628" }}>
+          ₱{(stay.monthlyRent || stay.totalPrice || room.price || 0).toLocaleString()}
+        </span>
+        <span style={{ display: "block", fontSize: 11, color: "#94A3B8", marginTop: 2 }}>
+          /month
+        </span>
+      </div>
+    </div>
+  );
 };
 
 // ── Stat Card ───────────────────────────────────────────────
-const StatCard = ({ icon: Icon, iconColor, iconBg, label, value }) => (
+const StatCard = ({ icon: Icon, iconColor, label, value }) => (
   <div
     style={{
       backgroundColor: "#fff",
       borderRadius: 12,
       border: "1px solid #E8EBF0",
-      padding: "20px",
+      padding: "16px 18px",
       display: "flex",
-      alignItems: "center",
-      gap: 14,
+      flexDirection: "column",
+      justifyContent: "space-between",
+      gap: 8,
       cursor: "default",
       transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease, border-color 0.2s ease",
     }}
@@ -192,67 +195,60 @@ const StatCard = ({ icon: Icon, iconColor, iconBg, label, value }) => (
       e.currentTarget.style.borderColor = "#E8EBF0";
     }}
   >
-    <div
-      style={{
-        width: 42,
-        height: 42,
-        borderRadius: 10,
-        backgroundColor: iconBg,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      <Icon size={20} style={{ color: iconColor }} />
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+      <span style={{ fontSize: 12, color: "var(--text-muted, #94A3B8)", fontWeight: 600, letterSpacing: "0.01em" }}>
+        {label}
+      </span>
+      <Icon size={17} strokeWidth={1.8} color={iconColor} />
     </div>
     <div>
-      <p style={{ fontSize: 20, fontWeight: 700, color: "#0A1628", margin: 0 }}>{value}</p>
-      <p style={{ fontSize: 12, color: "#94A3B8", margin: "2px 0 0", fontWeight: 500 }}>{label}</p>
+      <p style={{ fontSize: 18, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 2px" }}>
+        {value}
+      </p>
     </div>
   </div>
 );
 
 // ── Main Component ──────────────────────────────────────────
 const StaysTab = () => {
- const { data, isLoading, error } = useMyStays(true);
+  const { data, isLoading, error } = useMyStays(true);
 
- if (isLoading) {
- return (
- <div style={{ width: "100%", maxWidth: "100%" }}>
- <div style={{ marginBottom: 24 }}>
- <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1F2937", margin: "0 0 4px" }}>My Stays</h1>
- <p style={{ fontSize: 14, color: "#94A3B8", margin: 0 }}>Your room history and stay statistics</p>
- </div>
- <StatGridSkeleton count={3} minWidth={200} style={{ marginBottom: 28 }} />
- <ListSkeleton rows={4} avatar />
- </div>
- );
- }
+  if (isLoading) {
+    return (
+      <div style={{ width: "100%", maxWidth: "100%" }}>
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1F2937", margin: "0 0 4px" }}>My Stays</h1>
+          <p style={{ fontSize: 14, color: "#94A3B8", margin: 0 }}>Your room history and stay statistics</p>
+        </div>
+        <StatGridSkeleton count={3} minWidth={200} style={{ marginBottom: 28 }} />
+        <ListSkeleton rows={4} avatar />
+      </div>
+    );
+  }
 
- const { currentStays = [], pastStays = [], stats = {} } = data || {};
- const hasAnyStays = currentStays.length > 0 || pastStays.length > 0;
+  const { currentStays = [], pastStays = [], stats = {} } = data || {};
+  const hasAnyStays = currentStays.length > 0 || pastStays.length > 0;
 
- return (
- <div style={{ width: "100%", maxWidth: "100%" }}>
- {/* Header */}
- <div style={{ marginBottom: 24 }}>
- <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1F2937", margin: "0 0 4px" }}>
- My Stays
- </h1>
- <p style={{ fontSize: 14, color: "#94A3B8", margin: 0 }}>
- Your room history and stay statistics
- </p>
- </div>
+  return (
+    <div style={{ width: "100%", maxWidth: "100%" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1F2937", margin: "0 0 4px" }}>
+          My Stays
+        </h1>
+        <p style={{ fontSize: 14, color: "#94A3B8", margin: 0 }}>
+          Your room history and stay statistics
+        </p>
+      </div>
 
- {/* Stats */}
- {hasAnyStays && (
- <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14, marginBottom: 28 }}>
- <StatCard icon={Home} iconColor="#FF8C42" iconBg="#FFF7ED" label="Total Stays" value={stats.totalStays || 0} />
- <StatCard icon={CheckCircle} iconColor="#10B981" iconBg="#ECFDF5" label="Completed" value={stats.completedStays || 0} />
- <StatCard icon={Clock} iconColor="#6366F1" iconBg="#EEF2FF" label="Total Nights" value={stats.totalNights || 0} />
- </div>
- )}
+      {/* Stats */}
+      {hasAnyStays && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14, marginBottom: 28 }}>
+          <StatCard icon={Home} iconColor="#2563EB" label="Total Stays" value={stats.totalStays || 0} />
+          <StatCard icon={CheckCircle} iconColor="#059669" label="Completed" value={stats.completedStays || 0} />
+          <StatCard icon={Clock} iconColor="#64748B" label="Total Nights" value={stats.totalNights || 0} />
+        </div>
+      )}
 
  {/* Current Stays */}
  {currentStays.length > 0 && (

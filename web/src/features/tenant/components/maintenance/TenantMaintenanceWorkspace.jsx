@@ -260,7 +260,7 @@ function CompletionReportModal({ request, onClose }) {
 
           {report.preventiveAdvice ? (
             <div className="report-body-section">
-              <h4>4. Resident Preventive Care Advice</h4>
+              <h4>4. Tenant Preventive Care Advice</h4>
               <p>{report.preventiveAdvice}</p>
             </div>
           ) : null}
@@ -1003,6 +1003,14 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   };
 
   const handleConfirmResolution = async (request, isResolved, feedbackOrOptions = "") => {
+    if (!request) return;
+    const targetRequestId =
+      request.request_id ||
+      request._id ||
+      request.ticketNumber ||
+      request.ticket_number;
+    if (!targetRequestId) return;
+
     try {
       const feedback =
         typeof feedbackOrOptions === "object"
@@ -1015,7 +1023,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
 
       if (isResolved) {
         await confirmResolutionMutation.mutateAsync({
-          requestId: request.request_id,
+          requestId: targetRequestId,
           payload: {
             action: "confirm",
             confirmed: true,
@@ -1029,7 +1037,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         showNotification("Thank you! Your rating and resolution review have been recorded.", "success");
       } else {
         await confirmResolutionMutation.mutateAsync({
-          requestId: request.request_id,
+          requestId: targetRequestId,
           payload: {
             action: "reopen",
             confirmed: false,
@@ -1038,10 +1046,10 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         });
         setRejectResolutionModalRequest(null);
         setRejectionFeedback("");
-        showNotification("Feedback sent to facilities. The repair has returned to In Progress.", "info");
+        showNotification("Your feedback was sent to facilities. The repair has returned to In Progress.", "info");
       }
     } catch (error) {
-      showNotification(error.message || "Failed to submit resolution confirmation.", "error");
+      showNotification(error.message || "Unable to submit resolution confirmation. Please try again.", "error");
     }
   };
 
@@ -1562,7 +1570,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--success-dark, #15803D)", fontWeight: 600, fontSize: 13 }}>
                                 <CheckCircle2 size={15} />
-                                <span>Resolution verified by resident on {fmtDate(request.resolutionConfirmation?.confirmedAt)}</span>
+                                <span>Resolution verified by tenant on {fmtDate(request.resolutionConfirmation?.confirmedAt)}</span>
                               </div>
                               {request.resolutionConfirmation?.rating ? (
                                 <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, color: "var(--foreground)" }}>
@@ -2712,9 +2720,20 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         </div>
       ) : null}
 
-      {/* Verify Resolution & Star Rating Modal */}
+      {/* Verify / Rate Resolution Modal */}
       {verifyModalRequest ? (
         <div
+          className="maintenance-modal-backdrop"
+          onClick={() => {
+            if (!confirmResolutionMutation.isPending) {
+              setVerifyModalRequest(null);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && !confirmResolutionMutation.isPending) {
+              setVerifyModalRequest(null);
+            }
+          }}
           style={{
             position: "fixed",
             inset: 0,
@@ -2727,19 +2746,35 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
           }}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                (e.ctrlKey || e.metaKey) &&
+                !confirmResolutionMutation.isPending
+              ) {
+                e.preventDefault();
+                handleConfirmResolution(verifyModalRequest, true, {
+                  rating: verifyRating,
+                  feedback: verifyFeedback,
+                });
+              }
+            }}
             style={{
-              background: "var(--card-bg, #ffffff)",
+              background: "var(--card)",
               borderRadius: 16,
               padding: 24,
               maxWidth: 480,
               width: "100%",
+              maxHeight: "90vh",
+              overflowY: "auto",
               boxShadow: "0 24px 64px rgba(0, 0, 0, 0.2)",
               border: "1px solid var(--border)",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <CheckCircle2 size={18} color="#16A34A" />
+                <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400" />
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--foreground)" }}>
                   Rate &amp; Confirm Repair
                 </h3>
@@ -2747,17 +2782,28 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               <button
                 type="button"
                 onClick={() => setVerifyModalRequest(null)}
+                disabled={confirmResolutionMutation.isPending}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted-foreground)" }}
+                aria-label="Close modal"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div style={{ background: "var(--secondary-light, #F8FAFC)", padding: "10px 14px", borderRadius: 10, marginBottom: 14, fontSize: 12 }}>
+            <div
+              style={{
+                background: "var(--background)",
+                border: "1px solid var(--border)",
+                padding: "10px 14px",
+                borderRadius: 10,
+                marginBottom: 14,
+                fontSize: 12,
+              }}
+            >
               <div style={{ fontWeight: 600, color: "var(--foreground)" }}>
-                {formatMaintenanceType(verifyModalRequest.request_type)} Request (#{verifyModalRequest.ticket_number || verifyModalRequest.request_id})
+                {formatMaintenanceType(verifyModalRequest.request_type)} Request (#{verifyModalRequest.ticket_number || verifyModalRequest.ticketNumber || verifyModalRequest.request_id})
               </div>
-              <div style={{ color: "var(--muted-foreground)", marginTop: 2 }}>
+              <div style={{ color: "var(--muted-foreground)", marginTop: 2, wordBreak: "break-word" }}>
                 {verifyModalRequest.description}
               </div>
             </div>
@@ -2765,9 +2811,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             {/* Star Rating Selector */}
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 6, color: "var(--foreground)" }}>
-                How satisfied are you with the repair? *
+                How satisfied are you with the repair? <span className="text-red-500">*</span>
               </label>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", gap: 4 }}>
                   {[1, 2, 3, 4, 5].map((star) => {
                     const active = (verifyHoverRating || verifyRating) >= star;
@@ -2791,7 +2837,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                           size={24}
                           style={{
                             fill: active ? "#F59E0B" : "none",
-                            stroke: active ? "#F59E0B" : "#94A3B8",
+                            stroke: active ? "#F59E0B" : "var(--muted-foreground)",
                             transition: "fill 0.15s ease, stroke 0.15s ease",
                           }}
                         />
@@ -2800,23 +2846,29 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                   })}
                 </div>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "var(--foreground)" }}>
-                  {verifyRating === 5 && "5 / 5 — Excellent"}
-                  {verifyRating === 4 && "4 / 5 — Very Good"}
-                  {verifyRating === 3 && "3 / 5 — Good"}
-                  {verifyRating === 2 && "2 / 5 — Fair"}
-                  {verifyRating === 1 && "1 / 5 — Poor"}
+                  {(verifyHoverRating || verifyRating) === 5 && "5 / 5 — Excellent"}
+                  {(verifyHoverRating || verifyRating) === 4 && "4 / 5 — Very Good"}
+                  {(verifyHoverRating || verifyRating) === 3 && "3 / 5 — Good"}
+                  {(verifyHoverRating || verifyRating) === 2 && "2 / 5 — Fair"}
+                  {(verifyHoverRating || verifyRating) === 1 && "1 / 5 — Poor"}
                 </span>
               </div>
             </div>
 
             {/* Feedback Comments */}
             <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: "var(--foreground)" }}>
-                Your Feedback <span style={{ fontWeight: 400, color: "var(--muted-foreground)" }}>(Optional)</span>
-              </label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--foreground)" }}>
+                  Your Feedback <span style={{ fontWeight: 400, color: "var(--muted-foreground)" }}>(Optional)</span>
+                </label>
+                <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>
+                  {verifyFeedback.length} / 500
+                </span>
+              </div>
               <textarea
                 className="form-control"
                 rows="3"
+                maxLength={500}
                 placeholder="Share your experience (e.g. work quality, cleanliness, technician)..."
                 value={verifyFeedback}
                 onChange={(e) => setVerifyFeedback(e.target.value)}
@@ -2826,20 +2878,20 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             {/* 7-Day Auto-Completion Policy Notice */}
             <div
               style={{
-                background: "var(--info-light, #EFF6FF)",
-                border: "1px solid var(--info-border, #BFDBFE)",
+                background: "var(--background)",
+                border: "1px solid var(--border)",
                 borderRadius: 8,
-                padding: "8px 12px",
+                padding: "10px 12px",
                 marginBottom: 16,
-                fontSize: 11,
-                color: "var(--info-dark, #1E40AF)",
-                lineHeight: 1.4,
+                fontSize: 12,
+                color: "var(--muted-foreground)",
+                lineHeight: 1.45,
               }}
             >
-              <strong>7-Day Review Period:</strong> Submitting will confirm the repair as resolved. If everything stays in working order, this request will automatically close after 7 days.
+              <strong style={{ color: "var(--foreground)" }}>7-Day Review Period:</strong> Submitting will confirm the repair as resolved. If everything stays in working order, this request will automatically close after 7 days.
             </div>
 
-            <div className="maintenance-modal-actions">
+            <div className="maintenance-modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -2857,7 +2909,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     feedback: verifyFeedback,
                   })
                 }
-                disabled={confirmResolutionMutation.isPending}
+                disabled={confirmResolutionMutation.isPending || verifyRating === 0}
                 style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
               >
                 {confirmResolutionMutation.isPending ? <LoaderCircle size={14} className="admin-announcements-spin" /> : <Check size={14} />}

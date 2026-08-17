@@ -113,69 +113,53 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
   else if (hasVisit) panelState = "scheduled";
   else if (preferenceSelected) panelState = "preference";
 
- const panelTone =
- panelState === "confirmed"
- ? {
- accent: "#10B981",
- soft: "rgba(16, 185, 129, 0.10)",
- border: "rgba(16, 185, 129, 0.28)",
- label: "Reservation Details",
- }
- : panelState === "payment_ready"
- ? {
- accent: "#0F766E",
- soft: "rgba(15, 118, 110, 0.10)",
- border: "rgba(15, 118, 110, 0.24)",
- label: "Approved for Payment",
- }
- : panelState === "application_review"
- ? {
- accent: "var(--color-accent, #D4AF37)",
- soft: "rgba(212, 175, 55, 0.12)",
- border: "rgba(212, 175, 55, 0.34)",
- label: "Pending Review",
- }
- : panelState === "needs_revision"
- ? {
- accent: "#EA580C",
- soft: "rgba(234, 88, 12, 0.10)",
- border: "rgba(234, 88, 12, 0.24)",
- label: "Needs Revision",
- }
- : panelState === "approved"
- ? {
- accent: "#2563EB",
- soft: "rgba(37, 99, 235, 0.10)",
- border: "rgba(37, 99, 235, 0.24)",
- label: "Visit Approved",
- }
- : panelState === "scheduled"
- ? {
- accent: "#7C3AED",
- soft: "rgba(124, 58, 237, 0.10)",
- border: "rgba(124, 58, 237, 0.24)",
- label: "Physical Visit Scheduled",
- }
- : panelState === "preference"
- ? {
- accent: viewingPreference === "urgent_move_in_review" ? "#DC2626" : "#2563EB",
- soft: viewingPreference === "urgent_move_in_review" ? "rgba(220, 38, 38, 0.10)" : "rgba(37, 99, 235, 0.10)",
- border: viewingPreference === "urgent_move_in_review" ? "rgba(220, 38, 38, 0.24)" : "rgba(37, 99, 235, 0.24)",
- label:
-  viewingPreference === "remote_2d_viewing"
-   ? "Remote Viewing Selected"
-   : viewingPreference === "urgent_move_in_review"
-   ? "Priority Review Requested"
-   : viewingPreference === "physical_visit"
-   ? "Physical Visit Selected"
-   : "Viewing Preference Selected",
- }
- : {
- accent: "var(--text-secondary, #64748B)",
- soft: "rgba(100, 116, 139, 0.10)",
- border: "rgba(100, 116, 139, 0.24)",
- label: "Room Selected",
- };
+  const panelTone =
+    panelState === "confirmed"
+      ? {
+          accent: "#059669",
+          label: "Reservation Details",
+        }
+      : panelState === "payment_ready"
+      ? {
+          accent: "#059669",
+          label: "Approved for Payment",
+        }
+      : panelState === "application_review"
+      ? {
+          accent: "#D97706",
+          label: "Pending Review",
+        }
+      : panelState === "needs_revision"
+      ? {
+          accent: "#D97706",
+          label: "Needs Revision",
+        }
+      : panelState === "approved"
+      ? {
+          accent: "#059669",
+          label: "Visit Approved",
+        }
+      : panelState === "scheduled"
+      ? {
+          accent: "#2563EB",
+          label: "Physical Visit Scheduled",
+        }
+      : panelState === "preference"
+      ? {
+          accent: viewingPreference === "urgent_move_in_review" ? "#DC2626" : "#2563EB",
+          label:
+            viewingPreference === "remote_2d_viewing"
+              ? "Remote Viewing Selected"
+              : viewingPreference === "urgent_move_in_review"
+              ? "Priority Review Requested"
+              : viewingPreference === "physical_visit"
+              ? "Physical Visit Selected"
+              : "Viewing Preference Selected",
+        }
+      : {
+          accent: "var(--text-secondary, #64748B)",
+          label: "Room Selected",
+        };
 
   return (
     <div
@@ -368,7 +352,7 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
 
       {panelState === "scheduled" && (
         <div style={S.pendingBanner}>
-          <Clock size={14} color="#7C3AED" />
+          <Clock size={14} color="#2563EB" />
           <span style={S.pendingText}>Saved for viewing coordination only</span>
         </div>
       )}
@@ -618,21 +602,21 @@ const S = {
  fontSize: 13,
  },
 
- pendingBanner: {
- display: "flex",
- alignItems: "center",
- gap: 8,
- background: "rgba(124, 58, 237, 0.08)",
- border: "1px solid rgba(124, 58, 237, 0.2)",
- borderRadius: 10,
- padding: "10px 12px",
- margin: "0 16px 12px",
- },
- pendingText: {
- fontSize: 13,
- fontWeight: 600,
- color: "#7C3AED",
- },
+  pendingBanner: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    background: "rgba(37, 99, 235, 0.08)",
+    border: "1px solid rgba(37, 99, 235, 0.2)",
+    borderRadius: 10,
+    padding: "10px 12px",
+    margin: "0 16px 12px",
+  },
+  pendingText: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#2563EB",
+  },
 
  footerShell: {
  borderTop: "1px solid var(--border-card, #E2E8F0)",

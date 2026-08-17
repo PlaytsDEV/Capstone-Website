@@ -147,6 +147,7 @@ const BILLING_SUBGROUPS = [
     title: "Security Deposits & Clearance Fees",
     description: "Upfront deposit baselines and itemized turnover charges assessed at move-in and check-out.",
     icon: CreditCard,
+    iconColor: "text-sky-600 dark:text-sky-400",
     gridClass: "sa-settings-form-grid--3col",
     fields: [
       {
@@ -154,6 +155,7 @@ const BILLING_SUBGROUPS = [
         label: "Reservation Deposit",
         description: "Upfront deposit required to hold and confirm an applicant bed slot.",
         icon: CreditCard,
+        iconColor: "text-sky-600 dark:text-sky-400",
         prefix: "₱",
         step: "100",
         min: 0,
@@ -166,6 +168,7 @@ const BILLING_SUBGROUPS = [
         label: "RFID Key Replacement Fee",
         description: "Standard charge assessed if an access RFID card is lost or unreturned.",
         icon: KeyRound,
+        iconColor: "text-amber-600 dark:text-amber-400",
         prefix: "₱",
         step: "100",
         min: 0,
@@ -178,6 +181,7 @@ const BILLING_SUBGROUPS = [
         label: "Deposit Refund Window",
         description: "Committed business days to process outgoing tenant deposit returns.",
         icon: Clock,
+        iconColor: "text-sky-600 dark:text-sky-400",
         suffix: "Days",
         step: "1",
         min: 1,
@@ -192,6 +196,7 @@ const BILLING_SUBGROUPS = [
     title: "Utility Tariffs & Overdue Penalties",
     description: "Default consumption rates applied per unit and daily compounded late surcharge ceilings.",
     icon: Zap,
+    iconColor: "text-amber-500 dark:text-amber-400",
     gridClass: "sa-settings-form-grid--4col",
     fields: [
       {
@@ -199,6 +204,7 @@ const BILLING_SUBGROUPS = [
         label: "Default Electricity Rate",
         description: "Baseline electricity tariff prefilled during monthly billing cycles.",
         icon: Zap,
+        iconColor: "text-amber-500 dark:text-amber-400",
         prefix: "₱",
         suffix: "/ kWh",
         step: "0.01",
@@ -212,6 +218,7 @@ const BILLING_SUBGROUPS = [
         label: "Default Water Rate",
         description: "Baseline water tariff applied per cubic meter across shared meters.",
         icon: Droplets,
+        iconColor: "text-sky-500 dark:text-sky-400",
         prefix: "₱",
         suffix: "/ unit",
         step: "0.01",
@@ -225,6 +232,7 @@ const BILLING_SUBGROUPS = [
         label: "Daily Late Penalty",
         description: "Daily surcharge added to overdue monthly tenant rent balances.",
         icon: AlertTriangle,
+        iconColor: "text-rose-600 dark:text-rose-400",
         prefix: "₱",
         suffix: "/ day",
         step: "1",
@@ -238,6 +246,7 @@ const BILLING_SUBGROUPS = [
         label: "Max Late Penalty Cap",
         description: "Upper limit on compounded penalties relative to base monthly rent.",
         icon: ShieldAlert,
+        iconColor: "text-rose-600 dark:text-rose-400",
         suffix: "%",
         step: "1",
         min: 0,
@@ -256,6 +265,7 @@ const LEASE_PRICING_FIELDS = [
     label: "Long-Term Lease Threshold",
     description: "Minimum lease contract duration required to qualify for promotional room discounts.",
     icon: Calendar,
+    iconColor: "text-emerald-600 dark:text-emerald-400",
     suffix: "Months",
     step: "1",
     min: 1,
@@ -268,6 +278,7 @@ const LEASE_PRICING_FIELDS = [
     label: "Quadruple Room Discount",
     description: "Promotional discount percentage for 4-Bed Shared Dormitory accommodations.",
     icon: Percent,
+    iconColor: "text-emerald-600 dark:text-emerald-400",
     suffix: "%",
     step: "1",
     min: 0,
@@ -280,6 +291,7 @@ const LEASE_PRICING_FIELDS = [
     label: "Double Sharing Discount",
     description: "Promotional discount percentage for 2-Bed Double Dormitory accommodations.",
     icon: Percent,
+    iconColor: "text-emerald-600 dark:text-emerald-400",
     suffix: "%",
     step: "1",
     min: 0,
@@ -292,6 +304,7 @@ const LEASE_PRICING_FIELDS = [
     label: "Private Room Discount",
     description: "Promotional discount percentage for Single/Solo Private accommodations.",
     icon: Percent,
+    iconColor: "text-emerald-600 dark:text-emerald-400",
     suffix: "%",
     step: "1",
     min: 0,
@@ -308,6 +321,7 @@ const LIFECYCLE_FIELDS = [
     label: "Payment & Hold Window",
     description: "Hours granted to settle initial deposit before the selected bed slot is auto-released.",
     icon: Clock3,
+    iconColor: "text-amber-600 dark:text-amber-400",
     suffix: "Hours",
     step: "1",
     min: 1,
@@ -321,6 +335,7 @@ const LIFECYCLE_FIELDS = [
     label: "Bed Checkout Lock Window",
     description: "Temporary hold duration while an applicant is completing the online reservation form.",
     icon: Lock,
+    iconColor: "text-amber-600 dark:text-amber-400",
     suffix: "Mins",
     step: "5",
     min: 5,
@@ -333,6 +348,7 @@ const LIFECYCLE_FIELDS = [
     label: "No-Show Move-In Grace Period",
     description: "Days past scheduled check-in before an unattended reservation is auto-cancelled.",
     icon: Calendar,
+    iconColor: "text-rose-600 dark:text-rose-400",
     suffix: "Days",
     step: "1",
     min: 0,
@@ -345,6 +361,7 @@ const LIFECYCLE_FIELDS = [
     label: "Cancelled Records Archival",
     description: "Days before cancelled or expired reservations are automatically archived from active views.",
     icon: Archive,
+    iconColor: "text-slate-500 dark:text-slate-400",
     suffix: "Days",
     step: "1",
     min: 1,
@@ -527,6 +544,7 @@ export default function SystemSettingsPage() {
         id: "policies",
         label: "Operational Policies",
         icon: Settings2,
+        iconClassName: "text-sky-500 dark:text-sky-400",
         badge: hasUnsavedChanges
           ? dirtyPolicyKeys.length + (isAnyBranchDirty ? 1 : 0)
           : undefined,
@@ -536,6 +554,7 @@ export default function SystemSettingsPage() {
         id: "backups",
         label: "Database Backup & Restore",
         icon: Database,
+        iconClassName: "text-emerald-600 dark:text-emerald-400",
       },
     ],
     [hasUnsavedChanges, dirtyPolicyKeys.length, isAnyBranchDirty],
@@ -743,6 +762,7 @@ export default function SystemSettingsPage() {
 
   function renderFieldCard(field) {
     const Icon = field.icon;
+    const iconColor = field.iconColor || "text-slate-600 dark:text-slate-400";
     const isDirty =
       Number(form[field.key]) !== Number(serverBaseline[field.key]);
     const isTouched = Boolean(touched[field.key]);
@@ -758,8 +778,8 @@ export default function SystemSettingsPage() {
         } ${fieldError ? "sa-settings-field-card--error" : ""}`}
       >
         <div className="sa-settings-field-header">
-          <div className="sa-setting-icon">
-            <Icon size={17} />
+          <div className={`sa-setting-icon ${iconColor}`}>
+            <Icon size={18} />
           </div>
           <div className="sa-settings-field-heading">
             <div className="sa-setting-title-row">
@@ -893,7 +913,7 @@ export default function SystemSettingsPage() {
           <section className="sa-settings-meta-bar">
             <div className="sa-settings-meta-item">
               <div className="sa-settings-meta-icon">
-                <ShieldCheck size={18} />
+                <ShieldCheck size={18} className="text-emerald-600 dark:text-emerald-400" />
               </div>
               <div className="sa-settings-meta-content">
                 <span className="sa-settings-meta-label">
@@ -909,7 +929,7 @@ export default function SystemSettingsPage() {
 
             <div className="sa-settings-meta-item">
               <div className="sa-settings-meta-icon">
-                <Clock size={18} />
+                <Clock size={18} className="text-sky-600 dark:text-sky-400" />
               </div>
               <div className="sa-settings-meta-content">
                 <span className="sa-settings-meta-label">
@@ -948,7 +968,7 @@ export default function SystemSettingsPage() {
                 <div key={subgroup.id} className="sa-settings-subgroup">
                   <div className="sa-settings-subgroup-header">
                     <div className="sa-settings-subgroup-title-wrap">
-                      <SubIcon size={15} />
+                      <SubIcon size={16} className={subgroup.iconColor || "text-slate-600 dark:text-slate-400"} />
                       <h3 className="sa-settings-subgroup-title">{subgroup.title}</h3>
                     </div>
                     <p className="sa-settings-subgroup-desc">{subgroup.description}</p>
@@ -1065,7 +1085,14 @@ export default function SystemSettingsPage() {
                     >
                       <div className="sa-branch-matrix-header">
                         <div className="sa-branch-matrix-icon">
-                          <Building2 size={18} />
+                          <Building2
+                            size={20}
+                            className={
+                              branch === "gil-puyat"
+                                ? "text-sky-600 dark:text-sky-400"
+                                : "text-amber-600 dark:text-amber-400"
+                            }
+                          />
                         </div>
                         <div className="sa-branch-matrix-title-wrap">
                           <div className="flex items-center gap-2">
