@@ -57,26 +57,26 @@ export default function OccupancyTrendCard({ data = {} }) {
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <TrendingUp className="w-5 h-5" style={{ color: "var(--success)" }} />
-              <h3 className="text-lg font-semibold text-foreground">
+              <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <h3 className="text-sm font-semibold text-foreground">
                 Occupancy Trend
               </h3>
             </div>
-            <p className="text-sm text-muted-foreground mb-4">
+            <p className="text-xs font-normal text-muted-foreground mb-4">
               Weekly occupancy rate across the selected scope
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
                   Current Rate
                 </p>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-semibold" style={{ color: "var(--success)" }}>
+                  <span className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
                     {currentRate}%
                   </span>
                   {trendChange != null && trendChange !== 0 ? (
                     <span
-                      className="flex items-center gap-1 text-xs font-semibold"
+                      className="flex items-center gap-1 text-[11px] font-semibold"
                       style={{
                         color: isNegativeTrend ? "var(--danger)" : "var(--success)",
                       }}
@@ -92,14 +92,14 @@ export default function OccupancyTrendCard({ data = {} }) {
                 </div>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
                   Occupied Beds
                 </p>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-semibold text-foreground">
+                  <span className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
                     {currentBeds}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-[11px] font-normal text-muted-foreground">
                     / {totalCapacity}
                   </span>
                 </div>

@@ -43,7 +43,7 @@ function tenantName(user = {}) {
     `${user.firstName || ""} ${user.lastName || ""}`.trim()
     || user.name
     || user.fullName
-    || "Lilycrest Resident"
+    || "Tenant"
   );
 }
 
@@ -308,9 +308,27 @@ export async function resolveTenantAIContext(
   const recentAnnouncements = await loadVisibleAnnouncements(db, audienceContext, now)
     .catch(() => []);
 
+  const isApplicant = !currentResident && Boolean(currentReservation || user?.role === "applicant");
+
+  const reservationContext = currentReservation ? {
+    reservationId: String(currentReservation._id),
+    status: currentReservation.status,
+    branch: formatBranchName(currentReservation.branch || currentReservation.roomId?.branch || branchRaw),
+    roomNumber: currentReservation.roomId?.roomNumber || currentReservation.roomNumber || null,
+    roomType: currentReservation.roomId?.type || currentReservation.roomType || null,
+    bedPosition: selectedBedLabel(currentReservation),
+    intendedMoveInDate: currentReservation.intendedMoveInDate || currentReservation.preferredMoveInDate || currentReservation.moveInDate || null,
+    viewingDate: currentReservation.viewingDate || currentReservation.viewingSchedule?.date || null,
+    viewingStatus: currentReservation.viewingStatus || (currentReservation.viewingDate ? "scheduled" : null),
+    paymentStatus: currentReservation.paymentStatus || (currentReservation.depositPaid ? "paid" : "pending"),
+    totalPrice: currentReservation.totalPrice || currentReservation.monthlyRate || null,
+  } : null;
+
   return {
     tenantName: tenantName(user),
     tenantEmail: user.email || null,
+    userRole: user.role || (currentResident ? "tenant" : "applicant"),
+    isApplicant,
     branch: formatBranchName(branchRaw),
     branchRaw,
     branchSource: audienceContext.branchSource || "unresolved",
@@ -325,6 +343,7 @@ export async function resolveTenantAIContext(
       occupancyStartedAt: activeStay?.leaseStartDate || null,
       scheduledMoveInDate,
     },
+    reservation: reservationContext,
     currentBill,
     contract,
     activeMaintenance: maintenanceRequests.map(toMaintenanceContext),

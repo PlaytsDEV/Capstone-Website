@@ -29,13 +29,14 @@
 
 .admin-announcements-card__header h2 {
   margin: 0 0 0.25rem;
-  font-size: 1.05rem;
+  font-size: var(--font-size-card-title, 14px);
+  font-weight: var(--font-weight-card-title, 600);
   color: var(--card-foreground);
 }
 
 .admin-announcements-card__header p {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--font-size-card-sub, 12px);
   color: var(--muted-foreground);
 }
 
@@ -292,6 +293,11 @@
 }
 
 .admin-announcements-spin {
+  display: inline-block;
+  transform-origin: center center;
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
   animation: admin-announcements-rotate 1s linear infinite;
 }
 

@@ -867,7 +867,12 @@ export const swapRoomsAction = async (req, res, next) => {
     }
 
     const actor = await findDbUser(req.user.uid);
-    const result = await executeDirectRoomSwapWorkflow(reservationAId, reservationBId, actor?._id);
+    const result = await executeDirectRoomSwapWorkflow(
+      reservationAId,
+      reservationBId,
+      actor?._id,
+      req.branchFilter,
+    );
 
     await auditLogger.logModification(
       req,

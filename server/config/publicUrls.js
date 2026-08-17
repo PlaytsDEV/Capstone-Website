@@ -40,6 +40,23 @@ const requireHttpUrl = (name, value, { required = false, production = false } = 
   return trimTrailingSlash(parsed.toString());
 };
 
+const isLocalOrLoopbackHost = (urlStr = "") => {
+  try {
+    const parsed = new URL(urlStr);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "0.0.0.0" ||
+      host === "::1" ||
+      host.endsWith(".local") ||
+      host.endsWith(".internal")
+    );
+  } catch {
+    return false;
+  }
+};
+
 export const getPublicUrlConfig = (environment = process.env) => {
   const production = environment.NODE_ENV === "production";
   const publicFrontendUrl = requireHttpUrl(
@@ -73,10 +90,19 @@ export const getPublicUrlConfig = (environment = process.env) => {
   // web/src/assets/images/LOGO.png), unlike bundler-hashed files under
   // /assets/* whose filename changes between builds. NOT logo512.png /
   // logo192.png — those are Create React App's generic placeholder icons,
-  // not Lilycrest branding. Overridable for a rebrand without a code change.
+  // not Lilycrest branding.
+  // In development / local setups, falling back to the canonical public
+  // https://www.lilycrest.space/lilycrest-logo.png ensures email clients
+  // (Gmail, Outlook, etc.) do not show a broken image when opening test emails.
+  const canonicalLogoUrl = "https://www.lilycrest.space/lilycrest-logo.png";
+  const defaultLogoUrl =
+    publicFrontendUrl && !isLocalOrLoopbackHost(publicFrontendUrl)
+      ? `${publicFrontendUrl}/lilycrest-logo.png`
+      : canonicalLogoUrl;
+
   const publicLogoUrl = requireHttpUrl(
     "PUBLIC_LOGO_URL",
-    environment.PUBLIC_LOGO_URL || (publicFrontendUrl ? `${publicFrontendUrl}/lilycrest-logo.png` : ""),
+    environment.PUBLIC_LOGO_URL || defaultLogoUrl,
     { production },
   );
 

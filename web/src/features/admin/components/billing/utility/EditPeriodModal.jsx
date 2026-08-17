@@ -241,7 +241,7 @@ export default function EditPeriodModal({
         <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3.5 bg-muted/10">
           <button
             type="button"
-            className="rounded-lg border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground active:scale-[0.98] transition-all disabled:opacity-50"
+            className="rounded-lg border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground active:scale-[0.98] transition-colors duration-150 disabled:opacity-50"
             onClick={onClose}
             disabled={isSaving}
           >
@@ -249,7 +249,7 @@ export default function EditPeriodModal({
           </button>
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A1628] px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#13243D] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[#D4AF37] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A1628] px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#13243D] active:scale-[0.98] transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[#D4AF37] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
             onClick={onSave}
             disabled={isSaveDisabled}
             title={

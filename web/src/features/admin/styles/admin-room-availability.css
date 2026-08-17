@@ -20,17 +20,18 @@
 .rooms-redesign-view-tab {
   border: none;
   background: transparent;
-  color: var(--text-muted);
-  font-size: 0.82rem;
+  color: var(--muted-foreground, #64748b);
+  font-size: var(--font-size-table-meta, 11px);
   font-weight: 600;
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
   cursor: pointer;
 }
 
 .rooms-redesign-view-tab.is-active {
-  color: var(--text-primary);
-  background: var(--bg-inset);
+  color: var(--foreground, #1e293b);
+  background: var(--bg-card, #ffffff);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 .rooms-redesign-controls {
@@ -42,27 +43,28 @@
 
 .rooms-redesign-filter-group {
   display: inline-flex;
-  gap: 6px;
-  padding: 4px;
-  border-radius: 10px;
-  background: var(--bg-inset);
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--muted, #f1f5f9);
 }
 
 .rooms-redesign-chip {
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-muted);
-  border-radius: 8px;
-  padding: 7px 10px;
-  font-size: 0.78rem;
+  color: var(--muted-foreground, #64748b);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: var(--font-size-table-meta, 11px);
   font-weight: 600;
   cursor: pointer;
 }
 
 .rooms-redesign-chip.is-active {
-  background: #fff;
-  color: var(--text-primary);
-  border-color: var(--border-default);
+  background: var(--card, #ffffff);
+  color: var(--foreground, #1e293b);
+  border-color: var(--border, #e2e8f0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .rooms-redesign-search {
@@ -210,13 +212,14 @@
 
 .rooms-redesign-card-head strong {
   display: block;
-  color: #0f3a66;
-  font-size: 0.95rem;
+  color: var(--foreground, #1e293b);
+  font-size: var(--font-size-card-title, 14px);
+  font-weight: var(--font-weight-card-title, 600);
 }
 
 .rooms-redesign-card-head span {
-  font-size: 0.76rem;
-  color: var(--text-muted);
+  font-size: var(--font-size-card-sub, 12px);
+  color: var(--muted-foreground, #64748b);
 }
 
 .rooms-redesign-room-status {

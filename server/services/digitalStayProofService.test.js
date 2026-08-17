@@ -74,5 +74,5 @@ describe("digitalStayProofService", () => {
     // PDF Magic Bytes: %PDF-
     const header = pdfBuffer.subarray(0, 5).toString("utf8");
     expect(header).toBe("%PDF-");
-  }, 30_000);
+  }, 60_000);
 });

@@ -37,10 +37,22 @@ const chatMessageSchema = new mongoose.Schema(
     },
     message: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
       maxlength: 1000,
+      default: "",
     },
+    attachments: [
+      {
+        url: { type: String, required: true },
+        fileUrl: { type: String, default: "" },
+        name: { type: String, default: "" },
+        fileName: { type: String, default: "" },
+        type: { type: String, default: "application/octet-stream" },
+        mimeType: { type: String, default: "application/octet-stream" },
+        size: { type: Number, default: 0 },
+      },
+    ],
     readAt: {
       type: Date,
       default: null,

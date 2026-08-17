@@ -1,24 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import {
-  X,
-  Send,
-  Copy,
-  CheckCircle2,
-  FileText,
-  BookOpen,
-  LoaderCircle,
-  Sparkles,
-  RotateCcw,
-  User,
-  ChevronRight,
-  UserSearch,
-  Search,
-  Mic,
-  MicOff,
-  Sun,
-  RefreshCw,
-} from "lucide-react";
 import AdminSopReferenceModal from "./AdminSopReferenceModal";
 import AdminTenantInfoCard from "./AdminTenantInfoCard";
 import AdminRoomOccupantsCard from "./AdminRoomOccupantsCard";
@@ -376,34 +357,33 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between px-4 py-3.5 border-b border-border bg-card shrink-0">
-          <div className="flex items-center gap-2.5">
-            <Sparkles size={18} className="text-primary shrink-0" />
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-foreground">Admin Operations Assistant</h3>
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  SOP & Briefings
-                </span>
-              </div>
-              <p className="text-[11px] text-muted-foreground">Instant briefings, tenant lookups & SOP answers</p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-foreground">
+                {user?.role === "owner" ? "Owner Operations Assistant" : "Admin Operations Assistant"}
+              </h3>
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                SOP & Briefings
+              </span>
             </div>
+            <p className="text-[11px] text-muted-foreground">Instant briefings, tenant lookups & SOP answers</p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={handleResetChat}
               title="Reset conversation"
-              className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              className="px-2 py-1 hover:bg-muted rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer border border-border"
             >
-              <RotateCcw size={15} />
+              Reset
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              className="px-2 py-1 hover:bg-muted rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer border border-border"
             >
-              <X size={18} />
+              Close
             </button>
           </div>
         </header>
@@ -420,7 +400,7 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                     {msg.text}
                   </div>
                   <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-xs font-semibold text-foreground shrink-0">
-                    <User size={14} />
+                    You
                   </div>
                 </div>
               );
@@ -430,8 +410,8 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             if (msg.briefing) {
               return (
                 <div key={msg.id} className="flex items-start gap-2.5">
-                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary shrink-0 mt-0.5" aria-hidden="true">
-                    <Sparkles size={14} className="text-primary" />
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary text-xs font-bold shrink-0 mt-0.5" aria-hidden="true">
+                    AI
                   </div>
                   <div className="max-w-[90%] flex-1 space-y-2">
                     <AdminDailyBriefingCard briefing={msg.briefing} onCloseDrawer={onClose} />
@@ -444,8 +424,8 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             if (msg.tenant) {
               return (
                 <div key={msg.id} className="flex items-start gap-2.5">
-                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary shrink-0 mt-0.5" aria-hidden="true">
-                    <Sparkles size={14} className="text-primary" />
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary text-xs font-bold shrink-0 mt-0.5" aria-hidden="true">
+                    AI
                   </div>
                   <div className="max-w-[90%] flex-1 space-y-2">
                     <AdminTenantInfoCard tenant={msg.tenant} onCloseDrawer={onClose} />
@@ -458,8 +438,8 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             if (msg.roomDetails) {
               return (
                 <div key={msg.id} className="flex items-start gap-2.5">
-                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary shrink-0 mt-0.5" aria-hidden="true">
-                    <Sparkles size={14} className="text-primary" />
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary text-xs font-bold shrink-0 mt-0.5" aria-hidden="true">
+                    AI
                   </div>
                   <div className="max-w-[90%] flex-1 space-y-2">
                     <AdminRoomOccupantsCard
@@ -477,13 +457,12 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             if (msg.candidates && msg.candidates.length > 0) {
               return (
                 <div key={msg.id} className="flex items-start gap-2.5">
-                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary shrink-0 mt-0.5" aria-hidden="true">
-                    <Sparkles size={14} className="text-primary" />
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary text-xs font-bold shrink-0 mt-0.5" aria-hidden="true">
+                    AI
                   </div>
                   <div className="max-w-[90%] space-y-2">
                     <div className="rounded-2xl rounded-tl-xs bg-card border border-border p-3.5 text-xs text-foreground leading-relaxed shadow-xs space-y-2.5">
-                      <div className="flex items-center gap-1.5 font-bold text-foreground pb-1.5 border-b border-border">
-                        <UserSearch size={14} className="text-primary" />
+                      <div className="font-bold text-foreground pb-1.5 border-b border-border">
                         <span>{msg.title || "Matching Tenants"}</span>
                       </div>
                       <p className="text-muted-foreground">{msg.text}</p>
@@ -502,8 +481,8 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                                 {cand.roomNumber !== "Unassigned" ? `Room ${cand.roomNumber}` : "Unassigned"} · {cand.branch}
                               </div>
                             </div>
-                            <span className="text-[11px] font-semibold text-primary inline-flex items-center gap-0.5">
-                              View <ChevronRight size={12} />
+                            <span className="text-[11px] font-semibold text-primary">
+                              View
                             </span>
                           </button>
                         ))}
@@ -523,14 +502,13 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
 
             return (
               <div key={msg.id} className="flex items-start gap-2.5">
-                <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary shrink-0 mt-0.5" aria-hidden="true">
-                  <Sparkles size={14} className="text-primary" />
+                <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary text-xs font-bold shrink-0 mt-0.5" aria-hidden="true">
+                  AI
                 </div>
                 <div className="max-w-[90%] space-y-2">
                   <div className="rounded-2xl rounded-tl-xs bg-card border border-border p-3.5 text-xs text-foreground leading-relaxed shadow-xs space-y-2.5">
                     {msg.title && (
-                      <h4 className="font-bold text-xs text-foreground pb-1.5 border-b border-border flex items-center gap-1.5">
-                        <BookOpen size={14} className="text-primary" />
+                      <h4 className="font-bold text-xs text-foreground pb-1.5 border-b border-border">
                         {msg.title}
                       </h4>
                     )}
@@ -561,9 +539,8 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                                 policyLink: msg.policyLink,
                               })
                             }
-                            className="inline-flex items-center gap-1 text-primary font-semibold hover:underline cursor-pointer truncate max-w-[70%]"
+                            className="text-primary font-semibold hover:underline cursor-pointer truncate max-w-[70%]"
                           >
-                            <FileText size={12} className="shrink-0" />
                             <span className="truncate">{msg.policyLink}</span>
                           </button>
                         ) : (
@@ -573,18 +550,12 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                         <button
                           type="button"
                           onClick={() => handleCopy(msg.id, copyableText)}
-                          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0 font-medium"
+                          className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0 font-medium"
                         >
                           {copiedId === msg.id ? (
-                            <>
-                              <CheckCircle2 size={12} className="text-emerald-600" />
-                              <span className="text-emerald-600">Copied!</span>
-                            </>
+                            <span className="text-emerald-600 font-semibold">Copied!</span>
                           ) : (
-                            <>
-                              <Copy size={12} />
-                              <span>Copy Steps</span>
-                            </>
+                            <span>Copy Steps</span>
                           )}
                         </button>
                       </div>
@@ -597,11 +568,10 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
 
           {loading && (
             <div className="flex items-start gap-2.5">
-              <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary shrink-0 mt-0.5" aria-hidden="true">
-                <Sparkles size={14} className="text-primary" />
+              <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-primary text-xs font-bold shrink-0 mt-0.5" aria-hidden="true">
+                AI
               </div>
-              <div className="rounded-2xl rounded-tl-xs bg-card border border-border p-3 text-xs text-muted-foreground flex items-center gap-2 shadow-xs">
-                <LoaderCircle size={14} className="animate-spin text-primary" />
+              <div className="rounded-2xl rounded-tl-xs bg-card border border-border p-3 text-xs text-muted-foreground shadow-xs">
                 <span>Generating operational briefing...</span>
               </div>
             </div>
@@ -621,9 +591,9 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
               onClick={fetchDynamicSuggestions}
               disabled={loadingSuggestions}
               title="Refresh suggestions from live system data"
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              className="px-1.5 py-0.5 rounded text-[10px] font-semibold hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer border border-border"
             >
-              <RefreshCw size={11} className={loadingSuggestions ? "animate-spin text-primary" : ""} />
+              {loadingSuggestions ? "Loading..." : "Refresh"}
             </button>
           </div>
 
@@ -681,7 +651,7 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                     : "Ask SOP, search tenant name, or click Shift Briefing..."
                 }
                 disabled={loading}
-                className={`w-full pl-3.5 pr-10 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-none transition-colors ${
+                className={`w-full pl-3.5 pr-14 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-none transition-colors ${
                   isListening
                     ? "border-rose-500 ring-2 ring-rose-500/20 animate-pulse"
                     : "border-border focus:border-primary"
@@ -694,13 +664,13 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                   type="button"
                   onClick={toggleVoiceListening}
                   title={isListening ? "Stop voice dictation" : "Start voice dictation (hands-free)"}
-                  className={`absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
                     isListening
                       ? "bg-rose-500 text-white animate-bounce"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted border border-border"
                   }`}
                 >
-                  {isListening ? <MicOff size={14} /> : <Mic size={14} />}
+                  {isListening ? "Stop" : "Voice"}
                 </button>
               )}
             </div>
@@ -708,20 +678,13 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             <button
               type="submit"
               disabled={loading || !inputMessage.trim()}
-              className="h-9 px-3.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+              className="h-9 px-3.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 transition-all flex items-center justify-center shrink-0 cursor-pointer shadow-xs"
             >
-              {loading ? (
-                <LoaderCircle size={15} className="animate-spin" />
-              ) : (
-                <>
-                  <span>Send</span>
-                  <Send size={13} />
-                </>
-              )}
+              <span>{loading ? "Sending..." : "Send"}</span>
             </button>
           </form>
           <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground px-1">
-            <span>Press Enter to send · Voice enabled</span>
+            <span>Press Enter to send</span>
             <span>Lilycrest Ground Operations Advisor</span>
           </div>
         </footer>

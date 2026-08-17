@@ -3,85 +3,87 @@ import StatusChip from "../../../shared/components/StatusChip";
 
 /* ─── reusable inline-style constants ──────────── */
 const TH_STYLE = {
- padding: "12px 16px",
- textAlign: "left",
- fontSize: "12px",
- fontWeight: "600",
- color: "#6B7280",
- textTransform: "uppercase",
+  padding: "10px 16px",
+  textAlign: "left",
+  fontSize: "11px",
+  fontWeight: "600",
+  color: "var(--muted-foreground, #64748b)",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
 };
-const TD = { padding: "14px 16px" };
-const NAME = { fontWeight: "500", color: "#1F2937", margin: 0 };
-const SUB = (sz = "12px") => ({
- fontSize: sz,
- color: "#6B7280",
- margin: "2px 0 0",
+const TD = { padding: "12px 16px" };
+const NAME = { fontSize: "13px", fontWeight: "600", color: "var(--foreground, #1e293b)", margin: 0 };
+const SUB = (sz = "11px") => ({
+  fontSize: sz,
+  color: "var(--muted-foreground, #64748b)",
+  margin: "2px 0 0",
 });
 const AMOUNT = {
- fontWeight: "600",
- color: "#059669",
- margin: 0,
- fontSize: "15px",
+  fontWeight: "700",
+  color: "var(--foreground, #1e293b)",
+  margin: 0,
+  fontSize: "13px",
+  fontVariantNumeric: "tabular-nums",
 };
 
 const fmtDate = (d) =>
- d
- ? new Date(d).toLocaleDateString("en-US", {
- month: "short",
- day: "numeric",
- year: "numeric",
- })
- : "N/A";
+  d
+    ? new Date(d).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "N/A";
 
 /**
  * Reusable payment table — renders either pending or verified data with
  * optional action buttons. Extracted from PaymentRequestsTab.jsx.
  */
 const PaymentTable = ({
- title,
- subtitle,
- headerBg,
- headerColor,
- subColor,
- emptyText,
- payments,
- showActions = false,
- showSource = false,
- actionLoading,
- onVerify,
- onReject,
- onViewProof,
+  title,
+  subtitle,
+  headerBg,
+  headerColor,
+  subColor,
+  emptyText,
+  payments,
+  showActions = false,
+  showSource = false,
+  actionLoading,
+  onVerify,
+  onReject,
+  onViewProof,
 }) => (
- <div
- style={{
- backgroundColor: "white",
- borderRadius: "12px",
- border: "1px solid #E5E7EB",
- marginBottom: "24px",
- overflow: "hidden",
- }}
- >
- <div
- style={{
- padding: "16px 20px",
- borderBottom: "1px solid #E5E7EB",
- backgroundColor: headerBg,
- }}
- >
- <h3
- style={{
- fontSize: "16px",
- fontWeight: "600",
- color: headerColor,
- margin: 0,
- }}
- >
- {title}
- </h3>
- <p style={{ fontSize: "13px", color: subColor, margin: "4px 0 0" }}>
- {subtitle}
- </p>
- </div>
+  <div
+    style={{
+      backgroundColor: "var(--card, #ffffff)",
+      borderRadius: "10px",
+      border: "1px solid var(--border, #e2e8f0)",
+      marginBottom: "24px",
+      overflow: "hidden",
+    }}
+  >
+    <div
+      style={{
+        padding: "14px 16px",
+        borderBottom: "1px solid var(--border, #e2e8f0)",
+        backgroundColor: headerBg,
+      }}
+    >
+      <h3
+        style={{
+          fontSize: "14px",
+          fontWeight: "600",
+          color: headerColor || "var(--foreground, #1e293b)",
+          margin: 0,
+        }}
+      >
+        {title}
+      </h3>
+      <p style={{ fontSize: "12px", color: subColor || "var(--muted-foreground, #64748b)", margin: "2px 0 0" }}>
+        {subtitle}
+      </p>
+    </div>
 
  {payments.length === 0 ? (
  <div style={{ padding: "60px 24px", textAlign: "center" }}>

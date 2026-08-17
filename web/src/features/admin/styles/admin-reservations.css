@@ -10,6 +10,50 @@
   padding: var(--admin-content-padding, 24px);
 }
 
+/* ── Reservation Stats Bar ── */
+.ar-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.ar-stat {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-light, #e2e8f0);
+  border-radius: var(--radius-lg, 10px);
+  padding: 16px;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: space-between;
+  min-height: 108px;
+  box-shadow: var(--shadow-xs);
+  transition: all var(--duration-normal) var(--ease-in-out);
+}
+
+.ar-stat:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+}
+
+.ar-stat-label {
+  font-size: var(--font-size-kpi-label, 11px);
+  font-weight: var(--font-weight-kpi-label, 600);
+  color: var(--muted-foreground, #64748b);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-kpi-label, 0.05em);
+  margin-bottom: 6px;
+}
+
+.ar-stat-count {
+  font-size: var(--font-size-kpi-value, 24px);
+  font-weight: var(--font-weight-kpi-value, 700);
+  color: var(--foreground, #1e293b);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Applicant cell ── */
 .res-applicant-cell {
   display: flex;
@@ -41,9 +85,9 @@
 }
 
 .res-applicant-name {
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-table-cell, 13px);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--foreground, #1e293b);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -51,8 +95,8 @@
 }
 
 .res-applicant-email {
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  font-size: var(--font-size-table-meta, 11px);
+  color: var(--muted-foreground, #64748b);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -60,8 +104,8 @@
 }
 
 .res-applicant-code {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  font-size: var(--font-size-table-meta, 11px);
+  color: var(--muted-foreground, #64748b);
   line-height: 1.3;
 }
 

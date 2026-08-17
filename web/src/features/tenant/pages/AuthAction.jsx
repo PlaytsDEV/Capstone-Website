@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { applyActionCode, checkActionCode } from "firebase/auth";
 import { AlertCircle, CheckCircle, Clock, ExternalLink, Info, Loader2, MailCheck } from "lucide-react";
 import { auth } from "../../../firebase/config";
@@ -80,10 +80,24 @@ const getErrorState = (error) => normalizeVerificationErrorCode(
 
 function AuthAction() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const processedRef = useRef("");
   const [state, setState] = useState("LOADING");
-  const [details, setDetails] = useState({ maskedEmail: "", continuePath: "/signin" });
+  const [verifiedEmail, setVerifiedEmail] = useState(
+    () =>
+      location.state?.email ||
+      sessionStorage.getItem("lilycrest_verified_email") ||
+      sessionStorage.getItem("lilycrest_pending_verification_email") ||
+      "",
+  );
+  const [details, setDetails] = useState({
+    maskedEmail:
+      location.state?.email ||
+      sessionStorage.getItem("lilycrest_pending_verification_email") ||
+      "",
+    continuePath: "/signin",
+  });
   const [resending, setResending] = useState(false);
   const [reconciling, setReconciling] = useState(false);
   const [verifiedIdentityMatchesSession, setVerifiedIdentityMatchesSession] = useState(false);
@@ -92,7 +106,12 @@ function AuthAction() {
 
   const applyServerDetails = (data = {}) => {
     setDetails((current) => ({
-      maskedEmail: data.maskedEmail || current.maskedEmail || "",
+      maskedEmail:
+        data.maskedEmail ||
+        current.maskedEmail ||
+        location.state?.email ||
+        sessionStorage.getItem("lilycrest_pending_verification_email") ||
+        "",
       continuePath: normalizeInternalContinuation(data.continuePath || current.continuePath),
     }));
     if (data.retryAfterSeconds > 0) {
@@ -206,6 +225,11 @@ function AuthAction() {
 
         const info = await checkActionCode(auth, oobCode);
         checkedEmail = info?.data?.email || "";
+        if (checkedEmail) {
+          setVerifiedEmail(checkedEmail);
+          sessionStorage.setItem("lilycrest_verified_email", checkedEmail);
+          sessionStorage.setItem("lilycrest_pending_email", checkedEmail);
+        }
         const sessionRelationship = classifyVerificationSession({
           currentEmail: auth.currentUser?.email,
           targetEmail: checkedEmail,
@@ -235,7 +259,10 @@ function AuthAction() {
           setState(EMAIL_VERIFICATION_STATES.RECONCILIATION_REQUIRED);
           return;
         }
-        if (checkedEmail) sessionStorage.setItem("lilycrest_verified_email", checkedEmail);
+        if (checkedEmail) {
+          sessionStorage.setItem("lilycrest_verified_email", checkedEmail);
+          sessionStorage.setItem("lilycrest_pending_email", checkedEmail);
+        }
         setState(differentAccount || finalized.identityMatch === "mismatch"
           ? EMAIL_VERIFICATION_STATES.ACCOUNT_MISMATCH
           : EMAIL_VERIFICATION_STATES.VALID_UNUSED_LINK);
@@ -344,9 +371,20 @@ function AuthAction() {
         ? <MailCheck />
         : <AlertCircle />;
 
+  const targetEmail =
+    details.maskedEmail ||
+    location.state?.email ||
+    sessionStorage.getItem("lilycrest_pending_verification_email") ||
+    "";
+
   return (
     <VerificationLayout icon={icon} title={copy.title} message={copy.message} tone={copy.tone}>
-      {details.maskedEmail && <p className="text-sm text-gray-500 mb-4">Email: {details.maskedEmail}</p>}
+      {targetEmail ? (
+        <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 mb-5 rounded-full bg-slate-50 border border-slate-200 text-xs text-slate-700 max-w-full">
+          <span className="text-slate-500 font-normal">Sent to:</span>
+          <strong className="text-slate-900 font-semibold truncate">{targetEmail}</strong>
+        </div>
+      ) : null}
 
       {state === EMAIL_VERIFICATION_STATES.VERIFICATION_EMAIL_RESENT && (
         <>
@@ -410,11 +448,43 @@ function AuthAction() {
       )}
 
       {state === EMAIL_VERIFICATION_STATES.VALID_UNUSED_LINK && hasReservationContinuation && (
-        <Link to={signedInContinuation} className="block w-full py-4 rounded-full text-white font-medium" style={{ backgroundColor: "#D4AF37" }}>Continue reservation</Link>
+        <Link
+          to={signedInContinuation}
+          state={{ email: verifiedEmail || sessionStorage.getItem("lilycrest_verified_email") || "" }}
+          className="block w-full py-4 rounded-full text-white font-medium"
+          style={{ backgroundColor: "#D4AF37" }}
+        >
+          Continue reservation
+        </Link>
       )}
 
       {[EMAIL_VERIFICATION_STATES.VALID_UNUSED_LINK, EMAIL_VERIFICATION_STATES.ALREADY_USED_LINK_VERIFIED_USER, EMAIL_VERIFICATION_STATES.ALREADY_VERIFIED_ACCOUNT].includes(state) && !hasReservationContinuation && (
-        <Link to="/signin?verified=true" className="block w-full py-4 rounded-full text-white font-medium" style={{ backgroundColor: "#D4AF37" }}>Continue to login</Link>
+        <Link
+          to={{
+            pathname: "/signin",
+            search: "?verified=true",
+          }}
+          state={{ email: verifiedEmail || sessionStorage.getItem("lilycrest_verified_email") || sessionStorage.getItem("lilycrest_pending_verification_email") || "" }}
+          className="block w-full py-4 rounded-full text-white font-medium"
+          style={{ backgroundColor: "#D4AF37" }}
+        >
+          Continue to login
+        </Link>
+      )}
+
+      {canResend && (
+        <div className="mt-4 pt-3 border-t border-slate-100 text-center">
+          <p className="text-xs text-slate-500 mb-1">Entered the wrong email address?</p>
+          <Link
+            to="/signup"
+            onClick={() => {
+              sessionStorage.removeItem("lilycrest_pending_verification_email");
+            }}
+            className="text-xs font-semibold text-slate-700 hover:text-amber-700 hover:underline"
+          >
+            Return to registration
+          </Link>
+        </div>
       )}
 
       <Link to="/" className="block w-full py-3 mt-3 rounded-full text-sm text-gray-700 bg-gray-100">

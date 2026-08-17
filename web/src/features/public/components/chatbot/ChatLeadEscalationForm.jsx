@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { User, Mail, Phone, Building, HelpCircle, CheckCircle2, Loader2, ArrowLeft, Send, Headphones, Sparkles } from "lucide-react";
 import { chatbotApi } from "../../../../shared/api/chatbotApi";
 
 const BRANCH_OPTIONS = [
@@ -41,6 +40,7 @@ export function ChatLeadEscalationForm({
   });
 
   const [touched, setTouched] = useState({});
+  const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [isAutoFilled, setIsAutoFilled] = useState(false);
@@ -94,7 +94,63 @@ export function ChatLeadEscalationForm({
           });
         })
         .catch(() => {
-          // Non-fatal if parsing fails
+          // Fallback to local regex extraction if API fails
+          if (conversationHistory && conversationHistory.length > 0) {
+            let extractedName = "";
+            let extractedEmail = "";
+            let extractedPhone = "";
+            let extractedCategory = "general_inquiry";
+            let extractedBranch = initialBranch || "all";
+
+            const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/i;
+            const phoneRegex = /(?:\+?63|0)[\s-]?(\d{3})[\s-]?(\d{3})[\s-]?(\d{4})/;
+            const nameRegex = /(?:my name is|i am|i'm|this is)\s+([a-zA-Z\s]{2,30})/i;
+
+            conversationHistory.forEach((msg) => {
+              if (msg.role === "user" && msg.text) {
+                const text = msg.text;
+                if (!extractedEmail) {
+                  const emailMatch = text.match(emailRegex);
+                  if (emailMatch) extractedEmail = emailMatch[1];
+                }
+                if (!extractedPhone) {
+                  const phoneMatch = text.match(phoneRegex);
+                  if (phoneMatch) {
+                    extractedPhone = `${phoneMatch[1]}${phoneMatch[2]}${phoneMatch[3]}`;
+                  }
+                }
+                if (!extractedName) {
+                  const nameMatch = text.match(nameRegex);
+                  if (nameMatch) {
+                    extractedName = nameMatch[1].trim().replace(/\b\w/g, (c) => c.toUpperCase());
+                  }
+                }
+                const lower = text.toLowerCase();
+                if (lower.includes("guadalupe")) extractedBranch = "guadalupe";
+                else if (lower.includes("gil puyat") || lower.includes("puyat")) extractedBranch = "gil_puyat";
+
+                if (lower.includes("view") || lower.includes("tour") || lower.includes("visit")) {
+                  extractedCategory = "ocular_visit";
+                } else if (lower.includes("price") || lower.includes("rate") || lower.includes("rent") || lower.includes("cost") || lower.includes("available")) {
+                  extractedCategory = "room_availability";
+                } else if (lower.includes("reserve") || lower.includes("deposit") || lower.includes("apply")) {
+                  extractedCategory = "reservation_process";
+                }
+              }
+            });
+
+            if (extractedName || extractedEmail || extractedPhone || extractedCategory !== "general_inquiry") {
+              setFormData((prev) => ({
+                ...prev,
+                name: extractedName || prev.name,
+                email: extractedEmail || prev.email,
+                phone: extractedPhone || prev.phone,
+                preferredBranch: extractedBranch !== "all" ? extractedBranch : prev.preferredBranch,
+                concernCategory: extractedCategory !== "general_inquiry" ? extractedCategory : prev.concernCategory,
+              }));
+              setIsAutoFilled(true);
+            }
+          }
         })
         .finally(() => {
           if (isMounted) setIsParsing(false);
@@ -106,117 +162,108 @@ export function ChatLeadEscalationForm({
     };
   }, [conversationHistory, initialBranch]);
 
-  // Field validation helpers
   const validate = () => {
-    const errors = {};
+    const nextErrors = {};
 
     if (!formData.name.trim()) {
-      errors.name = "Full name is required";
+      nextErrors.name = "Full name is required";
     } else if (formData.name.trim().length < 2) {
-      errors.name = "Name must be at least 2 characters";
+      nextErrors.name = "Name must be at least 2 characters";
     }
 
     if (!formData.email.trim()) {
-      errors.email = "Email address is required";
+      nextErrors.email = "Email address is required";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
-      errors.email = "Please enter a valid email address";
+      nextErrors.email = "Please enter a valid email address";
     }
 
     const cleanPhone = formData.phone.replace(/\D/g, "");
     if (!cleanPhone) {
-      errors.phone = "Phone number is required";
-    } else if (!cleanPhone.startsWith("9")) {
-      errors.phone = "Phone must start with 9 after +63 (e.g. 917 123 4567)";
-    } else if (cleanPhone.length !== 10) {
-      errors.phone = "Enter 10 digits starting with 9";
+      nextErrors.phone = "Phone number is required";
+    } else if (cleanPhone.length < 10) {
+      nextErrors.phone = "Please enter a valid 10-digit mobile number";
     }
 
-    if (formData.message.length > MSG_MAX) {
-      errors.message = `Message cannot exceed ${MSG_MAX} characters`;
-    }
-
-    return errors;
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   };
-
-  const errors = validate();
-  const isValid = Object.keys(errors).length === 0;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors((prev) => ({ ...prev, [name]: null }));
+    }
   };
 
   const handlePhoneChange = (e) => {
     const raw = e.target.value.replace(/\D/g, "");
-    const truncated = raw.slice(0, 10);
-    setFormData((prev) => ({ ...prev, phone: truncated }));
+    const truncated = raw.startsWith("63") ? raw.slice(2) : raw.startsWith("0") ? raw.slice(1) : raw;
+    setFormData((prev) => ({ ...prev, phone: truncated.slice(0, 10) }));
+    if (errors.phone) {
+      setErrors((prev) => ({ ...prev, phone: null }));
+    }
   };
 
   const handleBlur = (field) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
+    validate();
+  };
+
+  const formatPhoneDisplay = (digits) => {
+    if (!digits) return "";
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
+    return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 10)}`;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setTouched({
-      name: true,
-      email: true,
-      phone: true,
-      preferredBranch: true,
-      concernCategory: true,
-      message: true,
-    });
+    setTouched({ name: true, email: true, phone: true });
 
-    if (!isValid) return;
+    if (!validate()) return;
 
     setIsSubmitting(true);
-    setSubmitError("");
+    setSubmitError(null);
 
     try {
-      const fullPhone = `+63${formData.phone}`;
       const payload = {
-        name: formData.name,
-        email: formData.email,
-        phone: fullPhone,
-        preferredBranch: formData.preferredBranch,
-        preferredRoomType: formData.concernCategory,
-        message: formData.message || `Front Desk Assistance Request (${formData.concernCategory})`,
-        source: "chatbot_front_desk_request",
+        fullName: formData.name.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        branch: formData.preferredBranch,
+        category: formData.concernCategory,
+        message: formData.message.trim(),
+        chatContext: conversationHistory.slice(-6).map((m) => `${m.role}: ${m.text}`).join("\n"),
       };
 
-      const result = await chatbotApi.escalateChatbotLead(payload);
-      setSubmittedRequest(result);
-      if (onSuccessSubmitted) {
-        onSuccessSubmitted(result);
+      const res = await chatbotApi.escalateToHuman(payload);
+
+      if (res?.success) {
+        setSubmittedRequest({
+          inquiryId: res?.data?.inquiryId || `INQ-${Date.now().toString().slice(-6)}`,
+          message: res?.message || "Your inquiry has been successfully sent to front desk staff.",
+        });
+        if (typeof onSuccessSubmitted === "function") {
+          onSuccessSubmitted(res.data);
+        }
+      } else {
+        throw new Error(res?.message || "Failed to submit request");
       }
     } catch (err) {
+      console.error("Escalation submit error:", err);
       setSubmitError(
-        err?.message || "Failed to submit your request. Please check your connection and try again."
+        err?.message || "We could not submit your request at this moment. Please try again shortly."
       );
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Format phone display: 9171234567 -> 917 123 4567
-  const formatPhoneDisplay = (digits) => {
-    if (!digits) return "";
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
-    return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
-  };
-
-  // Success view
   if (submittedRequest) {
     return (
       <div className="p-4 text-center animate-fadeIn">
-        <div
-          className="w-12 h-12 mx-auto rounded-full flex items-center justify-center mb-3"
-          style={{ backgroundColor: "rgba(5, 150, 105, 0.12)", color: "#059669" }}
-        >
-          <CheckCircle2 className="w-6 h-6" />
-        </div>
-        <h4 className="text-sm font-bold tracking-tight mb-1" style={{ color: "var(--lp-text, #162f53)" }}>
+        <h4 className="text-sm font-bold tracking-tight mb-1 text-emerald-600 dark:text-emerald-400">
           Assistance Request Submitted
         </h4>
         <p className="text-xs leading-relaxed mb-3" style={{ color: "var(--lp-text-secondary, #475569)" }}>
@@ -251,20 +298,18 @@ export function ChatLeadEscalationForm({
 
   return (
     <div className="p-1 animate-fadeIn text-left">
-      {/* Header */}
       <div className="flex items-center justify-between pb-1.5 mb-2 border-b" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="px-2 py-0.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted border border-border transition-colors cursor-pointer"
             aria-label="Back to chat"
           >
-            <ArrowLeft className="w-4 h-4" style={{ color: "var(--lp-text-muted, #64748B)" }} />
+            Back
           </button>
           <div>
-            <h4 className="text-xs font-bold tracking-tight flex items-center gap-1.5" style={{ color: "var(--lp-text, #162f53)" }}>
-              <Headphones className="w-3.5 h-3.5 text-amber-600 dark:text-amber-500" />
+            <h4 className="text-xs font-bold tracking-tight" style={{ color: "var(--lp-text, #162f53)" }}>
               Request Front Desk Assistance
             </h4>
             <p className="text-[10px]" style={{ color: "var(--lp-text-muted, #64748B)" }}>
@@ -275,8 +320,7 @@ export function ChatLeadEscalationForm({
       </div>
 
       {isAutoFilled && (
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-[11px] border border-amber-200 dark:border-amber-900/50 mb-2">
-          <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+        <div className="px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-[11px] border border-amber-200 dark:border-amber-900/50 mb-2">
           <span>Details pre-filled from your chat. Please review and confirm.</span>
         </div>
       )}
@@ -288,13 +332,11 @@ export function ChatLeadEscalationForm({
       )}
 
       <form onSubmit={handleSubmit} className="space-y-2">
-        {/* Full Name */}
         <div>
           <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
             Full Name <span className="text-red-500">*</span>
           </label>
           <div className="relative">
-            <User className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
               name="name"
@@ -302,7 +344,7 @@ export function ChatLeadEscalationForm({
               value={formData.name}
               onChange={handleChange}
               onBlur={() => handleBlur("name")}
-              className={`w-full text-xs pl-8 pr-2.5 py-1.5 rounded-lg border outline-none transition-all ${
+              className={`w-full text-xs px-2.5 py-1.5 rounded-lg border outline-none transition-all ${
                 touched.name && errors.name
                   ? "border-red-500 bg-red-50/50"
                   : "border-slate-300 dark:border-slate-700 focus:border-amber-500"
@@ -315,13 +357,11 @@ export function ChatLeadEscalationForm({
           )}
         </div>
 
-        {/* Email */}
         <div>
           <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
             Email Address <span className="text-red-500">*</span>
           </label>
           <div className="relative">
-            <Mail className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="email"
               name="email"
@@ -329,7 +369,7 @@ export function ChatLeadEscalationForm({
               value={formData.email}
               onChange={handleChange}
               onBlur={() => handleBlur("email")}
-              className={`w-full text-xs pl-8 pr-2.5 py-1.5 rounded-lg border outline-none transition-all ${
+              className={`w-full text-xs px-2.5 py-1.5 rounded-lg border outline-none transition-all ${
                 touched.email && errors.email
                   ? "border-red-500 bg-red-50/50"
                   : "border-slate-300 dark:border-slate-700 focus:border-amber-500"
@@ -342,7 +382,6 @@ export function ChatLeadEscalationForm({
           )}
         </div>
 
-        {/* Phone */}
         <div>
           <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
             Contact Number <span className="text-red-500">*</span>
@@ -356,7 +395,6 @@ export function ChatLeadEscalationForm({
                 color: "var(--lp-text, #162f53)",
               }}
             >
-              <Phone className="w-3 h-3 text-slate-400" />
               <span>+63</span>
             </span>
             <input
@@ -380,18 +418,16 @@ export function ChatLeadEscalationForm({
           )}
         </div>
 
-        {/* Branch Preference */}
         <div>
           <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
             Preferred Branch
           </label>
           <div className="relative">
-            <Building className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <select
               name="preferredBranch"
               value={formData.preferredBranch}
               onChange={handleChange}
-              className="w-full text-xs pl-8 pr-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none focus:border-amber-500"
+              className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none focus:border-amber-500"
               style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
             >
               {BRANCH_OPTIONS.map((opt) => (
@@ -403,18 +439,16 @@ export function ChatLeadEscalationForm({
           </div>
         </div>
 
-        {/* Category of Concern */}
         <div>
           <label className="block text-[11px] font-semibold mb-0.5" style={{ color: "var(--lp-text, #162f53)" }}>
             Topic of Concern
           </label>
           <div className="relative">
-            <HelpCircle className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <select
               name="concernCategory"
               value={formData.concernCategory}
               onChange={handleChange}
-              className="w-full text-xs pl-8 pr-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none focus:border-amber-500"
+              className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 outline-none focus:border-amber-500"
               style={{ backgroundColor: "var(--surface-input, #f8fafc)", color: "var(--lp-text, #162f53)" }}
             >
               {CONCERN_CATEGORIES.map((cat) => (
@@ -426,7 +460,6 @@ export function ChatLeadEscalationForm({
           </div>
         </div>
 
-        {/* Message */}
         <div>
           <div className="flex items-center justify-between mb-0.5">
             <label className="block text-[11px] font-semibold" style={{ color: "var(--lp-text, #162f53)" }}>
@@ -448,7 +481,6 @@ export function ChatLeadEscalationForm({
           />
         </div>
 
-        {/* Action Buttons */}
         <div className="flex items-center gap-2 pt-1">
           <button
             type="button"
@@ -462,20 +494,10 @@ export function ChatLeadEscalationForm({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold text-white flex items-center justify-center gap-1.5 transition-all shadow-sm disabled:opacity-50"
+            className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold text-white flex items-center justify-center transition-all shadow-sm disabled:opacity-50"
             style={{ backgroundColor: "var(--lp-navy, #0A1628)" }}
           >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Submitting...</span>
-              </>
-            ) : (
-              <>
-                <Send className="w-3.5 h-3.5" />
-                <span>Submit Request</span>
-              </>
-            )}
+            <span>{isSubmitting ? "Submitting..." : "Submit Request"}</span>
           </button>
         </div>
       </form>

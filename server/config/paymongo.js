@@ -240,6 +240,18 @@ export function verifyWebhookSignature(rawBody, signatureHeader) {
     throw new Error("Missing timestamp in Paymongo-Signature header");
   }
 
+  const timestampNum = Number(timestamp);
+  if (!Number.isFinite(timestampNum)) {
+    throw new Error("Invalid timestamp in Paymongo-Signature header");
+  }
+
+  // Enforce timestamp freshness to prevent replay attacks (5 minute window)
+  const MAX_TOLERANCE_SECONDS = 300;
+  const currentSeconds = Math.floor(Date.now() / 1000);
+  if (process.env.NODE_ENV === "production" && Math.abs(currentSeconds - timestampNum) > MAX_TOLERANCE_SECONDS) {
+    throw new Error("Webhook signature timestamp expired (possible replay attack)");
+  }
+
   // Compute expected signature
   const payload = `${timestamp}.${rawBody}`;
   const expectedSignature = crypto

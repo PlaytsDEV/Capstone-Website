@@ -29,7 +29,7 @@ export const isOwnerRole = (role) => role === ROLES.OWNER;
  * @returns {boolean}
  */
 export const isAdminRole = (role) =>
-  role === ROLES.OWNER || role === ROLES.BRANCH_ADMIN;
+  role === ROLES.OWNER || role === ROLES.BRANCH_ADMIN || role === "admin";
 
 /**
  * All role values that carry admin-level access.

@@ -19,10 +19,10 @@ export const chatApi = {
   getAdminMessages: (conversationId) =>
     authFetch(`/chat/admin/conversations/${conversationId}/messages`),
 
-  sendAdminMessage: (conversationId, message) =>
+  sendAdminMessage: (conversationId, message, attachments = []) =>
     authFetch(`/chat/admin/conversations/${conversationId}/messages`, {
       method: "POST",
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, attachments }),
     }),
 
   markAdminRead: (conversationId) =>

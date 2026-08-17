@@ -82,6 +82,25 @@ const detectCountryFromE164 = (e164) => {
 };
 
 /**
+ * CountryFlag — Renders country flag emoji with accessible attributes and fallback.
+ */
+const CountryFlag = ({ code, fallbackFlag }) => (
+  <span
+    style={{
+      fontSize: 18,
+      lineHeight: 1,
+      display: "inline-flex",
+      alignItems: "center",
+      userSelect: "none",
+    }}
+    role="img"
+    aria-label={code ? `${code} flag` : "flag"}
+  >
+    {fallbackFlag || "🌐"}
+  </span>
+);
+
+/**
  * PhoneInput — Smart international phone input backed by libphonenumber-js.
  *
  * Behaviors:
@@ -211,377 +230,547 @@ const PhoneInput = ({
  // Detect country using libphonenumber-js first, then prefix fallback
  const detectedCountry = detectCountryFromE164(cleaned);
 
- if (detectedCountry) {
- // Country detected — extract local number and strip leading 0
- const dialDigits = detectedCountry.dialCode.replace(/\D/g, "");
- let local = numericPart.slice(dialDigits.length);
- if (local.startsWith("0")) local = local.slice(1);
- const maxL = getExpectedLength(detectedCountry.code);
- const truncated = local.slice(0, maxL);
- setSelectedCountry(detectedCountry);
- setLocalNumber(truncated);
- onChange?.(truncated ? detectedCountry.dialCode + truncated : detectedCountry.dialCode);
- } else {
- // Still building country code prefix
- setLocalNumber(cleaned);
- onChange?.("");
- }
- return;
- }
+    if (detectedCountry) {
+      // Country detected — extract local number and strip leading 0
+      const dialDigits = detectedCountry.dialCode.replace(/\D/g, "");
+      let local = numericPart.slice(dialDigits.length);
+      if (local.startsWith("0")) local = local.slice(1);
+      const maxL = getExpectedLength(detectedCountry.code);
+      const truncated = local.slice(0, maxL);
+      setSelectedCountry(detectedCountry);
+      setLocalNumber(truncated);
+      onChange?.(
+        truncated
+          ? detectedCountry.dialCode + truncated
+          : detectedCountry.dialCode
+      );
+    } else {
+      // Still building country code prefix
+      setLocalNumber(cleaned);
+      onChange?.("");
+    }
+    return;
+  }
 
- // ── MODE 2: Local digit mode ───────────────────────────────
- let digits = raw.replace(/\D/g, "");
+  // ── MODE 2: Local digit mode ───────────────────────────────
+  let digits = raw.replace(/\D/g, "");
 
- // Handle accidental pasting of country code prefix without "+", e.g. 630917... or 63917...
- if (selectedCountry?.dialCode === "+63") {
-   if (digits.startsWith("630") && digits.length > 10) {
-     digits = digits.slice(3);
-   } else if (digits.startsWith("63") && digits.length > 10) {
-     digits = digits.slice(2);
-   }
- }
+  // Handle accidental pasting of country code prefix without "+", e.g. 630917... or 63917...
+  if (selectedCountry?.dialCode === "+63") {
+    if (digits.startsWith("630") && digits.length > 10) {
+      digits = digits.slice(3);
+    } else if (digits.startsWith("63") && digits.length > 10) {
+      digits = digits.slice(2);
+    }
+  }
 
- // Auto-convert leading "0" (e.g. PH: "09171..." → "9171...")
- if (digits.startsWith("0")) digits = digits.slice(1);
+  // Auto-convert leading "0" (e.g. PH: "09171..." → "9171...")
+  if (digits.startsWith("0")) digits = digits.slice(1);
 
- const truncated = digits.slice(0, expectedLength);
- setLocalNumber(truncated);
- if (!selectedCountry) return;
- onChange?.(truncated ? selectedCountry.dialCode + truncated : "");
- };
+  const truncated = digits.slice(0, expectedLength);
+  setLocalNumber(truncated);
+  if (!selectedCountry) return;
+  onChange?.(truncated ? selectedCountry.dialCode + truncated : "");
+};
 
- /* ── Counter state ───────────────────────────────────────────── */
- const displayLength = localNumber.startsWith("+")
- ? Math.max(0, localNumber.length - 1)
- : localNumber.length;
 
- const counterColor =
- displayLength === 0
- ? "var(--fi-label, #94a3b8)"
- : displayLength < expectedLength
- ? "#f59e0b"
- : "#10b981";
+  /* ── Counter state ───────────────────────────────────────────── */
+  const displayLength = localNumber.startsWith("+")
+    ? Math.max(0, localNumber.length - 1)
+    : localNumber.length;
 
- /* ── Validation ──────────────────────────────────────────────── */
- const showError = hasError || !!error;
+  const counterColor =
+    displayLength === 0
+      ? "var(--fi-label, #94a3b8)"
+      : displayLength < expectedLength
+      ? "#f59e0b"
+      : "#10b981";
 
- /* ── Placeholder ─────────────────────────────────────────────── */
- const getPlaceholder = () => {
- if (!selectedCountry) return "Select country first";
- return getExamplePlaceholder(selectedCountry.code, expectedLength);
- };
+  /* ── Validation ──────────────────────────────────────────────── */
+  const showError = hasError || !!error;
 
- /* ──────────────────────────────────────────────────────────────
- AUTH STYLE — matches .floating-field__wrapper exactly
- ────────────────────────────────────────────────────────────── */
- const phoneErrorId = "phone-error";
+  /* ── Placeholder ─────────────────────────────────────────────── */
+  const getPlaceholder = () => {
+    if (!selectedCountry) return "Select country first";
+    return getExamplePlaceholder(selectedCountry.code, expectedLength);
+  };
 
- if (authStyle) {
- const borderColor = showError
- ? "var(--fi-error, #ef4444)"
- : valid && !focused
- ? "var(--fi-valid, #10b981)"
- : focused
- ? "var(--fi-border-focus, #b0bec5)"
- : "var(--fi-border, #e2e8f0)";
+  /* ──────────────────────────────────────────────────────────────
+     AUTH STYLE — matches .floating-field__wrapper exactly
+  ────────────────────────────────────────────────────────────── */
+  const phoneErrorId = "phone-error";
 
- const labelColor = showError
- ? "var(--fi-error, #ef4444)"
- : valid && !focused
- ? "var(--fi-valid, #10b981)"
- : focused
- ? "var(--fi-focus, #FF8C42)"
- : "var(--fi-label-active, #64748b)";
+  if (authStyle) {
+    const wrapperClass = [
+      "floating-field__wrapper",
+      "active",
+      focused ? "focused" : "",
+      showError ? "has-error" : "",
+      valid && !focused ? "is-valid" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
 
- return (
- <div ref={wrapRef} style={{ position: "relative" }} className={className}>
- <div style={{
- position: "relative",
- border: `1px solid ${borderColor}`,
- borderRadius: "var(--fi-radius, 12px)",
- background: "var(--fi-bg, #ffffff)",
- transition: "border-color 0.2s ease",
- overflow: "visible",
- }}>
- {/* Floating label */}
- <label style={{
- position: "absolute", top: 8, left: 16,
- fontSize: 11, fontWeight: 500, color: labelColor,
- pointerEvents: "none", zIndex: 1,
- letterSpacing: "0.02em", transition: "color 0.2s ease",
- }}>
- {label}
- </label>
+    return (
+      <div ref={wrapRef} className={`floating-field ${className || ""}`}>
+        <div className={wrapperClass}>
+          {/* Floating label */}
+          <label htmlFor="phone" className="floating-field__label">
+            {label}
+          </label>
 
- {/* Input row */}
- <div
- style={{ display: "flex", alignItems: "center", paddingTop: 22, paddingBottom: 6 }}
- onFocus={() => setFocused(true)}
- onBlur={(e) => { if (!wrapRef.current?.contains(e.relatedTarget)) setFocused(false); }}
- >
- {/* Country picker */}
- <button type="button" onClick={() => setOpen((o) => !o)} style={{
- display: "flex", alignItems: "center", gap: 4,
- padding: "0 10px 0 14px",
- background: "transparent", border: "none",
- borderRight: "1px solid var(--fi-border, #e2e8f0)",
- cursor: "pointer", whiteSpace: "nowrap",
- flexShrink: 0, height: 28,
- color: selectedCountry ? "var(--fi-text, #1e293b)" : "var(--fi-label, #94a3b8)",
- }}>
- {selectedCountry ? (
- <>
- <span style={{ fontSize: 16, lineHeight: 1 }}>{selectedCountry.flag}</span>
- <span style={{ fontSize: 14, fontWeight: 500, color: "inherit" }}>
- {selectedCountry.dialCode}
- </span>
- </>
- ) : (
- <span style={{ fontSize: 13 }}>Select country</span>
- )}
- <ChevronDown size={12} style={{
- color: "var(--fi-label, #94a3b8)",
- transform: open ? "rotate(180deg)" : "none",
- transition: "transform 0.15s", marginLeft: 2,
- }} />
- </button>
+          {/* Input row */}
+          <div
+            className="floating-field__phone-row"
+            onFocus={() => setFocused(true)}
+            onBlur={(e) => {
+              if (!wrapRef.current?.contains(e.relatedTarget)) {
+                setFocused(false);
+                onBlur?.(e);
+              }
+            }}
+          >
+            {/* Country picker (borderless) */}
+            <button
+              type="button"
+              className="floating-field__phone-btn"
+              onClick={() => setOpen((o) => !o)}
+            >
+              {selectedCountry ? (
+                <>
+                  <span className="floating-field__phone-flag">
+                    <CountryFlag
+                      code={selectedCountry.code}
+                      fallbackFlag={selectedCountry.flag}
+                    />
+                  </span>
+                  <span className="floating-field__phone-dial-code">
+                    {selectedCountry.dialCode}
+                  </span>
+                </>
+              ) : (
+                <span
+                  className="floating-field__phone-dial-code"
+                  style={{ fontSize: 13, color: "var(--fi-label)" }}
+                >
+                  Select country
+                </span>
+              )}
+              <ChevronDown
+                size={13}
+                style={{
+                  color: "var(--fi-label, #94a3b8)",
+                  transform: open ? "rotate(180deg)" : "none",
+                  transition: "transform 0.15s ease",
+                  marginLeft: 2,
+                }}
+              />
+            </button>
 
- {/* Number input */}
- <input
- id="phone"
- ref={numberRef}
- type="tel" inputMode="numeric"
- value={localNumber}
- onChange={handleLocalChange}
- onBlur={onBlur}
- maxLength={localNumber.startsWith("+") ? 16 : expectedLength}
- placeholder={getPlaceholder()}
- aria-invalid={showError}
- aria-describedby={error ? phoneErrorId : undefined}
- style={{
- flex: 1, minWidth: 0, border: "none", outline: "none",
- padding: "0 8px 0 14px",
- fontSize: 15, fontWeight: 450,
- color: "var(--fi-text, #1e293b)",
- background: "transparent", lineHeight: 1.4,
- }}
- />
+            {/* Number input */}
+            <input
+              id="phone"
+              name="phone"
+              ref={numberRef}
+              type="tel"
+              inputMode="numeric"
+              value={localNumber}
+              onChange={handleLocalChange}
+              onBlur={(e) => {
+                if (!wrapRef.current?.contains(e.relatedTarget)) {
+                  onBlur?.(e);
+                }
+              }}
+              maxLength={localNumber.startsWith("+") ? 16 : expectedLength}
+              placeholder={getPlaceholder()}
+              aria-invalid={showError}
+              aria-describedby={error ? phoneErrorId : undefined}
+              className="floating-field__phone-input"
+            />
 
- {/* Real-time counter (hidden in full-int mode, and on very narrow
- screens where it would crowd the number field) */}
- {selectedCountry && !localNumber.startsWith("+") && (
- <span className="pi-counter" style={{
- fontSize: 11, fontWeight: 500, color: counterColor,
- paddingRight: 12, flexShrink: 0,
- transition: "color 0.2s", minWidth: 34, textAlign: "right",
- }}>
- {localNumber.length}/{expectedLength}
- </span>
- )}
- </div>
- </div>
+            {/* Real-time counter (hidden in full-int mode, and on very narrow
+               screens where it would crowd the number field) */}
+            {selectedCountry && !localNumber.startsWith("+") && (
+              <span
+                className="floating-field__phone-counter pi-counter"
+                style={{ color: counterColor }}
+              >
+                {localNumber.length}/{expectedLength}
+              </span>
+            )}
+          </div>
+        </div>
 
- {error && (
- <span
- id={phoneErrorId}
- role="alert"
- style={{
- fontSize: 12, color: "var(--fi-error, #ef4444)", marginTop: 4,
- display: "block", overflowWrap: "anywhere",
- }}
- >
- {error}
- </span>
- )}
+        {error && (
+          <span
+            id={phoneErrorId}
+            className="floating-field__error"
+            role="alert"
+          >
+            {error}
+          </span>
+        )}
 
- {open && (
- <CountryDropdown
- pinnedFiltered={pinnedFiltered} otherFiltered={otherFiltered}
- filtered={filtered} search={search} setSearch={setSearch}
- searchRef={searchRef} selectedCountry={selectedCountry}
- selectCountry={selectCountry}
- />
- )}
- </div>
- );
- }
+        {open && (
+          <CountryDropdown
+            pinnedFiltered={pinnedFiltered}
+            otherFiltered={otherFiltered}
+            filtered={filtered}
+            search={search}
+            setSearch={setSearch}
+            searchRef={searchRef}
+            selectedCountry={selectedCountry}
+            selectCountry={selectCountry}
+          />
+        )}
+      </div>
+    );
+  }
 
- /* ──────────────────────────────────────────────────────────────
- STANDARD STYLE — reservation forms, etc.
- ────────────────────────────────────────────────────────────── */
- return (
- <div ref={wrapRef} style={{ position: "relative" }} className={className}>
- <div style={{
- display: "flex",
- border: `1.5px solid ${showError ? "#dc2626" : "#D1D5DB"}`,
- borderRadius: 8,
- background: "var(--surface-card, #fff)",
- transition: "border-color 0.15s, box-shadow 0.15s",
- boxShadow: showError ? "0 0 0 3px rgba(220,38,38,0.08)" : "none",
- overflow: "visible",
- }}
- onFocus={(e) => {
- if (!showError) {
- e.currentTarget.style.borderColor = "#94a3b8";
- e.currentTarget.style.boxShadow = "0 0 0 1px rgba(148,163,184,0.15)";
- }
- }}
- onBlur={(e) => {
- if (!e.currentTarget.contains(e.relatedTarget)) {
- e.currentTarget.style.borderColor = showError ? "#dc2626" : "#D1D5DB";
- e.currentTarget.style.boxShadow = showError ? "0 0 0 3px rgba(220,38,38,0.08)" : "none";
- }
- }}
- >
- <button type="button" onClick={() => setOpen((o) => !o)} style={{
- display: "flex", alignItems: "center", gap: 4,
- padding: "0 10px",
- background: "transparent", border: "none",
- borderRight: "1.5px solid #E5E7EB",
- cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, minWidth: 84,
- }}>
- <span style={{ fontSize: 18, lineHeight: 1 }}>
- {selectedCountry ? selectedCountry.flag : "🌐"}
- </span>
- <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-heading, #374151)" }}>
- {selectedCountry ? selectedCountry.dialCode : "--"}
- </span>
- <ChevronDown size={12} color="#9CA3AF"
- style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
- </button>
+  /* ──────────────────────────────────────────────────────────────
+     STANDARD STYLE — reservation forms, etc.
+  ────────────────────────────────────────────────────────────── */
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }} className={className}>
+      <div
+        style={{
+          display: "flex",
+          border: `1.5px solid ${showError ? "#dc2626" : "#D1D5DB"}`,
+          borderRadius: 8,
+          background: "var(--surface-card, #fff)",
+          transition: "border-color 0.15s, box-shadow 0.15s",
+          boxShadow: showError ? "0 0 0 3px rgba(220,38,38,0.08)" : "none",
+          overflow: "visible",
+        }}
+        onFocus={(e) => {
+          if (!showError) {
+            e.currentTarget.style.borderColor = "#94a3b8";
+            e.currentTarget.style.boxShadow =
+              "0 0 0 1px rgba(148,163,184,0.15)";
+          }
+        }}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget)) {
+            e.currentTarget.style.borderColor = showError
+              ? "#dc2626"
+              : "#D1D5DB";
+            e.currentTarget.style.boxShadow = showError
+              ? "0 0 0 3px rgba(220,38,38,0.08)"
+              : "none";
+          }
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "0 8px 0 10px",
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+            minWidth: 78,
+            fontFamily: "var(--font-sans), inherit",
+          }}
+        >
+          <span style={{ display: "inline-flex", alignItems: "center" }}>
+            {selectedCountry ? (
+              <CountryFlag
+                code={selectedCountry.code}
+                fallbackFlag={selectedCountry.flag}
+              />
+            ) : (
+              "🌐"
+            )}
+          </span>
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--text-heading, #374151)",
+              fontFamily: "var(--font-sans), inherit",
+            }}
+          >
+            {selectedCountry ? selectedCountry.dialCode : "--"}
+          </span>
+          <ChevronDown
+            size={12}
+            color="#9CA3AF"
+            style={{
+              transform: open ? "rotate(180deg)" : "none",
+              transition: "transform 0.15s",
+            }}
+          />
+        </button>
 
- <input
- ref={numberRef}
- type="tel" inputMode="numeric"
- value={localNumber}
- onChange={handleLocalChange}
- onBlur={onBlur}
- maxLength={localNumber.startsWith("+") ? 16 : expectedLength}
- placeholder={getPlaceholder()}
- style={{
- flex: 1, border: "none", outline: "none",
- padding: "10px 12px", fontSize: 14,
- color: "var(--text-heading, #111827)",
- background: "transparent",
- borderRadius: "0 8px 8px 0", minWidth: 0,
- }}
- />
- </div>
+        <input
+          ref={numberRef}
+          type="tel"
+          inputMode="numeric"
+          value={localNumber}
+          onChange={handleLocalChange}
+          onBlur={onBlur}
+          maxLength={localNumber.startsWith("+") ? 16 : expectedLength}
+          placeholder={getPlaceholder()}
+          style={{
+            flex: 1,
+            border: "none",
+            outline: "none",
+            padding: "10px 12px 10px 4px",
+            fontSize: 14,
+            fontFamily: "var(--font-sans), inherit",
+            color: "var(--text-heading, #111827)",
+            background: "transparent",
+            borderRadius: "0 8px 8px 0",
+            minWidth: 0,
+          }}
+        />
+      </div>
 
- {error && <div style={{ fontSize: 12, color: "#dc2626", marginTop: 4 }}>{error}</div>}
+      {error && (
+        <div style={{ fontSize: 12, color: "#dc2626", marginTop: 4 }}>
+          {error}
+        </div>
+      )}
 
- {open && (
- <CountryDropdown
- pinnedFiltered={pinnedFiltered} otherFiltered={otherFiltered}
- filtered={filtered} search={search} setSearch={setSearch}
- searchRef={searchRef} selectedCountry={selectedCountry}
- selectCountry={selectCountry}
- />
- )}
- </div>
- );
+      {open && (
+        <CountryDropdown
+          pinnedFiltered={pinnedFiltered}
+          otherFiltered={otherFiltered}
+          filtered={filtered}
+          search={search}
+          setSearch={setSearch}
+          searchRef={searchRef}
+          selectedCountry={selectedCountry}
+          selectCountry={selectCountry}
+        />
+      )}
+    </div>
+  );
 };
 
 /* ── Shared sub-components ───────────────────────────────────── */
 const CountryDropdown = ({
- pinnedFiltered, otherFiltered, filtered,
- search, setSearch, searchRef, selectedCountry, selectCountry,
+  pinnedFiltered,
+  otherFiltered,
+  filtered,
+  search,
+  setSearch,
+  searchRef,
+  selectedCountry,
+  selectCountry,
 }) => (
- <div className="pi-dropdown" style={{
- position: "absolute", top: "calc(100% + 4px)", left: 0,
- zIndex: 9999,
- background: "var(--fi-bg, #fff)",
- border: "1px solid var(--fi-border, #E5E7EB)",
- borderRadius: 10,
- boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
- width: "min(280px, calc(100vw - 32px))", maxWidth: "calc(100vw - 32px)", maxHeight: 320,
- display: "flex", flexDirection: "column", overflow: "hidden",
- }}>
- <div className="pi-dropdown-search" style={{
- padding: "10px 12px",
- borderBottom: "1px solid var(--fi-border, #F3F4F6)",
- display: "flex", alignItems: "center", gap: 8,
- }}>
- <Search size={14} style={{ color: "var(--fi-label, #9CA3AF)", flexShrink: 0 }} />
- <input ref={searchRef} type="text" value={search}
- onChange={(e) => setSearch(e.target.value)}
- placeholder="Search country or code…"
- style={{
- flex: 1, border: "none", outline: "none",
- fontSize: 13,
- color: "var(--fi-text, #111827)",
- background: "transparent",
- }} />
- {search && (
- <button type="button" onClick={() => setSearch("")}
- style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
- <X size={12} style={{ color: "var(--fi-label, #9CA3AF)" }} />
- </button>
- )}
- </div>
+  <div
+    className="pi-dropdown"
+    style={{
+      position: "absolute",
+      top: "calc(100% + 4px)",
+      left: 0,
+      zIndex: 9999,
+      background: "var(--fi-bg, #fff)",
+      border: "1px solid var(--fi-border, #E5E7EB)",
+      borderRadius: 10,
+      boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+      width: "min(280px, calc(100vw - 32px))",
+      maxWidth: "calc(100vw - 32px)",
+      maxHeight: 320,
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",
+      fontFamily: "var(--font-sans), inherit",
+    }}
+  >
+    <div
+      className="pi-dropdown-search"
+      style={{
+        padding: "10px 12px",
+        borderBottom: "1px solid var(--fi-border, #F3F4F6)",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <Search
+        size={14}
+        style={{ color: "var(--fi-label, #9CA3AF)", flexShrink: 0 }}
+      />
+      <input
+        ref={searchRef}
+        type="text"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search country or code…"
+        style={{
+          flex: 1,
+          border: "none",
+          outline: "none",
+          fontSize: 13,
+          fontFamily: "var(--font-sans), inherit",
+          color: "var(--fi-text, #111827)",
+          background: "transparent",
+        }}
+      />
+      {search && (
+        <button
+          type="button"
+          onClick={() => setSearch("")}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: 0,
+          }}
+        >
+          <X size={12} style={{ color: "var(--fi-label, #9CA3AF)" }} />
+        </button>
+      )}
+    </div>
 
- <div style={{ overflowY: "auto", flex: 1 }}>
- {pinnedFiltered.length > 0 && (
- <>
- <SectionLabel>Common</SectionLabel>
- {pinnedFiltered.map((c) => (
- <CountryOption key={`p-${c.code}`} country={c}
- selected={!!selectedCountry && c.code === selectedCountry.code && c.dialCode === selectedCountry.dialCode}
- onSelect={selectCountry} />
- ))}
- {otherFiltered.length > 0 && (
- <div style={{ height: 1, background: "var(--fi-border, #F3F4F6)", margin: "4px 0" }} />
- )}
- </>
- )}
- {otherFiltered.length > 0 && (
- <>
- {pinnedFiltered.length > 0 && <SectionLabel>All Countries</SectionLabel>}
- {otherFiltered.map((c) => (
- <CountryOption key={c.code} country={c}
- selected={!!selectedCountry && c.code === selectedCountry.code}
- onSelect={selectCountry} />
- ))}
- </>
- )}
- {filtered.length === 0 && (
- <div style={{ padding: "24px 12px", textAlign: "center", fontSize: 13, color: "var(--fi-label, #9CA3AF)" }}>
- No countries found
- </div>
- )}
- </div>
- </div>
+    <div style={{ overflowY: "auto", flex: 1 }}>
+      {pinnedFiltered.length > 0 && (
+        <>
+          <SectionLabel>Common</SectionLabel>
+          {pinnedFiltered.map((c) => (
+            <CountryOption
+              key={`p-${c.code}`}
+              country={c}
+              selected={
+                !!selectedCountry &&
+                c.code === selectedCountry.code &&
+                c.dialCode === selectedCountry.dialCode
+              }
+              onSelect={selectCountry}
+            />
+          ))}
+          {otherFiltered.length > 0 && (
+            <div
+              style={{
+                height: 1,
+                background: "var(--fi-border, #F3F4F6)",
+                margin: "4px 0",
+              }}
+            />
+          )}
+        </>
+      )}
+      {otherFiltered.length > 0 && (
+        <>
+          {pinnedFiltered.length > 0 && (
+            <SectionLabel>All Countries</SectionLabel>
+          )}
+          {otherFiltered.map((c) => (
+            <CountryOption
+              key={c.code}
+              country={c}
+              selected={!!selectedCountry && c.code === selectedCountry.code}
+              onSelect={selectCountry}
+            />
+          ))}
+        </>
+      )}
+      {filtered.length === 0 && (
+        <div
+          style={{
+            padding: "24px 12px",
+            textAlign: "center",
+            fontSize: 13,
+            fontFamily: "var(--font-sans), inherit",
+            color: "var(--fi-label, #9CA3AF)",
+          }}
+        >
+          No countries found
+        </div>
+      )}
+    </div>
+  </div>
 );
 
 const SectionLabel = ({ children }) => (
- <div className="pi-section-label" style={{
- fontSize: 10, fontWeight: 700,
- color: "var(--fi-label, #9CA3AF)",
- letterSpacing: "0.06em", textTransform: "uppercase",
- padding: "8px 12px 4px",
- }}>{children}</div>
+  <div
+    className="pi-section-label"
+    style={{
+      fontSize: 10,
+      fontWeight: 700,
+      fontFamily: "var(--font-sans), inherit",
+      color: "var(--fi-label, #9CA3AF)",
+      letterSpacing: "0.06em",
+      textTransform: "uppercase",
+      padding: "8px 12px 4px",
+    }}
+  >
+    {children}
+  </div>
 );
 
 const CountryOption = ({ country, selected, onSelect }) => (
- <button type="button" onClick={() => onSelect(country)}
- className="pi-option"
- style={{
- display: "flex", alignItems: "center", gap: 10,
- width: "100%", padding: "8px 12px",
- background: selected ? "rgba(255,140,66,0.12)" : "transparent",
- border: "none", cursor: "pointer", textAlign: "left", transition: "background 0.1s",
- }}
- onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = "var(--surface-hover, #F9FAFB)"; }}
- onMouseLeave={(e) => { e.currentTarget.style.background = selected ? "rgba(255,140,66,0.12)" : "transparent"; }}>
- <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{country.flag}</span>
- <span style={{ flex: 1, fontSize: 13, color: "var(--fi-text, #374151)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
- {country.name}
- </span>
- <span style={{ fontSize: 12, fontWeight: 600, color: selected ? "#FF8C42" : "var(--fi-label, #9CA3AF)", flexShrink: 0 }}>
- {country.dialCode}
- </span>
- </button>
+  <button
+    type="button"
+    onClick={() => onSelect(country)}
+    className="pi-option"
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      width: "100%",
+      padding: "8px 12px",
+      background: selected ? "rgba(212, 175, 55, 0.12)" : "transparent",
+      border: "none",
+      cursor: "pointer",
+      textAlign: "left",
+      transition: "background 0.1s",
+      fontFamily: "var(--font-sans), inherit",
+    }}
+    onMouseEnter={(e) => {
+      if (!selected)
+        e.currentTarget.style.background = "var(--surface-hover, #F9FAFB)";
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.background = selected
+        ? "rgba(212, 175, 55, 0.12)"
+        : "transparent";
+    }}
+  >
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        flexShrink: 0,
+      }}
+    >
+      <CountryFlag code={country.code} fallbackFlag={country.flag} />
+    </span>
+    <span
+      style={{
+        flex: 1,
+        fontSize: 13,
+        fontFamily: "var(--font-sans), inherit",
+        color: "var(--fi-text, #374151)",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      {country.name}
+    </span>
+    <span
+      style={{
+        fontSize: 13,
+        fontWeight: selected ? 600 : 500,
+        fontFamily: "var(--font-sans), inherit",
+        color: selected ? "#D4AF37" : "var(--fi-label, #9CA3AF)",
+        flexShrink: 0,
+      }}
+    >
+      {country.dialCode}
+    </span>
+  </button>
 );
 
 export { isValidPhoneNumber }; // re-export for use in form validation
 export default PhoneInput;
+
+

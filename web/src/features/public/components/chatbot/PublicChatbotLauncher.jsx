@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { MessageSquare, Bot, X, Sparkles } from "lucide-react";
 import PublicChatbotModal from "./PublicChatbotModal";
 
 /**
@@ -59,31 +58,6 @@ export function PublicChatbotLauncher() {
           }
         }
 
-        @keyframes botGentleTilt {
-          0%, 82%, 100% {
-            transform: rotate(0deg);
-          }
-          86% {
-            transform: rotate(-7deg) scale(1.03);
-          }
-          90% {
-            transform: rotate(7deg) scale(1.03);
-          }
-          94% {
-            transform: rotate(-3deg) scale(1.01);
-          }
-        }
-
-        @keyframes botBlink {
-          0%, 92%, 100% {
-            transform: scaleY(1);
-          }
-          95% {
-            transform: scaleY(0.15);
-          }
-        }
-
-
         @keyframes radarPing {
           0% {
             transform: scale(0.9);
@@ -113,13 +87,8 @@ export function PublicChatbotLauncher() {
         }
 
         .lc-bot-icon-idle {
-          animation: botFloat 2.6s ease-in-out infinite, botGentleTilt 6s ease-in-out infinite;
+          animation: botFloat 2.6s ease-in-out infinite;
           transform-origin: center bottom;
-        }
-
-        .lc-bot-icon-idle svg {
-          animation: botBlink 4s ease-in-out infinite;
-          transform-origin: center center;
         }
 
         .lc-radar-badge {
@@ -154,7 +123,6 @@ export function PublicChatbotLauncher() {
               transition: "opacity 350ms cubic-bezier(0.4, 0, 0.2, 1)",
             }}
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 animate-spin" style={{ animationDuration: "6s" }} />
             <span>Need Help? Ask Lilycrest AI Chatbot</span>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-0.5 flex-shrink-0" />
           </button>
@@ -177,13 +145,16 @@ export function PublicChatbotLauncher() {
             boxShadow: "0 6px 20px rgba(10, 22, 40, 0.14)",
           }}
         >
-          {/* Animated Icon Transition */}
           {isOpen ? (
-            <X className="w-6 h-6 text-amber-600 transition-transform duration-200 rotate-0 hover:rotate-90" />
+            <span className="text-xs font-bold text-amber-700">Close</span>
           ) : (
-            <div className="relative">
-              <div className="lc-bot-icon-idle">
-                <Bot className="w-6 h-6 text-amber-600 group-hover:scale-110 transition-transform duration-200" />
+            <div className="relative flex items-center justify-center">
+              <div className="lc-bot-icon-idle flex items-center justify-center">
+                <img
+                  src="/lilycrest-logo.png"
+                  alt="Lilycrest Chatbot"
+                  className="w-7 h-7 object-contain"
+                />
               </div>
               {hasUnread && (
                 <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-500 border-2 border-white lc-radar-badge" />

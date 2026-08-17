@@ -1,15 +1,5 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Calculator,
-  Zap,
-  Droplets,
-  Wifi,
-  Bed,
-  ArrowUpRight,
-  TrendingUp,
-  Sparkles,
-} from "lucide-react";
 
 const ESTIMATED_ELECTRICITY_PER_BED = 650; // Pro-rata submetered aircon estimate in PHP
 
@@ -74,25 +64,13 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
       }}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{
-            backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.12))",
-            color: "var(--lp-accent, #B45309)",
-            border: "1px solid var(--lp-border, #E6D9B2)",
-          }}
-        >
-          <Calculator className="w-4 h-4 text-amber-600" />
-        </div>
-        <div>
-          <h4 className="text-xs sm:text-sm font-bold" style={{ color: "var(--lp-text, #162f53)" }}>
-            Monthly Budget Estimator
-          </h4>
-          <p className="text-[10px]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
-            Slide to estimate rent, utilities, and recommended accommodation.
-          </p>
-        </div>
+      <div className="mb-3 pb-2 border-b" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
+        <h4 className="text-xs sm:text-sm font-bold" style={{ color: "var(--lp-text, #162f53)" }}>
+          Monthly Budget Estimator
+        </h4>
+        <p className="text-[10px]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
+          Slide to estimate rent, utilities, and recommended accommodation.
+        </p>
       </div>
 
       {/* Interactive Budget Slider */}
@@ -137,8 +115,8 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
         }}
       >
         <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1">
-            <Sparkles className="w-3 h-3" /> Best Fit Accommodation
+          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+            Best Fit Accommodation
           </span>
           <span className="text-[10px] text-slate-500 font-medium">
             {recommendation.branch}
@@ -155,8 +133,8 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
         {/* Cost Breakdown Table */}
         <div className="space-y-1 text-[11px] pt-2 border-t border-slate-200 dark:border-slate-800">
           <div className="flex justify-between">
-            <span className="text-slate-500 flex items-center gap-1">
-              <Bed className="w-3 h-3 text-slate-400" /> Base Bed Rate:
+            <span className="text-slate-500">
+              Base Bed Rate:
             </span>
             <span className="font-semibold" style={{ color: "var(--lp-text, #162f53)" }}>
               ₱{recommendation.baseRent.toLocaleString()}
@@ -164,8 +142,8 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
           </div>
 
           <div className="flex justify-between">
-            <span className="text-slate-500 flex items-center gap-1">
-              <Zap className="w-3 h-3 text-amber-500" /> Est. Electricity Share:
+            <span className="text-slate-500">
+              Est. Electricity Share:
             </span>
             <span className="font-semibold text-slate-700 dark:text-slate-300">
               ~₱{ESTIMATED_ELECTRICITY_PER_BED.toLocaleString()}
@@ -173,8 +151,8 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
           </div>
 
           <div className="flex justify-between">
-            <span className="text-slate-500 flex items-center gap-1">
-              <Wifi className="w-3 h-3 text-emerald-500" /> Water & High-Speed Wi-Fi:
+            <span className="text-slate-500">
+              Water & High-Speed Wi-Fi:
             </span>
             <span className="font-semibold text-emerald-600 dark:text-emerald-400">
               Included (₱0)
@@ -194,11 +172,11 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
       <div className="flex items-center justify-between text-[11px] mb-3 px-1">
         <span className="text-slate-500">Budget Margin:</span>
         {budgetSurplus >= 0 ? (
-          <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
             +₱{budgetSurplus.toLocaleString()} surplus
           </span>
         ) : (
-          <span className="font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+          <span className="font-semibold text-amber-600 dark:text-amber-400">
             ₱{Math.abs(budgetSurplus).toLocaleString()} gap
           </span>
         )}
@@ -208,7 +186,7 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
       <button
         type="button"
         onClick={handleViewRooms}
-        className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none active:scale-98 shadow-xs"
+        className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center focus:outline-none active:scale-98 shadow-xs"
         style={{
           backgroundColor: "#0A1628",
           border: "1px solid #0A1628",
@@ -222,7 +200,6 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
         }}
       >
         <span className="text-white font-bold">View Available {recommendation.roomTypeParam} Rooms</span>
-        <ArrowUpRight className="w-3.5 h-3.5 text-white" />
       </button>
     </div>
   );

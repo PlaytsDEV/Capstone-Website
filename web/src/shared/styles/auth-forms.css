@@ -40,6 +40,19 @@
   box-shadow: none;
 }
 
+.floating-field__wrapper.has-error {
+  border-color: var(--fi-error, #ef4444);
+}
+
+.floating-field__wrapper.has-error:hover {
+  border-color: var(--fi-error, #ef4444);
+}
+
+.floating-field__wrapper.has-error.focused {
+  border-color: var(--fi-error, #ef4444);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
 /* ── Input ── */
 .floating-field__input {
   width: 100%;
@@ -91,16 +104,18 @@
   font-weight: 400;
   color: var(--fi-label);
   pointer-events: none;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), top 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s ease;
   transform-origin: left center;
   line-height: 1;
+  will-change: transform, top;
 }
 
-/* Float up when focused or has value — inside the field, no bg needed */
+/* Float up when focused, has value, or wrapper is active — inside the field, no bg needed */
 .floating-field__input:focus ~ .floating-field__label,
-.floating-field__input:not(:placeholder-shown) ~ .floating-field__label {
+.floating-field__input:not(:placeholder-shown) ~ .floating-field__label,
+.floating-field__wrapper.active .floating-field__label {
   top: 8px;
-  transform: scale(0.72);
+  transform: translateY(0) scale(0.72);
   color: var(--fi-label-active);
   font-weight: 500;
   padding: 0;
@@ -111,11 +126,11 @@
 }
 
 .floating-field__wrapper.has-error .floating-field__label {
-  color: var(--fi-error);
+  color: var(--fi-label-active);
 }
 
 .floating-field__wrapper.is-valid:not(.focused) .floating-field__label {
-  color: var(--fi-valid);
+  color: var(--fi-label-active);
 }
 
 /* ── End Adornment (eye toggle, etc.) ── */
@@ -150,10 +165,22 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--fi-error);
-  margin-top: 6px;
+  margin-top: 5px;
   padding-left: 4px;
   overflow-wrap: anywhere;
   max-width: 100%;
+  animation: authErrorFadeIn 0.15s ease-out;
+}
+
+@keyframes authErrorFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ── Character Counter ── */
@@ -207,6 +234,87 @@
 /* ── Password input needs right padding for adornment ── */
 .floating-field__wrapper:has(.floating-field__adornment) .floating-field__input {
   padding-right: 56px;
+}
+
+/* ── Phone Input Auth Style ── */
+.floating-field__phone-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 55px;
+  box-sizing: border-box;
+  padding-top: 18px;
+  padding-bottom: 0px;
+}
+
+.floating-field__phone-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  height: 24px;
+  font-family: var(--font-sans);
+  color: var(--fi-text);
+  transition: color 0.15s ease;
+}
+
+.floating-field__phone-btn:hover {
+  color: var(--fi-focus);
+}
+
+.floating-field__phone-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.floating-field__phone-dial-code {
+  font-size: 15px;
+  font-weight: 450;
+  font-family: var(--font-sans);
+  color: var(--fi-text);
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+}
+
+.floating-field__phone-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  padding: 0 12px 0 6px;
+  font-size: 15px;
+  font-weight: 450;
+  font-family: var(--font-sans);
+  color: var(--fi-text);
+  background: transparent;
+  line-height: 1.4;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.floating-field__phone-input::placeholder {
+  color: var(--fi-label);
+  font-weight: 400;
+  font-family: var(--font-sans);
+  opacity: 1;
+}
+
+.floating-field__phone-counter {
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  padding-right: 16px;
+  flex-shrink: 0;
+  transition: color 0.2s ease;
+  min-width: 34px;
+  text-align: right;
 }
 
 /* ============================================
@@ -604,6 +712,11 @@
 }
 
 .auth-spinner {
+  display: inline-block;
+  transform-origin: center center;
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
   animation: auth-spin 1s linear infinite;
 }
 
@@ -733,6 +846,18 @@ html[data-theme="dark"] .password-strength__check {
   color: #94a3b8 !important;
 }
 
+/* Floating input phone row in dark mode */
+html[data-theme="dark"] .floating-field__phone-btn {
+  color: var(--fi-text) !important;
+  border-right-color: var(--fi-border) !important;
+}
+html[data-theme="dark"] .floating-field__phone-dial-code {
+  color: var(--fi-text) !important;
+}
+html[data-theme="dark"] .floating-field__phone-input {
+  color: var(--fi-text) !important;
+}
+
 /* ============================================
    DARK MODE — PhoneInput Country Dropdown
    ============================================ */
@@ -777,6 +902,7 @@ html[data-theme="dark"] .pi-option span:nth-child(3) {
 }
 
 /* Selected option in dark mode */
+html[data-theme="dark"] .pi-option[style*="rgba(212, 175, 55"] span:nth-child(3),
 html[data-theme="dark"] .pi-option[style*="rgba(255,140,66"] span:nth-child(3) {
-  color: #FF8C42 !important;
+  color: #D4AF37 !important;
 }

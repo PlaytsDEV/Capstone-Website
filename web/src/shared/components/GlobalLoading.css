@@ -27,8 +27,12 @@
   border: 4px solid rgba(148, 163, 184, 0.24);
   border-top-color: #d4af37;
   border-radius: 50%;
-  animation: global-loading-spin 1s linear infinite !important;
+  display: inline-block;
+  transform-origin: center center;
   will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  animation: global-loading-spin 1s linear infinite;
 }
 
 .global-loading-message {

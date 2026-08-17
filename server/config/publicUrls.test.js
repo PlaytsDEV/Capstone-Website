@@ -14,10 +14,11 @@ describe("public URL configuration", () => {
     expect(config.publicApiUrl).toBe("https://api.lilycrest.space");
   });
 
-  test("uses localhost only for development defaults", () => {
+  test("uses localhost only for development defaults and falls back to public logo URL for emails", () => {
     const config = getPublicUrlConfig({ NODE_ENV: "development" });
     expect(config.publicFrontendUrl).toBe("http://localhost:3000");
     expect(config.publicApiUrl).toBe("http://localhost:5000");
+    expect(config.publicLogoUrl).toBe("https://www.lilycrest.space/lilycrest-logo.png");
   });
 
   test("fails safely when a production URL is missing", () => {

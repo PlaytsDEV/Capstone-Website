@@ -11,6 +11,7 @@
 
 import express from "express";
 import { verifyToken, verifyAdmin } from "../middleware/auth.js";
+import { filterByBranch } from "../middleware/branchAccess.js";
 import { validate } from "../validation/validate.js";
 import {
   createAnnouncementSchema,
@@ -41,6 +42,7 @@ router.get("/", announcementsController.getAnnouncements);
 router.get(
   "/admin",
   verifyAdmin,
+  filterByBranch,
   requirePermission("manageAnnouncements"),
   announcementsController.getAdminAnnouncements,
 );
@@ -86,6 +88,7 @@ router.get(
 router.post(
   "/",
   verifyAdmin,
+  filterByBranch,
   requirePermission("manageAnnouncements"),
   validate(createAnnouncementSchema),
   announcementsController.createAnnouncement,
@@ -98,6 +101,7 @@ router.post(
 router.put(
   "/:id",
   verifyAdmin,
+  filterByBranch,
   requirePermission("manageAnnouncements"),
   validate(updateAnnouncementSchema),
   announcementsController.updateAnnouncement,
@@ -110,6 +114,7 @@ router.put(
 router.delete(
   "/:id",
   verifyAdmin,
+  filterByBranch,
   requirePermission("manageAnnouncements"),
   announcementsController.deleteAnnouncement,
 );

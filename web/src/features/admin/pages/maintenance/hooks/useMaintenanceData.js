@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../../../shared/hooks/useAuth";
 import { showNotification } from "../../../../../shared/utils/notification";
@@ -107,9 +107,21 @@ export function useMaintenanceData() {
     isOwner ? (requestedBranch || "all") : (userBranch || "all"),
   );
   const [sortMode, setSortMode] = useState("newest");
-  const [searchQuery, setSearchQuery] = useState("");
+  const requestedSearch = searchParams.get("search") || searchParams.get("room") || "";
+  const [searchQuery, setSearchQuery] = useState(requestedSearch);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    const urlSearch = searchParams.get("search") || searchParams.get("room");
+    if (urlSearch !== null && urlSearch !== undefined) {
+      setSearchQuery(urlSearch);
+    }
+    const urlBranch = searchParams.get("branch");
+    if (urlBranch) {
+      setBranchFilter(isOwner ? urlBranch : (userBranch || "all"));
+    }
+  }, [searchParams, isOwner, userBranch]);
 
   const [analyticsFilters, setAnalyticsFilters] = useState({
     branch: isOwner ? "all" : (userBranch || "all"),
@@ -457,6 +469,13 @@ export function useMaintenanceData() {
         request.tenant?.user_id,
         request.tenant?.full_name,
         request.tenant?.branch,
+        request.room_number,
+        request.roomNumber,
+        request.unit,
+        request.location,
+        request.room,
+        request.tenant?.room_number,
+        request.tenant?.roomNumber,
       ]
         .filter(Boolean)
         .join(" ")

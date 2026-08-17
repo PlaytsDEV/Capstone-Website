@@ -1,6 +1,5 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { FileText, ArrowRight, Calendar, ShieldCheck, Clock } from "lucide-react";
 
 /**
  * Solid Snapshot Card: Displays resident's active lease contract timeline,
@@ -43,7 +42,6 @@ export default function TenantLeaseTimelineCard({ data, onCloseDrawer }) {
     <div className="tenant-snapshot-card" role="region" aria-label="Lease Agreement Timeline">
       <div className="tenant-snapshot-header">
         <div className="tenant-snapshot-title">
-          <FileText className="w-3.5 h-3.5 text-slate-700 dark:text-slate-200 flex-shrink-0" aria-hidden="true" />
           <span className="truncate">Lease Agreement</span>
         </div>
         <span className={`tenant-snapshot-badge ${status}`} aria-label={`Contract Status: ${status}`}>
@@ -64,16 +62,6 @@ export default function TenantLeaseTimelineCard({ data, onCloseDrawer }) {
                   : "text-slate-900 dark:text-slate-100"
               }`}
             >
-              <Clock
-                className={`w-3 h-3 ${
-                  daysRemaining <= 7
-                    ? "text-rose-600 dark:text-rose-400"
-                    : daysRemaining <= 30
-                    ? "text-amber-600 dark:text-amber-400"
-                    : "text-slate-500"
-                }`}
-                aria-hidden="true"
-              />
               {daysRemaining <= 0
                 ? "Vacant Today"
                 : `${daysRemaining} ${daysRemaining === 1 ? "day" : "days"} left`}
@@ -88,16 +76,14 @@ export default function TenantLeaseTimelineCard({ data, onCloseDrawer }) {
 
       <div className="tenant-snapshot-grid">
         <div className="tenant-snapshot-cell">
-          <span className="tenant-snapshot-cell-label flex items-center gap-1">
-            <Calendar className="w-3 h-3 text-slate-400" aria-hidden="true" />
+          <span className="tenant-snapshot-cell-label">
             <span>Lease Start</span>
           </span>
           <span className="tenant-snapshot-cell-val">{startDate}</span>
         </div>
 
         <div className="tenant-snapshot-cell">
-          <span className="tenant-snapshot-cell-label flex items-center gap-1">
-            <Calendar className="w-3 h-3 text-slate-400" aria-hidden="true" />
+          <span className="tenant-snapshot-cell-label">
             <span>Lease Expiration</span>
           </span>
           <span className="tenant-snapshot-cell-val">{endDate}</span>
@@ -105,12 +91,9 @@ export default function TenantLeaseTimelineCard({ data, onCloseDrawer }) {
 
         <div className="tenant-snapshot-cell col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
-              <div>
-                <span className="tenant-snapshot-cell-label block">Security Deposit Held</span>
-                <span className="text-[11px] text-slate-500 dark:text-slate-400">Refundable upon move-out clearance</span>
-              </div>
+            <div>
+              <span className="tenant-snapshot-cell-label block">Security Deposit Held</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">Refundable upon move-out clearance</span>
             </div>
             <span className="tenant-snapshot-cell-val highlight">{formatCurrency(deposit)}</span>
           </div>
@@ -124,7 +107,6 @@ export default function TenantLeaseTimelineCard({ data, onCloseDrawer }) {
         aria-label="View lease documents and renewal options"
       >
         <span>View Contract & Renewals</span>
-        <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
       </Link>
     </div>
   );

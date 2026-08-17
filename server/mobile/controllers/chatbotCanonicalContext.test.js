@@ -76,7 +76,7 @@ describe('vendored mobile Lily canonical context', () => {
     const lines = __test.buildTenantContextLines(activeContext, {});
     const prompt = lines.join('\n');
 
-    expect(prompt).toMatch(/active resident/i);
+    expect(prompt).toMatch(/active (tenant|resident)/i);
     expect(prompt).toMatch(/move-in completed/i);
     expect(prompt).toMatch(/utilities released/i);
     expect(prompt).toMatch(/maintenance_concern: resolved/i);

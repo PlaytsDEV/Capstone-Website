@@ -19,6 +19,7 @@ import {
   getBusinessSettings,
   getBranchSettings,
 } from "../utils/businessSettings.js";
+import { isAdminRole } from "../config/roles.js";
 import { resolveRoomDiscountPricing } from "../services/contractPricingResolver.js";
 import { emitRoomUpdate } from "../utils/socket.js";
 import {
@@ -340,6 +341,56 @@ const syncRealtimeBedStatuses = async (rooms) => {
       beds: updatedBeds,
       currentOccupancy: liveOccupancy,
       nextExpectedVacancy: vacantDates[0] || room.nextExpectedVacancy || null,
+    };
+  });
+};
+
+export const sanitizeRoomsForViewer = (rooms, req) => {
+  const authUser = req?.authUser;
+  const isAdmin = authUser && isAdminRole(authUser.role);
+  if (isAdmin) {
+    return rooms;
+  }
+
+  const viewerUserId = authUser?._id ? String(authUser._id) : null;
+  const viewerCustomId = authUser?.user_id ? String(authUser.user_id) : null;
+
+  return rooms.map((room) => {
+    if (!room || !Array.isArray(room.beds)) return room;
+    const sanitizedBeds = room.beds.map((bed) => {
+      if (!bed || !bed.occupiedBy) return bed;
+
+      const occUserId = bed.occupiedBy.userId ? String(bed.occupiedBy.userId) : null;
+      const occCustomId = bed.occupiedBy.user_id ? String(bed.occupiedBy.user_id) : null;
+      const isSelf =
+        (viewerUserId && occUserId && viewerUserId === occUserId) ||
+        (viewerCustomId && occCustomId && viewerCustomId === occCustomId);
+
+      if (isSelf) {
+        return bed;
+      }
+
+      return {
+        ...bed,
+        occupiedBy: {
+          status: bed.status === "available" ? null : "occupied",
+          userId: null,
+          reservationId: null,
+          occupiedSince: null,
+          name: null,
+          firstName: null,
+          lastName: null,
+          email: null,
+          phone: null,
+          role: null,
+          user_id: null,
+        },
+      };
+    });
+
+    return {
+      ...room,
+      beds: sanitizedBeds,
     };
   });
 };
@@ -916,7 +967,8 @@ export const getRooms = async (req, res, next) => {
         .sort({ branch: 1, floor: 1, roomNumber: 1 })
         .lean();
       const syncedRooms = await syncRealtimeBedStatuses(rooms);
-      sendSuccess(res, attachBranchSettings(syncedRooms, settings));
+      const sanitizedRooms = sanitizeRoomsForViewer(syncedRooms, req);
+      sendSuccess(res, attachBranchSettings(sanitizedRooms, settings));
       return;
     }
 
@@ -929,8 +981,9 @@ export const getRooms = async (req, res, next) => {
       .lean();
 
     const syncedRooms = await syncRealtimeBedStatuses(rooms);
+    const sanitizedRooms = sanitizeRoomsForViewer(syncedRooms, req);
     sendSuccess(res, {
-      items: attachBranchSettings(syncedRooms, settings),
+      items: attachBranchSettings(sanitizedRooms, settings),
       pagination: {
         page,
         pageSize,
@@ -958,7 +1011,8 @@ export const getRoomById = async (req, res, next) => {
 
     const settings = await getBusinessSettings();
     const [syncedRoom] = await syncRealtimeBedStatuses([room]);
-    const [normalizedRoom] = attachBranchSettings([syncedRoom], settings);
+    const [sanitizedRoom] = sanitizeRoomsForViewer([syncedRoom], req);
+    const [normalizedRoom] = attachBranchSettings([sanitizedRoom], settings);
     sendSuccess(res, normalizedRoom);
   } catch (error) {
     next(error);

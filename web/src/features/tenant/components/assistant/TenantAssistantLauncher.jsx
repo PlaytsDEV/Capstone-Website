@@ -1,5 +1,4 @@
 import React from "react";
-import { Sparkles, MessageSquare, Bot } from "lucide-react";
 
 /**
  * Floating launcher button fixed at bottom-right of the tenant portal.
@@ -18,12 +17,11 @@ export default function TenantAssistantLauncher({ onClick, isOpen = false }) {
       aria-label="Open Lilycrest AI Assistant"
       title="Lilycrest Tenant Assistant"
     >
-      <div className="relative flex items-center justify-center">
-        <Bot className="w-5 h-5" aria-hidden="true" />
+      <div className="relative flex items-center justify-center font-bold text-xs">
+        <span>AI</span>
         <span className="tenant-assistant-launcher-badge absolute -top-1 -right-1" />
       </div>
-      <span className="hidden sm:inline-block">AI Assistant</span>
-      <Sparkles className="w-3.5 h-3.5 text-amber-400 opacity-90 hidden sm:inline-block" aria-hidden="true" />
+      <span className="hidden sm:inline-block font-semibold">Assistant</span>
     </button>
   );
 }

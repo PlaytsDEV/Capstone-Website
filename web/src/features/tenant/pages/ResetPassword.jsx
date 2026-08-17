@@ -79,10 +79,10 @@ function ResetPassword() {
   useEffect(() => {
     if (status !== "success") return undefined;
     const timer = window.setTimeout(() => {
-      navigate("/signin", { replace: true });
+      navigate("/signin", { replace: true, state: { email } });
     }, 3000);
     return () => window.clearTimeout(timer);
-  }, [navigate, status]);
+  }, [email, navigate, status]);
 
   const ruleState = useMemo(
     () => PASSWORD_RULES.map((rule) => ({ ...rule, passed: rule.test(password) })),
@@ -305,6 +305,7 @@ function ResetPassword() {
               <p className="text-gray-600 font-light mb-8">Redirecting to sign in in 3 seconds.</p>
               <Link
                 to="/signin"
+                state={{ email }}
                 className="block w-full py-4 rounded-xl text-white font-light hover:opacity-90 transition-opacity text-base"
                 style={{ backgroundColor: "#D4AF37" }}
               >

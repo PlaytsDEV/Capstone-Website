@@ -126,7 +126,7 @@ export default function BedOccupantDetailModal({
         <div className="p-4 border-b border-border/70 bg-muted/30 relative flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div
-              className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 bg-muted text-foreground border border-border"
+              className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 shadow-xs"
             >
               {initials}
             </div>

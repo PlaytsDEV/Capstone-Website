@@ -131,7 +131,7 @@ export default function UtilityTenantPaymentPanel({
                     {/* Tenant Profile */}
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-2.5">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-800 border border-slate-200 text-[10px] font-bold dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 text-[10px] font-bold shadow-xs">
                           {getInitials(tenant.tenantName)}
                         </div>
                         <div>

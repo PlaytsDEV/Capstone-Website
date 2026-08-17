@@ -87,19 +87,19 @@ export default function DataTable({
     switch (density) {
       case "compact":
         return {
-          header: "px-3.5 py-2.5 text-[11px]",
-          cell: "px-3.5 py-2.5 text-xs font-medium",
+          header: "px-3 py-2 text-[11px]",
+          cell: "px-3 py-2 text-xs",
         };
       case "spacious":
         return {
-          header: "px-6 py-4 text-xs",
-          cell: "px-6 py-5 text-sm font-normal",
+          header: "px-5 py-3.5 text-[11px]",
+          cell: "px-5 py-4 text-sm",
         };
       case "comfortable":
       default:
         return {
-          header: "px-5 py-3.5 text-xs",
-          cell: "px-5 py-4 text-sm font-normal",
+          header: "px-4 py-3 text-[11px]",
+          cell: "px-4 py-3 text-[13px]",
         };
     }
   }, [density]);
@@ -128,7 +128,7 @@ export default function DataTable({
                 return (
                   <th
                     key={col.key}
-                    className={`border-b border-border text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground ${headerPadding} ${col.sortable ? "cursor-pointer hover:text-foreground" : ""} ${col.align === "right" ? "text-right" : ""} ${col.align === "center" ? "text-center" : ""}`}
+                    className={`border-b border-border text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground ${headerPadding} ${col.sortable ? "cursor-pointer hover:text-foreground" : ""} ${col.align === "right" ? "text-right" : ""} ${col.align === "center" ? "text-center" : ""}`}
                     style={col.width ? { width: col.width } : undefined}
                     onClick={() => col.sortable && handleSort(sortField)}
                   >
@@ -189,7 +189,7 @@ export default function DataTable({
                     {columns.map((col) => (
                       <td
                         key={col.key}
-                        className={`${cellPadding} text-muted-foreground ${col.align === "right" ? "text-right" : ""} ${col.align === "center" ? "text-center" : ""}`}
+                        className={`${cellPadding} text-foreground ${col.align === "right" ? "text-right" : ""} ${col.align === "center" ? "text-center" : ""}`}
                         {...(col.align === "right"
                           ? { "data-action-cell": "true" }
                           : {})}

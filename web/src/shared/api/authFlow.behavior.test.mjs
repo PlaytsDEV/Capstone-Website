@@ -153,3 +153,28 @@ test("functional role routing preserves applicant, tenant, admin, and owner dest
   assert.equal(getAuthenticatedUserDestination({ role: "owner" }), "/admin/dashboard");
   assert.equal(isOtpDeliveryAccepted({ requiresOtp: true, code: "OTP_REQUIRED" }), true);
 });
+
+test("email verification flow forwards verified email and SignIn automatically pre-fills the email field", () => {
+  const authAction = read("src/features/tenant/pages/AuthAction.jsx");
+  const signIn = read("src/features/tenant/pages/SignIn.jsx");
+  const resetPassword = read("src/features/tenant/pages/ResetPassword.jsx");
+  const otpVerify = read("src/features/tenant/pages/OtpVerify.jsx");
+
+  // AuthAction captures and forwards verified email
+  assert.match(authAction, /sessionStorage\.setItem\("lilycrest_verified_email",\s*checkedEmail\)/);
+  assert.match(authAction, /Continue to login/);
+  assert.match(authAction, /state=\{\{\s*email:\s*verifiedEmail/);
+
+  // SignIn pre-fills email from state or session storage and cleans up
+  assert.match(signIn, /sessionStorage\.getItem\("lilycrest_verified_email"\)/);
+  assert.match(signIn, /sessionStorage\.getItem\("lilycrest_pending_verification_email"\)/);
+  assert.match(signIn, /activePrefill/);
+  assert.match(signIn, /setFormData\(\(prev\) => \(\{ \.\.\.prev, email: activePrefill \}\)\)/);
+  assert.match(signIn, /isVerifiedRedirect/);
+  assert.match(signIn, /setVerifiedSuccess\(true\)/);
+
+  // ResetPassword and OtpVerify pass email state to signin
+  assert.match(resetPassword, /navigate\("\/signin",\s*\{\s*replace:\s*true,\s*state:\s*\{\s*email\s*\}\s*\}\)/);
+  assert.match(otpVerify, /<Link[\s\S]*to="\/signin"[\s\S]*state=\{\{\s*email\s*\}\}/);
+});
+

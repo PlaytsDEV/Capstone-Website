@@ -1,6 +1,5 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { ReceiptText, ArrowRight, Zap, Droplet, Sparkles } from "lucide-react";
 
 /**
  * Solid Snapshot Card: Displays resident's active or latest billing breakdown
@@ -40,7 +39,6 @@ export default function TenantBillingBreakdownCard({ data, onCloseDrawer }) {
     <div className="tenant-snapshot-card" role="region" aria-label="Billing Statement Breakdown">
       <div className="tenant-snapshot-header">
         <div className="tenant-snapshot-title">
-          <ReceiptText className="w-3.5 h-3.5 text-slate-700 dark:text-slate-200 flex-shrink-0" aria-hidden="true" />
           <span className="truncate">{formattedMonth}</span>
         </div>
         <span className={`tenant-snapshot-badge ${status}`} aria-label={`Status: ${status}`}>
@@ -58,16 +56,14 @@ export default function TenantBillingBreakdownCard({ data, onCloseDrawer }) {
         </div>
 
         <div className="tenant-snapshot-cell">
-          <span className="tenant-snapshot-cell-label flex items-center gap-1">
-            <Zap className="w-3 h-3 text-amber-500" aria-hidden="true" />
+          <span className="tenant-snapshot-cell-label">
             <span>Electricity Share</span>
           </span>
           <span className="tenant-snapshot-cell-val">{formatCurrency(electricity)}</span>
         </div>
 
         <div className="tenant-snapshot-cell">
-          <span className="tenant-snapshot-cell-label flex items-center gap-1">
-            <Droplet className="w-3 h-3 text-blue-500" aria-hidden="true" />
+          <span className="tenant-snapshot-cell-label">
             <span>Water Consumption</span>
           </span>
           <span className="tenant-snapshot-cell-val free flex items-center gap-1">
@@ -119,7 +115,6 @@ export default function TenantBillingBreakdownCard({ data, onCloseDrawer }) {
         aria-label="View full billing statement on billing page"
       >
         <span>View Full Statement & Pay</span>
-        <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
       </Link>
     </div>
   );

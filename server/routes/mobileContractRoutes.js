@@ -5,6 +5,7 @@ import { toTenantContractView } from "../services/tenantContractViewService.js";
 import { resolvePublishedFinalDocument } from "../services/contractPublicationService.js";
 import { resolveTenantCanonicalContract } from "../services/tenantContractSelectionService.js";
 import auditLogger from "../utils/auditLogger.js";
+import logger from "../middleware/logger.js";
 import {
   resolveCurrentPreparedDocument,
   selectCurrentPreparedDocument,
@@ -30,14 +31,23 @@ const ownedCurrentContract = (tenantId) =>
 router.get("/contracts/current", mobileTenant, asyncRoute(async (req, res) => {
   const contract = await ownedCurrentContract(req.mobileTenant._id);
   let preparedDocument = null;
+  let preparedDocumentIssue = null;
   if (selectCurrentPreparedDocument(contract)) {
-    preparedDocument = await resolveCurrentPreparedDocument(contract)
-      .then((resolved) => resolved.document)
-      .catch(() => null);
+    try {
+      const resolved = await resolveCurrentPreparedDocument(contract);
+      preparedDocument = resolved?.document || null;
+    } catch (error) {
+      logger.warn(
+        { err: error, contractId: contract?._id, tenantId: req.mobileTenant?._id },
+        "Mobile contract prepared document resolution failed (non-fatal)",
+      );
+      preparedDocumentIssue = error.code || "PREPARED_DOCUMENT_UNAVAILABLE";
+    }
   }
   return res.json({
     contract: toTenantContractView(contract, new Date(), {
       preparedDocument,
+      preparedDocumentIssue,
       documentBasePath: "/api/m/contracts",
     }),
     state: contract ? "CONTRACT_AVAILABLE" : "NO_PUBLISHED_CONTRACT",

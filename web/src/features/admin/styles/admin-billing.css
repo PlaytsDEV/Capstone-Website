@@ -4,22 +4,13 @@
 @import "design-tokens.css";
 
 .billing-section-title {
-  font-size: var(--font-size-md);
-  font-weight: 650;
-  color: var(--text-primary);
+  font-size: var(--font-size-card-title, 14px);
+  font-weight: var(--font-weight-card-title, 600);
+  color: var(--foreground, #1e293b);
   margin: var(--spacing-xl) 0 var(--spacing-lg);
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light, #e2e8f0);
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.billing-section-title::before {
-  content: "";
-  width: 4px;
-  height: 18px;
-  border-radius: 2px;
-  background: var(--accent-green);
-  flex-shrink: 0;
 }

@@ -41,6 +41,7 @@ import {
   publicLimiter,
 } from "./middleware/rateLimiter.js";
 import { globalErrorHandler } from "./middleware/errorHandler.js";
+import mongoSanitize from "./middleware/mongoSanitize.js";
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/usersRoutes.js";
 import roomRoutes from "./routes/roomsRoutes.js";
@@ -241,9 +242,29 @@ app.use(
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         objectSrc: ["'none'"],
         frameSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        formAction: ["'self'"],
       },
     },
     crossOriginEmbedderPolicy: false,
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+    frameguard: {
+      action: "deny",
+    },
+    referrerPolicy: {
+      policy: "strict-origin-when-cross-origin",
+    },
+    permittedCrossDomainPolicies: {
+      permittedPolicies: "none",
+    },
+    xContentTypeOptions: true,
+    crossOriginResourcePolicy: {
+      policy: "same-origin",
+    },
   }),
 );
 
@@ -253,6 +274,7 @@ app.use(globalLimiter);
 app.use(compression());
 app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: true, limit: "8mb" }));
+app.use(mongoSanitize);
 app.use(
   "/uploads",
   uploadStaticHeaders,

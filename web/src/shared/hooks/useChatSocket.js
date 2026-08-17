@@ -30,8 +30,10 @@ import { getDeviceId, getSessionId } from "../api/authSession";
 
 export default function useChatSocket({
   onMessageNew = null,
+  onNewMessage = null,
   onConversationUpdated = null,
   onTyping = null,
+  onMessagesRead = null,
   enabled = true,
 } = {}) {
   const { user } = useAuth();
@@ -42,12 +44,16 @@ export default function useChatSocket({
 
   // Keep callback refs stable so the effect doesn't re-run on every render
   const onMessageNewRef = useRef(onMessageNew);
+  const onNewMessageRef = useRef(onNewMessage);
   const onConversationUpdatedRef = useRef(onConversationUpdated);
   const onTypingRef = useRef(onTyping);
+  const onMessagesReadRef = useRef(onMessagesRead);
 
   useEffect(() => { onMessageNewRef.current = onMessageNew; }, [onMessageNew]);
+  useEffect(() => { onNewMessageRef.current = onNewMessage; }, [onNewMessage]);
   useEffect(() => { onConversationUpdatedRef.current = onConversationUpdated; }, [onConversationUpdated]);
   useEffect(() => { onTypingRef.current = onTyping; }, [onTyping]);
+  useEffect(() => { onMessagesReadRef.current = onMessagesRead; }, [onMessagesRead]);
 
   useEffect(() => {
     if (!enabled || !user?.id || !user?.role) return;
@@ -101,6 +107,7 @@ export default function useChatSocket({
       socket.on("chat:message-new", (payload = {}) => {
         const { message, conversationId } = payload;
         onMessageNewRef.current?.(message, conversationId);
+        onNewMessageRef.current?.({ message, conversationId });
       });
 
       socket.on("chat:conversation-updated", (conversation) => {
@@ -109,6 +116,10 @@ export default function useChatSocket({
 
       socket.on("chat:typing", (payload) => {
         onTypingRef.current?.(payload);
+      });
+
+      socket.on("chat:messages-read", (payload = {}) => {
+        onMessagesReadRef.current?.(payload);
       });
 
       socketRef.current = socket;

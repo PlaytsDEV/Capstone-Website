@@ -150,7 +150,7 @@ export default function SummaryBar({
             >
               <div className="flex items-center justify-between gap-2">
                 <span
-                  className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate"
+                  className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground truncate"
                   title={item.label}
                 >
                   {item.label}
@@ -166,13 +166,13 @@ export default function SummaryBar({
 
               <div className="mt-2">
                 <div
-                  className={`text-2xl sm:text-[28px] font-bold tracking-tight leading-none tabular-nums ${palette.value}`}
+                  className={`text-2xl font-bold tracking-tight leading-none tabular-nums ${palette.value}`}
                 >
                   {item.value ?? "—"}
                 </div>
                 {(item.trend || item.description) && (
                   <div
-                    className="mt-1.5 text-xs text-slate-500 dark:text-slate-400 line-clamp-1 leading-normal"
+                    className="mt-1.5 text-[11px] font-medium text-muted-foreground line-clamp-1 leading-normal"
                     title={item.trend || item.description}
                   >
                     {item.trend || item.description}

@@ -330,6 +330,7 @@ function OtpVerify() {
             >
               <Link
                 to="/signin"
+                state={{ email }}
                 onClick={clearOtpPending}
                 style={{ color: "var(--muted-foreground)", textDecoration: "underline" }}
               >

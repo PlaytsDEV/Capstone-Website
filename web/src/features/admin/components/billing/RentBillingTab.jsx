@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CalendarDays,
@@ -314,6 +314,8 @@ export default function RentBillingTab({ isActive }) {
   const [tenants, setTenants] = useState([]);
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const hasLoadedOnceRef = useRef(false);
   const [activeTab, setActiveTab] = useState('all'); // all, upcoming, overdue, exceptions
   const [searchQuery, setSearchQuery] = useState("");
   const [cronCountdown, setCronCountdown] = useState(getNextCronCountdown());
@@ -341,7 +343,11 @@ export default function RentBillingTab({ isActive }) {
 
   const loadData = useCallback(async () => {
     if (!canLoad || !isActive) return;
-    setLoading(true);
+    if (!hasLoadedOnceRef.current) {
+      setInitialLoading(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const [tenantData, billData] = await Promise.all([
         billingApi.getRentBillableTenants({ branch: branchParam, month: activeMonthParam }),
@@ -349,9 +355,11 @@ export default function RentBillingTab({ isActive }) {
       ]);
       setTenants(tenantData?.tenants || []);
       setBills(billData?.bills || []);
+      hasLoadedOnceRef.current = true;
     } catch (error) {
       showNotification(error?.message || "Failed to load rent billing.", "error");
     } finally {
+      setInitialLoading(false);
       setLoading(false);
     }
   }, [branchParam, canLoad, isActive, activeMonthParam]);
@@ -645,7 +653,7 @@ export default function RentBillingTab({ isActive }) {
     await loadData();
   };
 
-  if (loading && tenants.length === 0) {
+  if (initialLoading && tenants.length === 0 && bills.length === 0) {
     return <AdminTablePageSkeleton />;
   }
 
@@ -930,7 +938,7 @@ export default function RentBillingTab({ isActive }) {
                     <tr key={rowKey} className="group transition-colors hover:bg-muted/30">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-bold shadow-xs dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 text-[11px] font-bold shadow-xs">
                             {getInitials(row.tenantName)}
                           </div>
                           <div>

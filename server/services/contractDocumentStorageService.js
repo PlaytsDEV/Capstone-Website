@@ -96,21 +96,46 @@ export const inspectPreparedContractDocument = async (document) => {
   }
 
   if (provider === "firebase-storage") {
-    const destination = await findFirebaseFile(storageKey, true);
-    if (!destination) {
-      throw storageError(
-        "The prepared Contract file is missing from persistent storage.",
-        "PREPARED_DOCUMENT_STORAGE_MISSING",
-        410,
-      );
+    try {
+      const destination = await findFirebaseFile(storageKey, true);
+      if (destination) {
+        const [metadata] = await destination.file.getMetadata();
+        return {
+          provider: "firebase-storage",
+          storageKey,
+          size: Number(metadata.size || 0),
+          createReadStream: () => destination.file.createReadStream(),
+        };
+      }
+    } catch (firebaseErr) {
+      if (firebaseErr.code !== "CONTRACT_STORAGE_NOT_CONFIGURED" && firebaseErr.statusCode !== 503) {
+        // Fall through to local fallback
+      }
     }
-    const [metadata] = await destination.file.getMetadata();
-    return {
-      provider,
-      storageKey,
-      size: Number(metadata.size || 0),
-      createReadStream: () => destination.file.createReadStream(),
-    };
+
+    // Fallback: check if file exists locally on disk
+    let localPath;
+    try {
+      localPath = resolvePrivateContractStorageKey(storageKey);
+      const stat = await fs.promises.stat(localPath).catch(() => null);
+      if (stat?.isFile()) {
+        return {
+          provider: "local",
+          storageKey,
+          size: stat.size,
+          absolutePath: localPath,
+          createReadStream: () => fs.createReadStream(localPath),
+        };
+      }
+    } catch {
+      // Ignore local resolution failure
+    }
+
+    throw storageError(
+      "The prepared Contract file is missing from persistent storage.",
+      "PREPARED_DOCUMENT_STORAGE_MISSING",
+      410,
+    );
   }
 
   let absolutePath;
@@ -124,20 +149,39 @@ export const inspectPreparedContractDocument = async (document) => {
     );
   }
   const stat = await fs.promises.stat(absolutePath).catch(() => null);
-  if (!stat?.isFile()) {
-    throw storageError(
-      "The prepared Contract file is missing from storage.",
-      "PREPARED_DOCUMENT_STORAGE_MISSING",
-      410,
-    );
+  if (stat?.isFile()) {
+    return {
+      provider: "local",
+      storageKey,
+      size: stat.size,
+      absolutePath,
+      createReadStream: () => fs.createReadStream(absolutePath),
+    };
   }
-  return {
-    provider: "local",
-    storageKey,
-    size: stat.size,
-    absolutePath,
-    createReadStream: () => fs.createReadStream(absolutePath),
-  };
+
+  // Fallback: check if file exists in Firebase Storage
+  if (admin.apps.length) {
+    try {
+      const destination = await findFirebaseFile(storageKey, true);
+      if (destination) {
+        const [metadata] = await destination.file.getMetadata();
+        return {
+          provider: "firebase-storage",
+          storageKey,
+          size: Number(metadata.size || 0),
+          createReadStream: () => destination.file.createReadStream(),
+        };
+      }
+    } catch {
+      // Ignore Firebase fallback error
+    }
+  }
+
+  throw storageError(
+    "The prepared Contract file is missing from storage.",
+    "PREPARED_DOCUMENT_STORAGE_MISSING",
+    410,
+  );
 };
 
 export const removePreparedContractDocument = async (document) => {

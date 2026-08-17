@@ -69,7 +69,7 @@ function TenantAvatar({ avatarUrl, name, className = "h-7 w-7 text-[10px]" }) {
 
   return (
     <div
-      className={`flex ${className} shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-800 border border-slate-200 font-bold dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700`}
+      className={`flex ${className} shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 font-bold shadow-xs`}
     >
       {getInitials(name || "")}
     </div>
@@ -747,14 +747,14 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="h-9 rounded-xl border border-border bg-card px-4 text-xs font-bold text-card-foreground transition hover:bg-muted disabled:opacity-50"
+              className="h-9 rounded-xl border border-border bg-card px-4 text-xs font-bold text-card-foreground transition-colors duration-150 hover:bg-muted disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting || uploadingImage}
-              className="inline-flex h-9 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] disabled:opacity-50 dark:bg-emerald-600 dark:text-white dark:hover:bg-emerald-700"
+              className="inline-flex h-9 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-xs font-bold text-white shadow-xs transition-colors duration-150 hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] disabled:opacity-50 dark:bg-emerald-600 dark:text-white dark:hover:bg-emerald-700"
             >
               {submitting ? (
                 <>

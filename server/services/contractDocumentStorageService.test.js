@@ -79,4 +79,33 @@ describe("prepared Contract document storage", () => {
       else process.env.CONTRACT_DOCUMENT_STORAGE = previousStorage;
     }
   });
+
+  test("falls back to local disk when document metadata specifies firebase-storage but file exists locally", async () => {
+    const target = buildPreparedContractStorage({
+      contractId: "507f1f77bcf86cd799439099",
+      branch: "gil-puyat",
+      year: 2026,
+      contractNumber: "LL-GP-2026-FALLBACK",
+      tenantLegalName: "Fallback Tenant",
+      roomType: "private",
+      leaseType: "short_term",
+      contractDate: "2026-07-27",
+      version: Date.now(),
+    });
+    await storePreparedContractDocument({
+      target,
+      bytes: Buffer.from("%PDF-1.4\nfallback-test\n"),
+    });
+    const document = {
+      storageProvider: "firebase-storage",
+      storageKey: target.storageKey,
+    };
+    created.push(document);
+
+    const inspected = await inspectPreparedContractDocument(document);
+    expect(inspected.provider).toBe("local");
+    expect(inspected.size).toBeGreaterThan(0);
+    await expect(fs.readFile(inspected.absolutePath, "utf8"))
+      .resolves.toContain("fallback-test");
+  });
 });

@@ -223,7 +223,7 @@ function contextDate(value) {
 
 function buildTenantContextLines(context = {}, fallbackUser = {}) {
   const lines = [];
-  lines.push(`Tenant: ${context.tenantName || fallbackUser.name || 'Resident'} (${context.tenantEmail || fallbackUser.email || 'email unavailable'})`);
+  lines.push(`Tenant: ${context.tenantName || fallbackUser.name || 'Tenant'} (${context.tenantEmail || fallbackUser.email || 'email unavailable'})`);
 
   if (context.branchRaw) {
     lines.push(`Current branch: ${context.branch} (${context.branchRaw}; source: ${context.branchSource})`);
@@ -233,7 +233,7 @@ function buildTenantContextLines(context = {}, fallbackUser = {}) {
 
   if (context.tenancy?.isCurrentResident) {
     const started = contextDate(context.tenancy.occupancyStartedAt);
-    lines.push(`Current tenancy: active resident${started ? `; move-in completed on ${started}` : ''}. Do not present a move-in reminder.`);
+    lines.push(`Current tenancy: active tenant${started ? `; move-in completed on ${started}` : ''}. Do not present a move-in reminder.`);
   } else if (context.tenancy?.scheduledMoveInDate) {
     lines.push(`Current tenancy: ${context.tenancy.status}; scheduled move-in date: ${contextDate(context.tenancy.scheduledMoveInDate)}`);
   } else {
@@ -584,7 +584,7 @@ async function sendMessage(req, res) {
   } catch (error) {
     console.error('Chatbot error:', error);
     res.status(500).json({
-      response: "I'm having trouble connecting right now po. Please try again, or contact the admin office at +63 912 345 6789.",
+      response: "I am having trouble connecting right now. Please try again, or contact the admin office at +63 912 345 6789.",
       error: {
         code: 'LILY_TEMPORARILY_UNAVAILABLE',
         message: 'Lily is temporarily unavailable. Please try again.',

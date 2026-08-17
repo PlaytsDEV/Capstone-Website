@@ -400,7 +400,7 @@ export default function Dashboard() {
                       className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground truncate">
                           {item.label}
                         </span>
                         <div
@@ -412,18 +412,11 @@ export default function Dashboard() {
                         </div>
                       </div>
                       <div className="mt-2">
-                        <p
-                          className="text-2xl font-bold tracking-tight"
-                          style={
-                            metricValueStyle[item.tone] || {
-                              color: "var(--foreground)",
-                            }
-                          }
-                        >
+                        <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums leading-none">
                           {item.value}
                         </p>
                         {item.trend && (
-                          <p className="mt-1 text-[11px] text-muted-foreground font-medium">
+                          <p className="mt-1.5 text-[11px] text-muted-foreground font-medium line-clamp-1">
                             {item.trend}
                           </p>
                         )}
@@ -446,8 +439,7 @@ export default function Dashboard() {
               <div className="mb-6 flex items-center justify-between">
                 <div>
                   <h2
-                    className="text-lg font-bold tracking-tight"
-                    style={{ color: "var(--text-primary)" }}
+                    className="text-sm font-semibold tracking-tight text-foreground"
                   >
                     Recent Inquiries
                   </h2>
@@ -455,8 +447,7 @@ export default function Dashboard() {
                     <SkeletonPulse variant="text" width="200px" height="11px" style={{ marginTop: "4px" }} />
                   ) : (
                     <p
-                      className="mt-0.5 text-xs font-medium"
-                      style={{ color: "var(--text-muted)" }}
+                      className="mt-0.5 text-xs font-normal text-muted-foreground"
                     >
                       {kpis.inquiries || 0} on the active range • newest items first
                     </p>
@@ -465,11 +456,10 @@ export default function Dashboard() {
                 <Link
                   to="/admin/inquiries"
                   state={{ fromDashboard: true }}
-                  className="inline-flex items-center gap-1 text-[13px] font-bold hover:underline transition-all"
-                  style={{ color: "var(--color-primary)" }}
+                  className="inline-flex items-center gap-1 text-xs font-semibold hover:underline transition-all text-primary"
                 >
                   View All
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </Link>
               </div>
 
@@ -495,27 +485,24 @@ export default function Dashboard() {
 
                         <div className="min-w-0">
                           <h3
-                            className="truncate text-[15px] font-bold"
-                            style={{ color: "var(--text-primary)" }}
+                            className="truncate text-[13px] font-semibold text-foreground"
                           >
                             {inq.name}
                           </h3>
                           <p
-                            className="truncate text-sm font-medium"
-                            style={{ color: "var(--text-muted)" }}
+                            className="truncate text-[11px] font-normal text-muted-foreground"
                           >
                             {inq.email}
                           </p>
                           <div
-                            className="mt-1.5 flex items-center gap-3 text-[12px] font-medium"
-                            style={{ color: "var(--text-muted)", opacity: 0.7 }}
+                            className="mt-1 flex items-center gap-3 text-[11px] font-normal text-muted-foreground"
                           >
                             <span className="flex items-center gap-1">
-                              <MapPin className="h-3.5 w-3.5" />
+                              <MapPin className="h-3 w-3" />
                               {inq.branch}
                             </span>
                             <span className="flex items-center gap-1">
-                              <Calendar className="h-3.5 w-3.5" />
+                              <Calendar className="h-3 w-3" />
                               {inq.date || inq.time}
                             </span>
                           </div>
@@ -566,8 +553,7 @@ export default function Dashboard() {
             >
               <div className="mb-4">
                 <h2
-                  className="text-lg font-bold tracking-tight"
-                  style={{ color: "var(--text-primary)" }}
+                  className="text-sm font-semibold tracking-tight text-foreground"
                 >
                   Reservation Status
                 </h2>
@@ -575,8 +561,7 @@ export default function Dashboard() {
                   <SkeletonPulse variant="text" width="180px" height="11px" style={{ marginTop: "4px" }} />
                 ) : (
                   <p
-                    className="mt-0.5 text-xs font-medium"
-                    style={{ color: "var(--text-muted)" }}
+                    className="mt-0.5 text-xs font-normal text-muted-foreground"
                   >
                     {reservationStatus.pending || 0} pending •{" "}
                     {reservationStatus.approved || 0} approved •{" "}
@@ -747,8 +732,7 @@ export default function Dashboard() {
             <div className="mb-6 flex items-center justify-between">
               <div>
                 <h2
-                  className="text-lg font-bold tracking-tight"
-                  style={{ color: "var(--text-primary)" }}
+                  className="text-sm font-semibold tracking-tight text-foreground"
                 >
                   Recent Reservations
                 </h2>
@@ -756,8 +740,7 @@ export default function Dashboard() {
                   <SkeletonPulse variant="text" width="240px" height="11px" style={{ marginTop: "4px" }} />
                 ) : (
                   <p
-                    className="mt-0.5 text-xs font-medium"
-                    style={{ color: "var(--text-muted)" }}
+                    className="mt-0.5 text-xs font-normal text-muted-foreground"
                   >
                     {reservationStatus.pending || 0} pending review •{" "}
                     {kpis.activeBookings || 0} active bookings •{" "}
@@ -767,11 +750,10 @@ export default function Dashboard() {
               </div>
               <Link
                 to="/admin/reservations"
-                className="inline-flex items-center gap-1 text-[13px] font-bold hover:underline transition-all"
-                style={{ color: "var(--color-primary)" }}
+                className="inline-flex items-center gap-1 text-xs font-semibold hover:underline transition-all text-primary"
               >
                 View All
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="h-3.5 w-3.5" />
               </Link>
             </div>
 
@@ -796,32 +778,27 @@ export default function Dashboard() {
                       }}
                     >
                       <th
-                        className="px-6 py-3 text-left text-[11px] font-bold uppercase tracking-wider"
-                        style={{ color: "var(--text-muted)" }}
+                        className="px-6 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
                       >
                         Room Type
                       </th>
                       <th
-                        className="px-6 py-3 text-left text-[11px] font-bold uppercase tracking-wider"
-                        style={{ color: "var(--text-muted)" }}
+                        className="px-6 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
                       >
                         Tenant
                       </th>
                       <th
-                        className="px-6 py-3 text-left text-[11px] font-bold uppercase tracking-wider"
-                        style={{ color: "var(--text-muted)" }}
+                        className="px-6 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
                       >
                         Branch
                       </th>
                       <th
-                        className="px-6 py-3 text-left text-[11px] font-bold uppercase tracking-wider"
-                        style={{ color: "var(--text-muted)" }}
+                        className="px-6 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
                       >
                         Date
                       </th>
                       <th
-                        className="px-6 py-3 text-right text-[11px] font-bold uppercase tracking-wider"
-                        style={{ color: "var(--text-muted)" }}
+                        className="px-6 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
                       >
                         Status
                       </th>
@@ -834,19 +811,17 @@ export default function Dashboard() {
                     {recentReservations.map((reservation) => (
                       <tr
                         key={reservation.id}
-                        className="group transition-colors"
-                        style={{ backgroundColor: "transparent" }}
+                        className="group transition-colors hover:bg-muted/30"
                       >
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
+                        <td className="px-6 py-3.5">
+                          <div className="flex items-center gap-2.5">
                             <div
-                              className="flex shrink-0 items-center justify-center text-slate-500 dark:text-slate-400"
+                              className="flex shrink-0 items-center justify-center text-muted-foreground"
                             >
                               <DoorOpen className="h-4 w-4" />
                             </div>
                             <span
-                              className="text-[14px] font-bold"
-                              style={{ color: "var(--text-primary)" }}
+                              className="text-[13px] font-semibold text-foreground"
                             >
                               {reservation.roomType}
                             </span>
@@ -854,27 +829,24 @@ export default function Dashboard() {
                         </td>
 
                         <td
-                          className="px-6 py-4 text-[14px] font-medium"
-                          style={{ color: "var(--text-primary)" }}
+                          className="px-6 py-3.5 text-[13px] font-medium text-foreground"
                         >
                           {reservation.guestName}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-3.5">
                           <span
-                            className="flex items-center gap-1 text-[13px] font-medium"
-                            style={{ color: "var(--text-muted)" }}
+                            className="flex items-center gap-1 text-[12px] font-normal text-muted-foreground"
                           >
                             <MapPin className="h-3.5 w-3.5" />
                             {reservation.branch}
                           </span>
                         </td>
                         <td
-                          className="px-6 py-4 text-[13px] font-medium"
-                          style={{ color: "var(--text-muted)" }}
+                          className="px-6 py-3.5 text-[12px] font-normal tabular-nums text-muted-foreground"
                         >
                           {reservation.date}
                         </td>
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-6 py-3.5 text-right">
                           <StatusBadge status={reservation.status} />
                         </td>
                       </tr>

@@ -236,6 +236,40 @@ export const isValidDate = (dateStr) => {
  * @param {Object} body - Request body
  * @returns {Object} { valid: boolean, data: Object, errors: Array }
  */
+const COMMON_DOMAIN_TYPOS = {
+  "gmaill.com": "gmail.com",
+  "gmial.com": "gmail.com",
+  "gmai.com": "gmail.com",
+  "gmaik.com": "gmail.com",
+  "gamil.com": "gmail.com",
+  "gmal.com": "gmail.com",
+  "gmaill.co": "gmail.com",
+  "gmaiil.com": "gmail.com",
+  "gmeil.com": "gmail.com",
+  "gmail.con": "gmail.com",
+  "gmail.cm": "gmail.com",
+  "yaho.com": "yahoo.com",
+  "yahooo.com": "yahoo.com",
+  "yahu.com": "yahoo.com",
+  "yahoo.con": "yahoo.com",
+  "yaho.cm": "yahoo.com",
+  "hotmial.com": "hotmail.com",
+  "hotmai.com": "hotmail.com",
+  "hotmaill.com": "hotmail.com",
+  "hotmali.com": "hotmail.com",
+  "hotmil.com": "hotmail.com",
+  "hotmail.con": "hotmail.com",
+  "oulook.com": "outlook.com",
+  "outlok.com": "outlook.com",
+  "outloo.com": "outlook.com",
+  "outllok.com": "outlook.com",
+  "outlokk.com": "outlook.com",
+  "outlook.con": "outlook.com",
+  "iclud.com": "icloud.com",
+  "icoud.com": "icloud.com",
+  "icluod.com": "icloud.com",
+};
+
 export const validateRegisterInput = (body) => {
   const errors = [];
   const data = {};
@@ -246,7 +280,12 @@ export const validateRegisterInput = (body) => {
     if (!email) {
       errors.push("Invalid email format");
     } else {
-      data.email = email;
+      const domain = email.split("@")[1];
+      if (COMMON_DOMAIN_TYPOS[domain]) {
+        errors.push(`Invalid email domain "${domain}". Did you mean "${COMMON_DOMAIN_TYPOS[domain]}"?`);
+      } else {
+        data.email = email;
+      }
     }
   }
 

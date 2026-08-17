@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { Sparkles, LoaderCircle } from "lucide-react";
 import { chatbotApi } from "../../../../shared/api/chatbotApi";
 
 const TONES = ["Formal", "Empathetic", "Firm", "Concise"];
@@ -53,24 +52,23 @@ export default function AdminReplyDraftButton({
   };
 
   return (
-    <div className="flex items-center gap-3 mb-2 p-2 bg-card border border-border rounded-lg shadow-2xs">
+    <div className="flex flex-wrap items-center gap-2 mb-2 p-2 bg-card border border-border rounded-lg shadow-2xs">
       <button
         type="button"
         onClick={handleGenerate}
         disabled={disabled || loading}
-        className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-md hover:bg-primary/90 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
+        className="flex items-center justify-center px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-md hover:bg-primary/90 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
       >
-        {loading ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
-        Auto-Draft Reply
+        <span>{loading ? "Drafting..." : "Auto-Draft Reply"}</span>
       </button>
 
-      <div className="flex items-center gap-1 border-l border-border pl-3">
+      <div className="flex items-center gap-1 sm:border-l sm:border-border sm:pl-2.5">
         {TONES.map((tone) => (
           <button
             key={tone}
             type="button"
             onClick={() => setActiveTone(tone)}
-            className={`px-2.5 py-1 text-xs rounded-md border transition-colors cursor-pointer ${
+            className={`px-2 py-1 text-xs rounded-md border transition-colors cursor-pointer ${
               activeTone === tone
                 ? "bg-muted text-foreground border-border font-bold shadow-2xs"
                 : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/40"

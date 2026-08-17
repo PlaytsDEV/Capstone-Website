@@ -25,6 +25,7 @@ import {
   verifyAdmin,
   verifyOwner,
 } from "../middleware/auth.js";
+import { authLimiter } from "../middleware/rateLimiter.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
 import {
   requireAnyPermission,
@@ -93,7 +94,7 @@ router.get("/branch/:branch", verifyToken, verifyOwner, getUsersByBranch);
  * Get user email by username (for login with username).
  * This endpoint is public to allow username-based login.
  */
-router.get("/email-by-username", getEmailByUsername);
+router.get("/email-by-username", authLimiter, getEmailByUsername);
 
 // ============================================================================
 // CREATE USER (Owner only)

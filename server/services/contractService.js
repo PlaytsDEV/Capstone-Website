@@ -8,9 +8,11 @@ import {
 } from "../config/contractConfig.js";
 import {
   resolveTenantFinancialSummary,
-  resolveTenantPersonalDetails,
 } from "./tenantProfileService.js";
-import { buildContractGenerationData } from "./contractGenerationDataService.js";
+import {
+  buildContractGenerationData,
+  resolveApplicantIdentity,
+} from "./contractGenerationDataService.js";
 import { resolveContractTemplate } from "./contractTemplateService.js";
 import { resolveContractLeasePricing } from "./contractPricingResolver.js";
 import { getBusinessSettings } from "../utils/businessSettings.js";
@@ -235,7 +237,7 @@ export const createDraftContract = async ({
     // exact template/date issue before generation.
   }
   const selectedBed = reservation.selectedBed || {};
-  const person = resolveTenantPersonalDetails({ user: tenant, reservation });
+  const person = resolveApplicantIdentity({ reservation });
   const number = await generateContractNumber(branch);
 
   try {
@@ -590,7 +592,7 @@ export const createReplacementContractForTransfer = async ({
     // Template resolved on validation
   }
 
-  const person = resolveTenantPersonalDetails({ user: tenant, reservation });
+  const person = resolveApplicantIdentity({ contract: oldContract, reservation });
   const number = await generateContractNumber(branch, new Date(), session);
 
   const bedIdentifier = targetBed.id || String(targetBed._id || "");

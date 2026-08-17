@@ -1,17 +1,4 @@
 import React, { useState } from "react";
-import {
-  Calendar,
-  Clock,
-  MapPin,
-  User,
-  Mail,
-  Phone,
-  CheckCircle2,
-  AlertCircle,
-  LoaderCircle,
-  Send,
-  Building2,
-} from "lucide-react";
 import { chatbotApi } from "../../../../../shared/api/chatbotApi";
 
 const TIME_SLOTS = ["10:00 AM", "2:00 PM", "4:00 PM", "6:00 PM"];
@@ -128,18 +115,13 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
           boxShadow: "0 2px 8px rgba(10, 22, 40, 0.05)",
         }}
       >
-        <div className="flex items-center gap-2 mb-2.5">
-          <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-950/40 flex items-center justify-center flex-shrink-0">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div>
-            <h4 className="text-xs sm:text-sm font-bold text-emerald-800 dark:text-emerald-300">
-              Tour Scheduled Successfully!
-            </h4>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400">
-              Ref ID: <span className="font-mono font-semibold">{bookingSuccess.inquiryId}</span>
-            </p>
-          </div>
+        <div className="mb-2.5">
+          <h4 className="text-xs sm:text-sm font-bold text-emerald-800 dark:text-emerald-300">
+            Tour Scheduled Successfully!
+          </h4>
+          <p className="text-[10px] text-slate-500 dark:text-slate-400">
+            Ref ID: <span className="font-mono font-semibold">{bookingSuccess.inquiryId}</span>
+          </p>
         </div>
 
         <div
@@ -182,30 +164,17 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
       }}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{
-            backgroundColor: "var(--lp-icon-bg, rgba(212, 175, 55, 0.12))",
-            color: "var(--lp-accent, #B45309)",
-            border: "1px solid var(--lp-border, #E6D9B2)",
-          }}
-        >
-          <Calendar className="w-4 h-4 text-amber-600" />
-        </div>
-        <div>
-          <h4 className="text-xs sm:text-sm font-bold" style={{ color: "var(--lp-text, #162f53)" }}>
-            Schedule an In-Person Dorm Tour
-          </h4>
-          <p className="text-[10px]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
-            Select your preferred branch, date, and viewing time slot.
-          </p>
-        </div>
+      <div className="mb-3 pb-2 border-b" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
+        <h4 className="text-xs sm:text-sm font-bold" style={{ color: "var(--lp-text, #162f53)" }}>
+          Schedule an In-Person Dorm Tour
+        </h4>
+        <p className="text-[10px]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
+          Select your preferred branch, date, and viewing time slot.
+        </p>
       </div>
 
       {submitError && (
-        <div className="mb-3 p-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-[11px] text-red-700 dark:text-red-300 flex items-start gap-1.5">
-          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+        <div className="mb-3 p-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-[11px] text-red-700 dark:text-red-300">
           <span>{submitError}</span>
         </div>
       )}
@@ -370,7 +339,7 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full mt-3.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+        className="w-full mt-3.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center focus:outline-none active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
         style={{
           backgroundColor: "#0A1628",
           border: "1px solid #0A1628",
@@ -383,17 +352,7 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
           if (!isSubmitting) e.currentTarget.style.backgroundColor = "#0A1628";
         }}
       >
-        {isSubmitting ? (
-          <>
-            <LoaderCircle className="w-3.5 h-3.5 animate-spin text-white" />
-            <span className="text-white font-bold">Scheduling Dorm Tour...</span>
-          </>
-        ) : (
-          <>
-            <Calendar className="w-3.5 h-3.5 text-white" />
-            <span className="text-white font-bold">Confirm & Book Dorm Tour</span>
-          </>
-        )}
+        <span className="text-white font-bold">{isSubmitting ? "Scheduling Dorm Tour..." : "Confirm & Book Dorm Tour"}</span>
       </button>
     </form>
   );

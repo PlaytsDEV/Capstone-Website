@@ -7,6 +7,7 @@ const verifyOnboardingToken = jest.fn(noop);
 const verifyAdmin = jest.fn(noop);
 const verifyOwner = jest.fn(noop);
 const verifyApplicant = jest.fn(noop);
+const optionalAuth = jest.fn(noop);
 const filterByBranch = jest.fn(noop);
 const validate = jest.fn(() => noop);
 const createValidationMiddleware = jest.fn(() => noop);
@@ -29,6 +30,7 @@ await jest.unstable_mockModule("../middleware/auth.js", () => ({
   verifyAdmin,
   verifyOwner,
   verifyApplicant,
+  optionalAuth,
 }));
 await jest.unstable_mockModule("../middleware/branchAccess.js", () => ({
   filterByBranch,
@@ -366,22 +368,32 @@ describe("route access guards", () => {
     }
   });
 
-  test("room, announcement, and audit routes use module permissions", () => {
-    const roomHandlers = getRouteHandlers(roomsRoutes, "/:roomId", "delete");
-    const announcementHandlers = getRouteHandlers(announcementRoutes, "/", "post");
+  test("room, announcement, and audit routes use module permissions and branch filters", () => {
+    const roomDeleteHandlers = getRouteHandlers(roomsRoutes, "/:roomId", "delete");
+    const roomPhotosHandlers = getRouteHandlers(roomsRoutes, "/:roomId/photos", "post");
+    const announcementPostHandlers = getRouteHandlers(announcementRoutes, "/", "post");
+    const announcementAdminHandlers = getRouteHandlers(announcementRoutes, "/admin", "get");
     const auditHandlers = getRouteHandlers(auditRoutes, "/", "get");
+    const roomSwapHandlers = getRouteHandlers(reservationsRoutes, "/room-swap", "post");
+    const checkExtensionHandlers = getRouteHandlers(reservationsRoutes, "/:reservationId/check-extension", "get");
 
     expect(
-      roomHandlers.some((handler) => handler.requiredPermission === "manageRooms"),
+      roomDeleteHandlers.some((handler) => handler.requiredPermission === "manageRooms"),
     ).toBe(true);
+    expect(roomDeleteHandlers).toContain(filterByBranch);
+    expect(roomPhotosHandlers).toContain(filterByBranch);
     expect(
-      announcementHandlers.some(
+      announcementPostHandlers.some(
         (handler) => handler.requiredPermission === "manageAnnouncements",
       ),
     ).toBe(true);
+    expect(announcementPostHandlers).toContain(filterByBranch);
+    expect(announcementAdminHandlers).toContain(filterByBranch);
     expect(
       auditHandlers.some((handler) => handler.requiredPermission === "viewReports"),
     ).toBe(true);
+    expect(roomSwapHandlers).toContain(filterByBranch);
+    expect(checkExtensionHandlers).toContain(filterByBranch);
   });
 
   test("audit security signals stay owner-only", () => {
