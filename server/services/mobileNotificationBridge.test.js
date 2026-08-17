@@ -10,7 +10,7 @@ import {
 
 function fakeDb({
   notifications = [], announcements = [], reads = [], readState = null, users = [],
-  dismissals = [], clearState = null,
+  dismissals = [], clearState = null, stays = [],
 } = {}) {
   const updates = {
     notification_reads: [], notification_read_state: [], notificationsUpdateMany: [],
@@ -66,6 +66,12 @@ function fakeDb({
           findOne: async () => clearState,
           updateOne: async (filter, update, opts) => { updates.notification_clear_state.push({ filter, update, opts }); },
         };
+      }
+      if (name === "stays") {
+        return { findOne: async (query) => stays.find((stay) => String(stay.tenantId) === String(query.tenantId)) || null };
+      }
+      if (["bedhistories", "reservations", "rooms", "contracts"].includes(name)) {
+        return { findOne: async () => null };
       }
       throw new Error(`unexpected collection: ${name}`);
     },
@@ -131,6 +137,38 @@ describe("mobileNotificationBridge", () => {
     expect(result.length).toBe(1);
     expect(result[0].author_name).toBe("LilyCrest Admin");
     expect(result[0].author_name).not.toBe(unknownAdminId);
+  });
+
+  test("CASE B Home: a Guadalupe announcement, linked stored row, and unread contribution are absent for Gil Puyat", async () => {
+    const tenantMongoId = new ObjectId("64e000000000000000000001");
+    const announcementMongoId = new ObjectId("65e000000000000000000001");
+    const db = fakeDb({
+      notifications: [{
+        _id: new ObjectId("66e000000000000000000001"),
+        userId: tenantMongoId,
+        type: "announcement",
+        entityType: "announcement",
+        entityId: String(announcementMongoId),
+        title: "Guadalupe notice",
+        message: "Branch only",
+        isRead: false,
+        createdAt: new Date("2026-08-16"),
+      }],
+      announcements: [{
+        _id: announcementMongoId,
+        announcement_id: "ann_guadalupe",
+        targetBranch: "guadalupe",
+        title: "Guadalupe notice",
+        publicationStatus: "published",
+        startsAt: new Date("2026-08-01"),
+        isArchived: false,
+      }],
+      stays: [{ tenantId: tenantMongoId, branch: "gil-puyat", status: "active" }],
+    });
+
+    const feed = await listUserNotifications(db, "tenant-gil-puyat", tenantMongoId);
+    expect(feed).toEqual([]);
+    expect(feed.filter((item) => !item.read)).toHaveLength(0);
   });
 
   test("a notification is marked read when its key is in notification_reads", async () => {
@@ -311,6 +349,9 @@ function filteringFakeDb({ notifications = [] } = {}) {
       }
       if (name === "notification_clear_state") {
         return { findOne: async () => null, updateOne: async () => {} };
+      }
+      if (["stays", "bedhistories", "reservations", "rooms", "contracts"].includes(name)) {
+        return { findOne: async () => null };
       }
       throw new Error(`unexpected collection: ${name}`);
     },

@@ -7,6 +7,7 @@ router.post('/start', authMiddleware, activeTenantMiddleware, chatController.sta
 router.get('/me', authMiddleware, activeTenantMiddleware, chatController.getMyConversations);
 router.get('/:conversationId/messages', authMiddleware, activeTenantMiddleware, chatController.getConversationMessages);
 router.post('/:conversationId/messages', authMiddleware, activeTenantMiddleware, chatController.sendMessage);
+router.patch('/:conversationId/reopen', authMiddleware, activeTenantMiddleware, chatController.reopenConversation);
 router.patch('/:conversationId/close', authMiddleware, activeTenantMiddleware, chatController.closeConversation);
 
 module.exports = router;

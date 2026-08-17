@@ -2,6 +2,11 @@ import fs from "fs";
 
 describe("mobile Billing route safety", () => {
   const routes = fs.readFileSync(new URL("./mobileBillingRoutes.js", import.meta.url), "utf8");
+  const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
+  const vendoredBilling = fs.readFileSync(
+    new URL("../mobile/controllers/billing.controller.js", import.meta.url),
+    "utf8",
+  );
 
   test("never attaches mobileTenantAuth via router-level router.use() — only per-route", () => {
     // router.use(mobileTenantAuth) would run for every /api/m/* request that
@@ -106,5 +111,16 @@ describe("mobile Billing route safety", () => {
     expect(pdfHandler.length).toBeGreaterThan(0);
     expect(routes).toContain('import { isBillPdfStale } from "../services/billPdfCache.js"');
     expect(pdfHandler).toMatch(/isBillPdfStale\(bill\)/);
+  });
+
+  test("server mount precedence makes the canonical statement route shadow the vendored PDF generator", () => {
+    expect(server.indexOf('app.use("/api/m", mobileBillingRoutes)')).toBeGreaterThan(-1);
+    expect(server.indexOf('app.use("/api/m", mobileBillingRoutes)')).toBeLessThan(
+      server.indexOf('app.use("/api/m", mobileRoutes)'),
+    );
+    const pdfHandler = routes.split('router.get("/billing/:billingId/pdf"')[1]?.split("router.")[0] || "";
+    expect(pdfHandler).toContain("generateRentBillPdf");
+    expect(vendoredBilling).toContain("buildBrandedPdf");
+    expect(routes).not.toContain("buildBrandedPdf");
   });
 });

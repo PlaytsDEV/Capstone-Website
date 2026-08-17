@@ -170,7 +170,7 @@ function displayName(user, fallback = "User") {
 }
 
 function selectedBedLabel(reservation = {}) {
-  const selectedBed = reservation.selectedBed || {};
+  const selectedBed = reservation?.selectedBed || {};
   const parts = [selectedBed.position, selectedBed.id].filter(Boolean);
   return parts.join(" ").trim();
 }
@@ -710,6 +710,12 @@ async function createMessageAndUpdateConversation({
     },
   };
 
+  if (nextStatus === "open") {
+    update.$set.closedAt = null;
+    update.$set.closedBy = null;
+    update.$set.closingNote = "";
+  }
+
   if (nextStatus && conversation.status !== nextStatus) {
     update.$set.status = nextStatus;
     update.$push = {
@@ -1015,10 +1021,6 @@ export async function sendTenantMessage(req, res) {
       tenantContext.user,
     );
 
-    if (conversation.status === "closed") {
-      throw createHttpError("This conversation is closed.", 400, "CONVERSATION_CLOSED");
-    }
-
     const message = normalizeMessage(req.body?.message);
     const result = await createMessageAndUpdateConversation({
       conversation,
@@ -1027,7 +1029,9 @@ export async function sendTenantMessage(req, res) {
       message,
       unreadTarget: "admin",
       nextStatus: "open",
-      statusNote: "Tenant replied.",
+      statusNote: conversation.status === "closed"
+        ? "Tenant replied because the concern persists; conversation reopened."
+        : "Tenant replied.",
     });
 
     await notifyAdminsOfTenantMessage(result.conversation);
@@ -1054,6 +1058,48 @@ export async function sendTenantMessage(req, res) {
     });
   } catch (error) {
     return sendError(res, error, "Failed to send message.");
+  }
+}
+
+export async function reopenTenantConversation(req, res) {
+  try {
+    const tenantContext = await resolveTenantContext(req);
+    const conversation = await findConversationForTenant(
+      req.params.conversationId,
+      tenantContext.user,
+    );
+
+    if (!["resolved", "closed"].includes(conversation.status)) {
+      return res.json({ conversation: serializeConversation(conversation) });
+    }
+
+    const note = String(req.body?.note || "").trim().slice(0, 500)
+      || "Tenant reports that the concern persists; conversation reopened.";
+    const now = new Date();
+
+    conversation.status = "open";
+    conversation.closedAt = null;
+    conversation.closedBy = null;
+    conversation.closingNote = "";
+    conversation.statusHistory.push({
+      status: "open",
+      note,
+      actorId: tenantContext.user._id,
+      actorName: displayName(tenantContext.user, "Tenant"),
+      createdAt: now,
+    });
+    await conversation.save();
+
+    const serializedConversation = serializeConversation(conversation);
+    emitToChatAdmins(
+      conversation.branch,
+      "chat:conversation-updated",
+      serializedConversation,
+    );
+
+    return res.json({ conversation: serializedConversation });
+  } catch (error) {
+    return sendError(res, error, "Failed to reopen conversation.");
   }
 }
 

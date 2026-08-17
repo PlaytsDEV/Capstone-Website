@@ -5,6 +5,7 @@ const announcementFind = jest.fn();
 const acknowledgmentCreateForAnnouncement = jest.fn();
 const createNotification = jest.fn();
 const emitToUser = jest.fn();
+const filterAnnouncementRecipients = jest.fn(async (_db, _announcement, recipients) => recipients);
 
 const createSelectableChain = (result) => ({
   select: jest.fn(() => ({
@@ -48,6 +49,10 @@ await jest.unstable_mockModule("../middleware/logger.js", () => ({
   },
 }));
 
+await jest.unstable_mockModule("../mobile/services/announcementAudience.service.js", () => ({
+  default: { filterAnnouncementRecipients },
+}));
+
 const {
   dispatchAnnouncementNotifications,
   dispatchDueScheduledAnnouncements,
@@ -60,6 +65,7 @@ describe("announcementDispatch", () => {
     acknowledgmentCreateForAnnouncement.mockReset();
     createNotification.mockReset();
     emitToUser.mockReset();
+    filterAnnouncementRecipients.mockClear();
   });
 
   test("dispatchAnnouncementNotifications creates notifications once and marks dispatch state", async () => {

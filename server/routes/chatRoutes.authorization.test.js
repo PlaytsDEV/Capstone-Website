@@ -53,6 +53,7 @@ await jest.unstable_mockModule("../controllers/chatController.js", () => ({
   getMyConversations: controller,
   getConversationMessages: controller,
   sendTenantMessage: controller,
+  reopenTenantConversation: controller,
 }));
 
 const chatRoutes = (await import("./chatRoutes.js")).default;
@@ -152,6 +153,20 @@ describe("web admin chat database authority", () => {
     expect(result.status).toBe(401);
     expect(result.body.error.code).toBe("AUTHENTICATION_FAILED");
     expect(controllerCalls).not.toHaveBeenCalled();
+  });
+
+  test("an authenticated tenant can reach the canonical reopen lifecycle route", async () => {
+    const result = await call(
+      "PATCH",
+      "/chat/507f1f77bcf86cd799439011/reopen",
+    );
+    expect(result.status).toBe(200);
+    expect(controllerCalls).toHaveBeenCalledWith(
+      "PATCH",
+      "/507f1f77bcf86cd799439011/reopen",
+      expect.objectContaining({ role: "tenant" }),
+      undefined,
+    );
   });
 });
 

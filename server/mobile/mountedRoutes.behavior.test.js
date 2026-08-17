@@ -8,9 +8,11 @@ jest.mock('./controllers/auth.controller.js', () => ({
 jest.mock('./controllers/dashboard.controller.js', () => ({ getDashboard: (q, r) => r.json({ tenant: q.user.user_id }) }));
 jest.mock('./controllers/announcement.controller.js', () => ({
   getAllAnnouncements: (q, r) => r.json({ visibility: q.user ? 'private' : 'public', userId: q.user?.user_id || null }),
+  getAnnouncementDetail: (q, r) => r.json({ announcementId: q.params.announcementId, userId: q.user?.user_id || null }),
   createAnnouncement: (q, r) => r.json({ admin: q.user.user_id }),
   dismissAnnouncement: (q, r) => r.json({ status: 'dismissed', userId: q.user?.user_id || null }),
   dismissAnnouncementsBulk: (q, r) => r.json({ status: 'dismissed', userId: q.user?.user_id || null }),
+  restoreAnnouncement: (q, r) => r.json({ status: 'restored', userId: q.user?.user_id || null }),
 }));
 
 const express = require('express'); const http = require('http');
@@ -72,19 +74,24 @@ describe('mounted mobile route authentication', () => {
     expect(result.status).toBe(403); expect(result.body.code).toBe('BRANCH_ACCESS_DENIED');
   });
 
-  test.each([
-    ['anonymous', null, null, 'public'],
-    ['active', 'active', false, 'private'],
-    ['suspended', 'suspended', false, 'public'],
-    ['archived', 'active', true, 'public'],
-  ])('%s user receives correct mounted optional announcement visibility', async (_label, accountStatus, archived, visibility) => {
-    if (accountStatus) add('optional', { user_id: 'u1', role: 'tenant', tenantStatus: 'active', accountStatus, isArchived: archived, securityVersion: 0 });
-    const result = await request('/api/m/announcements', accountStatus ? { token: 'optional' } : {}); expect(result.body.visibility).toBe(visibility); expect(result.body.userId === null).toBe(visibility === 'public');
+  test('active tenant reaches the mounted announcement route with resolved identity', async () => {
+    add('optional', { user_id: 'u1', role: 'tenant', tenantStatus: 'active', accountStatus: 'active', securityVersion: 0 });
+    const result = await request('/api/m/announcements', { token: 'optional' });
+    expect(result).toEqual({ status: 200, body: { visibility: 'private', userId: 'u1' } });
   });
 
-  test.each([['invalid token', 'missing'], ['expired session', 'expired']])('%s is anonymous on mounted optional route', async (_label, token) => {
+  test.each([
+    ['anonymous', null, {}, 401],
+    ['suspended', 'suspended', { token: 'optional' }, 403],
+    ['archived', 'active', { token: 'optional' }, 403],
+  ])('%s user cannot reach tenant announcements', async (_label, accountStatus, transport, status) => {
+    if (accountStatus) add('optional', { user_id: 'u1', role: 'tenant', tenantStatus: 'active', accountStatus, isArchived: _label === 'archived', securityVersion: 0 });
+    expect((await request('/api/m/announcements', transport)).status).toBe(status);
+  });
+
+  test.each([['invalid token', 'missing'], ['expired session', 'expired']])('%s cannot reach the mounted announcement route', async (_label, token) => {
     if (token === 'expired') add(token, { user_id: 'u1', role: 'tenant', tenantStatus: 'active', accountStatus: 'active', securityVersion: 0 }, { expires_at: new Date(0) });
-    const result = await request('/api/m/announcements', { token }); expect(result.body).toEqual({ visibility: 'public', userId: null });
+    const result = await request('/api/m/announcements', { token }); expect(result.status).toBe(401);
   });
 
   test('CommonJS wrapper and factory expose identical shared-core behavior', async () => {

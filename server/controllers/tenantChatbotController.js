@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { resolveTenantAIContext } from "../services/chatbot/tenantContextResolver.js";
+import {
+  buildNeutralContext,
+  resolveTenantAIContext,
+} from "../services/chatbot/tenantContextResolver.js";
 import { queryTenantGeminiChatbot, streamTenantGeminiChatbot } from "../services/chatbot/tenantChatbotService.js";
 import ChatConversation from "../models/ChatConversation.js";
 import ChatMessage from "../models/ChatMessage.js";
@@ -19,23 +22,52 @@ const escalationSchema = z.object({
   lastBotMessage: z.string().optional(),
 });
 
+const CONVERSATION_CATEGORIES = new Set([
+  "billing_concern",
+  "maintenance_concern",
+  "reservation_concern",
+  "payment_concern",
+  "general_inquiry",
+  "urgent_issue",
+]);
+
+function conversationCategory(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+  if (CONVERSATION_CATEGORIES.has(normalized)) return normalized;
+  if (normalized.includes("billing")) return "billing_concern";
+  if (normalized.includes("maintenance")) return "maintenance_concern";
+  if (normalized.includes("reservation")) return "reservation_concern";
+  if (normalized.includes("payment")) return "payment_concern";
+  if (normalized.includes("urgent")) return "urgent_issue";
+  return "general_inquiry";
+}
+
+function canonicalBranch(contextSnapshot) {
+  const raw = String(contextSnapshot?.branchRaw || contextSnapshot?.branch || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
+  if (raw.includes("gil-puyat")) return "gil-puyat";
+  if (raw.includes("guadalupe")) return "guadalupe";
+  return null;
+}
+
+async function tenantContext(req, userId) {
+  return (await resolveTenantAIContext(userId, req.authUser))
+    || buildNeutralContext(req.authUser);
+}
+
 export const handleTenantQuery = async (req, res, next) => {
   try {
     const validatedData = querySchema.parse(req.body);
     const { message, conversationHistory } = validatedData;
     const userId = req.authUser?._id || req.user?.uid;
 
-    const contextSnapshot = (await resolveTenantAIContext(userId, req.authUser)) || {
-      tenantName: req.authUser?.firstName ? `${req.authUser.firstName} ${req.authUser.lastName || ""}`.trim() : "Tenant",
-      branch: req.authUser?.branch?.includes("gil") ? "Gil Puyat" : "Guadalupe",
-      roomNumber: req.authUser?.roomNumber || "304",
-      bedPosition: req.authUser?.roomBed || "Bed 1",
-      currentBill: null,
-      contract: null,
-      activeMaintenance: [],
-      hasActiveMaintenance: false,
-      hasPendingBill: false,
-    };
+    const contextSnapshot = await tenantContext(req, userId);
 
     const { reply, widget, suggestedActions } = await queryTenantGeminiChatbot({
       message,
@@ -74,17 +106,7 @@ export const handleTenantStream = async (req, res, next) => {
     const { message, conversationHistory } = validatedData;
     const userId = req.authUser?._id || req.user?.uid;
 
-    const contextSnapshot = (await resolveTenantAIContext(userId, req.authUser)) || {
-      tenantName: req.authUser?.firstName ? `${req.authUser.firstName} ${req.authUser.lastName || ""}`.trim() : "Tenant",
-      branch: req.authUser?.branch?.includes("gil") ? "Gil Puyat" : "Guadalupe",
-      roomNumber: req.authUser?.roomNumber || "304",
-      bedPosition: req.authUser?.roomBed || "Bed 1",
-      currentBill: null,
-      contract: null,
-      activeMaintenance: [],
-      hasActiveMaintenance: false,
-      hasPendingBill: false,
-    };
+    const contextSnapshot = await tenantContext(req, userId);
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -139,35 +161,49 @@ export const handleTenantEscalation = async (req, res, next) => {
     const { category, priority, summary, lastBotMessage } = validatedData;
     const userId = req.authUser?._id || req.user?.uid;
 
-    const contextSnapshot = (await resolveTenantAIContext(userId, req.authUser)) || {
-      tenantName: req.authUser?.firstName ? `${req.authUser.firstName} ${req.authUser.lastName || ""}`.trim() : "Tenant",
-      branch: req.authUser?.branch?.includes("gil") ? "Gil Puyat" : "Guadalupe",
-      roomNumber: req.authUser?.roomNumber || "304",
-      bedPosition: req.authUser?.roomBed || "Bed 1",
-      currentBill: null,
-      contract: null,
-      activeMaintenance: [],
-      hasActiveMaintenance: false,
-      hasPendingBill: false,
-    };
-
-    const branch = contextSnapshot.branchRaw || contextSnapshot.branch || "guadalupe";
+    const contextSnapshot = await tenantContext(req, userId);
+    const branch = canonicalBranch(contextSnapshot);
+    if (!branch) {
+      return res.status(409).json({
+        success: false,
+        message: "Your current branch could not be verified. Please refresh your tenancy details before escalating.",
+        code: "TENANT_BRANCH_UNRESOLVED",
+      });
+    }
     
     let conversation = await ChatConversation.findOne({
-      participant_ids: userId,
-      status: { $in: ["open", "pending"] },
+      tenantId: userId,
+      status: { $in: ["open", "in_review", "waiting_tenant", "resolved"] },
       branch
     });
 
     if (!conversation) {
       conversation = new ChatConversation({
-        participant_ids: [userId],
+        tenantId: userId,
+        tenantUserId: req.authUser?.user_id || req.authUser?.firebaseUid || "",
+        tenantName: contextSnapshot.tenantName,
+        tenantEmail: contextSnapshot.tenantEmail || req.authUser?.email || "",
         branch,
-        category: category || "general",
-        status: "pending",
-        priority,
+        roomNumber: contextSnapshot.roomNumber || "",
+        roomBed: contextSnapshot.bedPosition || "",
+        category: conversationCategory(category),
+        status: "open",
+        priority: priority === "low" ? "normal" : priority,
+        statusHistory: [],
       });
       await conversation.save();
+    } else if (conversation.status === "resolved") {
+      conversation.status = "open";
+      conversation.closedAt = null;
+      conversation.closedBy = null;
+      conversation.closingNote = "";
+      conversation.statusHistory.push({
+        status: "open",
+        note: "Tenant escalated the persistent concern from Lily.",
+        actorId: userId,
+        actorName: contextSnapshot.tenantName,
+        createdAt: new Date(),
+      });
     }
 
     const initialMessageContent = `[AI Escalation Summary]
@@ -183,20 +219,23 @@ ${lastBotMessage || "N/A"}
 Context Snapshot:
 Room: ${contextSnapshot.roomNumber} | Bed: ${contextSnapshot.bedPosition}
 Active Bills: ${contextSnapshot.currentBill ? "Yes" : "No"}
-Active Tickets: ${contextSnapshot.activeMaintenance.length}`;
+Active Maintenance: ${contextSnapshot.activeMaintenance.length}
+Support Inquiries: ${contextSnapshot.inquiries?.length || 0}`;
 
     const newMsg = new ChatMessage({
-      conversation_id: conversation._id,
-      sender_id: userId,
-      sender_type: "user",
-      content: initialMessageContent,
-      message_type: "text"
+      conversationId: conversation._id,
+      senderId: userId,
+      senderUserId: req.authUser?.user_id || req.authUser?.firebaseUid || "",
+      senderName: contextSnapshot.tenantName,
+      senderRole: "tenant",
+      message: initialMessageContent,
     });
     
     await newMsg.save();
 
-    conversation.last_message_id = newMsg._id;
-    conversation.updated_at = new Date();
+    conversation.lastMessage = summary;
+    conversation.lastMessageAt = new Date();
+    conversation.unreadAdminCount = Number(conversation.unreadAdminCount || 0) + 1;
     await conversation.save();
 
     const io = req.app.get("io");

@@ -18,6 +18,7 @@ import {
 } from "./billingPolicy.js";
 import { notify } from "./notificationService.js";
 import { generateBillPdf } from "./pdfGenerator.js";
+import { recordBillPdfGeneration } from "../services/billPdfCache.js";
 import {
   CURRENT_RESIDENT_STATUS_QUERY,
   readMoveInDate,
@@ -353,9 +354,7 @@ export async function sendDraftUtilityBills({ bills, period, result }) {
         room: room || bill.roomId,
         tenant: tenant || bill.userId,
       });
-      bill.pdfPath = pdfPath;
-      bill.pdfGeneratedAt = new Date();
-      await bill.save();
+      await recordBillPdfGeneration(bill, pdfPath);
     } catch (error) {
       pdfError = error.message;
     }

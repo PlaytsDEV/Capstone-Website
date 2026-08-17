@@ -11,31 +11,18 @@ function getGenAIClient() {
 
 function getSystemPrompt(contextSnapshot) {
   const branchName = contextSnapshot?.branch || "Lilycrest Residence";
-  const roomNumber = contextSnapshot?.roomNumber || "304";
-  const bedPosition = contextSnapshot?.bedPosition || "Bed 1";
+  const assignment = contextSnapshot?.roomNumber
+    ? `assigned to Room ${contextSnapshot.roomNumber}${contextSnapshot?.bedPosition ? `, ${contextSnapshot.bedPosition}` : ""}`
+    : "whose room assignment is not available in the canonical context";
+  const currentTime = new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" });
 
   return `You are the official Lilycrest Tenant Assistant, an intelligent authenticated assistant for Lilycrest Dormitory Management System (Lilycrest DMS).
-You assist tenants at the ${branchName} branch (assigned to Room ${roomNumber}, ${bedPosition}) with a warm, polite, empathetic, and friendly tone in simple, conversational English.
-
-FRIENDLY POLICIES & STEP-BY-STEP EXPLANATIONS:
-1. Pro-Rata Electricity Sharing:
-   - Your room has its own submeter measuring actual electricity consumed.
-   - Total electricity cost is divided equally among active roommates for the billing period.
-   - Water consumption and high-speed Wi-Fi are completely free and included in monthly base rent.
-2. Monthly Rent & Due Dates:
-   - Monthly bills are due on the 15th of the month and can easily be settled online via bank transfer or GCash in the Billing tab.
-3. Contract Expiration & Lease Renewal:
-   - Tenants can request a lease renewal 30 days before contract expiration under the Contracts tab.
-4. Move-Out Clearance & Security Deposit:
-   - Security deposit is fully refundable upon completing a simple move-out clearance room check.
-5. Maintenance & Repair Tickets:
-   - Submit repair tickets via the Maintenance Portal; our accredited on-site technicians attend to repairs promptly within 24-48 hours.
-6. Building Access:
-   - Main doors lock from 11:00 PM to 5:00 AM for security; 24/7 late entry is always accommodated for night-shift workers and students with a valid ID.
+You assist tenants at the ${branchName} branch (${assignment}) with a warm, polite, empathetic, and friendly tone in simple, conversational English.
+Current server time in Asia/Manila: ${currentTime}.
 
 STRICT OPERATIONAL GUIDELINES:
 1. Language & Professional Tone: Answer in warm, polite, empathetic, and friendly English only. Avoid heavy corporate jargon. Do NOT insert filler words or Tagalog honorifics like "po" or "opo". Respond strictly in English.
-2. Grounded Facts: Answer strictly using the TENANT CONTEXT JSON below. NEVER invent unlisted bills, contracts, or repair records.
+2. Grounded Facts: Answer strictly using the TENANT CONTEXT JSON below. NEVER invent unlisted bills, contracts, room assignments, dates, reminders, announcements, or repair records. If a fact is absent, say it is not available in the canonical record.
 3. Read-Only Safety: You are an informational assistant. You cannot alter invoice totals, approve fee waivers, or cancel contracts. Direct disputes or special requests kindly to Branch Admin.
 
 TENANT CONTEXT:
@@ -116,8 +103,8 @@ export function determineTenantSuggestedActions(message = "", botReply = "", con
 export function getTenantRuleBasedFallback(message = "", contextSnapshot = null) {
   const lower = String(message || "").toLowerCase();
   const tenantName = contextSnapshot?.tenantName || "Tenant";
-  const roomNumber = contextSnapshot?.roomNumber || "304";
-  const branch = contextSnapshot?.branch || "Lilycrest";
+  const roomNumber = contextSnapshot?.roomNumber || "your assigned room";
+  const branch = contextSnapshot?.branch || "Lilycrest Residence";
 
   // 1. Maintenance & Repair Status
   if (
@@ -160,12 +147,13 @@ export function getTenantRuleBasedFallback(message = "", contextSnapshot = null)
     const bill = contextSnapshot?.currentBill;
     if (bill) {
       const formatNum = (n) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
-      const dueDateStr = bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "15th of the month";
+      const dueDateStr = bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "not set";
+      const utilityState = bill.utilityReleased ? "Released" : "Not released";
 
-      return `Here is the itemized summary of your statement for **Room ${roomNumber}**:\n\n• **Base Rent**: ${formatNum(bill.rentAmount)}${bill.proRataDays ? ` (${bill.proRataDays} days pro-rata)` : ""}\n• **Electricity Share**: ${formatNum(bill.electricityAmount)} (Submetered room share)\n• **Water & Wi-Fi**: **FREE** (₱0.00 included in rent)\n${bill.applianceAmount > 0 ? `• **Appliance Fees**: ${formatNum(bill.applianceAmount)}\n` : ""}${bill.penaltyAmount > 0 ? `• **Late Penalty**: ${formatNum(bill.penaltyAmount)}\n` : ""}• **Total Amount Due**: **${formatNum(bill.totalAmount)}** (Due on **${dueDateStr}**)\n\nYou can settle this balance via online bank transfer or GCash through the Billing tab.`;
+      return `Here is the canonical current-cycle statement for **Room ${roomNumber}**:\n\n• **Status**: ${bill.statusLabel || bill.status}\n• **Base Rent**: ${formatNum(bill.rentAmount)}${bill.proRataDays ? ` (${bill.proRataDays} days pro-rata)` : ""}\n• **Electricity Share**: ${formatNum(bill.electricityAmount)}\n${bill.applianceAmount > 0 ? `• **Appliance Fees**: ${formatNum(bill.applianceAmount)}\n` : ""}${bill.penaltyAmount > 0 ? `• **Late Penalty**: ${formatNum(bill.penaltyAmount)}\n` : ""}• **Statement Total**: **${formatNum(bill.totalAmount)}**\n• **Remaining Balance**: **${formatNum(bill.remainingAmount)}** (Due on **${dueDateStr}**)\n• **Utility Schedule**: **${utilityState}**\n\nOpen the Billing tab to view the statement and current payment options.`;
     }
 
-    return `You currently have no pending unpaid invoices on record for **Room ${roomNumber}**. Water and high-speed Wi-Fi remain complimentary with your stay.`;
+    return `No canonical current-cycle statement is available for **Room ${roomNumber}** right now. Please check the Billing tab or contact your branch admin if you expected one.`;
   }
 
   // 3. Lease & Contract Timeline
@@ -185,19 +173,22 @@ export function getTenantRuleBasedFallback(message = "", contextSnapshot = null)
       const days = contract.daysRemaining !== null ? `${contract.daysRemaining} days remaining` : "Active term";
       const formatNum = (n) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
 
-      return `Your lease agreement for **Room ${roomNumber} (${contract.bedPosition})** at ${branch} is **${contract.status.toUpperCase()}**.\n\n• **Expiration Date**: ${endStr} (${days})\n• **Monthly Base Rate**: ${formatNum(contract.monthlyRate)}\n• **Security Deposit Held**: ${formatNum(contract.depositAmount)} (Refundable upon move-out clearance)\n\nTo request a lease renewal or submit move-out clearance, visit the Contracts & Agreements tab.`;
+      return `Your lease agreement for **Room ${roomNumber}${contract.bedPosition ? ` (${contract.bedPosition})` : ""}** at ${branch} is **${contract.status.toUpperCase()}**.\n\n• **Expiration Date**: ${endStr} (${days})\n• **Monthly Base Rate**: ${formatNum(contract.monthlyRate)}\n• **Security Deposit Held**: ${formatNum(contract.depositAmount)}\n• **Document**: ${contract.tenantDocument?.available ? `${contract.tenantDocument.label || "Available"} (version ${contract.tenantDocument.version || "unknown"})` : "Not available yet"}\n\nOpen the Contracts & Agreements tab for the canonical document and available actions.`;
     }
 
-    return `Your stay records show an active tenant status at **${branch}**, Room ${roomNumber}. You can inspect signed contracts and deposit receipts under the Contracts tab.`;
+    if (contextSnapshot?.tenancy?.isCurrentResident) {
+      return `Your occupancy record confirms that you are a current resident at **${branch}**, Room ${roomNumber}, but no tenant-visible canonical Contract is available yet. Please check the Contracts tab or contact your branch admin.`;
+    }
+    return "No tenant-visible canonical Contract is available in your current records. Please check the Contracts tab or contact your branch admin.";
   }
 
   // 4. Curfew & Gate Policy
   if (lower.includes("curfew") || lower.includes("oras") || lower.includes("gate") || lower.includes("late")) {
-    return `At Lilycrest ${branch}, building security locks the main entrance from **11:00 PM to 5:00 AM**. 24/7 late entry is permitted for tenants with night-shift work or class schedules upon presenting a valid company or school ID to the front desk guard.`;
+    return `I do not have a current, tenant-specific gate schedule in the canonical record for **${branch}**. Please confirm the latest access policy with your branch admin.`;
   }
 
   // 5. Default Greeting & Assistance
-  return `Hello, ${tenantName}! I am your **Lilycrest Tenant Assistant** for Room ${roomNumber} at ${branch}.\n\nI can help you with:\n1. Explaining your monthly bill & pro-rata electricity computation\n2. Tracking active maintenance and repair requests\n3. Checking lease expiration dates and security deposit refund steps\n\nHow may I assist you today?`;
+  return `Hello, ${tenantName}! I am your **Lilycrest Tenant Assistant** for ${roomNumber} at ${branch}.\n\nI can help explain the canonical billing, maintenance, contract, announcement, and support records available to you. How may I assist you today?`;
 }
 
 export async function streamTenantGeminiChatbot({

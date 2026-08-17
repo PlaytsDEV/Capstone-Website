@@ -97,7 +97,7 @@ const notificationSchema = new mongoose.Schema(
     // --- Optional Entity Reference ---
     entityType: {
       type: String,
-      enum: ["reservation", "bill", "room", "user", "maintenance", "chat", "contract", ""],
+      enum: ["reservation", "bill", "room", "user", "maintenance", "chat", "contract", "announcement", ""],
       default: "",
     },
     entityId: {
