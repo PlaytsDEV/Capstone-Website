@@ -1522,12 +1522,33 @@ const StatementLedgerCard = ({
             type="button"
             style={s.downloadBtn}
             onClick={async () => {
-              const { generateBillingPDF } = await import("../../../../shared/utils/pdfUtils");
-              generateBillingPDF(bill);
+              try {
+                const { generateBillingPDF } = await import("../../../../shared/utils/pdfUtils");
+                await generateBillingPDF(bill);
+              } catch (error) {
+                showNotification(error?.message || "Could not download this billing statement.", "error", 4000);
+              }
             }}
           >
             <Download size={13} /> Download Statement (PDF)
           </button>
+
+          {isPaid && (
+            <button
+              type="button"
+              style={s.downloadBtn}
+              onClick={async () => {
+                try {
+                  const { generateBillingReceipt } = await import("../../../../shared/utils/pdfReceipt");
+                  await generateBillingReceipt(bill);
+                } catch (error) {
+                  showNotification(error?.message || "Could not download this payment receipt.", "error", 4000);
+                }
+              }}
+            >
+              <Receipt size={13} /> Download Payment Receipt (PDF)
+            </button>
+          )}
 
           {/* Paid banner */}
           {isPaid && bill.paymentDate && (

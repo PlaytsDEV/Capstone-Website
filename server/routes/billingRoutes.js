@@ -79,6 +79,7 @@ router.post(
  * may download bills in their branch.
  */
 router.get("/:billId/pdf", billingController.downloadBillPdf);
+router.get("/:billId/receipt", billingController.downloadBillReceipt);
 
 router.get("/:billId/utility-breakdown/:utilityType", billingController.getMyUtilityBreakdownByBillId);
 

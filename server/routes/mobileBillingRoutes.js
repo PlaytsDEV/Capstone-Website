@@ -30,7 +30,6 @@ import { mobileTenantAuth } from "../middleware/mobileTenantAuth.js";
 import {
   toMobileBill,
   isMobileEffectivelyPaid,
-  toMobilePaymentMethodLabel,
   formatMobileElectricityBreakdown,
   formatMobileWaterBreakdown,
 } from "../services/mobileBillingBridge.js";
@@ -39,15 +38,15 @@ import {
   CURRENT_BILL_SORT,
   selectCurrentBillFromList,
 } from "../services/billing/currentBillResolver.js";
-import { getVisibleBillCharges, getVisibleBillSnapshot } from "../utils/billingPolicy.js";
-import { generateBillReceiptPdf } from "../utils/pdfGenerator.js";
+import { getVisibleBillCharges } from "../utils/billingPolicy.js";
 import { isBillPdfStale } from "../services/billPdfCache.js";
 import {
   generateRentBillPdf,
   formatBillReference,
   buildTenantUtilityBreakdown,
+  generateCanonicalBillReceiptPdf,
   SERVER_ROOT,
-  BILL_PDF_ROOT,
+  isPathInsideBillingPdfRoot,
 } from "../controllers/billing/_helpers.js";
 
 const router = express.Router();
@@ -111,9 +110,16 @@ router.get("/billing/me/latest", mobileTenantAuth, asyncRoute(async (req, res) =
     .sort(CURRENT_BILL_SORT)
     .limit(5);
   const bill = selectCurrentBillFromList(bills);
-  if (!bill) return res.status(404).json({ detail: "No billing found" });
+  if (!bill) {
+    return res.json({ state: "NO_CURRENT_BILL", bill: null });
+  }
   const mapped = await mapMobileBillWithBreakdowns(bill, req.mobileTenant._id);
-  res.json(mapped);
+  const hasPendingUtility = Object.values(mapped.utility_schedules || {})
+    .some((schedule) => schedule?.state === "pending");
+  res.json({
+    state: hasPendingUtility ? "UTILITY_PENDING" : "CURRENT_BILL",
+    bill: mapped,
+  });
 }));
 
 router.get("/billing/history", mobileTenantAuth, asyncRoute(async (req, res) => {
@@ -190,11 +196,9 @@ router.get("/billing/:billingId/pdf", mobileTenantAuth, asyncRoute(async (req, r
   if (!bill) return res.status(404).json({ detail: "Bill not found" });
 
   let absolutePdfPath = bill.pdfPath ? path.resolve(SERVER_ROOT, bill.pdfPath) : null;
-  const safePdfRoot = path.resolve(BILL_PDF_ROOT);
-
   if (
     !absolutePdfPath ||
-    !absolutePdfPath.startsWith(safePdfRoot) ||
+    !isPathInsideBillingPdfRoot(absolutePdfPath) ||
     !fs.existsSync(absolutePdfPath) ||
     isBillPdfStale(bill)
   ) {
@@ -211,7 +215,7 @@ router.get("/billing/:billingId/pdf", mobileTenantAuth, asyncRoute(async (req, r
     absolutePdfPath = path.resolve(SERVER_ROOT, bill.pdfPath);
   }
 
-  if (!absolutePdfPath.startsWith(safePdfRoot) || !fs.existsSync(absolutePdfPath)) {
+  if (!isPathInsideBillingPdfRoot(absolutePdfPath) || !fs.existsSync(absolutePdfPath)) {
     return res.status(404).json({ detail: "PDF not found" });
   }
 
@@ -239,24 +243,19 @@ router.get("/billing/:billingId/receipt", mobileTenantAuth, asyncRoute(async (re
     return res.status(404).json({ detail: "No payment receipt is available for this bill yet." });
   }
 
-  const visible = getVisibleBillSnapshot(bill);
-  const billReference = `RCPT-${formatBillReference(bill)}`;
-  const receiptPath = await generateBillReceiptPdf({
+  const billReference = formatBillReference(bill);
+  const { absolutePath: absoluteReceiptPath } = await generateCanonicalBillReceiptPdf({
     bill,
     tenant: bill.userId,
-    billReference,
-    amountPaid: visible.totalAmount,
-    remainingAmount: visible.remainingAmount,
-    paymentMethodLabel: toMobilePaymentMethodLabel(bill.paymentMethod),
+    room: bill.roomId,
   });
-
-  const absoluteReceiptPath = path.resolve(SERVER_ROOT, receiptPath);
-  const safePdfRoot = path.resolve(BILL_PDF_ROOT);
-  if (!absoluteReceiptPath.startsWith(safePdfRoot) || !fs.existsSync(absoluteReceiptPath)) {
+  if (!isPathInsideBillingPdfRoot(absoluteReceiptPath) || !fs.existsSync(absoluteReceiptPath)) {
     return res.status(404).json({ detail: "Receipt not found" });
   }
 
-  res.download(absoluteReceiptPath, `${billReference}.pdf`);
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Pragma", "no-cache");
+  res.download(absoluteReceiptPath, `Payment-Receipt-${billReference}.pdf`);
 }));
 
 // Payment-proof submission: bridged to the SAME canonical workflow the web

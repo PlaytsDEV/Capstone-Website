@@ -29,10 +29,12 @@ jest.unstable_mockModule("../middleware/mobileTenantAuth.js", () => ({
 }));
 jest.unstable_mockModule("../controllers/billing/_helpers.js", () => ({
   generateRentBillPdf: jest.fn(),
+  generateCanonicalBillReceiptPdf: jest.fn(),
   formatBillReference: jest.fn(() => "LC-RB-TEST"),
   buildTenantUtilityBreakdown: jest.fn(() => null),
   SERVER_ROOT: "/tmp",
   BILL_PDF_ROOT: "/tmp/uploads/bills",
+  isPathInsideBillingPdfRoot: jest.fn(() => true),
 }));
 jest.unstable_mockModule("../config/paymongo.js", () => ({
   createCheckoutSession: jest.fn(),

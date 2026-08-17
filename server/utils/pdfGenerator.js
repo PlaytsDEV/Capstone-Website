@@ -28,6 +28,7 @@ import {
   BILL_STATEMENT_TEMPLATE_MARKER,
   BILL_STATEMENT_TEMPLATE_VERSION,
 } from "../services/billingStatementTemplate.js";
+import { BILL_RECEIPT_TEMPLATE_MARKER } from "../services/billingReceiptTemplate.js";
 
 // ============================================================================
 // PATH SETUP
@@ -49,8 +50,10 @@ const BILLS_DIR = path.join(__dirname, "..", "uploads", "bills");
  * @returns {string}
  */
 function formatPeso(n) {
-  if (n === null || n === undefined || isNaN(n)) return "₱0.00";
-  return "₱" + Number(n).toLocaleString("en-PH", {
+  // PDFKit's built-in Helvetica does not contain the peso glyph; use the
+  // unambiguous ISO label instead of rendering an incorrect plus/minus sign.
+  if (n === null || n === undefined || isNaN(n)) return "PHP 0.00";
+  return "PHP " + Number(n).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -240,7 +243,7 @@ function sectionHeading(doc, title) {
  *
  * @returns {Promise<string>} Relative path to the generated PDF file
  */
-export async function generateBillPdf({ bill, billingResult, period, room, tenant }) {
+export async function generateBillPdf({ bill, billingResult, electricityBreakdown = null, period, room, tenant }) {
   // 1. Ensure output directory exists
   fs.mkdirSync(BILLS_DIR, { recursive: true });
 
@@ -269,11 +272,32 @@ export async function generateBillPdf({ bill, billingResult, period, room, tenan
   const discount     = Number(ch.discount     || 0);
   const reservationCreditApplied = Number(bill.reservationCreditApplied || 0);
 
-  // 5. Identify this tenant's electricity summary from billingResult
-  const tenantId = String(bill.userId);
-  const mySummary = billingResult?.tenantSummaries?.find(
+  // 5. Normalize the persisted utility projection. Stale regeneration paths
+  // receive buildTenantUtilityBreakdown(), while the initial utility flow may
+  // still pass its canonical BillingResult snapshot.
+  const tenantId = String(bill.userId?._id || bill.userId);
+  const normalizedBillingResult = electricityBreakdown ? {
+    totalRoomKwh: electricityBreakdown.totalRoomKwh,
+    totalRoomCost: electricityBreakdown.totalRoomCost,
+    ratePerKwh: electricityBreakdown.ratePerKwh,
+    segments: (electricityBreakdown.segments || []).map((item) => ({
+      ...item,
+      kwhConsumed: item.segmentTotalKwh,
+      totalCost: item.segmentTotalCost,
+      activeTenantIds: [tenantId],
+    })),
+    tenantSummaries: [{
+      tenantId,
+      totalKwh: electricityBreakdown.myTotalKwh,
+      billAmount: electricityBreakdown.myBillAmount,
+    }],
+  } : billingResult;
+  const mySummary = normalizedBillingResult?.tenantSummaries?.find(
     (t) => String(t.tenantId) === tenantId,
   );
+  const normalizedSegments = normalizedBillingResult?.segments || [];
+  const firstElectricitySegment = normalizedSegments[0] || null;
+  const lastElectricitySegment = normalizedSegments[normalizedSegments.length - 1] || null;
 
   // 6. Create PDF document (A4 page)
   const doc = new PDFDocument({
@@ -304,32 +328,16 @@ export async function generateBillPdf({ bill, billingResult, period, room, tenan
   const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
   // ── HEADER BANNER ─────────────────────────────────────────────────────────
-  doc.rect(L, doc.y, contentWidth, 60).fill("#1a1a2e");
-
-  doc
-    .fillColor("#ffffff")
-    .fontSize(16)
-    .font("Helvetica-Bold")
-    .text("LILYCREST DORMITORY", L + 12, doc.y - 52, { width: contentWidth - 24 });
-
-  doc
-    .fontSize(9)
-    .font("Helvetica")
-    .text(formatBranch(room?.branch || period?.branch), L + 12, doc.y, {
-      width: contentWidth - 24,
-    });
-
-  // "BILLING STATEMENT" label on the right
-  doc
-    .fontSize(11)
-    .font("Helvetica-Bold")
-    .fillColor("#f8c42b")
-    .text("BILLING STATEMENT", L + 12, doc.y - 30, {
-      width: contentWidth - 24,
-      align: "right",
-    });
-
-  doc.fillColor("#1a1a2e").moveDown(0.8);
+  const statementHeaderY = doc.y;
+  doc.rect(L, statementHeaderY, contentWidth, 60).fill("#1a1a2e");
+  doc.fillColor("#ffffff").fontSize(16).font("Helvetica-Bold")
+    .text("LILYCREST DORMITORY", L + 12, statementHeaderY + 12, { width: contentWidth - 24 });
+  doc.fontSize(9).font("Helvetica").fillColor("#dbe2f0")
+    .text(formatBranch(room?.branch || period?.branch), L + 12, statementHeaderY + 34, { width: contentWidth - 24 });
+  doc.fontSize(11).font("Helvetica-Bold").fillColor("#f8c42b")
+    .text("BILLING STATEMENT", L + 12, statementHeaderY + 20, { width: contentWidth - 24, align: "right" });
+  doc.y = statementHeaderY + 70;
+  doc.fillColor("#1a1a2e");
 
   // ── TENANT / PERIOD INFO ──────────────────────────────────────────────────
   sectionHeading(doc, "Billing Information");
@@ -385,7 +393,7 @@ export async function generateBillPdf({ bill, billingResult, period, room, tenan
   doc.moveDown(1.2);
 
   // ── ELECTRICITY SECTION ───────────────────────────────────────────────────
-  if (billingResult) {
+  if (normalizedBillingResult && electricity > 0) {
     sectionHeading(doc, "Electricity Computation");
 
     // Meter reading summary
@@ -394,11 +402,11 @@ export async function generateBillPdf({ bill, billingResult, period, room, tenan
     const meterInfoLabelW = 140;
 
     const meterRows = [
-      ["Previous Reading",  `${period?.startReading ?? "—"} kWh`],
-      ["Current Reading",   `${period?.endReading   ?? "—"} kWh`],
-      ["Total Room kWh",    `${billingResult.totalRoomKwh ?? "—"} kWh`],
-      ["Rate per kWh",      formatPeso(billingResult.ratePerKwh)],
-      ["Total Room Cost",   formatPeso(billingResult.totalRoomCost)],
+      ["Previous Reading",  `${period?.startReading ?? firstElectricitySegment?.readingFrom ?? "—"} kWh`],
+      ["Current Reading",   `${period?.endReading ?? lastElectricitySegment?.readingTo ?? "—"} kWh`],
+      ["Total Room kWh",    `${normalizedBillingResult.totalRoomKwh ?? "—"} kWh`],
+      ["Rate per kWh",      formatPeso(normalizedBillingResult.ratePerKwh)],
+      ["Total Room Cost",   formatPeso(normalizedBillingResult.totalRoomCost)],
     ];
 
     meterRows.forEach(([label, value]) => {
@@ -418,7 +426,7 @@ export async function generateBillPdf({ bill, billingResult, period, room, tenan
     doc.moveDown(0.2);
 
     // Determine which segments this tenant was in
-    const segments = billingResult.segments || [];
+    const segments = normalizedBillingResult.segments || [];
     const tableRows = segments.map((seg) => {
       const tenantWasActive = (seg.activeTenantIds || []).some(
         (id) => String(id) === tenantId,
@@ -427,7 +435,7 @@ export async function generateBillPdf({ bill, billingResult, period, room, tenan
       if (tenantWasActive) {
         return [
           formatSegmentPeriod(seg),
-          `${seg.readingFrom}→${seg.readingTo}`,
+          `${seg.readingFrom} - ${seg.readingTo}`,
           `${seg.kwhConsumed} kWh`,
           String(seg.activeTenantCount),
           formatPeso(seg.totalCost),
@@ -437,7 +445,7 @@ export async function generateBillPdf({ bill, billingResult, period, room, tenan
         // Tenant not in this segment — show row grayed
         const grayed = [
           formatSegmentPeriod(seg),
-          `${seg.readingFrom}→${seg.readingTo}`,
+          `${seg.readingFrom} - ${seg.readingTo}`,
           `${seg.kwhConsumed} kWh`,
           String(seg.activeTenantCount),
           "—",
@@ -457,14 +465,18 @@ export async function generateBillPdf({ bill, billingResult, period, room, tenan
 
     // Tenant total electricity
     if (mySummary) {
-      doc.moveDown(0.3).fontSize(9);
-      doc
-        .font("Helvetica-Bold")
-        .text(
-          `Your Total kWh: ${mySummary.totalKwh} kWh   |   Your Electricity Charge: ${formatPeso(mySummary.billAmount)}`,
-          { align: "right" },
-        )
-        .font("Helvetica");
+      const shareY = doc.y + 2;
+      doc.rect(L, shareY, contentWidth, 28).fill("#fff8dc");
+      doc.font("Helvetica-Bold").fontSize(9).fillColor("#5f4b00")
+        .text("YOUR ELECTRICITY SHARE", L + 10, shareY + 8, { width: 190 });
+      doc.text(
+        `${Number(mySummary.totalKwh || 0).toLocaleString()} kWh  |  ${formatPeso(mySummary.billAmount)}`,
+        L + 210,
+        shareY + 8,
+        { width: contentWidth - 220, align: "right" },
+      );
+      doc.y = shareY + 34;
+      doc.fillColor("#1a1a2e").font("Helvetica");
     }
 
     doc.moveDown(0.8);
@@ -474,7 +486,7 @@ export async function generateBillPdf({ bill, billingResult, period, room, tenan
   sectionHeading(doc, "Charges Summary");
 
   const chargeRows = [];
-  chargeRows.push(["Electricity", formatPeso(electricity)]);
+  if (electricity > 0)   chargeRows.push(["Electricity", formatPeso(electricity)]);
   if (water > 0)         chargeRows.push(["Water",          formatPeso(water)]);
   if (rent > 0)          chargeRows.push(["Rent",           formatPeso(rent)]);
   if (applianceFees > 0) chargeRows.push(["Appliance Fees", formatPeso(applianceFees)]);
@@ -516,10 +528,8 @@ export async function generateBillPdf({ bill, billingResult, period, room, tenan
   doc.fontSize(9).font("Helvetica");
   [
     `• Please pay on or before ${formatDate(bill.dueDate)} to avoid penalties.`,
-    "• Late payments incur a ₱50/day penalty after the due date.",
-    "• Contact your branch administrator for accepted payment methods.",
-    "• You may also pay via the Lilycrest tenant mobile app.",
-    "• If you pay by bank transfer or another offline method, keep proof of payment for branch verification.",
+    "• Use the authenticated Lilycrest tenant app or portal for available payment methods.",
+    "• Contact your branch administrator if your account details appear incorrect.",
     "• Keep this document for your records.",
   ].forEach((line) => {
     doc.text(line, { indent: 10 });
@@ -619,8 +629,10 @@ export async function generateTransferSettlementPdf({ bill, tenant }) {
   const fmtMoney = (v) => `₱${Number(v || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   // ── HEADER ────────────────────────────────────────────────────────────────
-  doc.fontSize(20).font("Helvetica-Bold").fillColor("#1a1a2e").text("LILYCREST DORMITORY", L, 50, { align: "center", width: contentWidth });
-  doc.fontSize(10).font("Helvetica").fillColor("#6c757d").text("Management System", L, doc.y, { align: "center", width: contentWidth });
+  doc.rect(L, doc.y, contentWidth, 60).fill("#1a1a2e");
+  doc.fillColor("#ffffff").fontSize(16).font("Helvetica-Bold")
+    .text("LILYCREST DORMITORY", L + 12, doc.y - 52, { width: contentWidth - 24 });
+  doc.fontSize(9).font("Helvetica").text(formatBranch(room?.branch || bill.branch), L + 12, doc.y, { width: contentWidth - 24 });
 
   doc.moveDown(0.5);
   doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor("#e2e8f0").lineWidth(1).stroke();
@@ -745,7 +757,15 @@ export async function generateTransferSettlementPdf({ bill, tenant }) {
  * instructions — those belong on the statement, not the receipt (a settled
  * tenant must never be told to pay again).
  */
-export async function generateBillReceiptPdf({ bill, tenant, billReference, amountPaid, remainingAmount, paymentMethodLabel }) {
+export async function generateBillReceiptPdf({
+  bill,
+  tenant,
+  room = null,
+  billReference,
+  payments = [],
+  legacyPayment = null,
+  remainingAmount = 0,
+}) {
   fs.mkdirSync(BILLS_DIR, { recursive: true });
 
   const billId = String(bill._id);
@@ -755,6 +775,23 @@ export async function generateBillReceiptPdf({ bill, tenant, billReference, amou
   const billingPeriod = bill.billingMonth
     ? new Date(bill.billingMonth).toLocaleDateString("en-US", { month: "long", year: "numeric" })
     : "";
+  const paymentRows = payments.length > 0
+    ? payments.map((payment) => ({
+        reference: payment.paymentId || payment.providerPaymentId || payment.referenceNumber || payment.paymentReference || null,
+        amount: Number(payment.amount || 0),
+        method: payment.method || payment.paymentMethod || null,
+        settledAt: payment.settlementTimestamp || payment.processedAt || payment.verifiedAt || payment.createdAt || null,
+      }))
+    : legacyPayment ? [{
+        reference: legacyPayment.reference || null,
+        amount: Number(legacyPayment.amount || 0),
+        method: legacyPayment.method || null,
+        settledAt: legacyPayment.settledAt || null,
+      }] : [];
+  const amountPaid = paymentRows.reduce((sum, payment) => sum + payment.amount, 0);
+  const methodLabel = (value) => value
+    ? String(value).replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+    : "—";
 
   const doc = new PDFDocument({
     size: "A4",
@@ -762,6 +799,8 @@ export async function generateBillReceiptPdf({ bill, tenant, billReference, amou
     info: {
       Title: `Payment Receipt — ${tenantName}`,
       Author: "Lilycrest DMS",
+      Producer: `Lilycrest DMS (${BILL_RECEIPT_TEMPLATE_MARKER})`,
+      Keywords: BILL_RECEIPT_TEMPLATE_MARKER,
       Subject: billingPeriod ? `Payment Receipt for ${billingPeriod}` : "Payment Receipt",
     },
   });
@@ -778,15 +817,23 @@ export async function generateBillReceiptPdf({ bill, tenant, billReference, amou
   const contentWidth = R - L;
 
   // ── HEADER ────────────────────────────────────────────────────────────────
-  doc.fontSize(20).font("Helvetica-Bold").fillColor("#1a1a2e").text("LILYCREST DORMITORY", L, 50, { align: "center", width: contentWidth });
-  doc.fontSize(10).font("Helvetica").fillColor("#6c757d").text("Management System", L, doc.y, { align: "center", width: contentWidth });
+  const receiptHeaderY = doc.y;
+  doc.rect(L, receiptHeaderY, contentWidth, 60).fill("#1a1a2e");
+  doc.fillColor("#ffffff").fontSize(16).font("Helvetica-Bold")
+    .text("LILYCREST DORMITORY", L + 12, receiptHeaderY + 12, { width: contentWidth - 24 });
+  doc.fontSize(9).font("Helvetica").fillColor("#dbe2f0")
+    .text(formatBranch(room?.branch || bill.branch), L + 12, receiptHeaderY + 34, { width: contentWidth - 24 });
+  doc.fontSize(11).font("Helvetica-Bold").fillColor("#f8c42b")
+    .text("PAYMENT RECEIPT", L + 12, receiptHeaderY + 20, { width: contentWidth - 24, align: "right" });
+  doc.y = receiptHeaderY + 70;
+  doc.fillColor("#1a1a2e");
 
   doc.moveDown(0.5);
   doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor("#e2e8f0").lineWidth(1).stroke();
   doc.moveDown(0.5);
 
   // ── DOCUMENT TITLE ────────────────────────────────────────────────────────
-  doc.fontSize(14).font("Helvetica-Bold").fillColor("#15803d").text("PAYMENT RECEIPT", L, doc.y, { align: "center", width: contentWidth });
+  sectionHeading(doc, "Payment Confirmation");
   if (billingPeriod) {
     doc.moveDown(0.3);
     doc.fontSize(10).font("Helvetica").fillColor("#4a5568").text(billingPeriod, L, doc.y, { align: "center", width: contentWidth });
@@ -804,20 +851,31 @@ export async function generateBillReceiptPdf({ bill, tenant, billReference, amou
     doc.moveDown(0.5);
   };
 
-  row("Receipt No.", billReference);
+  row("Bill Reference", billReference);
   row("Bill ID", billId);
   row("Tenant", tenantName);
+  if (room?.name || room?.roomNumber) row("Room", room.name || room.roomNumber);
   if (billingPeriod) row("Billing Period", billingPeriod);
-  row("Payment Date", formatDate(bill.paymentDate));
-  row("Payment Method", paymentMethodLabel || "—");
-  if (bill.paymongoPaymentId) row("Reference No.", bill.paymongoPaymentId);
 
   doc.moveDown(0.3);
   doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor("#374151").lineWidth(0.5).stroke();
   doc.moveDown(0.4);
 
-  row("Amount Paid", formatPeso(amountPaid));
-  row("Applied to Bill", formatPeso(amountPaid));
+  if (paymentRows.length > 0) {
+    drawTable(doc, {
+      headers: ["Payment Date", "Method", "Reference", "Amount"],
+      widths: [120, 110, 165, 110],
+      rows: paymentRows.map((payment) => [
+        formatDate(payment.settledAt),
+        methodLabel(payment.method),
+        payment.reference || "Not recorded",
+        formatPeso(payment.amount),
+      ]),
+      x: L,
+      fontSize: 8,
+    });
+  }
+  row("Total Payments Applied", formatPeso(amountPaid));
   row("Remaining Balance", formatPeso(remainingAmount));
 
   doc.moveDown(0.3);

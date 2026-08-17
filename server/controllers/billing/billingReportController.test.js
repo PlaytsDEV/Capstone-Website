@@ -1,16 +1,22 @@
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const userFindById = jest.fn();
+const userFindOne = jest.fn();
+const billFindOne = jest.fn();
 const roomFindById = jest.fn();
 const getAdminInfo = jest.fn();
 const loadRentBillForAdmin = jest.fn();
 const deliverBillNotification = jest.fn();
 const logBillingAudit = jest.fn();
+const generateCanonicalBillReceiptPdf = jest.fn();
+const isAdminRole = jest.fn();
+const isOwnerRole = jest.fn();
 
 await jest.unstable_mockModule("../../models/index.js", () => ({
-  Bill: {},
-  User: { findById: userFindById },
+  Bill: { findOne: billFindOne },
+  User: { findById: userFindById, findOne: userFindOne },
   Room: { findById: roomFindById },
+  Reservation: { findById: jest.fn() },
 }));
 
 await jest.unstable_mockModule("../../middleware/logger.js", () => ({
@@ -32,12 +38,16 @@ await jest.unstable_mockModule("../../utils/billingPolicy.js", () => ({
 }));
 
 await jest.unstable_mockModule("../../config/roles.js", () => ({
-  isAdminRole: jest.fn(),
-  isOwnerRole: jest.fn(),
+  isAdminRole,
+  isOwnerRole,
 }));
 
 await jest.unstable_mockModule("../../services/billPdfCache.js", () => ({
   isBillPdfStale: jest.fn(),
+}));
+
+await jest.unstable_mockModule("../../services/mobileBillingBridge.js", () => ({
+  isMobileEffectivelyPaid: jest.fn(() => true),
 }));
 
 await jest.unstable_mockModule("./_helpers.js", () => ({
@@ -50,14 +60,28 @@ await jest.unstable_mockModule("./_helpers.js", () => ({
   formatBillReference: jest.fn(() => "BILL-001"),
   formatBill: jest.fn((bill) => ({ id: bill._id })),
   generateRentBillPdf: jest.fn(),
+  generateCanonicalBillReceiptPdf,
   SERVER_ROOT: "D:/test-server",
   BILL_PDF_ROOT: "D:/test-server/uploads/bills",
+  isPathInsideBillingPdfRoot: jest.fn(() => true),
 }));
 
-const { sendRentBill } = await import("./billingReportController.js");
+const { downloadBillReceipt, sendRentBill } = await import("./billingReportController.js");
 
 function queryResult(value) {
   return { select: jest.fn().mockResolvedValue(value) };
+}
+
+function leanQueryResult(value) {
+  return { select: jest.fn(() => ({ lean: jest.fn().mockResolvedValue(value) })) };
+}
+
+function populatedQueryResult(value) {
+  const query = {
+    populate: jest.fn(() => query),
+    then: (resolve, reject) => Promise.resolve(value).then(resolve, reject),
+  };
+  return query;
 }
 
 function response() {
@@ -66,6 +90,32 @@ function response() {
     json: jest.fn(function json() { return this; }),
   };
 }
+
+describe("billing document authorization", () => {
+  test("Tenant B cannot retrieve Tenant A's cached Receipt bytes", async () => {
+    userFindOne.mockReturnValue(leanQueryResult({ _id: "tenant-b", role: "tenant", branch: "gil-puyat" }));
+    billFindOne.mockReturnValue(populatedQueryResult({
+      _id: "bill-a",
+      userId: { _id: "tenant-a", firstName: "Ava" },
+      branch: "gil-puyat",
+      status: "paid",
+      remainingAmount: 0,
+      receiptPath: "uploads/bills/receipt-bill-a.pdf",
+    }));
+    isAdminRole.mockReturnValue(false);
+    const res = response();
+
+    await downloadBillReceipt(
+      { params: { billId: "bill-a" }, user: { uid: "firebase-tenant-b" } },
+      res,
+      jest.fn(),
+    );
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ error: "Access denied" });
+    expect(generateCanonicalBillReceiptPdf).not.toHaveBeenCalled();
+  });
+});
 
 function buildBill(overrides = {}) {
   return {

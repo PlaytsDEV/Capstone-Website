@@ -1,13 +1,14 @@
 import dayjs from "dayjs";
 import fs from "fs";
 import path from "path";
-import { Bill, User, Room } from "../../models/index.js";
+import { Bill, User, Room, Reservation } from "../../models/index.js";
 import logger from "../../middleware/logger.js";
 import { logBillingAudit } from "../../utils/billingAudit.js";
 import { computePenalty, fetchPenaltySettings } from "../../utils/penaltyCalculator.js";
 import { syncBillAmounts, resolveBillStatus } from "../../utils/billingPolicy.js";
 import { isAdminRole, isOwnerRole } from "../../config/roles.js";
 import { isBillPdfStale } from "../../services/billPdfCache.js";
+import { isMobileEffectivelyPaid } from "../../services/mobileBillingBridge.js";
 import {
   getAdminInfo,
   loadRentBillForAdmin,
@@ -18,8 +19,9 @@ import {
   formatBillReference,
   formatBill,
   generateRentBillPdf,
+  generateCanonicalBillReceiptPdf,
   SERVER_ROOT,
-  BILL_PDF_ROOT,
+  isPathInsideBillingPdfRoot,
 } from "./_helpers.js";
 
 export const sendRentBill = async (req, res, next) => {
@@ -222,11 +224,9 @@ export const downloadBillPdf = async (req, res, next) => {
     let absolutePdfPath = bill.pdfPath
       ? path.resolve(SERVER_ROOT, bill.pdfPath)
       : null;
-    const safePdfRoot = path.resolve(BILL_PDF_ROOT);
-
     if (
       !absolutePdfPath ||
-      !absolutePdfPath.startsWith(safePdfRoot) ||
+      !isPathInsideBillingPdfRoot(absolutePdfPath) ||
       !fs.existsSync(absolutePdfPath) ||
       isBillPdfStale(bill)
     ) {
@@ -246,7 +246,7 @@ export const downloadBillPdf = async (req, res, next) => {
       absolutePdfPath = path.resolve(SERVER_ROOT, bill.pdfPath);
     }
 
-    if (!absolutePdfPath.startsWith(safePdfRoot) || !fs.existsSync(absolutePdfPath)) {
+    if (!isPathInsideBillingPdfRoot(absolutePdfPath) || !fs.existsSync(absolutePdfPath)) {
       return res.status(404).json({ error: "PDF not found" });
     }
 
@@ -268,6 +268,47 @@ export const downloadBillPdf = async (req, res, next) => {
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Pragma", "no-cache");
     res.download(absolutePdfPath, `${formatBillReference(bill)}.pdf`);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const downloadBillReceipt = async (req, res, next) => {
+  try {
+    const { billId } = req.params;
+    const requester = await User.findOne({ firebaseUid: req.user.uid })
+      .select("_id role branch email firstName lastName")
+      .lean();
+    if (!requester) return res.status(404).json({ error: "User not found" });
+
+    // Authorization is evaluated before cache lookup, so existing bytes can
+    // never be used to bypass tenant ownership or admin branch scope.
+    const bill = await Bill.findOne({ _id: billId, isArchived: false })
+      .populate("userId", "firstName lastName email")
+      .populate("roomId", "name roomNumber branch");
+    if (!bill) return res.status(404).json({ error: "Bill not found" });
+
+    const isAdmin = isAdminRole(requester.role);
+    const isTenantOwner = String(bill.userId?._id || bill.userId) === String(requester._id);
+    const canAccess = isTenantOwner
+      || (isAdmin && (isOwnerRole(requester.role) || requester.branch === bill.branch));
+    if (!canAccess) return res.status(403).json({ error: "Access denied" });
+    if (!isMobileEffectivelyPaid(bill)) {
+      return res.status(404).json({ error: "No payment receipt is available for this bill yet." });
+    }
+
+    const { absolutePath } = await generateCanonicalBillReceiptPdf({
+      bill,
+      tenant: bill.userId,
+      room: bill.roomId,
+    });
+    if (!isPathInsideBillingPdfRoot(absolutePath) || !fs.existsSync(absolutePath)) {
+      return res.status(404).json({ error: "Receipt not found" });
+    }
+
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Pragma", "no-cache");
+    res.download(absolutePath, `Payment-Receipt-${formatBillReference(bill)}.pdf`);
   } catch (error) {
     next(error);
   }

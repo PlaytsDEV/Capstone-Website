@@ -67,6 +67,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   UtilityPeriod: {
     findOne: utilityPeriodFindOne,
   },
+  Payment: { find: jest.fn(() => makeQueryChain([])) },
   TenantViolation: {},
   TerminationReview: {},
   OverdueNotice: {},
@@ -157,6 +158,11 @@ await jest.unstable_mockModule("../utils/utilityBillFlow.js", () => ({
 
 await jest.unstable_mockModule("../utils/pdfGenerator.js", () => ({
   generateBillPdf,
+  generateBillReceiptPdf: jest.fn(),
+}));
+
+await jest.unstable_mockModule("../services/mobileBillingBridge.js", () => ({
+  isMobileEffectivelyPaid: jest.fn(() => true),
 }));
 
 await jest.unstable_mockModule("../utils/billingAudit.js", () => ({
