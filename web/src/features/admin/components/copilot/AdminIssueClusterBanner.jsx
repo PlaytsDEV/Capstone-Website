@@ -1,32 +1,58 @@
 import React from "react";
-import { AlertTriangle, TrendingUp, ChevronRight } from "lucide-react";
+import { AlertTriangle, TrendingUp, ChevronRight, X } from "lucide-react";
 
-export default function AdminIssueClusterBanner({ clusters = [] }) {
+export default function AdminIssueClusterBanner({ clusters = [], onDismiss }) {
   if (!clusters || clusters.length === 0) return null;
 
   return (
-    <div className="mb-4 space-y-2">
+    <div className="mb-3 space-y-2">
       {clusters.map((cluster, idx) => (
-        <div key={idx} className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
-          <div className="mt-0.5 text-amber-500">
-            <AlertTriangle size={18} />
+        <div
+          key={idx}
+          className="flex items-start justify-between gap-3 p-3 rounded-lg bg-card border border-border shadow-2xs"
+        >
+          <div className="flex items-start gap-2.5 flex-1 min-w-0">
+            <div className="mt-0.5 text-amber-600 dark:text-amber-400 shrink-0">
+              <AlertTriangle size={16} />
+            </div>
+            <div className="flex-1 min-w-0 space-y-0.5">
+              <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <TrendingUp size={13} className="text-muted-foreground" />
+                <span>Issue Cluster Detected: {cluster.type}</span>
+              </h4>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {cluster.description}{" "}
+                <span className="font-medium text-foreground">
+                  ({cluster.count} similar reports in {cluster.location || "this branch"})
+                </span>
+                .
+              </p>
+              {cluster.action && (
+                <button
+                  type="button"
+                  onClick={cluster.onAction}
+                  className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline cursor-pointer"
+                >
+                  <span>{cluster.action}</span>
+                  <ChevronRight size={12} />
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex-1">
-            <h4 className="text-sm font-semibold text-amber-900 flex items-center gap-2">
-              <TrendingUp size={14} />
-              Issue Cluster Detected: {cluster.type}
-            </h4>
-            <p className="text-xs text-amber-800 mt-1">
-              {cluster.description} ({cluster.count} similar reports in {cluster.location}).
-            </p>
-            {cluster.action && (
-              <button className="mt-2 text-xs font-medium text-amber-700 hover:text-amber-900 flex items-center gap-1">
-                {cluster.action} <ChevronRight size={12} />
-              </button>
-            )}
-          </div>
+
+          {onDismiss && (
+            <button
+              type="button"
+              onClick={() => onDismiss(idx)}
+              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer shrink-0"
+              title="Dismiss warning"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
       ))}
     </div>
   );
 }
+

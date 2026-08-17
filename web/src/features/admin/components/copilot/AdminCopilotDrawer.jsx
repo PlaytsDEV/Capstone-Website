@@ -13,17 +13,27 @@ import {
   User,
   Bot,
   ChevronRight,
+  UserSearch,
+  Search,
+  Mic,
+  MicOff,
+  Sun,
+  RefreshCw,
 } from "lucide-react";
 import AdminSopReferenceModal from "./AdminSopReferenceModal";
+import AdminTenantInfoCard from "./AdminTenantInfoCard";
+import AdminRoomOccupantsCard from "./AdminRoomOccupantsCard";
+import AdminDailyBriefingCard from "./AdminDailyBriefingCard";
 import { chatbotApi } from "../../../../shared/api/chatbotApi";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 
 const SUGGESTED_PROMPTS = [
-  "Move-out clearance checklist",
-  "Lost room key policy",
-  "Utility late penalty rules",
-  "Guest curfew & visitor policy",
-  "Urgent maintenance SLAs",
+  { label: "☀️ Today's Shift Briefing", prompt: "Today's Shift Briefing" },
+  { label: "Move-out clearance checklist", prompt: "Move-out clearance checklist" },
+  { label: "Lost room key policy", prompt: "Lost room key policy" },
+  { label: "Utility late penalty rules", prompt: "Utility late penalty rules" },
+  { label: "Guest curfew & visitor policy", prompt: "Guest curfew & visitor policy" },
+  { label: "Urgent maintenance turnaround times", prompt: "Urgent maintenance turnaround times" },
 ];
 
 const DEFAULT_SOPS = {
@@ -67,22 +77,22 @@ const DEFAULT_SOPS = {
     ],
     policyLink: "Lilycrest Operations Manual §8.1 (Visitor Governance)"
   },
-  "Urgent maintenance SLAs": {
-    title: "Urgent Maintenance Escalation SLAs",
+  "Urgent maintenance turnaround times": {
+    title: "Urgent Maintenance Escalation Turnaround Times",
     steps: [
       "Emergency repairs (major water leak, electrical hazard) require front desk triage within 15 minutes.",
       "On-call certified technician dispatched within 60 minutes for high-severity tickets.",
       "Tenant must be provided regular status updates via admin chat thread every 2 hours until resolution.",
       "Post-repair sign-off signed by tenant and maintenance lead before closing the ticket."
     ],
-    policyLink: "Lilycrest Operations Manual §4.2 (Facility Maintenance SLAs)"
+    policyLink: "Lilycrest Operations Manual §4.2 (Facility Maintenance Turnaround Times)"
   }
 };
 
 const INITIAL_MESSAGE = {
   id: "init-1",
   sender: "assistant",
-  text: "Hello! I am your Lilycrest Operations Copilot. How can I assist you with dormitory procedures, tenant policies, or operational checklists today?",
+  text: "Hello! I am your Lilycrest Operations Assistant. Click \"☀️ Today's Shift Briefing\" for your daily operations standup, search tenant records, or ask about any dormitory procedure.",
   timestamp: new Date(),
 };
 
@@ -93,55 +103,126 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
   const [loading, setLoading] = useState(false);
   const [activeSop, setActiveSop] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [suggestedPrompts, setSuggestedPrompts] = useState(SUGGESTED_PROMPTS);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const recognitionRef = useRef(null);
+
+  const fetchDynamicSuggestions = async () => {
+    try {
+      setLoadingSuggestions(true);
+      const res = await chatbotApi.getAdminDynamicSuggestions({ branch: user?.branch || "all" });
+      if (res?.success && Array.isArray(res.data) && res.data.length > 0) {
+        setSuggestedPrompts(res.data);
+      }
+    } catch (err) {
+      console.warn("Could not fetch dynamic suggestions:", err?.message);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  // Initialize Web Speech API for voice dictation
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        setSpeechSupported(true);
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+
+        recognition.onresult = (event) => {
+          const transcript = Array.from(event.results)
+            .map((result) => result[0].transcript)
+            .join("");
+          setInputMessage(transcript);
+        };
+
+        recognition.onerror = (event) => {
+          console.warn("Speech recognition error:", event.error);
+          setIsListening(false);
+        };
+
+        recognition.onend = () => {
+          setIsListening(false);
+        };
+
+        recognitionRef.current = recognition;
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
+      fetchDynamicSuggestions();
       setTimeout(() => {
         inputRef.current?.focus();
-        scrollToBottom();
       }, 100);
     }
   }, [isOpen]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, loading]);
-
-  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, [messages, loading]);
 
   if (!isOpen) return null;
 
-  const handleSendMessage = async (textToSend) => {
-    const queryText = (textToSend || inputMessage).trim();
-    if (!queryText || loading) return;
+  const toggleVoiceListening = () => {
+    if (!speechSupported || !recognitionRef.current) return;
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (err) {
+        console.warn("Could not start speech recognition:", err);
+      }
+    }
+  };
+
+  const handleSendMessage = async (customPrompt) => {
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
+
+    const rawQuery = (customPrompt || inputMessage).trim();
+    if (!rawQuery || loading) return;
+
+    // Clean leading emojis or symbols for robust backend regex matching
+    const queryText = rawQuery.replace(/^[^\w\s]+/, "").trim() || rawQuery;
 
     const userMsg = {
-      id: `user-${Date.now()}`,
+      id: `usr-${Date.now()}`,
       sender: "user",
-      text: queryText,
+      text: rawQuery,
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMsg]);
-    setInputMessage("");
+    if (!customPrompt) setInputMessage("");
     setLoading(true);
 
-    // Instant match check from local cache
+    const isBriefing = /(?:briefing|standup|morning standup|daily overview|shift briefing)/i.test(queryText);
+
     const matchedKey = Object.keys(DEFAULT_SOPS).find(
       (k) =>
-        k.toLowerCase() === queryText.toLowerCase() ||
-        queryText.toLowerCase().includes(k.toLowerCase()) ||
-        k.toLowerCase().includes(queryText.toLowerCase())
+        k.toLowerCase().includes(queryText.toLowerCase()) ||
+        queryText.toLowerCase().includes(k.toLowerCase())
     );
 
     try {
       const response = await chatbotApi.queryAdminSop({
         query: queryText,
-        branch: user?.branch,
+        branch: user?.branch || "all",
       });
 
       if (response?.success && response?.data) {
@@ -149,20 +230,57 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
         const steps =
           Array.isArray(data.checklist) && data.checklist.length > 0
             ? data.checklist
-            : data.answer
+            : data.answer && !data.isTenantLookup && !data.isDailyBriefing
             ? data.answer.split("\n").filter((l) => l.trim().length > 0)
             : [];
 
         const botMsg = {
           id: `bot-${Date.now()}`,
           sender: "assistant",
-          title: data.title || `SOP Guidance: "${queryText}"`,
+          title: data.title || (data.isDailyBriefing ? "Daily Operations Briefing" : data.isTenantLookup ? "Tenant Information" : `SOP Guidance: "${rawQuery}"`),
           steps: steps,
           text: data.answer || null,
-          policyLink: data.policyReference || "Lilycrest Operations Manual",
+          isDailyBriefing: data.isDailyBriefing || false,
+          briefing: data.briefing || null,
+          isTenantLookup: data.isTenantLookup || false,
+          tenant: data.tenant || null,
+          candidates: data.candidates || null,
+          isRoomSearch: data.isRoomSearch || false,
+          roomDetails: data.roomDetails || null,
+          occupants: data.occupants || [],
+          policyLink: data.policyReference || (data.isTenantLookup || data.isDailyBriefing ? null : "Lilycrest Operations Manual"),
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, botMsg]);
+      } else if (isBriefing) {
+        // Safe graceful briefing fallback
+        const branchTitle = user?.branch === "guadalupe" ? "Guadalupe Branch" : user?.branch === "gil-puyat" ? "Gil Puyat Branch" : "Consolidated Operations";
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `bot-${Date.now()}`,
+            sender: "assistant",
+            title: `Today's Operations Briefing · ${branchTitle}`,
+            isDailyBriefing: true,
+            briefing: {
+              title: `Today's Operations Briefing · ${branchTitle}`,
+              dateString: new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
+              branch: branchTitle,
+              stats: {
+                moveInsCount: 0,
+                urgentMaintenanceCount: 0,
+                paymentsCollectedYesterday: 0,
+                upcomingDueInvoicesCount: 0,
+                overdueInvoicesCount: 0,
+              },
+              moveIns: [],
+              moveOuts: [],
+              maintenance: [],
+              announcements: [],
+            },
+            timestamp: new Date(),
+          },
+        ]);
       } else if (matchedKey) {
         const fallbackSop = DEFAULT_SOPS[matchedKey];
         const botMsg = {
@@ -175,11 +293,39 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
         };
         setMessages((prev) => [...prev, botMsg]);
       } else {
-        throw new Error(response?.message || "No specific SOP found");
+        throw new Error(response?.message || "No specific SOP or operational record found");
       }
     } catch (err) {
-      console.warn("Copilot query fallback triggered:", err?.message);
-      if (matchedKey) {
+      console.warn("Assistant query fallback triggered:", err?.message);
+      if (isBriefing) {
+        const branchTitle = user?.branch === "guadalupe" ? "Guadalupe Branch" : user?.branch === "gil-puyat" ? "Gil Puyat Branch" : "Consolidated Operations";
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `bot-${Date.now()}`,
+            sender: "assistant",
+            title: `Today's Operations Briefing · ${branchTitle}`,
+            isDailyBriefing: true,
+            briefing: {
+              title: `Today's Operations Briefing · ${branchTitle}`,
+              dateString: new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
+              branch: branchTitle,
+              stats: {
+                moveInsCount: 0,
+                urgentMaintenanceCount: 0,
+                paymentsCollectedYesterday: 0,
+                upcomingDueInvoicesCount: 0,
+                overdueInvoicesCount: 0,
+              },
+              moveIns: [],
+              moveOuts: [],
+              maintenance: [],
+              announcements: [],
+            },
+            timestamp: new Date(),
+          },
+        ]);
+      } else if (matchedKey) {
         const fallbackSop = DEFAULT_SOPS[matchedKey];
         setMessages((prev) => [
           ...prev,
@@ -198,11 +344,11 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
           {
             id: `bot-${Date.now()}`,
             sender: "assistant",
-            title: `Operations Guidance: "${queryText}"`,
+            title: `Operations Guidance: "${rawQuery}"`,
             steps: [
               "Review the standard Lilycrest Dormitory Operations Manual on file.",
-              "Verify tenant identity, room assignment, and current contract status.",
-              "If the concern involves physical damage or security, log an incident report and notify the branch manager immediately."
+              "Verify tenant identity, room assignment, and current contract status in the Tenants tab.",
+              "If the concern involves an active dispute or maintenance urgency, coordinate with the branch supervisor."
             ],
             policyLink: "Lilycrest Operations Manual §General Protocols",
             timestamp: new Date(),
@@ -227,23 +373,21 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
   const content = (
     <div className="fixed inset-0 z-[100] flex justify-end bg-black/50" onClick={onClose}>
       <div
-        className="w-full max-w-lg bg-[var(--card)] h-full shadow-2xl flex flex-col border-l border-[var(--border)] animate-in slide-in-from-right duration-200"
+        className="w-full max-w-lg bg-card h-full shadow-2xl flex flex-col border-l border-border animate-in slide-in-from-right duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Drawer Header */}
-        <header className="flex items-center justify-between px-4 py-3.5 border-b border-[var(--border)] bg-[var(--card)] shrink-0">
+        <header className="flex items-center justify-between px-4 py-3.5 border-b border-border bg-card shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-[var(--primary)] border border-blue-200 dark:border-blue-800">
-              <Sparkles size={18} />
-            </div>
+            <Sparkles size={18} className="text-primary shrink-0" />
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-foreground">Admin Operations Copilot</h3>
-                <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-full">
-                  AI SOP Advisor
+                <h3 className="text-sm font-bold text-foreground">Admin Operations Assistant</h3>
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  SOP & Briefings
                 </span>
               </div>
-              <p className="text-[11px] text-muted-foreground">Instant policy checklists & SOP answers</p>
+              <p className="text-[11px] text-muted-foreground">Instant briefings, tenant lookups & SOP answers</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -273,17 +417,105 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             if (isUser) {
               return (
                 <div key={msg.id} className="flex justify-end items-start gap-2.5">
-                  <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-[var(--primary)] text-white p-3 text-xs leading-relaxed shadow-xs">
+                  <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-primary text-primary-foreground p-3 text-xs leading-relaxed shadow-xs">
                     {msg.text}
                   </div>
-                  <div className="h-7 w-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-semibold text-slate-700 dark:text-slate-200 shrink-0">
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-xs font-semibold text-foreground shrink-0">
                     <User size={14} />
                   </div>
                 </div>
               );
             }
 
-            // Assistant Message
+            // If assistant returned Daily Shift Briefing Card
+            if (msg.briefing) {
+              return (
+                <div key={msg.id} className="flex items-start gap-2.5">
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-foreground shrink-0 mt-0.5">
+                    <Bot size={15} />
+                  </div>
+                  <div className="max-w-[90%] flex-1 space-y-2">
+                    <AdminDailyBriefingCard briefing={msg.briefing} onCloseDrawer={onClose} />
+                  </div>
+                </div>
+              );
+            }
+
+            // If assistant returned a Single Tenant Card
+            if (msg.tenant) {
+              return (
+                <div key={msg.id} className="flex items-start gap-2.5">
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-foreground shrink-0 mt-0.5">
+                    <Bot size={15} />
+                  </div>
+                  <div className="max-w-[90%] flex-1 space-y-2">
+                    <AdminTenantInfoCard tenant={msg.tenant} onCloseDrawer={onClose} />
+                  </div>
+                </div>
+              );
+            }
+
+            // If assistant returned Room Occupants Card
+            if (msg.roomDetails) {
+              return (
+                <div key={msg.id} className="flex items-start gap-2.5">
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-foreground shrink-0 mt-0.5">
+                    <Bot size={15} />
+                  </div>
+                  <div className="max-w-[90%] flex-1 space-y-2">
+                    <AdminRoomOccupantsCard
+                      roomDetails={msg.roomDetails}
+                      occupants={msg.occupants}
+                      onSelectTenant={(t) => handleSendMessage(`show info for ${t.fullName}`)}
+                      onCloseDrawer={onClose}
+                    />
+                  </div>
+                </div>
+              );
+            }
+
+            // If assistant returned Multiple Candidate Choices
+            if (msg.candidates && msg.candidates.length > 0) {
+              return (
+                <div key={msg.id} className="flex items-start gap-2.5">
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-foreground shrink-0 mt-0.5">
+                    <Bot size={15} />
+                  </div>
+                  <div className="max-w-[90%] space-y-2">
+                    <div className="rounded-2xl rounded-tl-xs bg-card border border-border p-3.5 text-xs text-foreground leading-relaxed shadow-xs space-y-2.5">
+                      <div className="flex items-center gap-1.5 font-bold text-foreground pb-1.5 border-b border-border">
+                        <UserSearch size={14} className="text-primary" />
+                        <span>{msg.title || "Matching Tenants"}</span>
+                      </div>
+                      <p className="text-muted-foreground">{msg.text}</p>
+
+                      <div className="space-y-1.5 pt-1">
+                        {msg.candidates.map((cand) => (
+                          <button
+                            key={cand._id}
+                            type="button"
+                            onClick={() => handleSendMessage(`show info for ${cand.fullName}`)}
+                            className="w-full flex items-center justify-between p-2 rounded-lg bg-muted/40 border border-border hover:bg-muted transition-colors cursor-pointer text-left"
+                          >
+                            <div>
+                              <div className="font-bold text-foreground text-xs">{cand.fullName}</div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {cand.roomNumber !== "Unassigned" ? `Room ${cand.roomNumber}` : "Unassigned"} · {cand.branch}
+                              </div>
+                            </div>
+                            <span className="text-[11px] font-semibold text-primary inline-flex items-center gap-0.5">
+                              View <ChevronRight size={12} />
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // Standard Assistant SOP Message
             const copyableText = msg.steps
               ? `${msg.title ? `${msg.title}\n\n` : ""}${msg.steps
                   .map((step, idx) => `${idx + 1}. ${step}`)
@@ -292,14 +524,14 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
 
             return (
               <div key={msg.id} className="flex items-start gap-2.5">
-                <div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-[var(--primary)] shrink-0 mt-0.5 border border-blue-200 dark:border-blue-800">
+                <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-foreground shrink-0 mt-0.5">
                   <Bot size={15} />
                 </div>
                 <div className="max-w-[90%] space-y-2">
-                  <div className="rounded-2xl rounded-tl-xs bg-[var(--card)] border border-[var(--border)] p-3.5 text-xs text-foreground leading-relaxed shadow-xs space-y-2.5">
+                  <div className="rounded-2xl rounded-tl-xs bg-card border border-border p-3.5 text-xs text-foreground leading-relaxed shadow-xs space-y-2.5">
                     {msg.title && (
-                      <h4 className="font-bold text-xs text-foreground pb-1.5 border-b border-[var(--border)] flex items-center gap-1.5">
-                        <BookOpen size={14} className="text-[var(--primary)]" />
+                      <h4 className="font-bold text-xs text-foreground pb-1.5 border-b border-border flex items-center gap-1.5">
+                        <BookOpen size={14} className="text-primary" />
                         {msg.title}
                       </h4>
                     )}
@@ -308,7 +540,7 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                       <div className="space-y-2">
                         {msg.steps.map((step, idx) => (
                           <div key={idx} className="flex items-start gap-2 text-xs leading-relaxed">
-                            <span className="font-bold text-[var(--primary)] shrink-0">{idx + 1}.</span>
+                            <span className="font-bold text-primary shrink-0">{idx + 1}.</span>
                             <span className="text-foreground">{step}</span>
                           </div>
                         ))}
@@ -319,7 +551,7 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
 
                     {/* Footer Actions (Policy Link & Copy) */}
                     {(msg.policyLink || msg.steps) && (
-                      <div className="pt-2.5 border-t border-[var(--border)] flex items-center justify-between text-[11px] gap-2">
+                      <div className="pt-2.5 border-t border-border flex items-center justify-between text-[11px] gap-2">
                         {msg.policyLink ? (
                           <button
                             type="button"
@@ -330,7 +562,7 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                                 policyLink: msg.policyLink,
                               })
                             }
-                            className="inline-flex items-center gap-1 text-[var(--primary)] font-semibold hover:underline cursor-pointer truncate max-w-[70%]"
+                            className="inline-flex items-center gap-1 text-primary font-semibold hover:underline cursor-pointer truncate max-w-[70%]"
                           >
                             <FileText size={12} className="shrink-0" />
                             <span className="truncate">{msg.policyLink}</span>
@@ -366,12 +598,12 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
 
           {loading && (
             <div className="flex items-start gap-2.5">
-              <div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-[var(--primary)] shrink-0 border border-blue-200 dark:border-blue-800">
+              <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center text-foreground shrink-0 mt-0.5">
                 <Bot size={15} />
               </div>
-              <div className="rounded-2xl rounded-tl-xs bg-[var(--card)] border border-[var(--border)] p-3 text-xs text-muted-foreground flex items-center gap-2 shadow-xs">
-                <LoaderCircle size={14} className="animate-spin text-[var(--primary)]" />
-                <span>Consulting Operations Manual...</span>
+              <div className="rounded-2xl rounded-tl-xs bg-card border border-border p-3 text-xs text-muted-foreground flex items-center gap-2 shadow-xs">
+                <LoaderCircle size={14} className="animate-spin text-primary" />
+                <span>Generating operational briefing...</span>
               </div>
             </div>
           )}
@@ -380,25 +612,57 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
         </div>
 
         {/* Suggested Quick Topic Chips (Above Composer) */}
-        <div className="px-3.5 py-2 border-t border-[var(--border)] bg-[var(--card)] flex items-center gap-1.5 overflow-x-auto shrink-0">
-          <span className="text-[10px] font-semibold text-muted-foreground shrink-0 uppercase tracking-wider mr-1">
-            Quick SOPs:
-          </span>
-          {SUGGESTED_PROMPTS.map((prompt) => (
+        <div className="px-3.5 py-2 border-t border-border bg-card flex items-center gap-1.5 overflow-x-auto shrink-0">
+          <div className="flex items-center gap-1 shrink-0 mr-1">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+              Live Suggestions:
+            </span>
             <button
-              key={prompt}
               type="button"
-              onClick={() => handleSendMessage(prompt)}
-              disabled={loading}
-              className="px-2.5 py-1 text-[11px] font-medium bg-[var(--bg)] border border-[var(--border)] rounded-full hover:border-[var(--primary)] text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+              onClick={fetchDynamicSuggestions}
+              disabled={loadingSuggestions}
+              title="Refresh suggestions from live system data"
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             >
-              {prompt}
+              <RefreshCw size={11} className={loadingSuggestions ? "animate-spin text-primary" : ""} />
             </button>
-          ))}
+          </div>
+
+          {suggestedPrompts.map((item, idx) => {
+            const label = item.label || item;
+            const prompt = item.prompt || item;
+            const category = item.category || "sop";
+
+            let colorClasses = "bg-muted/50 border-border text-muted-foreground hover:text-foreground hover:border-primary";
+            if (category === "standup" || label.includes("Today's Shift Briefing")) {
+              colorClasses = "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800 font-bold";
+            } else if (category === "maintenance") {
+              colorClasses = "bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800 font-semibold";
+            } else if (category === "move_in") {
+              colorClasses = "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 font-semibold";
+            } else if (category === "billing") {
+              colorClasses = "bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800 font-semibold";
+            } else if (category === "contracts") {
+              colorClasses = "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 font-semibold";
+            }
+
+            return (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleSendMessage(prompt)}
+                disabled={loading}
+                className={`px-2.5 py-1 text-[11px] font-medium border rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50 ${colorClasses}`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Bottom Message Composer */}
-        <footer className="p-3 border-t border-[var(--border)] bg-[var(--card)] shrink-0">
+
+        {/* Bottom Message Composer with Voice Dictation */}
+        <footer className="p-3 border-t border-border bg-card shrink-0">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -412,15 +676,40 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Ask an operational question (e.g. lost key procedure, move-out clearance)..."
+                placeholder={
+                  isListening
+                    ? "Listening... Speak your question now..."
+                    : "Ask SOP, search tenant name, or click ☀️ Shift Briefing..."
+                }
                 disabled={loading}
-                className="w-full pl-3.5 pr-3 py-2.5 bg-[var(--bg)] border border-[var(--border)] rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-[var(--primary)] disabled:opacity-50 transition-colors"
+                className={`w-full pl-3.5 pr-10 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-none transition-colors ${
+                  isListening
+                    ? "border-rose-500 ring-2 ring-rose-500/20 animate-pulse"
+                    : "border-border focus:border-primary"
+                } disabled:opacity-50`}
               />
+
+              {/* Voice Dictation Button inside Input */}
+              {speechSupported && (
+                <button
+                  type="button"
+                  onClick={toggleVoiceListening}
+                  title={isListening ? "Stop voice dictation" : "Start voice dictation (hands-free)"}
+                  className={`absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    isListening
+                      ? "bg-rose-500 text-white animate-bounce"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  {isListening ? <MicOff size={14} /> : <Mic size={14} />}
+                </button>
+              )}
             </div>
+
             <button
               type="submit"
               disabled={loading || !inputMessage.trim()}
-              className="h-9 px-3.5 rounded-xl bg-[var(--primary)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+              className="h-9 px-3.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
             >
               {loading ? (
                 <LoaderCircle size={15} className="animate-spin" />
@@ -433,7 +722,7 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             </button>
           </form>
           <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground px-1">
-            <span>Press Enter to send</span>
+            <span>Press Enter to send · 🎙️ Voice enabled</span>
             <span>Lilycrest Ground Operations Advisor</span>
           </div>
         </footer>

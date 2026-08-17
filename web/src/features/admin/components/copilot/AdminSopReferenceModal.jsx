@@ -6,51 +6,56 @@ export default function AdminSopReferenceModal({ sop, onClose }) {
   if (!sop) return null;
 
   const content = (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
       <div 
-        className="w-full max-w-lg bg-[var(--card)] rounded-lg shadow-xl overflow-hidden flex flex-col border border-[var(--border)]"
+        className="w-full max-w-lg bg-card rounded-xl shadow-xl overflow-hidden flex flex-col border border-border animate-in fade-in zoom-in-95"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-4 border-b border-[var(--border)] bg-[var(--bg)]">
-          <div className="flex items-center gap-2 text-[var(--text-main)] font-semibold">
-            <FileText size={20} className="text-[var(--primary)]" />
-            Standard Operating Procedure
+        <div className="flex items-center justify-between p-4 border-b border-border bg-card">
+          <div className="flex items-center gap-2 text-foreground font-semibold">
+            <FileText size={18} className="text-primary shrink-0" />
+            <span>Standard Operating Procedure</span>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
-            <X size={20} />
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <X size={18} />
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[70vh]">
-          <h2 className="text-lg font-bold text-[var(--text-main)] mb-1">{sop.title}</h2>
-          <p className="text-sm text-slate-500 mb-6">Reference: {sop.policyLink}</p>
+        <div className="p-6 overflow-y-auto max-h-[70vh] space-y-5">
+          <div>
+            <h2 className="text-base font-bold text-foreground mb-0.5">{sop.title}</h2>
+            <p className="text-xs text-muted-foreground">Reference: {sop.policyLink}</p>
+          </div>
 
-          <div className="space-y-4">
-            <h3 className="font-semibold text-[var(--text-main)]">Required Steps</h3>
-            <ul className="space-y-3">
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Required Steps</h3>
+            <ul className="space-y-2.5">
               {sop.steps.map((step, idx) => (
-                <li key={idx} className="flex gap-3 text-sm text-slate-700 bg-slate-50 p-3 rounded border border-slate-100">
-                  <div className="w-5 h-5 rounded-full bg-[var(--primary)] text-white flex items-center justify-center flex-shrink-0 text-xs">
+                <li key={idx} className="flex gap-2.5 text-xs text-foreground bg-muted/40 p-2.5 rounded-lg border border-border">
+                  <div className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 text-[10px] font-bold">
                     {idx + 1}
                   </div>
-                  {step}
+                  <span className="leading-relaxed">{step}</span>
                 </li>
               ))}
             </ul>
           </div>
           
-          <div className="mt-8 pt-4 border-t border-[var(--border)]">
-            <h3 className="font-semibold text-[var(--text-main)] mb-2">Policy Context</h3>
-            <p className="text-sm text-slate-600 leading-relaxed">
-              This procedure is mandatory for all move-outs to ensure security and proper accounting. Exceptions require direct manager approval. Failure to adhere to these steps may result in operational discrepancies.
+          <div className="pt-4 border-t border-border">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Policy Context</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              This procedure is standard for all dormitory operations to ensure security, compliance, and accurate accounting. Any exceptions require prior management authorization.
             </p>
           </div>
         </div>
         
-        <div className="p-4 border-t border-[var(--border)] bg-[var(--bg)] flex justify-end">
+        <div className="p-4 border-t border-border bg-card flex justify-end">
           <button 
             onClick={onClose}
-            className="px-4 py-2 bg-[var(--primary)] text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors cursor-pointer shadow-xs"
           >
             Acknowledge
           </button>

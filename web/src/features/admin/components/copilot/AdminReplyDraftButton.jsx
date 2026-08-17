@@ -41,7 +41,7 @@ export default function AdminReplyDraftButton({
       console.warn("AI draft generation fallback triggered:", err?.message);
       // Fallback drafts based on tone
       const fallbackDrafts = {
-        Formal: "Dear Resident, thank you for reaching out. We have received your concern and our administrative team is actively attending to it. We will keep you posted shortly.",
+        Formal: "Dear Tenant, thank you for reaching out. We have received your concern and our administrative team is actively attending to it. We will keep you posted shortly.",
         Empathetic: "Hi there! We understand how important this is and apologize for any inconvenience caused. Our team is looking into this right now and will update you soon.",
         Firm: "Please note the dormitory policies regarding this matter. We request your prompt cooperation so we can resolve this matter accordingly.",
         Concise: "Received. Our team is currently reviewing and taking action."
@@ -53,27 +53,27 @@ export default function AdminReplyDraftButton({
   };
 
   return (
-    <div className="flex items-center gap-3 mb-2 p-2 bg-[var(--card)] border border-[var(--border)] rounded-md">
+    <div className="flex items-center gap-3 mb-2 p-2 bg-card border border-border rounded-lg shadow-2xs">
       <button
         type="button"
         onClick={handleGenerate}
         disabled={disabled || loading}
-        className="flex items-center gap-2 px-3 py-1.5 bg-[var(--primary)] text-white text-xs font-semibold rounded hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer"
+        className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-md hover:bg-primary/90 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
       >
         {loading ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
         Auto-Draft Reply
       </button>
 
-      <div className="flex items-center gap-1 border-l border-[var(--border)] pl-3">
+      <div className="flex items-center gap-1 border-l border-border pl-3">
         {TONES.map((tone) => (
           <button
             key={tone}
             type="button"
             onClick={() => setActiveTone(tone)}
-            className={`px-2 py-1 text-xs rounded-full border transition-colors cursor-pointer ${
+            className={`px-2.5 py-1 text-xs rounded-md border transition-colors cursor-pointer ${
               activeTone === tone
-                ? "bg-[var(--primary)] text-white border-[var(--primary)] font-medium"
-                : "bg-[var(--card)] border-[var(--border)] text-muted-foreground hover:text-foreground"
+                ? "bg-muted text-foreground border-border font-bold shadow-2xs"
+                : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/40"
             }`}
           >
             {tone}
