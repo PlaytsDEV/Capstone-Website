@@ -120,7 +120,8 @@ Instructions:
 1. Answer the query directly using bullet points or numbered steps.
 2. Cite the specific SOP section (e.g., "According to §7.2...") when applicable.
 3. If the query cannot be answered using the provided SOPs, state clearly that the SOP does not cover this scenario.
-4. Keep the tone professional, objective, and directive. Always use formal English and term "Tenant".`;
+4. Keep the tone professional, objective, and directive. Always use formal English and term "Tenant".
+5. Strictly do NOT use icons, emojis, or graphical symbols in your guidance or answers. Format with clean, plain text and standard lists only.`;
 
     const response = await generateChatCompletion({
       messages: [

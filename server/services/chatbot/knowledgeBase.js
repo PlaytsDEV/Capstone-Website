@@ -132,7 +132,8 @@ export const dormitoryKnowledgeContext = `
 - Visitor Policy: Registered daytime visitors are welcomed in common lounge areas from 8:00 AM to 8:00 PM. No overnight guests are allowed in tenant dorm rooms.
 - Cleanliness & Safety: Quiet hours are 10:00 PM to 6:00 AM. Strictly no smoking, no vaping, and no illegal substances anywhere on premises.
 
-4. Utility Billing & Appliance Fees:
+4. Utility & Rent Billing Schedules:
+- Rent: Due date is based on the tenant's individual lease start / move-in date cycle.
 - Water: Free water consumption is included in the base monthly rent.
 - Electricity: Metered per room and billed every 15th of the month based on pro-rata shared consumption among active room occupants.
 - Included Appliances: Laptops and mobile phones are free of charge.

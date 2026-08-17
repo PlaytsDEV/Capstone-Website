@@ -214,6 +214,12 @@ await jest.unstable_mockModule("../controllers/maintenanceController.js", () => 
   updateMyRequest: noop,
   cancelMyRequest: noop,
   reopenMyRequest: noop,
+  confirmResolution: noop,
+  requestMaintenanceReschedule: noop,
+  scheduleAdminMaintenance: noop,
+  respondToMaintenanceReschedule: noop,
+  finalizeAdminMaintenanceReport: noop,
+  markAdminMaintenanceRead: noop,
   updateRequest: noop,
   updateAdminRequestStatus: noop,
   updateAdminRequestStatusCompat: noop,
@@ -473,10 +479,30 @@ describe("route access guards", () => {
       "/admin/:requestId/suggest-provider",
       "post",
     );
+    const adminScheduleHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/schedule",
+      "patch",
+    );
+    const adminRescheduleResponseHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/reschedule-response",
+      "patch",
+    );
+    const adminFinalizeHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/finalize",
+      "post",
+    );
     const adminAttachmentHandlers = getRouteHandlers(
       maintenanceRoutes,
       "/admin/:requestId/attachments",
       "post",
+    );
+    const adminReadHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/read",
+      "patch",
     );
     const legacyBranchHandlers = getRouteHandlers(maintenanceRoutes, "/branch", "get");
 
@@ -512,7 +538,23 @@ describe("route access guards", () => {
       ),
     ).toBe(true);
 
-    [adminAnalyticsHandlers, adminBranchReportHandlers, adminProviderReportHandlers, adminAssignProviderHandlers, adminAssignBranchHandlers, adminGenerateUpdateHandlers, adminGenerateReportHandlers, adminSendTenantSummaryHandlers, adminCostHandlers, adminDuplicatesHandlers, adminSuggestProviderHandlers].forEach(
+    [
+      adminAnalyticsHandlers,
+      adminBranchReportHandlers,
+      adminProviderReportHandlers,
+      adminAssignProviderHandlers,
+      adminAssignBranchHandlers,
+      adminGenerateUpdateHandlers,
+      adminGenerateReportHandlers,
+      adminSendTenantSummaryHandlers,
+      adminCostHandlers,
+      adminDuplicatesHandlers,
+      adminSuggestProviderHandlers,
+      adminScheduleHandlers,
+      adminRescheduleResponseHandlers,
+      adminFinalizeHandlers,
+      adminReadHandlers,
+    ].forEach(
       (handlers) => {
         expect(handlers).toContain(verifyAdmin);
         expect(handlers).toContain(filterByBranch);

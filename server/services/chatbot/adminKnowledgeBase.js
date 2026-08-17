@@ -31,8 +31,8 @@ export const adminSOPs = [
   {
     category: "Urgent Maintenance Escalation",
     section: "§4.2",
-    content: "Urgent plumbing and electrical issues have a 4-hour SLA (Service Level Agreement). Emergency protocols dictate that if the in-house technician is unavailable, the on-call third-party contractor must be dispatched immediately.",
-    tags: ["maintenance", "urgent", "SLA", "plumbing", "electrical", "emergency"]
+    content: "Urgent plumbing and electrical issues have a 4-hour target turnaround time. Emergency protocols dictate that if the in-house technician is unavailable, the on-call third-party contractor must be dispatched immediately.",
+    tags: ["maintenance", "urgent", "turnaround time", "plumbing", "electrical", "emergency"]
   }
 ];
 

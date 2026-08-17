@@ -23,7 +23,9 @@ FRIENDLY POLICIES & STEP-BY-STEP EXPLANATIONS:
    - Total electricity cost is divided equally among active roommates for the billing period.
    - Water consumption and high-speed Wi-Fi are completely free and included in monthly base rent.
 2. Monthly Rent & Due Dates:
-   - Monthly bills are due on the 15th of the month and can easily be settled online via bank transfer or GCash in the Billing tab.
+   - Monthly rent due dates follow each tenant's individual move-in / lease start cycle (NOT fixed to the 15th for all tenants).
+   - Submetered electricity is measured and recorded on the 15th of each month, then divided pro-rata among room occupants.
+   - Payments can easily be settled online via bank transfer or GCash in the Billing tab.
 3. Contract Expiration & Lease Renewal:
    - Tenants can request a lease renewal 30 days before contract expiration under the Contracts tab.
 4. Move-Out Clearance & Security Deposit:
@@ -37,6 +39,7 @@ STRICT OPERATIONAL GUIDELINES:
 1. Language & Professional Tone: Answer in warm, polite, empathetic, and friendly English only. Avoid heavy corporate jargon. Do NOT insert filler words or Tagalog honorifics like "po" or "opo". Respond strictly in English.
 2. Grounded Facts: Answer strictly using the TENANT CONTEXT JSON below. NEVER invent unlisted bills, contracts, or repair records.
 3. Read-Only Safety: You are an informational assistant. You cannot alter invoice totals, approve fee waivers, or cancel contracts. Direct disputes or special requests kindly to Branch Admin.
+4. Strictly No Icons or Emojis: Do NOT use icons, emojis, or graphical symbols in your answers or responses. Format responses using clean, plain text and standard markdown bold or lists only.
 
 TENANT CONTEXT:
 ${JSON.stringify(contextSnapshot, null, 2)}
@@ -155,17 +158,19 @@ export function getTenantRuleBasedFallback(message = "", contextSnapshot = null)
     lower.includes("water") ||
     lower.includes("appliance") ||
     lower.includes("bayad") ||
-    lower.includes("due")
+    lower.includes("due") ||
+    lower.includes("next bill")
   ) {
     const bill = contextSnapshot?.currentBill;
-    if (bill) {
-      const formatNum = (n) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
-      const dueDateStr = bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "15th of the month";
+    const formatNum = (n) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
 
-      return `Here is the itemized summary of your statement for **Room ${roomNumber}**:\n\n• **Base Rent**: ${formatNum(bill.rentAmount)}${bill.proRataDays ? ` (${bill.proRataDays} days pro-rata)` : ""}\n• **Electricity Share**: ${formatNum(bill.electricityAmount)} (Submetered room share)\n• **Water & Wi-Fi**: **FREE** (₱0.00 included in rent)\n${bill.applianceAmount > 0 ? `• **Appliance Fees**: ${formatNum(bill.applianceAmount)}\n` : ""}${bill.penaltyAmount > 0 ? `• **Late Penalty**: ${formatNum(bill.penaltyAmount)}\n` : ""}• **Total Amount Due**: **${formatNum(bill.totalAmount)}** (Due on **${dueDateStr}**)\n\nYou can settle this balance via online bank transfer or GCash through the Billing tab.`;
+    if (bill && (Number(bill.remainingAmount ?? bill.totalAmount ?? 0) > 0 || (bill.status && bill.status !== "paid"))) {
+      const dueDateStr = bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "your monthly lease due date";
+
+      return `Here is the itemized summary of your statement for **Room ${roomNumber}**:\n\n• **Base Rent**: ${formatNum(bill.rentAmount)}${bill.proRataDays ? ` (${bill.proRataDays} days pro-rata)` : ""}\n• **Electricity Share**: ${formatNum(bill.electricityAmount)} (Submetered room share)\n• **Water & Wi-Fi**: **FREE** (₱0.00 included in rent)\n${bill.applianceAmount > 0 ? `• **Appliance Fees**: ${formatNum(bill.applianceAmount)}\n` : ""}${bill.penaltyAmount > 0 ? `• **Late Penalty**: ${formatNum(bill.penaltyAmount)}\n` : ""}• **Total Amount Due**: **${formatNum(bill.remainingAmount !== undefined ? bill.remainingAmount : bill.totalAmount)}** (Due on **${dueDateStr}**)\n\nYou can settle this balance via online bank transfer or GCash through the Billing tab.`;
     }
 
-    return `You currently have no pending unpaid invoices on record for **Room ${roomNumber}**. Water and high-speed Wi-Fi remain complimentary with your stay.`;
+    return `Your current bill for **Room ${roomNumber}** has already been paid, and there are no pending balances at the moment. Your recurring monthly rent is scheduled based on your lease start date, while submetered electricity is read and calculated on the 15th of each month. Water and high-speed Wi-Fi remain complimentary with your stay.`;
   }
 
   // 3. Lease & Contract Timeline

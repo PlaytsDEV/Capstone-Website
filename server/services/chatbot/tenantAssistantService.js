@@ -101,6 +101,19 @@ export async function getTenantStayContext(userId) {
       daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
     }
 
+    const contractStartDate = contract?.startDate ? new Date(contract.startDate) : null;
+    const leaseDay = contractStartDate && !isNaN(contractStartDate.getTime()) ? contractStartDate.getDate() : null;
+    const ordinalSuffix = (d) => {
+      if (d > 3 && d < 21) return `${d}th`;
+      switch (d % 10) {
+        case 1: return `${d}st`;
+        case 2: return `${d}nd`;
+        case 3: return `${d}rd`;
+        default: return `${d}th`;
+      }
+    };
+    const leaseCycleText = leaseDay ? `${ordinalSuffix(leaseDay)} of each month` : "Monthly lease start date";
+
     return {
       user: {
         id: String(user._id),
@@ -123,6 +136,7 @@ export async function getTenantStayContext(userId) {
             securityDeposit: contract.securityDeposit || 5500,
             leaseStartDate: contract.startDate ? new Date(contract.startDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "N/A",
             leaseEndDate: contract.endDate ? new Date(contract.endDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "N/A",
+            leaseCycleDay: leaseDay,
             daysRemaining,
             isExpiringSoon: daysRemaining !== null && daysRemaining <= 30,
           }
@@ -141,15 +155,17 @@ export async function getTenantStayContext(userId) {
             invoiceNumber: latestBill.invoiceNumber || "N/A",
             billingMonth: latestBill.billingMonth || new Date().toISOString().slice(0, 7),
             totalAmount: latestBill.totalAmount || 0,
+            remainingAmount: latestBill.remainingAmount !== undefined ? latestBill.remainingAmount : latestBill.totalAmount || 0,
             rentAmount: latestBill.rentAmount || 0,
             electricityAmount: latestBill.electricityAmount || 0,
             waterAmount: latestBill.waterAmount || 0,
             applianceCharges: latestBill.applianceCharges || 0,
             lateFee: latestBill.lateFee || 0,
             status: latestBill.status || "unpaid",
-            dueDate: latestBill.dueDate ? new Date(latestBill.dueDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "15th of the month",
+            dueDate: latestBill.dueDate ? new Date(latestBill.dueDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : leaseCycleText,
           }
         : null,
+      leaseCycleText,
       maintenance: recentMaintenance.map((m) => ({
         id: String(m._id),
         ticketNumber: m.ticketNumber || `REQ-${String(m._id).slice(-6).toUpperCase()}`,
@@ -185,6 +201,7 @@ export function detectTenantWidgetIntent(message = "", context = null) {
     text.includes("magkano") ||
     text.includes("statement")
   ) {
+    const fallbackDue = context?.leaseCycleText || "Monthly lease cycle";
     return {
       type: "billing_breakdown",
       title: "Current Statement of Account",
@@ -192,10 +209,11 @@ export function detectTenantWidgetIntent(message = "", context = null) {
         bill: context?.bill || {
           status: "paid",
           totalAmount: 0,
+          remainingAmount: 0,
           electricityAmount: 0,
           waterAmount: 0,
           rentAmount: context?.contract?.monthlyRent || 5500,
-          dueDate: "15th of the month",
+          dueDate: fallbackDue,
         },
         contract: context?.contract,
         waterIncluded: true,
@@ -289,8 +307,8 @@ ACTIVE LEASE CONTRACT:
 
 LATEST BILLING STATEMENT:
 - Status: ${bill?.status?.toUpperCase() || "NO UNPAID BILLS"}
-- Total Due: ₱${bill?.totalAmount ? Number(bill.totalAmount).toLocaleString() : "0.00"}
-- Due Date: ${bill?.dueDate || "15th of the month"}
+- Total Due: ₱${bill?.remainingAmount !== undefined ? Number(bill.remainingAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 }) : bill?.totalAmount ? Number(bill.totalAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 }) : "0.00"}
+- Due Date: ${bill?.dueDate || context?.leaseCycleText || "Follows monthly lease start date"}
 - Rent Amount: ₱${bill?.rentAmount ? Number(bill.rentAmount).toLocaleString() : "0.00"}
 - Electricity Share (Pro-Rata): ₱${bill?.electricityAmount ? Number(bill.electricityAmount).toLocaleString() : "0.00"}
 - Water: Free (Included in rent)
@@ -305,11 +323,12 @@ ${
 FRIENDLY DORMITORY POLICIES & STEP-BY-STEP EXPLANATIONS:
 1. Pro-Rata Electricity Sharing:
    - Your room has its own electric submeter that measures actual kilowatt-hours used.
-   - Total electricity charges are divided equally among active roommates for the billing period.
+   - Total electricity charges are recorded and computed on the 15th of each month, then divided equally among active roommates for the billing period.
    - Water consumption and high-speed Wi-Fi are completely free and included in your rent!
 2. Monthly Rent & Due Dates:
-   - Rent is billed on a monthly cycle, due on the 15th of each month.
-   - Payments can easily and securely be settled via online bank transfer or GCash in your Billing tab.
+   - Base monthly rent due dates follow each tenant's individual move-in / lease start date (NOT fixed to the 15th for all tenants).
+   - Utility/electricity charges follow the monthly 15th submeter reading cycle.
+   - Payments can easily and securely be settled online via bank transfer or GCash in your Billing tab.
 3. Contract Expiration & Lease Renewal:
    - You can easily request a lease renewal 30 days before your contract expires directly from the Contracts tab.
 4. Move-Out Clearance & Security Deposit:
@@ -326,6 +345,7 @@ STRICT BEHAVIOR RULES:
 2. Conciseness: Answer helpfully in 2 to 4 clear, well-structured sentences.
 3. Factual Grounding: Ground all answers strictly on the tenant's data above. Never fabricate bills, dates, or ticket statuses.
 4. Escalation: If a tenant has a dispute or urgent concern, kindly offer to connect them directly with the Branch Admin.
+5. Strictly No Icons or Emojis: Do NOT use icons, emojis, or graphical symbols in your answers or responses. Format all responses using clean, plain text and standard markdown bold or lists only.
 `;
 }
 
@@ -393,17 +413,20 @@ export function getTenantRuleBasedFallback(message = "", context = null) {
   if (text.includes("electric") || text.includes("kuryente") || text.includes("meter")) {
     if (bill) {
       const elecFormatted = `₱${Number(bill.electricityAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
-      return `Hello! Your submetered electricity share for the current period is **${elecFormatted}**. This is computed by dividing your room's actual submeter usage equally among roommates. Water and high-speed Wi-Fi are 100% free and included in your rent! You can review full details on your [Billing Page](/applicant/billing).`;
+      return `Hello! Your submetered electricity share for the current period is **${elecFormatted}**. This is computed by dividing your room's actual submeter usage equally among roommates on the 15th of each month. Water and high-speed Wi-Fi are 100% free and included in your rent! You can review full details on your [Billing Page](/applicant/billing).`;
     }
-    return "Your room electricity is measured monthly with a dedicated submeter and shared equally among roommates. Water and high-speed Wi-Fi are completely free and included in your rent.";
+    return "Your room electricity is measured monthly with a dedicated submeter on the 15th and shared equally among roommates. Water and high-speed Wi-Fi are completely free and included in your rent.";
   }
 
-  if (text.includes("bill") || text.includes("bayad") || text.includes("rent") || text.includes("due date") || text.includes("magkano")) {
-    if (bill) {
-      const totalFormatted = `₱${Number(bill.totalAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
-      const dueFormatted = bill.dueDate || "15th of the month";
-      return `Hello! Your total billing balance is **${totalFormatted}**, due on **${dueFormatted}** (Status: ${bill.status.toUpperCase()}). You can easily settle this online via GCash or bank transfer on your [Billing Page](/applicant/billing).`;
+  if (text.includes("bill") || text.includes("bayad") || text.includes("rent") || text.includes("due date") || text.includes("magkano") || text.includes("next bill")) {
+    const isPaid = !bill || bill.status === "paid" || Number(bill.remainingAmount ?? bill.totalAmount ?? 0) <= 0;
+    if (isPaid) {
+      const leaseDueCycle = context?.leaseCycleText || (contract?.leaseStartDate ? `the ${contract.leaseStartDate}` : "your monthly lease cycle");
+      return `Your current bill has already been paid, and there are no pending balances at the moment. Your recurring monthly rent follows your lease start cycle (${leaseDueCycle}), while submetered electricity is read and calculated on the 15th of each month. You can review your payment history anytime in your [Billing Page](/applicant/billing).`;
     }
+    const totalFormatted = `₱${Number(bill.remainingAmount !== undefined ? bill.remainingAmount : bill.totalAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+    const dueFormatted = bill.dueDate || context?.leaseCycleText || "your scheduled lease due date";
+    return `Hello! Your total outstanding balance is **${totalFormatted}**, due on **${dueFormatted}** (Status: ${bill.status.toUpperCase()}). You can easily settle this online via GCash or bank transfer on your [Billing Page](/applicant/billing).`;
   }
 
   // 2. Contract & Lease Inquiries

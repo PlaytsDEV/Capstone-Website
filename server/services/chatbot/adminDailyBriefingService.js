@@ -158,7 +158,7 @@ export async function generateDailyShiftBriefing({ branch = "all", userRole = "b
 
     // Formulate Executive Summary string
     const summaryLines = [
-      `☀️ Operations Standup Briefing for ${branchTitle} on ${formattedDate}:`,
+      `Operations Standup Briefing for ${branchTitle} on ${formattedDate}:`,
       `• Scheduled Move-Ins: ${moveInsToday.length} tenant(s)`,
       `• Scheduled Move-Outs / Clearances: ${moveOutsToday.length} tenant(s)`,
       `• High-Priority / Urgent Maintenance: ${urgentMaintenance.length} ticket(s)`,
@@ -167,7 +167,7 @@ export async function generateDailyShiftBriefing({ branch = "all", userRole = "b
     ];
 
     if (overdueInvoicesCount > 0) {
-      summaryLines.push(`• ⚠️ Overdue Invoices Requiring Follow-Up: ${overdueInvoicesCount} invoice(s)`);
+      summaryLines.push(`• Overdue Invoices Requiring Follow-Up: ${overdueInvoicesCount} invoice(s)`);
     }
 
     return {

@@ -65,6 +65,21 @@ router.patch(
   maintenanceController.reopenMyRequest,
 );
 router.post(
+  "/:requestId/confirm",
+  verifyApplicant,
+  maintenanceController.confirmResolution,
+);
+router.patch(
+  "/:requestId/confirm-resolved",
+  verifyApplicant,
+  maintenanceController.confirmResolution,
+);
+router.post(
+  "/:requestId/reschedule-request",
+  verifyApplicant,
+  maintenanceController.requestMaintenanceReschedule,
+);
+router.post(
   "/:requestId/reply",
   verifyApplicant,
   maintenanceController.sendTenantReply,
@@ -105,6 +120,48 @@ router.patch(
   filterByBranch,
   requirePermission("manageMaintenance"),
   maintenanceController.updateAdminRequestStatus,
+);
+router.patch(
+  "/admin/:requestId/provider",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.assignAdminMaintenanceProvider,
+);
+router.patch(
+  "/admin/:requestId/schedule",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.scheduleAdminMaintenance,
+);
+router.patch(
+  "/admin/:requestId/reschedule-response",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.respondToMaintenanceReschedule,
+);
+router.post(
+  "/admin/:requestId/finalize",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.finalizeAdminMaintenanceReport,
+);
+router.patch(
+  "/admin/:requestId/read",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.markAdminMaintenanceRead,
+);
+router.patch(
+  "/admin/:requestId/mark-read",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.markAdminMaintenanceRead,
 );
 router.patch(
   "/admin/:requestId/cost",

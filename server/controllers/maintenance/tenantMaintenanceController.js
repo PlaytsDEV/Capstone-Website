@@ -580,7 +580,7 @@ export const confirmResolution = async (req, res, next) => {
         ),
       });
     } else {
-      // Resident indicates the issue is NOT yet resolved -> return to in_progress for rework
+      // Tenant indicates the issue is NOT yet resolved -> return to in_progress for rework
       const rejectedAt = new Date();
       const feedback = toOptionalText(req.body?.feedback || req.body?.notes || req.body?.note || req.body?.reopen_note);
 
@@ -596,7 +596,7 @@ export const confirmResolution = async (req, res, next) => {
         event: "tenant_rejected_resolution",
         status: "in_progress",
         ...buildActorSnapshot(dbUser),
-        note: feedback ? `Resident reported issue still unresolved: "${feedback}"` : "Resident indicated issue is still unresolved. Ticket returned to In Progress.",
+        note: feedback ? `Tenant reported issue still unresolved: "${feedback}"` : "Tenant indicated issue is still unresolved. Ticket returned to In Progress.",
         timestamp: rejectedAt,
       });
 
@@ -631,7 +631,7 @@ export const confirmMaintenanceResolved = confirmResolution;
 
 /**
  * POST /api/m/maintenance/:requestId/reschedule-request
- * Allows a resident to request a schedule adjustment if unavailable.
+ * Allows a tenant to request a schedule adjustment if unavailable.
  */
 export const requestMaintenanceReschedule = async (req, res, next) => {
   try {
@@ -673,7 +673,7 @@ export const requestMaintenanceReschedule = async (req, res, next) => {
       event: "tenant_reschedule_requested",
       status: request.status,
       ...buildActorSnapshot(dbUser),
-      note: `Resident requested reschedule to ${proposedDate.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}${reason ? `. Reason: "${reason}"` : ""}`,
+      note: `Tenant requested reschedule to ${proposedDate.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}${reason ? `. Reason: "${reason}"` : ""}`,
       timestamp: requestedAt,
     });
 

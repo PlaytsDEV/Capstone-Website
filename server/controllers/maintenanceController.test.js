@@ -117,6 +117,8 @@ const {
   uploadAdminMaintenanceAttachment,
   removeAdminMaintenanceAttachment,
   updateAdminRequestStatus,
+  confirmResolution,
+  requestMaintenanceReschedule,
 } = await import("./maintenanceController.js");
 const {
   resolveMaintenanceRequestBranch,
@@ -1379,6 +1381,92 @@ describe("maintenanceController", () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(next.mock.calls[0][0].code).toBe("ASSIGNEE_REQUIRED");
     expect(next.mock.calls[0][0].details[0].field).toBe("assigned_to");
+  });
+
+  test("updateAdminRequestStatus allows transition from resolved to completed without requiring extra notes", async () => {
+    const requestDoc = buildRequestDoc({
+      status: "resolved",
+      resolution_note: "Technician fixed the leaking faucet and tested drainage.",
+      resolved_at: new Date("2026-08-17T10:00:00Z"),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation(({ firebaseUid, user_id }) => {
+      if (firebaseUid === "firebase-admin-1") {
+        return buildLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firstName: "Branch",
+          lastName: "Admin",
+          email: "admin@example.com",
+          phone: "0918",
+          branch: "gil-puyat",
+          role: "branch_admin",
+        });
+      }
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: { status: "completed" },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await updateAdminRequestStatus(req, res, next);
+
+    expect(requestDoc.status).toBe("completed");
+    expect(requestDoc.resolution_note).toBe("Technician fixed the leaking faucet and tested drainage.");
+    expect(requestDoc.closed_at).toBeDefined();
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  test("updateAdminRequestStatus rejects transition to resolved from in_progress when no resolution notes exist", async () => {
+    const requestDoc = buildRequestDoc({
+      status: "in_progress",
+      assigned_to: "Technician",
+      resolution_note: null,
+      notes: null,
+      work_log: [],
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation(({ firebaseUid }) =>
+      buildLeanQuery(
+        firebaseUid === "firebase-admin-1"
+          ? {
+              _id: "admin_user_1",
+              user_id: "admin_1",
+              firstName: "Branch",
+              lastName: "Admin",
+              email: "admin@example.com",
+              phone: "0918",
+              branch: "gil-puyat",
+              role: "branch_admin",
+            }
+          : null,
+      ),
+    );
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: { status: "resolved" },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await updateAdminRequestStatus(req, res, next);
+
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("RESOLUTION_NOTE_REQUIRED");
   });
 
   test("sendAdminReply stores tenant-facing message attachments and notifies tenant", async () => {
@@ -2813,6 +2901,199 @@ describe("maintenanceController", () => {
       }),
     );
     expect(requestDoc.resolved_at).toBeNull();
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("confirmResolution: confirms resolution and records 5-star tenant rating", async () => {
+    const requestDoc = buildRequestDoc({
+      status: "resolved",
+      resolved_at: new Date("2026-08-18T00:00:00.000Z"),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "mongo_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "gil-puyat",
+        role: "tenant",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase_uid_1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        action: "confirm",
+        confirmed: true,
+        feedback: "Air conditioner works perfectly now!",
+        rating: 5,
+      },
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await confirmResolution(req, res, next);
+
+    expect(requestDoc.status).toBe("resolved");
+    expect(requestDoc.resolutionConfirmation).toEqual(
+      expect.objectContaining({
+        action: "confirm",
+        tenantFeedback: "Air conditioner works perfectly now!",
+        rating: 5,
+      }),
+    );
+    expect(requestDoc.statusHistory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "tenant_confirmed_resolved",
+          status: "resolved",
+        }),
+      ]),
+    );
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("confirmResolution: tenant reports issue unresolved ('no show naman') returning ticket to in_progress", async () => {
+    const requestDoc = buildRequestDoc({
+      status: "resolved",
+      resolved_at: new Date("2026-08-18T00:00:00.000Z"),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "mongo_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "gil-puyat",
+        role: "tenant",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase_uid_1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        action: "reopen",
+        confirmed: false,
+        feedback: "no show naman",
+      },
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await confirmResolution(req, res, next);
+
+    expect(requestDoc.status).toBe("in_progress");
+    expect(requestDoc.resolved_at).toBeNull();
+    expect(requestDoc.resolutionConfirmation).toEqual(
+      expect.objectContaining({
+        action: "rejected_back_to_in_progress",
+        tenantFeedback: "no show naman",
+      }),
+    );
+    expect(requestDoc.statusHistory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "tenant_rejected_resolution",
+          status: "in_progress",
+          note: expect.stringContaining("no show naman"),
+        }),
+      ]),
+    );
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("confirmResolution: rejects confirmation on non-resolved tickets with 409", async () => {
+    const requestDoc = buildRequestDoc({
+      status: "pending",
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "mongo_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "gil-puyat",
+        role: "tenant",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase_uid_1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        action: "confirm",
+        confirmed: true,
+      },
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await confirmResolution(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 409,
+        code: "INVALID_CONFIRMATION_STATE",
+      }),
+    );
+    expect(requestDoc.save).not.toHaveBeenCalled();
+  });
+
+  test("requestMaintenanceReschedule: records reschedule request and notifies facilities", async () => {
+    const requestDoc = buildRequestDoc({
+      status: "scheduled",
+      scheduledDate: new Date("2026-08-20T10:00:00.000Z"),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "mongo_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "gil-puyat",
+        role: "tenant",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase_uid_1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        proposedDate: "2026-08-22T14:00:00.000Z",
+        reason: "I will be in class during the original schedule.",
+      },
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await requestMaintenanceReschedule(req, res, next);
+
+    expect(requestDoc.rescheduleRequest).toEqual(
+      expect.objectContaining({
+        status: "pending",
+        reason: "I will be in class during the original schedule.",
+      }),
+    );
     expect(requestDoc.save).toHaveBeenCalledTimes(1);
     expect(sendSuccess).toHaveBeenCalledTimes(1);
     expect(next).not.toHaveBeenCalled();

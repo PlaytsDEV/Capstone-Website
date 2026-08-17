@@ -175,8 +175,19 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     );
   }
 
-  const requiresResolutionNote = ["resolved", "completed"].includes(nextStatus);
-  if (requiresResolutionNote && !nextNotes && !workLogNote) {
+  const requiresResolutionNote =
+    ["resolved", "completed"].includes(nextStatus) &&
+    request.status !== "resolved" &&
+    request.status !== "completed";
+
+  if (
+    requiresResolutionNote &&
+    !nextNotes &&
+    !workLogNote &&
+    !request.resolution_note &&
+    !request.notes &&
+    (!Array.isArray(request.work_log) || request.work_log.length === 0)
+  ) {
     throw new AppError(
       "Please add resolution notes or a completion work log before marking this request as Resolved.",
       400,
@@ -236,12 +247,13 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
 
   if (statusChanged && ["resolved", "completed", "closed"].includes(nextStatus)) {
     const actor = buildActorSnapshot(adminUser);
-    request.resolved_at = eventTimestamp;
-    request.resolvedBy = actor.actor_id || null;
-    request.resolvedByName = actor.actor_name || null;
-    request.resolution_note = nextNotes ?? request.notes ?? null;
-    if (nextStatus === "closed") {
-      request.closed_at = eventTimestamp;
+    request.resolved_at = request.resolved_at || eventTimestamp;
+    request.resolvedBy = request.resolvedBy || actor.actor_id || null;
+    request.resolvedByName = request.resolvedByName || actor.actor_name || null;
+    request.resolution_note =
+      nextNotes ?? request.resolution_note ?? request.notes ?? null;
+    if (nextStatus === "closed" || nextStatus === "completed") {
+      request.closed_at = request.closed_at || eventTimestamp;
     }
   }
 
@@ -1819,6 +1831,7 @@ export const saveResolutionProof = async (req, res, next) => {
     if (request.status !== targetStatus) {
       request.status = targetStatus;
       request.resolved_at = eventTimestamp;
+      request.resolution_note = note || request.resolution_note || "Resolution proof uploaded.";
       if (targetStatus === "completed") {
         request.closed_at = eventTimestamp;
       }
@@ -1830,6 +1843,8 @@ export const saveResolutionProof = async (req, res, next) => {
         note,
         timestamp: eventTimestamp,
       });
+    } else {
+      request.resolution_note = note || request.resolution_note || "Resolution proof uploaded.";
     }
 
     await request.save();

@@ -35,7 +35,7 @@ export async function getAdminDynamicSuggestions({ branch = "all", userRole = "b
 
     // 1. Always include the primary standup briefing
     suggestions.push({
-      label: "☀️ Today's Shift Briefing",
+      label: "Today's Shift Briefing",
       prompt: "Today's Shift Briefing",
       category: "standup",
       priority: 1,
@@ -59,7 +59,7 @@ export async function getAdminDynamicSuggestions({ branch = "all", userRole = "b
         const issueName = t.title || t.issue || t.category || "Issue";
         if (roomNum) {
           suggestions.push({
-            label: `🔧 Urgent: Room ${roomNum} (${issueName})`,
+            label: `Urgent: Room ${roomNum} (${issueName})`,
             prompt: `What is the urgent maintenance status for Room ${roomNum}?`,
             category: "maintenance",
             priority: 2,
@@ -90,7 +90,7 @@ export async function getAdminDynamicSuggestions({ branch = "all", userRole = "b
         const name = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.fullName || "Tenant";
         const roomNum = m.roomId?.roomNumber;
         suggestions.push({
-          label: `🚪 Move-In: ${name}${roomNum ? ` (Rm ${roomNum})` : ""}`,
+          label: `Move-In: ${name}${roomNum ? ` (Rm ${roomNum})` : ""}`,
           prompt: `Show info for ${name}`,
           category: "move_in",
           priority: 3,
@@ -111,7 +111,7 @@ export async function getAdminDynamicSuggestions({ branch = "all", userRole = "b
 
       if (overdueCount > 0) {
         suggestions.push({
-          label: `💳 Follow up ${overdueCount} Overdue Bill${overdueCount > 1 ? "s" : ""}`,
+          label: `Follow up ${overdueCount} Overdue Bill${overdueCount > 1 ? "s" : ""}`,
           prompt: "What is the policy and turnaround time for overdue utility bills?",
           category: "billing",
           priority: 4,
@@ -132,7 +132,7 @@ export async function getAdminDynamicSuggestions({ branch = "all", userRole = "b
 
       if (expiringCount > 0) {
         suggestions.push({
-          label: `📄 ${expiringCount} Contract${expiringCount > 1 ? "s" : ""} Expiring Soon`,
+          label: `${expiringCount} Contract${expiringCount > 1 ? "s" : ""} Expiring Soon`,
           prompt: "What is the standard lease renewal and deposit clearance policy?",
           category: "contracts",
           priority: 5,
@@ -167,7 +167,7 @@ export async function getAdminDynamicSuggestions({ branch = "all", userRole = "b
     return {
       success: false,
       data: [
-        { label: "☀️ Today's Shift Briefing", prompt: "Today's Shift Briefing", category: "standup" },
+        { label: "Today's Shift Briefing", prompt: "Today's Shift Briefing", category: "standup" },
         { label: "Move-out clearance checklist", prompt: "Move-out clearance checklist", category: "sop" },
         { label: "Lost room key policy", prompt: "Lost room key policy", category: "sop" },
         { label: "Guest curfew & visitor policy", prompt: "Guest curfew & visitor policy", category: "sop" },

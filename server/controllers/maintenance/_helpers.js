@@ -763,16 +763,17 @@ export const buildRequestIdentifierQuery = (requestId) => {
     return { request_id: "__missing__" };
   }
 
+  const queryOr = [
+    { request_id: identifier },
+    { ticketNumber: identifier },
+    { ticket_number: identifier },
+  ];
+
   if (mongoose.Types.ObjectId.isValid(identifier)) {
-    return {
-      $or: [
-        { request_id: identifier },
-        { _id: identifier },
-      ],
-    };
+    queryOr.push({ _id: identifier });
   }
 
-  return { request_id: identifier };
+  return { $or: queryOr };
 };
 
 export const getDbUser = async (firebaseUid) => {

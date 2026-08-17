@@ -739,6 +739,54 @@ const buildBillingMonthSeries = (bills, months) => {
   return [...seriesMap.values()];
 };
 
+const buildUtilityBreakdownSeries = (bills, months) => {
+  const monthKeys = buildMonthKeys(months);
+  const seriesMap = new Map(
+    monthKeys.map((key) => [
+      key,
+      {
+        month: key,
+        label: formatMonthLabel(`${key}-01`),
+        rentAmount: 0,
+        electricityAmount: 0,
+        waterAmount: 0,
+        otherAmount: 0,
+        totalAmount: 0,
+      },
+    ]),
+  );
+
+  bills.forEach((bill) => {
+    const billMonthKey = bill.billingMonth
+      ? dayjs(bill.billingMonth).format("YYYY-MM")
+      : null;
+
+    if (billMonthKey && seriesMap.has(billMonthKey)) {
+      const entry = seriesMap.get(billMonthKey);
+      const rent = toNumber(bill.charges?.rent ?? (bill.rentAmount || 0));
+      const electricity = toNumber(bill.charges?.electricity ?? (bill.electricAmount || 0));
+      const water = toNumber(bill.charges?.water ?? (bill.waterAmount || 0));
+      const appliance = toNumber(bill.charges?.applianceFees || 0);
+      const corkage = toNumber(bill.charges?.corkageFees || 0);
+      const penalty = toNumber(bill.charges?.penalty || 0);
+      const discount = toNumber(bill.charges?.discount || 0);
+      const additional = Array.isArray(bill.additionalCharges)
+        ? bill.additionalCharges.reduce((sum, ch) => sum + toNumber(ch.amount), 0)
+        : 0;
+
+      const other = Math.max(appliance + corkage + penalty + additional - discount, 0);
+
+      entry.rentAmount += rent;
+      entry.electricityAmount += electricity;
+      entry.waterAmount += water;
+      entry.otherAmount += other;
+      entry.totalAmount += (rent + electricity + water + other);
+    }
+  });
+
+  return [...seriesMap.values()];
+};
+
 const buildOverdueAging = (bills) => {
   const buckets = [
     { key: "0-30", label: "0-30 days", min: 0, max: 30, count: 0, amount: 0 },
@@ -923,6 +971,62 @@ const buildResolutionSummary = (requests) => {
         ? Math.round((withinTargetCount / resolvedRequests.length) * 100)
         : 0,
   };
+};
+
+const buildResolutionTimelineSeries = (resolvedRequests, days) => {
+  const weekly = days > 45;
+  const timeline = weekly ? buildWeeklyTimeline(days) : buildDailyTimeline(days);
+  const data = timeline.map((cursor) => ({
+    label: weekly ? formatWeekLabel(cursor) : formatDateLabel(cursor),
+    sortDate: cursor.toISOString(),
+    avgResolutionHours: 0,
+    targetHours: 48,
+    onTimeRate: 100,
+    resolvedCount: 0,
+    totalHours: 0,
+    onTimeCount: 0,
+  }));
+
+  resolvedRequests.forEach((request) => {
+    const resolvedTime = dayjs(request.resolved_at || request.resolvedAt);
+    if (!resolvedTime.isValid() || (!request.created_at && !request.createdAt)) return;
+
+    const index = timeline.findIndex((cursor, position) => {
+      if (weekly) {
+        const next = timeline[position + 1];
+        return resolvedTime.isSame(cursor, "day") ||
+          (resolvedTime.isAfter(cursor) && (!next || resolvedTime.isBefore(next)));
+      }
+      return resolvedTime.isSame(cursor, "day");
+    });
+
+    if (index >= 0) {
+      const hours = dayjs(request.resolved_at || request.resolvedAt).diff(
+        dayjs(request.created_at || request.createdAt),
+        "hour",
+        true,
+      );
+      const targetHours = SLA_TARGET_HOURS[String(request.urgency || "normal")] || SLA_TARGET_HOURS.normal;
+      data[index].resolvedCount += 1;
+      data[index].totalHours += hours;
+      if (hours <= targetHours) {
+        data[index].onTimeCount += 1;
+      }
+    }
+  });
+
+  return data.map((item) => ({
+    label: item.label,
+    sortDate: item.sortDate,
+    resolvedCount: item.resolvedCount,
+    targetHours: item.targetHours,
+    avgResolutionHours:
+      item.resolvedCount > 0 ? Number((item.totalHours / item.resolvedCount).toFixed(1)) : 0,
+    onTimeRate:
+      item.resolvedCount > 0
+        ? Math.round((item.onTimeCount / item.resolvedCount) * 100)
+        : 100,
+  }));
 };
 
 const buildFinancialBranchSummaries = ({ periodBills, openBills, branches }) =>
@@ -1403,8 +1507,13 @@ const buildBillingReportData = async (scope, rangeKey, tableRequest = parseTable
     billedAmount > 0 ? Math.round((collectedRevenue / billedAmount) * 100) : 0;
 
   const revenueByMonth = buildBillingMonthSeries(periodBills, rangeMonths);
+  const utilityBreakdown = buildUtilityBreakdownSeries(periodBills, rangeMonths);
   const statusDistribution = buildBillingStatusDistribution(periodBills);
   const overdueAging = buildOverdueAging(openBills);
+
+  const totalRentBilled = utilityBreakdown.reduce((sum, item) => sum + item.rentAmount, 0);
+  const totalElectricityBilled = utilityBreakdown.reduce((sum, item) => sum + item.electricityAmount, 0);
+  const totalWaterBilled = utilityBreakdown.reduce((sum, item) => sum + item.waterAmount, 0);
 
   const latestMonth = revenueByMonth[revenueByMonth.length - 1] || { billedAmount: 0, collectedRevenue: 0 };
   const prevMonth = revenueByMonth.length > 1
@@ -1456,6 +1565,12 @@ const buildBillingReportData = async (scope, rangeKey, tableRequest = parseTable
       overdueAmountLabel: formatCurrency(overdueAmount),
       collectionRate,
       collectionRateLabel: `${collectionRate}%`,
+      totalRentBilled,
+      totalRentBilledLabel: formatCurrency(totalRentBilled),
+      totalElectricityBilled,
+      totalElectricityBilledLabel: formatCurrency(totalElectricityBilled),
+      totalWaterBilled,
+      totalWaterBilledLabel: formatCurrency(totalWaterBilled),
       comparison: {
         collectedRevenue: revenueDelta,
         billedAmount: billedDelta,
@@ -1465,6 +1580,7 @@ const buildBillingReportData = async (scope, rangeKey, tableRequest = parseTable
     },
     series: {
       revenueByMonth,
+      utilityBreakdown,
       statusDistribution,
       overdueAging,
     },
@@ -1596,6 +1712,7 @@ const buildOperationsReportData = async (scope, rangeKey, tableRequest = parseTa
       peakInquiryWindows: buildInquiryHourWindows(inquiries),
       maintenanceByType: buildMaintenanceTypeSeries(maintenanceRequests),
       maintenanceResolution: resolutionSummary.series,
+      resolutionTrend: buildResolutionTimelineSeries(resolvedRequests, rangeDays),
     },
     tables: {
       peakInquiryWindows: inquiryWindows,

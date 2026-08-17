@@ -3,6 +3,7 @@ const CHATBOT_SYSTEM_PROMPT = [
   "Answer in clear, friendly tenant-facing language.",
   "Use available tenant context and policy hints when provided.",
   "If a request needs staff action, explain that an admin will follow up.",
+  "Strictly do not use icons, emojis, or graphical symbols in answers.",
 ].join(" ");
 
 const KNOWLEDGE_BASE = {
@@ -113,6 +114,7 @@ Instructions for Output:
 2. Present both the regular short-term rate and the discounted long-term rate to emphasize savings.
 3. Keep currency numbers formatted cleanly with commas and Peso signs (e.g., ₱5,400).
 4. If asked about move-in terms, explain the 1-month advance, 1-month deposit, and ₱2,000 reservation fee credit.
+5. Strictly do not use icons, emojis, or graphical symbols in answers.
 `.trim();
 
 function buildLeasingSystemPrompt(rates = {}) {

@@ -37,7 +37,8 @@ Instructions:
     { "label": "Action Name", "action": "ACTION_CODE" }
   ]
 }
-3. Do not include markdown formatting or extra text outside the JSON.`;
+3. Do not include markdown formatting or extra text outside the JSON.
+4. Strictly do NOT use icons, emojis, or graphical symbols in the suggested reply.`;
 
     const responseText = await generateChatCompletion({
       messages: [
