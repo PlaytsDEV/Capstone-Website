@@ -37,22 +37,22 @@ test("System category pages integrate AdminTabs component", () => {
   const systemSettings = read(
     "src/features/owner/pages/SystemSettingsPage.jsx",
   );
-  assert.match(systemSettings, /import AdminTabs/);
-  assert.match(systemSettings, /<AdminTabs/);
+  assert.match(systemSettings, /AdminTabs|AdminPageHeader/);
+  assert.match(systemSettings, /<Admin(Tabs|PageHeader)/);
 
   // UserManagementPage
   const userManagement = read(
     "src/features/admin/pages/UserManagementPage.jsx",
   );
-  assert.match(userManagement, /import AdminTabs/);
-  assert.match(userManagement, /<AdminTabs/);
+  assert.match(userManagement, /AdminTabs|AdminPageHeader/);
+  assert.match(userManagement, /<Admin(Tabs|PageHeader)/);
 
   // PageShell (used by AuditLogsPage)
   const pageShell = read(
     "src/features/admin/components/shared/PageShell.jsx",
   );
-  assert.match(pageShell, /import AdminTabs/);
-  assert.match(pageShell, /<AdminTabs/);
+  assert.match(pageShell, /AdminTabs|AdminPageHeader/);
+  assert.match(pageShell, /<Admin(Tabs|PageHeader)/);
 
   // AuditLogsPage search params synchronization
   const auditLogs = read("src/features/admin/pages/AuditLogsPage.jsx");

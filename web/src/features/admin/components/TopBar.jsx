@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { User, LogOut, Moon, Sun, ChevronDown, Clock, Menu } from "lucide-react";
+import { Link } from "react-router-dom";
+import { User, LogOut, Moon, Sun, ChevronDown, Clock, Menu, Sparkles } from "lucide-react";
 import NotificationBell from "../../../shared/components/NotificationBell";
+import AdminCopilotDrawer from "./copilot/AdminCopilotDrawer";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import ProfileAvatar, { getProfileInitials } from "../../../shared/components/ProfileAvatar";
 import { useAuth } from "../../../shared/hooks/useAuth";
@@ -23,6 +25,7 @@ export default function TopBar({
   const appNavigate = useAppNavigation();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showCopilot, setShowCopilot] = useState(false);
   const [logoutInProgress, setLogoutInProgress] = useState(false);
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   const menuRef = useRef(null);
@@ -134,7 +137,16 @@ export default function TopBar({
     }
   };
 
-  const currentCrumb = breadcrumbs?.[breadcrumbs.length - 1] || "Admin";
+  const currentCrumbObj = breadcrumbs?.[breadcrumbs.length - 1];
+  const currentCrumb =
+    typeof currentCrumbObj === "string"
+      ? currentCrumbObj
+      : currentCrumbObj?.label || "Admin";
+  const parentCrumbObj = breadcrumbs && breadcrumbs.length > 2 ? breadcrumbs[1] : null;
+  const parentCrumbLabel =
+    typeof parentCrumbObj === "string"
+      ? parentCrumbObj
+      : parentCrumbObj?.label || "Lilycrest admin";
 
   return (
     <header
@@ -160,15 +172,26 @@ export default function TopBar({
         >
           {breadcrumbs.map((crumb, index) => {
             const isLast = index === breadcrumbs.length - 1;
+            const label = typeof crumb === "string" ? crumb : crumb.label;
+            const href = typeof crumb === "object" ? crumb.href : null;
 
             return (
-              <div key={`${crumb}-${index}`} className="flex min-w-0 items-center gap-2">
-                {index > 0 && <span className="text-[var(--text-muted)]/70">/</span>}
-                <span
-                  className={`min-w-0 truncate ${isLast ? "font-semibold text-[var(--text-primary)]" : ""}`}
-                >
-                  {crumb}
-                </span>
+              <div key={`${label}-${index}`} className="flex min-w-0 items-center gap-2">
+                {index > 0 && <span className="text-[var(--text-muted)]/70 select-none">/</span>}
+                {href && !isLast ? (
+                  <Link
+                    to={href}
+                    className="min-w-0 truncate text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--focus-ring)] rounded"
+                  >
+                    {label}
+                  </Link>
+                ) : (
+                  <span
+                    className={`min-w-0 truncate ${isLast ? "font-semibold text-[var(--text-primary)]" : ""}`}
+                  >
+                    {label}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -178,7 +201,7 @@ export default function TopBar({
           <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
             {currentCrumb}
           </div>
-          <div className="text-xs text-[var(--text-muted)]">Lilycrest admin</div>
+          <div className="text-xs text-[var(--text-muted)]">{parentCrumbLabel}</div>
         </div>
       </div>
 
@@ -209,6 +232,14 @@ export default function TopBar({
           ) : (
             <Moon className="h-5 w-5" />
           )}
+        </button>
+
+        <button
+          onClick={() => setShowCopilot(true)}
+          className="flex items-center justify-center rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-[var(--primary)] dark:text-slate-400 dark:hover:bg-slate-800 shrink-0 relative"
+          title="Open Copilot"
+        >
+          <Sparkles className="h-5 w-5" />
         </button>
 
         <div className="shrink-0">
@@ -286,6 +317,7 @@ export default function TopBar({
         cancelText="Cancel"
         loading={logoutInProgress}
       />
+      <AdminCopilotDrawer isOpen={showCopilot} onClose={() => setShowCopilot(false)} />
     </header>
   );
 }

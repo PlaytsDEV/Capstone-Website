@@ -276,7 +276,12 @@ export const isUtilityEventType = (eventType, expectedEventType) =>
   normalizeUtilityEventType(eventType) ===
   normalizeUtilityEventType(expectedEventType);
 
-export const readMoveInDate = (value) => value?.moveInDate ?? null;
+export const readMoveInDate = (value) =>
+  value?.confirmedMoveInDate ??
+  value?.moveInDate ??
+  value?.intendedMoveInDate ??
+  value?.targetMoveInDate ??
+  null;
 
 export const readMoveOutDate = (value) => value?.moveOutDate ?? null;
 

@@ -9,12 +9,22 @@
   gap: 4px;
   border-bottom: 1px solid var(--border, #e2e8f0);
   min-height: 42px;
+  position: relative;
+  overflow: visible;
+}
+
+.admin-tabs-scroll-area {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  flex: 1;
+  min-width: 0;
 }
 
-.admin-tabs-bar::-webkit-scrollbar {
+.admin-tabs-scroll-area::-webkit-scrollbar {
   display: none;
 }
 
@@ -100,4 +110,81 @@
 .admin-tab-badge--default {
   background: var(--muted, #f1f5f9);
   color: var(--muted-foreground, #475569);
+}
+
+/* More Dropdown */
+.admin-tabs-more-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.admin-tab-more-btn {
+  gap: 4px;
+}
+
+.admin-tab-more-chevron {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+  transition: transform var(--duration-fast, 150ms) ease;
+}
+
+.admin-tab-more-btn[aria-expanded="true"] .admin-tab-more-chevron {
+  transform: rotate(180deg);
+}
+
+.admin-tabs-more-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  min-width: 190px;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-light, #e2e8f0);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-tabs-more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  font-size: var(--font-size-sm, 13px);
+  font-weight: 500;
+  color: var(--text-primary, #0f172a);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fast, 150ms) ease;
+}
+
+.admin-tabs-more-item:hover:not(:disabled) {
+  background: var(--bg-hover, #f8fafc);
+}
+
+.admin-tabs-more-item:focus-visible {
+  outline: 2px solid var(--foreground, #0f172a);
+  outline-offset: -2px;
+}
+
+.admin-tabs-more-item--active {
+  background: var(--bg-hover, #f1f5f9);
+  font-weight: 700;
+  color: var(--foreground, #0f172a);
+}
+
+.admin-tabs-more-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

@@ -121,10 +121,10 @@ export default function SummaryBar({
           return (
             <div
               key={item.key || item.label || i}
-              className={`group relative flex flex-col justify-between min-h-[112px] rounded-xl border p-4 transition-all duration-150 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm hover:-translate-y-0.5 ${palette.surface} ${
+              className={`group relative flex flex-col justify-between min-h-[112px] rounded-xl border p-4 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 ${palette.surface} ${
                 isClickable
                   ? "cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                  : ""
+                  : "cursor-default"
               } ${isActive ? palette.active : ""}`}
               role={isClickable ? "button" : "listitem"}
               tabIndex={isClickable ? 0 : undefined}
