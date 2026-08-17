@@ -10,6 +10,7 @@ jest.mock('./controllers/announcement.controller.js', () => ({
   getAllAnnouncements: (q, r) => r.json({ visibility: q.user ? 'private' : 'public', userId: q.user?.user_id || null }),
   createAnnouncement: (q, r) => r.json({ admin: q.user.user_id }),
   dismissAnnouncement: (q, r) => r.json({ status: 'dismissed', userId: q.user?.user_id || null }),
+  dismissAnnouncementsBulk: (q, r) => r.json({ status: 'dismissed', userId: q.user?.user_id || null }),
 }));
 
 const express = require('express'); const http = require('http');

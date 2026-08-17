@@ -328,6 +328,89 @@ async function dismissAnnouncement(req, res) {
   }
 }
 
+// Matches the two id shapes getAllAnnouncements can hand back: the explicit
+// `ann_<hex>` field set at creation, or a legacy doc's raw ObjectId string.
+const ANNOUNCEMENT_ID_PATTERN = /^(ann_[a-z0-9]{1,32}|[0-9a-fA-F]{24})$/i;
+const MAX_BULK_DISMISS_IDS = 100;
+
+// Multi-select hide for the News tab — same per-tenant junction write as
+// dismissAnnouncement, just batched. Validates every entry up front (well
+// formed, actually exists, and visible to this caller) and rejects the
+// whole request rather than silently dropping a bad id or writing a
+// dismissal row for an announcement this tenant couldn't otherwise see.
+async function dismissAnnouncementsBulk(req, res) {
+  try {
+    const userId = req.user?.user_id || null;
+    if (!userId) {
+      return res.status(401).json({ detail: 'Authentication required.' });
+    }
+
+    const rawIds = req.body?.ids;
+    if (!Array.isArray(rawIds) || !rawIds.length) {
+      return res.status(400).json({ detail: 'ids must be a non-empty array.' });
+    }
+    if (rawIds.length > MAX_BULK_DISMISS_IDS) {
+      return res.status(400).json({ detail: `ids must contain ${MAX_BULK_DISMISS_IDS} or fewer entries.` });
+    }
+    if (!rawIds.every((id) => typeof id === 'string' && ANNOUNCEMENT_ID_PATTERN.test(id.trim()))) {
+      return res.status(400).json({ detail: 'ids must all be valid announcement ids.' });
+    }
+    const ids = [...new Set(rawIds.map((id) => id.trim()))];
+
+    const db = getDb();
+    const activeFilter = {
+      $or: [
+        { is_active: true },
+        { isActive: true },
+        { is_active: { $exists: false }, isActive: { $exists: false } },
+      ],
+    };
+    const notArchivedFilter = { isArchived: { $ne: true } };
+    const visibilityFilter = {
+      $or: [
+        { is_private: { $ne: true }, isPrivate: { $ne: true } },
+        { is_private: true, user_id: userId },
+        { isPrivate: true, userId },
+      ],
+    };
+    const idFilter = {
+      $or: ids.flatMap((id) => (isHexObjectId(id)
+        ? [{ announcement_id: id }, { _id: new ObjectId(id) }]
+        : [{ announcement_id: id }])),
+    };
+
+    const matches = await db.collection('announcements').find({
+      $and: [activeFilter, notArchivedFilter, visibilityFilter, idFilter],
+    }).toArray();
+
+    const requesterBranchCode = await resolveRequesterBranchCode(db, req.user?._id || null);
+    const visibleMatches = matches.filter((doc) => isAnnouncementVisibleForBranch(doc, requesterBranchCode));
+    const visibleIds = new Set(visibleMatches.map((doc) => doc.announcement_id || doc._id?.toString()));
+
+    if (visibleIds.size !== ids.length) {
+      // Same 404 semantics as the single-dismiss endpoint: a caller can't
+      // learn anything about an id that doesn't exist, isn't theirs, or
+      // isn't in their branch by including it in a bulk request either.
+      return res.status(404).json({ detail: 'One or more announcements were not found.' });
+    }
+
+    const now = new Date();
+    const operations = ids.map((announcementId) => ({
+      updateOne: {
+        filter: { user_id: userId, announcement_id: announcementId },
+        update: { $set: { dismissed_at: now }, $setOnInsert: { created_at: now } },
+        upsert: true,
+      },
+    }));
+    await db.collection('announcement_dismissals').bulkWrite(operations);
+
+    return res.json({ status: 'dismissed', announcement_ids: ids });
+  } catch (error) {
+    console.error('dismissAnnouncementsBulk error:', error);
+    return res.status(500).json({ detail: 'Failed to dismiss announcements' });
+  }
+}
+
 // Admin: create a new announcement and push-notify all tenants
 async function createAnnouncement(req, res) {
   try {
@@ -371,6 +454,7 @@ module.exports = {
   getAllAnnouncements,
   createAnnouncement,
   dismissAnnouncement,
+  dismissAnnouncementsBulk,
   resolveRequesterBranchCode,
   normalizedBranchReference,
 };
