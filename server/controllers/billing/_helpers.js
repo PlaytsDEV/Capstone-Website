@@ -1273,6 +1273,7 @@ export async function deliverBillNotification({ bill, tenant, room, billType = n
         billType: billType || resolveRentBillType(bill),
         billId: bill._id,
         actionUrl: "/billing",
+        eventId: `invoice:${Number(bill.invoiceVersion || 1)}`,
       },
     );
     delivery.notification.status = "sent";

@@ -186,11 +186,14 @@ async function markOverdueBills() {
     for (const bill of billsToMark) {
       if (!bill.userId) continue;
       const month = dayjs(bill.billingMonth).format("MMMM YYYY");
-      notify.general(
-        bill.userId,
-        "Bill Overdue",
-        `Your bill for ${month} is now overdue. Please settle it as soon as possible to avoid additional penalties.`,
-      );
+      await notify.billingNotice(bill.userId, {
+        notificationType: "bill_due_reminder",
+        title: "Bill Overdue",
+        message: `Your bill for ${month} is now overdue. Please settle it as soon as possible to avoid additional penalties.`,
+        billId: bill._id,
+        pushType: "billing_overdue_notice",
+        eventId: "status:overdue",
+      });
     }
   } catch (error) {
     logger.error({ err: error }, "Overdue bill marking failed");
@@ -233,7 +236,13 @@ async function computeOverduePenalties() {
       // Notify tenant (only on first penalty or when it increases significantly)
       if (oldPenalty === 0 && bill.userId) {
         const month = dayjs(bill.billingMonth).format("MMMM YYYY");
-        notify.penaltyApplied(bill.userId._id || bill.userId, month, newPenalty, daysLate, { billId: bill._id });
+        await notify.penaltyApplied(
+          bill.userId._id || bill.userId,
+          month,
+          newPenalty,
+          daysLate,
+          { billId: bill._id, eventId: bill.penaltyDetails.appliedAt },
+        );
       }
     }
 
@@ -265,7 +274,13 @@ async function sendPaymentReminders() {
 
       for (const bill of bills) {
         const month = dayjs(bill.billingMonth).format("MMMM YYYY");
-        await notify.billDueReminder(bill.userId, month, bill.totalAmount, daysAhead, { billId: bill._id });
+        await notify.billDueReminder(
+          bill.userId,
+          month,
+          bill.totalAmount,
+          daysAhead,
+          { billId: bill._id, eventId: `due:${daysAhead}` },
+        );
         sent++;
       }
     }

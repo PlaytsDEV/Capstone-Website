@@ -787,20 +787,13 @@ async function notifyAdminsOfTenantMessage(conversation) {
   }
 }
 
-async function notifyTenantOfAdminReply(conversation) {
+async function notifyTenantOfAdminReply(conversation, chatMessage) {
   try {
-    const notification = await notify.general(
+    await notify.adminReply(
       conversation.tenantId,
-      "New Admin Reply",
-      "You received a reply from LilyCrest Admin.",
-      {
-        actionUrl: "/(tabs)/chatbot",
-        entityId: String(conversation._id),
-      },
+      conversation._id,
+      chatMessage._id,
     );
-    if (notification) {
-      emitToUser(conversation.tenantId, "notification:new", notification);
-    }
   } catch (error) {
     console.warn("Chat tenant notification failed:", error.message);
   }
@@ -1251,7 +1244,7 @@ export async function sendAdminMessage(req, res) {
       statusNote: "Admin replied and is waiting for tenant response.",
     });
 
-    await notifyTenantOfAdminReply(result.conversation);
+    await notifyTenantOfAdminReply(result.conversation, result.chatMessage);
     emitToChatAdmins(
       result.conversation.branch,
       "chat:conversation-updated",

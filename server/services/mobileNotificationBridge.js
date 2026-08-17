@@ -96,6 +96,7 @@ function inferCategoryFromType(type) {
   if (value.startsWith("contract_")) return "account";
   if (value.startsWith("account_")) return "account";
   if (value === "maintenance_update") return "maintenance";
+  if (value === "chat_reply") return "assistant";
   return "";
 }
 
@@ -146,7 +147,15 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
   const isCanonicalBillEntity = entityType === "bill" && entityId;
   const isCanonicalContractEntity = entityType === "contract" && entityId;
   const isCanonicalAnnouncementEntity = entityType === "announcement" && entityId;
+  const isCanonicalChatEntity = entityType === "chat" && entityId;
+  const isCanonicalMaintenanceEntity = entityType === "maintenance" && entityId;
   const data = sanitizePayload(doc.data);
+  if (isCanonicalBillEntity) {
+    data.type ||= type;
+    data.billing_id ||= entityId;
+    data.screen ||= "billing";
+    data.url ||= `/bill-details?billId=${entityId}`;
+  }
   if (isCanonicalContractEntity) {
     data.type ||= type;
     data.contract_id ||= entityId;
@@ -158,6 +167,16 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
     data.announcement_id ||= entityId;
     data.screen ||= "announcements";
     data.url ||= "/(tabs)/announcements";
+  }
+  if (isCanonicalChatEntity) {
+    data.type ||= "chat_reply";
+    data.conversation_id ||= entityId;
+    data.screen ||= "chat";
+  }
+  if (isCanonicalMaintenanceEntity) {
+    data.type ||= type;
+    data.request_id ||= entityId;
+    data.screen ||= "maintenance";
   }
   return {
     notification_id: doc.notification_id || doc._id?.toString?.() || "",
@@ -177,7 +196,12 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
     // Canonical actionUrl is a web route. Contract notifications need the
     // Expo route when projected through the mobile bridge.
     url: normalizeString(
-      doc.url || doc.data?.url || (isCanonicalContractEntity ? "/contract-viewer" : doc.actionUrl) || "",
+      doc.url || doc.data?.url
+        || (isCanonicalContractEntity ? "/contract-viewer" : "")
+        || (isCanonicalBillEntity ? `/bill-details?billId=${entityId}` : "")
+        || (isCanonicalChatEntity ? "/(tabs)/chatbot" : "")
+        || (isCanonicalMaintenanceEntity ? "/(tabs)/services" : "")
+        || doc.actionUrl || "",
     ),
     read: doc.read === true || doc.isRead === true,
     announcement_id: normalizeString(
@@ -190,7 +214,12 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
     contract_id: normalizeString(
       doc.contract_id || doc.data?.contract_id || (isCanonicalContractEntity ? entityId : ""),
     ),
-    request_id: normalizeString(doc.request_id || doc.data?.request_id || ""),
+    request_id: normalizeString(
+      doc.request_id || doc.data?.request_id || (isCanonicalMaintenanceEntity ? entityId : ""),
+    ),
+    conversation_id: normalizeString(
+      doc.conversation_id || doc.data?.conversation_id || (isCanonicalChatEntity ? entityId : ""),
+    ),
     session_id: normalizeString(doc.session_id || doc.data?.session_id || ""),
     reservation_id: normalizeString(doc.reservation_id || doc.data?.reservation_id || ""),
     // Canonical Notification documents use `dedupeKey` (models/Notification.js).

@@ -388,6 +388,12 @@ export async function sendDraftUtilityBills({ bills, period, result }) {
         billingMonthLabel,
         bill.totalAmount,
         dueDateLabel,
+        {
+          billId: bill._id,
+          billType: "utilities",
+          actionUrl: `/bill-details?billId=${String(bill._id)}`,
+          eventId: `invoice:${Number(bill.invoiceVersion || 1)}`,
+        },
       );
     } catch (error) {
       notificationError = error.message;
@@ -520,7 +526,10 @@ export async function sendUtilityPeriodBills({
               utilityAmount,
               visibleTotalAmount,
               dueDateLabel,
-              { billId: bill._id },
+              {
+                billId: bill._id,
+                eventId: `${utilityType}:${String(period?._id || period?.id || Number(bill.invoiceVersion || 1))}`,
+              },
             )
           : Promise.reject(new Error("No tenant user assigned to bill")),
       ]);

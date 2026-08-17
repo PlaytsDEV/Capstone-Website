@@ -159,7 +159,9 @@ async function handleDepositPayment(metadata, eventData, context = {}) {
   try {
     await notify.paymentApproved(
       reservation.userId,
-      `Your Reservation Fee for ${roomName} has been verified. Your Reservation is now secured!`,
+      `Reservation Fee for ${roomName}`,
+      result.payment?.amount || paidAmount || reservation.reservationFeeAmount || BUSINESS.DEPOSIT_AMOUNT,
+      { eventId: result.payment?._id || paymentId },
     );
   } catch (notifErr) {
     logger.error({ err: notifErr }, "Webhook: Failed to send notification");
@@ -307,7 +309,10 @@ async function handleBillPayment(metadata, eventData, context = {}) {
 
   // Notify tenant
   try {
-    await notify.paymentApproved(bill.userId, monthStr, settlement.appliedAmount);
+    await notify.paymentApproved(bill.userId, monthStr, settlement.appliedAmount, {
+      billId: bill._id,
+      eventId: settlement.payment?._id || paymentId,
+    });
   } catch (notifErr) {
     logger.error({ err: notifErr }, "Webhook: Failed to send tenant notification");
   }
@@ -488,6 +493,7 @@ async function handleMultiBillPayment(metadata, eventData, context = {}) {
         tenantUserId,
         `${settledBills.length} statements`,
         totalSettled,
+        { eventId: paymentId },
       );
     } catch (notifErr) {
       logger.error({ err: notifErr }, "Webhook: Failed to send multi-bill tenant notification");
