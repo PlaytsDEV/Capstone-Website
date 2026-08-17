@@ -256,7 +256,7 @@ describe("mobileNotificationBridge — dismiss/clear (P1 notification cleanup)",
 // documents, so it can prove the match/no-match behavior directly rather
 // than merely asserting on the filter object's shape.
 import { ObjectId } from "mongodb";
-import { buildOwnerFilter } from "./mobileNotificationBridge.js";
+import { buildOwnerFilter, sanitizeStoredNotification } from "./mobileNotificationBridge.js";
 
 function matchesMongoFilter(doc, filter) {
   if (!filter || typeof filter !== "object") return true;
@@ -362,6 +362,35 @@ describe("mobileNotificationBridge — canonical Notification model compatibilit
     expect(result[0].read).toBe(false);
     expect(result[0].category).toBe("billing");
     expect(result[0].billing_id).toBe(billId.toHexString());
+  });
+
+  test("a canonical contract-document notification is visible with an Expo-safe contract route", () => {
+    const contractId = new ObjectId().toHexString();
+    const result = sanitizeStoredNotification({
+      _id: new ObjectId(),
+      userId: tenantMongoId,
+      type: "contract_document_ready",
+      title: "Final Contract Ready",
+      message: "Your final contract is available.",
+      actionUrl: "/tenant/documents",
+      entityType: "contract",
+      entityId: contractId,
+      isRead: false,
+      createdAt: new Date("2026-08-17T06:00:00.000Z"),
+    });
+
+    expect(result).toMatchObject({
+      type: "contract_document_ready",
+      category: "account",
+      contract_id: contractId,
+      url: "/contract-viewer",
+      data: {
+        type: "contract_document_ready",
+        contract_id: contractId,
+        screen: "contract",
+        url: "/contract-viewer",
+      },
+    });
   });
 
   test("a legacy-shaped notification document (user_id: string, body, read) is still found — the fix is additive, not a breaking rename", async () => {

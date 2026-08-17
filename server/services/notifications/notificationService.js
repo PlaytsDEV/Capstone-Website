@@ -470,12 +470,27 @@ const notify = {
   // dedupeKey below, while a genuinely new version (regeneration, a later
   // publish) is a distinct key and gets its own notification.
   contractDocumentReady: (userId, variant, contractId, version) => {
-    const isFinal = variant === "final";
+    const normalizedVariant = String(variant || "").trim().toLowerCase();
+    const normalizedVersion = Number(version);
+    if (
+      !userId
+      || !contractId
+      || !["prepared", "final"].includes(normalizedVariant)
+      || !Number.isInteger(normalizedVersion)
+      || normalizedVersion < 1
+    ) {
+      return Promise.reject(new Error("A tenant, contract, prepared/final variant, and positive document version are required."));
+    }
+
+    const isFinal = normalizedVariant === "final";
     const title = isFinal ? "Final Contract Ready" : "Contract Ready for Signing";
     const message = isFinal
       ? "Your final notarized lease contract is now available to view and download."
       : "Your lease contract has been prepared and is ready for your review and in-person signing.";
-    const dedupeKey = `contract_document_ready:${contractId}:${variant}:${version ?? "unknown"}`;
+    const normalizedContractId = String(contractId);
+    // The unique index is { userId, dedupeKey }, so an identical contract
+    // reference in another tenant's scope remains an independent event.
+    const dedupeKey = `contract_document_ready:${normalizedContractId}:${normalizedVariant}:${normalizedVersion}`;
 
     return createNotificationWithPush(
       userId,
@@ -484,7 +499,7 @@ const notify = {
       message,
       {
         entityType: "contract",
-        entityId: contractId ? String(contractId) : null,
+        entityId: normalizedContractId,
         actionUrl: "/tenant/documents",
         dedupeKey,
       },
@@ -494,7 +509,7 @@ const notify = {
           body: message,
           data: {
             type: "contract_document_ready",
-            contract_id: contractId ? String(contractId) : "",
+            contract_id: normalizedContractId,
             screen: "contract",
             url: "/contract-viewer",
           },

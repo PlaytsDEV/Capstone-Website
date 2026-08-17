@@ -97,7 +97,7 @@ const notificationSchema = new mongoose.Schema(
     // --- Optional Entity Reference ---
     entityType: {
       type: String,
-      enum: ["reservation", "bill", "room", "user", "maintenance", "chat", ""],
+      enum: ["reservation", "bill", "room", "user", "maintenance", "chat", "contract", ""],
       default: "",
     },
     entityId: {
@@ -110,15 +110,14 @@ const notificationSchema = new mongoose.Schema(
     // for notification events that can legitimately be triggered more than
     // once for the same underlying state (retries, redeploys, concurrent
     // requests, duplicate admin submissions) without that meaning a NEW
-    // event actually happened. Optional — most notification types have no
-    // retry-duplication risk and pass null here, which the sparse index
-    // below excludes from the uniqueness constraint. A unique DB-level
-    // index (not an app-level check-then-insert) is what actually makes
-    // this safe under concurrency — see notificationService.js's
-    // createNotificationOnce().
+    // event actually happened. Optional: ordinary notifications omit this
+    // field entirely so they are outside the partial unique index below.
+    // A unique DB-level index (not an app-level check-then-insert) is what
+    // actually makes this safe under concurrency — see
+    // notificationService.js's createNotificationOnce().
     dedupeKey: {
       type: String,
-      default: null,
+      trim: true,
     },
   },
   {
@@ -132,7 +131,18 @@ const notificationSchema = new mongoose.Schema(
 
 notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, createdAt: -1 });
-notificationSchema.index({ dedupeKey: 1 }, { unique: true, sparse: true });
+// Scope event identity to the recipient. A partial index is deliberate:
+// sparse unique indexes still include documents where dedupeKey is present
+// with an explicit null value, which would allow only one ordinary
+// notification per tenant. This index includes only real string keys.
+notificationSchema.index(
+  { userId: 1, dedupeKey: 1 },
+  {
+    unique: true,
+    name: "notification_user_dedupe_unique",
+    partialFilterExpression: { dedupeKey: { $type: "string" } },
+  },
+);
 
 // TTL: auto-delete read notifications after 90 days
 notificationSchema.index(

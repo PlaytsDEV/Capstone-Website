@@ -18,12 +18,13 @@ import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globa
 let seenKeys;
 const saveMock = jest.fn(function save() {
   if (this.dedupeKey) {
-    if (seenKeys.has(this.dedupeKey)) {
+    const scopedKey = `${String(this.userId)}:${this.dedupeKey}`;
+    if (seenKeys.has(scopedKey)) {
       const err = new Error("E11000 duplicate key error collection");
       err.code = 11000;
       return Promise.reject(err);
     }
-    seenKeys.add(this.dedupeKey);
+    seenKeys.add(scopedKey);
   }
   return Promise.resolve(this);
 });
@@ -64,6 +65,23 @@ describe("notify.contractDocumentReady idempotency", () => {
     await notify.contractDocumentReady("tenant-1", "prepared", "contract-1", 1);
     expect(saveMock).toHaveBeenCalledTimes(1);
     expect(sendMobilePushToRecipientsMock).toHaveBeenCalledTimes(1);
+    expect(NotificationMock).toHaveBeenCalledWith(expect.objectContaining({
+      userId: "tenant-1",
+      type: "contract_document_ready",
+      entityType: "contract",
+      entityId: "contract-1",
+    }));
+    expect(sendMobilePushToRecipientsMock).toHaveBeenCalledWith(
+      ["tenant-1"],
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "contract_document_ready",
+          contract_id: "contract-1",
+          screen: "contract",
+          url: "/contract-viewer",
+        }),
+      }),
+    );
   });
 
   test("retrying the same prepared-document generation (same version) does not duplicate the notification or push", async () => {
@@ -71,6 +89,21 @@ describe("notify.contractDocumentReady idempotency", () => {
     await notify.contractDocumentReady("tenant-1", "prepared", "contract-1", 1);
     expect(saveMock).toHaveBeenCalledTimes(2); // both attempts hit the DB...
     expect(sendMobilePushToRecipientsMock).toHaveBeenCalledTimes(1); // ...but only the first actually inserted
+  });
+
+  test("the same contract/version reference remains independent across tenant scopes", async () => {
+    await notify.contractDocumentReady("tenant-A", "prepared", "contract-shared", 1);
+    await notify.contractDocumentReady("tenant-B", "prepared", "contract-shared", 1);
+    expect(saveMock).toHaveBeenCalledTimes(2);
+    expect(sendMobilePushToRecipientsMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("missing or invalid document identity never creates a broad unknown-version dedupe key", async () => {
+    await expect(
+      notify.contractDocumentReady("tenant-1", "prepared", "contract-1", undefined),
+    ).rejects.toThrow(/positive document version/i);
+    expect(saveMock).not.toHaveBeenCalled();
+    expect(sendMobilePushToRecipientsMock).not.toHaveBeenCalled();
   });
 
   test("retrying after a simulated process restart (fresh dedupe state is not assumed — DB is the source of truth) still dedupes", async () => {
@@ -136,7 +169,7 @@ describe("notify.contractDocumentReady idempotency", () => {
       notify.contractDocumentReady("tenant-1", "final", "contract-2", 1),
       notify.contractDocumentReady("tenant-1", "final", "contract-2", 1),
     ]);
-    expect([a, b].filter(Boolean).length).toBeGreaterThanOrEqual(0); // both calls resolve without throwing
+    expect([a, b].filter(Boolean)).toHaveLength(1); // both calls resolve; exactly one insert wins
     expect(sendMobilePushToRecipientsMock).toHaveBeenCalledTimes(1);
   });
 });
