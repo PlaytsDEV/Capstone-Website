@@ -150,7 +150,7 @@ export default function RevenueTrendCard({ data = {} }) {
       <div className="p-6">
         {hasTrend ? (
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={revenueTrendData}>
+            <BarChart data={revenueTrendData} maxBarSize={36} barGap={6}>
               <CartesianGrid
                 strokeDasharray="3 3"
                 stroke="var(--color-border-default)"

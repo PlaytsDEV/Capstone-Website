@@ -214,37 +214,37 @@ export default function AnalyticsMonitoringTab({
         onExecuteAction={handleExecuteAction}
       />
 
- <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
- <ReportChartPanel title="Severity distribution" subtitle="Security and audit events by severity">
- <AnalyticsDonutChart
- data={severityDistribution.map((item) => ({
- label: item.label,
- value: item.count,
- }))}
- centerLabel={{ value: kpis.criticalEvents || 0, label: "Critical" }}
- emptyTitle="No severity data"
- emptyDescription="Severity distribution will appear once audit events exist for this scope."
- />
- </ReportChartPanel>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ReportChartPanel title="Severity distribution" subtitle="Security and audit events by severity">
+          <AnalyticsDonutChart
+            data={severityDistribution.map((item) => ({
+              label: item.label,
+              value: item.count,
+            }))}
+            centerLabel={{ value: kpis.criticalEvents || 0, label: "Critical" }}
+            emptyTitle="No severity data"
+            emptyDescription="Severity distribution will appear once audit events exist for this scope."
+          />
+        </ReportChartPanel>
 
- <ReportChartPanel title="Branch-level security summary" subtitle="High-severity actions and overrides by branch">
- <AnalyticsComparisonChart
- data={branchSummary.map((item) => ({
- label: item.label,
- highSeverity: item.highSeverityCount,
- overrides: item.accessOverrideCount,
- }))}
- bars={[
- { key: "highSeverity", label: "High severity", color: "#dc2626" },
- { key: "overrides", label: "Overrides", color: "#2563eb" },
- ]}
- emptyTitle="No branch security summary"
- emptyDescription="Branch monitoring data will appear once audit activity is available."
- />
- </ReportChartPanel>
- </div>
+        <ReportChartPanel title="Branch-level security summary" subtitle="High-severity actions and overrides by branch">
+          <AnalyticsComparisonChart
+            data={branchSummary.map((item) => ({
+              label: item.label,
+              highSeverity: item.highSeverityCount,
+              overrides: item.accessOverrideCount,
+            }))}
+            bars={[
+              { key: "highSeverity", label: "High severity", color: "#dc2626" },
+              { key: "overrides", label: "Overrides", color: "#2563eb" },
+            ]}
+            emptyTitle="No branch security summary"
+            emptyDescription="Branch monitoring data will appear once audit activity is available."
+          />
+        </ReportChartPanel>
+      </div>
 
- <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
   <ReportChartPanel title="Recent security events" subtitle="Latest owner-level security and audit activity">
    <AnalyticsTableToolbar
      searchQuery={searchQuery}

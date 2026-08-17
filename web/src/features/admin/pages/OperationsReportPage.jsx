@@ -45,7 +45,7 @@ const MAINTENANCE_COLUMNS = [
  label: "Resolution",
  render: (row) => (row.resolutionHours == null ? "-" : `${row.resolutionHours} hrs`),
  },
- { key: "slaState", label: "SLA", sortable: true },
+ { key: "slaState", label: "Turnaround Status", sortable: true },
 ];
 
 function BarList({ items, valueKey, formatter = (value) => value }) {
@@ -99,7 +99,7 @@ export default function OperationsReportPage() {
  { label: "Reservations", value: data?.kpis?.reservations || 0, tone: "blue" },
  { label: "Inquiries", value: data?.kpis?.inquiries || 0, tone: "green" },
  { label: "Maintenance", value: data?.kpis?.maintenanceRequests || 0, tone: "amber" },
- { label: "SLA Compliance", value: data?.kpis?.slaComplianceRateLabel || "0%", tone: "rose" },
+ { label: "On-Time Resolution Rate", value: data?.kpis?.slaComplianceRateLabel || "0%", tone: "rose" },
  ];
 
  const handleCsvExport = () => {
@@ -112,7 +112,7 @@ export default function OperationsReportPage() {
  { key: "createdAt", label: "Created", formatter: (value) => formatDateTime(value) },
  { key: "resolvedAt", label: "Resolved", formatter: (value) => formatDateTime(value) },
  { key: "resolutionHours", label: "Resolution Hours" },
- { key: "slaState", label: "SLA State" },
+ { key: "slaState", label: "Turnaround Status" },
  ], `operations-report-${range}`);
  };
 

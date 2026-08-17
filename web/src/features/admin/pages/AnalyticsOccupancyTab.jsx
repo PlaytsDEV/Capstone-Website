@@ -62,20 +62,23 @@ const INVENTORY_COLUMNS = [
     render: (row) => {
       if (row.occupancyRate >= 100) {
         return (
-          <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--success-subtle, #dcfce7)", color: "var(--success-dark, #166534)", fontWeight: 600, border: "1px solid rgba(22, 101, 52, 0.2)" }}>
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
             Full
           </span>
         );
       }
       if (row.occupiedBeds === 0) {
         return (
-          <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--danger-subtle, #fee2e2)", color: "var(--danger-dark, #991b1b)", fontWeight: 600, border: "1px solid rgba(153, 27, 27, 0.2)" }}>
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
             Vacant
           </span>
         );
       }
       return (
-        <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--info-subtle, #e0f2fe)", color: "var(--info-dark, #075985)", fontWeight: 600, border: "1px solid rgba(7, 89, 133, 0.2)" }}>
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
           Partial
         </span>
       );
@@ -254,7 +257,7 @@ export default function AnalyticsOccupancyTab({
       tone: "green",
       label: "Occupied Beds",
       value: kpis.occupiedBeds || 0,
-      trend: "Active residents",
+      trend: "Active tenants",
     },
     {
       icon: DoorOpen,
@@ -499,7 +502,7 @@ export default function AnalyticsOccupancyTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel
           title="Forecast panel"
           subtitle="Projected occupancy compared with recent baseline"
@@ -530,7 +533,7 @@ export default function AnalyticsOccupancyTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel
           title="Historical Monthly Occupancy & Turnaround"
           subtitle="Bed-day utilization rate by month, stay length, and turnaround efficiency"

@@ -34,31 +34,31 @@ export default function ReportMetricCard({
 }) {
   const toneClasses = {
     blue: {
-      badge: "bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400",
+      badge: "text-sky-600 dark:text-sky-400",
       defaultIcon: Bed,
     },
     green: {
-      badge: "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400",
+      badge: "text-emerald-600 dark:text-emerald-400",
       defaultIcon: PhilippinePeso,
     },
     amber: {
-      badge: "bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400",
+      badge: "text-amber-600 dark:text-amber-400",
       defaultIcon: Clock,
     },
     purple: {
-      badge: "bg-purple-100 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400",
+      badge: "text-slate-500 dark:text-slate-400",
       defaultIcon: Wrench,
     },
     teal: {
-      badge: "bg-teal-100 text-teal-700 dark:bg-teal-950/60 dark:text-teal-400",
+      badge: "text-teal-600 dark:text-teal-400",
       defaultIcon: CheckCircle2,
     },
     rose: {
-      badge: "bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400",
+      badge: "text-rose-600 dark:text-rose-400",
       defaultIcon: TrendingDown,
     },
     indigo: {
-      badge: "bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400",
+      badge: "text-sky-600 dark:text-sky-400",
       defaultIcon: Users,
     },
   };
@@ -71,12 +71,14 @@ export default function ReportMetricCard({
   const displayChange = change || trend || note;
   const isUp =
     changeType === "up" ||
-    (typeof displayChange === "string" &&
-      (displayChange.includes("↑") || displayChange.includes("+")));
+    (changeType !== "neutral" &&
+      typeof displayChange === "string" &&
+      (displayChange.includes("↑") || /(?:^|\s)\+\s*\d/.test(displayChange)));
   const isDown =
     changeType === "down" ||
-    (typeof displayChange === "string" &&
-      (displayChange.includes("↓") || displayChange.includes("-")));
+    (changeType !== "neutral" &&
+      typeof displayChange === "string" &&
+      (displayChange.includes("↓") || /(?:^|\s)-\s*\d/.test(displayChange)));
 
   let changeColor = "text-muted-foreground";
   if (isUp) changeColor = "text-emerald-600 dark:text-emerald-400 font-medium";
@@ -107,29 +109,44 @@ export default function ReportMetricCard({
         {/* Top-left rounded icon badge + optional anomaly badge */}
         <div className="flex items-center justify-between mb-2.5 gap-2">
           <div
-            className={`w-7 h-7 rounded-[6px] flex items-center justify-center text-sm ${currentTone.badge}`}
+            className={`flex shrink-0 items-center justify-center text-sm ${currentTone.badge}`}
           >
             {React.isValidElement(IconComponent) ? (
               IconComponent
             ) : (
-              <IconComponent size={15} strokeWidth={1.75} />
+              <IconComponent size={18} strokeWidth={2} />
             )}
           </div>
 
           {anomalyBadge && (
             <span
-              className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-tight border ${
-                anomalyBadge.severity === "danger"
-                  ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/70 dark:text-rose-300 dark:border-rose-800"
-                  : anomalyBadge.severity === "warning"
-                  ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800"
-                  : anomalyBadge.severity === "success"
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800"
-                  : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800"
-              }`}
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium tracking-tight bg-transparent border border-slate-200 dark:border-slate-800"
               title={anomalyBadge.tooltip || anomalyBadge.label}
             >
-              {anomalyBadge.label || anomalyBadge.text}
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  anomalyBadge.severity === "danger"
+                    ? "bg-rose-500"
+                    : anomalyBadge.severity === "warning"
+                    ? "bg-amber-500"
+                    : anomalyBadge.severity === "success"
+                    ? "bg-emerald-500"
+                    : "bg-sky-500"
+                }`}
+              />
+              <span
+                className={
+                  anomalyBadge.severity === "danger"
+                    ? "text-rose-600 dark:text-rose-400"
+                    : anomalyBadge.severity === "warning"
+                    ? "text-amber-700 dark:text-amber-400"
+                    : anomalyBadge.severity === "success"
+                    ? "text-emerald-700 dark:text-emerald-400"
+                    : "text-sky-700 dark:text-sky-400"
+                }
+              >
+                {anomalyBadge.label || anomalyBadge.text}
+              </span>
             </span>
           )}
         </div>

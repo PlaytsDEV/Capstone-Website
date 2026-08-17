@@ -1,79 +1,79 @@
 const COLOR_CLASSES = {
   blue: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-400 border-blue-200/80 dark:border-blue-900/60",
+    icon: "text-sky-600 dark:text-sky-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-blue-500 ring-2 ring-inset ring-blue-500/20 bg-blue-50/40 dark:bg-blue-950/20",
   },
   green: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-900/60",
+    icon: "text-emerald-600 dark:text-emerald-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-emerald-500 ring-2 ring-inset ring-emerald-500/20 bg-emerald-50/40 dark:bg-emerald-950/20",
   },
   emerald: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-900/60",
+    icon: "text-emerald-600 dark:text-emerald-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-emerald-500 ring-2 ring-inset ring-emerald-500/20 bg-emerald-50/40 dark:bg-emerald-950/20",
   },
   orange: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-400 border-amber-200/80 dark:border-amber-900/60",
+    icon: "text-amber-600 dark:text-amber-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-amber-500 ring-2 ring-inset ring-amber-500/20 bg-amber-50/40 dark:bg-amber-950/20",
   },
   amber: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-400 border-amber-200/80 dark:border-amber-900/60",
+    icon: "text-amber-600 dark:text-amber-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-amber-500 ring-2 ring-inset ring-amber-500/20 bg-amber-50/40 dark:bg-amber-950/20",
   },
   yellow: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-400 border-amber-200/80 dark:border-amber-900/60",
+    icon: "text-amber-600 dark:text-amber-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-amber-500 ring-2 ring-inset ring-amber-500/20 bg-amber-50/40 dark:bg-amber-950/20",
   },
   red: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-400 border-rose-200/80 dark:border-rose-900/60",
+    icon: "text-rose-600 dark:text-rose-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-rose-500 ring-2 ring-inset ring-rose-500/20 bg-rose-50/40 dark:bg-rose-950/20",
   },
   rose: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-400 border-rose-200/80 dark:border-rose-900/60",
+    icon: "text-rose-600 dark:text-rose-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-rose-500 ring-2 ring-inset ring-rose-500/20 bg-rose-50/40 dark:bg-rose-950/20",
   },
   purple: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700",
+    icon: "text-slate-500 dark:text-slate-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-slate-500 ring-2 ring-inset ring-slate-500/20 bg-slate-50/40 dark:bg-slate-950/20",
   },
   violet: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700",
+    icon: "text-slate-500 dark:text-slate-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-slate-500 ring-2 ring-inset ring-slate-500/20 bg-slate-50/40 dark:bg-slate-950/20",
   },
   indigo: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-sky-50 text-sky-700 dark:bg-sky-950/70 dark:text-sky-400 border-sky-200/80 dark:border-sky-900/60",
+    icon: "text-sky-600 dark:text-sky-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-sky-500 ring-2 ring-inset ring-sky-500/20 bg-sky-50/40 dark:bg-sky-950/20",
   },
   teal: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-teal-50 text-teal-700 dark:bg-teal-950/70 dark:text-teal-400 border-teal-200/80 dark:border-teal-900/60",
+    icon: "text-teal-600 dark:text-teal-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-teal-500 ring-2 ring-inset ring-teal-500/20 bg-teal-50/40 dark:bg-teal-950/20",
   },
   neutral: {
     value: "text-slate-900 dark:text-slate-100",
-    icon: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700",
+    icon: "text-slate-500 dark:text-slate-400",
     surface: "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm",
     active: "border-slate-500 dark:border-slate-400 ring-2 ring-inset ring-slate-400/20 bg-slate-50 dark:bg-slate-800/40",
   },
@@ -157,9 +157,9 @@ export default function SummaryBar({
                 </span>
                 {Icon && (
                   <div
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-sm transition-colors ${palette.icon}`}
+                    className={`flex shrink-0 items-center justify-center text-sm transition-colors ${palette.icon}`}
                   >
-                    <Icon size={16} />
+                    <Icon size={18} />
                   </div>
                 )}
               </div>

@@ -10,7 +10,7 @@ import {
   ReportChartPanel,
 } from "../components/shared";
 import { AdminAnalyticsDetailSkeleton } from "../components/AdminContentSkeletons";
-import { buildRangeLabel, formatBranch, formatPeso } from "./reportCommon";
+import { buildRangeLabel, formatBranch, formatPeso, cleanCurrencyLabel } from "./reportCommon";
 import {
   AnalyticsInsightSection,
   AnalyticsTableToolbar,
@@ -242,7 +242,7 @@ export default function AnalyticsFinancialsTab({
         onExecuteAction={handleExecuteAction}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ReportChartPanel title="Branch comparison" subtitle="Collections, overdue exposure, and collection rate by branch">
           <AnalyticsComparisonChart
             data={branchComparison.map((item) => ({
@@ -271,7 +271,7 @@ export default function AnalyticsFinancialsTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ReportChartPanel title="Monthly collections" subtitle="Collected payments over the selected period">
           <AnalyticsBarChart
             data={revenueByMonth.map((item) => ({
@@ -290,19 +290,93 @@ export default function AnalyticsFinancialsTab({
         </ReportChartPanel>
 
         <ReportChartPanel title="Net position" subtitle="Collected payments less currently overdue balances">
-          <div className="admin-reports__meta-grid">
-            <div className="admin-reports__meta-card">
-              <span className="admin-reports__meta-label">Net position</span>
-              <div className="admin-reports__meta-value">{data?.kpis?.netPositionLabel || "PHP 0"}</div>
-            </div>
-            <div className="admin-reports__meta-card">
-              <span className="admin-reports__meta-label">Latest billing month</span>
-              <div className="admin-reports__meta-value">{revenueByMonth.at(-1)?.label || "-"}</div>
-              <p className="admin-reports__hint">
-                Billed {formatPeso(revenueByMonth.at(-1)?.billedAmount || 0)}
-              </p>
-            </div>
-          </div>
+          {(() => {
+            const netPosition = typeof data?.kpis?.netPosition === "number"
+              ? data.kpis.netPosition
+              : (data?.kpis?.collectedRevenue || 0) - (data?.kpis?.overdueAmount || 0);
+            const isDeficit = netPosition < 0;
+            const latestMonth = revenueByMonth.at(-1);
+
+            return (
+              <div className="flex flex-col gap-4 w-full h-full justify-between py-0.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="bg-card dark:bg-card/40 border border-border rounded-xl p-4 flex flex-col justify-between space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Net Position
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${
+                          isDeficit ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${isDeficit ? "bg-rose-500" : "bg-emerald-500"}`} />
+                        {isDeficit ? "Deficit" : "Surplus"}
+                      </span>
+                    </div>
+
+                    <div>
+                      <div
+                        className={`text-2xl font-bold tracking-tight tabular-nums ${
+                          isDeficit ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"
+                        }`}
+                      >
+                        {formatPeso(netPosition)}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {isDeficit
+                          ? "Overdue balances exceed collected revenue"
+                          : "Positive operating collections balance"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-card dark:bg-card/40 border border-border rounded-xl p-4 flex flex-col justify-between space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Latest Billing Month
+                      </span>
+                      <span className="text-[11px] font-medium text-muted-foreground">
+                        Current Cycle
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="text-2xl font-bold tracking-tight text-foreground">
+                        {latestMonth?.label || "-"}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 font-normal">
+                        Billed <span className="font-semibold text-foreground">{formatPeso(latestMonth?.billedAmount || 0)}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-muted/20 border border-border rounded-lg p-3 grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="space-y-0.5">
+                    <span className="text-[11px] text-muted-foreground font-medium block">Total Collected</span>
+                    <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                      +{formatPeso(data?.kpis?.collectedRevenue || 0)}
+                    </span>
+                  </div>
+
+                  <div className="space-y-0.5 border-x border-border/60">
+                    <span className="text-[11px] text-muted-foreground font-medium block">Overdue Exposure</span>
+                    <span className="text-sm font-bold text-rose-600 dark:text-rose-400 tabular-nums">
+                      -{formatPeso(data?.kpis?.overdueAmount || 0)}
+                    </span>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <span className="text-[11px] text-muted-foreground font-medium block">Collection Rate</span>
+                    <span className="text-sm font-bold text-foreground tabular-nums">
+                      {data?.kpis?.collectionRate || 0}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </ReportChartPanel>
       </div>
 

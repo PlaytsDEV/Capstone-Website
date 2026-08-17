@@ -48,8 +48,6 @@ import {
   RANGE_OPTIONS_SHORT,
   CardFilterSelect,
   ExportButtons,
-  handleCsvExport,
-  handlePdfExport,
 } from "./analyticsTabShared";
 import {
   buildRangeLabel,
@@ -274,10 +272,14 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
       data: occupancyTrend.map((item) => ({
         label: item.label,
         occupancy: item.totalRate ?? 0,
+        target: 90,
       })),
-      lines: [{ key: "occupancy", label: "Occupancy rate", color: "#2563eb", strokeWidth: 3 }],
+      lines: [
+        { key: "occupancy", label: "Occupancy rate", color: "#2563eb", strokeWidth: 3 },
+        { key: "target", label: "Target (90%)", color: "#94a3b8", strokeWidth: 1.5, strokeDasharray: "4 4" },
+      ],
       valueFormatter: (value) => `${value}%`,
-      subTitle: `Daily rate — ${buildRangeLabel(activeOverviewOccupancyRange).toLowerCase()}`,
+      subTitle: `Daily rate vs 90% benchmark — ${buildRangeLabel(activeOverviewOccupancyRange).toLowerCase()}`,
     };
   }, [activeOverviewOccupancyRange, occupancyTrend, overviewOccupancyMetric]);
 
@@ -367,28 +369,31 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
 
   const analyticsTabs = useMemo(
     () => [
-      { id: "overview", label: "Overview", icon: LayoutGrid },
-      { id: "occupancy", label: "Occupancy", icon: BedDouble },
-      { id: "billing", label: "Billing & Revenue", icon: Receipt },
-      { id: "operations", label: "Operations", icon: Wrench },
-      { id: "demographics", label: "Demographics", icon: Users },
-      { id: "acquisition", label: "Lead Acquisition", icon: Target },
+      { id: "overview", label: "Overview", icon: LayoutGrid, iconClassName: "text-sky-500 dark:text-sky-400" },
+      { id: "occupancy", label: "Occupancy", icon: BedDouble, iconClassName: "text-blue-500 dark:text-blue-400" },
+      { id: "billing", label: "Billing & Revenue", icon: Receipt, iconClassName: "text-emerald-600 dark:text-emerald-400" },
+      { id: "operations", label: "Operations", icon: Wrench, iconClassName: "text-amber-500 dark:text-amber-400" },
+      { id: "demographics", label: "Demographics", icon: Users, iconClassName: "text-purple-500 dark:text-purple-400" },
+      { id: "acquisition", label: "Lead Acquisition", icon: Target, iconClassName: "text-teal-500 dark:text-teal-400" },
       ...(isOwner
         ? [
             {
               id: "consolidated",
               label: "Consolidated",
               icon: PanelsTopLeft,
+              iconClassName: "text-indigo-500 dark:text-indigo-400",
             },
             {
               id: "financials",
               label: "Financials",
               icon: PhilippinePeso,
+              iconClassName: "text-emerald-600 dark:text-emerald-400",
             },
             {
               id: "monitoring",
               label: "Monitoring",
               icon: ShieldAlert,
+              iconClassName: "text-rose-500 dark:text-rose-400",
             },
           ]
         : []),
@@ -424,103 +429,8 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     [branch, activeTab, range, isOwner, activeTabNormalized, registerTabExport],
   );
 
-  const exportOverviewCsv = React.useCallback(() => {
-    const reservations = dashboardData?.recentReservations || [];
-    handleCsvExport(
-      reservations,
-      [
-        { key: "guestName", label: "Guest" },
-        { key: "roomType", label: "Room Type" },
-        { key: "branch", label: "Branch", formatter: (value) => formatBranch(value) },
-        { key: "status", label: "Status" },
-        { key: "moveInDate", label: "Move In", formatter: (value) => formatDate(value) },
-      ],
-      `analytics-overview-${range}`,
-    );
-  }, [dashboardData?.recentReservations, range]);
-
-  const exportOverviewPdf = React.useCallback(() => {
-    const reservations = dashboardData?.recentReservations || [];
-    const inquiries = dashboardData?.recentInquiries || [];
-    const reservationStatus = dashboardData?.reservationStatus || {
-      approved: 0,
-      pending: 0,
-      rejected: 0,
-    };
-
-    handlePdfExport({
-      title: "Analytics Executive Overview",
-      subtitle: `${buildRangeLabel(range)} • ${formatBranch(dashboardData?.scope?.branch || branch)}`,
-      filename: `analytics-overview-${range}.pdf`,
-      reportType: "Overview",
-      kpis: [
-        {
-          label: "Occupancy Rate",
-          value: occupancyKpis?.occupancyRateLabel || `${occupancyKpis?.occupancyRate || 0}%`,
-          highlight: true,
-        },
-        {
-          label: "Collected Revenue",
-          value: billingKpis?.collectedRevenueLabel || "PHP 0",
-        },
-        {
-          label: "Active Tickets",
-          value: String(activeTickets || 0),
-        },
-        {
-          label: "Inquiries",
-          value: String(operationsKpis?.inquiries || unresolvedInquiries || 0),
-        },
-      ],
-      sections: [
-        {
-          title: "Reservation Status Summary",
-          type: "table",
-          headers: ["Status", "Count"],
-          rows: Object.entries(reservationStatus).map(([status, count]) => ({
-            Status: status.toUpperCase(),
-            Count: count,
-          })),
-        },
-        {
-          title: "Recent Reservations",
-          type: "table",
-          headers: ["Guest", "Room Type", "Status", "Move In"],
-          rows: (reservations || []).slice(0, 10).map((item) => ({
-            Guest: item.guestName || "Unknown",
-            "Room Type": item.roomType || "-",
-            Status: (item.status || "pending").toUpperCase(),
-            "Move In": formatDate(item.moveInDate || item.createdAt),
-          })),
-        },
-        {
-          title: "Recent Inquiries",
-          type: "table",
-          headers: ["Name", "Email", "Branch", "Created"],
-          rows: (inquiries || []).slice(0, 10).map((item) => ({
-            Name: item.name || "Unknown",
-            Email: item.email || "-",
-            Branch: formatBranch(item.branch),
-            Created: formatDateTime(item.createdAt),
-          })),
-        },
-      ],
-    });
-  }, [
-    dashboardData,
-    range,
-    branch,
-    occupancyKpis,
-    billingKpis,
-    activeTickets,
-    operationsKpis,
-    unresolvedInquiries,
-  ]);
-
   const currentTabExport =
-    activeTabNormalized === "overview"
-      ? { exportCsv: exportOverviewCsv, exportPdf: exportOverviewPdf }
-      : tabExports[activeTabNormalized];
+    activeTabNormalized === "overview" ? null : tabExports[activeTabNormalized];
 
   const isInitialLoading =
     (occupancyQuery.isLoading && !occupancyData) ||
@@ -606,7 +516,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
           </div>
         }
         actions={
-          currentTabExport?.exportCsv && currentTabExport?.exportPdf ? (
+          activeTabNormalized !== "overview" && currentTabExport?.exportCsv && currentTabExport?.exportPdf ? (
             <ExportButtons onCsv={currentTabExport.exportCsv} onPdf={currentTabExport.exportPdf} />
           ) : null
         }

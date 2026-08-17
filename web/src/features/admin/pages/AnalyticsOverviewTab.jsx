@@ -20,9 +20,6 @@ import { buildRangeLabel, formatBranch, formatDate, formatDateTime } from "./rep
 import {
   AnalyticsInsightSection,
   buildBranchControl,
-  ExportButtons,
-  handleCsvExport,
-  handlePdfExport,
   MetricGrid,
   RANGE_OPTIONS_SHORT,
   useReportInsights,
@@ -125,84 +122,6 @@ export default function AnalyticsOverviewTab({
     { label: "Inquiries", value: kpis.inquiries || 0, tone: "rose" },
   ];
 
-  const exportCsv = () => {
-    handleCsvExport(
-      reservations,
-      [
-        { key: "guestName", label: "Guest" },
-        { key: "roomType", label: "Room Type" },
-        { key: "branch", label: "Branch", formatter: (value) => formatBranch(value) },
-        { key: "status", label: "Status" },
-        { key: "moveInDate", label: "Move In", formatter: (value) => formatDate(value) },
-      ],
-      `analytics-overview-${range}`,
-    );
-  };
-
-  const exportPdf = () => {
-    const forecastInsight = forecast?.insights || {};
-    handlePdfExport({
-      title: "Analytics Overview",
-      subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
-      filename: `analytics-overview-${range}.pdf`,
-      reportType: "Overview",
-      kpis: metricCards.map((item, i) => ({
-        label: item.label,
-        value: item.value,
-        sub: "",
-        highlight: i === 0,
-      })),
-      aiInsight: {
-        headline: forecastInsight?.headline || "Overview summary",
-        summary: (forecastInsight?.recommendations || []).slice(0, 2).join(" "),
-        confidence: forecast?.sufficientHistory ? 70 : 35,
-        confidenceLabel: forecast?.sufficientHistory ? "Medium" : "Low",
-        standout: forecastInsight?.recommendations || [],
-        watch: [],
-        nextSteps: (forecastInsight?.recommendations || []).slice(0, 3),
-      },
-      sections: [
-        {
-          title: "Reservation Status",
-          type: "table",
-          headers: ["Status", "Count"],
-          rows: Object.entries(reservationStatus).map(([status, count]) => ({
-            Status: status,
-            Count: count,
-          })),
-        },
-        {
-          title: "Recent Reservations",
-          type: "table",
-          headers: ["Guest", "Room Type", "Status", "Move In"],
-          rows: reservations.slice(0, 10).map((item) => ({
-            Guest: item.guestName || "Unknown",
-            "Room Type": item.roomType || "-",
-            Status: item.status || "pending",
-            "Move In": formatDate(item.moveInDate),
-          })),
-        },
-        {
-          title: "Recent Inquiries",
-          type: "table",
-          headers: ["Name", "Email", "Branch", "Created"],
-          rows: inquiries.slice(0, 10).map((item) => ({
-            Name: item.name || "Unknown",
-            Email: item.email || "-",
-            Branch: formatBranch(item.branch),
-            Created: formatDateTime(item.createdAt),
-          })),
-        },
-      ],
-    });
-  };
-
-  useEffect(() => {
-    if (typeof registerExport === "function") {
-      registerExport({ exportCsv, exportPdf });
-    }
-  }, [registerExport, exportCsv, exportPdf]);
-
   const overviewPrompts = useMemo(
     () => getDynamicOverviewPrompts(data, { forecast }),
     [data, forecast],
@@ -216,7 +135,6 @@ export default function AnalyticsOverviewTab({
  subtitle={`Scope: ${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`}
  range={{ value: range, onChange: onRangeChange, options: RANGE_OPTIONS_SHORT }}
  branch={buildBranchControl({ isOwner, branch, onChange: onBranchChange })}
- actions={<ExportButtons onCsv={exportCsv} onPdf={exportPdf} />}
  />
  }
  >
@@ -234,7 +152,7 @@ export default function AnalyticsOverviewTab({
    suggestedPrompts={overviewPrompts}
   />
 
- <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+ <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
  <ReportChartPanel
  title="Reservation status"
  subtitle={`${kpis.activeBookings || 0} active bookings currently tracked`}
@@ -268,7 +186,7 @@ export default function AnalyticsOverviewTab({
  </ReportChartPanel>
  </div>
 
- <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+ <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
  <ReportChartPanel
  title="Recent inquiries"
  subtitle={`${occupancy.totalRooms || 0} rooms included in the current branch snapshot`}

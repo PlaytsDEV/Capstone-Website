@@ -15,6 +15,7 @@ import { useMaintenanceProviderReport } from "../../../shared/hooks/queries/useM
 import {
   AnalyticsBarChart,
   AnalyticsDonutChart,
+  AnalyticsLineChart,
   AnalyticsTabLayout,
   AnalyticsToolbar,
   DataTable,
@@ -115,11 +116,11 @@ const MAINTENANCE_COLUMNS = [
   },
   {
     key: "slaState",
-    label: "SLA",
+    label: "Turnaround Status",
     sortable: true,
     render: (row) => {
       const val = String(row.slaState || "").toLowerCase();
-      const isMet = val.includes("met");
+      const isMet = val.includes("met") || val.includes("on_track") || val.includes("on track") || val.includes("on-time");
       return (
         <span
           style={{
@@ -132,7 +133,7 @@ const MAINTENANCE_COLUMNS = [
             border: isMet ? "1px solid rgba(22, 101, 52, 0.2)" : "1px solid rgba(185, 28, 28, 0.2)",
           }}
         >
-          {row.slaState || "Pending SLA"}
+          {row.slaState || "Within Target"}
         </span>
       );
     },
@@ -224,6 +225,40 @@ export default function AnalyticsOperationsTab({
   const reservationsByPeriod = (resData || data)?.series?.reservationsByPeriod || [];
   const maintenanceByType = data?.series?.maintenanceByType || [];
   const maintenanceResolution = data?.series?.maintenanceResolution || [];
+  const resolutionTrend = data?.series?.resolutionTrend || [];
+  const [turnaroundMetric, setTurnaroundMetric] = useState("hours");
+
+  const turnaroundChartConfig = useMemo(() => {
+    if (turnaroundMetric === "rate") {
+      return {
+        data: resolutionTrend.map((item) => ({
+          label: item.label,
+          rate: item.onTimeRate ?? 100,
+          target: 90,
+        })),
+        lines: [
+          { key: "rate", label: "On-Time Rate", color: "#16a34a", strokeWidth: 2.5 },
+          { key: "target", label: "Target (90%)", color: "#94a3b8", strokeWidth: 1.5, strokeDasharray: "4 4" },
+        ],
+        valueFormatter: (value) => `${value}%`,
+        subtitle: "Percentage of tickets resolved within turnaround time target",
+      };
+    }
+
+    return {
+      data: resolutionTrend.map((item) => ({
+        label: item.label,
+        avgHours: item.avgResolutionHours ?? 0,
+        targetHours: item.targetHours || 48,
+      })),
+      lines: [
+        { key: "avgHours", label: "Actual Turnaround", color: "#2563eb", strokeWidth: 2.5 },
+        { key: "targetHours", label: "Benchmark (48 hrs)", color: "#94a3b8", strokeWidth: 1.5, strokeDasharray: "4 4" },
+      ],
+      valueFormatter: (value) => `${value} hrs`,
+      subtitle: "Mean resolution time in hours vs 48-hour target benchmark",
+    };
+  }, [resolutionTrend, turnaroundMetric]);
 
   const filteredMaintenance = useMemo(() => {
     return maintenanceIssues.filter((item) => {
@@ -306,7 +341,7 @@ export default function AnalyticsOperationsTab({
     {
       icon: CheckCircle2,
       tone: "green",
-      label: "SLA Compliance",
+      label: "On-Time Resolution Rate",
       value: slaRate,
       trend: slaDelta.text || `${slaDelta.label || "+0 pp"} on-time rate`,
       changeType: slaDelta.changeType || "neutral",
@@ -326,7 +361,7 @@ export default function AnalyticsOperationsTab({
         { key: "createdAt", label: "Created", formatter: (value) => formatDateTime(value) },
         { key: "resolvedAt", label: "Resolved", formatter: (value) => formatDateTime(value) },
         { key: "resolutionHours", label: "Resolution Hours" },
-        { key: "slaState", label: "SLA State" },
+        { key: "slaState", label: "Turnaround Status" },
       ],
       `lilycrest-operations-${branch || "all"}-${range}`,
     );
@@ -360,6 +395,17 @@ export default function AnalyticsOperationsTab({
       },
       sections: [
         {
+          title: "Maintenance Turnaround Timeline",
+          type: "table",
+          headers: ["Period", "Resolved Tickets", "Avg Turnaround Hours", "On-Time Rate"],
+          rows: resolutionTrend.map((item) => ({
+            Period: item.label,
+            "Resolved Tickets": String(item.resolvedCount || 0),
+            "Avg Turnaround Hours": `${item.avgResolutionHours || 0} hrs`,
+            "On-Time Rate": `${item.onTimeRate ?? 100}%`,
+          })),
+        },
+        {
           title: "Peak Inquiry Windows",
           type: "table",
           headers: ["Window", "Inquiries"],
@@ -371,13 +417,13 @@ export default function AnalyticsOperationsTab({
         {
           title: "Maintenance Snapshot",
           type: "table",
-          headers: ["Request ID", "Type", "Urgency", "Status", "SLA"],
+          headers: ["Request ID", "Type", "Urgency", "Status", "Turnaround Status"],
           rows: filteredMaintenance.slice(0, 12).map((item) => ({
             "Request ID": item.requestId || "-",
             Type: item.typeLabel || "-",
             Urgency: item.urgency || "-",
             Status: item.status || "-",
-            SLA: item.slaState || "-",
+            "Turnaround Status": item.slaState || "-",
           })),
         },
       ],
@@ -417,7 +463,7 @@ export default function AnalyticsOperationsTab({
       changeType: inquiriesDelta.changeType || "neutral",
     },
     {
-      label: "SLA compliance",
+      label: "On-time resolution rate",
       sublabel: "vs previous period",
       value: slaRate,
       change: slaDelta.label,
@@ -442,7 +488,7 @@ export default function AnalyticsOperationsTab({
 
       <AnalyticsInsightSection
         reportLabel="operations"
-        summaryTitle="Operations & SLA Intelligence"
+        summaryTitle="Operations & Turnaround Intelligence"
         reportType="operations"
         range={range}
         branch={branch}
@@ -452,6 +498,48 @@ export default function AnalyticsOperationsTab({
         suggestedPrompts={operationsPrompts}
         onExecuteAction={handleExecuteAction}
       />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ReportChartPanel
+          title="Turnaround Speed & Efficiency"
+          subtitle={turnaroundChartConfig.subtitle}
+          actions={
+            <div className="analytics-view-mode-toggle" role="group" aria-label="Turnaround view metric">
+              <button
+                type="button"
+                className={`analytics-view-mode-btn ${turnaroundMetric === "hours" ? "active" : ""}`}
+                onClick={() => setTurnaroundMetric("hours")}
+              >
+                Avg Hours
+              </button>
+              <button
+                type="button"
+                className={`analytics-view-mode-btn ${turnaroundMetric === "rate" ? "active" : ""}`}
+                onClick={() => setTurnaroundMetric("rate")}
+              >
+                On-Time %
+              </button>
+            </div>
+          }
+        >
+          <AnalyticsLineChart
+            data={turnaroundChartConfig.data}
+            lines={turnaroundChartConfig.lines}
+            valueFormatter={turnaroundChartConfig.valueFormatter}
+            emptyTitle="No turnaround timeline data"
+            emptyDescription="Maintenance turnaround trend will populate as tickets are resolved."
+          />
+        </ReportChartPanel>
+
+        <ReportChartPanel title="Maintenance category mix" subtitle="Most common maintenance request types">
+          <AnalyticsDonutChart
+            data={maintenanceByType.map((item) => ({ label: item.label, value: item.count }))}
+            centerLabel={{ value: data?.kpis?.maintenanceRequests || 0, label: "Requests" }}
+            emptyTitle="No maintenance categories"
+            emptyDescription="Maintenance categories will appear once tickets exist for this scope."
+          />
+        </ReportChartPanel>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel
@@ -472,17 +560,6 @@ export default function AnalyticsOperationsTab({
           />
         </ReportChartPanel>
 
-        <ReportChartPanel title="Maintenance category mix" subtitle="Most common maintenance request types">
-          <AnalyticsDonutChart
-            data={maintenanceByType.map((item) => ({ label: item.label, value: item.count }))}
-            centerLabel={{ value: data?.kpis?.maintenanceRequests || 0, label: "Requests" }}
-            emptyTitle="No maintenance categories"
-            emptyDescription="Maintenance categories will appear once tickets exist for this scope."
-          />
-        </ReportChartPanel>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
         <ReportChartPanel title="Inquiry timing" subtitle="Peak inquiry windows in two-hour blocks">
           <AnalyticsBarChart
             data={inquiryWindows.map((item) => ({ label: item.label, count: item.count }))}
@@ -491,15 +568,15 @@ export default function AnalyticsOperationsTab({
             emptyDescription="Inquiry timing will appear once inquiry activity exists for this range."
           />
         </ReportChartPanel>
-
-        <PeriodComparisonCard
-          title="Period comparison"
-          subtitle="Current vs previous period"
-          rows={periodComparisonRows}
-        />
       </div>
 
-      <div className="mb-5">
+      <PeriodComparisonCard
+        title="Period comparison"
+        subtitle="Current vs previous period"
+        rows={periodComparisonRows}
+      />
+
+      <div>
         <ReportChartPanel title="Maintenance tickets table" subtitle="Most recent branch-scoped maintenance tickets">
           <AnalyticsTableToolbar
             searchQuery={searchQuery}
@@ -511,17 +588,17 @@ export default function AnalyticsOperationsTab({
             filters={[
               {
                 key: "slaFilter",
-                label: "SLA State",
+                label: "Turnaround Status",
                 value: slaFilter,
                 onChange: (val) => {
                   setSlaFilter(val);
                   setPage(1);
                 },
                 options: [
-                  { value: "all", label: "All SLA States" },
+                  { value: "all", label: "All Turnaround Statuses" },
                   { value: "on-time", label: "On-Time" },
                   { value: "at-risk", label: "At Risk" },
-                  { value: "breached", label: "Breached" },
+                  { value: "breached", label: "Delayed" },
                 ],
               },
               {

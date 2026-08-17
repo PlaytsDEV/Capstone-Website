@@ -33,86 +33,6 @@ import RevenueTrendCard from "../components/dashboard/RevenueTrendCard";
 import "../styles/design-tokens.css";
 import "../styles/admin-dashboard.css";
 
-function AlertBanner({ activeTickets, pendingReservations, unresolvedInquiries }) {
-  const [dismissed, setDismissed] = useState(false);
-  if (dismissed) return null;
-
-  const items = [];
-  if (activeTickets > 0)
-    items.push({
-      key: "maintenance",
-      label: `${activeTickets} Maintenance Ticket${activeTickets === 1 ? "" : "s"}`,
-      icon: Wrench,
-      to: "/admin/maintenance",
-      chipClass:
-        "border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/50",
-      iconClass: "text-rose-600 dark:text-rose-400",
-    });
-  if (pendingReservations > 0)
-    items.push({
-      key: "reservations",
-      label: `${pendingReservations} Pending Reservation${pendingReservations === 1 ? "" : "s"}`,
-      icon: Calendar,
-      to: "/admin/reservations",
-      chipClass:
-        "border-amber-200 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50",
-      iconClass: "text-amber-600 dark:text-amber-400",
-    });
-  if (unresolvedInquiries > 0)
-    items.push({
-      key: "inquiries",
-      label: `${unresolvedInquiries} Open Inquiry${unresolvedInquiries === 1 ? "" : "s"}`,
-      icon: MessageSquare,
-      to: "/admin/inquiries",
-      state: { fromDashboard: true },
-      chipClass:
-        "border-blue-200 dark:border-blue-900/60 bg-blue-50/80 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50",
-      iconClass: "text-blue-600 dark:text-blue-400",
-    });
-
-  if (items.length === 0) return null;
-
-  return (
-    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card px-4 py-2.5 shadow-xs transition-all">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 border-r border-border/70 pr-3">
-          <span className="h-2 w-2 rounded-full bg-amber-500" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-foreground">
-            Needs Attention
-          </span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {items.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.key}
-                to={item.to}
-                state={item.state}
-                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${item.chipClass}`}
-              >
-                <Icon className={`h-3.5 w-3.5 ${item.iconClass}`} />
-                <span>{item.label}</span>
-                <ChevronRight className="h-3 w-3 opacity-60" />
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => setDismissed(true)}
-        aria-label="Dismiss queue focus toolbar"
-        className="flex h-7 w-7 items-center justify-center rounded-lg border border-transparent text-xs text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground"
-      >
-        <span className="text-sm font-semibold leading-none">✕</span>
-      </button>
-    </div>
-  );
-}
-
 /** Skeleton placeholder for a single KPI stat card — matches the real card layout. */
 function StatCardSkeleton() {
   return (
@@ -375,12 +295,12 @@ export default function Dashboard() {
   const reservationSegment = (count) =>
     reservationTotal ? (count / reservationTotal) * 502.6 : 0;
 
-  const DASHBOARD_STAT_ICON_BADGES = {
-    blue: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-400",
-    green: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400",
-    rose: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-400",
-    amber: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400",
-    neutral: "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  const DASHBOARD_STAT_ICON_COLORS = {
+    blue: "text-sky-600 dark:text-sky-400",
+    green: "text-emerald-600 dark:text-emerald-400",
+    rose: "text-rose-600 dark:text-rose-400",
+    amber: "text-amber-600 dark:text-amber-400",
+    neutral: "text-slate-500 dark:text-slate-400",
   };
 
   const metricValueStyle = {
@@ -468,13 +388,6 @@ export default function Dashboard() {
               {error}
             </div>
           )}
-          {!showSkeleton && (
-            <AlertBanner
-              activeTickets={kpis.activeTickets || 0}
-              pendingReservations={reservationStatus.pending || 0}
-              unresolvedInquiries={unresolvedInquiryCount}
-            />
-          )}
 
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {showSkeleton
@@ -491,11 +404,11 @@ export default function Dashboard() {
                           {item.label}
                         </span>
                         <div
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
-                            DASHBOARD_STAT_ICON_BADGES[item.tone] || DASHBOARD_STAT_ICON_BADGES.neutral
+                          className={`flex shrink-0 items-center justify-center ${
+                            DASHBOARD_STAT_ICON_COLORS[item.tone] || DASHBOARD_STAT_ICON_COLORS.neutral
                           }`}
                         >
-                          <Icon size={15} />
+                          <Icon size={18} />
                         </div>
                       </div>
                       <div className="mt-2">
@@ -575,9 +488,9 @@ export default function Dashboard() {
                     >
                       <div className="flex items-center gap-4 min-w-0">
                         <div
-                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-muted-foreground"
+                          className="flex shrink-0 items-center justify-center text-sky-600 dark:text-sky-400"
                         >
-                          <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                          <Mail className="h-5 w-5" />
                         </div>
 
                         <div className="min-w-0">
@@ -927,7 +840,7 @@ export default function Dashboard() {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-muted-foreground"
+                              className="flex shrink-0 items-center justify-center text-slate-500 dark:text-slate-400"
                             >
                               <DoorOpen className="h-4 w-4" />
                             </div>

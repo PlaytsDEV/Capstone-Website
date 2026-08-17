@@ -1,7 +1,9 @@
+import { BedDouble, Receipt, Wrench } from "lucide-react";
+
 export const REPORT_TABS = [
- { key: "occupancy", label: "Occupancy" },
- { key: "billing", label: "Billing" },
- { key: "operations", label: "Operations" },
+  { key: "occupancy", label: "Occupancy", icon: BedDouble, iconClassName: "text-blue-500 dark:text-blue-400" },
+  { key: "billing", label: "Billing", icon: Receipt, iconClassName: "text-emerald-600 dark:text-emerald-400" },
+  { key: "operations", label: "Operations", icon: Wrench, iconClassName: "text-amber-500 dark:text-amber-400" },
 ];
 
 export const REPORT_ROUTES = {
@@ -10,11 +12,29 @@ export const REPORT_ROUTES = {
  operations: "/admin/analytics/details?tab=operations",
 };
 
-export const formatPeso = (value) =>
- `PHP ${Number(value || 0).toLocaleString("en-PH", {
- minimumFractionDigits: 0,
- maximumFractionDigits: 0,
- })}`;
+export const formatPeso = (value) => {
+  const num = Number(value || 0);
+  const isNegative = num < 0;
+  const absFormatted = Math.abs(num).toLocaleString("en-PH", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+  return isNegative ? `-₱${absFormatted}` : `₱${absFormatted}`;
+};
+
+export const cleanCurrencyLabel = (str) => {
+  if (str === null || str === undefined || str === "") return "₱0";
+  if (typeof str === "string") {
+    if (str.includes("PHP -")) {
+      return str.replace("PHP -", "-₱");
+    }
+    if (str.includes("-PHP ")) {
+      return str.replace("-PHP ", "-₱");
+    }
+    return str.replace("PHP ", "₱");
+  }
+  return formatPeso(str);
+};
 
 export const formatDate = (value) => {
  if (!value) return "-";

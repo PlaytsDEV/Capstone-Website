@@ -50,7 +50,8 @@ const OVERDUE_COLUMNS = [
     label: "Status",
     sortable: true,
     render: (row) => (
-      <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--danger-subtle, #fee2e2)", color: "var(--danger-dark, #b91c1c)", fontWeight: 600, border: "1px solid rgba(185, 28, 28, 0.2)" }}>
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400">
+        <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
         {row.status || "Overdue"}
       </span>
     ),
@@ -68,16 +69,11 @@ const OVERDUE_COLUMNS = [
       const isCritical = (row.daysOverdue || 0) > 30;
       return (
         <span
-          style={{
-            padding: "3px 10px",
-            borderRadius: "12px",
-            fontSize: "11px",
-            background: isCritical ? "var(--danger-subtle, #fee2e2)" : "var(--warning-subtle, #fef3c7)",
-            color: isCritical ? "var(--danger-dark, #b91c1c)" : "var(--warning-dark, #92400e)",
-            fontWeight: 600,
-            border: isCritical ? "1px solid rgba(185, 28, 28, 0.2)" : "1px solid rgba(146, 64, 14, 0.2)",
-          }}
+          className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+            isCritical ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400"
+          }`}
         >
+          <span className={`w-1.5 h-1.5 rounded-full ${isCritical ? "bg-rose-500" : "bg-amber-500"}`} />
           {row.daysOverdue} days
         </span>
       );
@@ -87,7 +83,7 @@ const OVERDUE_COLUMNS = [
     key: "balance",
     label: "Balance",
     render: (row) => (
-      <span style={{ fontWeight: 700, color: "var(--color-primary, #0a1628)" }}>
+      <span className="font-bold text-foreground tabular-nums">
         {formatPeso(row.balance)}
       </span>
     ),
@@ -143,6 +139,7 @@ export default function AnalyticsBillingTab({
 
   const overdueAccounts = unwrapTableRows(data?.tables?.overdueAccounts);
   const revenueByMonth = (revenueData || data)?.series?.revenueByMonth || [];
+  const utilityBreakdown = (revenueData || data)?.series?.utilityBreakdown || [];
   const statusDistribution = data?.series?.statusDistribution || [];
   const overdueAging = data?.series?.overdueAging || [];
   const branchComparison = financialsData?.series?.branchComparison || [];
@@ -289,6 +286,18 @@ export default function AnalyticsBillingTab({
           })),
         },
         {
+          title: "Utility & Submetering Breakdown",
+          type: "table",
+          headers: ["Month", "Base Rent", "Electricity Submeter", "Water & Other", "Total Billed"],
+          rows: utilityBreakdown.map((item) => ({
+            Month: item.label,
+            "Base Rent": formatPeso(item.rentAmount),
+            "Electricity Submeter": formatPeso(item.electricityAmount),
+            "Water & Other": formatPeso(item.waterAmount + (item.otherAmount || 0)),
+            "Total Billed": formatPeso(item.totalAmount),
+          })),
+        },
+        {
           title: "Overdue Aging",
           type: "table",
           headers: ["Aging Bracket", "Outstanding Amount"],
@@ -383,7 +392,7 @@ export default function AnalyticsBillingTab({
       />
 
       {isOwner && branchComparison.length > 0 && (
-        <div className="mb-5">
+        <div>
           <ReportChartPanel title="Branch financial comparison" subtitle="Collections, overdue exposure, and collection rate by branch">
             <AnalyticsComparisonChart
               data={branchComparison.map((item) => ({
@@ -403,7 +412,7 @@ export default function AnalyticsBillingTab({
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel
           title="Revenue collections"
           subtitle="Billed vs collected — monthly"
@@ -431,6 +440,41 @@ export default function AnalyticsBillingTab({
           />
         </ReportChartPanel>
 
+        <ReportChartPanel
+          title="Utility & Submetering Breakdown"
+          subtitle="Monthly billed split: Base Rent vs Electric Submetering vs Water & Other"
+        >
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <span className="text-[11px] font-medium text-muted-foreground px-2 py-0.5 rounded-md border border-border bg-muted/30">
+              Rent: <strong className="text-foreground">{formatPeso(kpis.totalRentBilled || 0)}</strong>
+            </span>
+            <span className="text-[11px] font-medium text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-md border border-border bg-amber-50/50 dark:bg-amber-950/30">
+              Electricity: <strong>{formatPeso(kpis.totalElectricityBilled || 0)}</strong>
+            </span>
+            <span className="text-[11px] font-medium text-sky-700 dark:text-sky-400 px-2 py-0.5 rounded-md border border-border bg-sky-50/50 dark:bg-sky-950/30">
+              Water & Fees: <strong>{formatPeso(kpis.totalWaterBilled || 0)}</strong>
+            </span>
+          </div>
+          <AnalyticsBarChart
+            data={utilityBreakdown.map((item) => ({
+              label: item.label,
+              rent: item.rentAmount,
+              electricity: item.electricityAmount,
+              water: item.waterAmount + (item.otherAmount || 0),
+            }))}
+            bars={[
+              { key: "rent", label: "Base Rent", color: "#0f766e" },
+              { key: "electricity", label: "Electricity", color: "#f59e0b" },
+              { key: "water", label: "Water & Fees", color: "#0284c7" },
+            ]}
+            valueFormatter={(val) => formatPeso(val)}
+            emptyTitle="No utility breakdown data"
+            emptyDescription="Submetered utility and rent splits will appear once billing records are generated."
+          />
+        </ReportChartPanel>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel title="Payment status distribution" subtitle="Current status of all generated bills">
           <AnalyticsDonutChart
             data={statusDistribution.map((item) => ({
@@ -445,9 +489,7 @@ export default function AnalyticsBillingTab({
             emptyDescription="Bill status distribution will populate as billing periods run."
           />
         </ReportChartPanel>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
         <ReportChartPanel title="Overdue aging" subtitle="Unpaid balances bucketed by delay">
           <AnalyticsBarChart
             data={overdueAging.map((item) => ({
@@ -460,7 +502,9 @@ export default function AnalyticsBillingTab({
             emptyDescription="Overdue aging distribution will appear when overdue bills exist."
           />
         </ReportChartPanel>
+      </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <PeriodComparisonCard
           title="Period comparison"
           subtitle="Current vs previous period"

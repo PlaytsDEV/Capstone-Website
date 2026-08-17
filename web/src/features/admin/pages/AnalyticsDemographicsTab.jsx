@@ -306,7 +306,7 @@ export default function AnalyticsDemographicsTab({
         onExecuteAction={handleExecuteAction}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel title="Occupation mix" subtitle="Student vs professional vs unspecified breakdown">
           <AnalyticsDonutChart
             data={occupationMix}
@@ -326,7 +326,7 @@ export default function AnalyticsDemographicsTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel title="Room type preferences" subtitle="What room types tenants prefer when booking">
           <AnalyticsDonutChart
             data={roomTypePref}
@@ -346,7 +346,7 @@ export default function AnalyticsDemographicsTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel title="Booking time of day" subtitle="When applicants create their reservations (2-hour windows)">
           <AnalyticsBarChart
             data={bookingByHour}
@@ -366,7 +366,7 @@ export default function AnalyticsDemographicsTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel title="Referral sources" subtitle="How confirmed tenants discovered Lilycrest">
           <AnalyticsDonutChart
             data={referralSources}
@@ -386,7 +386,7 @@ export default function AnalyticsDemographicsTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel title="Age distribution" subtitle="Age bracket breakdown from application birthday fields">
           <AnalyticsBarChart
             data={ageDistribution}

@@ -118,9 +118,9 @@ export function detectOperationsAnomalies(kpis = {}) {
   const badges = {};
 
   if (slaComplianceRate < 70) {
-    badges.slaComplianceRate = { label: "SLA Critical <70%", severity: "danger" };
+    badges.slaComplianceRate = { label: "Turnaround Critical <70%", severity: "danger" };
   } else if (slaComplianceRate < 85) {
-    badges.slaComplianceRate = { label: "SLA Risk <85%", severity: "warning" };
+    badges.slaComplianceRate = { label: "Turnaround Risk <85%", severity: "warning" };
   }
 
   if (maintenanceRequests > 20) {

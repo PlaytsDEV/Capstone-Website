@@ -11,15 +11,16 @@ async function readTabSource(filename) {
   return readFile(path.join(__dirname, filename), "utf8");
 }
 
-test("AnalyticsPage provides export buttons on overview tab and binds registerTabExport for all other tabs", async () => {
+test("AnalyticsPage disallows export buttons on overview tab and binds registerTabExport for all other tabs", async () => {
   const source = await readTabSource("AnalyticsPage.jsx");
 
-  // Overview provides unified CSV and PDF exports
-  assert.match(source, /exportOverviewCsv/);
-  assert.match(source, /exportOverviewPdf/);
-  assert.match(source, /currentTabExport\?\.exportCsv && currentTabExport\?\.exportPdf/);
+  // Overview does not provide export handlers
+  assert.doesNotMatch(source, /exportOverviewCsv/);
+  assert.doesNotMatch(source, /exportOverviewPdf/);
+  assert.match(source, /activeTabNormalized === "overview" \? null/);
+  assert.match(source, /activeTabNormalized !== "overview"/);
 
-  // Tab export registration is passed down
+  // Tab export registration is passed down for detailed tabs
   assert.match(source, /const \[tabExports, setTabExports\] = useState\(\{\}\)/);
   assert.match(source, /registerExport:\s*\(exports\)\s*=>\s*registerTabExport\(activeTabNormalized,\s*exports\)/);
 });

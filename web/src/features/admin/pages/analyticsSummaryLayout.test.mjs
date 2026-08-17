@@ -97,3 +97,18 @@ test("analytics shared utilities support 365d and custom date range calculation"
   const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   assert.equal(diffDays, 346);
 });
+
+test("AnalyticsInsightSection defaults to collapsed and normalizes vertical gaps without redundant margins", async () => {
+  const tabSharedSource = await readSource("analyticsTabShared.js");
+
+  // AnalyticsInsightSection defaults to collapsed
+  assert.match(tabSharedSource, /defaultCollapsed\s*=\s*true/);
+  assert.match(tabSharedSource, /const\s*\[collapsed,\s*setCollapsed\]\s*=\s*useState\(defaultCollapsed\)/);
+
+  // MetricGrid does not force double margins with flex gap containers
+  assert.doesNotMatch(tabSharedSource, /<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3\.5 mb-6">/);
+
+  // AnalyticsInsightSection removes bottom border when collapsed to prevent double-border lines
+  assert.match(tabSharedSource, /collapsed \? "" : "border-b border-border"/);
+});
+

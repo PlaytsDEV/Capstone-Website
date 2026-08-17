@@ -26,12 +26,14 @@ export default function PeriodComparisonCard({
         {rows.map((row, idx) => {
           const isUp =
             row.changeType === "up" ||
-            (typeof row.change === "string" &&
-              (row.change.includes("↑") || row.change.includes("+")));
+            (row.changeType !== "neutral" &&
+              typeof row.change === "string" &&
+              (row.change.includes("↑") || /(?:^|\s)\+\s*\d/.test(row.change)));
           const isDown =
             row.changeType === "down" ||
-            (typeof row.change === "string" &&
-              (row.change.includes("↓") || row.change.includes("-")));
+            (row.changeType !== "neutral" &&
+              typeof row.change === "string" &&
+              (row.change.includes("↓") || /(?:^|\s)-\s*\d/.test(row.change)));
 
           let changeColor = "text-muted-foreground";
           if (isUp) changeColor = "text-emerald-600 dark:text-emerald-400";

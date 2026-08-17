@@ -85,7 +85,7 @@ export default function SupportTrendsTab({ dateRange = "30d", branch = "All" }) 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       <ExecutiveAiSummaryCard 
-        title="Copilot Support Intelligence" 
+        title="Support Intelligence" 
         findings={findings} 
         recommendations={recommendations} 
       />
@@ -94,7 +94,7 @@ export default function SupportTrendsTab({ dateRange = "30d", branch = "All" }) 
         {[
           { label: "Total Tickets", value: "142", trend: "+12%", icon: Ticket },
           { label: "Avg Resolution", value: "4.2 hrs", trend: "-15%", icon: Clock },
-          { label: "SLA Met", value: "94%", trend: "+2%", icon: CheckCircle2 },
+          { label: "Resolved On-Time", value: "94%", trend: "+2%", icon: CheckCircle2 },
           { label: "Open Backlog", value: "18", trend: "-5", icon: BarChart3 }
         ].map((stat, idx) => (
           <div key={idx} className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4">

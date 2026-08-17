@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   Bed,
+  Building2,
   ExternalLink,
   PhilippinePeso,
   Wrench,
@@ -384,7 +385,7 @@ export default function AnalyticsConsolidatedTab({
         onExecuteAction={handleExecuteAction}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel
           title="Branch performance"
           subtitle="Occupancy, collections, and maintenance pressure by branch"
@@ -429,7 +430,7 @@ export default function AnalyticsConsolidatedTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ReportChartPanel
           title="Occupancy trend"
           subtitle={occupancyChartConfig.subtitle}
@@ -505,33 +506,88 @@ export default function AnalyticsConsolidatedTab({
         subtitle="A compact owner summary matrix for cross-branch portfolio review"
         actions={<ExportButtons onCsv={exportCsv} onPdf={exportPdf} />}
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {branchRows.map((item) => (
-            <div key={item.branch} className="bg-muted/30 border border-border rounded-lg p-3.5 flex flex-col justify-between space-y-2">
-              <div>
-                <span className="text-xs font-bold text-foreground">{item.label}</span>
-                <div className="text-[18px] font-semibold text-foreground mt-1">
-                  {item.occupancyRate || 0}% <span className="text-xs font-normal text-muted-foreground">occupancy</span>
+        <div className={`grid grid-cols-1 ${branchRows.length <= 2 ? "md:grid-cols-2" : "md:grid-cols-2 lg:grid-cols-3"} gap-4`}>
+          {branchRows.map((item) => {
+            const occupancyRate = Number(item.occupancyRate || 0);
+            const occupancyPercentClamped = Math.min(100, Math.max(0, occupancyRate));
+
+            return (
+              <div
+                key={item.branch}
+                className="bg-card dark:bg-card/40 border border-border rounded-xl p-4 flex flex-col justify-between gap-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm hover:border-slate-300 dark:hover:border-slate-700"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-muted/60 flex items-center justify-center text-foreground shrink-0 border border-border">
+                        <Building2 className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-foreground leading-tight">{item.label}</h4>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">Financial & Yield Summary</p>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-xl font-bold tracking-tight text-foreground tabular-nums">
+                        {occupancyRate}%
+                      </div>
+                      <span className="text-[11px] font-medium text-muted-foreground block -mt-0.5">
+                        Occupancy
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Visual Occupancy Micro-bar */}
+                  <div className="space-y-1">
+                    <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500 bg-primary"
+                        style={{ width: `${occupancyPercentClamped}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[10px] text-muted-foreground font-medium">
+                      <span>Capacity: {item.totalCapacity ? `${item.totalCapacity} beds` : "N/A"}</span>
+                      <span>{item.availableBeds || 0} vacant</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Structured Metrics Sub-grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 border-t border-border/70 text-xs">
+                  <div className="space-y-0.5">
+                    <span className="text-[11px] text-muted-foreground block font-medium">Collected</span>
+                    <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                      {formatPeso(item.collectedRevenue || 0)}
+                    </p>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <span className="text-[11px] text-muted-foreground block font-medium">Overdue</span>
+                    <p className="text-sm font-bold text-rose-600 dark:text-rose-400 tabular-nums">
+                      {formatPeso(item.overdueAmount || 0)}
+                    </p>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <span className="text-[11px] text-muted-foreground block font-medium">Available</span>
+                    <p className="text-sm font-bold text-foreground tabular-nums">
+                      {item.availableBeds || 0} <span className="text-[11px] font-normal text-muted-foreground">beds</span>
+                    </p>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <span className="text-[11px] text-muted-foreground block font-medium">Collection Rate</span>
+                    <p className="text-sm font-bold text-foreground tabular-nums">
+                      {item.collectionRate || 0}%
+                    </p>
+                  </div>
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t border-border/60">
-                <div className="flex justify-between">
-                  <span>Collected:</span>
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatPeso(item.collectedRevenue || 0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Overdue:</span>
-                  <span className="font-semibold text-rose-600 dark:text-rose-400">{formatPeso(item.overdueAmount || 0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Available Beds:</span>
-                  <span className="font-medium text-foreground">{item.availableBeds || 0}</span>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {!branchRows.length ? (
-            <p className="text-xs text-muted-foreground italic col-span-3">No branch rows are available for this scope yet.</p>
+            <p className="text-xs text-muted-foreground italic col-span-2 py-4 text-center">No branch rows are available for this scope yet.</p>
           ) : null}
         </div>
       </ReportChartPanel>

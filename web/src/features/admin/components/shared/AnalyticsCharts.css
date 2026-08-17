@@ -76,3 +76,23 @@
   font-size: 0.8rem;
   color: #64748b;
 }
+
+/* Dark mode theme adaptations */
+html[data-theme="dark"] .analytics-chart__tooltip {
+  background: rgba(15, 23, 42, 0.96);
+  border-color: rgba(51, 65, 85, 0.6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme="dark"] .analytics-chart__tooltip-title,
+html[data-theme="dark"] .analytics-chart__tooltip-row strong,
+html[data-theme="dark"] .analytics-chart__center-label strong {
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .analytics-chart__tooltip-row,
+html[data-theme="dark"] .analytics-chart__legend-item,
+html[data-theme="dark"] .analytics-chart__center-label span {
+  color: #94a3b8;
+}
+

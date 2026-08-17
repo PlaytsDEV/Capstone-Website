@@ -221,9 +221,9 @@ export function ExportButtons({
   );
 }
 
-export function MetricGrid({ items }) {
+export function MetricGrid({ items, className = "" }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
+    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 ${className}`.trim()}>
       {items.map((item) => (
         <ReportMetricCard
           key={item.label}
@@ -284,8 +284,10 @@ export function AnalyticsInsightSection({
   isError,
   suggestedPrompts = [],
   onExecuteAction = null,
+  defaultCollapsed = true,
+  className = "",
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [activeQuestion, setActiveQuestion] = useState("");
   const [isAsking, setIsAsking] = useState(false);
   const [customData, setCustomData] = useState(null);
@@ -333,7 +335,7 @@ export function AnalyticsInsightSection({
 
   if (isLoading) {
     return (
-      <div className="mb-6 p-3.5 rounded-xl bg-card border border-border flex items-center gap-3 text-xs text-muted-foreground">
+      <div className={`p-3.5 rounded-xl bg-card border border-border flex items-center gap-3 text-xs text-muted-foreground ${className}`.trim()}>
         <LoaderCircle size={14} className="animate-spin text-primary" />
         <span>Reviewing data for the {reportLabel} report...</span>
       </div>
@@ -343,9 +345,9 @@ export function AnalyticsInsightSection({
   if (isError || !insight) return null;
 
   return (
-    <div className="mb-6 rounded-xl bg-card border border-border overflow-hidden transition-all shadow-xs">
+    <div className={`rounded-xl bg-card border border-border overflow-hidden transition-all shadow-xs ${className}`.trim()}>
       <div
-        className="px-4 py-3 bg-muted/40 flex items-center justify-between cursor-pointer border-b border-border"
+        className={`px-4 py-3 bg-muted/40 flex items-center justify-between cursor-pointer transition-colors ${collapsed ? "" : "border-b border-border"}`}
         onClick={() => setCollapsed((prev) => !prev)}
         role="button"
         tabIndex={0}
@@ -458,9 +460,9 @@ export function detectOperationsAnomalies(kpis = {}) {
   const badges = {};
 
   if (slaComplianceRate < 70) {
-    badges.slaComplianceRate = { label: "SLA Critical <70%", severity: "danger" };
+    badges.slaComplianceRate = { label: "Turnaround Critical <70%", severity: "danger" };
   } else if (slaComplianceRate < 85) {
-    badges.slaComplianceRate = { label: "SLA Risk <85%", severity: "warning" };
+    badges.slaComplianceRate = { label: "Turnaround Risk <85%", severity: "warning" };
   }
 
   if (maintenanceRequests > 20) {
