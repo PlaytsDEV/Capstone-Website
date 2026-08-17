@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const { ObjectId } = require('mongodb');
+const { Types: { ObjectId } } = require('mongoose');
 const { getDb } = require('../config/database');
 const { notifyNewAnnouncement } = require('../services/pushService');
 
@@ -100,7 +100,7 @@ function resolveAuthorName(doc, authorNameMap = new Map()) {
   for (const candidate of candidates) {
     if (!candidate) continue;
     if (typeof candidate === 'object' && candidate !== null) {
-      if (candidate._bsontype === 'ObjectID' || candidate.constructor?.name === 'ObjectId') {
+      if (['ObjectId', 'ObjectID'].includes(candidate._bsontype) || candidate.constructor?.name === 'ObjectId') {
         const idStr = candidate.toString();
         if (authorNameMap.has(idStr)) return authorNameMap.get(idStr);
       } else {
@@ -185,7 +185,7 @@ async function getAllAnnouncements(req, res) {
     announcements.forEach((doc) => {
       [doc.author_name, doc.authorName, doc.publishedBy, doc.postedBy, doc.createdBy, doc.source_label].forEach((val) => {
         if (!val) return;
-        if (typeof val === 'object' && (val._bsontype === 'ObjectID' || val.constructor?.name === 'ObjectId')) {
+        if (typeof val === 'object' && (['ObjectId', 'ObjectID'].includes(val._bsontype) || val.constructor?.name === 'ObjectId')) {
           authorIds.add(val.toString());
         } else if (typeof val === 'string' && isHexObjectId(val)) {
           authorIds.add(val.trim());
@@ -196,7 +196,6 @@ async function getAllAnnouncements(req, res) {
     const authorNameMap = new Map();
     if (authorIds.size > 0 && typeof db.collection === 'function') {
       try {
-        const { ObjectId } = require('mongodb');
         const mongoIds = Array.from(authorIds).map((id) => {
           try { return new ObjectId(id); } catch (_) { return null; }
         }).filter(Boolean);
