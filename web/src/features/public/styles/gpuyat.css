@@ -1110,9 +1110,9 @@
    Accessibility Enhancements
    ============================================ */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *:not(.animate-spin):not([class*="animate-spin"]):not([class*="spin"]):not([class*="spinner"]):not(.global-spinner):not(.sk-shimmer):not(.sk-spinner),
+  *:not(.animate-spin):not([class*="animate-spin"]):not([class*="spin"]):not([class*="spinner"]):not(.global-spinner):not(.sk-shimmer):not(.sk-spinner)::before,
+  *:not(.animate-spin):not([class*="animate-spin"]):not([class*="spin"]):not([class*="spinner"]):not(.global-spinner):not(.sk-shimmer):not(.sk-spinner)::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

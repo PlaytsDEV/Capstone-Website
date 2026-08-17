@@ -179,7 +179,7 @@ export default function EditReadingModal({
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-3.5 bg-muted/10">
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-rose-400 dark:hover:bg-rose-950/40 dark:hover:border-rose-800"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 active:scale-[0.98] transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-rose-400 dark:hover:bg-rose-950/40 dark:hover:border-rose-800"
             onClick={() => {
               if (reading.id) {
                 onClose();
@@ -196,7 +196,7 @@ export default function EditReadingModal({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="rounded-lg border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground active:scale-[0.98] transition-all disabled:opacity-50"
+              className="rounded-lg border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground active:scale-[0.98] transition-colors duration-150 disabled:opacity-50"
               onClick={onClose}
               disabled={isSaving}
             >
@@ -204,7 +204,7 @@ export default function EditReadingModal({
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A1628] px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#13243D] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[#D4AF37] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A1628] px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#13243D] active:scale-[0.98] transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[#D4AF37] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
               onClick={onSave}
               disabled={isSaveDisabled}
               title={

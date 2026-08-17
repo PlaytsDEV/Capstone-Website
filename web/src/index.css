@@ -188,13 +188,25 @@ section[id] {
     scroll-behavior: auto;
   }
 
-  *,
-  *::before,
-  *::after {
+  /* Disable non-essential decorative animations, but preserve functional status spinners and feedback */
+  *:not(.animate-spin):not([class*="animate-spin"]):not([class*="spin"]):not([class*="spinner"]):not(.global-spinner):not(.sk-shimmer):not(.sk-spinner),
+  *:not(.animate-spin):not([class*="animate-spin"]):not([class*="spin"]):not([class*="spinner"]):not(.global-spinner):not(.sk-shimmer):not(.sk-spinner)::before,
+  *:not(.animate-spin):not([class*="animate-spin"]):not([class*="spin"]):not([class*="spinner"]):not(.global-spinner):not(.sk-shimmer):not(.sk-spinner)::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ── Hardware-Accelerated Continuous Spinners ───────────────── */
+.animate-spin,
+[class*="animate-spin"],
+[class*="-spin"] {
+  display: inline-block;
+  transform-origin: center center;
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 /* ── Theme Toggle Animations ─────────────────────────────── */

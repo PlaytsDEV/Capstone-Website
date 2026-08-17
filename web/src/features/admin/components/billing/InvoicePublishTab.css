@@ -125,6 +125,11 @@
 }
 
 .ipt-spin {
+  display: inline-block;
+  transform-origin: center center;
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
   animation: ipt-spin 0.8s linear infinite;
 }
 

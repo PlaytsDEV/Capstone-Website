@@ -293,6 +293,11 @@
 }
 
 .admin-announcements-spin {
+  display: inline-block;
+  transform-origin: center center;
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
   animation: admin-announcements-rotate 1s linear infinite;
 }
 
