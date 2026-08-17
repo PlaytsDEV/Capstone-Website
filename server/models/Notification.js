@@ -53,6 +53,7 @@ const notificationSchema = new mongoose.Schema(
         "penalty_applied",
         "contract_expiring",
         "contract_prepared",
+        "contract_document_ready",
         "contract_incomplete",
         "contract_error",
         "grace_period_warning",
@@ -103,6 +104,22 @@ const notificationSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+
+    // --- Idempotency ---
+    // Deterministic key (e.g. "contract_document_ready:<contractId>:<variant>:<version>")
+    // for notification events that can legitimately be triggered more than
+    // once for the same underlying state (retries, redeploys, concurrent
+    // requests, duplicate admin submissions) without that meaning a NEW
+    // event actually happened. Optional — most notification types have no
+    // retry-duplication risk and pass null here, which the sparse index
+    // below excludes from the uniqueness constraint. A unique DB-level
+    // index (not an app-level check-then-insert) is what actually makes
+    // this safe under concurrency — see notificationService.js's
+    // createNotificationOnce().
+    dedupeKey: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -115,6 +132,7 @@ const notificationSchema = new mongoose.Schema(
 
 notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, createdAt: -1 });
+notificationSchema.index({ dedupeKey: 1 }, { unique: true, sparse: true });
 
 // TTL: auto-delete read notifications after 90 days
 notificationSchema.index(
