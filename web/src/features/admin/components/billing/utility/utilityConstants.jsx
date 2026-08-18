@@ -191,9 +191,62 @@ export const getHistoryStatusClasses = (status) => {
   }
 };
 
+export const getRoomStatusInfo = (room) => {
+  const status = String(room?.billingState || room?.displayStatus || "no_active_cycle").toLowerCase();
+  switch (status) {
+    case "ready_to_send":
+    case "ready":
+      return {
+        label: "Ready to send",
+        dotClass: "bg-sky-500",
+        textClass: "text-sky-700 dark:text-sky-400",
+      };
+    case "sent":
+    case "finalized":
+      return {
+        label: "Sent",
+        dotClass: "bg-slate-400",
+        textClass: "text-slate-600 dark:text-slate-400",
+      };
+    case "open":
+      return {
+        label: "Active cycle",
+        dotClass: "bg-emerald-500",
+        textClass: "text-emerald-700 dark:text-emerald-400",
+      };
+    case "paid":
+      return {
+        label: "Paid",
+        dotClass: "bg-emerald-500",
+        textClass: "text-emerald-700 dark:text-emerald-400",
+      };
+    case "overdue":
+      return {
+        label: "Overdue",
+        dotClass: "bg-rose-500",
+        textClass: "text-rose-700 dark:text-rose-400",
+      };
+    case "partially-paid":
+    case "partially_paid":
+    case "revised":
+      return {
+        label: "Revised",
+        dotClass: "bg-amber-500",
+        textClass: "text-amber-700 dark:text-amber-400",
+      };
+    case "no_active_cycle":
+    default:
+      return {
+        label: "No active bill",
+        dotClass: "bg-slate-300 dark:bg-slate-600",
+        textClass: "text-slate-500 dark:text-slate-400",
+      };
+  }
+};
+
 export const getRoomBadgeLabel = (room) => {
-  if (!room) return "No Active Bill";
-  return room.billingLabel || "No Active Bill";
+  if (!room) return "No active bill";
+  return room.billingLabel || getRoomStatusInfo(room).label;
 };
 
 export const canEditPeriod = (period) =>

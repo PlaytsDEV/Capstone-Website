@@ -22,6 +22,7 @@ import {
   ChevronRight,
   DoorOpen,
   Check,
+  MessageSquare,
 } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { usePermissions } from "../../../shared/hooks/usePermissions";
@@ -64,6 +65,7 @@ import AnalyticsFinancialsTab from "./AnalyticsFinancialsTab";
 import AnalyticsMonitoringTab from "./AnalyticsMonitoringTab";
 import AnalyticsDemographicsTab from "./AnalyticsDemographicsTab";
 import AnalyticsAcquisitionTab from "./AnalyticsAcquisitionTab";
+import AnalyticsSupportChatTab from "./AnalyticsSupportChatTab";
 import AdminPageHeader from "../../../shared/components/AdminPageHeader";
 
 function MiniSparkline({ data = [], stroke = "#2563eb", width = 54, height = 20 }) {
@@ -373,6 +375,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
       { id: "occupancy", label: "Occupancy", icon: BedDouble, iconClassName: "text-blue-500 dark:text-blue-400" },
       { id: "billing", label: "Billing & Revenue", icon: Receipt, iconClassName: "text-emerald-600 dark:text-emerald-400" },
       { id: "operations", label: "Operations", icon: Wrench, iconClassName: "text-amber-500 dark:text-amber-400" },
+      { id: "support", label: "Support & Chat", icon: MessageSquare, iconClassName: "text-sky-500 dark:text-sky-400" },
       { id: "demographics", label: "Demographics", icon: Users, iconClassName: "text-purple-500 dark:text-purple-400" },
       { id: "acquisition", label: "Lead Acquisition", icon: Target, iconClassName: "text-teal-500 dark:text-teal-400" },
       ...(isOwner
@@ -949,6 +952,9 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
           )}
           {activeTabNormalized === "operations" && (
             <AnalyticsOperationsTab {...detailSharedProps} />
+          )}
+          {activeTabNormalized === "support" && (
+            <AnalyticsSupportChatTab {...detailSharedProps} />
           )}
           {activeTabNormalized === "monitoring" && (
             <AnalyticsMonitoringTab {...detailSharedProps} />

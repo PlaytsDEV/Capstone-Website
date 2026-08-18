@@ -40,6 +40,7 @@ import {
   UserCheck,
   Wrench,
   X,
+  XCircle,
   Zap,
   ZoomIn,
   ZoomOut,

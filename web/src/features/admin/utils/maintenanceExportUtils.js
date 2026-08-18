@@ -125,7 +125,7 @@ export function resolveTenantFullName(req = {}) {
   if (req.tenant?.firstName) {
     return `${req.tenant.firstName} ${req.tenant.lastName || ""}`.trim();
   }
-  return "Resident";
+  return "Tenant";
 }
 
 /**
@@ -154,23 +154,38 @@ export function resolveTenantEmail(req = {}) {
  * Resolve room / unit label.
  */
 export function resolveRoomUnitLabel(req = {}) {
-  const room =
-    req.room ||
-    req.roomNumber ||
-    req.unitNumber ||
-    req.occupancyContext?.unitNumber ||
-    req.roomId?.roomNumber ||
-    req.roomId?.name ||
-    "";
-  const bed =
-    req.bedLabel ||
-    req.bedNumber ||
-    req.occupancyContext?.bedNumber ||
-    req.bed ||
-    "";
+  const rawRoom =
+    req.occupancyContext?.unitNumber
+      ? req.occupancyContext.unitNumber
+      : req.occupancy_context?.unitNumber
+      ? req.occupancy_context.unitNumber
+      : req.roomName ||
+        (typeof req.room === "object" && req.room !== null
+          ? req.room?.name || req.room?.roomNumber || req.room?.room_number || ""
+          : req.room) ||
+        req.roomNumber ||
+        req.room_number ||
+        req.unitNumber ||
+        (typeof req.roomId === "object" && req.roomId !== null
+          ? req.roomId?.name || req.roomId?.roomNumber || ""
+          : req.roomId) ||
+        "";
+
+  const rawBed =
+    req.occupancyContext?.bedNumber
+      ? req.occupancyContext.bedNumber
+      : req.occupancy_context?.bedNumber
+      ? req.occupancy_context.bedNumber
+      : req.bedLabel ||
+        req.bedNumber ||
+        (typeof req.bed === "object" && req.bed !== null ? req.bed?.bedNumber || req.bed?.name || "" : req.bed) ||
+        "";
+
+  const room = String(rawRoom || "").trim();
+  const bed = String(rawBed || "").trim();
 
   if (room && bed) return `${room} (${bed})`;
-  if (room) return String(room);
+  if (room) return room;
   if (bed) return `Bed ${bed}`;
   return "—";
 }
@@ -438,11 +453,6 @@ export async function handleExportMaintenancePDF({
     title: "Maintenance Management Report",
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
-    period: `Generated on ${new Date().toLocaleDateString("en-PH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })}`,
     reportType: "Maintenance",
     kpis: kpis.slice(0, 6),
     sections: [
@@ -451,7 +461,7 @@ export async function handleExportMaintenancePDF({
         title: "Filtered Maintenance Requests",
         description: `Export containing ${requests.length} maintenance records matching the active filter criteria.`,
         headers: ["ID", "Tenant", "Branch", "Room", "Category", "Urgency", "Status", "Contractor", "Cost", "Submitted"],
-        colWidths: [22, 28, 20, 16, 20, 16, 18, 22, 18, 16],
+        colWidths: [18, 24, 18, 16, 18, 15, 18, 18, 15, 18],
         rows: tableRows,
       },
     ],

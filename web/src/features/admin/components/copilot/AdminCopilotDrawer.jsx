@@ -5,9 +5,6 @@ import {
   Sparkles,
   RefreshCw,
   X,
-  FileText,
-  CheckCircle2,
-  Copy,
   LoaderCircle,
   Mic,
   MicOff,
@@ -559,9 +556,8 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                                 policyLink: msg.policyLink,
                               })
                             }
-                            className="inline-flex items-center gap-1 text-primary font-semibold hover:underline cursor-pointer truncate max-w-[70%]"
+                            className="text-primary font-semibold hover:underline cursor-pointer truncate max-w-[70%]"
                           >
-                            <FileText size={12} className="shrink-0" />
                             <span className="truncate">{msg.policyLink}</span>
                           </button>
                         ) : (
@@ -571,18 +567,12 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                         <button
                           type="button"
                           onClick={() => handleCopy(msg.id, copyableText)}
-                          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0 font-medium"
+                          className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0 font-medium"
                         >
                           {copiedId === msg.id ? (
-                            <>
-                              <CheckCircle2 size={12} className="text-emerald-600" />
-                              <span className="text-emerald-600 font-semibold">Copied!</span>
-                            </>
+                            <span className="text-emerald-600 font-semibold">Copied!</span>
                           ) : (
-                            <>
-                              <Copy size={12} />
-                              <span>Copy Steps</span>
-                            </>
+                            <span>Copy Steps</span>
                           )}
                         </button>
                       </div>

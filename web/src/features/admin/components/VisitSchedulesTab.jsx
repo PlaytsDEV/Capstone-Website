@@ -367,8 +367,8 @@ function VisitSchedulesTab() {
           setActionLoading(null);
         }
       },
-      "Visit marked as completed. Tenant can now submit their application.",
-      "Failed to mark visit as completed. Please try again.",
+      "Visit marked as completed. The applicant can now proceed with their tenancy application.",
+      "Unable to mark visit as completed. Please check your connection and try again.",
     );
   };
 
@@ -388,8 +388,8 @@ function VisitSchedulesTab() {
           setActionLoading(null);
         }
       },
-      "Applicant marked as no-show.",
-      "Failed to mark as no-show. Please try again.",
+      "Applicant marked as no-show successfully.",
+      "Unable to record no-show status. Please check your connection and try again.",
     );
   };
 
@@ -415,7 +415,7 @@ function VisitSchedulesTab() {
         await reservationApi.delete(id);
       },
       "Visit schedule deleted successfully.",
-      "Failed to delete visit schedule. Please try again.",
+      "Unable to delete visit schedule. Please check your connection and try again.",
     );
   };
 
@@ -447,7 +447,7 @@ function VisitSchedulesTab() {
         });
       },
       "History entry deleted successfully.",
-      "Failed to delete history entry. Please try again.",
+      "Unable to delete history entry. Please check your connection and try again.",
     );
   };
 
@@ -613,7 +613,7 @@ function VisitSchedulesTab() {
       });
     } catch (err) {
       console.error("[VisitSchedulesExport] PDF generation failed:", err);
-      showNotification("Failed to generate PDF report. Please try again.", "error");
+      showNotification("Unable to generate PDF report. Please try again.", "error");
     }
   }, [activeFilterLabel, branchFilter, counts, displayData, searchTerm]);
 

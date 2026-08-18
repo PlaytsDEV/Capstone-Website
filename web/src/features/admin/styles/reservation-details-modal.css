@@ -331,8 +331,26 @@
   transition: border-color 0.15s ease;
 }
 
-.rdm-collapsible-card:hover {
+.rdm-collapsible-card:hover:not(.rdm-collapsible-card--disabled) {
   border-color: #cbd5e1;
+}
+
+.rdm-collapsible-card--disabled {
+  opacity: 0.55;
+  background: #f8fafc;
+}
+
+.rdm-collapsible-card--disabled .rdm-collapsible-header {
+  cursor: not-allowed;
+  background: #f8fafc;
+}
+
+.rdm-collapsible-card--disabled .rdm-collapsible-header:hover {
+  background: #f8fafc;
+}
+
+.rdm-collapsible-card--disabled .rdm-collapsible-chevron {
+  opacity: 0.35;
 }
 
 .rdm-collapsible-header {
@@ -480,19 +498,24 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   font-size: 0.78rem;
+  min-width: 0;
 }
 
 .rdm-readiness-label {
   color: #64748b;
   font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .rdm-readiness-value {
   font-weight: 600;
   color: #0f172a;
   text-align: right;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .rdm-section-header-flex {
@@ -945,12 +968,16 @@
 .rdm-summary-badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 0.76rem;
-  font-weight: 700;
-  line-height: 1.2;
+  gap: 5.5px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  flex-shrink: 0;
+  user-select: none;
 }
 
 .rdm-summary-badge-dot {
@@ -994,19 +1021,29 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
-.rdm-view-receipt-btn:hover {
+.rdm-view-receipt-btn:hover:not(:disabled) {
   background: #f8fafc;
   border-color: #94a3b8;
   color: #0284c7;
 }
 
-.rdm-view-receipt-btn:active {
+.rdm-view-receipt-btn:active:not(:disabled) {
   transform: translateY(1px);
 }
 
 .rdm-view-receipt-btn:focus-visible {
   outline: 2px solid #0284c7;
   outline-offset: 1px;
+}
+
+.rdm-view-receipt-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+  box-shadow: none;
+  transform: none;
 }
 
 .rdm-actions-card {
@@ -1454,7 +1491,7 @@
 
 /* ── Collapsible Activity Timeline ── */
 .rdm-side-collapsible-card {
-  padding: 16px;
+  padding: 20px;
 }
 
 .rdm-side-collapsible-header {
@@ -1462,27 +1499,51 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 0;
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 0 0 8px 0;
   background: transparent;
   border: none;
+  border-bottom: 2px solid #f1f5f9;
   cursor: pointer;
   text-align: left;
+  transition: opacity 0.15s ease;
+}
+
+.rdm-side-collapsible-header:hover {
+  opacity: 0.85;
+}
+
+.rdm-side-collapsible-header .rdm-side-title {
+  margin: 0;
+  padding: 0;
+  border-bottom: none;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
 }
 
 .rdm-side-collapsible-title-wrap {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 20px;
 }
 
 .rdm-timeline-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.72rem;
   font-weight: 650;
+  line-height: 1;
   color: #475569;
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
   padding: 2px 7px;
   border-radius: 999px;
+  height: 20px;
+  box-sizing: border-box;
 }
 
 .rdm-timeline-current-highlight {

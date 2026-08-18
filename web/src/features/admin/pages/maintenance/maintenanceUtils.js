@@ -783,7 +783,21 @@ export const getAvatarPalette = (name = "") => {
 
 export const formatCleanRoomName = (rawRoom) => {
   if (!rawRoom) return "";
-  let clean = String(rawRoom).trim();
+  let clean = "";
+  if (typeof rawRoom === "object" && rawRoom !== null) {
+    clean = String(
+      rawRoom.name ||
+        rawRoom.roomNumber ||
+        rawRoom.room_number ||
+        rawRoom.unitNumber ||
+        rawRoom.unit ||
+        rawRoom.room ||
+        ""
+    ).trim();
+  } else {
+    clean = String(rawRoom).trim();
+  }
+  if (!clean || clean === "[object Object]") return "";
   // Remove duplicate branch acronyms if present, e.g. "GP - Room 803" or "GD - Room 101" or "GP 803"
   clean = clean.replace(/^(GP|GD|GIL|GUAD)\s*[-:]?\s*/i, "").trim();
   if (/^(unit|bed|suite|room)\b/i.test(clean)) {
@@ -1302,12 +1316,57 @@ export const parseReportSummarySections = (summary, reportType = "admin") => {
 
 export const getRequestReportMeta = (request) => {
   const branch = getRequestBranch(request);
+  const rawRoomCandidate =
+    request?.occupancyContext?.unitNumber
+      ? `Unit ${request.occupancyContext.unitNumber}`
+      : request?.occupancy_context?.unitNumber
+      ? `Unit ${request.occupancy_context.unitNumber}`
+      : request?.roomName ||
+        (typeof request?.room === "object" && request?.room !== null
+          ? request?.room?.name || request?.room?.roomNumber || request?.room?.room_number || ""
+          : request?.room) ||
+        request?.room_number ||
+        request?.roomNumber ||
+        (typeof request?.roomId === "object" && request?.roomId !== null
+          ? request?.roomId?.name || request?.roomId?.roomNumber || ""
+          : request?.roomId) ||
+        (typeof request?.unit === "object" && request?.unit !== null
+          ? request?.unit?.name || request?.unit?.unitNumber || ""
+          : request?.unit) ||
+        request?.tenant?.room_number ||
+        (typeof request?.tenant?.room === "object" && request?.tenant?.room !== null
+          ? request?.tenant?.room?.name || request?.tenant?.room?.roomNumber || ""
+          : request?.tenant?.room) ||
+        "";
+
+  const cleanRoom =
+    formatCleanRoomName(rawRoomCandidate) ||
+    (typeof rawRoomCandidate === "string" ? rawRoomCandidate : "") ||
+    REPORT_NA;
+
+  const tenantName =
+    request?.tenant?.full_name ||
+    request?.tenant?.fullName ||
+    request?.tenantName ||
+    request?.user?.fullName ||
+    (request?.tenant?.firstName
+      ? `${request.tenant.firstName} ${request.tenant.lastName || ""}`.trim()
+      : "") ||
+    REPORT_NA;
+
+  const userId =
+    request?.tenant?.user_id ||
+    request?.tenant?.userId ||
+    request?.user_id ||
+    request?.userId ||
+    REPORT_NA;
+
   return {
-    requestId: request?.request_id || REPORT_NA,
-    tenantName: request?.tenant?.full_name || request?.tenantName || REPORT_NA,
-    userId: request?.tenant?.user_id || request?.user_id || REPORT_NA,
+    requestId: request?.request_id || request?.ticketId || request?._id || REPORT_NA,
+    tenantName,
+    userId,
     branch: branch ? formatBranchLabel(branch) : REPORT_NA,
-    room: request?.roomName || request?.room || request?.roomNumber || request?.unit || REPORT_NA,
+    room: cleanRoom,
     requestType: request?.request_type ? getMaintenanceTypeMeta(request.request_type).label : REPORT_NA,
     urgency: request?.urgency ? getMaintenanceUrgencyMeta(request.urgency).label : REPORT_NA,
     status: request?.status ? formatMaintenanceStatus(request.status) : REPORT_NA,

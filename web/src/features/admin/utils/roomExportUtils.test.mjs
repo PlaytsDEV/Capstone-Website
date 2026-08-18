@@ -155,7 +155,7 @@ test("formatRoomsForCSV formats room records safely with calculations", () => {
 
   // Row 2
   assert.equal(rows[1].roomNumber, "201");
-  assert.equal(rows[1].type, "Private");
+  assert.equal(rows[1].type, "Private Room");
   assert.equal(rows[1].occupancyRatio, "0/1");
   assert.equal(rows[1].status, "Available");
   assert.equal(rows[1].monthlyRent, "12000.00");

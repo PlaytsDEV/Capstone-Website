@@ -42,7 +42,7 @@ export const PERMISSION_CATEGORIES = [
       {
         key: "manageBilling",
         label: "Manage Billing & Payments",
-        description: "Generate monthly utility billings, verify resident payment receipts, and assess penalties",
+        description: "Generate monthly utility billings, verify tenant payment receipts, and assess penalties",
         icon: Receipt,
       },
       {
@@ -68,7 +68,7 @@ export const PERMISSION_CATEGORIES = [
       {
         key: "manageAnnouncements",
         label: "Manage Announcements",
-        description: "Compose, publish, and schedule broadcast notices to resident portals",
+        description: "Compose, publish, and schedule broadcast notices to tenant portals",
         icon: Megaphone,
       },
     ],
@@ -76,13 +76,13 @@ export const PERMISSION_CATEGORIES = [
   {
     id: "admin",
     title: "Administration & Security",
-    description: "Resident directory and branch staff user accounts",
+    description: "Tenant directory and branch staff user accounts",
     icon: Users,
     permissions: [
       {
         key: "manageTenants",
         label: "Manage Tenants",
-        description: "Access resident directories, lease agreements, emergency contacts, and move-out records",
+        description: "Access tenant directories, lease agreements, emergency contacts, and move-out records",
         icon: Users,
       },
       {
@@ -103,21 +103,25 @@ export const PRESET_DEFINITIONS = [
   {
     id: "full",
     label: "Full Access",
+    tooltip: "Grant all 8 system operational capabilities",
     keys: ALL_PERMISSION_KEYS,
   },
   {
     id: "operations",
     label: "Operations Only",
+    tooltip: "Grant reservation, room, maintenance, and tenant management",
     keys: ["manageReservations", "manageRooms", "manageMaintenance", "manageTenants"],
   },
   {
     id: "financials",
     label: "Financials Only",
+    tooltip: "Grant billing, payments, and financial analytics reports",
     keys: ["manageBilling", "viewReports"],
   },
   {
     id: "clear",
     label: "Clear All",
+    tooltip: "Revoke all administrative capabilities for this account",
     keys: [],
     danger: true,
   },
@@ -217,7 +221,7 @@ export default function PermissionEditor({
       {/* Header */}
       <div className="pe-header">
         <div className="pe-title-block">
-          <div className="pe-icon-badge">
+          <div className="pe-header-icon">
             <Shield size={18} />
           </div>
           <div>
@@ -229,12 +233,14 @@ export default function PermissionEditor({
         </div>
 
         {isOwnerTarget ? (
-          <span className="pe-badge pe-badge-full">
-            <CheckCircle2 size={13} /> Full Owner Access
+          <span className="pe-badge-owner">
+            <span className="pe-status-dot pe-status-dot--granted" />
+            Full Owner Access
           </span>
         ) : (
           <div className="pe-active-indicator">
             <span className="pe-count-badge">
+              <span className="pe-status-dot pe-status-dot--granted" />
               <strong>{activeCount}</strong> / {ALL_PERMISSION_KEYS.length} Capabilities Granted
             </span>
           </div>
@@ -244,7 +250,7 @@ export default function PermissionEditor({
       {/* Quick Role Presets Toolbar */}
       {!isOwnerTarget && (
         <div className="pe-presets-bar">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="pe-presets-label">
               <Sparkles size={13} /> Quick Presets:
             </span>
@@ -259,7 +265,8 @@ export default function PermissionEditor({
                       preset.danger ? "pe-preset-chip-danger" : ""
                     } ${isSelected ? "pe-preset-chip--active" : ""}`}
                     onClick={() => applyPreset(preset.keys)}
-                    title={`Apply ${preset.label} preset`}
+                    title={preset.tooltip || `Apply ${preset.label} preset`}
+                    aria-pressed={isSelected}
                   >
                     <span>{preset.label}</span>
                     {isSelected && <span className="pe-preset-dot" />}
@@ -285,8 +292,8 @@ export default function PermissionEditor({
             <div key={category.id} className="pe-category-group">
               <div className="pe-category-header">
                 <div className="pe-category-title flex items-center gap-2">
-                  <div className="pe-category-icon-box">
-                    <CategoryIcon size={15} />
+                  <div className="pe-category-icon">
+                    <CategoryIcon size={16} />
                   </div>
                   <div>
                     <h5>{category.title}</h5>
@@ -362,11 +369,20 @@ export default function PermissionEditor({
                         <div className="pe-item-title-row">
                           <span className="pe-item-label">{perm.label}</span>
                           <span
-                            className={`pe-status-pill ${
-                              isActive ? "pill-active" : "pill-inactive"
+                            className={`pe-status-badge ${
+                              isActive
+                                ? "pe-status-badge--granted"
+                                : "pe-status-badge--restricted"
                             }`}
                           >
-                            {isActive ? "Granted" : "Restricted"}
+                            <span
+                              className={`pe-status-dot ${
+                                isActive
+                                  ? "pe-status-dot--granted"
+                                  : "pe-status-dot--restricted"
+                              }`}
+                            />
+                            <span>{isActive ? "Granted" : "Restricted"}</span>
                           </span>
                         </div>
                         <span className="pe-item-desc">{perm.description}</span>

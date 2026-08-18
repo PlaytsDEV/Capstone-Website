@@ -1,6 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { X, FileText } from "lucide-react";
+import { X } from "lucide-react";
 
 export default function AdminSopReferenceModal({ sop, onClose }) {
   if (!sop) return null;
@@ -12,8 +12,7 @@ export default function AdminSopReferenceModal({ sop, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-border bg-card">
-          <div className="flex items-center gap-2 text-foreground font-semibold">
-            <FileText size={18} className="text-primary shrink-0" />
+          <div className="text-foreground font-semibold">
             <span>Standard Operating Procedure</span>
           </div>
           <button

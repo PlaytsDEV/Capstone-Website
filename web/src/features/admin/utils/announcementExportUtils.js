@@ -177,11 +177,6 @@ export async function handleExportAnnouncementsPDF({
     title: "Announcements & Policy Broadcasts Report",
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
-    period: `Generated on ${new Date().toLocaleDateString("en-PH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })}`,
     reportType: "Announcements",
     kpis,
     sections: [
@@ -190,7 +185,7 @@ export async function handleExportAnnouncementsPDF({
         title: "Announcements & Policy Records List",
         description: `Official management report containing ${announcements.length} broadcast records matching active filters.`,
         headers: ["Title", "Type", "Category", "Branch", "Status", "Effective / Start", "Pinned", "Ack Rate"],
-        colWidths: [44, 18, 22, 26, 20, 24, 16, 28],
+        colWidths: [36, 16, 18, 20, 18, 26, 14, 30],
         rows: tableRows,
       },
     ],

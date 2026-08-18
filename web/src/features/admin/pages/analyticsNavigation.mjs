@@ -2,8 +2,8 @@ export const ANALYTICS_SUMMARY_PATH = "/admin/analytics";
 export const ANALYTICS_DETAILS_PATH = "/admin/analytics/details";
 
 export const ANALYTICS_SUMMARY_RANGES = ["7d", "30d", "60d", "90d", "365d"];
-export const BASE_ANALYTICS_TABS = ["occupancy", "billing", "operations", "demographics", "acquisition"];
-export const OWNER_ANALYTICS_TABS = ["consolidated", "financials", "monitoring", "support"];
+export const BASE_ANALYTICS_TABS = ["occupancy", "billing", "operations", "support", "demographics", "acquisition"];
+export const OWNER_ANALYTICS_TABS = ["consolidated", "financials", "monitoring"];
 export const TAB_RANGE_OPTIONS = {
   occupancy: ["7d", "30d", "60d", "90d", "365d"],
   billing: ["3m", "6m", "12m"],

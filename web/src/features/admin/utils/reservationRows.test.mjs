@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  checkOverdueReservation,
   getArchivedByName,
   isNewReservation,
   mapReservationAdminRow,
@@ -116,5 +117,90 @@ test("mapReservationAdminRow considers pending cancellation requests as isNew", 
 
   assert.equal(row.isNew, true);
 });
+
+test("mapReservationAdminRow resolves moveInDate from intendedMoveInDate or targetMoveInDate", () => {
+  const row = mapReservationAdminRow({
+    _id: "res-intended-date",
+    status: "pending",
+    intendedMoveInDate: "2026-09-01T00:00:00.000Z",
+    roomId: { name: "Room 101", branch: "gil-puyat" },
+  });
+
+  assert.equal(row.moveInDate, "2026-09-01T00:00:00.000Z");
+});
+
+test("checkOverdueReservation returns false for new applicants with null or missing moveInDate", () => {
+  assert.equal(
+    checkOverdueReservation({ status: "pending", moveInDate: null }),
+    false,
+  );
+  assert.equal(
+    checkOverdueReservation({ status: "pending_application_review", moveInDate: undefined }),
+    false,
+  );
+  assert.equal(
+    checkOverdueReservation({ status: "pending", moveInDate: "" }),
+    false,
+  );
+});
+
+test("checkOverdueReservation returns false for early-stage applicants even with past intended dates", () => {
+  const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  assert.equal(
+    checkOverdueReservation({
+      status: "pending",
+      intendedMoveInDate: pastDate,
+    }),
+    false,
+  );
+  assert.equal(
+    checkOverdueReservation({
+      status: "pending_application_review",
+      moveInDate: pastDate,
+    }),
+    false,
+  );
+  assert.equal(
+    checkOverdueReservation({
+      status: "approved_for_payment",
+      moveInDate: pastDate,
+    }),
+    false,
+  );
+});
+
+test("checkOverdueReservation evaluates confirmed reserved bookings accurately", () => {
+  const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  // Confirmed reserved booking past move-in date -> true (Overdue)
+  assert.equal(
+    checkOverdueReservation({
+      status: "reserved",
+      moveInDate: pastDate,
+    }),
+    true,
+  );
+
+  // Confirmed reserved booking with future move-in date -> false (Not overdue)
+  assert.equal(
+    checkOverdueReservation({
+      status: "reserved",
+      moveInDate: futureDate,
+    }),
+    false,
+  );
+
+  // Archived reserved booking past date -> false (Archived records ignored)
+  assert.equal(
+    checkOverdueReservation({
+      status: "reserved",
+      moveInDate: pastDate,
+      isArchived: true,
+    }),
+    false,
+  );
+});
+
 
 

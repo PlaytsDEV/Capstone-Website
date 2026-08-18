@@ -245,11 +245,6 @@ export async function handleExportRoomsPDF({
     title: "Room Inventory & Capacity Report",
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
-    period: `Generated on ${new Date().toLocaleDateString("en-PH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })}`,
     reportType: "Room Inventory",
     kpis,
     sections: [
@@ -268,7 +263,7 @@ export async function handleExportRoomsPDF({
           "Status",
           "Monthly Rent",
         ],
-        colWidths: [18, 28, 22, 12, 24, 14, 14, 20, 22],
+        colWidths: [16, 26, 20, 12, 24, 16, 16, 22, 26],
         rows: tableRows,
       },
     ],
