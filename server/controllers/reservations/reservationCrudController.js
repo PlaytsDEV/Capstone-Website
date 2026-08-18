@@ -243,19 +243,21 @@ export const createReservation = async (req, res) => {
         code: "MISSING_REQUIRED_FIELDS",
       });
 
-    const moveInDateToCheck = payload.moveInDate || payload.intendedMoveInDate || payload.targetMoveInDate;
+    const moveInDateToCheck = payload.intendedMoveInDate || payload.targetMoveInDate || payload.moveInDate;
     if (moveInDateToCheck) {
-      if (!validateMoveInDate(moveInDateToCheck))
-        return res.status(400).json({
-          error: "Move-in date must be within 3 months from today.",
-          code: "MOVEIN_DATE_OUT_OF_RANGE",
-        });
-
-      if (dayjs(moveInDateToCheck).isBefore(dayjs().add(3, "day").startOf("day")))
+      if (dayjs(moveInDateToCheck).isBefore(dayjs().add(3, "day").startOf("day"))) {
         return res.status(400).json({
           error: "Move-in date must be at least 3 days from today.",
           code: "MOVEIN_DATE_TOO_SOON",
         });
+      }
+
+      if (!validateMoveInDate(moveInDateToCheck)) {
+        return res.status(400).json({
+          error: "Move-in date must be within 3 months from today.",
+          code: "MOVEIN_DATE_OUT_OF_RANGE",
+        });
+      }
     }
 
     let room = null;
@@ -339,7 +341,11 @@ export const createReservation = async (req, res) => {
             : null,
       targetMoveInDate: b.targetMoveInDate
         ? new Date(b.targetMoveInDate)
-        : null,
+        : b.intendedMoveInDate
+          ? new Date(b.intendedMoveInDate)
+          : b.moveInDate
+            ? new Date(b.moveInDate)
+            : null,
       leaseDuration: b.leaseDuration || null,
       billingEmail: (() => {
         const BASIC_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

@@ -8,6 +8,10 @@
 
 import Payment from "../../models/Payment.js";
 import { getBillRemainingAmount, roundMoney, syncBillAmounts } from "./billingPolicy.js";
+import {
+  generatePaymentReference,
+  isRawPaymentGatewayId,
+} from "../../utils/referenceGenerator.js";
 
 async function rollbackCreatedPayment(payment, paymentModel) {
   if (!payment) {
@@ -80,6 +84,13 @@ async function finalizeBillPayment({
     throw new Error("Bill has no remaining balance.");
   }
 
+  const rawExternalPaymentId =
+    externalPaymentId || (isRawPaymentGatewayId(referenceNumber) ? referenceNumber : null);
+  const cleanReferenceNumber =
+    referenceNumber && !isRawPaymentGatewayId(referenceNumber)
+      ? referenceNumber
+      : generatePaymentReference({ prefix: "PAY", date: now });
+
   const payment = await createPaymentRecord(
     paymentModel,
     {
@@ -96,18 +107,19 @@ async function finalizeBillPayment({
             : "other",
       provider: String(source || "").startsWith("paymongo") ? "paymongo" : null,
       providerPaymentId: String(source || "").startsWith("paymongo")
-        ? externalPaymentId
+        ? rawExternalPaymentId
         : null,
       externalSessionId: metadata?.sessionId || null,
       webhookEventReference: metadata?.eventId || null,
       settlementTimestamp: String(source || "").startsWith("paymongo") ? now : null,
       currency: String(metadata?.currency || "PHP").toUpperCase(),
-      referenceNumber,
+      referenceNumber: cleanReferenceNumber,
+      paymentReference: cleanReferenceNumber,
       status: "paid",
       verifiedBy: actorId,
       verifiedAt: actorId ? now : null,
       source,
-      externalPaymentId,
+      externalPaymentId: rawExternalPaymentId,
       processedAt: now,
       notes,
       metadata,

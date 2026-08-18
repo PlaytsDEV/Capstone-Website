@@ -503,6 +503,7 @@ export const APPLICANT_CREATE_ALLOWED_FIELDS = Object.freeze([
   "roomNumber",
   "selectedBed",
   "selectedAppliances",
+  "intendedMoveInDate",
   "targetMoveInDate",
   "leaseDuration",
   "billingEmail",
@@ -1202,7 +1203,7 @@ export const canResubmitSameViewingPreference = (
   return Boolean(
     submittedPreference === "physical_visit" &&
       normalizedRequested === "physical_visit" &&
-      reservation.scheduleRejected === true &&
+      (reservation.scheduleRejected === true || reservation.visitStatus === "no_show") &&
       !reservation.applicationSubmittedAt &&
       !hasReservationStatus(
         reservation.reservationStatus || reservation.status,
@@ -2038,6 +2039,8 @@ export const buildVisitEmailContext = ({
     !reservation.visitDate &&
     (previousVisitDate || previousVisitTime);
 
+  const isRescheduled = status === "rescheduled";
+
   return {
     to: reservation.userId?.email || "",
     tenantName:
@@ -2053,8 +2056,8 @@ export const buildVisitEmailContext = ({
     visitCode: reservation.visitCode || "",
     visitDate: usePreviousSchedule ? previousVisitDate : reservation.visitDate || null,
     visitTime: usePreviousSchedule ? previousVisitTime : reservation.visitTime || "",
-    previousVisitDate,
-    previousVisitTime,
+    previousVisitDate: isRescheduled ? previousVisitDate : null,
+    previousVisitTime: isRescheduled ? previousVisitTime : "",
     remarks: note || "",
     status,
   };

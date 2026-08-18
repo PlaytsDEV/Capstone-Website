@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import { AuditLog, Payment, Reservation, Room, Stay } from "../models/index.js";
 import { hasReservationStatus } from "../utils/lifecycleNaming.js";
 import { PAYMENT_METHODS } from "../config/paymentMethods.js";
+import {
+  generatePaymentReference,
+  isRawPaymentGatewayId,
+} from "../utils/referenceGenerator.js";
 
 const KNOWN_PAYMENT_METHODS = new Set(PAYMENT_METHODS);
 
@@ -316,6 +320,16 @@ export async function settleReservationDeposit({
       }
       const expectedCentavos = toCentavos(expectedAmount);
       const paidCentavos = toCentavos(paidAmount);
+
+      const rawExternalPaymentId =
+        externalPaymentId || (isRawPaymentGatewayId(paymentReference) ? paymentReference : null);
+      const cleanPaymentReference =
+        paymentReference && !isRawPaymentGatewayId(paymentReference)
+          ? paymentReference
+          : (reservation.paymentReference && !isRawPaymentGatewayId(reservation.paymentReference)
+              ? reservation.paymentReference
+              : generatePaymentReference({ prefix: "PAY", date: new Date(paidAt) }));
+
       const basePayment = {
         tenantId: reservation.userId,
         reservationId: reservation._id,
@@ -331,13 +345,13 @@ export async function settleReservationDeposit({
         currency: String(evidence.currency || "PHP").toUpperCase(),
         method: normalizePaymentMethod(source, evidence),
         provider: source === "paymongo" ? "paymongo" : null,
-        providerPaymentId: source === "paymongo" ? externalPaymentId : null,
+        providerPaymentId: source === "paymongo" ? rawExternalPaymentId : null,
         settlementTimestamp: source === "paymongo" ? new Date(paidAt) : null,
         source: buildPaymentSource(source),
-        externalPaymentId,
+        externalPaymentId: rawExternalPaymentId,
         externalSessionId,
-        paymentReference,
-        referenceNumber: paymentReference,
+        paymentReference: cleanPaymentReference,
+        referenceNumber: cleanPaymentReference,
         idempotencyKey: String(idempotencyKey),
         proofUrl: evidence.proofUrl || existingPayment?.proofUrl || null,
         proofImageUrl: evidence.proofUrl || existingPayment?.proofImageUrl || null,
@@ -346,6 +360,7 @@ export async function settleReservationDeposit({
           ...(existingPayment?.metadata || {}),
           actorRole: actor.role || null,
           settlementSource: source,
+          rawPaymentGatewayId: rawExternalPaymentId || null,
         },
       };
 
@@ -437,12 +452,13 @@ export async function settleReservationDeposit({
 
       reservation.paymentStatus = "paid";
       reservation.reservationFeePaymentStatus = "verified";
+      reservation.paymentReference = cleanPaymentReference;
       reservation.paidAt = reservation.paidAt || new Date(paidAt);
       reservation.paymentDate = new Date(paidAt);
       reservation.paymentMethod = normalizePaymentMethod(source, evidence);
       reservation.paymongoPaymentId =
         source === "paymongo"
-          ? externalPaymentId || reservation.paymongoPaymentId
+          ? rawExternalPaymentId || reservation.paymongoPaymentId
           : reservation.paymongoPaymentId;
       reservation.status = "reserved";
       reservation.reservedAt = reservation.reservedAt || new Date();

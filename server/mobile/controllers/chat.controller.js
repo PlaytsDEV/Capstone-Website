@@ -19,7 +19,7 @@ const CHAT_MESSAGES = 'chat_messages';
 const ACTIVE_RESERVATION_STATUSES = ['moveIn', 'active', 'confirmed', 'completed'];
 const ADMIN_ROLES = new Set(['admin', 'owner', 'branch_admin']);
 const VALID_BRANCHES = new Set(['gil-puyat', 'guadalupe']);
-const ACTIVE_CONVERSATION_STATUSES = ['open', 'in_review', 'waiting_tenant', 'resolved'];
+const ACTIVE_CONVERSATION_STATUSES = ['open', 'in_review', 'waiting_tenant'];
 const VALID_CATEGORIES = new Set([
   'billing_concern',
   'maintenance_concern',

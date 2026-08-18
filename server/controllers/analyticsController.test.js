@@ -19,6 +19,8 @@ const getUserBranchInfo = jest.fn();
 const getBranchOccupancyStats = jest.fn();
 const sendSuccess = jest.fn();
 
+const chatConversationFind = jest.fn();
+
 const createLeanChain = (result) => {
   const chain = {
     select: jest.fn(() => chain),
@@ -64,6 +66,10 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   UserSession: {
     countDocuments: userSessionCountDocuments,
   },
+  ChatConversation: {
+    find: chatConversationFind,
+  },
+  ChatMessage: {},
 }));
 
 await jest.unstable_mockModule("../middleware/branchAccess.js", () => ({
@@ -95,11 +101,13 @@ const {
   getOccupancyForecast,
   getOccupancyReport,
   getOperationsReport,
+  getSupportChatReport,
   getSystemPerformance,
 } = await import("./analyticsController.js");
 
 describe("analyticsController", () => {
   beforeEach(() => {
+    chatConversationFind.mockReset();
     roomFind.mockReset();
     reservationCountDocuments.mockReset();
     reservationFind.mockReset();
@@ -1197,6 +1205,72 @@ describe("analyticsController", () => {
         }),
         series: expect.objectContaining({
           occupancyTrend: expect.any(Array),
+        }),
+      }),
+    );
+  });
+
+  test("getSupportChatReport returns KPIs, distributions, and paginated conversation rows", async () => {
+    const mockConversations = [
+      {
+        _id: "conv-1",
+        branch: "gil-puyat",
+        status: "resolved",
+        category: "billing_concern",
+        priority: "normal",
+        firstAdminReplyMinutes: 15,
+        resolutionDurationMinutes: 45,
+        satisfactionRating: 5,
+        satisfactionFeedback: "Very quick and helpful!",
+        createdAt: new Date(),
+      },
+      {
+        _id: "conv-2",
+        branch: "guadalupe",
+        status: "open",
+        category: "maintenance_concern",
+        priority: "urgent",
+        firstAdminReplyMinutes: null,
+        resolutionDurationMinutes: null,
+        satisfactionRating: null,
+        createdAt: new Date(),
+      },
+    ];
+
+    chatConversationFind.mockReturnValue(createLeanChain(mockConversations));
+    getUserBranchInfo.mockResolvedValue({
+      role: "branch_admin",
+      branch: "gil-puyat",
+      isOwner: false,
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1", role: "admin", branch: "gil-puyat" },
+      query: { range: "30d" },
+    };
+    const res = { req };
+
+    await getSupportChatReport(req, res, jest.fn());
+
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        kpis: expect.objectContaining({
+          totalConversations: 2,
+          activeConversations: 1,
+          avgFirstReplyMinutes: 15,
+          avgSatisfactionRating: 5,
+        }),
+        series: expect.objectContaining({
+          volumeByPeriod: expect.any(Array),
+          categoryDistribution: expect.any(Array),
+          priorityDistribution: expect.any(Array),
+          branchComparison: expect.any(Array),
+        }),
+        tables: expect.objectContaining({
+          recentConversations: expect.objectContaining({
+            rows: expect.any(Array),
+          }),
         }),
       }),
     );

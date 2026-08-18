@@ -271,12 +271,29 @@ export const updateVisitPreferenceAndSchedule = async (req, res, next) => {
       const targetVisitDate = updates.visitDate || reservation.visitDate;
       const targetVisitTime = updates.visitTime || reservation.visitTime;
       const room = await Room.findById(reservation.roomId)
-        .select("branch")
+        .select("branch capacity currentOccupancy isAvailable isMaintenance status")
         .lean();
       if (!room?.branch) {
         return res.status(400).json({
           error: "Unable to resolve the room branch for this visit.",
           code: "ROOM_BRANCH_REQUIRED",
+        });
+      }
+
+      // Live Room Availability & Capacity Check
+      const capacity = Number(room.capacity || 0);
+      const occupancy = Number(room.currentOccupancy || 0);
+      const isRoomFull = capacity > 0 && occupancy >= capacity;
+      const isUnavailable =
+        room.isAvailable === false ||
+        room.isMaintenance === true ||
+        room.status === "maintenance";
+
+      if (isRoomFull || isUnavailable) {
+        return res.status(409).json({
+          error:
+            "The selected room is no longer available. Please browse available rooms to choose another room.",
+          code: "ROOM_NO_LONGER_AVAILABLE",
         });
       }
 
@@ -319,19 +336,24 @@ export const updateVisitPreferenceAndSchedule = async (req, res, next) => {
       effectiveViewingPreference === "physical_visit" &&
       updates.visitDate &&
       effectiveAgreedToPrivacy &&
-      reservation.scheduleRejected
+      (reservation.scheduleRejected || reservation.visitStatus === "no_show")
     ) {
       updates.scheduleRejected = false;
       updates.scheduleRejectionReason = null;
       updates.scheduleRejectedAt = null;
+      updates.visitStatus = "rescheduled";
+      updates.scheduleApproved = true;
+      updates.scheduleApprovedAt = new Date();
       if (
         hasReservationStatus(
           reservation.status,
           LEGACY_VISIT_STATUSES,
           "pending",
+          "viewing_preference_selected",
+          "visit_pending",
         )
       ) {
-        updates.status = "visit_pending";
+        updates.status = "visit_approved";
       }
     }
 
@@ -432,10 +454,16 @@ export const updateVisitPreferenceAndSchedule = async (req, res, next) => {
             },
           );
           if (updatedReservation.userId?.email) {
+            const isReschedule =
+              reservation.visitStatus === "no_show" ||
+              reservation.scheduleRejected ||
+              updatedReservation.visitStatus === "rescheduled";
             await sendPhysicalVisitStatusEmail(
               buildVisitEmailContext({
                 reservation: updatedReservation,
-                status: "scheduled",
+                status: isReschedule ? "rescheduled" : "scheduled",
+                previousVisitDate: isReschedule ? reservation.visitDate : null,
+                previousVisitTime: isReschedule ? reservation.visitTime : "",
               }),
             );
           }

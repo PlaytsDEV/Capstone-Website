@@ -821,7 +821,11 @@ export const checkSessionStatus = async (req, res, next) => {
                     : `Monthly Bill - ${monthStr}`,
                   paymentMethod: paymentMethod || "Online Payment (PayMongo)",
                   paymentDate: dayjs().format("MMMM D, YYYY"),
-                  referenceId: paymentReference,
+                  referenceId:
+                    settlement.payment?.referenceNumber ||
+                    settlement.payment?.paymentId ||
+                    bill.paymentReference ||
+                    paymentReference,
                   reservationCode,
                   roomName,
                   branch: bill.branch,
@@ -1037,7 +1041,14 @@ export const checkSessionStatus = async (req, res, next) => {
                   description: `Reservation Fee - ${roomName}`,
                   paymentMethod: paymentMethod || "Online Payment (PayMongo)",
                   paymentDate: dayjs().format("MMMM D, YYYY"),
-                  referenceId: paymentReference,
+                  referenceId:
+                    settlement.payment?.referenceNumber ||
+                    settlement.payment?.paymentId ||
+                    settledReservation.paymentReference ||
+                    paymentReference,
+                  reservationCode: settledReservation.reservationCode || "",
+                  roomName,
+                  branch: reservation.roomId?.branch || "",
                 });
               }
             } catch (emailErr) {

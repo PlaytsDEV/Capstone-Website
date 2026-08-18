@@ -94,7 +94,7 @@ await jest.unstable_mockModule("../utils/reservationHelpers.js", () => ({
   getForbiddenTenantUpdateFields,
   getMoveInBlockers: jest.fn(() => []),
 }));
-await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
+const lifecycleNamingMock = {
   CANONICAL_RESERVATION_STATUSES: Object.freeze([
     "pending",
     "viewing_preference_selected",
@@ -125,6 +125,14 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
     const values = expected.flat();
     return values.includes(status);
   }),
+  isApplicationApprovedStatus: jest.fn((status, reservation) => {
+    const approved = ["approved_for_payment", "payment_pending", "reserved", "moveIn", "moveOut"];
+    return (
+      approved.includes(status) ||
+      Boolean(reservation?.approvedForPaymentAt) ||
+      Boolean(reservation?.documentsApproved)
+    );
+  }),
   normalizeReservationPayload: jest.fn((payload) => payload),
   normalizeReservationStatus: jest.fn((status) => status),
   readMoveInDate: jest.fn(() => null),
@@ -133,7 +141,8 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
   serializeReservation: jest.fn((value) => value),
   serializeReservations: jest.fn((values) => values),
   utilityEventTypesForQuery: jest.fn((...types) => types.flat()),
-}));
+};
+await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => lifecycleNamingMock);
 await jest.unstable_mockModule("../config/email.js", () => ({
   sendReservationConfirmedEmail: jest.fn(),
   sendVisitApprovedEmail: jest.fn(),
@@ -831,6 +840,56 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("createReservation does not reject when intendedMoveInDate is omitted", async () => {
+    userFindOne.mockResolvedValue({
+      _id: "tenant-1",
+      firebaseUid: "tenant-uid",
+      email: "tala@example.com",
+    });
+    reservationFindOne.mockResolvedValue(null);
+
+    const req = {
+      body: {
+        roomId: "507f1f77bcf86cd799439018",
+      },
+      user: { uid: "tenant-uid", email: "tala@example.com" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await createReservation(req, res, next);
+
+    expect(res.body?.code).not.toBe("MOVEIN_DATE_REQUIRED");
+  });
+
+  test("createReservation rejects request when intendedMoveInDate is less than 3 days from today", async () => {
+    userFindOne.mockResolvedValue({
+      _id: "tenant-1",
+      firebaseUid: "tenant-uid",
+      email: "tala@example.com",
+    });
+    reservationFindOne.mockResolvedValue(null);
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const req = {
+      body: {
+        roomId: "507f1f77bcf86cd799439018",
+        intendedMoveInDate: tomorrow.toISOString().split("T")[0],
+      },
+      user: { uid: "tenant-uid", email: "tala@example.com" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await createReservation(req, res, next);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body?.code).toBe("MOVEIN_DATE_TOO_SOON");
+    expect(res.body?.error).toBe("Move-in date must be at least 3 days from today.");
+  });
+
   test("tenant cannot switch to remote viewing after a physical visit was already saved", async () => {
     reservationFindById.mockResolvedValue({
       _id: "507f1f77bcf86cd799439011",
@@ -1167,7 +1226,7 @@ describe("reservationsController.updateReservation access hardening", () => {
     });
     roomFindById.mockReturnValue({
       select: jest.fn().mockReturnThis(),
-      lean: jest.fn().mockResolvedValue({ branch: "gil-puyat" }),
+      lean: jest.fn().mockResolvedValue({ branch: "gil-puyat", capacity: 4, currentOccupancy: 1, isAvailable: true }),
     });
     visitAvailabilityFindOne.mockResolvedValue({
       branch: "gil-puyat",
@@ -1681,7 +1740,7 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  test("admin marking no-show auto-cancels the room reservation", async () => {
+  test("admin marking no-show keeps the reservation active for rescheduling", async () => {
     const save = jest.fn().mockResolvedValue(undefined);
     const populate = jest.fn().mockResolvedValue(undefined);
     const reservation = {
@@ -1726,13 +1785,9 @@ describe("reservationsController.updateReservation access hardening", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body?.reservation?.visitStatus).toBe("no_show");
-    // Reservation must be fully cancelled on no-show
-    expect(reservation.status).toBe("cancelled");
-    expect(reservation.cancellationSource).toBe("admin");
-    expect(reservation.cancellationReason).toBe("Applicant missed the visit.");
-    expect(reservation.reservationFeeForfeited).toBe(true);
-    expect(reservation.reservationFeeRefundable).toBe(false);
-    expect(reservation.cancelledAt).toBeDefined();
+    // Reservation remains active in visit_pending for rescheduling
+    expect(reservation.status).toBe("visit_pending");
+    expect(reservation.scheduleApproved).toBe(false);
     expect(reservation.visitApproved).toBe(false);
     expect(save).toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
@@ -2161,6 +2216,68 @@ describe("reservationsController.updateReservation access hardening", () => {
     // Must NOT block with PHYSICAL_VISIT_APPLICATION_LOCKED
     expect(res.statusCode).not.toBe(403);
     expect(res.body?.code).not.toBe("PHYSICAL_VISIT_APPLICATION_LOCKED");
-    },
-  );
+  });
+
+  test("rejects application draft autosave when application is already approved by admin", async () => {
+    userFindOne.mockResolvedValue({ _id: "tenant-1" });
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439103",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "approved_for_payment",
+      applicationSubmittedAt: new Date("2026-05-17T08:00:00.000Z"),
+      approvedForPaymentAt: new Date("2026-05-17T09:00:00.000Z"),
+      documentsApproved: true,
+      emergencyContact: {},
+      employment: {},
+      documentPrechecks: {},
+    });
+    buildUserUpdatePayload.mockReturnValue({ firstName: "Ana" });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439103" },
+      user: { uid: "tenant-firebase-uid" },
+      body: { applicationDraftAutosave: true, firstName: "Ana" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body?.code).toBe("APPLICATION_LOCKED_APPROVED");
+    expect(reservationFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("rejects application submission when application is already approved for payment", async () => {
+    userFindOne.mockResolvedValue({ _id: "tenant-1" });
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439104",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "approved_for_payment",
+      applicationSubmittedAt: new Date("2026-05-17T08:00:00.000Z"),
+      approvedForPaymentAt: new Date("2026-05-17T09:00:00.000Z"),
+      documentsApproved: true,
+      emergencyContact: {},
+      employment: {},
+      documentPrechecks: {},
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439104" },
+      user: { uid: "tenant-firebase-uid" },
+      body: { submitApplication: true },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body?.code).toBe("APPLICATION_LOCKED_APPROVED");
+    expect(reservationFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
 });

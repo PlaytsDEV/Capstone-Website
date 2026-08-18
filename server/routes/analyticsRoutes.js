@@ -14,6 +14,7 @@ import {
   getOccupancyRateHistory,
   getOperationsReport,
   getRoomBedHistory,
+  getSupportChatReport,
   getSystemPerformance,
 } from "../controllers/analyticsController.js";
 
@@ -27,6 +28,7 @@ router.get("/reports/occupancy-history", getOccupancyRateHistory);
 router.get("/rooms/:roomId/bed-history", getRoomBedHistory);
 router.get("/reports/billing", getBillingReport);
 router.get("/reports/operations", getOperationsReport);
+router.get("/reports/support-chat", getSupportChatReport);
 router.get("/reports/demographics", getDemographicsReport);
 router.get("/forecast/occupancy", getOccupancyForecast);
 router.post("/insights", getAnalyticsInsights);

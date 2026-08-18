@@ -126,7 +126,7 @@ describe("getUtilityDiagnostics", () => {
           _id: "room-2",
           name: "Room B",
           roomNumber: "B-201",
-          branch: "guadalupe",
+          branch: "gil-puyat",
           type: "double-sharing",
           capacity: 2,
         },
@@ -137,7 +137,7 @@ describe("getUtilityDiagnostics", () => {
         _id: "room-2",
         name: "Room B",
         roomNumber: "B-201",
-        branch: "guadalupe",
+        branch: "gil-puyat",
         type: "double-sharing",
         capacity: 2,
       }),
@@ -146,14 +146,44 @@ describe("getUtilityDiagnostics", () => {
     reservationDistinct.mockResolvedValue([]);
     utilityReadingDistinct.mockResolvedValue([]);
 
-    const result = await getUtilityDiagnostics({ branch: "guadalupe" });
+    const result = await getUtilityDiagnostics({ branch: "gil-puyat" });
 
     expect(result.electricityRooms).toHaveLength(1);
     expect(result.waterRooms).toHaveLength(1);
     expect(roomFind).toHaveBeenCalledWith({
       isArchived: false,
-      branch: "guadalupe",
+      branch: "gil-puyat",
     });
+  });
+
+  test("filters out guadalupe rooms from electricity and water diagnostics because it uses fixed-rate billing", async () => {
+    roomFind.mockReturnValueOnce(
+      mockSelectLeanResult([
+        {
+          _id: "room-gp",
+          name: "GP Room 101",
+          roomNumber: "101",
+          branch: "gil-puyat",
+          type: "private",
+          capacity: 1,
+        },
+        {
+          _id: "room-gd",
+          name: "GD Room 102",
+          roomNumber: "102",
+          branch: "guadalupe",
+          type: "quadruple",
+          capacity: 4,
+        },
+      ]),
+    );
+
+    const result = await getUtilityDiagnostics();
+
+    expect(result.electricityRooms).toHaveLength(1);
+    expect(result.electricityRooms[0].branch).toBe("gil-puyat");
+    expect(result.waterRooms).toHaveLength(1);
+    expect(result.waterRooms[0].branch).toBe("gil-puyat");
   });
 
   test("limits water rooms to private and double-sharing types", async () => {

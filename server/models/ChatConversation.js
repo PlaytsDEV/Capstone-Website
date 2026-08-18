@@ -124,6 +124,11 @@ const chatConversationSchema = new mongoose.Schema(
       default: null,
     },
     resolutionConfirmationSource: { type: String, trim: true, default: "" },
+    firstAdminReplyAt: { type: Date, default: null },
+    firstAdminReplyMinutes: { type: Number, default: null },
+    resolutionDurationMinutes: { type: Number, default: null },
+    satisfactionRating: { type: Number, min: 1, max: 5, default: null },
+    satisfactionFeedback: { type: String, trim: true, default: "", maxlength: 1000 },
     reopenedAt: { type: Date, default: null },
     reopenCount: { type: Number, default: 0, min: 0 },
     statusHistory: [

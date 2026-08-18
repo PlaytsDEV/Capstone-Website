@@ -32,6 +32,9 @@ const HISTORY_VISIBLE_STATUSES = new Set([
   "renewed",
   "replaced",
   "terminated",
+  "cancelled",
+  "archived",
+  "completed",
 ]);
 
 const id = (value) => String(value?._id || value || "");
@@ -133,10 +136,14 @@ export const resolveTenantCanonicalContract = async (tenantId, { includeEarlySta
 };
 
 export const resolveTenantContractHistory = async (tenantId) => {
-  const contracts = await Contract.find({ tenantId }).sort({ leaseEndDate: -1, createdAt: -1 });
-  return contracts.filter((contract) =>
-    HISTORY_VISIBLE_STATUSES.has(contract.status) &&
-    !contract.duplicateOfContractId &&
-    contract.isCanonical !== false,
-  );
+  const [canonical, contracts] = await Promise.all([
+    resolveTenantCanonicalContract(tenantId).catch(() => null),
+    Contract.find({ tenantId }).sort({ leaseEndDate: -1, createdAt: -1 }),
+  ]);
+  const canonicalId = canonical ? String(canonical._id) : null;
+  return contracts.filter((contract) => {
+    if (canonicalId && String(contract._id) === canonicalId) return false;
+    if (contract.duplicateOfContractId) return false;
+    return HISTORY_VISIBLE_STATUSES.has(contract.status);
+  });
 };

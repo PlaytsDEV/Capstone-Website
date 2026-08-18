@@ -24,8 +24,10 @@
  */
 
 import crypto from "crypto";
+import { getPublicUrlConfig } from "./publicUrls.js";
 import { sendLilycrestEmail } from "../services/email/lilycrestEmailService.js";
 import { emailFingerprint } from "../services/email/resendEmailService.js";
+import { formatDisplayReference } from "../utils/referenceGenerator.js";
 
 /**
  * Safe peso formatter — avoids toLocaleString("en-PH") which garbles output
@@ -113,35 +115,48 @@ const VISIT_STATUS_MAP = {
     intro: "Your physical visit schedule has been recorded as a room-viewing appointment.",
     nextStep:
       "Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.",
+    scheduleLabel: "Visit Schedule",
+    ctaLabel: "View Visit Details",
   },
   rescheduled: {
     label: "Physical Visit Rescheduled",
-    intro: "Your physical visit schedule has been updated by our admin team.",
+    intro: "Your physical visit schedule has been updated.",
     nextStep:
       "Your tenant application remains locked until your visit is completed or admin allows you to proceed without a completed visit.",
+    scheduleLabel: "New Schedule",
+    ctaLabel: "View Updated Schedule",
   },
   visit_completed: {
     label: "Physical Visit Completed",
     intro: "Your physical visit has been recorded as completed.",
     nextStep:
       "You may now continue to your tenant application. Payment will remain locked until your application and required documents are approved.",
+    scheduleLabel: "Completed Visit",
+    ctaLabel: "Continue Application",
   },
   no_show: {
     label: "Missed Physical Visit",
-    intro: "Your scheduled physical visit was marked as a no-show.",
-    nextStep: "Please reschedule your visit or contact admin before continuing. Your tenant application remains locked.",
+    intro: "We missed you at your scheduled room viewing appointment. Your room reservation is open for rescheduling.",
+    nextStep:
+      "Please pick a new viewing schedule that works best for you. If your selected room becomes unavailable before rescheduling, you will be able to browse and select another available room.",
+    scheduleLabel: "Missed Appointment",
+    ctaLabel: "Reschedule Visit Now",
   },
   visit_cancelled: {
     label: "Physical Visit Cancelled",
     intro: "Only your physical visit schedule was cancelled. Your reservation itself remains active.",
     nextStep:
       "Please contact admin or select another allowed next step. Your tenant application remains locked unless admin separately allows you to proceed without a visit.",
+    scheduleLabel: "Cancelled Schedule",
+    ctaLabel: "View Reservation",
   },
   allowed_without_visit: {
     label: "You May Continue Your Tenant Application",
     intro: "Admin has allowed you to continue without a completed physical visit.",
     nextStep:
       "You may now complete your tenant application. Payment will remain locked until your application and required documents are approved.",
+    scheduleLabel: "Visit Schedule",
+    ctaLabel: "Continue Application",
   },
 };
 
@@ -159,6 +174,19 @@ export const sendPhysicalVisitStatusEmail = async ({
   status,
 }) => {
   const content = VISIT_STATUS_MAP[status] || VISIT_STATUS_MAP.scheduled;
+  const currentSchedule = formatVisitScheduleLabel(visitDate, visitTime);
+  const rawPreviousSchedule =
+    previousVisitDate || previousVisitTime ? formatVisitScheduleLabel(previousVisitDate, previousVisitTime) : "";
+
+  // Only pass previous schedule when status is rescheduled and the dates actually differ
+  const previousSchedule =
+    status === "rescheduled" && rawPreviousSchedule && rawPreviousSchedule !== currentSchedule
+      ? rawPreviousSchedule
+      : "";
+
+  const publicUrls = getPublicUrlConfig();
+  const ctaUrl = `${publicUrls.clientUrl}/applicant/reservation?step=2`;
+
   return sendLilycrestEmail({
     to,
     templateKey: "VISIT_STATUS",
@@ -167,13 +195,15 @@ export const sendPhysicalVisitStatusEmail = async ({
       ROOM_NAME: roomName || "your room",
       BRANCH_NAME: branchName || "Lilycrest",
       VISIT_CODE: visitCode || "Pending",
-      VISIT_SCHEDULE: formatVisitScheduleLabel(visitDate, visitTime),
-      PREVIOUS_SCHEDULE:
-        previousVisitDate || previousVisitTime ? formatVisitScheduleLabel(previousVisitDate, previousVisitTime) : "",
+      VISIT_SCHEDULE: currentSchedule,
+      PREVIOUS_SCHEDULE: previousSchedule,
+      SCHEDULE_LABEL: content.scheduleLabel || "Visit Schedule",
       REMARKS: remarks || "",
       STATUS_LABEL: content.label,
       STATUS_INTRO: content.intro,
       NEXT_STEP: content.nextStep,
+      CTA_LABEL: content.ctaLabel || "View Details",
+      CTA_URL: ctaUrl,
     },
   });
 };
@@ -383,7 +413,7 @@ export const sendPaymentReceiptEmail = async ({
       BILLED_TO: billedTo || tenantName,
       PAYMENT_METHOD: paymentMethod,
       PAYMENT_DATE: paymentDate,
-      REFERENCE_NUMBER: referenceId,
+      REFERENCE_NUMBER: formatDisplayReference(referenceId, "—"),
       RESERVATION_CODE: reservationCode || "",
       ROOM_NAME: roomName || "",
       BRANCH_NAME: branch || "Lilycrest",

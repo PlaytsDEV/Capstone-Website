@@ -74,12 +74,17 @@ export const checkBranchAccess = (res, branchFilter, roomBranch) => {
   return null;
 };
 
-/** Enforce 3-month move-in date window */
+/** Enforce move-in date window: at least 3 days from today, up to 3 months from today */
 export const validateMoveInDate = (dateStr) => {
-  const moveIn = dayjs(dateStr);
-  const now = dayjs();
-  const limit = now.add(3, "month");
-  return moveIn.isAfter(now) || moveIn.isSame(now, "day") ? moveIn.isBefore(limit) || moveIn.isSame(limit, "day") : false;
+  if (!dateStr) return false;
+  const moveIn = dayjs(dateStr).startOf("day");
+  if (!moveIn.isValid()) return false;
+  const minAllowed = dayjs().add(3, "day").startOf("day");
+  const maxAllowed = dayjs().add(3, "month").endOf("day");
+  return (
+    (moveIn.isAfter(minAllowed) || moveIn.isSame(minAllowed, "day")) &&
+    (moveIn.isBefore(maxAllowed) || moveIn.isSame(maxAllowed, "day"))
+  );
 };
 
 /**

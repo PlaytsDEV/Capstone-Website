@@ -18,6 +18,10 @@ import logger from "../../middleware/logger.js";
 import auditLogger from "../../utils/auditLogger.js";
 import { getBusinessSettings } from "../../utils/businessSettings.js";
 import {
+  generatePaymentReference,
+  isRawPaymentGatewayId,
+} from "../../utils/referenceGenerator.js";
+import {
   isValidObjectId,
   invalidIdResponse,
   handleReservationError,
@@ -29,6 +33,7 @@ import {
   canTransitionReservationStatus,
   CURRENT_RESIDENT_STATUS_QUERY,
   hasReservationStatus,
+  isApplicationApprovedStatus,
   normalizeReservationPayload,
   normalizeReservationStatus,
   readMoveInDate,
@@ -933,7 +938,7 @@ export const updateReservation = async (req, res, next) => {
         await notify.general(
           recipientId,
           "Application Needs Revision",
-          `Your application requires revision: ${reason}`,
+          reason,
           {
             entityType: "reservation",
             entityId: String(updatedReservation._id),
@@ -1163,6 +1168,13 @@ export const updateReservationByUser = async (req, res, next) => {
       }
 
       const currentStatus = normalizeReservationStatus(reservation.status);
+      if (isApplicationApprovedStatus(currentStatus, reservation)) {
+        return res.status(409).json({
+          error: "Application is already approved and locked.",
+          code: "APPLICATION_LOCKED_APPROVED",
+        });
+      }
+
       const draftLocked =
         hasReservationStatus(currentStatus, APPLICATION_DRAFT_LOCKING_STATUSES) ||
         (Boolean(reservation.applicationSubmittedAt) &&
@@ -1635,6 +1647,14 @@ export const updateReservationByUser = async (req, res, next) => {
     const isApplicationSubmission = req.body.submitApplication === true;
 
     if (isApplicationSubmission) {
+      const currentStatus = normalizeReservationStatus(reservation.status);
+      if (isApplicationApprovedStatus(currentStatus, reservation)) {
+        return res.status(409).json({
+          error: "Application is already approved and cannot be modified.",
+          code: "APPLICATION_LOCKED_APPROVED",
+        });
+      }
+
       const previouslySubmittedApplication = Boolean(reservation.applicationSubmittedAt);
       const effectiveVisitStatus = getEffectiveVisitStatusKey({
         visitStatus: updates.visitStatus ?? reservation.visitStatus,
@@ -1937,14 +1957,11 @@ export const updateReservationByUser = async (req, res, next) => {
       updates.paymentDate = new Date();
       updates.status = "payment_pending";
       const existing = await Reservation.findById(reservationId);
-      if (!existing.paymentReference) {
+      if (!existing.paymentReference || isRawPaymentGatewayId(existing.paymentReference)) {
         // Collision-safe generation — mirrors reservationCode retry pattern.
-        const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         let ref = null;
         for (let attempt = 0; attempt < 5; attempt++) {
-          let candidate = "PAY-";
-          for (let i = 0; i < 6; i++)
-            candidate += CHARS.charAt(Math.floor(Math.random() * CHARS.length));
+          const candidate = generatePaymentReference({ prefix: "PAY" });
           const taken = await Reservation.findOne({ paymentReference: candidate })
             .select("_id")
             .lean();
@@ -1953,9 +1970,8 @@ export const updateReservationByUser = async (req, res, next) => {
             break;
           }
         }
-        // Timestamp fallback — non-fatal; sparse unique index still protects the DB.
-        updates.paymentReference =
-          ref || "PAY-" + Date.now().toString(36).toUpperCase().slice(-6);
+        // Fallback — non-fatal; sparse unique index still protects the DB.
+        updates.paymentReference = ref || generatePaymentReference({ prefix: "PAY" });
       }
     }
 
@@ -2639,17 +2655,21 @@ export const manageReservationVisit = async (req, res, next) => {
         note,
         updatedAt: now,
       });
-      // Auto-cancel the room reservation when the applicant is a no-show
-      reservation.status = "cancelled";
-      reservation.cancelledAt = now;
-      reservation.cancelledBy = actorId;
-      reservation.cancellationSource = "admin";
-      reservation.cancellationReason = note || "No-show at scheduled visit";
-      reservation.reservationFeeRefundable = false;
-      reservation.reservationFeeForfeited = true;
-      applicantNotificationTitle = "Visit Missed — Reservation Cancelled";
+      if (
+        hasReservationStatus(
+          reservation.status,
+          LEGACY_VISIT_STATUSES,
+          "pending",
+          "viewing_preference_selected",
+          "visit_approved",
+          "visit_pending",
+        )
+      ) {
+        reservation.status = "visit_pending";
+      }
+      applicantNotificationTitle = "Physical Visit Missed";
       applicantNotificationMessage =
-        "Your scheduled visit was marked as missed and your reservation has been cancelled. Please contact administration if you need assistance.";
+        "Your scheduled physical visit was marked as missed. Please reschedule your visit to continue your tenant application.";
       applicantEmailStatus = "no_show";
     }
 
@@ -2739,36 +2759,6 @@ export const manageReservationVisit = async (req, res, next) => {
     await reservation.populate(...POPULATE_USER);
     await reservation.populate(...POPULATE_ROOM);
 
-    // Post-save side effects for no-show auto-cancellation
-    if (action === "mark_no_show") {
-      const noShowPreviousStatus = previousSnapshot.status;
-      try {
-        await updateOccupancyOnReservationChange(
-          { ...reservation.toObject(), roomId },
-          { status: noShowPreviousStatus },
-        );
-      } catch (occupancyErr) {
-        logger.warn(
-          { err: occupancyErr, reservationId },
-          "No-show auto-cancel: occupancy update failed (non-fatal)",
-        );
-      }
-      try {
-        await syncReservationUserLifecycle({
-          status: "cancelled",
-          previousStatus: noShowPreviousStatus,
-          userId: reservation.userId?._id || reservation.userId,
-          roomId,
-          reservationId: reservation._id,
-        });
-      } catch (lifecycleErr) {
-        logger.warn(
-          { err: lifecycleErr, reservationId },
-          "No-show auto-cancel: lifecycle sync failed (non-fatal)",
-        );
-      }
-    }
-
     const successMessage =
       action === "approve_schedule"
         ? "Visit schedule approved. Tenant has been notified."
@@ -2777,7 +2767,7 @@ export const manageReservationVisit = async (req, res, next) => {
           : action === "mark_visited"
             ? "Visit marked as completed"
             : action === "mark_no_show"
-              ? "Visit marked as no-show. Reservation has been automatically cancelled."
+              ? "Visit marked as no-show. Tenant has been invited to reschedule."
               : action === "reschedule"
                 ? "Visit schedule updated"
                 : action === "allow_without_visit"
@@ -2846,11 +2836,29 @@ export const manageReservationVisit = async (req, res, next) => {
     });
 
     try {
-      emitToAdmins("reservation:updated", {
+      const recipientUserId = reservation.userId?._id || reservation.userId;
+      const socketPayload = {
         reservationId: String(reservation._id),
         status: reservation.status,
         paymentStatus: reservation.paymentStatus,
-      });
+        viewingPreference: reservation.viewingPreference,
+        viewingType: reservation.viewingType,
+        visitDate: reservation.visitDate,
+        visitTime: reservation.visitTime,
+        visitStatus: reservation.visitStatus,
+        visitApproved: Boolean(reservation.visitApproved),
+        scheduleApproved: Boolean(reservation.scheduleApproved),
+        scheduleRejected: Boolean(reservation.scheduleRejected),
+        scheduleRejectionReason: reservation.scheduleRejectionReason || null,
+        action,
+        branch: branch || null,
+      };
+      if (recipientUserId) {
+        emitToUser(String(recipientUserId), "reservation:updated", socketPayload);
+        emitToUser(String(recipientUserId), "visit:updated", socketPayload);
+      }
+      emitToAdmins("reservation:updated", socketPayload);
+      emitToAdmins("visit:updated", socketPayload);
     } catch (socketErr) {
       logger.warn(
         { err: socketErr, requestId: req.id },

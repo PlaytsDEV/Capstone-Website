@@ -1,13 +1,31 @@
 import { jest } from "@jest/globals";
 
 jest.unstable_mockModule("./aiProviderService.js", () => ({
-  generateChatCompletion: jest.fn()
+  generateChatCompletion: jest.fn(),
+}));
+
+jest.unstable_mockModule("../../models/ChatConversation.js", () => ({
+  default: {
+    find: jest.fn(() => ({
+      lean: jest.fn(() => Promise.resolve([])),
+    })),
+  },
+  find: jest.fn(() => ({
+    lean: jest.fn(() => Promise.resolve([])),
+  })),
 }));
 
 const { generateChatCompletion } = await import("./aiProviderService.js");
+const { default: ChatConversation } = await import("../../models/ChatConversation.js");
 const { getOwnerSupportTrends } = await import("./ownerSupportTrendsService.js");
 
 describe("ownerSupportTrendsService", () => {
+  beforeEach(() => {
+    ChatConversation.find = jest.fn(() => ({
+      lean: jest.fn(() => Promise.resolve([])),
+    }));
+  });
+
   afterEach(() => {
     jest.resetAllMocks();
   });

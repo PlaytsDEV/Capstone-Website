@@ -20,12 +20,17 @@ import {
 import {
   hasReservationStatus,
   normalizeReservationStatus,
+  isApplicationApprovedStatus,
 } from "../../utils/lifecycleNaming.js";
 import { notify } from "../../utils/notificationService.js";
 import { emitToAdmins } from "../../utils/socket.js";
 import {
   runReservationDocumentPrecheck,
 } from "../../services/reservationDocumentPrecheckService.js";
+import {
+  generatePaymentReference,
+  isRawPaymentGatewayId,
+} from "../../utils/referenceGenerator.js";
 import {
   DOCUMENT_PRECHECK_TYPES,
   APPLICATION_DRAFT_LOCKING_STATUSES,
@@ -114,6 +119,14 @@ export const saveApplicationDraft = async (req, res, next) => {
     }
 
     const currentStatus = normalizeReservationStatus(reservation.status);
+    if (isApplicationApprovedStatus(currentStatus, reservation)) {
+      return res.status(409).json({
+        error:
+          "Your application has already been approved by the admin and cannot be edited.",
+        code: "APPLICATION_LOCKED_APPROVED",
+      });
+    }
+
     const draftLocked =
       hasReservationStatus(currentStatus, APPLICATION_DRAFT_LOCKING_STATUSES) ||
       (Boolean(reservation.applicationSubmittedAt) &&
@@ -221,6 +234,15 @@ export const submitApplication = async (req, res, next) => {
       return res.status(403).json({
         error: "Access denied. You can only submit your own application.",
         code: "RESERVATION_ACCESS_DENIED",
+      });
+    }
+
+    const currentStatus = normalizeReservationStatus(reservation.status);
+    if (isApplicationApprovedStatus(currentStatus, reservation)) {
+      return res.status(409).json({
+        error:
+          "Your application has already been approved by the admin and cannot be edited or resubmitted.",
+        code: "APPLICATION_LOCKED_APPROVED",
       });
     }
 
@@ -499,6 +521,16 @@ export const submitApplication = async (req, res, next) => {
           "moveIn",
         ],
       };
+    } else {
+      updateFilter.status = {
+        $nin: [
+          "approved_for_payment",
+          "payment_pending",
+          "reserved",
+          "moveIn",
+          "moveOut",
+        ],
+      };
     }
 
     const updatedReservation = await Reservation.findOneAndUpdate(
@@ -626,13 +658,10 @@ export const uploadPaymentProof = async (req, res, next) => {
       status: "payment_pending",
     };
 
-    if (!reservation.paymentReference) {
-      const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    if (!reservation.paymentReference || isRawPaymentGatewayId(reservation.paymentReference)) {
       let ref = null;
       for (let attempt = 0; attempt < 5; attempt++) {
-        let candidate = "PAY-";
-        for (let i = 0; i < 6; i++)
-          candidate += CHARS.charAt(Math.floor(Math.random() * CHARS.length));
+        const candidate = generatePaymentReference({ prefix: "PAY" });
         const taken = await Reservation.findOne({ paymentReference: candidate })
           .select("_id")
           .lean();
@@ -641,8 +670,7 @@ export const uploadPaymentProof = async (req, res, next) => {
           break;
         }
       }
-      updates.paymentReference =
-        ref || "PAY-" + Date.now().toString(36).toUpperCase().slice(-6);
+      updates.paymentReference = ref || generatePaymentReference({ prefix: "PAY" });
     }
 
     const updatedReservation = await Reservation.findByIdAndUpdate(

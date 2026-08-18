@@ -11,6 +11,7 @@ describe("physical signing API security wiring", () => {
     for (const endpoint of [
       "mark-printed", "signatures/tenant", "signatures/lessor",
       "signatures/witnesses", "documents/signed/verify", "documents/signed/reject",
+      'delete("/:id/documents/signed',
     ]) expect(routes.indexOf(endpoint)).toBeGreaterThan(boundary);
   });
   test("tenant routes expose prepared and signed documents for the authenticated tenant", () => {

@@ -151,4 +151,34 @@ describe("Email Builders Layout & Standardization Tests", () => {
     expect(html).not.toContain("<script>alert('XSS')</script>");
     expect(html).toContain("&lt;script&gt;alert(&#39;XSS&#39;)&lt;/script&gt;Juan");
   });
+
+  test("VISIT_STATUS builder suppresses Previous Schedule when empty, supports custom labels, and renders CTA button", () => {
+    const missedVisitVars = {
+      TENANT_NAME: "Juan Dela Cruz",
+      ROOM_NAME: "GP-301",
+      BRANCH_NAME: "gil-puyat",
+      VISIT_CODE: "VIS-D9V40Y",
+      VISIT_SCHEDULE: "September 1, 2026 at 08:00 AM",
+      PREVIOUS_SCHEDULE: "",
+      SCHEDULE_LABEL: "Missed Appointment",
+      STATUS_LABEL: "Missed Physical Visit",
+      STATUS_INTRO: "We missed you at your scheduled room viewing appointment.",
+      NEXT_STEP: "Please pick a new viewing schedule.",
+      CTA_LABEL: "Reschedule Visit Now",
+      CTA_URL: "https://lilycrestdms.com/applicant/reservation?step=2",
+    };
+
+    const html = EMAIL_TEMPLATES.VISIT_STATUS.builder(missedVisitVars);
+
+    // Verify custom schedule label is rendered
+    expect(html).toContain("Missed Appointment");
+    expect(html).toContain("September 1, 2026 at 08:00 AM");
+
+    // Verify Previous Schedule row is suppressed
+    expect(html).not.toContain("Previous Schedule");
+
+    // Verify CTA button is rendered with link
+    expect(html).toContain("Reschedule Visit Now");
+    expect(html).toContain("https://lilycrestdms.com/applicant/reservation?step=2");
+  });
 });

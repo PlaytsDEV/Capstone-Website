@@ -13,6 +13,7 @@ import {
   resetPreparedTestContract,
   markPrinted, updateTenantSignature, updateLessorSignature, updateWitnessSignatures,
   uploadSignedDocument, streamSignedDocument, verifySignedDocument, rejectSignedDocument,
+  deleteSignedDocument,
   approveGenerationPricing,
   uploadNotarizedDocument, uploadFinalNotarizedContract, streamNotarizedDocument, verifyNotarizedDocument,
   rejectNotarizedDocument,
@@ -68,6 +69,7 @@ router.post("/:id/signatures/tenant", updateTenantSignature);
 router.post("/:id/signatures/lessor", updateLessorSignature);
 router.post("/:id/signatures/witnesses", updateWitnessSignatures);
 router.post("/:id/documents/signed", signedUpload.single("file"), uploadSignedDocument);
+router.delete("/:id/documents/signed/:version?", deleteSignedDocument);
 router.get("/:id/documents/signed/:version?", streamSignedDocument);
 router.post("/:id/documents/signed/verify", verifySignedDocument);
 router.post("/:id/documents/signed/reject", rejectSignedDocument);

@@ -194,3 +194,81 @@ export const rejectSignedContract = async ({ contract, actorId, reason }) => {
   await applyDerivedStatus(contract, actorId, `Signed Contract copy rejected: ${reason}`);
   return contract;
 };
+
+export const deleteSignedContract = async ({ contract, version = null, actorId, reason = "" }) => {
+  if (["terminated", "cancelled", "archived", "voided", "rejected"].includes(contract.status)) {
+    throw error("Signed copy deletion is not allowed in the current Contract status.", "SIGNED_DOCUMENT_DELETION_NOT_ALLOWED", 409);
+  }
+
+  const docs = contract.signedDocuments || [];
+  if (docs.length === 0) {
+    throw error("No signed contract document found to delete.", "SIGNED_DOCUMENT_NOT_FOUND", 404);
+  }
+
+  const targetVersion = version != null && String(version).trim() !== ""
+    ? Number(version)
+    : Number(contract.signedDocumentVersion) || Math.max(...docs.map((d) => Number(d.version) || 0));
+
+  const targetIndex = docs.findIndex((item) => Number(item.version) === targetVersion);
+  if (targetIndex === -1) {
+    throw error(`Signed contract document version ${targetVersion} not found.`, "SIGNED_DOCUMENT_NOT_FOUND", 404);
+  }
+
+  const [deletedDoc] = docs.splice(targetIndex, 1);
+  contract.markModified("signedDocuments");
+
+  if (deletedDoc?.storageKey) {
+    try {
+      const absolute = resolveSignedContractPath(deletedDoc.storageKey);
+      await fs.rm(absolute, { force: true }).catch(() => {});
+    } catch {
+      // non-fatal if storage file already absent
+    }
+  }
+
+  const remaining = [...(contract.signedDocuments || [])].sort((a, b) => Number(b.version) - Number(a.version));
+  const activeRemaining = remaining.find((d) => !d.superseded) || remaining[0];
+
+  if (activeRemaining) {
+    activeRemaining.superseded = false;
+    Object.assign(contract, {
+      signedStorageKey: activeRemaining.storageKey,
+      signedFileName: activeRemaining.fileName,
+      signedFileHash: activeRemaining.fileHash,
+      signedFileSize: activeRemaining.fileSize,
+      signedMimeType: activeRemaining.mimeType,
+      signedUploadedAt: activeRemaining.uploadedAt,
+      signedUploadedBy: activeRemaining.uploadedBy,
+      signedDocumentVersion: activeRemaining.version,
+      signingVerifiedAt: activeRemaining.verifiedAt || null,
+      signingVerifiedBy: activeRemaining.verifiedBy || null,
+      signingVerificationNotes: activeRemaining.verificationNotes || "",
+      signingRejectionReason: activeRemaining.rejectionReason || "",
+    });
+  } else {
+    Object.assign(contract, {
+      signedStorageKey: null,
+      signedFileName: null,
+      signedFileHash: null,
+      signedFileSize: null,
+      signedMimeType: null,
+      signedUploadedAt: null,
+      signedUploadedBy: null,
+      signedDocumentVersion: 0,
+      signingVerifiedAt: null,
+      signingVerifiedBy: null,
+      signingVerificationNotes: "",
+      signingRejectionReason: "",
+    });
+  }
+
+  const changeReason = `Signed Contract copy (v${targetVersion}) deleted${reason ? `: ${reason}` : ""}`;
+  if (["active", "published", "ready_for_publication", "notarized", "awaiting_notarization", "expiring_soon", "renewed"].includes(contract.status)) {
+    await contract.save();
+  } else {
+    await applyDerivedStatus(contract, actorId, changeReason);
+  }
+
+  return { contract, deletedVersion: targetVersion };
+};
+
