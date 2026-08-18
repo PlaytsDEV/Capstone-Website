@@ -280,6 +280,41 @@ export function ChatMessageBubble({
           0%, 100% { opacity: 1; }
           50% { opacity: 0; }
         }
+
+        .lc-user-avatar {
+          background-color: #0A1628;
+          border: 1px solid #1e293b;
+          color: #ffffff;
+        }
+
+        .dark .lc-user-avatar,
+        [data-theme="dark"] .lc-user-avatar {
+          background-color: #D4AF37;
+          border: 1px solid #B9921F;
+          color: #0A1628;
+        }
+
+        .lc-user-bubble {
+          background-color: #0A1628;
+          color: #ffffff !important;
+          border: 1px solid #1e293b;
+        }
+
+        .lc-user-bubble * {
+          color: #ffffff !important;
+        }
+
+        .dark .lc-user-bubble,
+        [data-theme="dark"] .lc-user-bubble {
+          background-color: #D4AF37;
+          color: #0A1628 !important;
+          border: 1px solid #B9921F;
+        }
+
+        .dark .lc-user-bubble *,
+        [data-theme="dark"] .lc-user-bubble * {
+          color: #0A1628 !important;
+        }
       `}</style>
 
       <div
@@ -289,20 +324,18 @@ export function ChatMessageBubble({
       >
         {/* Avatar Icon */}
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 select-none shadow-xs transition-transform duration-200 hover:scale-105 overflow-hidden mt-0.5"
+          className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 select-none shadow-xs transition-transform duration-200 hover:scale-105 overflow-hidden mt-0.5 ${
+            isUser ? "lc-user-avatar" : ""
+          }`}
           style={{
-            backgroundColor: isUser
-              ? "var(--lp-navy, #0A1628)"
-              : "#ffffff",
-            border: isUser
-              ? "1px solid var(--lp-border, #E6D9B2)"
-              : "1.5px solid var(--lp-accent, #D4AF37)",
+            backgroundColor: !isUser ? "#ffffff" : undefined,
+            border: !isUser ? "1.5px solid var(--lp-accent, #D4AF37)" : undefined,
             padding: isUser ? "0" : "3.5px",
           }}
           aria-hidden="true"
         >
           {isUser ? (
-            <span className="text-[10px] font-bold text-white">You</span>
+            <span className="text-[10px] font-bold">You</span>
           ) : (
             <img
               src="/lilycrest-logo.png"
@@ -317,22 +350,22 @@ export function ChatMessageBubble({
           <div
             className={`px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm shadow-sm transition-all ${
               isUser
-                ? "rounded-tr-xs text-white self-end"
+                ? "rounded-tr-xs self-end lc-user-bubble"
                 : "rounded-tl-xs self-start w-full"
             }`}
             style={{
               backgroundColor: isUser
-                ? "var(--lp-navy, #0A1628)"
+                ? undefined
                 : isError
                 ? "#fef2f2"
                 : "var(--lp-bg-card, #ffffff)",
               border: isUser
-                ? "1px solid #1a2c4e"
+                ? undefined
                 : isError
                 ? "1px solid #fecaca"
                 : "1px solid var(--lp-border, #E6D9B2)",
               color: isUser
-                ? "#ffffff"
+                ? undefined
                 : isError
                 ? "#991b1b"
                 : "var(--lp-text, #162f53)",

@@ -34,6 +34,7 @@ import {
   calculatePasswordStrength,
   NEW_PASSWORD_MAX_LENGTH,
   sanitizeName,
+  formatProperCase,
   generateUsername,
 } from "../../../shared/utils/authValidation";
 import { getRegistrationErrorMessage } from "../../../shared/utils/registrationErrors";
@@ -251,6 +252,12 @@ function SignUp() {
       clearTimeout(debounceTimersRef.current[fieldName]);
     }
     const val = formData[fieldName];
+    if ((fieldName === "firstName" || fieldName === "lastName") && val && typeof val === "string") {
+      const proper = formatProperCase(val.trim());
+      if (proper !== val) {
+        setFormData((prev) => ({ ...prev, [fieldName]: proper }));
+      }
+    }
     // Only display format errors on blur if the user actually typed a value
     // Empty/required field errors are reserved for when the user clicks submit
     if (val && val.trim()) {
@@ -584,8 +591,8 @@ function SignUp() {
               .replace(/\s+/g, " ")
               .trim();
             const parts = rawName.split(" ");
-            const firstName = parts[0] || "User";
-            const lastName = parts.slice(1).join(" ") || "Guest";
+            const firstName = formatProperCase(parts[0] || "User");
+            const lastName = formatProperCase(parts.slice(1).join(" ") || "Guest");
             const registration = await registerUserInBackend(
               firebaseUser,
               "",
@@ -701,7 +708,7 @@ function SignUp() {
         />
 
         <div className="flex items-center justify-center p-8 lg:p-12 bg-white overflow-y-auto">
-          <div className="w-full max-w-md">
+          <div className="w-full max-w-md my-auto">
             <Link
               to="/"
               className="lg:hidden inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-8 transition-colors"

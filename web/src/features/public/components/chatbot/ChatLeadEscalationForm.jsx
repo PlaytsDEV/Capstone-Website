@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Loader2 } from "lucide-react";
 import { chatbotApi } from "../../../../shared/api/chatbotApi";
 
 const BRANCH_OPTIONS = [
@@ -320,13 +321,13 @@ export function ChatLeadEscalationForm({
       </div>
 
       {isAutoFilled && (
-        <div className="px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-[11px] border border-amber-200 dark:border-amber-900/50 mb-2">
+        <div className="px-2.5 py-1.5 rounded-lg bg-amber-50/60 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 text-[11px] border border-slate-200 dark:border-slate-700 mb-2">
           <span>Details pre-filled from your chat. Please review and confirm.</span>
         </div>
       )}
 
       {submitError && (
-        <div className="p-2 mb-2 rounded-lg text-xs bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+        <div role="alert" className="p-2 mb-2 rounded-lg text-xs bg-rose-50/60 dark:bg-rose-950/20 border border-slate-200 dark:border-slate-700 text-rose-700 dark:text-rose-300">
           {submitError}
         </div>
       )}
@@ -494,10 +495,18 @@ export function ChatLeadEscalationForm({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold text-white flex items-center justify-center transition-all shadow-sm disabled:opacity-50"
+            title={isSubmitting ? "Submitting request..." : "Click to submit your assistance request"}
+            className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold text-white flex items-center justify-center gap-1.5 transition-all shadow-sm disabled:opacity-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:outline-none"
             style={{ backgroundColor: "var(--lp-navy, #0A1628)" }}
           >
-            <span>{isSubmitting ? "Submitting..." : "Submit Request"}</span>
+            {isSubmitting ? (
+              <>
+                <Loader2 size={13} className="animate-spin" />
+                <span>Submitting...</span>
+              </>
+            ) : (
+              <span>Submit Request</span>
+            )}
           </button>
         </div>
       </form>

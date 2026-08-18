@@ -1,5 +1,6 @@
 import { Mail, Phone, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { smoothScrollTo } from '../../../shared/utils/smoothScroll';
 
 // Simple inline SVG social icons (no extra dependency)
 function FacebookIcon() {
@@ -104,15 +105,19 @@ export function ContactFooter() {
             </h4>
             <ul className="space-y-3">
               {[
-                { label: 'Browse Rooms', href: '#rooms' },
-                { label: 'Our Branches', href: '#location' },
-                { label: 'Amenities', href: '#facilities' },
-                { label: 'Contact Us', href: '#inquiry' },
+                { label: 'Browse Rooms', href: '#rooms', id: 'rooms' },
+                { label: 'Our Branches', href: '#location', id: 'location' },
+                { label: 'Amenities', href: '#facilities', id: 'facilities' },
+                { label: 'Contact Us', href: '#inquiry', id: 'inquiry' },
               ].map((link) => (
                 <li key={link.label}>
                   <a
                     href={link.href}
-                    className="text-sm font-light transition-colors"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      smoothScrollTo(link.id, 80);
+                    }}
+                    className="text-sm font-light transition-colors cursor-pointer"
                     style={{ color: 'var(--lp-text-secondary)' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
@@ -138,7 +143,7 @@ export function ContactFooter() {
                   Gil Puyat
                 </p>
                 <p className="text-xs font-light" style={{ color: 'var(--lp-text-muted)' }}>
-                  Manila, Philippines
+                  Lilycrest Gil Puyat, Sen. Gil J. Puyat Ave, Makati City, Metro Manila
                 </p>
               </li>
               <li>
@@ -146,7 +151,7 @@ export function ContactFooter() {
                   Guadalupe
                 </p>
                 <p className="text-xs font-light" style={{ color: 'var(--lp-text-muted)' }}>
-                  Manila, Philippines
+                  1212, 9431 Magallanes, Makati, 1212 Kalakhang Maynila
                 </p>
               </li>
             </ul>
@@ -164,13 +169,13 @@ export function ContactFooter() {
               <li className="flex items-center gap-3">
                 <Mail className="w-4 h-4" style={{ color: 'var(--lp-accent)' }} />
                 <a
-                  href="mailto:hello@lilycrest.com"
+                  href="mailto:lilycrestadmin@gmail.com"
                   className="text-sm font-light transition-colors"
                   style={{ color: 'var(--lp-text-secondary)' }}
                   onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--lp-accent)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--lp-text-secondary)'; }}
                 >
-                  hello@lilycrest.com
+                  lilycrestadmin@gmail.com
                 </a>
               </li>
               <li className="flex items-center gap-3">

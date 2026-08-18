@@ -1,4 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import {
+  Headphones,
+  RotateCcw,
+  X,
+  AlertTriangle,
+  FileCheck,
+  Send,
+  LoaderCircle,
+} from "lucide-react";
 import ChatMessageList from "./ChatMessageList";
 import ChatLeadEscalationForm from "./ChatLeadEscalationForm";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
@@ -491,6 +500,51 @@ export function PublicChatbotModal({
         .lc-live-dot {
           animation: liveDotPulse 2.2s ease-in-out infinite;
         }
+
+        .lc-public-send-btn {
+          background-color: #0A1628 !important;
+          border: 1px solid #0A1628 !important;
+          color: #ffffff !important;
+          transition: background-color 0.15s ease, transform 0.15s ease;
+        }
+
+        .lc-public-send-btn svg {
+          color: #ffffff !important;
+          stroke: #ffffff !important;
+        }
+
+        .lc-public-send-btn:hover:not(:disabled) {
+          background-color: #162f53 !important;
+        }
+
+        .dark .lc-public-send-btn,
+        [data-theme="dark"] .lc-public-send-btn {
+          background-color: #D4AF37 !important;
+          border: 1px solid #B9921F !important;
+          color: #0A1628 !important;
+        }
+
+        .dark .lc-public-send-btn svg,
+        [data-theme="dark"] .lc-public-send-btn svg {
+          color: #0A1628 !important;
+          stroke: #0A1628 !important;
+        }
+
+        .dark .lc-public-send-btn:hover:not(:disabled),
+        [data-theme="dark"] .lc-public-send-btn:hover:not(:disabled) {
+          background-color: #E5C358 !important;
+        }
+
+        .lc-public-chat-input:focus {
+          border-color: #0A1628 !important;
+          box-shadow: 0 0 0 1px #0A1628;
+        }
+
+        .dark .lc-public-chat-input:focus,
+        [data-theme="dark"] .lc-public-chat-input:focus {
+          border-color: #D4AF37 !important;
+          box-shadow: 0 0 0 1px #D4AF37;
+        }
       `}</style>
 
       <div
@@ -557,9 +611,9 @@ export function PublicChatbotModal({
               }}
               title="Request Front Desk Assistance"
               aria-label="Request Front Desk Assistance"
-              className="px-2 py-1 rounded-lg text-xs font-semibold text-slate-700 hover:text-amber-800 hover:bg-amber-50 dark:text-slate-200 dark:hover:text-amber-300 transition-colors cursor-pointer border border-border"
+              className="p-1.5 rounded-lg text-slate-700 hover:text-amber-800 hover:bg-amber-50 dark:text-slate-200 dark:hover:text-amber-300 transition-colors cursor-pointer"
             >
-              Help
+              <Headphones size={15} />
             </button>
 
             {/* Clear History */}
@@ -568,9 +622,9 @@ export function PublicChatbotModal({
               onClick={handleClearHistory}
               title="Reset conversation"
               aria-label="Reset conversation"
-              className="px-2 py-1 rounded-lg text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-200 transition-colors cursor-pointer border border-border"
+              className="p-1.5 rounded-lg text-slate-700 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-200 transition-colors cursor-pointer"
             >
-              Reset
+              <RotateCcw size={15} />
             </button>
 
             {/* Close Modal */}
@@ -579,9 +633,9 @@ export function PublicChatbotModal({
               onClick={handleModalClose}
               title="Close chatbot"
               aria-label="Close chatbot window"
-              className="px-2 py-1 rounded-lg text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-200 transition-colors cursor-pointer border border-border"
+              className="p-1.5 rounded-lg text-slate-700 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-200 transition-colors cursor-pointer"
             >
-              Close
+              <X size={16} />
             </button>
           </div>
         </div>
@@ -596,16 +650,17 @@ export function PublicChatbotModal({
               color: "#B45309",
             }}
           >
-            <div className="min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <AlertTriangle size={13} className="shrink-0 text-amber-600" />
               <span className="truncate">{sessionExpiryNotice}</span>
             </div>
             <button
               type="button"
               onClick={() => setSessionExpiryNotice(null)}
-              className="px-1 py-0.5 rounded text-[10px] font-semibold hover:opacity-75 transition-opacity ml-1 flex-shrink-0 cursor-pointer border border-border"
+              className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors ml-1 flex-shrink-0 cursor-pointer"
               aria-label="Dismiss notice"
             >
-              Dismiss
+              <X size={12} />
             </button>
           </div>
         )}
@@ -632,6 +687,7 @@ export function PublicChatbotModal({
                 }}
               >
                 <div className="space-y-1">
+                  <AlertTriangle size={24} className="text-amber-600 dark:text-amber-400 mx-auto" />
                   <h4
                     id="inactivity-warning-title"
                     className="text-sm font-bold tracking-tight"
@@ -731,6 +787,7 @@ export function PublicChatbotModal({
                     border: "1px solid #cbd5e1",
                   }}
                 >
+                  <FileCheck size={13} className="text-amber-700" />
                   <span className="font-bold text-[#0A1628]">ID Requirements</span>
                 </button>
                 <button
@@ -746,6 +803,7 @@ export function PublicChatbotModal({
                     border: "1px solid #cbd5e1",
                   }}
                 >
+                  <Headphones size={13} className="text-amber-700" />
                   <span className="font-bold text-[#0A1628]">Front Desk Assistance</span>
                 </button>
               </div>
@@ -777,7 +835,7 @@ export function PublicChatbotModal({
                       onKeyDown={handleKeyDown}
                       placeholder="Ask about rates, curfews, or locations..."
                       disabled={isTyping}
-                      className="w-full text-xs py-2 px-3 pr-8 rounded-xl border outline-none resize-none transition-all focus:border-amber-500 disabled:opacity-60"
+                      className="w-full text-xs py-2 px-3 pr-8 rounded-xl border outline-none resize-none transition-all disabled:opacity-60 lc-public-chat-input"
                       style={{
                         backgroundColor: "var(--surface-input, #f8fafc)",
                         borderColor: "var(--lp-border, #E6D9B2)",
@@ -793,13 +851,13 @@ export function PublicChatbotModal({
                     disabled={!input.trim() || isTyping}
                     title="Send message"
                     aria-label="Send message"
-                    className="py-2 px-3 rounded-xl text-white text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center shadow-xs focus:outline-none active:scale-95 flex-shrink-0"
-                    style={{
-                      backgroundColor: "var(--lp-navy, #0A1628)",
-                      border: "1px solid var(--lp-navy, #0A1628)",
-                    }}
+                    className="w-9 h-9 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center shadow-xs focus:outline-none active:scale-95 flex-shrink-0 lc-public-send-btn"
                   >
-                    Send
+                    {isTyping ? (
+                      <LoaderCircle size={15} className="animate-spin" />
+                    ) : (
+                      <Send size={14} />
+                    )}
                   </button>
                 </form>
 
