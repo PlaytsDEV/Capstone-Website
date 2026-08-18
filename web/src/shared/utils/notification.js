@@ -200,6 +200,7 @@ export const showConfirmation = (
 export const cleanNotificationMessage = (message) => {
   if (!message || typeof message !== "string") return message;
   return message
+    .replace(/^Your application requires revision:\s*•?\s*/gi, "")
     .replace(/\bYour reservation N\/A\b/gi, "Your reservation")
     .replace(/\b reservation N\/A\b/gi, " reservation")
     .replace(/\b N\/A\b/gi, "")
@@ -314,6 +315,9 @@ export const sanitizeToastMessage = (rawMessage, type = "info") => {
     .replace(/\bRental\s*Fee\b/g, "Rent")
     .replace(/\brental\s*fee\b/g, "rent");
 
-  return cleanNotificationMessage(message);
+  // 3. Clean and normalize revision prefixes & formatting
+  message = cleanNotificationMessage(message);
+
+  return message;
 };
 

@@ -130,9 +130,17 @@ const BRANCH_MAP = {
   general: "General",
 };
 const ROOM_TYPE_MAP = {
-  private: "Private",
+  private: "Private Room",
+  "private-room": "Private Room",
+  "private-sharing": "Private Room",
+  single: "Private Room",
+  "single-room": "Private Room",
+  double: "Double Sharing",
   "double-sharing": "Double Sharing",
+  quadruple: "Quadruple Sharing",
   "quadruple-sharing": "Quadruple Sharing",
+  triple: "Triple Sharing",
+  "triple-sharing": "Triple Sharing",
 };
 
 const toDisplayString = (value) => {

@@ -102,17 +102,17 @@ export const RESERVATION_STATUS_APPEARANCE = Object.freeze({
   },
   visit_pending: {
     label: RESERVATION_STATUS_LABELS.visit_pending,
-    color: "#1d4ed8",
-    bg: "#eff6ff",
-    border: "#bfdbfe",
-    dot: "#3b82f6",
+    color: "#b45309",
+    bg: "transparent",
+    border: "transparent",
+    dot: "#f59e0b",
   },
   visit_approved: {
     label: RESERVATION_STATUS_LABELS.visit_approved,
-    color: "#1d4ed8",
-    bg: "#eff6ff",
-    border: "#bfdbfe",
-    dot: "#3b82f6",
+    color: "#047857",
+    bg: "transparent",
+    border: "transparent",
+    dot: "#10b981",
   },
   pending_application_review: {
     label: RESERVATION_STATUS_LABELS.pending_application_review,
@@ -194,7 +194,7 @@ export const RESERVATION_STAGE_MAP = Object.freeze({
     label: "Viewing Preference Selected",
   },
   visit_pending: { step: 2, total: 5, label: "Visit Scheduled" },
-  visit_approved: { step: 3, total: 5, label: "Visit Approved" },
+  visit_approved: { step: 2, total: 5, label: "Visit Confirmed" },
   pending_application_review: {
     step: 3,
     total: 5,
@@ -325,6 +325,27 @@ export const getAllowedReservationActions = (status) =>
 
 export const canReservationAccessPayment = (status) =>
   hasReservationStatus(status, "approved_for_payment", "payment_pending");
+
+export const isApplicationApprovedStatus = (status, reservation = {}) => {
+  const norm = normalizeReservationStatus(
+    status || reservation?.status || reservation?.reservationStatus,
+  );
+  return (
+    hasReservationStatus(
+      norm,
+      "approved_for_payment",
+      "payment_pending",
+      "reserved",
+      "moveIn",
+      "moveOut",
+    ) ||
+    Boolean(reservation?.approvedForPaymentAt) ||
+    reservation?.documentsApproved === true ||
+    Boolean(reservation?.paymentDate) ||
+    Boolean(reservation?.proofOfPaymentUrl) ||
+    reservation?.paymentStatus === "paid"
+  );
+};
 
 const normalizeLifecycleObject = (value) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

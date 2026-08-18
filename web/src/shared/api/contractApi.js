@@ -118,6 +118,11 @@ export const contractApi = {
     authFetch(`/contracts/${contractId}/documents/signed/reject`, {
       method: "POST", body: JSON.stringify({ reason }),
     }),
+  deleteSignedContract: (contractId, version, reason = "") =>
+    authFetch(`/contracts/${contractId}/documents/signed${version ? `/${version}` : ""}`, {
+      method: "DELETE",
+      body: JSON.stringify({ reason }),
+    }),
   uploadNotarizedContract: (
     contractId, file, preparedDocumentVersion, replacementReason = "", notarialDetails = {},
   ) => {

@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import defaultLogo from "../../assets/images/LOGO.png";
 import { formatPaymentMethod } from "./formatPaymentMethod.js";
+import { formatDisplayReference } from "./formatPaymentReference.js";
 import { getBedDisplayLabel } from "./bedIdentifier.js";
 import { resolveReservationFinancials } from "./depositUtils.js";
 
@@ -438,10 +439,11 @@ async function buildReceiptDoc(reservation, profile) {
       : room.branch || "Lilycrest";
 
   const paymentMethod = formatPaymentMethod(reservation.paymentMethod);
-  const refId = reservation.paymongoPaymentId
+  const rawRef = reservation.paymentReference
     || reservation.reservationCode
     || reservation._id?.slice(-8)?.toUpperCase()
     || "—";
+  const refId = formatDisplayReference(rawRef);
 
   const feeAmount = Number(reservation.amountPaid || reservation.reservationFeeAmount || 2000);
 
@@ -588,12 +590,12 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
       : room.branch || "Lilycrest";
 
   const paymentMethod = formatPaymentMethod(bill?.paymentMethod || reservation.paymentMethod || "paymongo");
-  const refId = bill?.paymongoPaymentId
-    || bill?.paymentReference
-    || reservation.paymongoPaymentId
+  const rawRef = bill?.paymentReference
+    || reservation.paymentReference
     || reservation.reservationCode
     || reservation._id?.slice(-8)?.toUpperCase()
     || "—";
+  const refId = formatDisplayReference(rawRef);
 
   const {
     monthlyRent,
@@ -901,11 +903,13 @@ async function buildBillingReceiptDoc(bill) {
   const amount = bill.paidAmount || bill.totalAmount || 0;
   const monthLabel = bill.billingMonth ? formatMonth(bill.billingMonth) : "Monthly Bill";
   const paymentMethodLabel = formatPaymentMethod(bill.paymentMethod || "paymongo");
-  const refId = bill.paymongoPaymentId
-    || bill.paymentReference
+  const rawRef = bill.paymentReference
+    || bill.paymongoReference
+    || bill.billReference
     || bill.id?.slice(-8)?.toUpperCase()
     || bill._id?.slice(-8)?.toUpperCase()
     || "—";
+  const refId = formatDisplayReference(rawRef);
 
   const tenantName = safeString(bill.tenantName || bill.tenant || bill.customerName || "Resident Tenant");
   const branch = bill.branch || "Lilycrest";
@@ -1039,9 +1043,8 @@ async function buildBillingReceiptDoc(bill) {
 
 export async function generateReceiptPDF(bill) {
   const doc = await buildBillingReceiptDoc(bill);
-  const receiptNo = bill.paymongoPaymentId
-    ? bill.paymongoPaymentId.slice(-12).toUpperCase()
-    : (bill.id || bill._id || "receipt").slice(-8).toUpperCase();
+  const rawRef = bill.paymentReference || bill.paymongoReference || bill.billReference || (bill.id || bill._id || "receipt").slice(-8).toUpperCase();
+  const receiptNo = formatDisplayReference(rawRef, "receipt").replace(/[^a-zA-Z0-9_-]/g, "_");
   doc.save(`Lilycrest_Receipt_${receiptNo}.pdf`);
 }
 

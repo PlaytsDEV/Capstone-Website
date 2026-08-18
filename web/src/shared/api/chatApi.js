@@ -73,6 +73,18 @@ export const chatApi = {
       body: JSON.stringify({ note }),
     }),
 
+  confirmTenantResolution: (conversationId, resolved, note = "", rating = null, feedback = "") =>
+    authFetch(`/chat/${conversationId}/resolution`, {
+      method: "PATCH",
+      body: JSON.stringify({ resolved, note, rating, feedback }),
+    }),
+
+  reopenTenantConversation: (conversationId, note = "") =>
+    authFetch(`/chat/${conversationId}/reopen`, {
+      method: "PATCH",
+      body: JSON.stringify({ note }),
+    }),
+
   // Fire-and-forget typing signal — no await needed at call site.
   broadcastTyping: (conversationId) =>
     authFetch(`/chat/${conversationId}/typing`, { method: "POST" }).catch(() => {}),

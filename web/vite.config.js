@@ -12,6 +12,7 @@ export default defineConfig({
     outDir: "build",
     sourcemap: false,
     rollupOptions: {
+      maxParallelFileOps: 20,
       output: {
         manualChunks: {
           // Split heavy vendor libs into separately cacheable chunks

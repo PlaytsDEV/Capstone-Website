@@ -106,6 +106,7 @@ const loadImageAsDataURL = (src) =>
   new Promise((resolve) => {
     if (!src) return resolve(null);
     if (typeof src === "string" && src.startsWith("data:")) return resolve(src);
+    if (typeof Image === "undefined" || typeof document === "undefined") return resolve(null);
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
@@ -124,8 +125,68 @@ const loadImageAsDataURL = (src) =>
       console.error("Logo load failed:", e);
       resolve(null);
     };
-    img.src = typeof src === "string" ? src : URL.createObjectURL(src);
+    img.src = typeof src === "string" ? src : (typeof URL !== "undefined" && URL.createObjectURL ? URL.createObjectURL(src) : null);
   });
+
+export const computeAutoColWidths = (hdrs = [], rows = [], printableW = 178) => {
+  if (!hdrs || hdrs.length === 0) return [];
+  if (hdrs.length === 1) return [printableW];
+
+  const sampleRows = Array.isArray(rows) ? rows.slice(0, 15) : [];
+  const weights = hdrs.map((h) => {
+    const hStr = String(h || "");
+    const hLen = hStr.length;
+    const maxContentLen = sampleRows.reduce((max, r) => {
+      const val = r && r[h] != null ? String(r[h]) : "";
+      return Math.max(max, val.length);
+    }, 0);
+    const hLow = hStr.toLowerCase();
+
+    let minW = 18;
+    if (
+      hLow.includes("date") ||
+      hLow.includes("created") ||
+      hLow.includes("move in") ||
+      hLow.includes("submitted") ||
+      hLow.includes("appointment") ||
+      hLow.includes("effective")
+    ) {
+      minW = 23;
+    } else if (
+      hLow.includes("room") ||
+      hLow.includes("tenant") ||
+      hLow.includes("applicant") ||
+      hLow.includes("name") ||
+      hLow.includes("inquirer") ||
+      hLow.includes("visitor")
+    ) {
+      minW = 26;
+    } else if (hLow.includes("code") || hLow.includes("id") || hLow.includes("status")) {
+      minW = 22;
+    } else if (
+      hLow.includes("message") ||
+      hLow.includes("notes") ||
+      hLow.includes("description") ||
+      hLow.includes("title")
+    ) {
+      minW = 38;
+    }
+
+    return Math.max(minW, Math.max(hLen * 2.2, maxContentLen * 1.8));
+  });
+
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  return weights.map((w) => (w / totalWeight) * printableW);
+};
+
+export const computeKpiColumns = (count) => {
+  if (count <= 3) return count || 1;
+  if (count === 4) return 4;
+  if (count === 5) return 5;
+  if (count === 6) return 3; // Symmetrical 3x2 grid
+  if (count % 3 === 0) return 3;
+  return 4;
+};
 
 export async function exportReportPdf({
   logo       = defaultLogo,
@@ -147,8 +208,9 @@ export async function exportReportPdf({
   const M   = 16;                                  // 16 mm margins
   const CW  = W - M * 2;                           // 178 mm printable width
 
-  const Y_START_PAGE1 = M + 2;
-  const Y_START_CONT  = M + 10;
+  const Y_START_PAGE1    = M + 2;
+  const Y_START_CONT     = M + 10;
+  const FOOTER_CLEARANCE = 18; // Keep 7mm buffer above footer line at H - 11
 
   let y = Y_START_PAGE1;
 
@@ -209,11 +271,13 @@ export async function exportReportPdf({
   };
 
   const ensureSpace = (needed) => {
-    if (y + needed > H - 18) {
+    if (y + needed > H - FOOTER_CLEARANCE) {
       doc.addPage();
       drawPageHeaderContinuation();
       y = Y_START_CONT;
+      return true;
     }
+    return false;
   };
 
   // ── Page chrome ──────────────────────────────────────────────
@@ -254,7 +318,7 @@ export async function exportReportPdf({
     });
   };
 
-  // Clean, high-contrast section heading (No floating dots)
+  // Clean, high-contrast section heading
   const sectionTitle = (label, rightBadge = null) => {
     const cleanLabel = sanitizePdfText(label);
     ensureSpace(12);
@@ -324,16 +388,33 @@ export async function exportReportPdf({
     align: "center",
   });
 
-  // Subtitle / Generation timestamp
+  // Subtitle / Generation timestamp deduplication
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  const metaParts = [subtitle, period, `Generated ${dateStr}`].filter(Boolean);
+  const generatedLabel = `Generated ${dateStr}`;
+
+  const cleanSubtitle = sanitizePdfText(subtitle);
+  const cleanPeriod   = sanitizePdfText(period);
+
+  const metaParts = [];
+  if (cleanSubtitle) metaParts.push(cleanSubtitle);
+  if (
+    cleanPeriod &&
+    cleanPeriod !== cleanSubtitle &&
+    !cleanPeriod.toLowerCase().startsWith("generated") &&
+    !cleanPeriod.toLowerCase().includes(dateStr.toLowerCase())
+  ) {
+    metaParts.push(cleanPeriod);
+  }
+  metaParts.push(generatedLabel);
+
   const metaLine = metaParts.join("   ·   ");
   const metaBaseY = titleBaseY + S.SM + metaLineH;
   if (metaLine) {
     txt(metaLine, titleX, metaBaseY, {
       size: F.TINY + 0.5,
       color: C.TEXT_MUTED,
+      maxW: titleTextW,
     });
   }
 
@@ -342,17 +423,18 @@ export async function exportReportPdf({
   y += S.LG;
 
   // ══════════════════════════════════════════════════════════
-  // KPI METRICS GRID (/wf-frontend-overhaul: 25.5mm cards, zero clipping)
+  // KPI METRICS GRID (Symmetrical distribution, dynamic height)
   // ══════════════════════════════════════════════════════════
 
   if (kpis.length > 0) {
     sectionTitle("Key Performance Indicators");
 
-    const COLS = Math.min(4, Math.max(2, kpis.length));
+    const COLS = computeKpiColumns(kpis.length);
     const GAP  = S.MD;
     const CARD_W = (CW - GAP * (COLS - 1)) / COLS;
-    const CARD_PAD = 3.0;
-    const TXT_W = CARD_W - CARD_PAD * 2;
+    const CARD_PAD_X = 2.8;
+    const CARD_PAD_Y = 2.4;
+    const TXT_W = CARD_W - CARD_PAD_X * 2;
 
     const parsedKpis = kpis.map((kpi) => {
       const cleanVal = formatPdfValue(kpi.value);
@@ -368,8 +450,13 @@ export async function exportReportPdf({
       };
     });
 
-    const CARD_H = 25.5; // Generous 25.5mm height to guarantee subtext never truncates
-    ensureSpace(CARD_H + S.MD);
+    const hasAnySub = parsedKpis.some((k) => k.subLines && k.subLines.length > 0);
+    // Dynamic height: Compact 17.5mm when no subtext, 22.0mm when subtext exists
+    const CARD_H = hasAnySub ? 22.0 : 17.5;
+
+    const rowsCount = Math.ceil(parsedKpis.length / COLS);
+    const totalGridH = rowsCount * CARD_H + (rowsCount - 1) * GAP;
+    ensureSpace(totalGridH + S.MD);
 
     parsedKpis.forEach((layout, i) => {
       const col = i % COLS;
@@ -377,43 +464,45 @@ export async function exportReportPdf({
       const cx  = M + col * (CARD_W + GAP);
       const cy  = y + row * (CARD_H + GAP);
 
-      // Clean 1px solid neutral border, soft neutral background, strictly zero side-colored stripes
+      // Clean 1px solid neutral border, soft neutral background
       rect(cx, cy, CARD_W, CARD_H, C.BG_CARD, 1.5, C.BORDER, 0.25);
 
       // 1. Label (Uppercase, muted slate)
-      const lblY = cy + CARD_PAD + capH(F.LABEL);
-      txt(layout.labelLines[0] || "", cx + CARD_PAD, lblY, {
+      const lblY = cy + CARD_PAD_Y + capH(F.LABEL);
+      txt(layout.labelLines[0] || "", cx + CARD_PAD_X, lblY, {
         size: F.LABEL,
         weight: "bold",
         color: C.TEXT_MUTED,
       });
 
-      // 2. Value (Bold, high-contrast Navy)
-      const valY = cy + 9.5 + capH(layout.valSize);
-      txt(layout.cleanVal, cx + CARD_PAD, valY, {
+      // 2. Value (Bold, high-contrast Navy, vertically centered)
+      const valY = hasAnySub
+        ? cy + 8.5 + capH(layout.valSize)
+        : cy + (CARD_H + capH(F.LABEL) + CARD_PAD_Y) / 2 + capH(layout.valSize) / 2 - 0.5;
+
+      txt(layout.cleanVal, cx + CARD_PAD_X, valY, {
         size: layout.valSize,
         weight: "bold",
         color: C.NAVY_PRIMARY,
       });
 
-      // 3. Subtitle / Trend (Full 2-line wrap budget, no bottom cut-off)
+      // 3. Subtitle / Trend (if present)
       if (layout.subLines.length > 0) {
-        const subY = cy + 17.5 + capH(F.TINY);
-        txt(layout.subLines.slice(0, 2), cx + CARD_PAD, subY, {
+        const subY = cy + 15.0 + capH(F.TINY);
+        txt(layout.subLines.slice(0, 2), cx + CARD_PAD_X, subY, {
           size: F.TINY,
           color: C.TEXT_MUTED,
-          lh: 3.4,
+          lh: 3.2,
           maxW: TXT_W,
         });
       }
     });
 
-    const rowsCount = Math.ceil(parsedKpis.length / COLS);
-    y += rowsCount * CARD_H + (rowsCount - 1) * GAP + S.LG;
+    y += totalGridH + S.LG;
   }
 
   // ══════════════════════════════════════════════════════════
-  // EXECUTIVE BRIEFING & AI SUMMARY (/wf-ui-redesign: guarded against empty output)
+  // EXECUTIVE BRIEFING & AI SUMMARY
   // ══════════════════════════════════════════════════════════
 
   const hasAiContent = Boolean(
@@ -568,43 +657,19 @@ export async function exportReportPdf({
   }
 
   // ══════════════════════════════════════════════════════════
-  // SECTIONS & TABLES (/wf-color-objectives & /wf-ui-redesign standards)
+  // SECTIONS & TABLES
   // ══════════════════════════════════════════════════════════
-
-  sections.forEach((section) => {
-    ensureSpace(30);
-
-    sectionTitle(section.title || "Report Details");
-
-    if (section.description) {
-      const lines = wrap(section.description, CW);
-      txt(lines, M, y + capH(F.SMALL), {
-        size: F.SMALL,
-        color: C.TEXT_MUTED,
-        lh: LH.SMALL,
-      });
-      y += lines.length * LH.SMALL + S.SM;
-    }
-
-    if (Array.isArray(section.rows) && section.rows.length > 0) {
-      if (section.type === "table" || section.headers) {
-        y = renderTable(section, y);
-      } else {
-        y = renderListSection(section, y);
-      }
-    }
-
-    y += S.MD;
-  });
 
   // ── renderListSection ───────────────────────────────────────
 
   function renderListSection(section, startY) {
-    let ly = startY;
+    y = startY;
     const rows = section.rows || [];
     const bulletX = M + 2.0;
     const textX = M + 5.5;
     const textW = CW - 5.5;
+
+    ensureSpace(12);
 
     rows.forEach((row) => {
       const cleanText = Array.isArray(row)
@@ -616,28 +681,36 @@ export async function exportReportPdf({
       ensureSpace(rowH + 1);
 
       doc.setFillColor(...C.NAVY_PRIMARY);
-      doc.circle(bulletX, ly + capH(F.SMALL) * 0.5, 0.65, "F");
+      doc.circle(bulletX, y + capH(F.SMALL) * 0.5, 0.65, "F");
 
-      txt(lines, textX, ly + capH(F.SMALL), {
+      txt(lines, textX, y + capH(F.SMALL), {
         size: F.SMALL,
         color: C.TEXT_SECONDARY,
         lh: LH.SMALL,
         maxW: textW,
       });
 
-      ly += rowH;
+      y += rowH;
     });
 
-    return ly;
+    return y;
   }
 
   // ── renderTable ─────────────────────────────────────────────
 
   function renderTable(section, startY) {
-    let ty = startY;
+    y = startY;
     const hdrs = section.headers || [];
     const rows = section.rows || [];
-    const colWidths = section.colWidths || hdrs.map(() => CW / hdrs.length);
+
+    const rawColWidths = section.colWidths || [];
+    let colWidths = [];
+    if (Array.isArray(rawColWidths) && rawColWidths.length === hdrs.length && rawColWidths.length > 0) {
+      const rawSum = rawColWidths.reduce((a, b) => a + b, 0);
+      colWidths = rawColWidths.map((w) => (w / rawSum) * CW);
+    } else {
+      colWidths = computeAutoColWidths(hdrs, rows, CW);
+    }
 
     const colX = [];
     let acc = M;
@@ -647,8 +720,8 @@ export async function exportReportPdf({
     });
 
     const ROW_H_BASE = 7.5;
-    const CELL_PAD_X = 2.5;
-    const CELL_PAD_Y = 2.0;
+    const CELL_PAD_X = 2.0;
+    const CELL_PAD_Y = 2.2;
 
     // Detect numeric, monetary, rate, and counter columns for right-alignment
     const isNumericHeader = (h) => {
@@ -693,7 +766,9 @@ export async function exportReportPdf({
       return yPos + ROW_H_BASE;
     };
 
-    ty = renderTableHeader(ty);
+    // Ensure space for header + at least 1-2 rows before starting table
+    ensureSpace(ROW_H_BASE * 2);
+    y = renderTableHeader(y);
 
     rows.forEach((row, rIdx) => {
       const cellValues = hdrs.map((h) => formatPdfValue(row[h]));
@@ -701,26 +776,27 @@ export async function exportReportPdf({
       const maxLines = Math.max(1, ...wrappedCells.map((lines) => lines.length));
       const rowH = Math.max(ROW_H_BASE, maxLines * LH.SMALL + CELL_PAD_Y * 2);
 
-      const pageBefore = doc.internal.getNumberOfPages();
-      ensureSpace(rowH + 2);
-      const pageAfter = doc.internal.getNumberOfPages();
-      if (pageAfter > pageBefore) {
-        ty = renderTableHeader(y);
+      // Trigger multi-page pagination with repeated table header
+      if (y + rowH > H - FOOTER_CLEARANCE) {
+        doc.addPage();
+        drawPageHeaderContinuation();
+        y = Y_START_CONT;
+        y = renderTableHeader(y);
       }
 
       // Alternating row zebra striping
       const rowBg = rIdx % 2 === 0 ? C.WHITE : C.BG_CARD;
-      rect(M, ty, CW, rowH, rowBg);
-      hline(M, ty + rowH, W - M, C.BORDER, 0.15);
+      rect(M, y, CW, rowH, rowBg);
+      hline(M, y + rowH, W - M, C.BORDER, 0.15);
 
-      const cellBaseY = ty + CELL_PAD_Y + capH(F.SMALL);
+      const cellBaseY = y + CELL_PAD_Y + capH(F.SMALL);
 
       hdrs.forEach((h, i) => {
         const val = row[h];
         const cx = colX[i] + CELL_PAD_X;
         const hLow = h.toLowerCase();
 
-        // Status Badge: Strict /wf-color-objectives Invariant
+        // Status Badge: Strict Invariant
         // Transparent background + colored status dot + semantic text (Strictly ZERO matching colored border outlines)
         if (hLow === "status" || hLow.includes("turnaround status") || hLow.includes("sla")) {
           const vStr = sanitizePdfText(val);
@@ -759,14 +835,40 @@ export async function exportReportPdf({
         });
       });
 
-      ty += rowH;
+      y += rowH;
     });
 
-    return ty;
+    return y;
   }
 
+  sections.forEach((section) => {
+    ensureSpace(25);
+
+    sectionTitle(section.title || "Report Details");
+
+    if (section.description) {
+      const lines = wrap(section.description, CW);
+      txt(lines, M, y + capH(F.SMALL), {
+        size: F.SMALL,
+        color: C.TEXT_MUTED,
+        lh: LH.SMALL,
+      });
+      y += lines.length * LH.SMALL + S.SM;
+    }
+
+    if (Array.isArray(section.rows) && section.rows.length > 0) {
+      if (section.type === "table" || section.headers) {
+        y = renderTable(section, y);
+      } else {
+        y = renderListSection(section, y);
+      }
+    }
+
+    y += S.MD;
+  });
+
   // ══════════════════════════════════════════════════════════
-  // FOOTER RENDER (Across all pages)
+  // FOOTER RENDER (Across all generated pages)
   // ══════════════════════════════════════════════════════════
 
   const totalPages = doc.internal.getNumberOfPages();
@@ -776,4 +878,5 @@ export async function exportReportPdf({
   }
 
   doc.save(filename);
+  return doc;
 }

@@ -106,6 +106,7 @@ export const queryKeys = {
     financials: (params) => ["analytics", "financials", params || {}],
     audit: (params) => ["analytics", "audit", params || {}],
     insights: (params) => ["analytics", "insights", params || {}],
+    supportChatReport: (params) => ["analytics", "support-chat-report", params || {}],
   },
 
   settings: {
