@@ -20,6 +20,7 @@ import {
   sendPaymentRejectedEmail,
 } from "../../config/email.js";
 import { applyBillPayment } from "../../utils/paymentLedger.js";
+import { formatDisplayReference } from "../../utils/referenceGenerator.js";
 import { ensureCurrentCycleRentBill } from "../../utils/rentGenerator.js";
 import {
   getBillRemainingAmount,
@@ -262,6 +263,7 @@ export const formatBill = (bill) => {
     status: visible.status,
     paymentMethod: bill.paymentMethod || null,
     paymentDate: bill.paymentDate || null,
+    paymentReference: formatDisplayReference(bill.paymentReference || bill.paymongoPaymentId) || null,
     paymongoPaymentId: bill.paymongoPaymentId || null,
     penaltyDetails: bill.penaltyDetails || { daysLate: 0, ratePerDay: null, appliedAt: null },
     legacyPaymentFallbackLabel:
@@ -1162,7 +1164,7 @@ export async function generateCanonicalBillReceiptPdf({ bill, tenant, room = nul
         amount: Number(bill.paidAmount || visible.totalAmount || 0),
         method: bill.paymentMethod || null,
         settledAt: bill.paymentDate || null,
-        reference: bill.paymongoPaymentId || null,
+        reference: formatDisplayReference(bill.paymentReference || bill.paymongoPaymentId) || null,
       } : null,
       remainingAmount: visible.remainingAmount,
     });

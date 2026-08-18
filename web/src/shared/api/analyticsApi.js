@@ -47,4 +47,8 @@ export const analyticsApi = {
     const query = new URLSearchParams(params).toString();
     return authFetch(`/analytics/reports/demographics${query ? `?${query}` : ""}`);
   },
+  getSupportChatReport: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return authFetch(`/analytics/reports/support-chat${query ? `?${query}` : ""}`);
+  },
 };

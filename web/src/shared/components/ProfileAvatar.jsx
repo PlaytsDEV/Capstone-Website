@@ -45,7 +45,7 @@ export default function ProfileAvatar({
     height: size,
     minWidth: size,
     borderRadius: "50%",
-    background: "var(--surface-muted, #f1f5f9)",
+    background: "var(--avatar-bg, #0A1628)",
     color: "var(--avatar-color, #ffffff)",
     display: "inline-flex",
     alignItems: "center",

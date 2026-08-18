@@ -55,18 +55,47 @@ test("stageUtils: maintenance module fractional stages", () => {
 });
 
 test("stageUtils: reservation module fractional stages", () => {
+  // Stage 1 [1/5] - Room Selected
   assert.equal(formatStageStatus("reservation", "pending"), "Room Selected [1/5]");
+
+  // Stage 2 [2/5] - Viewing Preference
+  assert.equal(
+    formatStageStatus("reservation", "viewing_preference_selected"),
+    "Viewing Preference Selected [2/5]",
+  );
+  assert.equal(
+    formatStageStatus("reservation", "visit_pending"),
+    "Visit Pending [2/5]",
+  );
+  assert.equal(
+    formatStageStatus("reservation", "visit_approved"),
+    "Visit Confirmed [2/5]",
+  );
+
+  // Stage 3 [3/5] - Tenant Application & Review
+  assert.equal(
+    formatStageStatus("reservation", "pending_application_review"),
+    "Pending Application Review [3/5]",
+  );
+  assert.equal(
+    formatStageStatus("reservation", "needs_revision"),
+    "Needs Revision [3/5]",
+  );
+
+  // Stage 4 [4/5] - Payment
   assert.equal(
     formatStageStatus("reservation", "approved_for_payment"),
-    "Approved for Payment [2/5]",
+    "Approved for Payment [4/5]",
   );
   assert.equal(
     formatStageStatus("reservation", "payment_pending"),
-    "Payment Pending [3/5]",
+    "Payment Pending [4/5]",
   );
+
+  // Stage 5 [5/5] - Confirmation & Check In
   assert.equal(
     formatStageStatus("reservation", "reserved"),
-    "Reserved [4/5]",
+    "Reserved [5/5]",
   );
   assert.equal(formatStageStatus("reservation", "moveIn"), "Move In [5/5]");
 

@@ -1,55 +1,7 @@
 /* ============================================================
-   SUPER ADMIN & OWNER ROLE PERMISSIONS — Lilycrest DMS Solid Theme
+   OWNER ROLE PERMISSIONS — Lilycrest DMS Solid Design System
    ============================================================ */
 @import "../../admin/styles/design-tokens.css";
-
-/* Embedded Context Bar */
-.sa-perm-context-bar {
-  background: var(--card);
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-}
-
-.sa-perm-context-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md, 6px);
-  background: var(--muted);
-  border: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--secondary, #1e3a8a);
-  flex-shrink: 0;
-}
-
-/* Header Action Button */
-.sa-perm-header-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md, 6px);
-  color: var(--foreground);
-  font-size: var(--font-size-xs, 12px);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  user-select: none;
-}
-
-.sa-perm-header-btn:hover:not(:disabled) {
-  background: var(--muted);
-  border-color: var(--secondary, #1e3a8a);
-  color: var(--secondary, #1e3a8a);
-}
-
-.sa-perm-header-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 
 /* Metrics Banner Grid */
 .sa-perm-metrics-grid {
@@ -67,44 +19,23 @@
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg, 10px);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
   position: relative;
   font-family: inherit;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .sa-metric-card:hover {
-  border-color: var(--border-hover, #cbd5e1);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  border-color: var(--border-strong, #cbd5e1);
+  box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.08));
+  transform: translateY(-2px);
 }
 
 .sa-metric-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radius-md, 8px);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border: 1px solid transparent;
-}
-
-.sa-icon-navy {
-  background: #eff6ff;
-  color: #1e3a8a;
-  border-color: #bfdbfe;
-}
-
-.sa-icon-green {
-  background: var(--success-light, #ecfdf5);
-  color: var(--success-dark, #065f46);
-  border-color: var(--success, #16a34a);
-}
-
-.sa-icon-amber {
-  background: var(--warning-light, #fffbeb);
-  color: var(--warning-dark, #92400e);
-  border-color: var(--warning, #f59e0b);
 }
 
 .sa-metric-info {
@@ -142,7 +73,7 @@
   border-radius: var(--radius-lg, 12px);
   background: var(--card);
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
 }
 
 /* Section Header */
@@ -151,7 +82,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 22px;
+  padding: 16px 20px;
   background: var(--card);
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
@@ -167,7 +98,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--secondary, #1e3a8a);
+  color: var(--primary, #0A1628);
+}
+
+:global(.dark) .sa-perm-title-icon,
+.dark .sa-perm-title-icon {
+  color: var(--accent, #D4AF37);
 }
 
 .sa-perm-section-title {
@@ -195,7 +131,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 13px;
+  padding: 6px 12px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md, 6px);
@@ -208,8 +144,7 @@
 
 .sa-perm-expand-toggle-btn:hover {
   background: var(--muted);
-  border-color: var(--secondary, #1e3a8a);
-  color: var(--secondary, #1e3a8a);
+  border-color: var(--border-strong, #cbd5e1);
 }
 
 /* Consolidated Filter Toolbar */
@@ -219,7 +154,7 @@
   justify-content: space-between;
   gap: 14px;
   padding: 12px 20px;
-  background: var(--muted, #f8fafc);
+  background: var(--muted);
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
@@ -263,8 +198,13 @@
 }
 
 .sa-search-input:focus {
-  border-color: var(--secondary, #1e3a8a);
-  box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.15);
+  border-color: var(--primary, #0A1628);
+  box-shadow: 0 0 0 2px rgba(10, 22, 40, 0.1);
+}
+
+.dark .sa-search-input:focus {
+  border-color: var(--accent, #D4AF37);
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.15);
 }
 
 .sa-search-clear-btn {
@@ -315,7 +255,11 @@
 }
 
 .sa-filter-select:focus {
-  border-color: var(--secondary, #1e3a8a);
+  border-color: var(--primary, #0A1628);
+}
+
+.dark .sa-filter-select:focus {
+  border-color: var(--accent, #D4AF37);
 }
 
 /* Scope Segmented Filter Pills */
@@ -343,14 +287,20 @@
 }
 
 .sa-perm-scope-pill-btn:hover {
-  border-color: var(--secondary, #1e3a8a);
+  border-color: var(--border-strong, #cbd5e1);
   color: var(--foreground);
 }
 
 .sa-perm-scope-pill-btn--active {
-  background: var(--secondary, #1e3a8a);
+  background: var(--primary, #0A1628);
   color: #ffffff;
-  border-color: var(--secondary, #1e3a8a);
+  border-color: var(--primary, #0A1628);
+}
+
+.dark .sa-perm-scope-pill-btn--active {
+  background: #1e293b;
+  color: #ffffff;
+  border-color: var(--accent, #D4AF37);
 }
 
 .sa-perm-scope-pill-count {
@@ -371,14 +321,14 @@
 }
 
 .sa-perm-scope-pill-btn--danger:hover {
-  border-color: var(--danger, #ef4444);
-  color: var(--danger-dark, #991b1b);
+  border-color: #dc2626;
+  color: #dc2626;
 }
 
 .sa-perm-scope-pill-btn--danger-active {
-  background: var(--danger, #ef4444);
+  background: #dc2626;
   color: #ffffff;
-  border-color: var(--danger, #ef4444);
+  border-color: #dc2626;
 }
 
 .sa-perm-scope-pill-btn--danger-active .sa-perm-scope-pill-count {
@@ -393,7 +343,7 @@
   gap: 8px;
   flex-wrap: wrap;
   padding: 9px 20px;
-  background: #f1f5f9;
+  background: var(--card);
   border-bottom: 1px solid var(--border);
 }
 
@@ -411,9 +361,9 @@
   gap: 6px;
   font-size: 11px;
   font-weight: 500;
-  color: #1e3a8a;
-  background: #e0e7ff;
-  border: 1px solid #c7d2fe;
+  color: var(--foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
   padding: 2px 8px;
   border-radius: var(--radius-sm, 4px);
 }
@@ -425,18 +375,17 @@
 .sa-perm-filter-tag button {
   background: transparent;
   border: none;
-  color: #1e3a8a;
+  color: var(--muted-foreground);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  opacity: 0.75;
-  transition: opacity 0.15s ease;
+  transition: color 0.15s ease;
 }
 
 .sa-perm-filter-tag button:hover {
-  opacity: 1;
+  color: var(--foreground);
 }
 
 .sa-perm-reset-filters-btn {
@@ -477,17 +426,22 @@
 }
 
 .sa-perm-card:hover {
-  border-color: var(--border-hover, #cbd5e1);
+  border-color: var(--border-strong, #cbd5e1);
 }
 
 .sa-perm-card--focused {
-  border-color: var(--secondary, #1e3a8a) !important;
-  box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.15), 0 4px 6px -1px rgba(0, 0, 0, 0.08) !important;
+  border-color: var(--primary, #0A1628) !important;
+  box-shadow: 0 0 0 2px rgba(10, 22, 40, 0.15), var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.08)) !important;
+}
+
+.dark .sa-perm-card--focused {
+  border-color: var(--accent, #D4AF37) !important;
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.2) !important;
 }
 
 .sa-perm-card--open {
-  border-color: #cbd5e1;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.04);
+  border-color: var(--border-strong, #cbd5e1);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
 }
 
 /* Card Header Band */
@@ -496,7 +450,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 14px 18px;
-  background: var(--muted, #f8fafc);
+  background: var(--muted);
   border-bottom: 1px solid transparent;
   gap: 16px;
   transition: background 0.15s ease;
@@ -508,12 +462,12 @@
 }
 
 .sa-perm-card-header--clickable:hover {
-  background: #f1f5f9;
+  background: var(--card);
 }
 
 .sa-perm-card--open .sa-perm-card-header {
   border-bottom-color: var(--border);
-  background: #f8fafc;
+  background: var(--muted);
 }
 
 /* User Info */
@@ -528,9 +482,9 @@
   width: 38px;
   height: 38px;
   border-radius: var(--radius-md, 8px);
-  background: var(--avatar-bg, #0A1628);
-  color: var(--avatar-color, #ffffff);
-  border: 1px solid var(--avatar-border, rgba(10, 22, 40, 0.15));
+  background: #0A1628;
+  color: #ffffff;
+  border: 1px solid rgba(10, 22, 40, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -538,6 +492,11 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   flex-shrink: 0;
+}
+
+.dark .sa-perm-avatar {
+  background: #1e293b;
+  border-color: var(--border);
 }
 
 .sa-perm-user-name {
@@ -558,16 +517,16 @@
 .sa-perm-focused-badge {
   font-size: 10px;
   font-weight: 700;
-  color: #1e3a8a;
-  background: #dbeafe;
-  border: 1px solid #bfdbfe;
+  color: var(--foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
   padding: 1px 6px;
   border-radius: 9999px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-/* Meta Section (Branch, Scope Badges, Role Pill, Chevron) */
+/* Meta Section (Branch, Scope Badges, Role Badge, Chevron) */
 .sa-perm-meta {
   display: flex;
   align-items: center;
@@ -582,51 +541,79 @@
   font-size: 11px;
   font-weight: 600;
   color: var(--muted-foreground);
-  padding: 4px 10px;
-  background: var(--card);
+  padding: 3px 8px;
+  background: transparent;
   border: 1px solid var(--border);
   border-radius: 9999px;
 }
 
+/* Status Scope Badges with Transparent Backgrounds & Status Dots */
 .sa-perm-scope-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-size: 11px;
   font-weight: 700;
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: 9999px;
+  background: transparent;
+  border: 1px solid var(--border);
 }
 
-.sa-perm-scope-full {
-  background: #ecfdf5;
-  color: #065f46;
-  border: 1px solid #a7f3d0;
+.sa-perm-scope--full {
+  color: #047857;
 }
 
-.sa-perm-scope-custom {
-  background: #fffbeb;
-  color: #92400e;
-  border: 1px solid #fde68a;
+.dark .sa-perm-scope--full {
+  color: #34d399;
 }
 
-.sa-perm-scope-restricted {
-  background: #fef2f2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
+.sa-perm-scope--custom {
+  color: #b45309;
 }
 
-.sa-perm-role-pill {
+.dark .sa-perm-scope--custom {
+  color: #fbbf24;
+}
+
+.sa-perm-scope--restricted {
+  color: #dc2626;
+}
+
+.dark .sa-perm-scope--restricted {
+  color: #f87171;
+}
+
+.sa-perm-scope-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sa-perm-scope-dot--full {
+  background-color: #10b981;
+}
+
+.sa-perm-scope-dot--custom {
+  background-color: #f59e0b;
+}
+
+.sa-perm-scope-dot--restricted {
+  background-color: #ef4444;
+}
+
+.sa-perm-role-badge {
   display: inline-flex;
   align-items: center;
   font-size: 11px;
-  font-weight: 700;
-  color: #1e3a8a;
-  padding: 4px 10px;
-  background: var(--card);
-  border: 1px solid #1e3a8a;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
   border-radius: 9999px;
-  letter-spacing: 0.02em;
 }
 
 .sa-perm-chevron-wrapper {
@@ -657,9 +644,9 @@
   margin: 8px 0 0;
   font-size: var(--font-size-xs, 12px);
   font-weight: 600;
-  color: #1e40af;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  color: var(--foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md, 6px);
   padding: 5px 10px;
   width: fit-content;

@@ -85,8 +85,8 @@ function VisitStatusBadge({ status, rejected }) {
 
   if (s === "schedule_approved" || s === "approved") {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider bg-transparent text-sky-700 dark:text-sky-300">
-        <span className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider bg-transparent text-emerald-700 dark:text-emerald-300">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
         <span>Approved</span>
       </span>
     );
@@ -102,8 +102,8 @@ function VisitStatusBadge({ status, rejected }) {
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider bg-transparent text-sky-700 dark:text-sky-300">
-      <span className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider bg-transparent text-amber-700 dark:text-amber-300">
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
       <span>Scheduled</span>
     </span>
   );

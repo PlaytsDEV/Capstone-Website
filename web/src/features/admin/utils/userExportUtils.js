@@ -215,11 +215,6 @@ export async function handleExportUsersPDF({
     title: "User Accounts & Access Management Report",
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
-    period: `Generated on ${new Date().toLocaleDateString("en-PH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })}`,
     reportType: "User Accounts",
     kpis,
     sections: [
@@ -228,7 +223,7 @@ export async function handleExportUsersPDF({
         title: "Filtered User Accounts Registry",
         description: `Official management report containing ${users.length} account record(s) matching active search and filter criteria.`,
         headers: ["Full Name", "Username", "Email", "Phone", "Role", "Branch", "Status", "Created"],
-        colWidths: [36, 24, 40, 24, 20, 20, 20, 18],
+        colWidths: [28, 18, 36, 22, 16, 18, 18, 22],
         rows: tableRows,
       },
     ],

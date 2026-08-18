@@ -1,43 +1,44 @@
 import { BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants.js";
 import {
- RESERVATION_STAGE_MAP,
- hasReservationStatus,
+  RESERVATION_STAGE_MAP,
+  hasReservationStatus,
+  readMoveInDate,
 } from "../../../shared/utils/lifecycleNaming.js";
 
 export const IN_PROGRESS_STATUSES = [
- "pending",
- "viewing_preference_selected",
- "visit_pending",
- "visit_approved",
- "pending_application_review",
- "needs_revision",
- "approved_for_payment",
- "payment_pending",
+  "pending",
+  "viewing_preference_selected",
+  "visit_pending",
+  "visit_approved",
+  "pending_application_review",
+  "needs_revision",
+  "approved_for_payment",
+  "payment_pending",
 ];
 
 export { RESERVATION_STAGE_MAP };
 
 const TERMINAL_VISIT_STATUSES = new Set([
- "visit_completed",
- "allowed_without_visit",
+  "visit_completed",
+  "allowed_without_visit",
 ]);
 
 export function getBranchLabel(branch) {
- return BRANCH_DISPLAY_NAMES[branch] || branch || "Unknown";
+  return BRANCH_DISPLAY_NAMES[branch] || branch || "Unknown";
 }
 
 export function hasPendingCancellationRequest(reservation) {
- return Boolean(
- reservation?.cancellationRequested &&
- reservation?.cancellationStatus === "pending",
+  return Boolean(
+    reservation?.cancellationRequested &&
+      reservation?.cancellationStatus === "pending",
   );
 }
 
 export function getArchivedByName(archivedBy) {
- if (!archivedBy) return "-";
- if (typeof archivedBy === "string") return archivedBy;
- const name = `${archivedBy.firstName || ""} ${archivedBy.lastName || ""}`.trim();
- return name || archivedBy.email || "-";
+  if (!archivedBy) return "-";
+  if (typeof archivedBy === "string") return archivedBy;
+  const name = `${archivedBy.firstName || ""} ${archivedBy.lastName || ""}`.trim();
+  return name || archivedBy.email || "-";
 }
 
 export function isNewReservation(reservation, maxAgeHours = 48) {
@@ -158,7 +159,7 @@ export function mapReservationAdminRow(reservation) {
     selectedBed: reservation.selectedBed || null,
     branchCode,
     branch: getBranchLabel(branchCode),
-    moveInDate: reservation.moveInDate,
+    moveInDate: readMoveInDate(reservation),
     moveOutDate: reservation.moveOutDate,
     status: reservation.status || "pending",
     isViewedByAdmin,
@@ -208,11 +209,18 @@ export function mapReservationAdminRow(reservation) {
 }
 
 export function checkOverdueReservation(reservation, now = new Date()) {
- if (!hasReservationStatus(reservation.status, "pending", "payment_pending", "reserved")) {
- return false;
- }
- const moveIn = new Date(reservation.moveInDate);
- return !Number.isNaN(moveIn.getTime()) && moveIn < now;
+  if (!reservation || reservation.isArchived) {
+    return false;
+  }
+  if (!hasReservationStatus(reservation.status, "reserved")) {
+    return false;
+  }
+  const rawDate = readMoveInDate(reservation) || reservation.moveInDate;
+  if (!rawDate) {
+    return false;
+  }
+  const moveIn = new Date(rawDate);
+  return !Number.isNaN(moveIn.getTime()) && moveIn < now;
 }
 
 export function mapVisitScheduleRows(rawReservations = []) {

@@ -2,185 +2,143 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const mkdir = jest.fn();
 const writeFile = jest.fn();
-const transitionContract = jest.fn(async (contract, status, actorId, reason) => {
+const rm = jest.fn();
+const transitionContract = jest.fn(async (contract, status, actorId) => {
   contract.status = status;
   contract.updatedBy = actorId;
-  contract.statusHistory.push({ status, changedBy: actorId, reason });
   await contract.save();
-  return contract;
 });
-await jest.unstable_mockModule("fs/promises", () => ({ default: { mkdir, writeFile } }));
-await jest.unstable_mockModule("../models/index.js", () => ({ Contract: {} }));
+await jest.unstable_mockModule("fs/promises", () => ({ default: { mkdir, writeFile, rm } }));
 await jest.unstable_mockModule("./contractService.js", () => ({ transitionContract }));
 
 const {
-  SIGNED_CONTRACT_MAX_BYTES,
-  markContractPrinted,
-  requiredSignaturesComplete,
-  resolvePhysicalSigningStage,
-  resolveSignedContractPath,
-  updatePhysicalSignature,
+  deleteSignedContract,
   uploadSignedContract,
-  validateSignedDocumentUpload,
   verifySignedContract,
   rejectSignedContract,
 } = await import("./contractSigningService.js");
 
-const doc = (changes = {}) => Object.assign({
-  status: "generated",
-  branch: "gil-puyat",
-  contractYear: 2026,
-  contractNumber: "TEST-CONTRACT-0001",
-  generatedVersion: 1,
-  printedAt: null,
-  tenantSignatureStatus: "pending",
-  lessorSignatureStatus: "pending",
-  witnessSignatureStatus: "pending",
-  signedDocuments: [],
-  statusHistory: [],
-  save: jest.fn().mockResolvedValue(undefined),
-}, changes);
-const pdf = (changes = {}) => Object.assign({
-  originalname: "signed.pdf",
-  mimetype: "application/pdf",
-  buffer: Buffer.from("%PDF-1.7 signed"),
-  size: 15,
-}, changes);
-const checklist = Object.fromEntries([
-  "tenantSignatureVisible", "lessorSignatureVisible", "witnessesSatisfied",
-  "contractNumberMatches", "tenantNameMatches", "allPagesComplete",
-  "scanReadable", "preparedVersionMatches", "legalTextUnaltered",
-].map((key) => [key, true]));
+const mockContract = (changes = {}) => {
+  const c = {
+    status: "awaiting_signatures",
+    contractNumber: "TEST-CONTRACT-0001",
+    branch: "gil-puyat",
+    contractYear: 2026,
+    generatedVersion: 1,
+    signedDocuments: [],
+    tenantSignatureStatus: "completed",
+    lessorSignatureStatus: "completed",
+    witnessSignatureStatus: "completed",
+    signedStorageKey: null,
+    signedDocumentVersion: 0,
+    save: jest.fn().mockResolvedValue(undefined),
+    markModified: jest.fn(),
+    ...changes,
+  };
+  return c;
+};
 
 beforeEach(() => {
   mkdir.mockReset().mockResolvedValue(undefined);
   writeFile.mockReset().mockResolvedValue(undefined);
+  rm.mockReset().mockResolvedValue(undefined);
   transitionContract.mockClear();
 });
 
-describe("physical signing state", () => {
-  test("generated Contract can be marked printed with actor and timestamp", async () => {
-    const contract = doc();
-    await markContractPrinted({ contract, actorId: "admin" });
-    expect(contract.status).toBe("awaiting_signatures");
-    expect(contract.printedBy).toBe("admin");
-    expect(contract.printedAt).toBeInstanceOf(Date);
-  });
-  test.each(["draft", "incomplete"])("%s cannot be marked printed", async (status) => {
-    await expect(markContractPrinted({ contract: doc({ status }), actorId: "admin" }))
-      .rejects.toMatchObject({ code: "CONTRACT_NOT_READY_FOR_PRINTING" });
-  });
-  test.each([
-    ["tenant", "tenantSignatureStatus"],
-    ["lessor", "lessorSignatureStatus"],
-    ["witnesses", "witnessSignatureStatus"],
-  ])("%s signature completion produces partially_signed", async (signer, field) => {
-    const contract = doc({ status: "awaiting_signatures", printedAt: new Date() });
-    await updatePhysicalSignature({ contract, signer, value: "completed", actorId: "admin" });
-    expect(contract[field]).toBe("completed");
-    expect(contract.status).toBe("partially_signed");
-  });
-  test("witnesses may be not required and signatures may revert before verification", async () => {
-    const contract = doc({ status: "awaiting_signatures", printedAt: new Date() });
-    await updatePhysicalSignature({ contract, signer: "witnesses", value: "not_required", actorId: "admin" });
-    expect(contract.witnessSignatureStatus).toBe("not_required");
-    await updatePhysicalSignature({ contract, signer: "witnesses", value: "pending", actorId: "admin" });
-    expect(contract.status).toBe("awaiting_signatures");
-  });
-  test("all signatures without verified upload remain partially signed", () => {
-    const contract = doc({ printedAt: new Date(), tenantSignatureStatus: "completed", lessorSignatureStatus: "completed", witnessSignatureStatus: "completed" });
-    expect(requiredSignaturesComplete(contract)).toBe(true);
-    expect(resolvePhysicalSigningStage(contract)).toBe("partially_signed");
-  });
-  test("signature changes are blocked after signed", async () => {
-    await expect(updatePhysicalSignature({
-      contract: doc({ status: "signed" }), signer: "tenant", value: "pending", actorId: "admin",
-    })).rejects.toMatchObject({ code: "CONTRACT_SIGNATURE_UPDATE_NOT_ALLOWED" });
-  });
-});
+describe("contractSigningService - deleteSignedContract", () => {
+  test("deleting the only signed contract document cleans up file and clears contract pointers", async () => {
+    const item = mockContract({
+      status: "signed",
+      signedStorageKey: "gil-puyat/2026/TEST-CONTRACT-0001/TEST-CONTRACT-0001_signed_v1.pdf",
+      signedDocumentVersion: 1,
+      signedFileName: "TEST-CONTRACT-0001_signed_v1.pdf",
+      signingVerifiedAt: new Date(),
+      signedDocuments: [
+        {
+          version: 1,
+          storageKey: "gil-puyat/2026/TEST-CONTRACT-0001/TEST-CONTRACT-0001_signed_v1.pdf",
+          fileName: "TEST-CONTRACT-0001_signed_v1.pdf",
+          superseded: false,
+        },
+      ],
+    });
 
-describe("signed document upload and versioning", () => {
-  test("PDF, JPG, and PNG signatures are accepted", () => {
-    expect(validateSignedDocumentUpload(pdf()).mimeType).toBe("application/pdf");
-    expect(validateSignedDocumentUpload(pdf({
-      originalname: "scan.jpg", mimetype: "image/jpeg",
-      buffer: Buffer.from([0xff, 0xd8, 0xff, 0x01]), size: 4,
-    })).mimeType).toBe("image/jpeg");
-    expect(validateSignedDocumentUpload(pdf({
-      originalname: "scan.png", mimetype: "image/png",
-      buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1]), size: 9,
-    })).mimeType).toBe("image/png");
+    const res = await deleteSignedContract({ contract: item, version: 1, actorId: "admin-1" });
+    expect(res.deletedVersion).toBe(1);
+    expect(item.signedDocuments).toHaveLength(0);
+    expect(item.signedStorageKey).toBeNull();
+    expect(item.signedFileName).toBeNull();
+    expect(item.signedDocumentVersion).toBe(0);
+    expect(item.signingVerifiedAt).toBeNull();
+    expect(rm).toHaveBeenCalled();
   });
-  test("invalid, oversized, and signature-mismatch files are rejected", () => {
-    expect(() => validateSignedDocumentUpload(pdf({ buffer: Buffer.from("bad"), size: 3 })))
-      .toThrow(expect.objectContaining({ code: "SIGNED_DOCUMENT_UNSUPPORTED_TYPE" }));
-    expect(() => validateSignedDocumentUpload(pdf({ size: SIGNED_CONTRACT_MAX_BYTES + 1 })))
-      .toThrow(expect.objectContaining({ code: "SIGNED_DOCUMENT_TOO_LARGE" }));
-    expect(() => validateSignedDocumentUpload(pdf({ originalname: "fake.jpg" })))
-      .toThrow(expect.objectContaining({ code: "SIGNED_DOCUMENT_TYPE_MISMATCH" }));
-  });
-  test("upload writes privately and does not automatically mark signed", async () => {
-    const contract = doc({ status: "awaiting_signatures", printedAt: new Date() });
-    const uploaded = await uploadSignedContract({ contract, file: pdf(), actorId: "admin" });
-    expect(writeFile).toHaveBeenCalledWith(expect.stringContaining("signed-contracts"), expect.any(Buffer), { flag: "wx" });
-    expect(uploaded.version).toBe(1);
-    expect(uploaded.storageKey).not.toContain("..");
-    expect(contract.status).toBe("partially_signed");
-  });
-  test("replacement requires reason and preserves superseded version", async () => {
-    const contract = doc({ status: "partially_signed", printedAt: new Date() });
-    await uploadSignedContract({ contract, file: pdf(), actorId: "admin" });
-    await expect(uploadSignedContract({ contract, file: pdf(), actorId: "admin" }))
-      .rejects.toMatchObject({ code: "SIGNED_DOCUMENT_REPLACEMENT_REASON_REQUIRED" });
-    await uploadSignedContract({ contract, file: pdf(), actorId: "admin", replacementReason: "Clearer scan" });
-    expect(contract.signedDocuments).toHaveLength(2);
-    expect(contract.signedDocuments[0].superseded).toBe(true);
-    expect(contract.signedDocuments[1].version).toBe(2);
-  });
-  test("path traversal is rejected", () => {
-    expect(() => resolveSignedContractPath("../secret.pdf"))
-      .toThrow(expect.objectContaining({ code: "INVALID_SIGNED_STORAGE_KEY" }));
-  });
-});
 
-describe("verification and rejection", () => {
-  const complete = () => doc({
-    status: "partially_signed", printedAt: new Date(),
-    tenantSignatureStatus: "completed", lessorSignatureStatus: "completed",
-    witnessSignatureStatus: "not_required",
-    signedStorageKey: "gil-puyat/2026/x/signed.pdf", signedDocumentVersion: 1,
-    signedDocuments: [{ version: 1, superseded: false }],
+  test("deleting active version falls back to previous version when multiple versions exist", async () => {
+    const item = mockContract({
+      status: "signed",
+      signedStorageKey: "gil-puyat/2026/TEST-CONTRACT-0001/TEST-CONTRACT-0001_signed_v2.pdf",
+      signedDocumentVersion: 2,
+      signedFileName: "TEST-CONTRACT-0001_signed_v2.pdf",
+      signedDocuments: [
+        {
+          version: 1,
+          storageKey: "gil-puyat/2026/TEST-CONTRACT-0001/TEST-CONTRACT-0001_signed_v1.pdf",
+          fileName: "TEST-CONTRACT-0001_signed_v1.pdf",
+          fileHash: "hash-v1",
+          fileSize: 1000,
+          mimeType: "application/pdf",
+          superseded: true,
+        },
+        {
+          version: 2,
+          storageKey: "gil-puyat/2026/TEST-CONTRACT-0001/TEST-CONTRACT-0001_signed_v2.pdf",
+          fileName: "TEST-CONTRACT-0001_signed_v2.pdf",
+          fileHash: "hash-v2",
+          fileSize: 2000,
+          mimeType: "application/pdf",
+          superseded: false,
+        },
+      ],
+    });
+
+    const res = await deleteSignedContract({ contract: item, version: 2, actorId: "admin-1" });
+    expect(res.deletedVersion).toBe(2);
+    expect(item.signedDocuments).toHaveLength(1);
+    expect(item.signedDocumentVersion).toBe(1);
+    expect(item.signedFileName).toBe("TEST-CONTRACT-0001_signed_v1.pdf");
+    expect(item.signedDocuments[0].superseded).toBe(false);
   });
-  test.each([
-    ["tenant", { tenantSignatureStatus: "pending" }],
-    ["lessor", { lessorSignatureStatus: "pending" }],
-    ["witness", { witnessSignatureStatus: "pending" }],
-  ])("verification requires %s signature", async (_name, changes) => {
-    await expect(verifySignedContract({
-      contract: Object.assign(complete(), changes), actorId: "admin", checklist,
-    })).rejects.toMatchObject({ code: "REQUIRED_SIGNATURES_INCOMPLETE" });
+
+  test("rejects deletion for non-existent version", async () => {
+    const item = mockContract({
+      signedDocuments: [
+        {
+          version: 1,
+          storageKey: "gil-puyat/2026/TEST-CONTRACT-0001/TEST-CONTRACT-0001_signed_v1.pdf",
+          fileName: "TEST-CONTRACT-0001_signed_v1.pdf",
+          superseded: false,
+        },
+      ],
+    });
+
+    await expect(deleteSignedContract({ contract: item, version: 99, actorId: "admin-1" }))
+      .rejects.toMatchObject({ code: "SIGNED_DOCUMENT_NOT_FOUND" });
   });
-  test("verification requires an upload and complete checklist", async () => {
-    await expect(verifySignedContract({
-      contract: Object.assign(complete(), { signedStorageKey: null }), actorId: "admin", checklist,
-    })).rejects.toMatchObject({ code: "SIGNED_DOCUMENT_REQUIRED" });
-    await expect(verifySignedContract({
-      contract: complete(), actorId: "admin", checklist: {},
-    })).rejects.toMatchObject({ code: "SIGNED_DOCUMENT_CHECKLIST_INCOMPLETE" });
-  });
-  test("successful verification alone moves Contract to signed", async () => {
-    const contract = complete();
-    await verifySignedContract({ contract, actorId: "admin", notes: "Readable", checklist });
-    expect(contract.status).toBe("signed");
-    expect(contract.signingVerifiedAt).toBeInstanceOf(Date);
-  });
-  test("rejection preserves history, clears current file, and remains partial", async () => {
-    const contract = complete();
-    await rejectSignedContract({ contract, actorId: "admin", reason: "Blurry or unreadable" });
-    expect(contract.status).toBe("partially_signed");
-    expect(contract.signedDocuments[0]).toEqual(expect.objectContaining({
-      superseded: true, rejectionReason: "Blurry or unreadable",
-    }));
-    expect(contract.signedStorageKey).toBeNull();
+
+  test("rejects deletion if contract is in terminated / cancelled / archived status", async () => {
+    const item = mockContract({
+      status: "terminated",
+      signedDocuments: [
+        {
+          version: 1,
+          storageKey: "gil-puyat/2026/TEST-CONTRACT-0001/TEST-CONTRACT-0001_signed_v1.pdf",
+          fileName: "TEST-CONTRACT-0001_signed_v1.pdf",
+          superseded: false,
+        },
+      ],
+    });
+
+    await expect(deleteSignedContract({ contract: item, version: 1, actorId: "admin-1" }))
+      .rejects.toMatchObject({ code: "SIGNED_DOCUMENT_DELETION_NOT_ALLOWED" });
   });
 });

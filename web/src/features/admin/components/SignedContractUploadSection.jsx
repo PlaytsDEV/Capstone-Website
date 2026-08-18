@@ -54,6 +54,8 @@ export default function SignedContractUploadSection({
   const [notes, setNotes] = useState("");
   const [uploading, setUploading] = useState(false);
   const [downloadingVersion, setDownloadingVersion] = useState(null);
+  const [deletingVersion, setDeletingVersion] = useState(null);
+  const [deleteConfirmDoc, setDeleteConfirmDoc] = useState(null);
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [viewingDoc, setViewingDoc] = useState(null);
   const [viewingLoading, setViewingLoading] = useState(false);
@@ -251,6 +253,31 @@ export default function SignedContractUploadSection({
     }
   };
 
+  const handleDeleteSigned = async (version) => {
+    const contractId = contractDetails?._id || dedicatedContract?._id;
+    if (!contractId) return;
+    setDeletingVersion(version);
+    try {
+      await contractApi.deleteSignedContract(contractId, version);
+      showNotification("Signed contract scan deleted successfully.", "success");
+
+      if (viewingDoc?.version === version) {
+        closeDocViewer();
+      }
+      setDeleteConfirmDoc(null);
+
+      const updated = await contractApi.getContract(contractId);
+      if (updated?.contract) {
+        setContractDetails(updated.contract);
+        if (onContractUpdated) onContractUpdated(updated.contract);
+      }
+    } catch (err) {
+      showNotification(err?.message || "Failed to delete signed contract scan.", "error");
+    } finally {
+      setDeletingVersion(null);
+    }
+  };
+
   const signedDocs = (contractDetails?.signedDocuments || [])
     .filter((doc) => !doc.superseded)
     .sort((a, b) => (b.version || 0) - (a.version || 0));
@@ -376,7 +403,6 @@ export default function SignedContractUploadSection({
                       type="button"
                       onClick={() => {
                         setSelectedFile(null);
-                        setError("");
                       }}
                       className="p-1.5 rounded-lg border border-border bg-background hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
                       title="Remove selected file"
@@ -440,7 +466,6 @@ export default function SignedContractUploadSection({
               onClick={() => {
                 setShowUploadForm(false);
                 setSelectedFile(null);
-                setError("");
               }}
               className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
             >
@@ -535,6 +560,17 @@ export default function SignedContractUploadSection({
                 >
                   <Download className="w-3.5 h-3.5 text-muted-foreground" />
                   <span>{downloadingVersion === doc.version ? "Downloading…" : "Download"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={deletingVersion === doc.version}
+                  onClick={() => setDeleteConfirmDoc(doc)}
+                  className="px-2.5 py-1.5 rounded-lg border border-border bg-background hover:bg-destructive/10 text-xs font-semibold text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  title="Delete signed contract scan"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete</span>
                 </button>
               </div>
             </div>
@@ -641,7 +677,7 @@ export default function SignedContractUploadSection({
             </div>
 
             {/* Modal Footer */}
-            <div className="p-3.5 border-t border-border bg-card flex items-center justify-between gap-3">
+            <div className="p-3.5 border-t border-border bg-card flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="text-xs text-muted-foreground truncate">
                 {viewingDoc.replacementReason ? (
                   <span className="italic">
@@ -652,7 +688,21 @@ export default function SignedContractUploadSection({
                 )}
               </div>
 
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2 flex-shrink-0 flex-wrap sm:flex-nowrap">
+                <button
+                  type="button"
+                  disabled={deletingVersion === viewingDoc.version}
+                  onClick={() => {
+                    const targetDoc = (contractDetails?.signedDocuments || []).find((d) => d.version === viewingDoc.version) || viewingDoc;
+                    setDeleteConfirmDoc(targetDoc);
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-destructive/10 text-xs font-semibold text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  title="Delete signed contract scan"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Scan</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -673,6 +723,68 @@ export default function SignedContractUploadSection({
                   <span>Download</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmDoc && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          onClick={() => {
+            if (!deletingVersion) setDeleteConfirmDoc(null);
+          }}
+        >
+          <div
+            className="bg-card border border-border rounded-xl w-full max-w-md p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 flex-shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-foreground">
+                  Delete Signed Contract Scan
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Are you sure you want to delete{" "}
+                  <strong className="text-foreground font-semibold">
+                    {deleteConfirmDoc.fileName || `Version ${deleteConfirmDoc.version}`}
+                  </strong>
+                  ? This will remove this document for both administrators and the tenant.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
+              <button
+                type="button"
+                disabled={Boolean(deletingVersion)}
+                onClick={() => setDeleteConfirmDoc(null)}
+                className="px-3.5 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-xs font-semibold text-foreground transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(deletingVersion)}
+                onClick={() => handleDeleteSigned(deleteConfirmDoc.version)}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {deletingVersion === deleteConfirmDoc.version ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting…</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Scan</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

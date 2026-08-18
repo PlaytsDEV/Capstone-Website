@@ -287,10 +287,16 @@ const EmploymentSection = ({
         <FileUploadField
           label="Company ID / School ID"
           value={companyID}
-          onChange={setCompanyID}
+          onChange={(file) => {
+            setCompanyID(file);
+            if (file) {
+              clearFieldError?.("companyID");
+              clearFieldError?.("companyIDReason");
+            }
+          }}
           documentType="company-id"
           hint="Company ID, Certificate of Employment, or School ID"
-          hasError={showValidationErrors && !companyID && !companyIDReason}
+          hasError={Boolean(showValidationErrors && !companyID && !companyIDReason?.trim())}
         />
       </div>
 
@@ -309,6 +315,7 @@ const EmploymentSection = ({
             setCompanyIDReason(nextValue);
             if (nextValue?.trim()) {
               clearFieldError?.("companyIDReason");
+              clearFieldError?.("companyID");
             }
           }}
           placeholder={
@@ -318,16 +325,16 @@ const EmploymentSection = ({
           }
           style={{
             border: !companyID
-              ? errBorder(showValidationErrors, companyIDReason)
+              ? errBorder(showValidationErrors, companyIDReason?.trim())
               : undefined,
           }}
-          aria-invalid={Boolean(showValidationErrors && !companyID && !companyIDReason)}
+          aria-invalid={Boolean(showValidationErrors && !companyID && !companyIDReason?.trim())}
         />
         <div className="rf-char-counter">
           {companyIDReason?.length || 0}/300
         </div>
-        {showValidationErrors && !companyID && (!companyIDReason?.trim() || companyIDReason.trim().length < 10) && (
-          <FieldError error="Please upload Company ID or provide a detailed reason (at least 10 characters)" />
+        {showValidationErrors && !companyID && !companyIDReason?.trim() && (
+          <FieldError error="Please upload Company ID / School ID or provide a reason why it is not yet available." />
         )}
       </div>
     </>

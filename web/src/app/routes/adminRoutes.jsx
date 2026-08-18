@@ -97,11 +97,23 @@ export function AdminRoutes() {
       />
       <Route
         path="contracts"
-        element={<Navigate to="/admin/tenants" replace />}
+        element={
+          <RequirePermission permission="manageTenants">
+            <RouteShell name="Contracts" fallback={<AdminTablePageSkeleton />}>
+              <AdminContractsPage />
+            </RouteShell>
+          </RequirePermission>
+        }
       />
       <Route
         path="contracts/:contractId"
-        element={<Navigate to="/admin/tenants" replace />}
+        element={
+          <RequirePermission permission="manageTenants">
+            <RouteShell name="Contracts" fallback={<AdminTablePageSkeleton />}>
+              <AdminContractsPage />
+            </RouteShell>
+          </RequirePermission>
+        }
       />
       <Route
         path="audit-logs"

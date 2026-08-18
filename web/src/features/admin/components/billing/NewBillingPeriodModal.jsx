@@ -9,6 +9,8 @@ import {
   LoaderCircle,
   CheckCircle2,
   TrendingUp,
+  ChevronDown,
+  Clock3,
 } from "lucide-react";
 import {
   useOpenUtilityPeriod,
@@ -136,6 +138,8 @@ export default function NewBillingPeriodModal({
   const [generationBlocker, setGenerationBlocker] = useState(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
+  const [durationPreset, setDurationPreset] = useState("1mo");
+
   const [periodForm, setPeriodForm] = useState({
     startDate: get15th(),
     startReading: "",
@@ -146,12 +150,70 @@ export default function NewBillingPeriodModal({
 
   const [initialFormState, setInitialFormState] = useState(null);
 
+  const handlePresetChange = (presetKey) => {
+    setDurationPreset(presetKey);
+    if (!periodForm.startDate) return;
+
+    let computedEnd = periodForm.endDate;
+    if (presetKey === "1mo") {
+      computedEnd = addOneMonth(periodForm.startDate);
+    } else if (presetKey === "30d") {
+      computedEnd = addDays(periodForm.startDate, 30);
+    } else if (presetKey === "monthEnd") {
+      computedEnd = getMonthEnd(periodForm.startDate);
+    } else if (presetKey === "15d") {
+      computedEnd = addDays(periodForm.startDate, 15);
+    }
+
+    if (presetKey !== "custom" && computedEnd) {
+      setPeriodForm((prev) => ({
+        ...prev,
+        endDate: computedEnd,
+      }));
+    }
+  };
+
   const handleStartDateChange = (e) => {
     const newStart = e.target.value;
+    let newEnd = periodForm.endDate;
+
+    if (newStart) {
+      if (durationPreset === "1mo") {
+        newEnd = addOneMonth(newStart);
+      } else if (durationPreset === "30d") {
+        newEnd = addDays(newStart, 30);
+      } else if (durationPreset === "monthEnd") {
+        newEnd = getMonthEnd(newStart);
+      } else if (durationPreset === "15d") {
+        newEnd = addDays(newStart, 15);
+      }
+    }
+
     setPeriodForm((prev) => ({
       ...prev,
       startDate: newStart,
-      endDate: addOneMonth(newStart) || prev.endDate,
+      endDate: newEnd || prev.endDate,
+    }));
+  };
+
+  const handleEndDateChange = (e) => {
+    const newEnd = e.target.value;
+    if (periodForm.startDate && newEnd) {
+      if (newEnd === addOneMonth(periodForm.startDate)) {
+        setDurationPreset("1mo");
+      } else if (newEnd === addDays(periodForm.startDate, 30)) {
+        setDurationPreset("30d");
+      } else if (newEnd === getMonthEnd(periodForm.startDate)) {
+        setDurationPreset("monthEnd");
+      } else if (newEnd === addDays(periodForm.startDate, 15)) {
+        setDurationPreset("15d");
+      } else {
+        setDurationPreset("custom");
+      }
+    }
+    setPeriodForm((prev) => ({
+      ...prev,
+      endDate: newEnd,
     }));
   };
 
@@ -186,6 +248,7 @@ export default function NewBillingPeriodModal({
 
       setPeriodForm(initialValues);
       setInitialFormState(initialValues);
+      setDurationPreset("1mo");
       setGenerationBlocker(null);
       setShowCloseConfirm(false);
 
@@ -672,7 +735,7 @@ export default function NewBillingPeriodModal({
           </p>
 
           {/* Dates & Rate Configuration Grid */}
-          <div className="grid gap-3.5 md:grid-cols-3">
+          <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             {/* Cycle Start */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
@@ -689,65 +752,47 @@ export default function NewBillingPeriodModal({
               />
             </div>
 
-            {/* Cycle End with Quick Shortcut Chips */}
+            {/* Duration Preset Dropdown */}
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <Calendar size={13} className="text-muted-foreground" /> Cycle End
-                </label>
-                {/* Duration Shortcut Chips */}
-                {!isFixedRateBranch && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPeriodForm((prev) => ({
-                          ...prev,
-                          endDate: addDays(prev.startDate, 30),
-                        }))
-                      }
-                      className="px-1.5 py-0.5 text-[10px] font-medium rounded border border-border bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                      title="Set to 30 days after cycle start"
-                    >
-                      +30d
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPeriodForm((prev) => ({
-                          ...prev,
-                          endDate: addOneMonth(prev.startDate),
-                        }))
-                      }
-                      className="px-1.5 py-0.5 text-[10px] font-medium rounded border border-border bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                      title="Set to 1 month after cycle start"
-                    >
-                      +1mo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPeriodForm((prev) => ({
-                          ...prev,
-                          endDate: getMonthEnd(prev.startDate),
-                        }))
-                      }
-                      className="px-1.5 py-0.5 text-[10px] font-medium rounded border border-border bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                      title="Set to the last day of the start month"
-                    >
-                      Month End
-                    </button>
-                  </div>
-                )}
+              <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Clock3 size={13} className="text-muted-foreground" /> Duration Preset
+              </label>
+              <div className="relative">
+                <select
+                  value={durationPreset}
+                  onChange={(e) => handlePresetChange(e.target.value)}
+                  disabled={isPending || isFixedRateBranch}
+                  className="w-full appearance-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors cursor-pointer pr-8"
+                  {...ringFocus}
+                  aria-label="Select billing cycle duration preset"
+                >
+                  <option value="1mo">1 Month (Monthly)</option>
+                  <option value="30d">30 Days (Standard)</option>
+                  <option value="monthEnd">End of Month (Month End)</option>
+                  <option value="15d">15 Days (Semi-Monthly)</option>
+                  <option value="custom">Custom Date Range</option>
+                </select>
+                <ChevronDown
+                  size={14}
+                  className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
               </div>
+              <p className="text-[11px] text-muted-foreground">
+                {cycleDays > 0 ? `${cycleDays} days duration` : "Select cycle preset"}
+              </p>
+            </div>
+
+            {/* Cycle End */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Calendar size={13} className="text-muted-foreground" /> Cycle End
+              </label>
               <input
                 type="date"
                 className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors"
                 {...ringFocus}
                 value={periodForm.endDate}
-                onChange={(e) =>
-                  setPeriodForm({ ...periodForm, endDate: e.target.value })
-                }
+                onChange={handleEndDateChange}
                 onKeyDown={handleKeyDown}
                 disabled={isPending || isFixedRateBranch}
               />
@@ -756,8 +801,8 @@ export default function NewBillingPeriodModal({
                   Must be after cycle start
                 </p>
               ) : isAbnormalCycleLength && !isFixedRateBranch ? (
-                <p className="text-[11px] text-muted-foreground">
-                  {cycleDays} days duration
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                  Unusual duration ({cycleDays} days)
                 </p>
               ) : null}
             </div>
@@ -1109,7 +1154,7 @@ export default function NewBillingPeriodModal({
               <button
                 onClick={handleGenerateCycle}
                 disabled={isActionDisabled}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed bg-[#0A1628] hover:bg-[#13243D] text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500"
               >
                 {isPending ? (
                   <>
@@ -1117,7 +1162,10 @@ export default function NewBillingPeriodModal({
                     <span>Generating Draft Bills...</span>
                   </>
                 ) : (
-                  <span>Generate Draft Bills</span>
+                  <>
+                    <CheckCircle2 size={15} />
+                    <span>Generate Draft Bills</span>
+                  </>
                 )}
               </button>
               {isActionDisabled && !isPending && (

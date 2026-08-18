@@ -66,49 +66,65 @@ export const STAGE_CONFIGURATIONS = Object.freeze({
     stages: [
       {
         stageNum: 1,
-        label: "Pending Review",
-        statuses: [
-          "pending",
-          "viewing_preference_selected",
-          "pending_application_review",
-          "needs_revision",
-        ],
+        label: "Room Selected",
+        statuses: ["pending"],
         statusLabels: {
           pending: "Room Selected",
+        },
+      },
+      {
+        stageNum: 2,
+        label: "Viewing Preference",
+        statuses: [
+          "viewing_preference_selected",
+          "visit_pending",
+          "visit_approved",
+        ],
+        statusLabels: {
           viewing_preference_selected: "Viewing Preference Selected",
+          visit_pending: "Visit Pending",
+          visit_approved: "Visit Confirmed",
+        },
+      },
+      {
+        stageNum: 3,
+        label: "Tenant Application",
+        statuses: ["pending_application_review", "needs_revision"],
+        statusLabels: {
           pending_application_review: "Pending Application Review",
           needs_revision: "Needs Revision",
         },
       },
       {
-        stageNum: 2,
-        label: "Approved for Payment",
-        statuses: ["approved_for_payment"],
-      },
-      {
-        stageNum: 3,
-        label: "Payment Review",
-        statuses: ["payment_pending", "partial", "proof_submitted"],
+        stageNum: 4,
+        label: "Payment",
+        statuses: [
+          "approved_for_payment",
+          "payment_pending",
+          "partial",
+          "proof_submitted",
+        ],
         statusLabels: {
+          approved_for_payment: "Approved for Payment",
           payment_pending: "Payment Pending",
           partial: "Proof Submitted",
           proof_submitted: "Proof Submitted",
         },
       },
       {
-        stageNum: 4,
+        stageNum: 5,
         label: "Reserved",
-        statuses: ["reserved", "confirmed"],
+        statuses: [
+          "reserved",
+          "confirmed",
+          "movein",
+          "move_in",
+          "moved_in",
+          "occupied",
+        ],
         statusLabels: {
           reserved: "Reserved",
           confirmed: "Confirmed",
-        },
-      },
-      {
-        stageNum: 5,
-        label: "Checked In",
-        statuses: ["movein", "move_in", "moved_in", "occupied"],
-        statusLabels: {
           movein: "Move In",
           move_in: "Move In",
           moved_in: "Moved In",
@@ -308,6 +324,7 @@ export const STAGE_CONFIGURATIONS = Object.freeze({
 
   billing: {
     totalStages: 4,
+    omitFraction: true,
     stages: [
       {
         stageNum: 1,
@@ -433,8 +450,12 @@ export function getStageFractionInfo(module, status, customLabel) {
         stage.label ||
         formatFallbackLabel(status);
 
-      const stageFraction = `[${stage.stageNum}/${config.totalStages}]`;
-      const formattedLabel = `${baseLabel} ${stageFraction}`;
+      const stageFraction = config.omitFraction
+        ? null
+        : `[${stage.stageNum}/${config.totalStages}]`;
+      const formattedLabel = stageFraction
+        ? `${baseLabel} ${stageFraction}`
+        : baseLabel;
 
       return {
         stageNum: stage.stageNum,
@@ -467,4 +488,34 @@ export function getStageFractionInfo(module, status, customLabel) {
  */
 export function formatStageStatus(module, status, customLabel) {
   return getStageFractionInfo(module, status, customLabel).formattedLabel;
+}
+
+/**
+ * Returns structured billing lifecycle steps metadata for steppers / progress indicators.
+ *
+ * @param {string} currentStatus - Current tenant billing/payment status
+ * @returns {Array<{ stageNum: number, label: string, isCompleted: boolean, isCurrent: boolean, isUpcoming: boolean }>}
+ */
+export function getBillingLifecycleSteps(currentStatus) {
+  const normStatus = normalizeKey(currentStatus);
+  const config = STAGE_CONFIGURATIONS.billing;
+  let activeStageNum = 1;
+  const isTerminal = config.terminalStatuses.includes(normStatus);
+
+  if (!isTerminal) {
+    for (const stage of config.stages) {
+      if (stage.statuses.includes(normStatus)) {
+        activeStageNum = stage.stageNum;
+        break;
+      }
+    }
+  }
+
+  return config.stages.map((stage) => ({
+    stageNum: stage.stageNum,
+    label: stage.label,
+    isCompleted: !isTerminal && activeStageNum > stage.stageNum,
+    isCurrent: !isTerminal && activeStageNum === stage.stageNum,
+    isUpcoming: isTerminal || activeStageNum < stage.stageNum,
+  }));
 }

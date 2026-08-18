@@ -221,24 +221,26 @@ export function ExportButtons({
   );
 }
 
-export function MetricGrid({ items, className = "" }) {
+export function MetricGrid({ items, children, className = "" }) {
   return (
     <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 ${className}`.trim()}>
-      {items.map((item) => (
-        <ReportMetricCard
-          key={item.label}
-          icon={item.icon}
-          label={item.label}
-          value={item.value}
-          trend={item.trend}
-          change={item.change}
-          changeType={item.changeType}
-          note={item.note}
-          tone={item.tone}
-          anomalyBadge={item.anomalyBadge}
-          onClick={item.onClick}
-        />
-      ))}
+      {Array.isArray(items)
+        ? items.map((item) => (
+            <ReportMetricCard
+              key={item.label}
+              icon={item.icon}
+              label={item.label}
+              value={item.value}
+              trend={item.trend}
+              change={item.change}
+              changeType={item.changeType}
+              note={item.note}
+              tone={item.tone}
+              anomalyBadge={item.anomalyBadge}
+              onClick={item.onClick}
+            />
+          ))
+        : children}
     </div>
   );
 }

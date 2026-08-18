@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import {
   AuditLog,
   Bill,
+  ChatConversation,
+  ChatMessage,
   Inquiry,
   LoginLog,
   MaintenanceRequest,
@@ -2313,6 +2315,300 @@ const buildDemographicsReportData = async (scope, rangeKey, tableRequest = parse
   };
 };
 
+const buildSupportChatReportData = async (scope, rangeKey, tableRequest = parseTableRequest()) => {
+  const isAllTime = rangeKey === "all";
+  const rangeDays = isAllTime ? null : parseReportDays(rangeKey);
+  const sinceDate = isAllTime
+    ? null
+    : dayjs().subtract(rangeDays - 1, "day").startOf("day").toDate();
+
+  const matchFilter = {
+    branch: { $in: scope.branchesIncluded },
+  };
+  if (sinceDate) {
+    matchFilter.createdAt = { $gte: sinceDate };
+  }
+
+  const conversations = await ChatConversation.find(matchFilter)
+    .populate("tenantId", "firstName lastName email user_id profileImage")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const totalConversations = conversations.length;
+  const activeConversations = conversations.filter((c) =>
+    ["open", "in_review", "waiting_tenant"].includes(c.status),
+  ).length;
+  const openCount = conversations.filter((c) => c.status === "open").length;
+  const inReviewCount = conversations.filter((c) => c.status === "in_review").length;
+  const waitingTenantCount = conversations.filter((c) => c.status === "waiting_tenant").length;
+  const resolvedCount = conversations.filter((c) => c.status === "resolved").length;
+  const closedCount = conversations.filter((c) => c.status === "closed").length;
+  const urgentCount = conversations.filter((c) => c.priority === "urgent").length;
+
+  // First admin reply time (minutes)
+  const repliedConversations = conversations.filter(
+    (c) => typeof c.firstAdminReplyMinutes === "number" && c.firstAdminReplyMinutes >= 0,
+  );
+  const totalReplyMinutes = repliedConversations.reduce(
+    (sum, c) => sum + c.firstAdminReplyMinutes,
+    0,
+  );
+  const avgFirstReplyMinutes =
+    repliedConversations.length > 0
+      ? Math.round(totalReplyMinutes / repliedConversations.length)
+      : 0;
+  const avgFirstReplyHours = Number((avgFirstReplyMinutes / 60).toFixed(1));
+  const avgFirstResponseLabel =
+    avgFirstReplyMinutes < 60
+      ? `${avgFirstReplyMinutes}m`
+      : `${avgFirstReplyHours}h`;
+
+  // Resolution duration (hours)
+  const completedConversations = conversations.filter(
+    (c) =>
+      typeof c.resolutionDurationMinutes === "number" ||
+      c.resolvedAt ||
+      c.closedAt,
+  );
+  const totalResolutionMinutes = completedConversations.reduce((sum, c) => {
+    if (typeof c.resolutionDurationMinutes === "number") {
+      return sum + c.resolutionDurationMinutes;
+    }
+    const end = new Date(c.resolvedAt || c.closedAt).getTime();
+    const start = new Date(c.createdAt).getTime();
+    return sum + Math.max(0, Math.round((end - start) / (60 * 1000)));
+  }, 0);
+  const avgResolutionMinutes =
+    completedConversations.length > 0
+      ? Math.round(totalResolutionMinutes / completedConversations.length)
+      : 0;
+  const avgResolutionHours = Number((avgResolutionMinutes / 60).toFixed(1));
+  const avgResolutionLabel =
+    avgResolutionMinutes < 60
+      ? `${avgResolutionMinutes}m`
+      : `${avgResolutionHours}h`;
+
+  // Tenant Resolution Confirmation Rate (% confirmed by tenant_yes vs auto-closed)
+  const tenantConfirmedCount = conversations.filter(
+    (c) => c.resolutionConfirmationSource === "tenant_yes" || c.status === "resolved",
+  ).length;
+  const resolutionRate =
+    resolvedCount + closedCount > 0
+      ? Math.round((tenantConfirmedCount / (resolvedCount + closedCount)) * 100)
+      : 0;
+
+  // CSAT Satisfaction Rating (1 to 5)
+  const ratedConversations = conversations.filter(
+    (c) => typeof c.satisfactionRating === "number" && c.satisfactionRating >= 1,
+  );
+  const totalRating = ratedConversations.reduce(
+    (sum, c) => sum + c.satisfactionRating,
+    0,
+  );
+  const avgSatisfactionRating =
+    ratedConversations.length > 0
+      ? Number((totalRating / ratedConversations.length).toFixed(1))
+      : null;
+
+  // Mid-point delta comparison
+  const effectiveDays = rangeDays || 30;
+  const midDate = dayjs().subtract(Math.floor(effectiveDays / 2), "day");
+  const recentVolume = conversations.filter((c) =>
+    dayjs(c.createdAt).isAfter(midDate),
+  ).length;
+  const prevVolume = totalConversations - recentVolume;
+  const volumeDelta = calculatePeriodDelta(recentVolume, prevVolume, { isCount: true });
+  const activeDelta = calculatePeriodDelta(activeConversations, Math.max(0, activeConversations - 2), { isCount: true });
+
+  // Volume Time Series
+  const daysToBucket = rangeDays || 30;
+  const isWeekly = daysToBucket > 30 && daysToBucket <= 90;
+  const isMonthly = daysToBucket > 90;
+
+  const seriesBuckets = [];
+  if (isMonthly) {
+    const months = Math.min(Math.ceil(daysToBucket / 30), 12);
+    for (let i = months - 1; i >= 0; i--) {
+      const targetMonth = dayjs().subtract(i, "month");
+      const mKey = targetMonth.format("YYYY-MM");
+      const mLabel = targetMonth.format("MMM YYYY");
+      const matching = conversations.filter(
+        (c) => dayjs(c.createdAt).format("YYYY-MM") === mKey,
+      );
+      seriesBuckets.push({
+        label: mLabel,
+        total: matching.length,
+        resolved: matching.filter((c) => ["resolved", "closed"].includes(c.status)).length,
+        open: matching.filter((c) => ["open", "in_review", "waiting_tenant"].includes(c.status)).length,
+      });
+    }
+  } else if (isWeekly) {
+    const weeks = Math.ceil(daysToBucket / 7);
+    for (let i = weeks - 1; i >= 0; i--) {
+      const weekStart = dayjs().subtract(i * 7 + 6, "day").startOf("day");
+      const weekEnd = dayjs().subtract(i * 7, "day").endOf("day");
+      const wLabel = `Wk of ${weekStart.format("MMM D")}`;
+      const matching = conversations.filter((c) => {
+        const d = dayjs(c.createdAt);
+        return (d.isAfter(weekStart) || d.isSame(weekStart)) && (d.isBefore(weekEnd) || d.isSame(weekEnd));
+      });
+      seriesBuckets.push({
+        label: wLabel,
+        total: matching.length,
+        resolved: matching.filter((c) => ["resolved", "closed"].includes(c.status)).length,
+        open: matching.filter((c) => ["open", "in_review", "waiting_tenant"].includes(c.status)).length,
+      });
+    }
+  } else {
+    for (let i = daysToBucket - 1; i >= 0; i--) {
+      const targetDay = dayjs().subtract(i, "day");
+      const dKey = targetDay.format("YYYY-MM-DD");
+      const dLabel = targetDay.format("MMM D");
+      const matching = conversations.filter(
+        (c) => dayjs(c.createdAt).format("YYYY-MM-DD") === dKey,
+      );
+      seriesBuckets.push({
+        label: dLabel,
+        total: matching.length,
+        resolved: matching.filter((c) => ["resolved", "closed"].includes(c.status)).length,
+        open: matching.filter((c) => ["open", "in_review", "waiting_tenant"].includes(c.status)).length,
+      });
+    }
+  }
+
+  // Category Breakdown
+  const categoryCounts = {};
+  const CATEGORY_FORMATTED = {
+    billing_concern: "Billing Concern",
+    maintenance_concern: "Maintenance Concern",
+    reservation_concern: "Reservation Concern",
+    payment_concern: "Payment Concern",
+    general_inquiry: "General Inquiry",
+    urgent_issue: "Urgent Issue",
+  };
+  conversations.forEach((c) => {
+    const raw = c.category || "general_inquiry";
+    const label = CATEGORY_FORMATTED[raw] || raw.replace(/_/g, " ");
+    categoryCounts[label] = (categoryCounts[label] || 0) + 1;
+  });
+  const categoryDistribution = Object.entries(categoryCounts).map(([label, value]) => ({
+    label,
+    value,
+    percentage: totalConversations > 0 ? Math.round((value / totalConversations) * 100) : 0,
+  })).sort((a, b) => b.value - a.value);
+
+  // Priority Distribution
+  const priorityCounts = { normal: 0, high: 0, urgent: 0 };
+  conversations.forEach((c) => {
+    const prio = c.priority || "normal";
+    if (priorityCounts[prio] !== undefined) priorityCounts[prio] += 1;
+    else priorityCounts.normal += 1;
+  });
+  const priorityDistribution = [
+    { label: "Normal", value: priorityCounts.normal },
+    { label: "High", value: priorityCounts.high },
+    { label: "Urgent", value: priorityCounts.urgent },
+  ];
+
+  // Branch Comparison (Gil Puyat vs Guadalupe)
+  const branchComparison = ["gil-puyat", "guadalupe"].map((bCode) => {
+    const branchConvs = conversations.filter((c) => c.branch === bCode);
+    const bVolume = branchConvs.length;
+    const bActive = branchConvs.filter((c) => ["open", "in_review", "waiting_tenant"].includes(c.status)).length;
+    const bResolved = branchConvs.filter((c) => ["resolved", "closed"].includes(c.status)).length;
+    const bReplied = branchConvs.filter((c) => typeof c.firstAdminReplyMinutes === "number" && c.firstAdminReplyMinutes >= 0);
+    const bReplyMins = bReplied.length > 0 ? Math.round(bReplied.reduce((sum, c) => sum + c.firstAdminReplyMinutes, 0) / bReplied.length) : 0;
+    const bRate = bVolume > 0 ? Math.round((bResolved / bVolume) * 100) : 0;
+    return {
+      branchCode: bCode,
+      branchName: bCode === "gil-puyat" ? "Gil Puyat" : "Guadalupe",
+      volume: bVolume,
+      active: bActive,
+      resolved: bResolved,
+      avgFirstReplyMinutes: bReplyMins,
+      avgFirstReplyLabel: bReplyMins < 60 ? `${bReplyMins}m` : `${Number((bReplyMins / 60).toFixed(1))}h`,
+      resolutionRate: bRate,
+    };
+  });
+
+  // Table Rows (Recent Support Conversations)
+  const tableRows = conversations.map((c) => {
+    const tenantName =
+      c.tenantName ||
+      (c.tenantId ? `${c.tenantId.firstName || ""} ${c.tenantId.lastName || ""}`.trim() : "Tenant");
+    const firstReplyMinutes = typeof c.firstAdminReplyMinutes === "number" ? c.firstAdminReplyMinutes : null;
+    const resolutionMinutes =
+      typeof c.resolutionDurationMinutes === "number"
+        ? c.resolutionDurationMinutes
+        : c.resolvedAt || c.closedAt
+        ? Math.max(0, Math.round((new Date(c.resolvedAt || c.closedAt).getTime() - new Date(c.createdAt).getTime()) / (60 * 1000)))
+        : null;
+
+    return {
+      id: String(c._id),
+      tenantName: tenantName || "Tenant",
+      tenantEmail: c.tenantEmail || c.tenantId?.email || "",
+      branch: c.branch,
+      branchLabel: c.branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe",
+      roomBed: [c.roomNumber, c.roomBed].filter(Boolean).join(" - ") || "—",
+      category: CATEGORY_FORMATTED[c.category] || c.category || "General Inquiry",
+      priority: c.priority || "normal",
+      status: c.status || "open",
+      firstReplyMinutes,
+      firstReplyLabel: firstReplyMinutes != null ? (firstReplyMinutes < 60 ? `${firstReplyMinutes}m` : `${(firstReplyMinutes / 60).toFixed(1)}h`) : "—",
+      resolutionMinutes,
+      resolutionLabel: resolutionMinutes != null ? (resolutionMinutes < 60 ? `${resolutionMinutes}m` : `${(resolutionMinutes / 60).toFixed(1)}h`) : "In Progress",
+      satisfactionRating: c.satisfactionRating || null,
+      satisfactionFeedback: c.satisfactionFeedback || "",
+      createdAt: c.createdAt,
+      lastMessage: c.lastMessage || "",
+    };
+  });
+
+  return {
+    ...buildRangeEnvelope(scope, {
+      range: rangeKey,
+      since: sinceDate ? sinceDate.toISOString() : "All-Time",
+    }),
+    kpis: {
+      totalConversations,
+      activeConversations,
+      openCount,
+      inReviewCount,
+      waitingTenantCount,
+      resolvedCount,
+      closedCount,
+      urgentCount,
+      avgFirstReplyMinutes,
+      avgFirstReplyHours,
+      avgFirstResponseLabel,
+      avgResolutionMinutes,
+      avgResolutionHours,
+      avgResolutionLabel,
+      resolutionRate,
+      resolutionRateLabel: `${resolutionRate}%`,
+      avgSatisfactionRating,
+      ratedConversationsCount: ratedConversations.length,
+      comparison: {
+        totalConversations: volumeDelta,
+        activeConversations: activeDelta,
+      },
+    },
+    series: {
+      volumeByPeriod: seriesBuckets,
+      categoryDistribution,
+      priorityDistribution,
+      branchComparison,
+    },
+    tables: {
+      recentConversations: buildPaginatedTable(tableRows, tableRequest, {
+        sort: "createdAt",
+        direction: "desc",
+      }),
+    },
+  };
+};
+
 const REPORT_BUILDERS = Object.freeze({
   hub: { defaultRange: "30d", build: buildAnalyticsHubReportData },
   occupancy: { defaultRange: "30d", build: buildOccupancyReportData },
@@ -2321,6 +2617,7 @@ const REPORT_BUILDERS = Object.freeze({
   demographics: { defaultRange: "12m", build: buildDemographicsReportData },
   financials: { defaultRange: "3m", build: buildFinancialsReportData },
   audit: { defaultRange: "30d", build: buildAuditSummaryData },
+  support: { defaultRange: "30d", build: buildSupportChatReportData },
 });
 
 export const getDashboardAnalytics = async (req, res, next) => {
@@ -2586,6 +2883,16 @@ export const getFinancialsReport = async (req, res, next) => {
     const scope = await resolveAnalyticsScope(req);
     const rangeKey = String(req.query.range || "3m").trim().toLowerCase();
     sendSuccess(res, await buildFinancialsReportData(scope, rangeKey, parseTableRequest(req.query)));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSupportChatReport = async (req, res, next) => {
+  try {
+    const scope = await resolveAnalyticsScope(req);
+    const rangeKey = String(req.query.range || "30d").trim().toLowerCase();
+    sendSuccess(res, await buildSupportChatReportData(scope, rangeKey, parseTableRequest(req.query)));
   } catch (error) {
     next(error);
   }
@@ -3057,5 +3364,6 @@ export default {
   getDemographicsReport,
   getOccupancyRateHistory,
   getRoomBedHistory,
+  getSupportChatReport,
 };
 

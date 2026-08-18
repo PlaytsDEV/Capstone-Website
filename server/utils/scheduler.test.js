@@ -60,6 +60,19 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   MaintenanceRequest: {
     find: maintenanceRequestFind,
   },
+  ChatConversation: {
+    find: jest.fn(() => ({
+      sort: jest.fn(() => ({
+        lean: jest.fn(() => Promise.resolve([])),
+      })),
+      lean: jest.fn(() => Promise.resolve([])),
+    })),
+    updateMany: jest.fn(() => Promise.resolve({ modifiedCount: 0 })),
+  },
+  ChatMessage: {
+    find: jest.fn(() => Promise.resolve([])),
+    create: jest.fn(() => Promise.resolve({})),
+  },
 }));
 
 await jest.unstable_mockModule("../utils/reservationHelpers.js", () => ({

@@ -173,6 +173,8 @@ const normalizeUtilityRows = (data, utilityType = "electricity") => {
   const rooms = data?.rooms || data?.data?.rooms || [];
   const rows = [];
   for (const room of rooms) {
+    const branch = room.branch || (typeof room.roomId === "object" ? room.roomId?.branch : null) || "-";
+    if (String(branch).toLowerCase() === "guadalupe") continue;
     const period = room.activePeriod || room.latestPeriod || null;
     const amount = period?.totalAmount ?? period?.amount ?? period?.computedTotalCost ?? room.latestPeriodAmount ?? 0;
     const consumed = period?.totalConsumption ?? period?.consumption ?? (utilityType === "water" ? "Flat / N/A" : "-");
@@ -180,7 +182,7 @@ const normalizeUtilityRows = (data, utilityType = "electricity") => {
       rawStartDate: period?.startDate,
       utilityType,
       room:     extractRoomLabel(room),
-      branch:   room.branch || (typeof room.roomId === "object" ? room.roomId?.branch : null) || "-",
+      branch:   branch,
       tenant:   room.currentTenant?.name || room.currentTenant?.firstName
                   ? `${room.currentTenant.firstName || ""} ${room.currentTenant.lastName || ""}`.trim()
                   : (room.activeTenantCount > 0 ? `${room.activeTenantCount} Tenant(s)` : "-"),

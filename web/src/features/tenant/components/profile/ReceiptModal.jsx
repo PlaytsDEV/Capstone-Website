@@ -11,6 +11,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
+import { formatDisplayReference } from "../../../../shared/utils/formatPaymentReference";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
 import { getResolvedMonthlyRate } from "../../utils/pricingDisplayHelpers";
@@ -366,7 +367,8 @@ const ApplicationReceipt = ({ reservation }) => (
 const PaymentReceiptContent = ({ reservation }) => {
   const feeAmount = Number(reservation?.amountPaid || reservation?.reservationFeeAmount || 2000);
   const paymentMethod = formatPaymentMethod(reservation?.paymentMethod);
-  const refId = reservation?.paymongoPaymentId || reservation?.reservationCode || reservation?._id?.slice(-8)?.toUpperCase() || "—";
+  const rawRef = reservation?.paymentReference || reservation?.reservationCode || reservation?._id?.slice(-8)?.toUpperCase() || "—";
+  const refId = formatDisplayReference(rawRef);
   const isPaid = reservation?.status === "reserved" || reservation?.status === "active";
 
   return (

@@ -4,7 +4,17 @@ import { useQueryClient } from "@tanstack/react-query";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import {
- CalendarDays, User, Home, MapPin, Clock, Ban, Check, X,
+  CalendarDays,
+  User,
+  Home,
+  MapPin,
+  Clock,
+  Ban,
+  X,
+  Eye,
+  Video,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
@@ -15,75 +25,99 @@ import { APP_LOCALE, fmtShortDate } from "../../../shared/utils/dateFormat";
 const fmt = (v) => (v === null || v === undefined || v === "" ? "—" : v);
 
 const formatDate = (d) =>
- d
- ? new Date(d).toLocaleDateString(APP_LOCALE, {
- weekday: "long",
- year: "numeric",
- month: "long",
- day: "numeric",
- })
- : "—";
+  d
+    ? new Date(d).toLocaleDateString(APP_LOCALE, {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : "—";
 
 const STATUS_CONFIGS = [
- { test: (s) => s.visitStatus === "allowed_without_visit", bg: "#CCFBF1", color: "#0F766E", dot: "#14b8a6", label: "Allowed to Proceed Without Visit" },
- { test: (s) => s.visitStatus === "visit_completed", bg: "#D1FAE5", color: "#047857", dot: "#10b981", label: "Visit Completed" },
- { test: (s) => s.visitStatus === "no_show", bg: "#FEF3C7", color: "#92400E", dot: "#f59e0b", label: "No-Show" },
- { test: (s) => s.visitStatus === "rescheduled", bg: "#FEF3C7", color: "#92400E", dot: "#f59e0b", label: "Rescheduled" },
- { test: (s) => s.visitStatus === "visit_cancelled", bg: "#FEE2E2", color: "#DC2626", dot: "#ef4444", label: "Visit Cancelled" },
- { test: (s) => s.visitApproved, bg: "#D1FAE5", color: "#047857", dot: "#10b981", label: "Visit Completed" },
- { test: (s) => s.scheduleApproved, bg: "#E0EBF5", color: "#0A5C9B", dot: "#3b82f6", label: "Awaiting Visit" },
- { test: (s) => s.scheduleRejected, bg: "#FEE2E2", color: "#DC2626", dot: "#ef4444", label: "Schedule Rejected" },
+  {
+    test: (s) => s.visitStatus === "allowed_without_visit",
+    textClass: "text-teal-700 dark:text-teal-300",
+    dotClass: "bg-teal-500",
+    label: "Allowed Without Visit",
+  },
+  {
+    test: (s) => s.visitStatus === "visit_completed",
+    textClass: "text-emerald-700 dark:text-emerald-300",
+    dotClass: "bg-emerald-500",
+    label: "Visit Completed",
+  },
+  {
+    test: (s) => s.visitStatus === "no_show",
+    textClass: "text-amber-700 dark:text-amber-300",
+    dotClass: "bg-amber-500",
+    label: "No-Show",
+  },
+  {
+    test: (s) => s.visitStatus === "rescheduled",
+    textClass: "text-amber-700 dark:text-amber-300",
+    dotClass: "bg-amber-500",
+    label: "Rescheduled",
+  },
+  {
+    test: (s) => s.visitStatus === "visit_cancelled",
+    textClass: "text-rose-700 dark:text-rose-400",
+    dotClass: "bg-rose-500",
+    label: "Visit Cancelled",
+  },
+  {
+    test: (s) => s.visitApproved,
+    textClass: "text-emerald-700 dark:text-emerald-300",
+    dotClass: "bg-emerald-500",
+    label: "Visit Completed",
+  },
+  {
+    test: (s) => s.scheduleApproved,
+    textClass: "text-sky-700 dark:text-sky-300",
+    dotClass: "bg-sky-500",
+    label: "Awaiting Visit",
+  },
+  {
+    test: (s) => s.scheduleRejected,
+    textClass: "text-rose-700 dark:text-rose-400",
+    dotClass: "bg-rose-500",
+    label: "Schedule Rejected",
+  },
 ];
 
 const getStatusCfg = (schedule) =>
- STATUS_CONFIGS.find((c) => c.test(schedule)) || {
- bg: "#E0EBF5", color: "#0A5C9B", dot: "#3b82f6", label: "Awaiting Visit",
- };
+  STATUS_CONFIGS.find((c) => c.test(schedule)) || {
+    textClass: "text-sky-700 dark:text-sky-300",
+    dotClass: "bg-sky-500",
+    label: "Awaiting Visit",
+  };
 
 const getInitials = (name) => {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "GU";
+  if (!parts.length) return "AP";
   if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
 
 /* ─── sub-components ─────────────────────────────────── */
 const InfoRow = ({ label, value, wide }) => (
-  <div className="rdm-info-item" style={wide ? { gridColumn: "span 2" } : {}}>
-    <span className="rdm-info-label">{label}</span>
-    <span className="rdm-info-value">{value || "—"}</span>
+  <div className="flex flex-col gap-0.5" style={wide ? { gridColumn: "span 2" } : {}}>
+    <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+      {label}
+    </span>
+    <span className="text-xs font-medium text-slate-900 dark:text-slate-100 break-words">
+      {value || "—"}
+    </span>
   </div>
 );
 
 const SectionCard = ({ icon: Icon, title, children }) => (
-  <div
-    style={{
-      background: "#ffffff",
-      borderRadius: 12,
-      border: "1px solid #e2e8f0",
-      padding: "14px 16px",
-      boxShadow: "0 1px 3px rgba(15, 23, 42, 0.04)",
-    }}
-  >
-    <h4
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        margin: "0 0 8px",
-        fontSize: "0.78rem",
-        fontWeight: 700,
-        color: "#0a1628",
-        textTransform: "uppercase",
-        letterSpacing: "0.05em",
-        paddingBottom: 6,
-        borderBottom: "1.5px solid #f1f5f9",
-      }}
-    >
-      {Icon && <Icon size={14} style={{ color: "#64748b" }} />}
-      {title}
+  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-2xs">
+    <h4 className="flex items-center gap-2 pb-2 mb-3 text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800">
+      {Icon && <Icon className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />}
+      <span>{title}</span>
     </h4>
-    <div className="rdm-info-grid" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 0, gap: "8px 20px" }}>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3.5">
       {children}
     </div>
   </div>
@@ -94,6 +128,7 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
   const queryClient = useQueryClient();
   const [rejectReason, setRejectReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
 
   useBodyScrollLock(!!schedule);
   useEscapeClose(!!schedule, onClose);
@@ -101,29 +136,34 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
   useEffect(() => {
     if (schedule) {
       setRejectReason("");
+      setHasAttemptedSubmit(false);
     }
   }, [schedule]);
 
   if (!schedule) return null;
 
   const handleRejectSubmit = async () => {
-    if (!rejectReason.trim()) {
-      showNotification("Please enter a rejection reason", "warning");
+    setHasAttemptedSubmit(true);
+    const trimmedReason = rejectReason.trim();
+
+    if (!trimmedReason) {
+      showNotification("Please select a preset reason or enter an explanation before rejecting.", "warning");
       return;
     }
+
     setIsSubmitting(true);
     try {
       await reservationApi.manageVisit(schedule.id, {
         action: "reject_schedule",
-        note: rejectReason.trim(),
+        note: trimmedReason,
       });
       queryClient.invalidateQueries({ queryKey: ["reservations"] });
-      showNotification("Visit schedule rejected successfully", "success");
+      showNotification("Visit schedule rejected successfully. The applicant has been notified.", "success");
       onUpdate?.();
       onClose();
     } catch (error) {
       console.error("Error rejecting schedule:", error);
-      showNotification("Failed to reject schedule", "error");
+      showNotification("Unable to reject the visit schedule. Please check your connection and try again.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -146,78 +186,96 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
   ];
 
   const initials = getInitials(schedule.customer);
+  const isReasonEmpty = !rejectReason.trim();
+
+  // Dynamic counter threshold color
+  const charLength = rejectReason.length;
+  const counterColorClass =
+    charLength >= 480
+      ? "text-rose-600 dark:text-rose-400 font-semibold"
+      : charLength >= 400
+      ? "text-amber-600 dark:text-amber-400"
+      : "text-slate-400 dark:text-slate-500";
 
   return createPortal(
-    <div className="rdm-overlay" onClick={onClose}>
-      <div className="rdm" style={{ maxWidth: 760, width: "100%" }} onClick={(e) => e.stopPropagation()}>
-
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="visit-details-modal-title"
+    >
+      <div
+        className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-slideUp"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* ── Executive Header ── */}
-        <div className="rdm-top-header">
-          <div className="rdm-guest-block">
-            <div className="rdm-avatar">{initials}</div>
-            <div className="rdm-guest-copy">
-              <h2 className="rdm-title">{fmt(schedule.customer)}</h2>
-              <div className="rdm-header-meta">
+        <div className="px-6 py-4.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-4 shrink-0">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 flex items-center justify-center text-sm font-bold tracking-wide shrink-0 shadow-2xs">
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <h2
+                id="visit-details-modal-title"
+                className="text-base font-bold text-slate-900 dark:text-slate-100 truncate"
+              >
+                {fmt(schedule.customer)}
+              </h2>
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5 truncate">
                 {schedule.reservationCode && schedule.reservationCode !== "—" && (
                   <>
-                    <span className="rdm-code">{schedule.reservationCode}</span>
-                    <span className="rdm-header-sep">·</span>
+                    <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
+                      {schedule.reservationCode}
+                    </span>
+                    <span>&bull;</span>
                   </>
                 )}
-                <span className="rdm-header-detail">{fmt(schedule.email)}</span>
+                <span className="truncate">{fmt(schedule.email)}</span>
               </div>
             </div>
           </div>
-          <div className="rdm-header-actions">
-            <div
-              className="rdm-status-chip"
-              style={{ background: cfg.bg, color: cfg.color }}
+
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Status Badge with Transparent Background & Semantic Status Dot */}
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider bg-transparent ${cfg.textClass}`}
             >
-              <span className="rdm-status-dot" style={{ background: cfg.dot }} />
-              {cfg.label}
-            </div>
-            <button className="rdm-close" onClick={onClose} aria-label="Close">
+              <span className={`w-2 h-2 rounded-full ${cfg.dotClass} shrink-0`} />
+              <span>{cfg.label}</span>
+            </span>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              aria-label="Close modal"
+            >
               <X size={18} />
             </button>
           </div>
         </div>
 
-        {/* ── Body ── */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-            padding: "16px 20px",
-            overflowY: "auto",
-            maxHeight: "calc(90vh - 110px)",
-            background: "#f8fafc",
-          }}
-        >
-          {/* Rejection reason banner */}
+        {/* ── Scrollable Body ── */}
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 bg-slate-50/50 dark:bg-slate-950/40">
+          {/* Rejection reason banner (if already rejected) */}
           {schedule.scheduleRejected && schedule.scheduleRejectionReason && (
-            <div
-              style={{
-                background: "var(--surface-card, #FFFFFF)",
-                border: "1px solid var(--border-card, #e2e8f0)",
-                borderRadius: "var(--radius-md, 8px)",
-                padding: "12px 14px",
-              }}
-            >
-              <p style={{ fontSize: "11px", fontWeight: 700, color: "#DC2626", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Rejection Reason
+            <div className="rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/70 dark:bg-rose-950/30 p-4 space-y-1">
+              <p className="text-[11px] font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Ban size={13} className="shrink-0" />
+                <span>Rejection Reason</span>
               </p>
-              <p style={{ fontSize: "13px", color: "#7F1D1D", margin: 0, lineHeight: 1.5, fontWeight: 500 }}>
+              <p className="text-xs font-medium text-rose-900 dark:text-rose-200 leading-relaxed">
                 {schedule.scheduleRejectionReason}
               </p>
             </div>
           )}
 
-          {/* Customer Information */}
-          <SectionCard icon={User} title="Customer Information">
+          {/* Applicant Information */}
+          <SectionCard icon={User} title="Applicant Information">
             <InfoRow label="Full Name" value={fmt(schedule.customer)} />
             <InfoRow label="Email" value={fmt(schedule.email)} />
-            <InfoRow label="Phone" value={fmt(schedule.phone)} />
+            <InfoRow label="Phone Number" value={fmt(schedule.phone)} />
             <InfoRow label="Billing Email" value={fmt(schedule.billingEmail)} />
           </SectionCard>
 
@@ -229,120 +287,75 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
 
           {/* Visit Details */}
           <SectionCard icon={CalendarDays} title="Visit Details">
-            <div className="rdm-info-item">
-              <span className="rdm-info-label">Visit Type</span>
-              <span style={{ marginTop: 3 }}>
-                <span
-                  style={{
-                    display: "inline-block",
-                    padding: "3px 10px",
-                    borderRadius: 20,
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    background:
-                      schedule.viewingType === "inperson" || schedule.viewingType === "physical_visit"
-                        ? "#E0EBF5"
-                        : schedule.viewingType === "remote_2d" || schedule.viewingType === "remote_2d_viewing"
-                        ? "#FFF7ED"
-                        : "#F3E8FF",
-                    color:
-                      schedule.viewingType === "inperson" || schedule.viewingType === "physical_visit"
-                        ? "#0A5C9B"
-                        : schedule.viewingType === "remote_2d" || schedule.viewingType === "remote_2d_viewing"
-                        ? "#C2410C"
-                        : "#6B21A8",
-                  }}
-                >
-                  {schedule.viewingType === "inperson" || schedule.viewingType === "physical_visit"
-                    ? "Physical Visit"
-                    : schedule.viewingType === "remote_2d" || schedule.viewingType === "remote_2d_viewing"
-                    ? "2D Remote Viewing"
-                    : "Urgent Move-in Review"}
-                </span>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Visit Type
+              </span>
+              <span className="mt-0.5 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200">
+                {schedule.viewingType === "remote_2d" || schedule.viewingType === "remote_2d_viewing" ? (
+                  <>
+                    <Video size={14} className="text-sky-600 dark:text-sky-400 shrink-0" />
+                    <span>2D Remote Viewing</span>
+                  </>
+                ) : schedule.viewingType === "urgent_movein" ? (
+                  <>
+                    <CalendarDays size={14} className="text-purple-600 dark:text-purple-400 shrink-0" />
+                    <span>Urgent Move-in Review</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye size={14} className="text-slate-600 dark:text-slate-300 shrink-0" />
+                    <span>Physical Visit</span>
+                  </>
+                )}
               </span>
             </div>
-            <InfoRow label="Requested Date" value={formatDate(schedule.scheduledDate)} />
+            <InfoRow label="Schedule Requested On" value={formatDate(schedule.scheduledDate)} />
             <InfoRow label="Visit Date" value={formatDate(schedule.visitDate)} />
             <InfoRow label="Visit Time" value={fmt(schedule.visitTime)} />
             {schedule.isOutOfTown && (
-              <div className="rdm-info-item" style={{ gridColumn: "span 2" }}>
-                <span className="rdm-info-label">Current Location (Out of Town)</span>
-                <span className="rdm-info-value" style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 2 }}>
-                  <MapPin size={13} style={{ color: "#64748b", flexShrink: 0 }} />
+              <div className="flex flex-col gap-0.5 sm:col-span-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Current Location (Out of Town)
+                </span>
+                <span className="text-xs font-medium text-slate-800 dark:text-slate-200 inline-flex items-center gap-1.5 mt-0.5">
+                  <MapPin size={13} className="text-slate-500 shrink-0" />
                   {schedule.currentLocation || "Not specified"}
                 </span>
               </div>
             )}
           </SectionCard>
 
-          {/* Rejection Reasons Section (Integrated Card) */}
+          {/* Rejection Reasons Section (Interactive Action Card) */}
           {showRejectBtn && (
-            <div
-              style={{
-                background: "#ffffff",
-                borderRadius: 12,
-                border: "1px solid #e2e8f0",
-                padding: "14px 16px",
-                boxShadow: "0 1px 3px rgba(15, 23, 42, 0.04)",
-              }}
-            >
-              <h4
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  margin: "0 0 4px",
-                  fontSize: "0.78rem",
-                  fontWeight: 700,
-                  color: "#0a1628",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  paddingBottom: 6,
-                  borderBottom: "1.5px solid #f1f5f9",
-                }}
-              >
-                <Ban size={14} style={{ color: "#DC2626" }} />
-                Rejection Reason & Presets
-              </h4>
-              <p style={{ fontSize: 12, color: "#64748b", opacity: 0.9, margin: "4px 0 8px" }}>
-                Select a preset reason below or write a custom explanation for the customer.
-              </p>
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-2xs space-y-3">
+              <div className="border-b border-slate-100 dark:border-slate-800 pb-2">
+                <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">
+                  <Ban size={14} className="text-rose-600 dark:text-rose-400 shrink-0" />
+                  <span>Rejection Reason & Presets</span>
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Select a preset reason below or write a custom explanation for the applicant.
+                </p>
+              </div>
 
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 0 8px" }}>
+              {/* Preset Reason Chips */}
+              <div className="flex flex-wrap gap-2">
                 {REJECT_PRESETS.map((t) => {
                   const isActive = rejectReason === t.text;
                   return (
                     <button
                       key={t.label}
                       type="button"
-                      onClick={() => setRejectReason(isActive ? "" : t.text)}
-                      style={{
-                        padding: "5px 12px",
-                        borderRadius: 20,
-                        border: isActive ? "1px solid #0a1628" : "1px solid #e2e8f0",
-                        background: isActive ? "#0a1628" : "#f8fafc",
-                        fontSize: 12,
-                        fontWeight: isActive ? 600 : 500,
-                        color: isActive ? "#ffffff" : "#334155",
-                        cursor: "pointer",
-                        outline: "none",
-                        transition: "all 0.15s ease",
-                        boxShadow: isActive ? "0 1px 3px rgba(10, 22, 40, 0.15)" : "none",
+                      onClick={() => {
+                        setRejectReason(isActive ? "" : t.text);
+                        setHasAttemptedSubmit(false);
                       }}
-                      onMouseEnter={(e) => {
-                        if (!isActive) {
-                          e.currentTarget.style.background = "#f1f5f9";
-                          e.currentTarget.style.borderColor = "#cbd5e1";
-                          e.currentTarget.style.color = "#0f172a";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isActive) {
-                          e.currentTarget.style.background = "#f8fafc";
-                          e.currentTarget.style.borderColor = "#e2e8f0";
-                          e.currentTarget.style.color = "#334155";
-                        }
-                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
+                        isActive
+                          ? "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-2xs"
+                          : "bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600"
+                      }`}
                     >
                       {t.label}
                     </button>
@@ -350,48 +363,38 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
                 })}
               </div>
 
-              <div style={{ position: "relative" }}>
+              {/* Textarea Input with Real-time Ergonomics */}
+              <div className="space-y-1.5">
                 <textarea
                   value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value.slice(0, 500))}
+                  onChange={(e) => {
+                    setRejectReason(e.target.value.slice(0, 500));
+                    if (hasAttemptedSubmit) setHasAttemptedSubmit(false);
+                  }}
                   placeholder="Type specific reason for rejection..."
-                  className="rdm-notes-input"
                   maxLength={500}
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    minHeight: 70,
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #cbd5e1",
-                    background: "#ffffff",
-                    fontSize: 13,
-                    color: "#0f172a",
-                    lineHeight: 1.4,
-                    outline: "none",
-                    resize: "vertical",
-                    fontFamily: "inherit",
-                    transition: "all 0.15s ease",
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = "#0a1628";
-                    e.target.style.boxShadow = "0 0 0 2px rgba(10, 22, 40, 0.06)";
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = "#cbd5e1";
-                    e.target.style.boxShadow = "none";
-                  }}
+                  rows={3}
+                  className={`w-full p-3 rounded-lg border text-xs font-normal text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-950 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 transition-all resize-y ${
+                    hasAttemptedSubmit && isReasonEmpty
+                      ? "border-rose-500 ring-rose-500/20 dark:border-rose-500"
+                      : "border-slate-300 dark:border-slate-700 focus:border-slate-900 dark:focus:border-slate-100 focus:ring-slate-900/10 dark:focus:ring-slate-100/10"
+                  }`}
                 />
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: rejectReason.length >= 480 ? "#DC2626" : "#9CA3AF",
-                    textAlign: "right",
-                    marginTop: 2,
-                  }}
-                >
-                  {rejectReason.length}/500
+
+                <div className="flex items-center justify-between text-[11px]">
+                  {hasAttemptedSubmit && isReasonEmpty ? (
+                    <span className="text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1">
+                      <AlertCircle size={12} className="shrink-0" />
+                      <span>Please select a preset or type a rejection reason.</span>
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 dark:text-slate-500">
+                      Applicant will receive this explanation via email & system notification.
+                    </span>
+                  )}
+                  <span className={`tabular-nums ${counterColorClass}`}>
+                    {charLength}/500
+                  </span>
                 </div>
               </div>
             </div>
@@ -399,85 +402,66 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
 
           {/* Visit History Timeline */}
           {schedule.visitHistory && schedule.visitHistory.length > 0 && (
-            <div
-              style={{
-                background: "#ffffff",
-                borderRadius: 12,
-                border: "1px solid #e2e8f0",
-                padding: "16px 18px",
-                boxShadow: "0 1px 3px rgba(15, 23, 42, 0.04)",
-              }}
-            >
-              <h4
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  margin: "0 0 12px",
-                  fontSize: "0.78rem",
-                  fontWeight: 700,
-                  color: "#0a1628",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  paddingBottom: 8,
-                  borderBottom: "1.5px solid #f1f5f9",
-                }}
-              >
-                <Clock size={14} style={{ color: "#64748b" }} />
-                Visit Schedule History
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-2xs space-y-3">
+              <h4 className="flex items-center gap-2 pb-2 text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800">
+                <Clock size={14} className="text-slate-500 dark:text-slate-400 shrink-0" />
+                <span>Visit Schedule History</span>
               </h4>
-              <div>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {schedule.visitHistory
                   .slice()
-                  .sort((a, b) => new Date(b.scheduledAt || b.rejectedAt || 0) - new Date(a.scheduledAt || a.rejectedAt || 0))
+                  .sort(
+                    (a, b) =>
+                      new Date(b.scheduledAt || b.rejectedAt || 0) -
+                      new Date(a.scheduledAt || a.rejectedAt || 0),
+                  )
                   .map((entry, idx) => {
                     const MAP = {
-                      pending: { bg: "#FEF3C7", color: "#92400E", label: "Scheduled" },
-                      schedule_approved: { bg: "#D1FAE5", color: "#047857", label: "Schedule Approved" },
-                      rejected: { bg: "#FEE2E2", color: "#DC2626", label: "Rejected" },
-                      approved: { bg: "#D1FAE5", color: "#047857", label: "Completed" },
-                      cancelled: { bg: "#F3F4F6", color: "#6B7280", label: "Cancelled" },
-                      rescheduled: { bg: "#FEF3C7", color: "#92400E", label: "Rescheduled" },
-                      completed: { bg: "#D1FAE5", color: "#047857", label: "Completed" },
-                      no_show: { bg: "#FEF3C7", color: "#92400E", label: "No-Show" },
-                      visit_cancelled: { bg: "#FEE2E2", color: "#DC2626", label: "Visit Cancelled" },
-                      allowed_without_visit: { bg: "#CCFBF1", color: "#0F766E", label: "Allowed to Proceed Without Visit" },
+                      pending: { textClass: "text-amber-700 dark:text-amber-300", dotClass: "bg-amber-500", label: "Scheduled" },
+                      schedule_approved: { textClass: "text-emerald-700 dark:text-emerald-300", dotClass: "bg-emerald-500", label: "Schedule Approved" },
+                      rejected: { textClass: "text-rose-700 dark:text-rose-400", dotClass: "bg-rose-500", label: "Rejected" },
+                      approved: { textClass: "text-emerald-700 dark:text-emerald-300", dotClass: "bg-emerald-500", label: "Completed" },
+                      cancelled: { textClass: "text-slate-600 dark:text-slate-400", dotClass: "bg-slate-400", label: "Cancelled" },
+                      rescheduled: { textClass: "text-amber-700 dark:text-amber-300", dotClass: "bg-amber-500", label: "Rescheduled" },
+                      completed: { textClass: "text-emerald-700 dark:text-emerald-300", dotClass: "bg-emerald-500", label: "Completed" },
+                      no_show: { textClass: "text-amber-700 dark:text-amber-300", dotClass: "bg-amber-500", label: "No-Show" },
+                      visit_cancelled: { textClass: "text-rose-700 dark:text-rose-400", dotClass: "bg-rose-500", label: "Visit Cancelled" },
+                      allowed_without_visit: { textClass: "text-teal-700 dark:text-teal-300", dotClass: "bg-teal-500", label: "Allowed Without Visit" },
                     };
                     const s = MAP[entry.status] || MAP.pending;
                     const entryDate = entry.visitDate ? fmtShortDate(entry.visitDate) : "N/A";
                     const actionDate = entry.rejectedAt || entry.approvedAt || entry.updatedAt || entry.scheduledAt;
                     const actionDateStr = actionDate
-                      ? new Date(actionDate).toLocaleDateString(APP_LOCALE, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                      ? new Date(actionDate).toLocaleDateString(APP_LOCALE, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
                       : "";
 
                     return (
-                      <div
-                        key={idx}
-                        style={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: 12,
-                          padding: "10px 0",
-                          borderBottom: idx < schedule.visitHistory.length - 1 ? "1px solid #f1f5f9" : "none",
-                        }}
-                      >
-                        <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: s.color, marginTop: 6, flexShrink: 0 }} />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                            <span style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>
-                              Visit on {entryDate}{entry.visitTime ? ` at ${entry.visitTime}` : ""}
+                      <div key={idx} className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0">
+                        <span className={`w-2 h-2 rounded-full ${s.dotClass} mt-1.5 shrink-0`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                              Visit on {entryDate}
+                              {entry.visitTime ? ` at ${entry.visitTime}` : ""}
                             </span>
-                            <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: 10, background: s.bg, color: s.color }}>
+                            <span className={`text-[11px] font-semibold uppercase tracking-wider bg-transparent ${s.textClass}`}>
                               {s.label}
                             </span>
                           </div>
                           {entry.rejectionReason && (
-                            <div style={{ fontSize: "12px", color: "#7F1D1D", marginTop: 2 }}>
+                            <div className="text-xs text-rose-700 dark:text-rose-400 mt-1 font-medium leading-relaxed">
                               Reason: {entry.rejectionReason}
                             </div>
                           )}
                           {actionDateStr && (
-                            <div style={{ fontSize: "11px", color: "#64748b", marginTop: 2 }}>{actionDateStr}</div>
+                            <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                              {actionDateStr}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -489,81 +473,50 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
         </div>
 
         {/* ── Executive Footer Controls ── */}
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            justifyContent: "flex-end",
-            alignItems: "center",
-            padding: "16px 24px",
-            borderTop: "1px solid #e2e8f0",
-            background: "#ffffff",
-            flexShrink: 0,
-            borderBottomLeftRadius: 16,
-            borderBottomRightRadius: 16,
-          }}
-        >
+        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-end gap-3 shrink-0">
           {showRejectBtn ? (
             <>
               <button
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                style={{
-                  padding: "9px 20px",
-                  borderRadius: 8,
-                  border: "1px solid #D1D5DB",
-                  background: "#FFFFFF",
-                  color: "#374151",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: isSubmitting ? "not-allowed" : "pointer",
-                  transition: "all 0.15s ease",
-                }}
+                className="px-4 py-2.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleRejectSubmit}
-                disabled={isSubmitting || !rejectReason.trim()}
-                title={!rejectReason.trim() ? "Select a preset or type a reason before confirming rejection" : ""}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "9px 24px",
-                  background: isSubmitting || !rejectReason.trim() ? "#FCA5A5" : "#DC2626",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: isSubmitting || !rejectReason.trim() ? "not-allowed" : "pointer",
-                  transition: "all 0.15s ease",
-                  boxShadow: isSubmitting || !rejectReason.trim() ? "none" : "0 2px 6px rgba(220,38,38,0.25)",
-                }}
+                disabled={isSubmitting || isReasonEmpty}
+                title={
+                  isReasonEmpty
+                    ? "Please select a preset reason or enter an explanation before confirming rejection"
+                    : "Confirm visit schedule rejection"
+                }
+                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  isSubmitting || isReasonEmpty
+                    ? "bg-rose-100 text-rose-400 dark:bg-rose-950/40 dark:text-rose-500 cursor-not-allowed border border-transparent"
+                    : "bg-rose-600 hover:bg-rose-700 text-white shadow-xs active:scale-[0.98] cursor-pointer"
+                }`}
               >
-                <Ban size={15} />
-                {isSubmitting ? "Rejecting…" : "Confirm Rejection"}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Rejecting Visit…</span>
+                  </>
+                ) : (
+                  <>
+                    <Ban size={14} />
+                    <span>Confirm Rejection</span>
+                  </>
+                )}
               </button>
             </>
           ) : (
             <button
+              type="button"
               onClick={onClose}
-              style={{
-                padding: "9px 24px",
-                background: "var(--color-primary, #0A1628)",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#1E293B")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "var(--color-primary, #0A1628)")}
+              className="px-5 py-2.5 rounded-lg text-xs font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white transition-colors cursor-pointer"
             >
               Close
             </button>

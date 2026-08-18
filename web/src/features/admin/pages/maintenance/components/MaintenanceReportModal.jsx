@@ -184,16 +184,28 @@ export function ReportExportDropdown({
 export function ReportInfoGrid({ items = [] }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {items.map((item) => (
-        <div key={item.label} className="rounded-lg border border-slate-200 bg-white p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-            {item.label}
+      {items.map((item) => {
+        let displayValue = item.value;
+        if (typeof displayValue === "object" && displayValue !== null) {
+          displayValue =
+            formatCleanRoomName(displayValue) ||
+            displayValue.name ||
+            displayValue.roomNumber ||
+            displayValue.label ||
+            displayValue.title ||
+            REPORT_NA;
+        }
+        return (
+          <div key={item.label} className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+              {item.label}
+            </div>
+            <div className="mt-1 break-words text-sm font-semibold text-slate-900 dark:text-slate-100">
+              {displayValue || REPORT_NA}
+            </div>
           </div>
-          <div className="mt-1 break-words text-sm font-semibold text-slate-900">
-            {item.value || REPORT_NA}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -201,24 +213,37 @@ export function ReportInfoGrid({ items = [] }) {
 export function ReportViewerSection({ section }) {
   const rows = Array.isArray(section?.rows) && section.rows.length ? section.rows : [REPORT_NA];
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-2">
-        <h3 className="text-sm font-bold text-slate-900">{section.title}</h3>
+    <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-2">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{section.title}</h3>
         {/admin only|internal|confidential/i.test(`${section.title} ${section.description || ""}`) ? (
-          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-amber-700">
+          <span className="rounded-full border border-slate-200 dark:border-slate-700 bg-transparent px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-amber-700 dark:text-amber-400">
             Admin Only
           </span>
         ) : null}
       </div>
       {section.description ? (
-        <p className="mt-2 text-xs leading-5 text-slate-500">{section.description}</p>
+        <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{section.description}</p>
       ) : null}
       <div className="mt-3 space-y-2">
-        {rows.map((row, index) => (
-          <div key={`${section.title}-${index}`} className="rounded-lg bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
-            {row}
-          </div>
-        ))}
+        {rows.map((row, index) => {
+          let rowContent = row;
+          if (typeof rowContent === "object" && rowContent !== null) {
+            rowContent =
+              rowContent.name ||
+              rowContent.message ||
+              rowContent.title ||
+              JSON.stringify(rowContent);
+          }
+          return (
+            <div
+              key={`${section.title}-${index}`}
+              className="rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-sm leading-6 text-slate-700 dark:text-slate-200"
+            >
+              {rowContent}
+            </div>
+          );
+        })}
       </div>
     </section>
   );

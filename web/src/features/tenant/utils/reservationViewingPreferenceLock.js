@@ -191,7 +191,7 @@ export const canResubmitSameViewingPreference = (
   return Boolean(
     submittedPreference === "physical_visit" &&
       normalizedRequested === "physical_visit" &&
-      safeReservation.scheduleRejected === true &&
+      (safeReservation.scheduleRejected === true || safeReservation.visitStatus === "no_show") &&
       !safeReservation.applicationSubmittedAt &&
       !hasReservationStatus(
         safeReservation.reservationStatus || safeReservation.status,

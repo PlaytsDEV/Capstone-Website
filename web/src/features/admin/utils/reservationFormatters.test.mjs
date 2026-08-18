@@ -31,8 +31,8 @@ test("getPaymentStatusBadgeConfig: returns valid solid styling object without gr
   const paidBadge = getPaymentStatusBadgeConfig("paid_in_full");
   assert.equal(paidBadge.label, "Paid in Full");
   assert.equal(paidBadge.color, "#047857");
-  assert.equal(paidBadge.bg, "#ECFDF5");
-  assert.equal(paidBadge.border, "#A7F3D0");
+  assert.equal(paidBadge.bg, "transparent");
+  assert.equal(paidBadge.border, "transparent");
 
   const pendingBadge = getPaymentStatusBadgeConfig("pending");
   assert.equal(pendingBadge.label, "Pending Payment");

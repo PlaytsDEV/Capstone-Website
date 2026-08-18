@@ -82,6 +82,14 @@ export function useAuditAnalytics(params) {
   });
 }
 
+export function useSupportChatReport(params) {
+  return useQuery({
+    queryKey: queryKeys.analytics.supportChatReport(params),
+    queryFn: () => analyticsApi.getSupportChatReport(params),
+    ...DEFAULT_OPTIONS,
+  });
+}
+
 export function useAnalyticsInsights(params, options = {}) {
   return useQuery({
     queryKey: queryKeys.analytics.insights(params),

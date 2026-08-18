@@ -136,7 +136,7 @@ test("physical visit saved keeps application disabled after refresh", () => {
 
 test("physical visit no-show and reschedule keep application disabled", () => {
   for (const [visitStatus, expectedTitle] of [
-    ["no_show", "Visit Marked as No-Show"],
+    ["no_show", "Visit Marked as Missed"],
     ["rescheduled", "Visit Rescheduled"],
   ]) {
     const reservation = {

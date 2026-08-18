@@ -240,6 +240,7 @@ const ReservationApplicationStep = ({
   showValidationErrors,
   isSubmittingApplication,
   applicationSubmitted,
+  isApplicationApproved,
   paymentApproved,
   visitPending,
   onEditApplication,
@@ -523,8 +524,22 @@ const ReservationApplicationStep = ({
 
       {showValidationErrors && !applicationSubmitted && <div className="rf-form-alert" role="alert">Please complete the highlighted required fields before submitting.</div>}
 
-      {readOnly && (
-        <div className="rf-locked-banner"><div className="info-box-title">This section is locked</div><div className="info-text">Your application has been submitted and is currently under review. It cannot be edited at this time.</div></div>
+      {readOnly && isApplicationApproved && (
+        <div className="rf-locked-banner">
+          <div className="info-box-title">Application Approved</div>
+          <div className="info-text">
+            Your application has been approved by the admin. The form is locked and cannot be edited.
+          </div>
+        </div>
+      )}
+
+      {readOnly && !isApplicationApproved && (
+        <div className="rf-locked-banner">
+          <div className="info-box-title">This section is locked</div>
+          <div className="info-text">
+            Your application has been submitted and is currently under review. It cannot be edited at this time.
+          </div>
+        </div>
       )}
 
       {!readOnly && visitPending && (
@@ -776,7 +791,16 @@ const ReservationApplicationStep = ({
           <div />
         )}
 
-        {readOnly && applicationSubmitted && !paymentApproved ? (
+        {isApplicationApproved ? (
+          <button
+            type="button"
+            onClick={onNext}
+            className="w-full sm:w-auto min-w-[200px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2"
+          >
+            <span>{paymentApproved ? "View Reservation" : "Proceed to Payment"}</span>
+            <ArrowRight size={16} />
+          </button>
+        ) : readOnly && applicationSubmitted && !paymentApproved ? (
           <button
             type="button"
             onClick={onEditApplication}

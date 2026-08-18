@@ -75,6 +75,9 @@ export const buildVisitStatusEmail = ({
   STATUS_LABEL,
   STATUS_INTRO,
   NEXT_STEP,
+  SCHEDULE_LABEL = "Visit Schedule",
+  CTA_LABEL,
+  CTA_URL,
 }) =>
   renderLilycrestEmail({
     title: STATUS_LABEL,
@@ -88,10 +91,11 @@ export const buildVisitStatusEmail = ({
         row("Room", ROOM_NAME) +
           row("Branch", BRANCH_NAME) +
           row("Visit Code", VISIT_CODE) +
-          row("Visit Schedule", VISIT_SCHEDULE) +
+          row(SCHEDULE_LABEL || "Visit Schedule", VISIT_SCHEDULE) +
           row("Previous Schedule", PREVIOUS_SCHEDULE) +
           row("Remarks", REMARKS),
       ) +
+      (CTA_LABEL && CTA_URL ? button(CTA_LABEL, CTA_URL) : "") +
       p(escapeHtml(NEXT_STEP), { size: "14px" }) +
       button("View Application", reservationUrl()) +
       p("Payment remains locked until your application and required documents are approved.", {

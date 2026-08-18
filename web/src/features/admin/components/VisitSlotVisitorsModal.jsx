@@ -110,9 +110,9 @@ export default function VisitSlotVisitorsModal({
           ) : isError ? (
             <div className="p-6 text-center text-slate-500 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-800">
               <p className="font-semibold text-rose-700 dark:text-rose-400">
-                Failed to load visitor list
+                Unable to load visitor list
               </p>
-              <p className="text-[11px] mt-1 text-slate-500">Please try closing and re-opening the window.</p>
+              <p className="text-[11px] mt-1 text-slate-500">Please close this window and try again.</p>
             </div>
           ) : visitors.length === 0 ? (
             <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">

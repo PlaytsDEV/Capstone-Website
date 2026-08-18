@@ -5,7 +5,6 @@ import { AlertTriangle, Building2, Calendar, Camera, CheckCircle, ClipboardList,
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { SUBMETER_BRANCHES } from "../../../shared/utils/constants";
-import { useVisitAvailability } from "../../../shared/hooks/queries/useReservations";
 import { useUtilityLatestReading } from "../../../shared/hooks/queries/useUtility";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
@@ -22,7 +21,6 @@ import {
   fmtTime as sharedFmtTime,
 } from "../../../shared/utils/dateFormat";
 import { showNotification } from "../../../shared/utils/notification";
-import { getVisitManagementAvailability } from "../utils/visitStatusRules";
 import { resolveReservationApprovalPricingGate } from "../utils/reservationPricingGate";
 import { resolveApplicantPhotoUrl } from "../utils/applicantPhotoResolution";
 import { formatSubmittedAddress } from "../utils/reservationAddressFormat";
@@ -199,56 +197,49 @@ const formatSelectedBed = (selectedBed) => {
  return `${position}${selectedBed.id ? ` (${selectedBed.id})` : ""}`;
 };
 
-const getTomorrowISO = () => {
- const tomorrow = new Date();
- tomorrow.setHours(0, 0, 0, 0);
- tomorrow.setDate(tomorrow.getDate() + 1);
- return toDateInputValue(tomorrow);
-};
-
 const VISIT_STATUS_CONFIG = {
- schedule_approved: {
- label: "Schedule Approved",
- color: "#0A5C9B",
- bg: "#E0EBF5",
- dot: "#3B82F6",
- },
- physical_visit_scheduled: {
-  label: "Physical Visit Scheduled",
-  color: "#1D4ED8",
-  bg: "#DBEAFE",
- dot: "#3B82F6",
- },
- visit_completed: {
- label: "Visit Completed",
- color: "#047857",
- bg: "#D1FAE5",
- dot: "#10B981",
- },
- no_show: {
- label: "No-Show",
- color: "#B45309",
- bg: "#FEF3C7",
- dot: "#F59E0B",
- },
+  schedule_approved: {
+    label: "Schedule Approved",
+    color: "#047857",
+    bg: "transparent",
+    dot: "#10B981",
+  },
+  physical_visit_scheduled: {
+    label: "Physical Visit Scheduled",
+    color: "#B45309",
+    bg: "transparent",
+    dot: "#F59E0B",
+  },
+  visit_completed: {
+    label: "Visit Completed",
+    color: "#047857",
+    bg: "transparent",
+    dot: "#10B981",
+  },
+  no_show: {
+    label: "No-Show",
+    color: "#B45309",
+    bg: "transparent",
+    dot: "#F59E0B",
+  },
   rescheduled: {
     label: "Rescheduled",
     color: "#B45309",
-    bg: "#FEF3C7",
+    bg: "transparent",
     dot: "#F59E0B",
   },
- visit_cancelled: {
-  label: "Visit Cancelled",
-  color: "#B91C1C",
-  bg: "#FEE2E2",
-  dot: "#EF4444",
- },
- allowed_without_visit: {
-  label: "Allowed to Proceed Without Visit",
-  color: "#0F766E",
-  bg: "#CCFBF1",
-  dot: "#14B8A6",
- },
+  visit_cancelled: {
+    label: "Visit Cancelled",
+    color: "#B91C1C",
+    bg: "transparent",
+    dot: "#EF4444",
+  },
+  allowed_without_visit: {
+    label: "Allowed to Proceed Without Visit",
+    color: "#0F766E",
+    bg: "transparent",
+    dot: "#14B8A6",
+  },
 };
 
 const hasPhysicalVisit = (reservation) =>
@@ -509,16 +500,11 @@ export default function ReservationDetailsModal({
  const reservationFeeLabel = `PHP ${reservationFeeAmount.toLocaleString("en-PH")}`;
  const queryClient = useQueryClient();
  const [adminNotes, setAdminNotes] = useState(reservation?.notes || "");
- const [visitRemarks, setVisitRemarks] = useState(
- reservation?.visitOutcomeNotes || "",
- );
- const [visitActionMode, setVisitActionMode] = useState("");
- const [rescheduleDate, setRescheduleDate] = useState(
- toDateInputValue(reservation?.visitDate),
- );
- const [rescheduleTime, setRescheduleTime] = useState(
- reservation?.visitTime || "",
- );
+ const [isSavingNotes, setIsSavingNotes] = useState(false);
+
+ useEffect(() => {
+   setAdminNotes(reservation?.notes || "");
+ }, [reservation?.notes, reservationId]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [showViewingVisit, setShowViewingVisit] = useState(false);
@@ -564,20 +550,14 @@ export default function ReservationDetailsModal({
  return () => window.clearTimeout(timer);
  }, [cancellationPending, focusCancellation]);
 
- const status = reservation?.status || "pending";
- const physicalVisitSelected = hasPhysicalVisit(reservation);
- const visitStatusKey = getVisitStatusKey(reservation);
- const visitStatusAppearance = visitStatusKey
- ? VISIT_STATUS_CONFIG[visitStatusKey]
- : null;
- const hasVisitSchedule = Boolean(reservation?.visitDate && reservation?.visitTime);
- const visitActionAvailability = getVisitManagementAvailability({
- visitStatusKey,
- hasVisitSchedule,
- });
- const visitBranch = reservation?.roomId?.branch || reservation?.branch || "";
- const visitRoomId = reservation?.roomId?._id || reservation?.roomId || "";
- /** True for branches with physical submeters (e.g. Gil Puyat). False for fixed-rate branches (e.g. Guadalupe). */
+  const status = reservation?.status || "pending";
+  const visitStatusKey = getVisitStatusKey(reservation);
+  const visitStatusAppearance = visitStatusKey
+    ? VISIT_STATUS_CONFIG[visitStatusKey]
+    : null;
+  const visitBranch = reservation?.roomId?.branch || reservation?.branch || "";
+  const visitRoomId = reservation?.roomId?._id || reservation?.roomId || "";
+  /** True for branches with physical submeters (e.g. Gil Puyat). False for fixed-rate branches (e.g. Guadalupe). */
   const branchUsesSubmeter = SUBMETER_BRANCHES.has(visitBranch);
   const appearance = getReservationStatusAppearance(status);
   const allowedActions = getAllowedReservationActions(status);
@@ -585,46 +565,30 @@ export default function ReservationDetailsModal({
     reservation?.initialPaymentStatus === "paid" ||
     reservation?.paymentStatus === "paid_in_full";
   const isMovedOut = status === "moveOut";
- const stageGuide = STAGE_GUIDANCE[status];
- const hasActionButtons =
-   allowedActions.includes("moveIn") ||
-   allowedActions.includes("extend") ||
-   allowedActions.includes("approve_for_payment") ||
-   allowedActions.includes("needs_revision") ||
-   allowedActions.includes("rejected") ||
-   (allowedActions.includes("cancelled") && !cancellationPending);
- const hasQuickActions = showMeterPrompt || Boolean(stageGuide) || hasActionButtons;
- const emptyStateInfo = useMemo(
-   () => getQuickActionsEmptyState(status, isMovedOut),
-   [status, isMovedOut],
- );
+  const stageGuide = STAGE_GUIDANCE[status];
+  const hasActionButtons =
+    allowedActions.includes("moveIn") ||
+    allowedActions.includes("extend") ||
+    allowedActions.includes("approve_for_payment") ||
+    allowedActions.includes("needs_revision") ||
+    allowedActions.includes("rejected") ||
+    (allowedActions.includes("cancelled") && !cancellationPending);
+  const hasQuickActions = showMeterPrompt || Boolean(stageGuide) || hasActionButtons;
+  const emptyStateInfo = useMemo(
+    () => getQuickActionsEmptyState(status, isMovedOut),
+    [status, isMovedOut],
+  );
 
- const moveInDate = readMoveInDate(reservation);
- const isOverdue =
- status === "reserved" && moveInDate && new Date(moveInDate) < new Date();
- const daysOverdue = isOverdue
- ? Math.floor((new Date() - new Date(moveInDate)) / 86400000)
- : 0;
- const docs = reservation ? buildDocs(reservation) : [];
- const guestName = reservation?.customer ?? "Unknown";
- const guestInitials = getInitials(guestName);
- const guestPhotoUrl = resolveApplicantPhotoUrl(reservation);
- const availabilityParams = useMemo(
- () => ({
- branch: visitBranch,
- from: getTomorrowISO(),
- days: 30,
- roomId: visitRoomId,
- reservationId,
- }),
- [reservationId, visitBranch, visitRoomId],
- );
-  const {
-    data: visitAvailability,
-    isLoading: loadingVisitAvailability,
-  } = useVisitAvailability(availabilityParams, {
-    enabled: physicalVisitSelected && Boolean(visitBranch),
-  });
+  const moveInDate = readMoveInDate(reservation);
+  const isOverdue =
+    status === "reserved" && moveInDate && new Date(moveInDate) < new Date();
+  const daysOverdue = isOverdue
+    ? Math.floor((new Date() - new Date(moveInDate)) / 86400000)
+    : 0;
+  const docs = reservation ? buildDocs(reservation) : [];
+  const guestName = reservation?.customer ?? "Unknown";
+  const guestInitials = getInitials(guestName);
+  const guestPhotoUrl = resolveApplicantPhotoUrl(reservation);
   const { data: latestUtilityRes } = useUtilityLatestReading(
     "electricity",
     visitRoomId,
@@ -635,25 +599,15 @@ export default function ReservationDetailsModal({
     latestUtilityRes?.data?.reading ??
     reservation?.roomId?.lastMeterReading ??
     null;
- const rescheduleDateOption = useMemo(
- () =>
- Array.isArray(visitAvailability?.dates)
- ? visitAvailability.dates.find((entry) => entry.date === rescheduleDate) || null
- : null,
- [rescheduleDate, visitAvailability],
- );
- const rescheduleSlots = rescheduleDateOption?.slots?.length
- ? rescheduleDateOption.slots
- : [];
- const visitHistory = Array.isArray(reservation?.visitHistory)
- ? reservation.visitHistory
-     .slice()
-     .sort(
-       (a, b) =>
-         new Date(b?.updatedAt || b?.scheduledAt || 0) -
-         new Date(a?.updatedAt || a?.scheduledAt || 0),
-     )
- : [];
+  const visitHistory = Array.isArray(reservation?.visitHistory)
+    ? reservation.visitHistory
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(b?.updatedAt || b?.scheduledAt || 0) -
+            new Date(a?.updatedAt || a?.scheduledAt || 0),
+        )
+    : [];
 
   const reservationFeeStatusKey = useMemo(
     () => resolveReservationFeeStatus(reservation),
@@ -671,6 +625,32 @@ export default function ReservationDetailsModal({
     () => getPaymentStatusBadgeConfig(moveInPaymentStatusKey),
     [moveInPaymentStatusKey],
   );
+  const isReservationFeeSettled = useMemo(
+    () =>
+      reservationFeeStatusKey === "verified" ||
+      reservationFeeStatusKey === "paid" ||
+      reservationFeeStatusKey === "paid_in_full" ||
+      Boolean(
+        reservation?.paidAt ||
+        reservation?.reservationFeePaidAt ||
+        (reservation?.paymentStatus === "paid" && reservation?.paymentDate)
+      ),
+    [reservationFeeStatusKey, reservation],
+  );
+  const isMoveInSettled = useMemo(
+    () =>
+      moveInPaymentStatusKey === "paid_in_full" ||
+      moveInPaymentStatusKey === "paid" ||
+      moveInPaymentStatusKey === "verified" ||
+      isMoveInPaymentSettled ||
+      Boolean(
+        reservation?.initialPaymentSettledAt ||
+        reservation?.initialPaymentPaidAt ||
+        (reservation?.initialPaymentStatus === "paid" &&
+          (reservation?.initialPaymentDate || reservation?.updatedAt))
+      ),
+    [moveInPaymentStatusKey, isMoveInPaymentSettled, reservation],
+  );
 
  if (!reservation) return null;
  const viewingPreferenceLabel =
@@ -683,9 +663,40 @@ export default function ReservationDetailsModal({
    reservation.visitDate
  ? "Schedule Physical Visit"
  : "\u2014";
- const roomImages = Array.isArray(reservation.roomId?.images)
- ? reservation.roomId.images.filter(Boolean)
- : [];
+  const roomImages = Array.isArray(reservation.roomId?.images)
+  ? reservation.roomId.images.filter(Boolean)
+  : [];
+  const uploadedDocsCount = useMemo(
+    () => docs.filter((d) => Boolean(d.url)).length,
+    [docs],
+  );
+  const hasUploadedDocs = uploadedDocsCount > 0;
+  const hasViewingData = useMemo(
+    () =>
+      Boolean(
+        reservation?.viewingPreference ||
+        reservation?.viewingType ||
+        reservation?.visitDate ||
+        reservation?.visitTime ||
+        roomImages.length > 0
+      ),
+    [reservation?.viewingPreference, reservation?.viewingType, reservation?.visitDate, reservation?.visitTime, roomImages.length],
+  );
+  const hasPersonalDetails = useMemo(
+    () =>
+      Boolean(
+        reservation?.birthday ||
+        reservation?.maritalStatus ||
+        reservation?.nationality ||
+        reservation?.educationLevel ||
+        reservation?.emergencyContact?.name ||
+        reservation?.emergencyContact?.contactNumber ||
+        reservation?.address?.street ||
+        reservation?.address?.city ||
+        (typeof reservation?.address === "string" && reservation.address.trim())
+      ),
+    [reservation],
+  );
   const bookingDetails = [
     ["Room", reservation.room ?? "\u2014"],
     ["Room type", formatRoomType(reservation.roomType)],
@@ -948,124 +959,34 @@ export default function ReservationDetailsModal({
  });
  };
 
- const runVisitManagementAction = ({
- action,
- payload = {},
- successMsg,
- modalTitle,
- modalMessage,
- confirmText,
- variant = "info",
- }) => {
- setConfirmModal({
- open: true,
- title: modalTitle,
- message: modalMessage,
- confirmText,
- variant,
- onConfirm: async () => {
- setConfirmModal((previous) => ({ ...previous, open: false }));
- setIsSubmitting(true);
+  const handleNotesBlur = async () => {
+    const currentNotes = adminNotes ?? "";
+    const savedNotes = reservation?.notes ?? "";
 
-     try {
- const result = await reservationApi.manageVisit(reservationId, {
- action,
- note: visitRemarks.trim(),
- ...payload,
- });
- await Promise.all([
- queryClient.invalidateQueries({ queryKey: ["reservations", "list"] }),
- queryClient.invalidateQueries({ queryKey: ["reservations", "visitAvailability"] }),
- reservationId
- ? queryClient.invalidateQueries({ queryKey: ["reservations", "detail", reservationId] })
- : Promise.resolve(),
- ]);
- showNotification(result?.message || successMsg, "success");
- if (result?.emailWarning) {
- showNotification(result.emailWarning, "warning");
- }
- onUpdate?.();
- onClose();
- } catch (error) {
- console.error(error);
- showNotification(
- getFriendlyError(error, "Visit update failed. Please try again."),
- "error",
- );
- } finally {
- setIsSubmitting(false);
- }
- },
- });
- };
+    if (currentNotes === savedNotes || isSavingNotes) {
+      return;
+    }
 
- const handleRescheduleVisit = async () => {
- if (!visitActionAvailability.canReschedule) {
- showNotification(
- visitActionAvailability.helperMessage ||
- "This visit cannot be rescheduled from its current status.",
- "warning",
- );
- return;
- }
- if (!rescheduleDate) {
- showNotification("Select a new visit date before rescheduling.", "warning");
- return;
- }
- if (!rescheduleTime) {
- showNotification("Select a new visit time slot before rescheduling.", "warning");
- return;
- }
-
- setIsSubmitting(true);
-
-  try {
- const result = await reservationApi.manageVisit(reservationId, {
- action: "reschedule",
- note: visitRemarks.trim(),
- visitDate: rescheduleDate,
- visitTime: rescheduleTime,
- });
- await Promise.all([
- queryClient.invalidateQueries({ queryKey: ["reservations", "list"] }),
- queryClient.invalidateQueries({ queryKey: ["reservations", "visitAvailability"] }),
- reservationId
- ? queryClient.invalidateQueries({ queryKey: ["reservations", "detail", reservationId] })
- : Promise.resolve(),
- ]);
- showNotification(result?.message || "Visit schedule updated", "success");
- if (result?.emailWarning) {
- showNotification(result.emailWarning, "warning");
- }
- onUpdate?.();
- onClose();
- } catch (error) {
- console.error(error);
- showNotification(
- getFriendlyError(error, "Unable to reschedule the visit right now."),
- "error",
- );
- } finally {
- setIsSubmitting(false);
- }
- };
-
- const saveNotes = async (event) => {
- event.preventDefault();
- setIsSubmitting(true);
-
- try {
- await reservationApi.update(reservationId, { notes: adminNotes });
- showNotification("Notes saved", "success");
- onUpdate?.();
- } catch {
- showNotification("Failed to save notes", "error");
- } finally {
- setIsSubmitting(false);
- }
- };
+    setIsSavingNotes(true);
+    try {
+      await reservationApi.update(reservationId, { notes: currentNotes });
+      showNotification("Notes saved", "success");
+      onUpdate?.();
+    } catch {
+      showNotification("Failed to save notes", "error");
+    } finally {
+      setIsSavingNotes(false);
+    }
+  };
 
   const handleViewReservationFeeReceipt = async () => {
+    if (!isReservationFeeSettled) {
+      showNotification(
+        "Receipt unavailable: Reservation fee payment is not yet settled.",
+        "warning",
+      );
+      return;
+    }
     try {
       const { viewDepositReceipt } = await import(
         "../../../shared/utils/receiptGenerator.js"
@@ -1078,6 +999,13 @@ export default function ReservationDetailsModal({
   };
 
   const handleViewMoveInReceipt = async () => {
+    if (!isMoveInSettled) {
+      showNotification(
+        "Receipt unavailable: Advance Rent & Security Deposit are not yet settled.",
+        "warning",
+      );
+      return;
+    }
     try {
       const { viewMoveInReceipt } = await import(
         "../../../shared/utils/receiptGenerator.js"
@@ -1313,7 +1241,14 @@ export default function ReservationDetailsModal({
                   </div>
                   <div className="rdm-readiness-row">
                     <span className="rdm-readiness-label">Visit / Viewing</span>
-                    <span className="rdm-readiness-value">
+                    <span
+                      className="rdm-summary-badge"
+                      style={{ color: visitStatusAppearance?.color || "#475569" }}
+                    >
+                      <span
+                        className="rdm-summary-badge-dot"
+                        style={{ backgroundColor: visitStatusAppearance?.dot || "#94a3b8" }}
+                      />
                       {visitStatusAppearance?.label || viewingPreferenceLabel}
                     </span>
                   </div>
@@ -1321,11 +1256,7 @@ export default function ReservationDetailsModal({
                     <span className="rdm-readiness-label">Reservation Fee</span>
                     <span
                       className="rdm-summary-badge"
-                      style={{
-                        backgroundColor: reservationFeeBadge.bg,
-                        color: reservationFeeBadge.color,
-                        border: `1px solid ${reservationFeeBadge.border}`,
-                      }}
+                      style={{ color: reservationFeeBadge.color }}
                     >
                       <span
                         className="rdm-summary-badge-dot"
@@ -1338,11 +1269,7 @@ export default function ReservationDetailsModal({
                     <span className="rdm-readiness-label">Advance &amp; Deposit</span>
                     <span
                       className="rdm-summary-badge"
-                      style={{
-                        backgroundColor: moveInPaymentBadge.bg,
-                        color: moveInPaymentBadge.color,
-                        border: `1px solid ${moveInPaymentBadge.border}`,
-                      }}
+                      style={{ color: moveInPaymentBadge.color }}
                     >
                       <span
                         className="rdm-summary-badge-dot"
@@ -1357,11 +1284,21 @@ export default function ReservationDetailsModal({
           </div>
 
           {/* Section: Submitted Documents (Collapsible) */}
-          <div className="rdm-collapsible-card">
+          <div className={`rdm-collapsible-card${!hasUploadedDocs ? " rdm-collapsible-card--disabled" : ""}`}>
             <button
               type="button"
               className="rdm-collapsible-header"
-              onClick={() => setShowDocs((previous) => !previous)}
+              onClick={() => {
+                if (!hasUploadedDocs) return;
+                setShowDocs((previous) => !previous);
+              }}
+              disabled={!hasUploadedDocs}
+              title={
+                hasUploadedDocs
+                  ? "Toggle submitted documents"
+                  : "Unavailable — No documents uploaded yet by the applicant"
+              }
+              aria-disabled={!hasUploadedDocs}
             >
               <div className="rdm-collapsible-header-left">
                 <div className="rdm-collapsible-icon-wrap">
@@ -1376,7 +1313,7 @@ export default function ReservationDetailsModal({
               </div>
               <div className="rdm-collapsible-header-right">
                 <span className="rdm-docs-counter-chip">
-                  {docs.filter((d) => Boolean(d.url)).length} / {docs.length} Uploaded
+                  {uploadedDocsCount} / {docs.length} Uploaded
                 </span>
                 <svg
                   className={`rdm-collapsible-chevron ${showDocs ? "open" : ""}`}
@@ -1390,7 +1327,7 @@ export default function ReservationDetailsModal({
               </div>
             </button>
 
-            {showDocs && (
+            {hasUploadedDocs && showDocs && (
               <div className="rdm-collapsible-content">
                 <div className="rdm-docs-list">
                   {docs.map((doc, index) => (
@@ -1478,11 +1415,21 @@ export default function ReservationDetailsModal({
           </div>
 
           {/* Section: Viewing & Visit Schedule (Collapsible) */}
-          <div className="rdm-collapsible-card">
+          <div className={`rdm-collapsible-card${!hasViewingData ? " rdm-collapsible-card--disabled" : ""}`}>
             <button
               type="button"
               className="rdm-collapsible-header"
-              onClick={() => setShowViewingVisit((previous) => !previous)}
+              onClick={() => {
+                if (!hasViewingData) return;
+                setShowViewingVisit((previous) => !previous);
+              }}
+              disabled={!hasViewingData}
+              title={
+                hasViewingData
+                  ? "Toggle viewing & visit schedule"
+                  : "Unavailable — Viewing preference has not been selected yet by the applicant"
+              }
+              aria-disabled={!hasViewingData}
             >
               <div className="rdm-collapsible-header-left">
                 <div className="rdm-collapsible-icon-wrap">
@@ -1496,7 +1443,7 @@ export default function ReservationDetailsModal({
                 </div>
               </div>
               <div className="rdm-collapsible-header-right">
-                {visitStatusAppearance && (
+                {visitStatusAppearance ? (
                   <span
                     className="rdm-status-chip rdm-visit-status-chip"
                     style={{
@@ -1511,7 +1458,11 @@ export default function ReservationDetailsModal({
                     />
                     {visitStatusAppearance.label}
                   </span>
-                )}
+                ) : !hasViewingData ? (
+                  <span className="rdm-docs-counter-chip" style={{ fontSize: "0.72rem" }}>
+                    Pending Selection
+                  </span>
+                ) : null}
                 <svg
                   className={`rdm-collapsible-chevron ${showViewingVisit ? "open" : ""}`}
                   width="16"
@@ -1524,7 +1475,7 @@ export default function ReservationDetailsModal({
               </div>
             </button>
 
-            {showViewingVisit && (
+            {hasViewingData && showViewingVisit && (
               <div className="rdm-collapsible-content">
                 <div className="rdm-info-grid" style={{ paddingTop: 4 }}>
                   <div className="rdm-info-item">
@@ -1664,184 +1615,6 @@ export default function ReservationDetailsModal({
                   </div>
                 )}
 
-                {/* Visit Management Actions & Reschedule Form */}
-                {physicalVisitSelected && !visitActionAvailability.completed && (
-                  <div className="rdm-visit-management-panel" style={{ marginTop: 14 }}>
-                    {visitStatusKey === "allowed_without_visit" ? (
-                      <div className="rdm-visit-action-helper rdm-visit-action-helper-info">
-                        Visit requirement has been waived. Applicant may proceed without a physical visit.
-                      </div>
-                    ) : (
-                      <>
-                        <label className="rdm-visit-field">
-                          <span className="rdm-info-label">Visit Remarks</span>
-                          <textarea
-                            className="rdm-notes-input"
-                            placeholder="Add optional visit remarks for the next action..."
-                            value={visitRemarks}
-                            onChange={(event) => setVisitRemarks(event.target.value)}
-                            rows="2"
-                          />
-                        </label>
-
-                        <div className="rdm-visit-actions-grid">
-                          {visitActionAvailability.canApproveSchedule && (
-                            <button type="button" className="rdm-action rdm-action-outline"
-                              disabled={isSubmitting}
-                              onClick={() => runVisitManagementAction({
-                                action: "approve_schedule", successMsg: "Visit schedule approved",
-                                modalTitle: "Approve Visit Schedule",
-                                modalMessage: "Confirm the applicant's selected physical visit schedule. The application will remain locked until the visit is completed or waived.",
-                                confirmText: "Approve Schedule",
-                              })}>
-                              Approve Schedule
-                            </button>
-                          )}
-                          {visitActionAvailability.canRejectSchedule && (
-                            <button type="button" className="rdm-action rdm-action-outline rdm-action-outline-danger"
-                              disabled={isSubmitting}
-                              onClick={() => runVisitManagementAction({
-                                action: "reject_schedule", successMsg: "Visit schedule rejected",
-                                modalTitle: "Reject Visit Schedule",
-                                modalMessage: "Reject the selected visit schedule and ask the applicant to choose another date or time.",
-                                confirmText: "Reject Schedule", variant: "warning",
-                              })}>
-                              Reject Schedule
-                            </button>
-                          )}
-                          {visitActionAvailability.canMarkVisited && (
-                            <button type="button" className="rdm-action rdm-action-outline"
-                              disabled={isSubmitting}
-                              onClick={() => runVisitManagementAction({
-                                action: "mark_visited", successMsg: "Visit marked as completed",
-                                modalTitle: "Mark As Visited",
-                                modalMessage: "Record that the applicant attended the scheduled physical visit. This will not approve the application or unlock payment.",
-                                confirmText: "Mark as Visited",
-                              })}>
-                              Mark as Visited
-                            </button>
-                          )}
-                          {visitActionAvailability.canMarkNoShow && (
-                            <button type="button" className="rdm-action rdm-action-outline"
-                              disabled={isSubmitting}
-                              onClick={() => runVisitManagementAction({
-                                action: "mark_no_show", successMsg: "Visit marked as no-show",
-                                modalTitle: "Mark As No-Show",
-                                modalMessage: "Record that the applicant missed the scheduled physical visit. The reservation and application review will remain separate.",
-                                confirmText: "Mark No-Show", variant: "warning",
-                              })}>
-                              Mark as No-Show
-                            </button>
-                          )}
-                          {visitActionAvailability.canReschedule && (
-                            <button type="button"
-                              className={`rdm-action rdm-action-outline${visitActionMode === "reschedule" ? " rdm-action-outline-active" : ""}`}
-                              disabled={isSubmitting}
-                              onClick={() => setVisitActionMode((p) => p === "reschedule" ? "" : "reschedule")}>
-                              Reschedule Visit
-                            </button>
-                          )}
-                          {visitActionAvailability.canCancelVisit && (
-                            <button type="button" className="rdm-action rdm-action-outline rdm-action-outline-danger"
-                              disabled={isSubmitting}
-                              onClick={() => runVisitManagementAction({
-                                action: "cancel_visit", successMsg: "Visit schedule cancelled",
-                                modalTitle: "Cancel Visit Schedule",
-                                modalMessage: "Cancel only the physical visit schedule. This will not cancel the reservation or unlock payment.",
-                                confirmText: "Cancel Visit", variant: "danger",
-                              })}>
-                              Cancel Visit Schedule
-                            </button>
-                          )}
-                          {visitActionAvailability.canAllowWithoutVisit && (
-                            <button type="button" className="rdm-action rdm-action-outline"
-                              disabled={isSubmitting}
-                              onClick={() => runVisitManagementAction({
-                                action: "allow_without_visit", successMsg: "Applicant may proceed without a completed visit",
-                                modalTitle: "Allow Application Without Visit",
-                                modalMessage: "Allow the applicant to continue to the tenant application without a completed physical visit. This will not approve the application or unlock payment.",
-                                confirmText: "Allow Application",
-                              })}>
-                              Allow Application Without Visit
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    )}
-
-                    {visitActionMode === "reschedule" && visitActionAvailability.canReschedule && (
-                      <div className="rdm-visit-reschedule">
-                        <div className="rdm-visit-reschedule-grid">
-                          <label className="rdm-visit-field">
-                            <span className="rdm-info-label">New Visit Date</span>
-                            <input
-                              type="date"
-                              className="rdm-notes-input"
-                              value={rescheduleDate}
-                              onChange={(event) => {
-                                setRescheduleDate(event.target.value);
-                                if (rescheduleTime) setRescheduleTime("");
-                              }}
-                              min={getTomorrowISO()}
-                            />
-                          </label>
-                          <div className="rdm-visit-field">
-                            <span className="rdm-info-label">New Visit Time</span>
-                            <div className="rdm-visit-slot-grid">
-                              {loadingVisitAvailability ? (
-                                <span className="rdm-visit-slot-empty">Loading available slots...</span>
-                              ) : rescheduleDate && rescheduleSlots.length > 0 ? (
-                                rescheduleSlots.map((slot) => (
-                                  <button
-                                    key={slot.label}
-                                    type="button"
-                                    className={`rdm-visit-slot${rescheduleTime === slot.label ? " selected" : ""}`}
-                                    disabled={!slot.available}
-                                    onClick={() => setRescheduleTime(slot.label)}
-                                  >
-                                    <span>{slot.label}</span>
-                                    {!slot.available && slot.disabledReason ? (
-                                      <small>{slot.disabledReason}</small>
-                                    ) : slot.available && slot.remaining != null ? (
-                                      <small>{slot.remaining} left</small>
-                                    ) : null}
-                                  </button>
-                                ))
-                              ) : rescheduleDate ? (
-                                <span className="rdm-visit-slot-empty">
-                                  No available time slots for the selected date.
-                                </span>
-                              ) : (
-                                <span className="rdm-visit-slot-empty">
-                                  Select a new date to load available visit time slots.
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="rdm-visit-reschedule-actions">
-                          <button
-                            type="button"
-                            className="rdm-action rdm-action-outline"
-                            disabled={isSubmitting}
-                            onClick={() => setVisitActionMode("")}
-                          >
-                            Keep Current Schedule
-                          </button>
-                          <button
-                            type="button"
-                            className="rdm-action rdm-action-dark"
-                            disabled={isSubmitting || !rescheduleDate || !rescheduleTime}
-                            onClick={handleRescheduleVisit}
-                          >
-                            Save Reschedule
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* Visit History Log */}
                 {visitHistory.length > 0 && (
                   <div className="rdm-visit-management-note" style={{ marginTop: 14 }}>
@@ -1893,11 +1666,21 @@ export default function ReservationDetailsModal({
           </div>
 
           {/* Section: Personal & Contact Details (Collapsible) */}
-          <div className="rdm-collapsible-card">
+          <div className={`rdm-collapsible-card${!hasPersonalDetails ? " rdm-collapsible-card--disabled" : ""}`}>
             <button
               type="button"
               className="rdm-collapsible-header"
-              onClick={() => setShowPersonal((previous) => !previous)}
+              onClick={() => {
+                if (!hasPersonalDetails) return;
+                setShowPersonal((previous) => !previous);
+              }}
+              disabled={!hasPersonalDetails}
+              title={
+                hasPersonalDetails
+                  ? "Toggle personal & contact details"
+                  : "Unavailable — Application details have not been submitted yet by the applicant"
+              }
+              aria-disabled={!hasPersonalDetails}
             >
               <div className="rdm-collapsible-header-left">
                 <div className="rdm-collapsible-icon-wrap">
@@ -1911,6 +1694,11 @@ export default function ReservationDetailsModal({
                 </div>
               </div>
               <div className="rdm-collapsible-header-right">
+                {!hasPersonalDetails && (
+                  <span className="rdm-docs-counter-chip" style={{ fontSize: "0.72rem" }}>
+                    Not Submitted
+                  </span>
+                )}
                 <svg
                   className={`rdm-collapsible-chevron ${showPersonal ? "open" : ""}`}
                   width="16"
@@ -1923,7 +1711,7 @@ export default function ReservationDetailsModal({
               </div>
             </button>
 
-            {showPersonal && (
+            {hasPersonalDetails && showPersonal && (
               <div className="rdm-collapsible-content">
                 <div className="rdm-info-grid" style={{ paddingTop: 4 }}>
                   {PERSONAL_FIELDS(reservation).map(([label, value]) => (
@@ -1958,6 +1746,7 @@ export default function ReservationDetailsModal({
               type="button"
               className="rdm-collapsible-header"
               onClick={() => setShowNotes((previous) => !previous)}
+              title="Toggle internal admin notes"
             >
               <div className="rdm-collapsible-header-left">
                 <div className="rdm-collapsible-icon-wrap">
@@ -1971,9 +1760,17 @@ export default function ReservationDetailsModal({
                 </div>
               </div>
               <div className="rdm-collapsible-header-right">
-                {Boolean(adminNotes?.trim()) && (
+                {isSavingNotes ? (
+                  <span className="rdm-docs-counter-chip" style={{ fontSize: "0.72rem" }}>
+                    Saving...
+                  </span>
+                ) : Boolean(adminNotes?.trim()) ? (
                   <span className="rdm-docs-counter-chip" style={{ fontSize: "0.72rem" }}>
                     Note Logged
+                  </span>
+                ) : (
+                  <span className="rdm-docs-counter-chip" style={{ fontSize: "0.72rem", color: "#64748B" }}>
+                    No Notes
                   </span>
                 )}
                 <svg
@@ -1990,24 +1787,16 @@ export default function ReservationDetailsModal({
 
             {showNotes && (
               <div className="rdm-collapsible-content">
-                <form onSubmit={saveNotes} className="rdm-notes-form" style={{ paddingTop: 4 }}>
+                <div className="rdm-notes-form" style={{ paddingTop: 4 }}>
                   <textarea
                     className="rdm-notes-input"
                     placeholder="Add internal notes or administrative remarks..."
                     value={adminNotes}
                     onChange={(event) => setAdminNotes(event.target.value)}
+                    onBlur={handleNotesBlur}
                     rows="2"
                   />
-                  {adminNotes !== (reservation?.notes || "") && (
-                    <button
-                      type="submit"
-                      className="rdm-action rdm-action-outline"
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? "Saving..." : "Save Notes"}
-                    </button>
-                  )}
-                </form>
+                </div>
               </div>
             )}
           </div>
@@ -2380,11 +2169,7 @@ export default function ReservationDetailsModal({
                   <span>Reservation Fee Status</span>
                   <span
                     className="rdm-summary-badge"
-                    style={{
-                      backgroundColor: reservationFeeBadge.bg,
-                      color: reservationFeeBadge.color,
-                      border: `1px solid ${reservationFeeBadge.border}`,
-                    }}
+                    style={{ color: reservationFeeBadge.color }}
                   >
                     <span
                       className="rdm-summary-badge-dot"
@@ -2397,7 +2182,12 @@ export default function ReservationDetailsModal({
                   type="button"
                   className="rdm-view-receipt-btn"
                   onClick={handleViewReservationFeeReceipt}
-                  title="View official Reservation Fee receipt"
+                  disabled={!isReservationFeeSettled}
+                  title={
+                    isReservationFeeSettled
+                      ? "View official Reservation Fee receipt"
+                      : "Receipt unavailable — Reservation Fee has not been settled yet"
+                  }
                 >
                   <Receipt size={13} />
                   <span>View Reservation Fee Receipt</span>
@@ -2410,11 +2200,7 @@ export default function ReservationDetailsModal({
                   <span>Advance &amp; Deposit Status</span>
                   <span
                     className="rdm-summary-badge"
-                    style={{
-                      backgroundColor: moveInPaymentBadge.bg,
-                      color: moveInPaymentBadge.color,
-                      border: `1px solid ${moveInPaymentBadge.border}`,
-                    }}
+                    style={{ color: moveInPaymentBadge.color }}
                   >
                     <span
                       className="rdm-summary-badge-dot"
@@ -2427,7 +2213,12 @@ export default function ReservationDetailsModal({
                   type="button"
                   className="rdm-view-receipt-btn"
                   onClick={handleViewMoveInReceipt}
-                  title="View official Advance & Deposit settlement receipt"
+                  disabled={!isMoveInSettled}
+                  title={
+                    isMoveInSettled
+                      ? "View official Advance & Deposit settlement receipt"
+                      : "Receipt unavailable — Advance Rent & Security Deposit have not been settled yet"
+                  }
                 >
                   <Receipt size={13} />
                   <span>View Advance &amp; Deposit Receipt</span>
@@ -2445,8 +2236,8 @@ export default function ReservationDetailsModal({
               aria-expanded={showTimeline}
             >
               <div className="rdm-side-collapsible-title-wrap">
-                <h4 className="rdm-side-title" style={{ margin: 0 }}>Activity Timeline</h4>
-                {!showTimeline && (
+                <h4 className="rdm-side-title">Activity Timeline</h4>
+                {activityTimeline.length > 0 && (
                   <span className="rdm-timeline-count-badge">
                     {activityTimeline.length} events
                   </span>
@@ -2693,42 +2484,42 @@ const REVISION_TEMPLATES = [
   {
     id: "blurry_id",
     label: "Blurry / Unreadable ID",
-    text: "Your uploaded ID photo is blurry or unreadable. Please re-upload a clear, well-lit photo of your valid government ID (front and back).",
+    text: "Uploaded ID is blurry or unreadable. Please upload a clear, legible photo.",
   },
   {
     id: "wrong_doc_type",
     label: "Wrong Document Type",
-    text: "The document you uploaded does not match the required type. Please upload the correct document as specified in the requirements.",
+    text: "Incorrect document type. Please upload the requested valid document.",
   },
   {
     id: "incomplete_info",
     label: "Incomplete Information",
-    text: "Some required fields in your application are incomplete or contain placeholder text. Please review and fill out all required fields.",
+    text: "Incomplete application details. Please fill out all required fields.",
   },
   {
     id: "mismatch_name",
     label: "Name Mismatch",
-    text: "The name on your submitted ID does not match the name in your application form. Please correct your application details or upload the correct ID.",
+    text: "Name on ID does not match application details. Please verify and correct.",
   },
   {
     id: "missing_nbi",
     label: "Missing NBI Clearance",
-    text: "Your NBI Clearance document is missing or was not uploaded. Please upload a valid NBI Clearance, or provide a reason if you are unable to obtain one.",
+    text: "NBI Clearance is missing. Please upload a valid clearance document.",
   },
   {
     id: "expired_id",
     label: "Expired ID",
-    text: "The ID you submitted appears to be expired. Please upload a current, non-expired government-issued ID.",
+    text: "Submitted ID is expired. Please provide a valid, unexpired ID.",
   },
   {
     id: "selfie_issue",
     label: "Selfie Photo Issue",
-    text: "Your selfie photo does not meet the requirements. Please upload a clear, recent photo of yourself with adequate lighting and a neutral background.",
+    text: "Selfie photo does not meet requirements. Please upload a clear, well-lit photo.",
   },
   {
     id: "company_id_missing",
     label: "Missing Company / School ID",
-    text: "Your company or school ID was not uploaded. Please upload a valid company or school ID, or provide a reason if unavailable.",
+    text: "Company or school ID missing. Please upload a valid institutional ID.",
   },
 ];
 

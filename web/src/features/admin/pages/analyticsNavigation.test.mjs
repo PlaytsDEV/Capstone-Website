@@ -14,6 +14,7 @@ test("branch admins only get branch-safe tabs", () => {
     "occupancy",
     "billing",
     "operations",
+    "support",
     "demographics",
     "acquisition",
   ]);
@@ -24,12 +25,12 @@ test("owners get owner-only tabs", () => {
     "occupancy",
     "billing",
     "operations",
+    "support",
     "demographics",
     "acquisition",
     "consolidated",
     "financials",
     "monitoring",
-    "support",
   ]);
 });
 

@@ -150,11 +150,6 @@ export async function handleExportReservationsPDF({
     title: "Reservations Report",
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
-    period: `Generated on ${new Date().toLocaleDateString("en-PH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })}`,
     reportType: "Reservations",
     kpis,
     sections: [
@@ -163,7 +158,7 @@ export async function handleExportReservationsPDF({
         title: "Filtered Reservations List",
         description: `Export containing ${reservations.length} reservation records matching the active filter criteria.`,
         headers: ["Code", "Applicant", "Branch", "Room", "Status", "Move In", "Created"],
-        colWidths: [26, 42, 24, 20, 26, 18, 18],
+        colWidths: [25, 35, 22, 26, 24, 23, 23],
         rows: tableRows,
       },
     ],

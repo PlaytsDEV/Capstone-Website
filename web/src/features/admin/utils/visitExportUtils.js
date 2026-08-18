@@ -172,11 +172,6 @@ export async function handleExportVisitSchedulesPDF({
     title: "Visit Schedules Report",
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
-    period: `Generated on ${new Date().toLocaleDateString("en-PH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })}`,
     reportType: "Visit Schedules",
     kpis,
     sections: [
@@ -185,7 +180,7 @@ export async function handleExportVisitSchedulesPDF({
         title: "Filtered Visit Schedules",
         description: `Export containing ${schedules.length} visit schedule records matching the active filter criteria.`,
         headers: ["Visitor", "Branch", "Room", "Requested", "Appointment", "Status"],
-        colWidths: [45, 26, 22, 25, 42, 30],
+        colWidths: [36, 22, 22, 23, 45, 30],
         rows: tableRows,
       },
     ],

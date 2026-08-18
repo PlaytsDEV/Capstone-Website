@@ -22,6 +22,7 @@ import {
 import { buildInitialPaymentSummary } from "../services/contractPricingService.js";
 import { resolveReservationContractEligibility } from "../services/reservationContractEligibilityService.js";
 import {
+  deleteSignedContract,
   markContractPrinted,
   rejectSignedContract,
   resolveSignedContractPath,
@@ -111,6 +112,9 @@ export const createContract = async (req, res) => {
 export const listContracts = async (req, res) => {
   try {
     const query = req.branchFilter ? { branch: req.branchFilter } : {};
+    if (req.query.tenantId && mongoose.isValidObjectId(req.query.tenantId)) {
+      query.tenantId = req.query.tenantId;
+    }
     const archiveView = ["active", "archived", "all"].includes(req.query.archive)
       ? req.query.archive : "active";
     if (archiveView === "active") {
@@ -531,6 +535,35 @@ export const rejectSignedDocument = async (req, res) => {
     res.json({ success: true, status: contract.status, rejectionReason: contract.signingRejectionReason });
   } catch (error) { fail(res, error); }
 };
+
+export const deleteSignedDocument = async (req, res) => {
+  try {
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    const before = contract.toObject();
+    const result = await deleteSignedContract({
+      contract,
+      version: req.params.version,
+      actorId: admin._id,
+      reason: req.body?.reason,
+    });
+    await auditSigningChange(
+      req,
+      before,
+      contract,
+      `Signed Contract copy (v${result.deletedVersion}) deleted`,
+    );
+    res.json({
+      success: true,
+      status: contract.status,
+      deletedVersion: result.deletedVersion,
+      message: "Signed contract copy deleted successfully.",
+    });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
 
 export const uploadNotarizedDocument = async (req, res) => {
   try {
@@ -1074,11 +1107,14 @@ const findOwnedContract = async (req) => {
       statusCode: 404, code: "CONTRACT_NOT_FOUND",
     });
   }
-  const contract = await resolveTenantCanonicalContract(user._id);
-  if (!contract || String(contract._id) !== String(req.params.contractId)) {
-    throw Object.assign(new Error("Contract not found."), {
-    statusCode: 404, code: "CONTRACT_NOT_FOUND",
-  });
+  let contract = await Contract.findOne({ _id: req.params.contractId, tenantId: user._id });
+  if (!contract) {
+    contract = await resolveTenantCanonicalContract(user._id);
+    if (!contract || String(contract._id) !== String(req.params.contractId)) {
+      throw Object.assign(new Error("Contract not found."), {
+        statusCode: 404, code: "CONTRACT_NOT_FOUND",
+      });
+    }
   }
   return { user, contract };
 };

@@ -115,8 +115,20 @@ export default function useSocketClient() {
               ? "warning"
               : "info";
 
-          const toastMessage = notification.message || notification.title || "New notification";
-          showNotification(toastMessage, toastType, 3000);
+          let toastMessage = notification.message || notification.title || "New notification";
+          if (notification.title && notification.message) {
+            const firstLine = String(notification.message)
+              .replace(/^Your application requires revision:\s*•?\s*/i, "")
+              .replace(/^•\s*/, "")
+              .split("\n")[0]
+              .trim();
+            if (firstLine && !notification.title.toLowerCase().includes(firstLine.toLowerCase())) {
+              toastMessage = `${notification.title}: ${firstLine}`;
+            } else {
+              toastMessage = notification.title;
+            }
+          }
+          showNotification(toastMessage, toastType, 3500);
           const scope = getNotificationQueryScope(user);
           qc.setQueryData(notificationQueryKeys.unread(scope), (current) => ({
             unreadCount: (current?.unreadCount ?? 0) + 1,
@@ -219,7 +231,13 @@ export default function useSocketClient() {
         }
         qc.invalidateQueries({ queryKey: ["reservations"] });
         qc.refetchQueries({ queryKey: ["reservations"], type: "active" });
+        qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
         qc.invalidateQueries({ queryKey: ["dashboard"] });
+        qc.invalidateQueries({ queryKey: ["users"] });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("lilycrest:visit-updated", { detail: data }));
+          window.dispatchEvent(new CustomEvent("lilycrest:reservation-updated", { detail: data }));
+        }
       });
 
       socket.on("ticket:updated", () => {

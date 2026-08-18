@@ -23,6 +23,8 @@ export default function StatusBadge({
       "move_in",
       "moved_in",
       "approved",
+      "schedule_approved",
+      "visit_approved",
       "approved_for_payment",
       "completed",
       "resolved",
@@ -80,7 +82,6 @@ export default function StatusBadge({
     ];
     const infoStatuses = [
       "viewing_preference_selected",
-      "visit_approved",
       "responded",
       "former_tenant",
       "inquiry",

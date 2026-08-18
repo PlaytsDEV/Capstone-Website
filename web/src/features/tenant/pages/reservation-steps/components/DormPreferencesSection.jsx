@@ -1,4 +1,5 @@
 import React from "react";
+import { Check } from "lucide-react";
 import { formatProperCase, sanitizeName } from "../../../../../shared/utils/authValidation";
 import {
  MOVE_IN_TIME_SLOTS,
@@ -113,33 +114,45 @@ const DormPreferencesSection = ({
     </div>
   )}
 
- {/* Move-in Date */}
- <div className="form-group" data-field="targetMoveInDate">
- <label className="form-label" htmlFor="intendedMoveInDateInput">
- Intended Move-in Date (within 3 months) <span className="rf-required">*</span>
- </label>
- <input
- id="intendedMoveInDateInput"
- type="date"
- className="form-input"
- value={targetMoveInDate}
- min={moveInMin}
- max={moveInMax}
- onClick={openDatePicker}
- onChange={(e) => handleTargetDateInput(e.target.value)}
- disabled={readOnly}
- required
- style={{
- colorScheme: "light",
- cursor: readOnly ? "not-allowed" : "pointer",
- border: fieldErrors.targetMoveInDate
- ? "1.5px solid var(--danger)"
- : errBorder(showValidationErrors, targetMoveInDate),
- }}
- />
- <div className="form-helper">Must be at least 3 days from today, up to 3 months</div>
- <FieldError error={showValidationErrors && !targetMoveInDate ? "Intended move-in date is required" : fieldErrors.targetMoveInDate} />
- </div>
+  {/* Move-in Date */}
+  <div className="form-group" data-field="targetMoveInDate">
+    <div className="flex items-center justify-between gap-2 mb-1">
+      <label className="form-label mb-0" htmlFor="intendedMoveInDateInput">
+        Intended Move-in Date <span className="rf-required">*</span>
+      </label>
+      {targetMoveInDate && (
+        <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+          <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+          Pre-filled from your selection
+        </span>
+      )}
+    </div>
+    <input
+      id="intendedMoveInDateInput"
+      type="date"
+      className="form-input"
+      value={targetMoveInDate}
+      min={moveInMin}
+      max={moveInMax}
+      onClick={openDatePicker}
+      onChange={(e) => handleTargetDateInput(e.target.value)}
+      disabled={readOnly}
+      required
+      style={{
+        colorScheme: "light",
+        cursor: readOnly ? "not-allowed" : "pointer",
+        border: fieldErrors.targetMoveInDate
+          ? "1.5px solid var(--danger)"
+          : errBorder(showValidationErrors, targetMoveInDate),
+      }}
+    />
+    <div className="form-helper">
+      {targetMoveInDate
+        ? "You can adjust this date before submitting. Must be at least 3 days from today, up to 3 months."
+        : "Required for room preparation schedule and lease contract generation (at least 3 days from today, up to 3 months)."}
+    </div>
+    <FieldError error={showValidationErrors && !targetMoveInDate ? "Intended move-in date is required" : fieldErrors.targetMoveInDate} />
+  </div>
 
  {/* Move-in Time */}
  <div className="form-group" data-field="estimatedMoveInTime">
@@ -227,18 +240,29 @@ const DormPreferencesSection = ({
 
     {/* Live Feedback Banner */}
     {leaseDuration && (
-      <div className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 text-xs flex items-center gap-2 text-slate-700 dark:text-slate-300">
-        {Number(leaseDuration) >= 6 ? (
-          <>
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-            <span>Long-term stay selected · Eligible for standard discount rate and monthly billing.</span>
-          </>
-        ) : (
-          <>
-            <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />
-            <span>Short-term stay selected · Flexible short-stay rate applies.</span>
-          </>
-        )}
+      <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 text-xs text-slate-700 dark:text-slate-300 space-y-1.5 mt-2">
+        <div className="flex items-center gap-2 font-medium">
+          {Number(leaseDuration) >= 6 ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+              <span className="text-slate-900 dark:text-slate-100 font-semibold">
+                Long-Term Stay ({leaseDuration} Months) Selected
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />
+              <span className="text-slate-900 dark:text-slate-100 font-semibold">
+                Short-Term Stay ({leaseDuration} {Number(leaseDuration) === 1 ? "Month" : "Months"}) Selected
+              </span>
+            </>
+          )}
+        </div>
+        <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">
+          {Number(leaseDuration) >= 6
+            ? "Eligible for standard discounted monthly rent rates and standard security deposit. All pricing previews stay synchronized."
+            : "Flexible short-term rate applies. All previous stages and payment previews automatically synchronize with your selected duration."}
+        </p>
       </div>
     )}
 

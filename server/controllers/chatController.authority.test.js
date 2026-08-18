@@ -49,6 +49,8 @@ const {
   sendAdminMessage,
   sendTenantMessage,
   updateAdminConversationStatus,
+  autoCloseInactiveChatConversations,
+  startConversation,
 } = await import("./chatController.js");
 
 function response() {
@@ -313,5 +315,48 @@ describe("chat controller authoritative branch scope", () => {
       { new: true },
     );
     expect(notifyAdminReply).not.toHaveBeenCalled();
+  });
+
+  test("autoCloseInactiveChatConversations closes conversations in waiting_tenant older than 15 mins", async () => {
+    const mockSave = jest.fn().mockResolvedValue(true);
+    const inactiveConvo = {
+      _id: "conv-101",
+      tenantId: "tenant-1",
+      tenantName: "Aya",
+      branch: "gil-puyat",
+      status: "waiting_tenant",
+      lastMessageAt: new Date(Date.now() - 20 * 60 * 1000),
+      statusHistory: [],
+      save: mockSave,
+      toObject() {
+        return { ...this };
+      },
+    };
+
+    conversationFind.mockResolvedValue([inactiveConvo]);
+    messageCreate.mockResolvedValue({
+      _id: "msg-sys-1",
+      conversationId: "conv-101",
+      message: "This conversation has been automatically closed after 15 minutes of inactivity.",
+      senderRole: "system",
+      createdAt: new Date(),
+      toObject() {
+        return { ...this };
+      },
+    });
+
+    const count = await autoCloseInactiveChatConversations({ inactivityMinutes: 15 });
+
+    expect(count).toBe(1);
+    expect(inactiveConvo.status).toBe("closed");
+    expect(inactiveConvo.closedAt).toBeDefined();
+    expect(inactiveConvo.closingNote).toContain("15 minutes of inactivity");
+    expect(mockSave).toHaveBeenCalledTimes(1);
+  });
+
+  test("autoCloseInactiveChatConversations returns 0 when no inactive conversations found", async () => {
+    conversationFind.mockResolvedValue([]);
+    const count = await autoCloseInactiveChatConversations({ inactivityMinutes: 15 });
+    expect(count).toBe(0);
   });
 });

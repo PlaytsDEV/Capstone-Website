@@ -166,7 +166,7 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
   return (
     <div className={isEmbedded ? "sa-perm-embedded" : "sa2"}>
       {/* Page / Context Header */}
-      {!isEmbedded ? (
+      {!isEmbedded && (
         <AdminPageHeader
           title="Roles & Permissions"
           subtitle="Adjust branch admin capabilities and granular module permissions."
@@ -186,42 +186,13 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
             </button>
           }
         />
-      ) : (
-        <div className="sa-perm-context-bar flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg mb-2">
-          <div className="flex items-center gap-2.5">
-            <div className="sa-perm-context-icon">
-              <Shield size={16} />
-            </div>
-            <div>
-              <h2 className="text-xs font-bold text-foreground tracking-tight">
-                Granular Role Permissions Configuration
-              </h2>
-              <p className="text-[11px] text-muted-foreground">
-                Assign module-level capabilities and operational scopes across branch administrator accounts.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="sa-perm-header-btn flex items-center gap-1.5 self-start sm:self-auto flex-shrink-0"
-            onClick={() => refetch()}
-            disabled={isRefetching}
-            title="Synchronize and refresh permissions list"
-          >
-            <RefreshCw
-              size={13}
-              className={isRefetching ? "animate-spin" : ""}
-            />
-            <span>{isRefetching ? "Syncing…" : "Refresh"}</span>
-          </button>
-        </div>
       )}
 
       {/* Summary KPI Banner (Static Informational Cards) */}
       <div className="sa-perm-metrics-grid">
         <div className="sa-metric-card">
-          <div className="sa-metric-icon sa-icon-navy">
-            <Users size={20} />
+          <div className="sa-metric-icon">
+            <Users size={20} className="text-slate-700 dark:text-slate-300" />
           </div>
           <div className="sa-metric-info">
             <span className="sa-metric-label">Branch Administrators</span>
@@ -233,8 +204,8 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
         </div>
 
         <div className="sa-metric-card">
-          <div className="sa-metric-icon sa-icon-green">
-            <CheckCircle2 size={20} />
+          <div className="sa-metric-icon">
+            <CheckCircle2 size={20} className="text-emerald-600 dark:text-emerald-400" />
           </div>
           <div className="sa-metric-info">
             <span className="sa-metric-label">Full Access Accounts</span>
@@ -250,8 +221,8 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
         </div>
 
         <div className="sa-metric-card">
-          <div className="sa-metric-icon sa-icon-amber">
-            <Sliders size={20} />
+          <div className="sa-metric-icon">
+            <Sliders size={20} className="text-amber-600 dark:text-amber-400" />
           </div>
           <div className="sa-metric-info">
             <span className="sa-metric-label">Customized Access</span>
@@ -609,26 +580,26 @@ export default function RolePermissionsPage({ isEmbedded = false }) {
                         <span>{formatBranch(user.branch)}</span>
                       </span>
 
-                      {/* Access Scope Status Pill */}
+                      {/* Access Scope Status Badge */}
                       {permCount >= 8 ? (
-                        <span className="sa-perm-scope-badge sa-perm-scope-full" title="All 8 system capabilities granted">
-                          <CheckCircle2 size={12} />
+                        <span className="sa-perm-scope-badge sa-perm-scope--full" title="All 8 system capabilities granted">
+                          <span className="sa-perm-scope-dot sa-perm-scope-dot--full" />
                           <span>8/8 Full Access</span>
                         </span>
                       ) : permCount > 0 ? (
-                        <span className="sa-perm-scope-badge sa-perm-scope-custom" title={`${permCount} of 8 system capabilities granted`}>
-                          <Sliders size={12} />
+                        <span className="sa-perm-scope-badge sa-perm-scope--custom" title={`${permCount} of 8 system capabilities granted`}>
+                          <span className="sa-perm-scope-dot sa-perm-scope-dot--custom" />
                           <span>{permCount}/8 Custom Scope</span>
                         </span>
                       ) : (
-                        <span className="sa-perm-scope-badge sa-perm-scope-restricted" title="No system capabilities granted">
-                          <AlertCircle size={12} />
+                        <span className="sa-perm-scope-badge sa-perm-scope--restricted" title="No system capabilities granted">
+                          <span className="sa-perm-scope-dot sa-perm-scope-dot--restricted" />
                           <span>0/8 Restricted</span>
                         </span>
                       )}
 
-                      {/* Role Pill */}
-                      <span className="sa-perm-role-pill">
+                      {/* Role Badge */}
+                      <span className="sa-perm-role-badge">
                         Branch Admin
                       </span>
 

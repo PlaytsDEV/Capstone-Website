@@ -44,12 +44,11 @@
   animation: none;
   background-color: #162f53;
   border-color: #D4AF37;
-  transform: translateY(-4px) scale(1.06);
-  box-shadow: 0 8px 20px -2px rgba(10, 22, 40, 0.45), 0 0 0 2px rgba(212, 175, 55, 0.25);
+  box-shadow: 0 6px 18px -2px rgba(10, 22, 40, 0.45);
 }
 
 .tenant-assistant-launcher:active {
-  transform: translateY(0) scale(0.96);
+  transform: scale(0.96);
 }
 
 .tenant-assistant-launcher:focus-visible {
@@ -71,8 +70,7 @@
   animation: none;
   background-color: #E5C358;
   border-color: #F3E4B0;
-  transform: translateY(-4px) scale(1.06);
-  box-shadow: 0 8px 20px -2px rgba(212, 175, 55, 0.55), 0 0 0 2px rgba(212, 175, 55, 0.35);
+  box-shadow: 0 6px 18px -2px rgba(212, 175, 55, 0.55);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -120,11 +120,6 @@ export async function handleExportContractsPDF({
     title: "Contracts Management Report",
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
-    period: `Generated on ${new Date().toLocaleDateString("en-PH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })}`,
     reportType: "Contracts",
     kpis,
     sections: [
@@ -133,7 +128,7 @@ export async function handleExportContractsPDF({
         title: "Filtered Lease Contracts List",
         description: `Export containing ${contracts.length} contract records matching the active filter criteria.`,
         headers: ["Contract No.", "Tenant", "Branch", "Room", "Stage", "Start Date", "End Date"],
-        colWidths: [30, 40, 26, 22, 26, 18, 18],
+        colWidths: [26, 36, 21, 24, 25, 23, 23],
         rows: tableRows,
       },
     ],

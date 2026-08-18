@@ -114,54 +114,6 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
   else if (hasVisit) panelState = "scheduled";
   else if (preferenceSelected) panelState = "preference";
 
-  const panelTone =
-    panelState === "confirmed"
-      ? {
-          accent: "#059669",
-          label: "Reservation Details",
-        }
-      : panelState === "payment_ready"
-      ? {
-          accent: "#059669",
-          label: "Approved for Payment",
-        }
-      : panelState === "application_review"
-      ? {
-          accent: "#D97706",
-          label: "Pending Review",
-        }
-      : panelState === "needs_revision"
-      ? {
-          accent: "#D97706",
-          label: "Needs Revision",
-        }
-      : panelState === "approved"
-      ? {
-          accent: "#059669",
-          label: "Visit Approved",
-        }
-      : panelState === "scheduled"
-      ? {
-          accent: "#2563EB",
-          label: "Physical Visit Scheduled",
-        }
-      : panelState === "preference"
-      ? {
-          accent: viewingPreference === "urgent_move_in_review" ? "#DC2626" : "#2563EB",
-          label:
-            viewingPreference === "remote_2d_viewing"
-              ? "Remote Viewing Selected"
-              : viewingPreference === "urgent_move_in_review"
-              ? "Priority Review Requested"
-              : viewingPreference === "physical_visit"
-              ? "Physical Visit Selected"
-              : "Viewing Preference Selected",
-        }
-      : {
-          accent: "var(--text-secondary, #64748B)",
-          label: "Room Selected",
-        };
-
   return (
     <div
       style={{
@@ -191,12 +143,12 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
       >
         <div style={S.roomSection}>
           <div style={S.roomIconWrap}>
-            <Home size={22} color={isDark ? "#F8FAFC" : "var(--text-secondary, #64748B)"} />
+            <Home size={20} color={isDark ? "#F8FAFC" : "var(--text-secondary, #64748B)"} />
           </div>
           <div style={S.roomInfo}>
             <h3 style={{ ...S.roomName, color: isDark ? "#FFFFFF" : "var(--text-heading, #0F172A)" }}>{roomName}</h3>
             <div style={{ ...S.roomBranch, color: isDark ? "#94A3B8" : "var(--text-secondary, #64748B)" }}>
-              <MapPin size={13} style={{ marginRight: 4 }} />
+              <MapPin size={12} style={{ marginRight: 3 }} />
               {branch}
             </div>
           </div>
@@ -214,13 +166,13 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
         {hasVisit && (
           <>
             <DetailRow
-              icon={<Calendar size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
+              icon={<Calendar size={14} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
               label="Visit Date"
-              value={fmtDate(reservation.visitDate)}
+              value={fmtShortDate(reservation.visitDate)}
               isDark={isDark}
             />
             <DetailRow
-              icon={<Clock size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
+              icon={<Clock size={14} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
               label="Visit Time"
               value={reservation.visitTime}
               isDark={isDark}
@@ -230,7 +182,7 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
 
         {panelState === "preference" && viewingPrefLabel && (
           <DetailRow
-            icon={<Calendar size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
+            icon={<Calendar size={14} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
             label="Preference"
             value={viewingPrefLabel}
             isDark={isDark}
@@ -250,7 +202,7 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
 
           return (
             <DetailRow
-              icon={<Ticket size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
+              icon={<Ticket size={14} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
               label={codeLabel}
               value={codeValue}
               mono
@@ -260,22 +212,33 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
         })()}
 
         {(() => {
-          const { primaryDate, dateType } = resolveDisplayMoveInDate(
+          const { primaryDate, dateType, displayLabel } = resolveDisplayMoveInDate(
             reservation,
             readMoveInDate,
-            fmtDate,
+            fmtShortDate,
           );
 
-          const moveInLabel =
-            dateType === "confirmed"
-              ? "Confirmed Move-in"
-              : "Preferred Move-in";
+          const moveIn = primaryDate || readMoveInDate(reservation) || reservation.targetMoveInDate;
+          const daysLeft = moveIn
+            ? Math.ceil((new Date(moveIn) - new Date()) / (1000 * 60 * 60 * 24))
+            : null;
+          const isCheckedIn =
+            hasReservationStatus(status, "moveIn", "moveOut") ||
+            Boolean(reservation.checkInDate);
+          const showCountdown = isConfirmed && daysLeft !== null && daysLeft >= 0 && !isCheckedIn;
+
+          const countdownText = showCountdown
+            ? daysLeft > 0
+              ? `${daysLeft} day${daysLeft !== 1 ? "s" : ""} away`
+              : "Today!"
+            : null;
 
           return (
             <DetailRow
-              icon={<Calendar size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
-              label={moveInLabel}
-              value={primaryDate ? fmtDate(primaryDate) : "Not specified yet"}
+              icon={<Calendar size={14} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
+              label={displayLabel || (dateType === "confirmed" ? "Confirmed Move-in" : "Preferred Move-in")}
+              value={primaryDate ? fmtShortDate(primaryDate) : "Not specified yet"}
+              subValue={countdownText}
               isDark={isDark}
             />
           );
@@ -283,7 +246,7 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
 
         {hasApplication && (
           <DetailRow
-            icon={<FileText size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
+            icon={<FileText size={14} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
             label="Application"
             value={
               pendingReview
@@ -310,14 +273,14 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
         {isConfirmed && (
           <>
             <DetailRow
-              icon={<CreditCard size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
+              icon={<CreditCard size={14} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
               label="Reservation Fee"
               value="Paid (₱2,000)"
               color={isDark ? "#34D399" : "#059669"}
               isDark={isDark}
             />
             <DetailRow
-              icon={<CreditCard size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
+              icon={<CreditCard size={14} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
               label="Advance & Deposit"
               value={
                 isMoveInSettled
@@ -334,7 +297,7 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
           </>
         )}
         {(reservation.depositPaymentDeadline || reservation.paymentDueDate) && (
-          <div style={{ marginTop: 10, width: "100%" }}>
+          <div style={{ marginTop: 6, width: "100%" }}>
             <DeadlineBadge
               dueDate={reservation.depositPaymentDeadline || reservation.paymentDueDate}
               status={reservation.status}
@@ -347,21 +310,21 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
 
       {panelState === "scheduled" && (
         <div style={{ ...S.pendingBanner, borderColor: isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)" }}>
-          <Clock size={14} color="#2563EB" />
+          <Clock size={13} color="#2563EB" />
           <span style={S.pendingText}>Saved for viewing coordination only</span>
         </div>
       )}
 
       {panelState === "preference" && viewingPreference === "remote_2d_viewing" && (
         <div style={{ ...S.pendingBanner, borderColor: isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)" }}>
-          <Clock size={14} color="#2563EB" />
+          <Clock size={13} color="#2563EB" />
           <span style={{ ...S.pendingText, color: "#2563EB" }}>Admin will arrange a remote viewing for your room</span>
         </div>
       )}
 
       {panelState === "preference" && viewingPreference === "urgent_move_in_review" && (
         <div style={{ ...S.pendingBanner, borderColor: isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)" }}>
-          <Clock size={14} color="#DC2626" />
+          <Clock size={13} color="#DC2626" />
           <span style={{ ...S.pendingText, color: "#DC2626" }}>Priority review request is under review</span>
         </div>
       )}
@@ -391,7 +354,7 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
               e.currentTarget.style.background = isDark ? "#142944" : "var(--text-heading, #0F172A)";
             }}
           >
-            <Download size={14} />
+            <Download size={13.5} />
             Download Receipt
           </button>
           {isMoveInSettled && (
@@ -405,10 +368,10 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
                 background: "transparent",
                 color: isDark ? "#93C5FD" : "#1D4ED8",
                 border: isDark ? "1px solid rgba(147, 197, 253, 0.3)" : "1px solid #BFDBFE",
-                marginTop: 8,
+                marginTop: 6,
               }}
             >
-              <FileText size={14} />
+              <FileText size={13.5} />
               View Lease Contract
             </button>
           )}
@@ -436,7 +399,7 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
   );
 }
 
-function DetailRow({ icon, label, value, mono, color, isDark }) {
+function DetailRow({ icon, label, value, subValue, mono, color, isDark }) {
   return (
     <div
       style={{
@@ -446,7 +409,9 @@ function DetailRow({ icon, label, value, mono, color, isDark }) {
       }}
     >
       <div style={S.detailLeft}>
-        {icon}
+        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          {icon}
+        </span>
         <span
           style={{
             ...S.detailLabel,
@@ -456,28 +421,44 @@ function DetailRow({ icon, label, value, mono, color, isDark }) {
           {label}
         </span>
       </div>
-      <span
-        style={{
-          ...S.detailValue,
-          color: color || (isDark ? "#F8FAFC" : "var(--text-heading, #0F172A)"),
-          ...(mono ? S.mono : {}),
-        }}
-      >
-        {value}
-      </span>
+      <div style={S.detailRight}>
+        <span
+          style={{
+            ...S.detailValue,
+            color: color || (isDark ? "#F8FAFC" : "var(--text-heading, #0F172A)"),
+            ...(mono ? S.mono : {}),
+          }}
+        >
+          {value}
+        </span>
+        {subValue && (
+          <span
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              color: isDark ? "#34D399" : "#059669",
+              lineHeight: 1.15,
+              marginTop: 1,
+              letterSpacing: "-0.01em",
+            }}
+          >
+            {subValue}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
 function EmptyState() {
- return (
- <div style={S.emptyCard}>
- <div style={S.emptyIconWrap}>
- <Ticket size={24} strokeWidth={1.6} color="var(--text-muted, #CBD5E1)" />
- </div>
- <p style={S.emptyText}>Your reservation details will appear here once you start your application</p>
- </div>
- );
+  return (
+    <div style={S.emptyCard}>
+      <div style={S.emptyIconWrap}>
+        <Ticket size={22} strokeWidth={1.6} color="var(--text-muted, #CBD5E1)" />
+      </div>
+      <p style={S.emptyText}>Your reservation details will appear here once you start your application</p>
+    </div>
+  );
 }
 
 const S = {
@@ -491,40 +472,40 @@ const S = {
     height: "auto",
     boxSizing: "border-box",
     boxShadow: "0 4px 14px rgba(15, 23, 42, 0.04)",
-    transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+    transition: "border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease",
     cursor: "default",
   },
 
- headerShell: {
- padding: "20px 20px 18px",
- borderBottom: "1px solid var(--border-card, #E2E8F0)",
- },
- statusRow: {
- display: "flex",
- alignItems: "center",
- gap: 10,
- marginBottom: 14,
- },
- statusDot: {
- width: 10,
- height: 10,
- borderRadius: "50%",
- flexShrink: 0,
- },
- statusChip: {
- fontSize: 12,
- fontWeight: 700,
- letterSpacing: "0.05em",
- textTransform: "uppercase",
- padding: "5px 12px",
- borderRadius: 999,
- },
+  headerShell: {
+    padding: "14px 16px 12px",
+    borderBottom: "1px solid var(--border-card, #E2E8F0)",
+  },
+  statusRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    flexShrink: 0,
+  },
+  statusChip: {
+    fontSize: 11.5,
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    padding: "4px 10px",
+    borderRadius: 999,
+  },
 
- roomSection: {
- display: "flex",
- alignItems: "center",
- gap: 12,
- },
+  roomSection: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
   roomIconWrap: {
     display: "inline-flex",
     alignItems: "center",
@@ -532,66 +513,78 @@ const S = {
     flexShrink: 0,
     background: "transparent",
   },
- roomInfo: {
- minWidth: 0,
- },
- roomName: {
- fontSize: 20,
- fontWeight: 700,
- color: "var(--text-heading, #0F172A)",
- lineHeight: 1.15,
- letterSpacing: "-0.01em",
- margin: 0,
- marginBottom: 2,
- },
- roomBranch: {
- fontSize: 14,
- color: "var(--text-secondary, #64748B)",
- display: "flex",
- alignItems: "center",
- textTransform: "capitalize",
- },
+  roomInfo: {
+    minWidth: 0,
+  },
+  roomName: {
+    fontSize: 17,
+    fontWeight: 700,
+    color: "var(--text-heading, #0F172A)",
+    lineHeight: 1.25,
+    letterSpacing: "-0.01em",
+    margin: 0,
+    marginBottom: 2,
+  },
+  roomBranch: {
+    fontSize: 12.5,
+    color: "var(--text-secondary, #64748B)",
+    display: "flex",
+    alignItems: "center",
+    textTransform: "capitalize",
+  },
 
   detailsShell: {
     display: "flex",
     flexDirection: "column",
-    gap: 8,
-    padding: "12px 14px",
+    gap: 6,
+    padding: "10px 12px",
     background: "var(--surface-card, #FFFFFF)",
   },
- detailRow: {
- display: "flex",
- alignItems: "center",
- justifyContent: "space-between",
- gap: 8,
- minHeight: 38,
- borderRadius: 10,
- border: "1px solid var(--border-card, #E2E8F0)",
- background: "var(--surface-card, #FFFFFF)",
- padding: "7px 10px",
- },
- detailLeft: {
- display: "flex",
- alignItems: "center",
- gap: 8,
- minWidth: 0,
- },
- detailLabel: {
- fontSize: 12,
- color: "var(--text-secondary, #64748B)",
- fontWeight: 500,
- },
- detailValue: {
- fontSize: 14,
- fontWeight: 700,
- color: "var(--text-heading, #0F172A)",
- textAlign: "right",
- },
- mono: {
- fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
- letterSpacing: "0.04em",
- fontSize: 13,
- },
+  detailRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    minHeight: 35,
+    borderRadius: 8,
+    border: "1px solid var(--border-card, #E2E8F0)",
+    background: "var(--surface-card, #FFFFFF)",
+    padding: "6px 10px",
+  },
+  detailLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
+    minWidth: 0,
+    flexShrink: 0,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: "var(--text-secondary, #64748B)",
+    fontWeight: 500,
+    whiteSpace: "nowrap",
+  },
+  detailRight: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    minWidth: 0,
+    flexShrink: 0,
+    textAlign: "right",
+  },
+  detailValue: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "var(--text-heading, #0F172A)",
+    textAlign: "right",
+    whiteSpace: "nowrap",
+  },
+  mono: {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+    letterSpacing: "0.03em",
+    fontSize: 12,
+  },
 
   pendingBanner: {
     display: "flex",
@@ -599,48 +592,48 @@ const S = {
     gap: 8,
     background: "var(--surface-card, #FFFFFF)",
     border: "1px solid var(--border-card, #E2E8F0)",
-    borderRadius: 10,
-    padding: "10px 12px",
-    margin: "0 16px 12px",
+    borderRadius: 8,
+    padding: "8px 10px",
+    margin: "0 12px 10px",
   },
   pendingText: {
-    fontSize: 13,
-    fontWeight: 600,
+    fontSize: 12,
+    fontWeight: 500,
     color: "var(--text-secondary, #475569)",
   },
 
- footerShell: {
- borderTop: "1px solid var(--border-card, #E2E8F0)",
- padding: "14px 16px 16px",
- },
- downloadBtn: {
- display: "flex",
- alignItems: "center",
- justifyContent: "center",
- gap: 6,
- width: "100%",
- padding: "12px 16px",
- background: "var(--text-heading, #0F172A)",
- color: "#fff",
- border: "none",
- borderRadius: 10,
- fontSize: 14,
- fontWeight: 700,
- cursor: "pointer",
- transition: "background-color 0.15s ease",
- },
- subtleLink: {
- background: "none",
- border: "none",
- color: "var(--text-secondary, #64748B)",
- fontSize: 13,
- fontWeight: 600,
- cursor: "pointer",
- padding: "10px 0 0",
- transition: "color 0.15s",
- textAlign: "center",
- width: "100%",
- },
+  footerShell: {
+    borderTop: "1px solid var(--border-card, #E2E8F0)",
+    padding: "12px 12px 14px",
+  },
+  downloadBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    width: "100%",
+    padding: "9px 12px",
+    background: "var(--text-heading, #0F172A)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "background-color 0.15s ease",
+  },
+  subtleLink: {
+    background: "none",
+    border: "none",
+    color: "var(--text-secondary, #64748B)",
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    padding: "6px 0 0",
+    transition: "color 0.15s",
+    textAlign: "center",
+    width: "100%",
+  },
 
   emptyCard: {
     display: "flex",
@@ -649,28 +642,28 @@ const S = {
     justifyContent: "center",
     textAlign: "center",
     border: "1px dashed var(--border-card, #E2E8F0)",
-    borderRadius: 20,
-    padding: "36px 24px",
+    borderRadius: 16,
+    padding: "32px 20px",
     background: "var(--surface-card, #FFFFFF)",
     height: "auto",
     boxSizing: "border-box",
   },
   emptyIconWrap: {
-    width: 50,
-    height: 50,
+    width: 44,
+    height: 44,
     borderRadius: "50%",
     background: "var(--surface-card, #FFFFFF)",
     border: "1px solid var(--border-card, #E2E8F0)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 10,
   },
- emptyText: {
- fontSize: 13,
- color: "var(--text-secondary, #94A3B8)",
- lineHeight: 1.5,
- margin: 0,
- maxWidth: 210,
- },
+  emptyText: {
+    fontSize: 12.5,
+    color: "var(--text-secondary, #94A3B8)",
+    lineHeight: 1.5,
+    margin: 0,
+    maxWidth: 210,
+  },
 };

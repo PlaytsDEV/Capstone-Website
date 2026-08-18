@@ -53,15 +53,15 @@ export function formatPaymentStatus(status) {
 }
 
 /**
- * Get solid badge style configuration (minimalist, strictly no gradients) for payment status.
+ * Get solid badge style configuration (minimalist, strictly transparent background with semantic dot & text) for payment status.
  */
 export function getPaymentStatusBadgeConfig(status) {
   if (status === null || status === undefined || status === "") {
     return {
       label: "—",
-      bg: "#F1F5F9",
+      bg: "transparent",
       color: "#64748B",
-      border: "#E2E8F0",
+      border: "transparent",
       dot: "#94A3B8",
     };
   }
@@ -75,9 +75,9 @@ export function getPaymentStatusBadgeConfig(status) {
     case "verified":
       return {
         label,
-        bg: "#ECFDF5",
+        bg: "transparent",
         color: "#047857",
-        border: "#A7F3D0",
+        border: "transparent",
         dot: "#10B981",
       };
 
@@ -85,27 +85,27 @@ export function getPaymentStatusBadgeConfig(status) {
     case "payment_pending":
       return {
         label,
-        bg: "#FFFBEB",
+        bg: "transparent",
         color: "#B45309",
-        border: "#FDE68A",
         dot: "#F59E0B",
+        border: "transparent",
       };
 
     case "partial":
       return {
         label,
-        bg: "#FEF3C7",
+        bg: "transparent",
         color: "#92400E",
-        border: "#FCD34D",
+        border: "transparent",
         dot: "#D97706",
       };
 
     case "proof_uploaded":
       return {
         label,
-        bg: "#EFF6FF",
+        bg: "transparent",
         color: "#1D4ED8",
-        border: "#BFDBFE",
+        border: "transparent",
         dot: "#3B82F6",
       };
 
@@ -113,18 +113,18 @@ export function getPaymentStatusBadgeConfig(status) {
     case "failed":
       return {
         label,
-        bg: "#FEF2F2",
+        bg: "transparent",
         color: "#B91C1C",
-        border: "#FECACA",
+        border: "transparent",
         dot: "#EF4444",
       };
 
     case "refunded":
       return {
         label,
-        bg: "#F5F3FF",
+        bg: "transparent",
         color: "#6D28D9",
-        border: "#DDD6FE",
+        border: "transparent",
         dot: "#8B5CF6",
       };
 
@@ -132,18 +132,18 @@ export function getPaymentStatusBadgeConfig(status) {
     case "canceled":
       return {
         label,
-        bg: "#F8FAFC",
+        bg: "transparent",
         color: "#64748B",
-        border: "#E2E8F0",
+        border: "transparent",
         dot: "#94A3B8",
       };
 
     default:
       return {
         label,
-        bg: "#F1F5F9",
-        color: "#334155",
-        border: "#E2E8F0",
+        bg: "transparent",
+        color: "#475569",
+        border: "transparent",
         dot: "#64748B",
       };
   }

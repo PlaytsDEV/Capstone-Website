@@ -17,6 +17,7 @@ import {
   isUtilityEventType,
   readMoveInDate,
 } from "./lifecycleNaming.js";
+import { branchSupportsSeparateUtilityBilling } from "../config/branches.js";
 
 const WATER_BILLABLE_ROOM_TYPES = new Set(["private", "double-sharing"]);
 
@@ -287,6 +288,7 @@ export async function getUtilityRoomDiagnostics(roomId, utilityType) {
     .select("name roomNumber branch type capacity")
     .lean();
   if (!room) return null;
+  if (!branchSupportsSeparateUtilityBilling(room.branch, utilityType)) return null;
 
   const [periods, readings, reservations] = await Promise.all([
     UtilityPeriod.find({ roomId: room._id, utilityType, isArchived: false })
@@ -405,6 +407,7 @@ export async function getUtilityDiagnostics({ branch = null } = {}) {
 
   // Build all diagnostic objects in memory (zero additional DB queries)
   const electricityRooms = allRooms
+    .filter((room) => branchSupportsSeparateUtilityBilling(room.branch, "electricity"))
     .map((room) => {
       const key = String(room._id);
       return buildRoomDiagnostic({
@@ -419,6 +422,7 @@ export async function getUtilityDiagnostics({ branch = null } = {}) {
     .filter(Boolean);
 
   const waterRooms = allRooms
+    .filter((room) => branchSupportsSeparateUtilityBilling(room.branch, "water"))
     .filter((room) => WATER_BILLABLE_ROOM_TYPES.has(room.type))
     .map((room) => {
       const key = String(room._id);

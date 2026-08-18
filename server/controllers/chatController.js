@@ -559,6 +559,11 @@ function serializeConversation(conversation) {
     resolvedAt: doc.resolvedAt || null,
     resolvedBy: doc.resolvedBy ? String(doc.resolvedBy) : null,
     resolutionConfirmationSource: doc.resolutionConfirmationSource || "",
+    firstAdminReplyAt: doc.firstAdminReplyAt || null,
+    firstAdminReplyMinutes: doc.firstAdminReplyMinutes ?? null,
+    resolutionDurationMinutes: doc.resolutionDurationMinutes ?? null,
+    satisfactionRating: doc.satisfactionRating ?? null,
+    satisfactionFeedback: doc.satisfactionFeedback || "",
     reopenedAt: doc.reopenedAt || null,
     reopenCount: Number(doc.reopenCount || 0),
     statusHistory: Array.isArray(doc.statusHistory)
@@ -788,6 +793,13 @@ async function createMessageAndUpdateConversation({
     },
   };
 
+  if (["admin", "owner"].includes(senderRole) && !conversation.firstAdminReplyAt) {
+    const createdAtTime = new Date(conversation.createdAt || now).getTime();
+    const diffMinutes = Math.max(0, Math.round((now.getTime() - createdAtTime) / (60 * 1000)));
+    update.$set.firstAdminReplyAt = now;
+    update.$set.firstAdminReplyMinutes = diffMinutes;
+  }
+
   if (nextStatus === "open") {
     update.$set.closedAt = null;
     update.$set.closedBy = null;
@@ -1000,7 +1012,7 @@ export async function startConversation(req, res) {
 
     let conversation = await ChatConversation.findOne({
       tenantId: tenantContext.user._id,
-      status: { $in: ACTIVE_CONVERSATION_STATUSES },
+      status: { $in: ["open", "in_review", "waiting_tenant"] },
     }).sort({ updatedAt: -1 });
 
     if (conversation) {
@@ -1263,10 +1275,26 @@ export async function confirmTenantResolution(req, res) {
     }
 
     const now = new Date();
+    const createdAtTime = new Date(conversation.createdAt || now).getTime();
+    const durationMinutes = Math.max(0, Math.round((now.getTime() - createdAtTime) / (60 * 1000)));
+
     conversation.status = "resolved";
     conversation.resolvedAt = now;
     conversation.resolvedBy = tenantContext.user._id;
     conversation.resolutionConfirmationSource = "tenant_yes";
+    conversation.resolutionDurationMinutes = durationMinutes;
+
+    if (req.body?.rating !== undefined && req.body?.rating !== null) {
+      const rating = Number(req.body.rating);
+      if (!Number.isNaN(rating) && rating >= 1 && rating <= 5) {
+        conversation.satisfactionRating = rating;
+      }
+    }
+
+    if (typeof req.body?.feedback === "string" && req.body.feedback.trim()) {
+      conversation.satisfactionFeedback = req.body.feedback.trim().slice(0, 1000);
+    }
+
     conversation.statusHistory.push({
       status: "resolved",
       note: "Tenant selected YES and confirmed that the concern was resolved.",
@@ -1765,16 +1793,23 @@ export async function closeAdminConversation(req, res) {
     );
 
     if (conversation.status !== "closed") {
+      const now = new Date();
+      const createdAtTime = new Date(conversation.createdAt || now).getTime();
+      const durationMinutes = Math.max(0, Math.round((now.getTime() - createdAtTime) / (60 * 1000)));
+
       conversation.status = "closed";
-      conversation.closedAt = new Date();
+      conversation.closedAt = now;
       conversation.closedBy = adminContext.user?._id || null;
       conversation.closingNote = closingNote;
+      if (!conversation.resolutionDurationMinutes) {
+        conversation.resolutionDurationMinutes = durationMinutes;
+      }
       conversation.statusHistory.push({
         status: "closed",
         note: closingNote,
         actorId: adminContext.user?._id || null,
         actorName: adminContext.displayName,
-        createdAt: new Date(),
+        createdAt: now,
       });
       await conversation.save();
     }
@@ -1790,3 +1825,101 @@ export async function closeAdminConversation(req, res) {
     return sendError(res, error, "Failed to close conversation.");
   }
 }
+
+/**
+ * Automatically closes conversations in "waiting_tenant" or "resolved" status
+ * that have had no activity for more than inactivityMinutes (default: 15 minutes).
+ *
+ * Emits real-time socket events and generates a system closing message.
+ */
+export async function autoCloseInactiveChatConversations({
+  inactivityMinutes = 15,
+} = {}) {
+  const cutoff = new Date(Date.now() - inactivityMinutes * 60 * 1000);
+  const now = new Date();
+
+  const inactiveConversations = await ChatConversation.find({
+    status: { $in: ["waiting_tenant", "resolved"] },
+    $or: [
+      { lastMessageAt: { $lt: cutoff, $ne: null } },
+      { lastMessageAt: null, updatedAt: { $lt: cutoff } },
+      { lastMessageAt: null, createdAt: { $lt: cutoff } },
+    ],
+  });
+
+  if (!inactiveConversations.length) return 0;
+
+  let closedCount = 0;
+  for (const conversation of inactiveConversations) {
+    try {
+      const isResolved = conversation.status === "resolved";
+      const closingNote = isResolved
+        ? "Automatically closed after resolution confirmation."
+        : `Automatically closed after ${inactivityMinutes} minutes of inactivity.`;
+
+      const createdAtTime = new Date(conversation.createdAt || now).getTime();
+      const durationMinutes = Math.max(0, Math.round((now.getTime() - createdAtTime) / (60 * 1000)));
+
+      conversation.status = "closed";
+      conversation.closedAt = now;
+      conversation.closedBy = null;
+      conversation.closingNote = closingNote;
+      if (!conversation.resolutionDurationMinutes) {
+        conversation.resolutionDurationMinutes = durationMinutes;
+      }
+      conversation.statusHistory.push({
+        status: "closed",
+        note: closingNote,
+        actorId: null,
+        actorName: "System Scheduler",
+        createdAt: now,
+      });
+      await conversation.save();
+
+      const systemMessage = await ChatMessage.create({
+        conversationId: conversation._id,
+        senderId: null,
+        senderUserId: "",
+        senderName: "System",
+        senderRole: "system",
+        senderProfileImage: "",
+        message: isResolved
+          ? "This conversation has been closed following resolution confirmation. Feel free to send a message anytime if you need assistance with a new concern."
+          : `This conversation has been automatically closed after ${inactivityMinutes} minutes of inactivity. If you need further assistance, please send a message to start a new support request.`,
+        attachments: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const serializedMsg = serializeMessage(systemMessage);
+      const serializedConv = serializeConversation(conversation);
+
+      if (conversation.branch) {
+        emitToChatAdmins(conversation.branch, "chat:message-new", {
+          message: serializedMsg,
+          conversationId: String(conversation._id),
+        });
+        emitToChatAdmins(
+          conversation.branch,
+          "chat:conversation-updated",
+          serializedConv,
+        );
+      }
+
+      if (conversation.tenantId) {
+        emitToUser(conversation.tenantId, "chat:message-new", {
+          message: serializedMsg,
+          conversationId: String(conversation._id),
+        });
+        emitToUser(conversation.tenantId, "chat:conversation-updated", serializedConv);
+      }
+
+      closedCount += 1;
+    } catch (err) {
+      console.error(`Failed to auto-close conversation ${conversation._id}:`, err.message);
+    }
+  }
+
+  return closedCount;
+}
+

@@ -1,5 +1,6 @@
 import React from "react";
 import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
+import { formatDisplayReference } from "../../../../shared/utils/formatPaymentReference";
 import { getResolvedMonthlyRate } from "../../utils/pricingDisplayHelpers";
 
 const getEffectiveMonthlyRate = (reservation) => {
@@ -311,7 +312,7 @@ const PaymentReceipt = ({ reservation, step }) => {
               Payment Reference
             </span>
             <span style={{ color: "#059669", fontWeight: "700" }}>
-              {reservation.paymentReference}
+              {formatDisplayReference(reservation.paymentReference)}
             </span>
           </div>
         )}
@@ -326,7 +327,7 @@ const PaymentReceipt = ({ reservation, step }) => {
         </p>
         {reservation.paymentReference && (
           <p style={{ color: "#78350F", fontSize: "11.5px", margin: "6px 0 0" }}>
-            <strong>Reference:</strong> {reservation.paymentReference}
+            <strong>Reference:</strong> {formatDisplayReference(reservation.paymentReference)}
           </p>
         )}
       </ReceiptContainer>

@@ -137,6 +137,19 @@ export default function DigitalContractPaper({
   const [signedBlobError, setSignedBlobError] = useState(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
+  // Synchronize layout mode and selected version if signed documents change or are deleted
+  useEffect(() => {
+    if (!hasSignedDoc && layoutMode !== "digital") {
+      setLayoutMode("digital");
+    }
+  }, [hasSignedDoc, layoutMode]);
+
+  useEffect(() => {
+    if (activeSignedDocs.length > 0 && !activeSignedDocs.some((d) => d.version === selectedVersion)) {
+      setSelectedVersion(activeSignedDocs[0].version);
+    }
+  }, [activeSignedDocs, selectedVersion]);
+
   // Zoom & Inspection States
   const [digitalZoom, setDigitalZoom] = useState(100);
   const [scanZoom, setScanZoom] = useState(100);
@@ -304,6 +317,17 @@ export default function DigitalContractPaper({
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
+        onclone: (clonedDoc) => {
+          const clonedWrapper = clonedDoc.getElementById("offscreen-legal-pdf-container");
+          if (clonedWrapper) {
+            clonedWrapper.style.position = "static";
+            clonedWrapper.style.left = "0";
+            clonedWrapper.style.top = "0";
+            clonedWrapper.style.opacity = "1";
+            clonedWrapper.style.display = "block";
+            clonedWrapper.style.visibility = "visible";
+          }
+        },
       });
 
       // Create Philippine Legal standard document (8.5in x 13in = 215.9mm x 330.2mm)
@@ -948,14 +972,16 @@ export default function DigitalContractPaper({
 
       {/* DEDICATED OFFSCREEN 1-PAGE LEGAL (8.5in x 13in) PRINT TEMPLATE */}
       <div
+        id="offscreen-legal-pdf-container"
         style={{
           position: "fixed",
-          left: "0",
-          top: "0",
+          left: "-99999px",
+          top: "-99999px",
           width: "780px",
           zIndex: -9999,
-          opacity: 1,
+          opacity: 0,
           pointerEvents: "none",
+          overflow: "hidden",
         }}
         aria-hidden="true"
       >

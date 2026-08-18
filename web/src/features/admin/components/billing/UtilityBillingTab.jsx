@@ -69,7 +69,7 @@ import {
   EMPTY_VALUE,
 } from "./utility/utilityConstants";
 
-const ROOMS_PER_PAGE = 8;
+const ROOMS_PER_PAGE = 7;
 const PERIODS_PER_PAGE = 5;
 const TIMELINE_PER_PAGE = 8;
 
@@ -182,13 +182,18 @@ const UtilityBillingTab = ({
     return Number(settingsData?.utilityRates?.waterRatePerCubicMeter || 50.0);
   }, [settingsData, utilityType]);
 
-  // Normalized rooms list
+  // Normalized rooms list (filter out branches like Guadalupe that use fixed-rate billing without separate utilities)
   const rooms = useMemo(() => {
-    if (!roomsData) return [];
-    if (Array.isArray(roomsData)) return roomsData;
-    if (Array.isArray(roomsData?.rooms)) return roomsData.rooms;
-    if (Array.isArray(roomsData?.data)) return roomsData.data;
-    return [];
+    let list = [];
+    if (!roomsData) list = [];
+    else if (Array.isArray(roomsData)) list = roomsData;
+    else if (Array.isArray(roomsData?.rooms)) list = roomsData.rooms;
+    else if (Array.isArray(roomsData?.data)) list = roomsData.data;
+
+    return list.filter((r) => {
+      const b = String(r.branch || "").toLowerCase();
+      return b !== "guadalupe";
+    });
   }, [roomsData]);
 
   // Available floors from rooms
@@ -229,10 +234,15 @@ const UtilityBillingTab = ({
     return filteredRooms.slice(start, start + ROOMS_PER_PAGE);
   }, [filteredRooms, roomsPage]);
 
-  // Auto-select first room if none selected
+  // Auto-select first room if none selected or if previously selected room was filtered out
   useEffect(() => {
-    if (!selectedRoomId && filteredRooms.length > 0) {
-      setSelectedRoomId(filteredRooms[0].id);
+    if (filteredRooms.length > 0) {
+      const isStillPresent = filteredRooms.some((r) => r.id === selectedRoomId);
+      if (!selectedRoomId || !isStillPresent) {
+        setSelectedRoomId(filteredRooms[0].id);
+      }
+    } else {
+      setSelectedRoomId(null);
     }
   }, [filteredRooms, selectedRoomId]);
 
@@ -445,9 +455,21 @@ const UtilityBillingTab = ({
     });
 
     const bills = billsData?.bills || billsData?.data || [];
+    const chargeField = utilityType === "water" ? "water" : "electricity";
     bills.forEach((b) => {
-      totalCollected += Number(b.paidAmount || 0);
-      totalOutstanding += Number(b.balance || 0);
+      if (String(b.branch || "").toLowerCase() === "guadalupe") return;
+      const utilityCharge = Number(b.charges?.[chargeField] || 0);
+      if (utilityCharge > 0) {
+        if (b.status === "paid") {
+          totalCollected += utilityCharge;
+        } else if (b.status === "partially-paid") {
+          const paidShare = Math.min(utilityCharge, Number(b.paidAmount || 0));
+          totalCollected += paidShare;
+          totalOutstanding += Math.max(0, utilityCharge - paidShare);
+        } else if (b.status === "pending" || b.status === "overdue") {
+          totalOutstanding += utilityCharge;
+        }
+      }
     });
 
     const collectionPercent =
@@ -462,7 +484,7 @@ const UtilityBillingTab = ({
       readyToSendCount: readyRooms.length,
       coveredRoomsCount: rooms.length,
     };
-  }, [rooms, billsData, readyRooms]);
+  }, [rooms, billsData, readyRooms, utilityType]);
 
   // Handlers
   const handleToggleUnmaskRow = useCallback((rowId) => {
@@ -752,7 +774,7 @@ const UtilityBillingTab = ({
       <UtilityKpiCards utilityType={utilityType} kpiMetrics={kpiMetrics} />
 
       {/* ── Main Workspace Grid (Left Room Selector + Right Content Panels) ───────── */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)] items-start">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)] items-start">
         {/* Left: Room Quick Switcher */}
         <UtilityRoomSelector
           rooms={rooms}

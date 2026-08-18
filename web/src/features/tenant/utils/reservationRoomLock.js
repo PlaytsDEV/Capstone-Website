@@ -112,15 +112,19 @@ export const canApplicantReselectRoom = (reservation = {}) => {
     return false;
   }
 
+  if (hasSubmittedApplicationOrPayment(reservation)) {
+    return false;
+  }
+
+  if (reservation.visitStatus === "no_show") {
+    return true;
+  }
+
   if (reservation.roomConfirmed === true) {
     return false;
   }
 
   if (hasSavedViewingPreference(reservation)) {
-    return false;
-  }
-
-  if (hasSubmittedApplicationOrPayment(reservation)) {
     return false;
   }
 

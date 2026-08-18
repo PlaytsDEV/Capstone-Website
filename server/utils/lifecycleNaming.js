@@ -210,6 +210,27 @@ export const hasReservationStatus = (status, ...expectedStatuses) => {
     .includes(normalized);
 };
 
+export const isApplicationApprovedStatus = (status, reservation = {}) => {
+  const norm = normalizeReservationStatus(
+    status || reservation?.status || reservation?.reservationStatus,
+  );
+  return (
+    hasReservationStatus(
+      norm,
+      "approved_for_payment",
+      "payment_pending",
+      "reserved",
+      "moveIn",
+      "moveOut",
+    ) ||
+    Boolean(reservation?.approvedForPaymentAt) ||
+    reservation?.documentsApproved === true ||
+    Boolean(reservation?.paymentDate) ||
+    Boolean(reservation?.proofOfPaymentUrl) ||
+    reservation?.paymentStatus === "paid"
+  );
+};
+
 export const canTransitionReservationStatus = (
   currentStatus,
   nextStatus,

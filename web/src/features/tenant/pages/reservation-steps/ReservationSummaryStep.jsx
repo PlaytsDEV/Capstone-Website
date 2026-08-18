@@ -30,13 +30,14 @@ import {
   Edit3,
   Loader2,
   Sparkles,
+  Info,
 } from "lucide-react";
 import { formatBranch, formatRoomType, formatDate } from "../../../../shared/utils/formatDate";
 import { getRoomImages as getFallbackRoomImages } from "../check-availability/checkAvailabilityConstants";
 import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
 import { getResolvedMonthlyRate, isPricingDisplayUsable } from "../../utils/pricingDisplayHelpers";
-import { ROOM_SELECTION_LOCKED_MESSAGE } from "../../utils/reservationRoomLock";
-import { getAvailableLeaseOptions } from "./applicationFormConstants";
+import { getAvailableLeaseOptions, getMoveInDateConstraints } from "./applicationFormConstants";
+import { validateTargetMoveInDate } from "../../utils/reservationValidation";
 import { showNotification } from "../../../../shared/utils/notification";
 
 
@@ -175,15 +176,13 @@ const ReservationSummaryStep = ({
   const dateInputRef = React.useRef(null);
 
   const { minMoveInDate, maxMoveInDate } = React.useMemo(() => {
-    const now = new Date();
-    const min = new Date(now);
-    const max = new Date(now);
-    max.setMonth(max.getMonth() + 3);
-    return {
-      minMoveInDate: min.toISOString().split("T")[0],
-      maxMoveInDate: max.toISOString().split("T")[0],
-    };
+    return getMoveInDateConstraints();
   }, []);
+
+  const isTempMoveInDateValid = React.useMemo(() => {
+    if (!tempMoveInDate) return true;
+    return validateTargetMoveInDate(tempMoveInDate).valid;
+  }, [tempMoveInDate]);
 
   const room = reservationData?.room || {};
   const minMonths = room?.longTermLeaseMinMonths ?? 6;
@@ -199,12 +198,23 @@ const ReservationSummaryStep = ({
   };
 
   const handleSaveStay = async () => {
+    if (tempMoveInDate) {
+      const validation = validateTargetMoveInDate(tempMoveInDate);
+      if (!validation.valid) {
+        showNotification(
+          validation.error || "Intended move-in date must be at least 3 days from today, up to 3 months.",
+          "warning",
+        );
+        return;
+      }
+    }
     setIsSavingStay(true);
     try {
       if (onUpdateStayPackage) {
         await onUpdateStayPackage({
           leaseDuration: tempLeaseDuration,
           targetMoveInDate: tempMoveInDate || null,
+          intendedMoveInDate: tempMoveInDate || null,
         });
       }
       showNotification("Stay preferences updated successfully.", "success");
@@ -215,6 +225,25 @@ const ReservationSummaryStep = ({
     } finally {
       setIsSavingStay(false);
     }
+  };
+
+  const handleConfirmAndContinue = () => {
+    const effectiveDate =
+      targetMoveInDate ||
+      reservationData?.targetMoveInDate ||
+      reservationData?.intendedMoveInDate;
+    if (effectiveDate) {
+      const validation = validateTargetMoveInDate(effectiveDate);
+      if (!validation.valid) {
+        showNotification(
+          validation.error || "Intended move-in date must be at least 3 days from today, up to 3 months.",
+          "warning",
+        );
+        handleOpenModifyStay();
+        return;
+      }
+    }
+    if (onNext) onNext();
   };
 
   const selectedBed = reservationData?.selectedBed;
@@ -444,12 +473,25 @@ const ReservationSummaryStep = ({
         <div className="lg:col-span-5 flex flex-col">
           <section className="content-card rf-summary-panel m-0 flex-1 flex flex-col justify-between border border-slate-200 dark:border-slate-700">
             <div>
-              <div className="card-section-title">
-                <Home size={16} className="text-slate-700 dark:text-slate-300 flex-shrink-0" />
-                <span>Room Specifications</span>
+              <div className="card-section-title w-full flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Home size={16} className="text-slate-700 dark:text-slate-300 flex-shrink-0" />
+                  <span>Room Specifications</span>
+                </div>
+                {!readOnly && onUpdateStayPackage && (
+                  <button
+                    type="button"
+                    onClick={handleOpenModifyStay}
+                    className="group inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 rounded-lg shadow-xs transition-all active:scale-[0.97] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:focus-visible:ring-slate-500 cursor-pointer"
+                    title="Edit lease duration and intended move-in date"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200 transition-colors" />
+                    <span>Edit Stay</span>
+                  </button>
+                )}
               </div>
 
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              <div className="divide-y divide-slate-100 dark:border-slate-800">
                 <div className="py-2.5 flex justify-between items-center text-sm">
                   <span className="text-slate-500 dark:text-slate-400">Branch Location</span>
                   <span className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
@@ -500,40 +542,36 @@ const ReservationSummaryStep = ({
                 </div>
                 <div className="py-2.5 flex justify-between items-center text-sm border-t border-slate-100 dark:border-slate-800">
                   <span className="text-slate-500 dark:text-slate-400">Selected Lease Term</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      {Number(reservationData?.leaseDuration || room?.leaseDuration || leaseDuration) === 12
-                        ? "12 Months (1 Year)"
-                        : `${reservationData?.leaseDuration || room?.leaseDuration || leaseDuration || "6"} ${
-                            Number(reservationData?.leaseDuration || room?.leaseDuration || leaseDuration || "6") === 1 ? "Month" : "Months"
-                          }`}
-                    </span>
-                    {!readOnly && onUpdateStayPackage && (
-                      <button
-                        type="button"
-                        onClick={handleOpenModifyStay}
-                        className="group inline-flex items-center justify-center p-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 rounded-lg shadow-xs transition-all active:scale-[0.97] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:focus-visible:ring-slate-500"
-                        aria-label="Edit stay preferences"
-                        title="Edit lease duration or bed preference"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200 transition-colors" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="py-2.5 flex justify-between items-center text-sm border-t border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-500 dark:text-slate-400">Intended Move-in Date</span>
                   <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    {targetMoveInDate || reservationData?.targetMoveInDate || reservationData?.intendedMoveInDate
-                      ? formatDate(
-                          targetMoveInDate || reservationData?.targetMoveInDate || reservationData?.intendedMoveInDate,
-                          "MMM DD, YYYY",
-                        )
-                      : "Not specified"}
+                    {Number(reservationData?.leaseDuration || room?.leaseDuration || leaseDuration) === 12
+                      ? "12 Months (1 Year)"
+                      : `${reservationData?.leaseDuration || room?.leaseDuration || leaseDuration || "6"} ${
+                          Number(reservationData?.leaseDuration || room?.leaseDuration || leaseDuration || "6") === 1 ? "Month" : "Months"
+                        }`}
                   </span>
                 </div>
+                <div className="py-2.5 flex justify-between items-center text-sm border-t border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500 dark:text-slate-400 whitespace-nowrap">Intended Move-in Date</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-right">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    {targetMoveInDate || reservationData?.targetMoveInDate || reservationData?.intendedMoveInDate ? (
+                      formatDate(
+                        targetMoveInDate || reservationData?.targetMoveInDate || reservationData?.intendedMoveInDate,
+                        "MMM DD, YYYY",
+                      )
+                    ) : (
+                      <span className="text-slate-500 dark:text-slate-400 font-normal text-xs whitespace-nowrap">
+                        Optional (Set in Step 3)
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>Move-in date is optional on room selection. You will confirm your date in Step 3.</span>
               </div>
             </div>
           </section>
@@ -636,13 +674,8 @@ const ReservationSummaryStep = ({
                   </div>
                 )}
 
-                <div className="flex justify-between items-start pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <div>
-                    <span className="font-medium text-slate-800 dark:text-slate-200">Reservation Fee Deposit</span>
-                    <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-                      Credited toward 1st month rent
-                    </span>
-                  </div>
+                <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <span className="font-medium text-slate-800 dark:text-slate-200">Reservation Fee Deposit</span>
                   <span className="font-bold text-emerald-600 dark:text-emerald-400">
                     {formatCurrency(reservationFeeAmount)}
                   </span>
@@ -759,7 +792,7 @@ const ReservationSummaryStep = ({
 
             <button
               type="button"
-              onClick={onNext}
+              onClick={handleConfirmAndContinue}
               className="w-full sm:w-auto min-w-[200px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
               title="Confirm room selection and proceed to next step"
             >
@@ -844,13 +877,18 @@ const ReservationSummaryStep = ({
               {/* Intended Move-In Date */}
               <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="modalIntendedMoveInDate"
-                    className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300"
-                  >
-                    Intended Move-In Date
-                  </label>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">Within next 3 months</span>
+                  <div className="flex items-center gap-2">
+                    <label
+                      htmlFor="modalIntendedMoveInDate"
+                      className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                    >
+                      Intended Move-In Date
+                    </label>
+                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                      Optional now
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">3 days up to 3 months</span>
                 </div>
                 <div className="relative flex items-center group">
                   <input
@@ -871,8 +909,11 @@ const ReservationSummaryStep = ({
                       } catch (_) {}
                     }}
                     onChange={(e) => setTempMoveInDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 pr-16 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:focus:ring-slate-500 shadow-xs cursor-pointer"
-                    style={{ colorScheme: "light" }}
+                    className="w-full px-3.5 py-2.5 pr-16 text-sm rounded-xl border bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 shadow-xs cursor-pointer"
+                    style={{
+                      colorScheme: "light",
+                      border: tempMoveInDate && !isTempMoveInDateValid ? "1.5px solid var(--danger)" : "1px solid var(--border)",
+                    }}
                   />
                   <div className="absolute right-2.5 flex items-center gap-1">
                     {tempMoveInDate && (
@@ -898,7 +939,7 @@ const ReservationSummaryStep = ({
                           dateInputRef.current?.focus();
                         }
                       }}
-                      className="p-1 rounded-lg text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors focus:outline-none cursor-pointer"
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors focus:outline-none cursor-pointer"
                       title="Open calendar picker"
                       aria-label="Open calendar picker"
                     >
@@ -906,9 +947,15 @@ const ReservationSummaryStep = ({
                     </button>
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Click anywhere on the field or calendar icon to select your intended move-in date.
-                </p>
+                {tempMoveInDate && !isTempMoveInDateValid ? (
+                  <p className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">
+                    Must be at least 3 days from today, up to 3 months.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    Optional now. If specified, must be at least 3 days from today, up to 3 months.
+                  </p>
+                )}
               </div>
 
               {/* Actions */}

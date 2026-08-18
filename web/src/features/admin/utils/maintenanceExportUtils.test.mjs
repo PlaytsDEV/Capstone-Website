@@ -71,13 +71,14 @@ test("resolveTenantFullName handles polymorphic tenant shapes", () => {
   assert.equal(resolveTenantFullName({ tenant: { firstName: "Pedro", lastName: "Penduko" } }), "Pedro Penduko");
   assert.equal(resolveTenantFullName({ tenantName: "Crisostomo Ibarra" }), "Crisostomo Ibarra");
   assert.equal(resolveTenantFullName({ user: { fullName: "Elias Salome" } }), "Elias Salome");
-  assert.equal(resolveTenantFullName({}), "Resident");
+  assert.equal(resolveTenantFullName({}), "Tenant");
 });
 
 test("resolveRoomUnitLabel handles room and bed combinations", () => {
   assert.equal(resolveRoomUnitLabel({ room: "Room 302", bedLabel: "Bed A" }), "Room 302 (Bed A)");
   assert.equal(resolveRoomUnitLabel({ roomNumber: "Room 101" }), "Room 101");
   assert.equal(resolveRoomUnitLabel({ occupancyContext: { unitNumber: "Unit 4B", bedNumber: "2" } }), "Unit 4B (2)");
+  assert.equal(resolveRoomUnitLabel({ room: { name: "Room 101", roomNumber: "101" } }), "Room 101");
   assert.equal(resolveRoomUnitLabel({ bed: "Bed B" }), "Bed Bed B");
   assert.equal(resolveRoomUnitLabel({}), "—");
 });

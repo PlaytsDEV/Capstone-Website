@@ -1803,7 +1803,12 @@ export const exportUtilityRows = async (req, res, next) => {
 
     const scopedPeriods = branch
       ? periods.filter((period) => period.roomId?.branch === branch)
-      : periods;
+      : periods.filter((period) =>
+          branchSupportsSeparateUtilityBilling(
+            period.roomId?.branch || period.branch,
+            utilityType,
+          ),
+        );
 
     const rows = scopedPeriods.flatMap((period) => {
       const summaries = period.tenantSummaries || [];

@@ -234,11 +234,6 @@ export async function handleExportInquiriesPDF({
     title: "Inquiries & Lead Acquisition Report",
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
-    period: `Generated on ${new Date().toLocaleDateString("en-PH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })}`,
     reportType: "Inquiries",
     kpis,
     sections: [
@@ -247,7 +242,7 @@ export async function handleExportInquiriesPDF({
         title: "Filtered Inquiry Records",
         description: `Export containing ${inquiries.length} inquiry record(s) matching active search and filter criteria.`,
         headers: ["Inquirer", "Branch", "Room Interest", "Source", "Status", "Submitted", "Message"],
-        colWidths: [35, 22, 30, 22, 25, 20, 40],
+        colWidths: [28, 20, 25, 18, 20, 22, 45],
         rows: tableRows,
       },
     ],

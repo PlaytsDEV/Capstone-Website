@@ -25,6 +25,7 @@ import {
   Clock,
   Percent,
 } from "lucide-react";
+import { formatDisplayReference } from "../../../../shared/utils/formatPaymentReference";
 import { reservationApi } from "../../../../shared/api/reservationApi";
 import ProfileAvatar, { getProfileInitials } from "../../../../shared/components/ProfileAvatar";
 import { AdminTablePageSkeleton } from "../AdminContentSkeletons";
@@ -229,7 +230,8 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
         source,
         paymentMethod: p.paymentMethod || p.method || "PayMongo",
         referenceNumber:
-          p.referenceNumber || p.paymentReference || p.externalPaymentId || p.paymentId || "—",
+          formatDisplayReference(p.referenceNumber || p.paymentReference || p.paymentId || p.externalPaymentId),
+        rawGatewayId: p.externalPaymentId || p.providerPaymentId || null,
         submittedAt: p.submittedAt || p.createdAt || null,
       };
     });
@@ -1015,9 +1017,20 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                 <button
                   type="button"
                   onClick={() => handleDownloadReceipt(selectedPayment)}
-                  disabled={generatingReceipt}
-                  className="group inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-xs font-semibold text-white shadow-2xs transition-all duration-150 hover:bg-slate-800 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/30 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:focus-visible:ring-slate-100/30 cursor-pointer shrink-0"
-                  title="Download official PDF deposit receipt"
+                  disabled={
+                    generatingReceipt ||
+                    (selectedPayment.status !== "confirmed" &&
+                      selectedPayment.status !== "verified" &&
+                      selectedPayment.status !== "paid")
+                  }
+                  className="group inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-xs font-semibold text-white shadow-2xs transition-all duration-150 hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/30 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:focus-visible:ring-slate-100/30 cursor-pointer shrink-0"
+                  title={
+                    selectedPayment.status === "confirmed" ||
+                    selectedPayment.status === "verified" ||
+                    selectedPayment.status === "paid"
+                      ? "Download official PDF deposit receipt"
+                      : "Receipt unavailable — Payment is not yet confirmed"
+                  }
                   aria-label="Download official PDF deposit receipt"
                 >
                   {generatingReceipt ? (
@@ -1129,6 +1142,11 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
                           {copiedKey === "refNum" ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
                         </button>
                       </dd>
+                      {selectedPayment.rawGatewayId && (
+                        <p className="text-[10px] text-muted-foreground mt-1 truncate" title={`Gateway ID: ${selectedPayment.rawGatewayId}`}>
+                          Gateway ID: <span className="font-mono">{selectedPayment.rawGatewayId}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
 

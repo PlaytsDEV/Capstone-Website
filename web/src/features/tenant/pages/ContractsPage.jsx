@@ -5,10 +5,16 @@ import {
   ArrowRight,
   Building2,
   Calendar,
+  ChevronDown,
+  ChevronUp,
   Coins,
+  Download,
+  Eye,
   FileText,
+  History,
   ShieldCheck,
 } from "lucide-react";
+import { showNotification } from "../../../shared/utils/notification";
 import { tenantContractApi } from "../api/tenantContractApi";
 import {
   getTenantContractError,
@@ -144,25 +150,161 @@ function ContractSummaryBanner({ contract, stayData }) {
   );
 }
 
+function PreviousContractsSection({ history, onPreview, onDownload, actionBusyId }) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  if (!history || history.length === 0) return null;
+
+  return (
+    <section className="mt-8 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden transition-all duration-200">
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer text-left"
+        aria-expanded={isOpen}
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400">
+            <History size={18} strokeWidth={2} />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <span>Previous Agreements &amp; Renewals</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                {history.length}
+              </span>
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Access your previous lease agreements, renewal contracts, and room transfer documents.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
+          <span>{isOpen ? "Hide" : "Show"}</span>
+          {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="p-5 border-t border-slate-200/80 dark:border-slate-800 space-y-3.5 bg-slate-50/50 dark:bg-slate-950/20">
+          <div className="grid grid-cols-1 gap-3">
+            {history.map((item) => {
+              const contractId = item.id || item._id;
+              const isBusy = actionBusyId === contractId;
+              const startDate = item.leaseStartDate ? dayjs(item.leaseStartDate).format("MMM D, YYYY") : "—";
+              const endDate = item.leaseEndDate ? dayjs(item.leaseEndDate).format("MMM D, YYYY") : "—";
+              const rate = item.approvedMonthlyRate || item.regularMonthlyRate;
+              const isReplacement = item.contractPurpose === "replacement" || item.status === "replaced";
+              const isExpired = item.status === "expired" || item.status === "completed";
+              const isRenewed = item.status === "renewed";
+
+              const statusBadgeLabel = isReplacement
+                ? "Superseded (Transfer)"
+                : isRenewed
+                ? "Renewed"
+                : isExpired
+                ? "Term Expired"
+                : item.status?.replace(/_/g, " ") || "Archived";
+
+              const statusDotColor = isReplacement
+                ? "bg-amber-500"
+                : isRenewed
+                ? "bg-blue-500"
+                : "bg-slate-400";
+
+              return (
+                <div
+                  key={contractId}
+                  className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+                >
+                  <div className="space-y-2 flex-1 min-w-0">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <span className="font-mono text-xs font-bold text-slate-900 dark:text-slate-100">
+                        {item.contractNumber || `CON-${String(contractId).slice(-6).toUpperCase()}`}
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-transparent text-slate-700 dark:text-slate-300">
+                        <span className={`w-1.5 h-1.5 rounded-full ${statusDotColor}`} />
+                        <span className="capitalize">{statusBadgeLabel}</span>
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs pt-1">
+                      <div>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 block font-medium">Accommodation</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                          {item.branch ? (String(item.branch).includes("gil") ? "Gil Puyat" : "Guadalupe") : "Lilycrest"} · Room {item.roomNumber || "—"} {item.bedLabel ? `(${item.bedLabel})` : ""}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 block font-medium">Lease Period</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                          {startDate} – {endDate}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 block font-medium">Approved Monthly Rent</span>
+                        <span className="font-semibold font-mono text-slate-800 dark:text-slate-200">
+                          {rate ? `₱${Number(rate).toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-slate-800">
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => onPreview(item)}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
+                    >
+                      <Eye size={13} strokeWidth={2} />
+                      <span>{isBusy ? "Loading…" : "View PDF"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => onDownload(item)}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
+                    >
+                      <Download size={13} strokeWidth={2} />
+                      <span>Download</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function ContractsPage() {
   const [contract, setContract] = useState(null);
   const [stayData, setStayData] = useState(null);
+  const [contractHistory, setContractHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionBusyId, setActionBusyId] = useState(null);
 
   useEffect(() => {
     let active = true;
     Promise.allSettled([
       tenantContractApi.getMyCurrentContract(),
       tenantContractApi.getMyStayProofData(),
+      tenantContractApi.getMyContractHistory(),
     ])
-      .then(([contractRes, stayProofRes]) => {
+      .then(([contractRes, stayProofRes, historyRes]) => {
         if (!active) return;
         if (contractRes.status === "fulfilled" && contractRes.value?.contract) {
           setContract(contractRes.value.contract);
         }
         if (stayProofRes.status === "fulfilled" && stayProofRes.value?.stayProof) {
           setStayData(stayProofRes.value.stayProof);
+        }
+        if (historyRes.status === "fulfilled" && Array.isArray(historyRes.value?.contracts)) {
+          setContractHistory(historyRes.value.contracts);
         }
       })
       .catch((requestError) => {
@@ -201,6 +343,60 @@ export default function ContractsPage() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       setError(err?.message || "Failed to download signed contract copy.");
+    }
+  };
+
+  const handlePreviewHistoryContract = async (histContract) => {
+    const contractId = histContract.id || histContract._id;
+    if (!contractId) return;
+    setActionBusyId(contractId);
+    try {
+      let blob;
+      try {
+        blob = await tenantContractApi.getMyFinalContractFile(contractId, false);
+      } catch {
+        try {
+          blob = await tenantContractApi.getMySignedContractFile(contractId, undefined, false);
+        } catch {
+          blob = await tenantContractApi.getMyPreparedContractFile(contractId, false);
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      showNotification(err?.message || "Failed to preview historical contract copy.", "error");
+    } finally {
+      setActionBusyId(null);
+    }
+  };
+
+  const handleDownloadHistoryContract = async (histContract) => {
+    const contractId = histContract.id || histContract._id;
+    if (!contractId) return;
+    setActionBusyId(contractId);
+    try {
+      let blob;
+      try {
+        blob = await tenantContractApi.getMyFinalContractFile(contractId, true);
+      } catch {
+        try {
+          blob = await tenantContractApi.getMySignedContractFile(contractId, undefined, true);
+        } catch {
+          blob = await tenantContractApi.getMyPreparedContractFile(contractId, true);
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Lilycrest-Lease-Contract-${histContract.contractNumber || contractId}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showNotification("Contract PDF download started.", "success");
+    } catch (err) {
+      showNotification(err?.message || "Failed to download historical contract copy.", "error");
+    } finally {
+      setActionBusyId(null);
     }
   };
 
@@ -307,6 +503,14 @@ export default function ContractsPage() {
           />
         </>
       )}
+
+      {/* Previous Agreements & Renewals Section */}
+      <PreviousContractsSection
+        history={contractHistory}
+        onPreview={handlePreviewHistoryContract}
+        onDownload={handleDownloadHistoryContract}
+        actionBusyId={actionBusyId}
+      />
     </main>
   );
 }

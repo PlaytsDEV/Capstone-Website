@@ -151,11 +151,6 @@ export async function handleExportTenantsPDF({
     title: "Tenant Directory Report",
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
-    period: `Generated on ${new Date().toLocaleDateString("en-PH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })}`,
     reportType: "Tenants",
     kpis,
     sections: [
@@ -164,7 +159,7 @@ export async function handleExportTenantsPDF({
         title: "Current Tenant Roster",
         description: `Listing ${tenants.length} tenant record(s) matching the active workspace filters.`,
         headers: ["Tenant", "Branch", "Room", "Contract End", "Billing", "Contract", "Occupancy"],
-        colWidths: [40, 22, 28, 22, 20, 22, 20],
+        colWidths: [34, 20, 25, 23, 24, 26, 26],
         rows: tableRows,
       },
     ],

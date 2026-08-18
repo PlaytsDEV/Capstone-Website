@@ -3,6 +3,7 @@ import { CreditCard, LoaderCircle, RefreshCw, Search } from "lucide-react";
 import { useAdminPayments } from "../../../../shared/hooks/queries/useBilling";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { fmtCurrency, formatBranch } from "../../utils/formatters";
+import { formatDisplayReference } from "../../../../shared/utils/formatPaymentReference";
 import { TableSkeleton } from "../../../../shared/components/LoadingSkeletons";
 
 const OWNER_ROLES = new Set(["owner"]);
@@ -254,8 +255,11 @@ export default function AdminPaymentsTab({ isActive }) {
                     </td>
                     <td className="py-3 pr-4 text-muted-foreground">{payment.source || "—"}</td>
                     <td className="py-3 pr-4 text-muted-foreground">
-                      <div className="max-w-[170px] truncate" title={payment.externalPaymentId || payment.referenceNumber || ""}>
-                        {payment.externalPaymentId || payment.referenceNumber || "—"}
+                      <div
+                        className="max-w-[170px] truncate font-mono text-xs"
+                        title={`Ref: ${payment.referenceNumber || payment.paymentId || "—"}${payment.externalPaymentId ? ` (Gateway: ${payment.externalPaymentId})` : ""}`}
+                      >
+                        {formatDisplayReference(payment.referenceNumber || payment.paymentId || payment.externalPaymentId)}
                       </div>
                     </td>
                     <td className="py-3 pr-4 text-muted-foreground">

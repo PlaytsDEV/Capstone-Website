@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -10,6 +10,7 @@ import {
   History,
   AlertTriangle,
   CheckCircle,
+  Check,
   Shield,
   Download,
   RefreshCw,
@@ -39,6 +40,7 @@ import {
 import { showNotification } from "../../../shared/utils/notification";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 import DeadlineBadge from "../../../shared/components/DeadlineBadge";
+import StatusBadge from "./shared/StatusBadge";
 import { formatBedPosition, formatCodedRoomAndBed } from "../../../shared/utils/bedIdentifier";
 import {
   useTenantWorkspaceDetail,
@@ -58,7 +60,7 @@ import {
 import DigitalContractPaper from "../../tenant/components/contracts/DigitalContractPaper";
 import SignedContractUploadSection from "./SignedContractUploadSection";
 import TenantDetailModalSkeleton from "./TenantDetailModalSkeleton";
-import { formatBranch } from "../utils/formatters";
+import { formatBranch, formatRoomType } from "../utils/formatters";
 import { resolveReservationFinancials } from "../../../shared/utils/depositUtils";
 
 const WARNING_DETAILS_MAP = {
@@ -70,7 +72,7 @@ const WARNING_DETAILS_MAP = {
     recommendation: "Review meter reading breakdown, notify tenant, or record received payment.",
   },
   outstanding_electricity: {
-    title: "Unpaid Electricity",
+    title: "Electricity",
     category: "electricity",
     details: "Electricity billing is awaiting payment on or before the designated due date.",
     impact: "Please settle on or before the due date to avoid daily late penalties.",
@@ -84,7 +86,7 @@ const WARNING_DETAILS_MAP = {
     recommendation: "Review payment history, verify due date, or follow up with the tenant.",
   },
   outstanding_rent: {
-    title: "Unpaid Rent",
+    title: "Rent",
     category: "rent",
     details: "Monthly rent invoice is open and due on the scheduled payment date.",
     impact: "The remaining balance needs to be settled on or before the due date.",
@@ -98,7 +100,7 @@ const WARNING_DETAILS_MAP = {
     recommendation: "Review room water billing distribution and request settlement.",
   },
   outstanding_water: {
-    title: "Unpaid Water Share",
+    title: "Water",
     category: "water",
     details: "Water billing is pending payment before the scheduled due date.",
     impact: "The remaining balance needs to be settled on or before the due date.",
@@ -154,7 +156,7 @@ const WARNING_DETAILS_MAP = {
     recommendation: "Review payment history, send a payment reminder, or record a received payment.",
   },
   outstanding_balance: {
-    title: "Unpaid Balance",
+    title: "Outstanding Balance",
     category: "billing",
     details: "This tenant has an unpaid balance on their current bill.",
     impact: "The remaining balance needs to be settled before the billing cycle closes.",
@@ -180,6 +182,28 @@ const formatDate = (d) => {
   if (!d || d === "-") return "N/A";
   const date = new Date(d);
   return Number.isNaN(date.getTime()) ? "N/A" : date.toISOString().split("T")[0];
+};
+
+const formatBillingCycle = (cycle, fallbackDueDate = null) => {
+  if (cycle) {
+    if (cycle.start && cycle.end) {
+      return `${formatDate(cycle.start)} – ${formatDate(cycle.end)}`;
+    }
+    if (cycle.month) {
+      const d = new Date(cycle.month);
+      if (!Number.isNaN(d.getTime())) {
+        return d.toLocaleDateString("en-PH", { month: "short", year: "numeric" }) + " Cycle";
+      }
+      return `${cycle.month} Cycle`;
+    }
+  }
+  if (fallbackDueDate) {
+    const d = new Date(fallbackDueDate);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-PH", { month: "short", year: "numeric" }) + " Cycle";
+    }
+  }
+  return "Current Billing Cycle";
 };
 
 const formatMoney = (amount, fallback = "₱0") => {
@@ -420,7 +444,13 @@ function WarningCard({ warning, onAction, tenant }) {
 
   const badge = getBadgeConfig();
   const meta = WARNING_DETAILS_MAP[warning.type] || WARNING_DETAILS_MAP[warning.code] || {};
-  const title = warning.title || meta.title || warning.type || "System Warning";
+  const rawTitle = warning.title || meta.title || warning.type || "System Warning";
+  const title = rawTitle
+    .replace(/^Unpaid\s+Electricity$/i, "Electricity")
+    .replace(/^Unpaid\s+Water(?:\s+Share)?$/i, "Water")
+    .replace(/^Unpaid\s+Rent$/i, "Rent")
+    .replace(/^Unpaid\s+Balance$/i, "Outstanding Balance")
+    .replace(/^Unpaid\s+/i, "");
 
   return (
     <div className="p-4 rounded-xl transition-all bg-card border border-border shadow-2xs hover:border-slate-300 dark:hover:border-slate-700">
@@ -550,15 +580,21 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
   const [safeguardsData, setSafeguardsData] = useState(null);
   const [dedicatedContract, setDedicatedContract] = useState(null);
   const [contractLookupDone, setContractLookupDone] = useState(false);
+  const [allTenantContracts, setAllTenantContracts] = useState([]);
   const [expandedWarnings, setExpandedWarnings] = useState({});
+  const [expandedBillCards, setExpandedBillCards] = useState({});
+  const toggleBillCard = (id) => {
+    setExpandedBillCards((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
   const [activeTab, setActiveTab] = useState("overview");
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [previewDoc, setPreviewDoc] = useState(null);
-  const [isHistoryFolded, setIsHistoryFolded] = useState(false);
   const [isDocsPanelOpen, setIsDocsPanelOpen] = useState(false);
+  const docsPanelRef = useRef(null);
   const [downloadingProof, setDownloadingProof] = useState(false);
   const [showDigitalContractModal, setShowDigitalContractModal] = useState(false);
   const [digitalContractData, setDigitalContractData] = useState(null);
+  const [activeDigitalContract, setActiveDigitalContract] = useState(null);
   const [loadingDigitalContract, setLoadingDigitalContract] = useState(false);
 
   const reservationId =
@@ -573,38 +609,47 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
   } = useTenantWorkspaceDetail(reservationId);
   const { data: actionContext } = useTenantActionContext(reservationId);
 
-  // Sync dedicatedContract from fetched detail or fallback to query
+  // Sync dedicatedContract and all contracts from fetched detail or contractApi
   useEffect(() => {
     if (!fetchedDetail && !initialTenant) return;
-    const contractFromDetail =
-      fetchedDetail?.dedicatedContract || initialTenant?.dedicatedContract;
-    if (contractFromDetail) {
-      setDedicatedContract(contractFromDetail);
-      setContractLookupDone(true);
-      return;
-    }
+    const tenantId =
+      fetchedDetail?.tenantId ||
+      initialTenant?.tenantId?._id ||
+      initialTenant?.tenantId ||
+      initialTenant?.userId?._id ||
+      initialTenant?.userId;
+
     let active = true;
     setContractLookupDone(false);
     contractApi
-      .listContracts({ limit: 100 })
+      .listContracts({
+        tenantId: tenantId ? String(tenantId) : undefined,
+        archive: "all",
+        limit: 100,
+      })
       .then(({ contracts = [] }) => {
         if (!active) return;
-        const tenantId =
-          fetchedDetail?.tenantId ||
-          initialTenant?.tenantId?._id ||
-          initialTenant?.tenantId ||
-          initialTenant?.userId?._id ||
-          initialTenant?.userId;
-        setDedicatedContract(
-          contracts.find(
-            (item) =>
-              String(item.reservationId) === String(reservationId) ||
-              (tenantId && String(item.tenantId) === String(tenantId)),
-          ) || null,
+        const matchingContracts = contracts.filter(
+          (item) =>
+            String(item.reservationId) === String(reservationId) ||
+            (tenantId && String(item.tenantId) === String(tenantId)),
         );
+        setAllTenantContracts(matchingContracts);
+
+        const currentContract =
+          fetchedDetail?.dedicatedContract ||
+          initialTenant?.dedicatedContract ||
+          matchingContracts.find((item) => item.isCurrent && !item.archivedAt) ||
+          matchingContracts[0] ||
+          null;
+
+        setDedicatedContract(currentContract);
       })
       .catch(() => {
-        if (active) setDedicatedContract(null);
+        if (active) {
+          setDedicatedContract(null);
+          setAllTenantContracts([]);
+        }
       })
       .finally(() => {
         if (active) setContractLookupDone(true);
@@ -614,12 +659,14 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
     };
   }, [fetchedDetail, initialTenant, reservationId]);
 
-  const handleDownloadStayProof = async () => {
+  const handleDownloadStayProof = async (contractOverride = null) => {
+    const targetContract = contractOverride || activeDigitalContract || dedicatedContract;
     setDownloadingProof(true);
     try {
       const targetId =
-        dedicatedContract?._id ||
-        dedicatedContract?.contractNumber ||
+        targetContract?._id ||
+        targetContract?.id ||
+        targetContract?.contractNumber ||
         reservationId ||
         initialTenant?.reservationCode ||
         initialTenant?._id ||
@@ -628,7 +675,7 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Lilycrest-Lease-Contract-${dedicatedContract?.contractNumber || initialTenant?.reservationCode || "Tenant"}.pdf`;
+      a.download = `Lilycrest-Lease-Contract-${targetContract?.contractNumber || initialTenant?.reservationCode || "Tenant"}.pdf`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
@@ -638,12 +685,23 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
     }
   };
 
-  const handleOpenDigitalContract = async () => {
+  const handleOpenDigitalContract = async (specificContract = null) => {
+    const selectedContract =
+      (specificContract && typeof specificContract === "object")
+        ? specificContract
+        : dedicatedContract;
+    setActiveDigitalContract(selectedContract);
     setLoadingDigitalContract(true);
     setShowDigitalContractModal(true);
     try {
       const targetId =
+        (typeof specificContract === "string"
+          ? specificContract
+          : specificContract?._id ||
+            specificContract?.id ||
+            specificContract?.contractNumber) ||
         dedicatedContract?._id ||
+        dedicatedContract?.id ||
         dedicatedContract?.contractNumber ||
         reservationId ||
         initialTenant?.reservationCode ||
@@ -662,12 +720,70 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
 
   const handleWarningAction = (actionType) => {
     if (actionType === "view_bill" || actionType === "verify_receipt") {
-      setActiveTab("history");
+      setActiveTab("financials");
     } else if (actionType === "renew_lease") {
       setDialogState({ type: "renew", loading: false, error: null });
     } else if (actionType === "view_violations") {
       onClose();
       navigate("/admin/billing?tab=violations");
+    }
+  };
+
+  const [generatingReceiptId, setGeneratingReceiptId] = useState(null);
+
+  const handleViewBillReceipt = async (item = null) => {
+    const cardId = item?.id || "monthly-rent";
+    try {
+      setGeneratingReceiptId(cardId);
+      const { viewBillingReceiptPDF } = await import("../../../shared/utils/receiptGenerator.js");
+      const isElec = item?.category === "electricity" || item?.code?.includes("electricity");
+      const isWater = item?.category === "water" || item?.code?.includes("water");
+      const isPenalty = item?.category === "penalty" || item?.code?.includes("penalty");
+      const isViolation = item?.category === "violation" || item?.code?.includes("violation");
+      const isOverdue =
+        item?.code?.includes("overdue") ||
+        item?.severity === "high" ||
+        item?.severity === "error";
+
+      const rentAmount =
+        !item || item.category === "rent" || item.code?.includes("rent")
+          ? Number(item?.amount || tenant.monthlyRate || 0)
+          : 0;
+
+      const payload = {
+        id: item?.billId || tenant.reservationId || "bill",
+        _id: item?.billId || tenant.reservationId || "bill",
+        tenantName: tenant.name || tenant.tenantName || "Tenant",
+        tenantEmail: tenant.email || "N/A",
+        email: tenant.email || "N/A",
+        branch: tenant.branch || "Lilycrest",
+        room: tenant.room || "Assigned Room",
+        bed: tenant.bed || "",
+        roomType: tenant.roomType || "Standard",
+        billingMonth: item?.cycle?.month || new Date().toISOString(),
+        dueDate: item?.dueDate || tenant.leaseEndDate || new Date().toISOString(),
+        status: isOverdue ? "overdue" : "pending",
+        totalAmount: Number(item?.amount ?? tenant.monthlyRate ?? 0),
+        paidAmount:
+          tenant.paymentStatus === "paid" && !item
+            ? Number(tenant.monthlyRate || 0)
+            : 0,
+        charges: {
+          rent: rentAmount,
+          electricity: isElec ? Number(item?.amount || 0) : 0,
+          water: isWater ? Number(item?.amount || 0) : 0,
+          penalty: isPenalty ? Number(item?.amount || 0) : 0,
+          violation: isViolation ? Number(item?.amount || 0) : 0,
+        },
+        createdAt: item?.date || new Date().toISOString(),
+      };
+
+      await viewBillingReceiptPDF(payload);
+    } catch (err) {
+      console.error("Failed to generate bill receipt/statement PDF:", err);
+      showNotification("Could not generate PDF statement. Please try again.", "error");
+    } finally {
+      setGeneratingReceiptId(null);
     }
   };
 
@@ -797,7 +913,7 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
       branch: formatBranch(basicInfo.branch || detail.branch || "") || "N/A",
       room: basicInfo.room || detail.room || "N/A",
       bed: basicInfo.bed || detail.bed || "",
-      roomType: detail.roomType || "",
+      roomType: detail.roomType || basicInfo.roomType || detail.room?.type || detail.assignedRoom?.type || detail.preferredRoomType || detail.type || "",
       moveInDate: formatDate(leaseInfo.moveInDate || detail.moveInDate || detail.moveIn),
       moveIn: formatDate(leaseInfo.moveInDate || detail.moveInDate || detail.moveIn),
       contractEnd: formatDate(leaseInfo.leaseEndDate || detail.contractEnd || detail.moveOut || detail.leaseEndDate),
@@ -868,11 +984,80 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
     setDialogState({ type: null, loading: false, error: null });
   };
 
+  const handleOpenDocsPanel = useCallback(() => {
+    setActiveTab("overview");
+    setIsDocsPanelOpen(true);
+    setTimeout(() => {
+      if (docsPanelRef.current) {
+        docsPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 100);
+  }, []);
+
   const invalidateTenantQueries = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ["reservations"] }),
       queryClient.invalidateQueries({ queryKey: ["rooms"] }),
     ]);
+
+  const isGuadalupe = useMemo(() => {
+    const branchStr = String(tenant?.branch || "").toLowerCase();
+    return branchStr.includes("guadalupe") || branchStr.includes("guada");
+  }, [tenant?.branch]);
+
+  const unpaidUtilityWarnings = useMemo(() => {
+    const warns = tenant?.warnings || [];
+    return warns.filter((w) => {
+      if (
+        isGuadalupe &&
+        (w.category === "electricity" ||
+          w.category === "water" ||
+          w.code?.includes("electricity") ||
+          w.code?.includes("water"))
+      ) {
+        return false;
+      }
+      return (
+        w.category === "electricity" ||
+        w.category === "water" ||
+        w.category === "penalty" ||
+        w.category === "rent" ||
+        (w.category === "violation" && Number(w.penaltyAmount || w.amount || 0) > 0) ||
+        w.code?.includes("electricity") ||
+        w.code?.includes("water") ||
+        w.code?.includes("penalty") ||
+        w.code?.includes("rent") ||
+        (w.code?.includes("violation") && Number(w.penaltyAmount || w.amount || 0) > 0)
+      );
+    });
+  }, [tenant?.warnings, isGuadalupe]);
+
+  const roomHistory = useMemo(() => {
+    const raw = (tenant?.roomHistory && tenant.roomHistory.length > 0)
+      ? tenant.roomHistory
+      : (tenant?.branch || tenant?.room)
+        ? [
+            {
+              id: "current-assignment",
+              branch: tenant.branch || "N/A",
+              room: tenant.room || "N/A",
+              bed: tenant.bed || "N/A",
+              moveInDate: tenant.moveInDate || tenant.moveIn || null,
+              moveOutDate: null,
+              status: "current",
+              contract: dedicatedContract || null,
+            },
+          ]
+        : [];
+
+    return [...raw].sort((a, b) => {
+      const aIsCurrent = a.status === "current" || !a.moveOutDate;
+      const bIsCurrent = b.status === "current" || !b.moveOutDate;
+      if (aIsCurrent && !bIsCurrent) return -1;
+      if (!aIsCurrent && bIsCurrent) return 1;
+      return 0;
+    });
+  }, [tenant, dedicatedContract]);
 
   if (!initialTenant && !reservationId) return null;
 
@@ -881,7 +1066,6 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
     return <TenantDetailModalSkeleton onClose={onClose} />;
   }
 
-  const roomHistory = tenant.roomHistory || [];
   const contractStatus = dedicatedContract?.status || null;
   const paymentStatus = tenant.paymentStatus || "paid";
   const occupancyStatus = tenant.occupancyStatus || "active";
@@ -900,7 +1084,7 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
   return (
     <div>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-        <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
           {/* HEADER */}
           <div className="px-6 py-4 border-b border-border bg-card flex-shrink-0 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
@@ -936,7 +1120,7 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
           </div>
 
           {/* BODY - SPLIT PANEL LAYOUT (col-12) */}
-          <div className="p-6 flex-1 overflow-y-auto bg-card grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="p-6 flex-1 min-h-0 overflow-y-auto bg-card grid grid-cols-1 lg:grid-cols-12 gap-6">
             
             {/* LEFT SIDEBAR (lg:col-span-4) - Fixed Context */}
             <div className="lg:col-span-4 space-y-4">
@@ -1020,11 +1204,9 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
                   <div className="pt-2.5 border-t border-border/40">
                     <button
                       type="button"
-                      onClick={() => {
-                        setActiveTab("overview");
-                        setIsDocsPanelOpen(true);
-                      }}
-                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border border-border bg-card text-foreground hover:bg-muted text-xs font-medium transition-colors"
+                      onClick={handleOpenDocsPanel}
+                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border border-border bg-card text-foreground hover:bg-muted hover:border-border-strong text-xs font-medium transition-colors cursor-pointer"
+                      title="Navigate to and expand attached application documents"
                     >
                       <span className="flex items-center gap-1.5">
                         <ClipboardList className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
@@ -1371,12 +1553,16 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
                     </div>
 
                     {/* Attached Verification Documents & Media Card */}
-                    <div className="bg-muted/30 border border-border/60 rounded-xl overflow-hidden">
+                    <div
+                      ref={docsPanelRef}
+                      id="attached-verification-docs-panel"
+                      className="bg-muted/30 border border-border/60 rounded-xl overflow-hidden scroll-mt-6"
+                    >
                       {/* Collapsible Header */}
                       <button
                         type="button"
                         onClick={() => setIsDocsPanelOpen((v) => !v)}
-                        className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/40 transition-colors"
+                        className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/40 transition-colors cursor-pointer"
                       >
                         <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground uppercase tracking-wide">
                           <FileCheck className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
@@ -1384,11 +1570,13 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
                         </span>
                         <span className="flex items-center gap-2">
                           {attachedDocs.length > 0 ? (
-                            <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-2.5 py-0.5 rounded-full">
+                            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                               Documents Uploaded
                             </span>
                           ) : (
-                            <span className="text-[11px] text-muted-foreground bg-card px-2 py-0.5 rounded border border-border/50">
+                            <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                               No Files Attached
                             </span>
                           )}
@@ -1450,19 +1638,19 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
 
                     {/* Extensions */}
                     {extensionHistory.length > 0 && (
-                      <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
+                      <div className="bg-card border border-border rounded-xl p-4 space-y-3 shadow-2xs">
                         <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
                           <History className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                           Lease Extension History ({extensionHistory.length})
                         </h4>
-                        <div className="space-y-2">
+                        <div className="divide-y divide-border/40 text-xs">
                           {extensionHistory.map((extension) => (
-                            <div key={extension.id} className="p-2.5 bg-card border border-border rounded-lg text-xs">
-                              <div className="flex items-center justify-between mb-1">
+                            <div key={extension.id} className="py-2.5 first:pt-1 last:pb-0 text-xs">
+                              <div className="flex items-center justify-between mb-0.5">
                                 <span className="font-semibold text-foreground">{extension.duration}</span>
-                                <span className="text-muted-foreground">{extension.date}</span>
+                                <span className="text-muted-foreground text-[11px]">{extension.date}</span>
                               </div>
-                              <div className="text-muted-foreground">{extension.previousEnd} → {extension.newEnd}</div>
+                              <div className="text-muted-foreground text-[11px]">{extension.previousEnd} → {extension.newEnd}</div>
                             </div>
                           ))}
                         </div>
@@ -1474,69 +1662,522 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
                 {/* TAB 2: FINANCIALS & BILLING */}
                 {activeTab === "financials" && (
                   <div className="space-y-4">
-                    <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                        <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
-                          <DollarSign className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                          Financial Ledger Summary
-                        </h4>
-                        <span className="text-[11px] text-muted-foreground">Standard 1-Month Deposit & Advance Rent</span>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        <div className="p-2.5 bg-card border border-border rounded-lg">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-muted-foreground text-[11px]">Monthly Rent Rate</span>
-                            <span className="text-[10px] text-muted-foreground">Base monthly</span>
-                          </div>
-                          <span className="font-bold text-foreground text-sm">{formatMoney(tenant.monthlyRate)}</span>
-                        </div>
-                        <div className="p-2.5 bg-card border border-border rounded-lg">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-muted-foreground text-[11px]">Current Balance</span>
-                            <span className={"text-[10px] font-medium " + ((tenant.balance || 0) > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
-                              {(tenant.balance || 0) > 0 ? "Unpaid balance" : "Fully settled"}
-                            </span>
-                          </div>
-                          <span className={"font-bold text-sm " + ((tenant.balance || 0) > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
-                            {formatMoney(tenant.balance || 0)}
+                    {/* Consolidated Financial & Billing Ledger Card */}
+                    <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-4">
+                      {/* Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-border/40">
+                        <div>
+                          <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
+                            <Receipt className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                            Financial &amp; Billing Ledger
+                          </h4>
+                          <span className="text-[11px] text-muted-foreground">
+                            Account balances, settlement status, and deposit records
                           </span>
                         </div>
-                        <div className="p-2.5 bg-card/60 border border-border/60 rounded-lg">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-muted-foreground text-[11px]">Advance Rent Paid</span>
-                            <span className="text-[10px] text-muted-foreground">1 month applied</span>
-                          </div>
-                          <span className="font-semibold text-foreground text-sm">{formatMoney(tenant.advanceRent)}</span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <StatusBadge module="billing" status={tenant.paymentStatus} />
+                          {calculatedDueDate && tenant.paymentStatus !== "paid" && (
+                            <span className="text-[11px] text-muted-foreground font-mono bg-card px-2 py-0.5 rounded border border-border/50">
+                              Due: {calculatedDueDate}
+                            </span>
+                          )}
                         </div>
-                        <div className="p-2.5 bg-card/60 border border-border/60 rounded-lg">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-muted-foreground text-[11px]">Security Deposit Held</span>
-                            <span className="text-[10px] text-muted-foreground">Refundable</span>
+                      </div>
+
+                      {tenant.paymentStatus === "overdue" && (
+                        <div className="p-3.5 bg-card border border-border rounded-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-2xs">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-rose-500" />
+                              <span className="text-xs font-bold text-rose-700 dark:text-rose-400">
+                                Overdue Account Balance
+                              </span>
+                              <span className="text-xs font-mono font-semibold text-rose-700 dark:text-rose-400">
+                                {formatMoney(tenant.balance || 0)}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground pl-4">
+                              This account has an overdue balance past the designated due date. Review statement and follow up.
+                            </p>
                           </div>
-                          <span className="font-semibold text-foreground text-sm">{formatMoney(tenant.securityDeposit)}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              navigate(`/admin/billing?tenant=${tenant.reservationId || ""}`);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-all cursor-pointer whitespace-nowrap self-start sm:self-auto"
+                          >
+                            <span>Review in Billing</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <div className="p-2.5 bg-card/60 border border-border/60 rounded-lg sm:col-span-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                          <div>
-                            <span className="text-muted-foreground text-[11px] block">Reservation Fee</span>
-                            <span className="text-[10px] text-muted-foreground">Credited toward move-in cash-out</span>
+                      )}
+
+                      {/* Section 1: Monthly Rent & Active Billing */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-foreground block uppercase tracking-wider">
+                            Monthly Rent &amp; Active Dues
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            Recurring room rent &amp; calculated utilities
+                          </span>
+                        </div>
+
+                        <div className="space-y-3">
+                          {/* 1. Monthly Rent Rate (Horizontal Card) */}
+                          <div className="p-3.5 bg-card border border-border rounded-xl shadow-2xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              {/* Left: Standalone Icon, Title, Badge, Subtitle */}
+                              <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                                <Home className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5 sm:mt-0" />
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-bold text-foreground">Monthly Rent Rate</span>
+                                    {isGuadalupe ? (
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                        <span>Utilities Included</span>
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                        <span>Base Monthly</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                                    {isGuadalupe ? "Fixed rate (electricity & water included in base rent)" : "Contracted room rate / month"}
+                                    <span className="mx-1.5 text-border">•</span>
+                                    <span>Cycle: <strong className="font-medium text-foreground">Monthly Recurring</strong></span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Right: Amount & Actions */}
+                              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40">
+                                <div className="text-left sm:text-right">
+                                  <div className="text-base font-bold text-foreground font-mono">
+                                    {formatMoney(tenant.monthlyRate)}
+                                  </div>
+                                  <div className="text-[10px] text-muted-foreground">
+                                    Monthly Rate
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleViewBillReceipt(null)}
+                                    disabled={generatingReceiptId === "monthly-rent"}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted/40 text-foreground font-semibold text-[11px] transition-all cursor-pointer shadow-xs whitespace-nowrap"
+                                    title="View official rent statement / receipt PDF"
+                                    aria-label="View official rent statement / receipt"
+                                  >
+                                    {generatingReceiptId === "monthly-rent" ? (
+                                      <>
+                                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                                        <span>Generating...</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Receipt className="w-3.5 h-3.5 text-muted-foreground" />
+                                        <span>Receipt / Statement</span>
+                                      </>
+                                    )}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleBillCard("monthly-rent")}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted/40 text-muted-foreground hover:text-foreground font-semibold text-[11px] transition-all cursor-pointer shadow-xs whitespace-nowrap"
+                                    aria-label="Toggle rent rate breakdown"
+                                  >
+                                    <span>{expandedBillCards["monthly-rent"] ? "Hide Details" : "Breakdown"}</span>
+                                    <ChevronDown
+                                      className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                                        expandedBillCards["monthly-rent"] ? "rotate-180" : ""
+                                      }`}
+                                    />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Seamless Expanded Breakdown (No nested box) */}
+                            {expandedBillCards["monthly-rent"] && (
+                              <div className="pt-3 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-y-2 gap-x-4 text-[11px]">
+                                <div>
+                                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Room &amp; Bed</span>
+                                  <span className="font-medium text-foreground">{tenant.room || "Assigned room"}{tenant.bed ? ` (Bed ${tenant.bed})` : ""}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Room Category</span>
+                                  <span className="font-medium text-foreground">
+                                    {formatRoomType(tenant.roomType || "quadruple-sharing")}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Billing Cycle</span>
+                                  <span className="font-medium text-foreground">Monthly Recurring</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Utility Policy</span>
+                                  <span className="font-medium text-foreground">{isGuadalupe ? "Included in Base Rent" : "Billed Separately"}</span>
+                                </div>
+                                <div className="sm:col-span-2 md:col-span-4 pt-1.5 text-[11px] text-muted-foreground border-t border-border/30">
+                                  {isGuadalupe
+                                    ? "Fixed all-inclusive rate covering dormitory room occupancy and utility consumption without additional submetering."
+                                    : "Contracted monthly room rent under active lease. Room electricity and shared water are calculated separately per billing cycle."}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <span className="font-semibold text-foreground text-sm">{formatMoney(tenant.reservationFee)}</span>
+
+                          {/* 2. Active Itemized Dues (Horizontal Cards) */}
+                          {unpaidUtilityWarnings.map((item) => {
+                            const isOverdue =
+                              item.code?.includes("overdue") ||
+                              item.severity === "high" ||
+                              item.severity === "error";
+                            const isElec = item.category === "electricity" || item.code?.includes("electricity");
+                            const isWater = item.category === "water" || item.code?.includes("water");
+                            const isPenalty = item.category === "penalty" || item.code?.includes("penalty");
+                            const isViolation = item.category === "violation" || item.code?.includes("violation");
+
+                            const cardTitle = (item.title || item.code || "")
+                              .replace(/^Unpaid\s+Electricity$/i, "Electricity")
+                              .replace(/^Unpaid\s+Water(?:\s+Share)?$/i, "Water")
+                              .replace(/^Unpaid\s+Rent$/i, "Rent")
+                              .replace(/^Unpaid\s+Balance$/i, "Outstanding Balance")
+                              .replace(/^Unpaid\s+/i, "");
+
+                            const isCardExpanded = !!expandedBillCards[item.id];
+                            const cycleDisplay = formatBillingCycle(item.cycle, item.dueDate || item.rawDueDate);
+
+                            const IconComponent = isElec
+                              ? Zap
+                              : isWater
+                              ? Droplets
+                              : isPenalty
+                              ? AlertOctagon
+                              : isViolation
+                              ? ShieldAlert
+                              : Receipt;
+
+                            const iconColor = isElec
+                              ? "text-amber-500 dark:text-amber-400"
+                              : isWater
+                              ? "text-sky-500 dark:text-sky-400"
+                              : isPenalty || isViolation
+                              ? "text-rose-500 dark:text-rose-400"
+                              : "text-muted-foreground";
+
+                            return (
+                              <div
+                                key={item.id}
+                                className="p-3.5 bg-card border border-border rounded-xl shadow-2xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 space-y-3"
+                              >
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                  {/* Left: Standalone Icon, Title, Badge, Subtitle */}
+                                  <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                                    <IconComponent className={`w-4 h-4 shrink-0 mt-0.5 sm:mt-0 ${iconColor}`} />
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-xs font-bold text-foreground">
+                                          {cardTitle}
+                                        </span>
+                                        <span
+                                          className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
+                                            isOverdue
+                                              ? "text-rose-700 dark:text-rose-400"
+                                              : "text-amber-700 dark:text-amber-400"
+                                          }`}
+                                        >
+                                          <span
+                                            className={`w-1.5 h-1.5 rounded-full ${
+                                              isOverdue ? "bg-rose-500" : "bg-amber-500"
+                                            }`}
+                                          />
+                                          <span>{isOverdue ? "Overdue" : "Unpaid"}</span>
+                                        </span>
+                                      </div>
+                                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                                        <span>Payment Due: <strong className="font-medium text-foreground">{item.dueDate || "Pending"}</strong></span>
+                                        <span className="mx-1.5 text-border">•</span>
+                                        <span>Cycle: <strong className="font-medium text-foreground">{cycleDisplay}</strong></span>
+                                        {isOverdue && item.overdueDays ? (
+                                          <span className="ml-1 text-rose-600 dark:text-rose-400 font-medium">
+                                            ({item.overdueDays} days past due)
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Right: Amount & Actions */}
+                                  <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40">
+                                    <div className="text-left sm:text-right">
+                                      <div className="text-base font-bold text-foreground font-mono">
+                                        {item.amount != null ? formatMoney(item.amount) : "—"}
+                                      </div>
+                                      <div className="text-[10px] text-muted-foreground">
+                                        {isOverdue ? "Overdue Balance" : "Current Due"}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleViewBillReceipt(item)}
+                                        disabled={generatingReceiptId === item.id}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted/40 text-foreground font-semibold text-[11px] transition-all cursor-pointer shadow-xs whitespace-nowrap"
+                                        title="View official statement / receipt PDF"
+                                        aria-label="View official statement / receipt"
+                                      >
+                                        {generatingReceiptId === item.id ? (
+                                          <>
+                                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                                            <span>Generating...</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Receipt className="w-3.5 h-3.5 text-muted-foreground" />
+                                            <span>Receipt / Statement</span>
+                                          </>
+                                        )}
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleBillCard(item.id)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted/40 text-muted-foreground hover:text-foreground font-semibold text-[11px] transition-all cursor-pointer shadow-xs whitespace-nowrap"
+                                        aria-label={`Toggle breakdown for ${cardTitle}`}
+                                      >
+                                        <span>{isCardExpanded ? "Hide Details" : "Breakdown"}</span>
+                                        <ChevronDown
+                                          className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                                            isCardExpanded ? "rotate-180" : ""
+                                          }`}
+                                        />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Seamless Expanded Breakdown (No nested box) */}
+                                {isCardExpanded && (
+                                  <div className="pt-3 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-y-2 gap-x-4 text-[11px]">
+                                    {isElec && (
+                                      <>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Charge Type</span>
+                                          <span className="font-medium text-foreground">Submetered Electricity</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Room</span>
+                                          <span className="font-medium text-foreground">{tenant.room || "Assigned room"}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Billing Cycle</span>
+                                          <span className="font-medium text-foreground">{cycleDisplay}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Payment Deadline</span>
+                                          <span className={`font-medium ${isOverdue ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400"}`}>
+                                            {item.dueDate || "Scheduled"} ({isOverdue ? `${item.overdueDays || 1}d overdue` : "Pending"})
+                                          </span>
+                                        </div>
+                                        <div className="sm:col-span-2 md:col-span-4 pt-1.5 text-[11px] text-muted-foreground border-t border-border/30">
+                                          Calculated from room submeter kWh reading and shared equally among verified room occupants.
+                                        </div>
+                                      </>
+                                    )}
+
+                                    {isWater && (
+                                      <>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Charge Type</span>
+                                          <span className="font-medium text-foreground">Room Water Share</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Distribution</span>
+                                          <span className="font-medium text-foreground">Equal occupant share</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Billing Cycle</span>
+                                          <span className="font-medium text-foreground">{cycleDisplay}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Payment Deadline</span>
+                                          <span className={`font-medium ${isOverdue ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400"}`}>
+                                            {item.dueDate || "Scheduled"} ({isOverdue ? `${item.overdueDays || 1}d overdue` : "Pending"})
+                                          </span>
+                                        </div>
+                                        <div className="sm:col-span-2 md:col-span-4 pt-1.5 text-[11px] text-muted-foreground border-t border-border/30">
+                                          Shared room water consumption divided equally among active registered room occupants.
+                                        </div>
+                                      </>
+                                    )}
+
+                                    {isPenalty && (
+                                      <>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Fee Type</span>
+                                          <span className="font-medium text-foreground">Late Payment Daily Fee</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Days Overdue</span>
+                                          <span className="font-medium text-rose-600 dark:text-rose-400">{item.overdueDays ? `${item.overdueDays} day(s)` : "Active overdue"}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Billing Cycle</span>
+                                          <span className="font-medium text-foreground">{cycleDisplay}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Accrual Rate</span>
+                                          <span className="font-medium text-rose-600 dark:text-rose-400">₱50.00 / day</span>
+                                        </div>
+                                        <div className="sm:col-span-2 md:col-span-4 pt-1.5 text-[11px] text-muted-foreground border-t border-border/30">
+                                          Daily late penalty accrues automatically on past-due balances until settled in full.
+                                        </div>
+                                      </>
+                                    )}
+
+                                    {isViolation && (
+                                      <>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Incident Type</span>
+                                          <span className="font-medium text-foreground">{item.title || "House Rule Violation"}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Date Recorded</span>
+                                          <span className="font-medium text-foreground">{item.dateOfIncident || "Recent"}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Location</span>
+                                          <span className="font-medium text-foreground">{item.location || "Dormitory Premises"}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Fine Amount</span>
+                                          <span className="font-medium text-rose-600 dark:text-rose-400">{formatMoney(item.amount)}</span>
+                                        </div>
+                                        <div className="sm:col-span-2 md:col-span-4 pt-1.5 text-[11px] text-muted-foreground border-t border-border/30">
+                                          {item.details || item.message || "Assessed disciplinary fine."}
+                                        </div>
+                                      </>
+                                    )}
+
+                                    {!isElec && !isWater && !isPenalty && !isViolation && (
+                                      <>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Charge Name</span>
+                                          <span className="font-medium text-foreground">{cardTitle}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Billing Cycle</span>
+                                          <span className="font-medium text-foreground">{cycleDisplay}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Due Date</span>
+                                          <span className="font-medium text-foreground">{item.dueDate || "Scheduled"}</span>
+                                        </div>
+                                        <div className="sm:col-span-2 md:col-span-4 pt-1.5 text-[11px] text-muted-foreground border-t border-border/30">
+                                          {item.details || item.message || "Active billing due for this tenant account."}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Section 2: Move-In Requirements & Deposits */}
+                      <div className="space-y-3 pt-2 border-t border-border/40">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-foreground block uppercase tracking-wider">
+                            Move-in Fees &amp; Security Deposits
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                          {/* 1. Advance Rent */}
+                          <div className="p-3 bg-card border border-border rounded-xl flex flex-col justify-between gap-2 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-muted-foreground text-[11px] font-medium">Advance Rent</span>
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                <span>1 Month Applied</span>
+                              </span>
+                            </div>
+                            <div>
+                              <div className="text-base font-bold text-foreground font-mono">
+                                {formatMoney(tenant.advanceRent)}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground mt-0.5">
+                                Applied toward stay advance
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 2. Security Deposit */}
+                          <div className="p-3 bg-card border border-border rounded-xl flex flex-col justify-between gap-2 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-muted-foreground text-[11px] font-medium">Security Deposit</span>
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 dark:text-sky-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                                <span>Held (Refundable)</span>
+                              </span>
+                            </div>
+                            <div>
+                              <div className="text-base font-bold text-foreground font-mono">
+                                {formatMoney(tenant.securityDeposit)}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground mt-0.5">
+                                Held in escrow for checkout
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 3. Reservation Fee */}
+                          <div className="p-3 bg-card border border-border rounded-xl flex flex-col justify-between gap-2 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-muted-foreground text-[11px] font-medium">Reservation Fee</span>
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                <span>Paid &amp; Credited</span>
+                              </span>
+                            </div>
+                            <div>
+                              <div className="text-base font-bold text-foreground font-mono">
+                                {formatMoney(tenant.reservationFee)}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground mt-0.5">
+                                Credited at move-in
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Payment History */}
+                    {/* Recent Payment History */}
                     {paymentHistory.length > 0 && (
-                      <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
+                      <div className="bg-card border border-border rounded-xl p-4 space-y-3 shadow-2xs">
                         <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
                           <DollarSign className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                           Recent Payments ({paymentHistory.length})
                         </h4>
-                        <div className="space-y-2">
+                        <div className="divide-y divide-border/40 text-xs">
                           {paymentHistory.map((payment) => {
                             const paymentStatusConfig = getPaymentStatusLabel(payment);
                             return (
-                              <div key={payment.id} className="p-2.5 bg-card border border-border rounded-lg flex items-center justify-between text-xs">
+                              <div key={payment.id} className="py-2.5 first:pt-1 last:pb-0 flex items-center justify-between text-xs">
                                 <div>
                                   <span className="font-bold text-foreground block">₱{Number(payment.amount || 0).toLocaleString()}</span>
                                   <span className="text-muted-foreground text-[11px]">{payment.date} • {payment.method} ({payment.reference})</span>
@@ -1553,156 +2194,115 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
                   </div>
                 )}
 
-                {/* TAB 3: ROOM & HISTORY */}
+                {/* TAB 3: ROOM & STAY HISTORY */}
                 {activeTab === "history" && (
                   <div className="space-y-4">
-                    <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
-                      <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
-                        <MapPin className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                        Current Room Assignment
-                      </h4>
-                      <div className="p-3 bg-card border border-border rounded-lg text-xs space-y-2">
-                        <div className="flex justify-between items-center font-semibold text-foreground">
-                          <span>{tenant.branch} — {tenant.room}</span>
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 dark:text-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-800">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            Current
-                          </span>
-                        </div>
-                        <div className="text-muted-foreground">
-                          Bed: <span className="text-foreground capitalize font-medium">{tenant.bed || "N/A"}</span> • Move-in Date: {tenant.moveInDate || tenant.moveIn || "N/A"}
-                        </div>
-                        {dedicatedContract && (
-                          <div className="pt-2 border-t border-border/40 flex items-center justify-between gap-2 flex-wrap">
-                            <div className="flex items-center gap-1.5 text-muted-foreground">
-                              <FileText className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                              <span>Current Lease Contract: <strong className="text-foreground font-mono">{dedicatedContract.contractNumber || "Pending"}</strong></span>
-                            </div>
-                            <button
-                              type="button"
-                              className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline font-semibold flex items-center gap-1 text-xs"
-                              onClick={() => {
-                                onClose();
-                                navigate(`/admin/contracts/${dedicatedContract._id}`);
-                              }}
-                            >
-                              <FileCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                              View Contract Proof
-                            </button>
-                          </div>
-                        )}
+                    <div className="bg-card border border-border rounded-xl p-4 space-y-4 shadow-2xs">
+                      <div className="flex justify-between items-center pb-2 border-b border-border/40">
+                        <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
+                          <History className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                          Room Stay Timeline ({roomHistory.length})
+                        </h4>
+                        <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 bg-muted/40 px-2 py-0.5 rounded border border-border/50">
+                          {roomHistory.filter((c) => c.status === "current" || !c.moveOutDate).length} Current · {roomHistory.filter((c) => c.status !== "current" && c.moveOutDate).length} Past
+                        </span>
                       </div>
-                    </div>
 
-                    {roomHistory.length > 0 && (
-                      <div className="bg-muted/30 border border-border/60 rounded-xl p-4 transition-all duration-300">
-                        <div
-                          onClick={() => setIsHistoryFolded((prev) => !prev)}
-                          className="flex items-center justify-between cursor-pointer select-none group"
-                        >
-                          <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
-                            <History className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                            Room Stay Timeline ({roomHistory.length})
-                          </h4>
-                          <button
-                            type="button"
-                            className="text-xs text-muted-foreground group-hover:text-foreground flex items-center gap-1.5 transition-colors"
-                          >
-                            <span className="font-medium">{isHistoryFolded ? "Show" : "Hide"}</span>
-                            <ChevronDown
-                              className={`w-4 h-4 transition-transform duration-300 ease-in-out ${
-                                isHistoryFolded ? "rotate-0 text-muted-foreground" : "rotate-180 text-foreground"
-                              }`}
-                            />
-                          </button>
+                      {roomHistory.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground text-xs">
+                          No room stay records available for this tenant.
                         </div>
+                      ) : (
+                        <div className="stay-timeline">
+                          {roomHistory.map((room, idx) => {
+                            const isCurrent = room.status === "current" || !room.moveOutDate;
+                            const isLast = idx === roomHistory.length - 1;
+                            const moveIn = (() => {
+                              if (!room.moveInDate) return null;
+                              try { return new Date(room.moveInDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }); }
+                              catch { return room.moveInDate; }
+                            })();
+                            const moveOut = (() => {
+                              if (!room.moveOutDate) return null;
+                              try { return new Date(room.moveOutDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }); }
+                              catch { return room.moveOutDate; }
+                            })();
+                            const stayContract = room.contract || (isCurrent ? dedicatedContract : null);
 
-                        <div
-                          className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-in-out ${
-                            isHistoryFolded
-                              ? "grid-rows-[0fr] opacity-0 pointer-events-none"
-                              : "grid-rows-[1fr] opacity-100 mt-3"
-                          }`}
-                        >
-                          <div className="overflow-hidden">
-                            <div className="stay-timeline">
-                              {roomHistory.map((room, idx) => {
-                                const isCurrent = room.status === "current";
-                                const isLast = idx === roomHistory.length - 1;
-                                const moveIn = (() => {
-                                  if (!room.moveInDate) return null;
-                                  try { return new Date(room.moveInDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }); }
-                                  catch { return room.moveInDate; }
-                                })();
-                                const moveOut = (() => {
-                                  if (!room.moveOutDate) return null;
-                                  try { return new Date(room.moveOutDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }); }
-                                  catch { return room.moveOutDate; }
-                                })();
-                                const stayContract = room.contract || (isCurrent ? dedicatedContract : null);
-                                return (
-                                  <div key={room.id || room._id || idx} className="stay-timeline__entry">
-                                    <div className="stay-timeline__left">
-                                      <div className={`stay-timeline__dot ${isCurrent ? "stay-timeline__dot--current" : "stay-timeline__dot--past"}`} />
-                                      {!isLast && <div className="stay-timeline__connector" />}
+                            return (
+                              <div key={room.id || room._id || idx} className="stay-timeline__entry">
+                                <div className="stay-timeline__left">
+                                  <div className={`stay-timeline__dot ${isCurrent ? "stay-timeline__dot--current" : "stay-timeline__dot--past"}`} />
+                                  {!isLast && <div className="stay-timeline__connector" />}
+                                </div>
+                                <div className="stay-timeline__body">
+                                  <div className="stay-timeline__header">
+                                    <span className="stay-timeline__room">
+                                      {room.branch ? `${room.branch} — ` : ""}{room.room || room.roomName || "Unknown Room"}
+                                      {room.bed ? ` — ${room.bed}` : ""}
+                                    </span>
+                                    {isCurrent ? (
+                                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-transparent text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                        Current
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-transparent text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                        Past Stay
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="stay-timeline__meta text-muted-foreground text-xs space-y-0.5 mt-1">
+                                    <div>
+                                      Bed: <span className="text-foreground capitalize font-medium">{room.bed || tenant.bed || "N/A"}</span> • Move-in Date: {moveIn || tenant.moveInDate || tenant.moveIn || "N/A"}{moveOut ? ` — Move-out Date: ${moveOut}` : isCurrent ? " — Active" : ""}
                                     </div>
-                                    <div className="stay-timeline__body">
-                                      <div className="stay-timeline__header">
-                                        <span className="stay-timeline__room">
-                                          {room.room || room.roomName || "Unknown Room"}
-                                          {room.bed ? ` \u2014 ${room.bed}` : ""}
+                                  </div>
+
+                                  {/* Contract Proof for this Stay */}
+                                  {stayContract && (
+                                    <div className="mt-2.5 pt-2 border-t border-border/40 flex items-center justify-between gap-2 flex-wrap text-xs bg-muted/20 p-2.5 rounded-lg">
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <FileText className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 flex-shrink-0" />
+                                        <span className="text-muted-foreground truncate">
+                                          {isCurrent ? "Current Lease Contract" : "Contract"}: <strong className="text-foreground font-mono">{stayContract.contractNumber || "Pending"}</strong>
                                         </span>
-                                        <span className={`stay-timeline__badge ${isCurrent ? "stay-timeline__badge--current" : "stay-timeline__badge--past"}`}>
-                                          {isCurrent ? "Current" : "Past Stay"}
-                                        </span>
-                                      </div>
-                                      <div className="stay-timeline__meta">
-                                        {room.branch && <span>{room.branch}</span>}
-                                        {(moveIn || moveOut) && (
-                                          <span>
-                                            {room.branch ? " \u00b7 " : ""}
-                                            {moveIn ?? "?"}
-                                            {moveOut ? ` \u2013 ${moveOut}` : isCurrent ? " \u2013 Active" : ""}
+                                        {stayContract.purpose === "replacement" && (
+                                          <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-semibold px-1.5 py-0.5 rounded flex-shrink-0">
+                                            Transfer Replacement
                                           </span>
                                         )}
                                       </div>
-
-                                      {/* Contract Proof for this Stay */}
-                                      {stayContract && (
-                                        <div className="mt-2.5 pt-2 border-t border-border/40 flex items-center justify-between gap-2 flex-wrap text-xs bg-muted/20 p-2 rounded-lg">
-                                          <div className="flex items-center gap-1.5 min-w-0">
-                                            <FileText className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 flex-shrink-0" />
-                                            <span className="text-muted-foreground truncate">
-                                              Contract: <strong className="text-foreground font-mono">{stayContract.contractNumber}</strong>
-                                            </span>
-                                            {stayContract.purpose === "replacement" && (
-                                              <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-semibold px-1.5 py-0.5 rounded flex-shrink-0">
-                                                Transfer Replacement
-                                              </span>
-                                            )}
-                                          </div>
-                                          <button
-                                            type="button"
-                                            className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline font-semibold flex items-center gap-1 text-xs ml-auto flex-shrink-0"
-                                            onClick={() => {
-                                              onClose();
-                                              navigate(`/admin/contracts/${stayContract.id || stayContract._id}`);
-                                            }}
-                                          >
-                                            <FileCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                                            View Contract Proof
-                                          </button>
-                                        </div>
-                                      )}
+                                      <div className="flex items-center gap-3 ml-auto flex-shrink-0">
+                                        <button
+                                          type="button"
+                                          className="inline-flex items-center gap-1 text-[#0A1628] hover:text-[#13243D] dark:text-sky-400 dark:hover:text-sky-300 hover:underline font-semibold text-xs cursor-pointer transition-colors"
+                                          onClick={() => handleOpenDigitalContract(stayContract)}
+                                        >
+                                          <Eye className="w-3.5 h-3.5" />
+                                          <span>View Digital Contract</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="text-muted-foreground hover:text-foreground font-medium flex items-center gap-1 text-xs cursor-pointer transition-colors"
+                                          onClick={() => {
+                                            onClose();
+                                            navigate(`/admin/contracts/${stayContract.id || stayContract._id}`);
+                                          }}
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" />
+                                          <span>Open in Contracts</span>
+                                        </button>
+                                      </div>
                                     </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -1955,8 +2555,8 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
   {dialogState.type === "renew" ? (
     <RenewLeaseModal
       open
-      tenant={normalizedTenant}
-      detail={normalizedDetail}
+      tenant={tenant}
+      detail={fetchedDetail || initialTenant}
       context={actionContext}
       loading={dialogState.loading}
       onClose={closeDialog}
@@ -1983,7 +2583,7 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
           const res = await reservationApi.renew(reservationId, {
             newLeaseStartDate: payload.newLeaseStartDate,
             newLeaseEndDate: payload.newLeaseEndDate,
-            monthlyRent: payload.monthlyRent ?? normalizedTenant?.monthlyRent ?? 0,
+            monthlyRent: payload.monthlyRent ?? tenant?.monthlyRate ?? 0,
             notes: payload.notes,
             confirm: true,
           });
@@ -2006,8 +2606,8 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
   {dialogState.type === "transfer" ? (
     <TransferTenantModal
       open
-      tenant={normalizedTenant}
-      detail={normalizedDetail}
+      tenant={tenant}
+      detail={fetchedDetail || initialTenant}
       loading={dialogState.loading}
       sourceRoomLatestReading={actionContext?.sourceRoomLatestReading ?? null}
       onClose={closeDialog}
@@ -2048,8 +2648,8 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
   {dialogState.type === "moveOut" ? (
     <MoveOutModal
       open
-      tenant={normalizedTenant}
-      detail={normalizedDetail}
+      tenant={tenant}
+      detail={fetchedDetail || initialTenant}
       loading={dialogState.loading}
       onClose={closeDialog}
       onSubmit={async (payload) => {
@@ -2062,7 +2662,7 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
             finalNotes: payload.notes || "",
             damages: payload.damageDeductions || 0,
             deductions: (payload.damageDeductions || 0) + (payload.keyReturned ? 0 : 500),
-            outstandingBalanceSnapshot: normalizedTenant?.currentBalance || 0,
+            outstandingBalanceSnapshot: tenant?.balance || 0,
             finalUtilityReading: payload.meterReading,
             confirm: true,
           });
@@ -2238,18 +2838,18 @@ export default function TenantDetailModal({ tenant: initialTenant, onClose }) {
           <DigitalContractPaper
             stayData={digitalContractData || {
               tenantName: tenant?.fullName || tenant?.name,
-              roomNumber: tenant?.roomNumber || tenant?.roomName,
-              bedLabel: tenant?.bedNumber || tenant?.bedLabel,
-              roomType: tenant?.roomType,
-              branchName: tenant?.branchName || tenant?.branch,
-              leaseStartDate: tenant?.startDate || tenant?.leaseStart,
-              leaseEndDate: tenant?.endDate || tenant?.leaseEnd,
-              monthlyRent: tenant?.monthlyRent || tenant?.rentAmount,
-              securityDeposit: tenant?.securityDeposit,
-              referenceNumber: dedicatedContract?.contractNumber || tenant?.reservationCode || "LIL-CONTRACT",
+              roomNumber: (activeDigitalContract || dedicatedContract)?.roomNumber || tenant?.roomNumber || tenant?.roomName,
+              bedLabel: (activeDigitalContract || dedicatedContract)?.bedLabel || tenant?.bedNumber || tenant?.bedLabel,
+              roomType: (activeDigitalContract || dedicatedContract)?.roomType || tenant?.roomType,
+              branchName: (activeDigitalContract || dedicatedContract)?.branch || tenant?.branchName || tenant?.branch,
+              leaseStartDate: (activeDigitalContract || dedicatedContract)?.leaseStartDate || tenant?.startDate || tenant?.leaseStart,
+              leaseEndDate: (activeDigitalContract || dedicatedContract)?.leaseEndDate || tenant?.endDate || tenant?.leaseEnd,
+              monthlyRent: (activeDigitalContract || dedicatedContract)?.approvedMonthlyRate || (activeDigitalContract || dedicatedContract)?.regularMonthlyRate || tenant?.monthlyRent || tenant?.rentAmount,
+              securityDeposit: (activeDigitalContract || dedicatedContract)?.securityDeposit || tenant?.securityDeposit,
+              referenceNumber: (activeDigitalContract || dedicatedContract)?.contractNumber || tenant?.reservationCode || "LIL-CONTRACT",
             }}
-            contract={dedicatedContract}
-            onDownloadPdf={handleDownloadStayProof}
+            contract={activeDigitalContract || dedicatedContract}
+            onDownloadPdf={() => handleDownloadStayProof(activeDigitalContract || dedicatedContract)}
             isDownloading={downloadingProof}
           />
         )}

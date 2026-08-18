@@ -20,6 +20,7 @@ import {
  ROOM_SELECTION_LOCKED_MESSAGE,
  isApplicantRoomSelectionLocked,
 } from "../utils/reservationRoomLock";
+import { validateTargetMoveInDate } from "../utils/reservationValidation";
 
 // Extracted sub-components
 import {
@@ -103,10 +104,11 @@ function CheckAvailabilityPage() {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
  const [selectedRoom, setSelectedRoom] = useState(null);
  const [selectedAppliances, setSelectedAppliances] = useState({});
- const [selectedBed, setSelectedBed] = useState(null);
- const [selectedLeaseDuration, setSelectedLeaseDuration] = useState("");
- const [showLoginConfirmBeforeReserve, setShowLoginConfirmBeforeReserve] =
- useState(false);
+  const [selectedBed, setSelectedBed] = useState(null);
+  const [selectedLeaseDuration, setSelectedLeaseDuration] = useState("");
+  const [selectedIntendedMoveInDate, setSelectedIntendedMoveInDate] = useState("");
+  const [showLoginConfirmBeforeReserve, setShowLoginConfirmBeforeReserve] =
+  useState(false);
  const [changeRoomLocked, setChangeRoomLocked] = useState(false);
  const [currentPage, setCurrentPage] = useState(1);
  const ROOMS_PER_PAGE = 15;
@@ -476,6 +478,7 @@ function CheckAvailabilityPage() {
     setSelectedAppliances({});
     setSelectedBed(null);
     setSelectedLeaseDuration("");
+    setSelectedIntendedMoveInDate("");
     setIsDetailsModalOpen(true);
   }, []);
 
@@ -485,6 +488,7 @@ function CheckAvailabilityPage() {
     setSelectedAppliances({});
     setSelectedBed(null);
     setSelectedLeaseDuration("");
+    setSelectedIntendedMoveInDate("");
   }, []);
 
   const handleOpenRoomInquiry = useCallback((room) => {
@@ -531,6 +535,7 @@ function CheckAvailabilityPage() {
     const isPrivate = selectedRoom?.type && String(selectedRoom.type).toLowerCase().includes("private");
     const requiresBed = selectedRoom?.beds && selectedRoom.beds.length > 1 && !isPrivate;
     const hasLease = Boolean(selectedLeaseDuration && String(selectedLeaseDuration).trim() !== "");
+    const hasMoveInDate = Boolean(selectedIntendedMoveInDate && String(selectedIntendedMoveInDate).trim() !== "");
 
     if (!hasLease && requiresBed && !selectedBed) {
       showNotification("Please select a preferred lease term and a bed before proceeding.", "warning");
@@ -543,6 +548,16 @@ function CheckAvailabilityPage() {
     if (requiresBed && !selectedBed) {
       showNotification("Please select a bed location before proceeding.", "warning");
       return;
+    }
+    if (hasMoveInDate) {
+      const dateVal = validateTargetMoveInDate(selectedIntendedMoveInDate);
+      if (!dateVal.valid) {
+        showNotification(
+          dateVal.error || "Intended move-in date must be at least 3 days from today, up to 3 months.",
+          "warning",
+        );
+        return;
+      }
     }
 
     if (!user) {
@@ -566,6 +581,12 @@ function CheckAvailabilityPage() {
  ? { id: selectedBed.id, position: selectedBed.position }
  : null,
  selectedAppliances: buildSelectedAppliancesPayload(),
+ ...(selectedIntendedMoveInDate
+   ? {
+       intendedMoveInDate: selectedIntendedMoveInDate,
+       targetMoveInDate: selectedIntendedMoveInDate,
+     }
+   : {}),
  totalPrice: selectedRoom.price || 5000,
  applianceFees: calculateApplianceFees(),
  });
@@ -606,8 +627,9 @@ function CheckAvailabilityPage() {
           : null,
         selectedAppliances: buildSelectedAppliancesPayload(),
         leaseDuration: selectedLeaseDuration || "6",
-        moveInDate: null,
-        targetMoveInDate: null,
+        intendedMoveInDate: selectedIntendedMoveInDate,
+        targetMoveInDate: selectedIntendedMoveInDate,
+        moveInDate: selectedIntendedMoveInDate,
         totalPrice: selectedRoom.price || 5000,
         applianceFees: calculateApplianceFees(),
         viewingType: null,
@@ -983,6 +1005,8 @@ function CheckAvailabilityPage() {
         calculateApplianceFees={calculateApplianceFees}
         selectedLeaseDuration={selectedLeaseDuration}
         onSelectLeaseDuration={setSelectedLeaseDuration}
+        selectedIntendedMoveInDate={selectedIntendedMoveInDate}
+        onSelectIntendedMoveInDate={setSelectedIntendedMoveInDate}
         availableAppliances={AVAILABLE_APPLIANCES.map((appliance) => ({
           ...appliance,
           price: selectedRoom?.applianceFeeAmountPerUnit || appliance.price,

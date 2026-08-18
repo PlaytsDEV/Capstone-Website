@@ -200,7 +200,11 @@ async function handleDepositPayment(metadata, eventData, context = {}) {
         billedTo: tenantName,
         paymentMethod: formattedChannel,
         paymentDate,
-        referenceId: receiptPaymentId,
+        referenceId:
+          result?.payment?.referenceNumber ||
+          result?.payment?.paymentId ||
+          reservation.paymentReference ||
+          receiptPaymentId,
         reservationCode,
         roomName: reservation.roomId?.name || "",
         branch: reservation.roomId?.branch || "",
@@ -413,7 +417,11 @@ async function handleBillPayment(metadata, eventData, context = {}) {
         billedTo: `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim(),
         paymentMethod: formattedBillChannel,
         paymentDate,
-        referenceId: paymentId,
+        referenceId:
+          settlement.payment?.referenceNumber ||
+          settlement.payment?.paymentId ||
+          bill.paymentReference ||
+          paymentId,
         reservationCode,
         roomName,
         branch: branchName,

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
+import dayjs from "dayjs";
 
 const userFindById = jest.fn();
 const userFind = jest.fn();
@@ -35,6 +36,7 @@ const {
   syncReservationUserLifecycle,
   reconcileTenantUsersForScope,
   getMoveInBlockers,
+  validateMoveInDate,
 } = await import("./reservationHelpers.js");
 
 const createUser = (overrides = {}) => ({
@@ -437,3 +439,43 @@ describe("getMoveInBlockers", () => {
     );
   });
 });
+
+describe("validateMoveInDate", () => {
+  test("rejects empty, null, or invalid dates", () => {
+    expect(validateMoveInDate(null)).toBe(false);
+    expect(validateMoveInDate("")).toBe(false);
+    expect(validateMoveInDate("invalid-date")).toBe(false);
+  });
+
+  test("rejects dates earlier than 3 days from today", () => {
+    const today = dayjs().format("YYYY-MM-DD");
+    const tomorrow = dayjs().add(1, "day").format("YYYY-MM-DD");
+    const twoDaysLater = dayjs().add(2, "day").format("YYYY-MM-DD");
+    expect(validateMoveInDate(today)).toBe(false);
+    expect(validateMoveInDate(tomorrow)).toBe(false);
+    expect(validateMoveInDate(twoDaysLater)).toBe(false);
+  });
+
+  test("accepts dates starting exactly 3 days from today", () => {
+    const threeDaysLater = dayjs().add(3, "day").format("YYYY-MM-DD");
+    expect(validateMoveInDate(threeDaysLater)).toBe(true);
+  });
+
+  test("accepts dates within 1-2 months from today", () => {
+    const oneMonthLater = dayjs().add(1, "month").format("YYYY-MM-DD");
+    const twoMonthsLater = dayjs().add(2, "month").format("YYYY-MM-DD");
+    expect(validateMoveInDate(oneMonthLater)).toBe(true);
+    expect(validateMoveInDate(twoMonthsLater)).toBe(true);
+  });
+
+  test("accepts date exactly 3 months from today", () => {
+    const threeMonthsLater = dayjs().add(3, "month").format("YYYY-MM-DD");
+    expect(validateMoveInDate(threeMonthsLater)).toBe(true);
+  });
+
+  test("rejects dates beyond 3 months from today", () => {
+    const beyondThreeMonths = dayjs().add(3, "month").add(2, "day").format("YYYY-MM-DD");
+    expect(validateMoveInDate(beyondThreeMonths)).toBe(false);
+  });
+});
+

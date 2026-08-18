@@ -10,6 +10,7 @@ import {
   resolveTenantFinancialSummary,
   resolveTenantPersonalDetails,
 } from "../services/tenantProfileService.js";
+import { branchSupportsSeparateUtilityBilling } from "../config/branches.js";
 
 export const LEASE_EXPIRING_SOON_DAYS = 30;
 
@@ -138,9 +139,17 @@ export function buildWarningFlags({
   moveOutDate,
   violations = [],
   visibleBills = [],
+  branch = null,
   now = new Date(),
 }) {
   const flags = [];
+  const branchNormalized = String(branch || "").toLowerCase();
+  const supportsSeparateElec = branch
+    ? branchSupportsSeparateUtilityBilling(branchNormalized, "electricity")
+    : !branchNormalized.includes("guada");
+  const supportsSeparateWater = branch
+    ? branchSupportsSeparateUtilityBilling(branchNormalized, "water")
+    : !branchNormalized.includes("guada");
 
   // 1. Lease contract warnings
   if (leaseStatus === "expired") {
@@ -200,8 +209,8 @@ export function buildWarningFlags({
       const penaltyAmt = Number(charges.penalty || 0);
 
       if (rentAmt > 0) overdueRentTotal += rentAmt;
-      if (elecAmt > 0) overdueElecTotal += elecAmt;
-      if (waterAmt > 0) overdueWaterTotal += waterAmt;
+      if (elecAmt > 0 && supportsSeparateElec) overdueElecTotal += elecAmt;
+      if (waterAmt > 0 && supportsSeparateWater) overdueWaterTotal += waterAmt;
       if (penaltyAmt > 0) overduePenaltyTotal += penaltyAmt;
 
       if (!latestDueDate || (bill.dueDate && new Date(bill.dueDate) < new Date(latestDueDate))) {
@@ -220,7 +229,7 @@ export function buildWarningFlags({
     const overdueDays = latestDueDate ? Math.max(1, Math.round((new Date(now).getTime() - new Date(latestDueDate).getTime()) / (1000 * 60 * 60 * 24))) : null;
 
     // Overdue Electricity Flag
-    if (overdueElecTotal > 0) {
+    if (overdueElecTotal > 0 && supportsSeparateElec) {
       flags.push({
         id: `overdue-elec-${primaryBillId || "overdue"}`,
         code: "overdue_electricity",
@@ -264,7 +273,7 @@ export function buildWarningFlags({
     }
 
     // Overdue Water Flag
-    if (overdueWaterTotal > 0) {
+    if (overdueWaterTotal > 0 && supportsSeparateWater) {
       flags.push({
         id: `overdue-water-${primaryBillId || "overdue"}`,
         code: "overdue_water",
@@ -329,6 +338,7 @@ export function buildWarningFlags({
     let pendingWaterTotal = 0;
     let nextDueDate = billingSummary?.nextDueDate || null;
     let primaryBillId = null;
+    let latestPendingCycle = null;
 
     pendingBills.forEach(({ bill }) => {
       const charges = bill?.charges || {};
@@ -337,21 +347,29 @@ export function buildWarningFlags({
       const waterAmt = Number(charges.water || 0);
 
       if (rentAmt > 0) pendingRentTotal += rentAmt;
-      if (elecAmt > 0) pendingElecTotal += elecAmt;
-      if (waterAmt > 0) pendingWaterTotal += waterAmt;
+      if (elecAmt > 0 && supportsSeparateElec) pendingElecTotal += elecAmt;
+      if (waterAmt > 0 && supportsSeparateWater) pendingWaterTotal += waterAmt;
 
       if (!primaryBillId) primaryBillId = bill._id;
+      if (!latestPendingCycle) {
+        latestPendingCycle = {
+          start: bill.billingCycleStart || bill.utilityCycleStart || null,
+          end: bill.billingCycleEnd || bill.utilityCycleEnd || null,
+          month: bill.billingMonth || null,
+        };
+      }
     });
 
-    if (pendingElecTotal > 0) {
+    if (pendingElecTotal > 0 && supportsSeparateElec) {
       flags.push({
         id: `outstanding-elec-${primaryBillId || "pending"}`,
         code: "outstanding_electricity",
         category: "electricity",
         severity: WARNING_SEVERITY.warning,
-        title: "Unpaid Electricity",
+        title: "Electricity",
         amount: pendingElecTotal,
         dueDate: nextDueDate,
+        cycle: latestPendingCycle,
         billId: primaryBillId,
         message: `Current electricity balance: ₱${pendingElecTotal.toLocaleString()}.`,
         details: "Electricity billing is awaiting payment on or before the due date.",
@@ -367,9 +385,10 @@ export function buildWarningFlags({
         code: "outstanding_rent",
         category: "rent",
         severity: WARNING_SEVERITY.warning,
-        title: "Unpaid Rent",
+        title: "Rent",
         amount: pendingRentTotal,
         dueDate: nextDueDate,
+        cycle: latestPendingCycle,
         billId: primaryBillId,
         message: `Current rent balance: ₱${pendingRentTotal.toLocaleString()}.`,
         details: "Monthly rent invoice is open and due on the scheduled payment date.",
@@ -379,15 +398,16 @@ export function buildWarningFlags({
       });
     }
 
-    if (pendingWaterTotal > 0) {
+    if (pendingWaterTotal > 0 && supportsSeparateWater) {
       flags.push({
         id: `outstanding-water-${primaryBillId || "pending"}`,
         code: "outstanding_water",
         category: "water",
         severity: WARNING_SEVERITY.warning,
-        title: "Unpaid Water Share",
+        title: "Water",
         amount: pendingWaterTotal,
         dueDate: nextDueDate,
+        cycle: latestPendingCycle,
         billId: primaryBillId,
         message: `Current water share: ₱${pendingWaterTotal.toLocaleString()}.`,
         details: "Water billing is pending payment before the scheduled due date.",
@@ -404,7 +424,7 @@ export function buildWarningFlags({
         code: "outstanding_balance",
         category: "billing",
         severity: WARNING_SEVERITY.warning,
-        title: "Unpaid Balance",
+        title: "Outstanding Balance",
         amount: billingSummary?.currentBalance || 0,
         dueDate: nextDueDate,
         message: "This tenant has an unpaid balance.",
@@ -661,6 +681,7 @@ export function buildTenantWorkspaceEntry({
       : buildStayStatus(reservation, now);
   const leaseStatus = buildLeaseStatus(daysUntilLeaseEnd);
   const roomHistory = buildRoomHistoryEntries({ reservation, bedHistoryRecords, contracts });
+  const branch = reservation?.roomId?.branch || reservation?.branch || currentStay?.branch || null;
   const warningFlags = buildWarningFlags({
     leaseStatus,
     billingSummary,
@@ -668,6 +689,7 @@ export function buildTenantWorkspaceEntry({
     moveOutDate: readMoveOutDate(reservation),
     violations,
     visibleBills: billingSummary.visibleBills,
+    branch,
     now,
   });
   const nextAction = buildNextAction({

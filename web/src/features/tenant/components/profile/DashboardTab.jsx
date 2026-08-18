@@ -202,7 +202,7 @@ const S = {
   /* Desktop grid */
   grid: {
     display: "grid",
-    gridTemplateColumns: "1fr 280px",
+    gridTemplateColumns: "1fr 290px",
     gap: 16,
     alignItems: "start",
   },

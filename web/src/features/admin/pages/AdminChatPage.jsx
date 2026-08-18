@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import {
@@ -123,7 +123,7 @@ const fmtDateTime = (value) => {
   });
 };
 
-function ProtectedChatImage({ attachment, className, onOpen }) {
+function ProtectedChatImage({ attachment, className, onOpen, onLoad }) {
   const [source, setSource] = useState("");
   useEffect(() => {
     let active = true;
@@ -154,6 +154,7 @@ function ProtectedChatImage({ attachment, className, onOpen }) {
         src={source}
         alt={attachment.name || "Attachment"}
         className={className}
+        onLoad={onLoad}
       />
       <span className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity flex items-center justify-center text-white">
         <Eye size={18} />
@@ -352,12 +353,24 @@ export default function AdminChatPage() {
   const [listError, setListError] = useState("");
   const [messagesError, setMessagesError] = useState("");
   const [replyError, setReplyError] = useState("");
-
   const [tenantTyping, setTenantTyping] = useState(null);
   const hasLoadedOnceRef = useRef(false);
   const typingClearRef = useRef(null);
   const typingSendRef = useRef(null);
+  const feedContainerRef = useRef(null);
   const messageEndRef = useRef(null);
+
+  const scrollToBottom = useCallback((behavior = "auto") => {
+    const el = feedContainerRef.current;
+    if (el) {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior,
+      });
+    } else if (messageEndRef.current) {
+      messageEndRef.current.scrollIntoView({ behavior });
+    }
+  }, []);
 
   const sortedMessages = useMemo(() => {
     return [...messages].sort((a, b) => {
@@ -440,11 +453,27 @@ export default function AdminChatPage() {
     loadConversations();
   }, [loadConversations]);
 
-  useEffect(() => {
-    if (messageEndRef.current) {
-      messageEndRef.current.scrollIntoView({ behavior: "smooth" });
+  useLayoutEffect(() => {
+    if (!messagesLoading && messages.length > 0) {
+      scrollToBottom("auto");
     }
-  }, [messages, tenantTyping]);
+  }, [messages, messagesLoading, scrollToBottom]);
+
+  useEffect(() => {
+    if (!messagesLoading && messages.length > 0) {
+      scrollToBottom("auto");
+      const rAF = requestAnimationFrame(() => scrollToBottom("auto"));
+      const t1 = setTimeout(() => scrollToBottom("auto"), 50);
+      const t2 = setTimeout(() => scrollToBottom("auto"), 150);
+      const t3 = setTimeout(() => scrollToBottom("auto"), 300);
+      return () => {
+        cancelAnimationFrame(rAF);
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
+    }
+  }, [messages, messagesLoading, selectedConversation?.id, tenantTyping, scrollToBottom]);
 
   const { isConnected: socketConnected } = useChatSocket({
     onTyping: ({ conversationId, senderRole, senderName } = {}) => {
@@ -515,6 +544,8 @@ export default function AdminChatPage() {
     setReplyText("");
     setTenantTyping(null);
     await loadMessages(conversation.id);
+    requestAnimationFrame(() => scrollToBottom("auto"));
+    setTimeout(() => scrollToBottom("auto"), 50);
   };
 
   const handleRefresh = async () => {
@@ -600,7 +631,14 @@ export default function AdminChatPage() {
       items: [],
     }));
 
+    const activeTenantSeen = new Set();
     filteredConversations.forEach((item) => {
+      const isOngoing = ["open", "in_review", "waiting_tenant"].includes(item.status);
+      const tenantKey = item.tenantId || item.tenantName;
+      if (isOngoing && tenantKey) {
+        if (activeTenantSeen.has(tenantKey)) return;
+        activeTenantSeen.add(tenantKey);
+      }
       const targetGroup =
         groups.find((group) => group.status === item.status) || groups[0];
       targetGroup.items.push(item);
@@ -1613,7 +1651,7 @@ export default function AdminChatPage() {
               )}
 
               {/* Message Feed */}
-              <div className="flex-1 p-4 overflow-y-auto space-y-2 bg-muted/15">
+              <div ref={feedContainerRef} className="flex-1 p-4 overflow-y-auto space-y-2 bg-muted/15">
                 {/* Thread Initialization Banner */}
                 {selectedConversation && (
                   <div className="mx-auto my-3 max-w-sm rounded-xl border border-border bg-card p-3.5 text-center shadow-2xs space-y-1">
@@ -1646,6 +1684,7 @@ export default function AdminChatPage() {
                   </div>
                 ) : (
                   sortedMessages.map((msg, i) => {
+                    const isSystem = msg.senderRole === "system";
                     const isTenant = msg.senderRole === "tenant";
                     const senderAvatarSrc = isTenant
                       ? (msg.senderProfileImage || selectedConversation.tenantProfileImage)
@@ -1655,6 +1694,26 @@ export default function AdminChatPage() {
                     const nextMsg = i < sortedMessages.length - 1 ? sortedMessages[i + 1] : null;
 
                     const showDateDivider = !prevMsg || !isSameDay(msg.createdAt, prevMsg.createdAt);
+
+                    if (isSystem) {
+                      return (
+                        <div key={msg.id} className="space-y-1">
+                          {showDateDivider && (
+                            <div className="flex items-center justify-center my-3">
+                              <span className="rounded-full bg-card border border-border px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground shadow-2xs">
+                                {fmtDateDivider(msg.createdAt)}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-center my-2">
+                            <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card/90 px-3 py-1.5 text-xs text-muted-foreground text-center max-w-md shadow-2xs">
+                              <Clock size={13} className="shrink-0 text-amber-500" />
+                              <span>{msg.message}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
 
                     const isSameSenderAsPrev = prevMsg &&
                       prevMsg.senderRole === msg.senderRole &&
@@ -1756,6 +1815,7 @@ export default function AdminChatPage() {
                                           attachment={img}
                                           className="w-full h-32 object-cover transition-transform group-hover:scale-105"
                                           onOpen={setPreviewImageModal}
+                                          onLoad={() => scrollToBottom("auto")}
                                         />
                                       ))}
                                   </div>

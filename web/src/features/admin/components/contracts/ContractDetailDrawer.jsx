@@ -658,6 +658,18 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
                       "Signed copy rejected; replacement required."),
                   });
                 }}>Reject Signed Copy</button>
+                <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => {
+                  showWorkflow({
+                    title: "Delete Signed-Only Copy",
+                    message: "Are you sure you want to delete this signed contract scan? This will remove the document for both administrators and the tenant.",
+                    fields: [{ key: "reason", label: "Deletion reason (optional)", type: "textarea" }],
+                    checks: [{ key: "confirmed", label: "I confirm that I want to delete this signed copy." }],
+                    submitLabel: "Delete Signed Copy",
+                    onSubmit: (values) => runAction("delete-signed",
+                      () => contractApi.deleteSignedContract(contractId, currentSigned.version, values.reason?.trim() || ""),
+                      "Signed contract copy deleted."),
+                  });
+                }}>Delete Signed Copy</button>
               </>}
               </details>
             </>}

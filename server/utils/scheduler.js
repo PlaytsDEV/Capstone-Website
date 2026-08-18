@@ -40,6 +40,7 @@ import {
   releaseOrphanedBeds,
 } from "./occupancyManager.js";
 import logger from "../middleware/logger.js";
+import { autoCloseInactiveChatConversations } from "../controllers/chatController.js";
 import {
   ACTIVE_OCCUPANCY_STATUS_QUERY,
   CURRENT_RESIDENT_STATUS_QUERY,
@@ -1105,6 +1106,19 @@ async function autoCompleteResolvedTickets() {
   }
 }
 
+// ─── Job 17: Support Chat Inactivity Auto-Close (every 5 min) ───────────────
+
+async function runAutoCloseInactiveChats() {
+  try {
+    const closedCount = await autoCloseInactiveChatConversations({ inactivityMinutes: 15 });
+    if (closedCount > 0) {
+      logger.info({ count: closedCount }, "Inactive support chat conversations auto-closed");
+    }
+  } catch (error) {
+    logger.error({ err: error }, "Inactive chat auto-close job failed");
+  }
+}
+
 export function startScheduler(options = {}) {
   if (scheduledJobs.length > 0) {
     logger.warn(
@@ -1119,6 +1133,7 @@ export function startScheduler(options = {}) {
       void cleanupExpiredBedLocks();
       void markOverdueBills();
       void detectConsecutiveOverdueMonths();
+      void runAutoCloseInactiveChats();
     });
   }
 
@@ -1258,8 +1273,6 @@ export function startScheduler(options = {}) {
     }),
   );
 
-
-
   // Job 15: Nightly occupancy integrity reconciliation — daily at 04:00
   // Safety-net that runs AFTER the Firebase sync job (03:00) to catch any
   // drift caused by deletion races, failed bed releases, or scheduler bugs.
@@ -1280,6 +1293,16 @@ export function startScheduler(options = {}) {
       scheduled: true,
       timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "maintenance-7day-auto-completion",
+    }),
+  );
+
+  // Job 17: Support Chat Inactivity Auto-Close — every 5 minutes
+  // Automatically closes conversations in waiting_tenant / resolved after 15m of inactivity
+  scheduledJobs.push(
+    cron.schedule("*/5 * * * *", runAutoCloseInactiveChats, {
+      scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
+      name: "support-chat-inactivity-autoclose",
     }),
   );
 
@@ -1311,6 +1334,7 @@ export {
   detectConsecutiveOverdueMonths,
   reconcileOccupancyIntegrity,
   autoCompleteResolvedTickets,
+  runAutoCloseInactiveChats,
 };
 
 export default { startScheduler, stopScheduler };

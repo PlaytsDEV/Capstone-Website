@@ -442,10 +442,16 @@ const PersonalInfoSection = ({
         <FileUploadField
           label="NBI Clearance (If unable, upload another valid ID)"
           value={nbiClearance}
-          onChange={setNbiClearance}
+          onChange={(file) => {
+            setNbiClearance(file);
+            if (file) {
+              clearFieldError?.("nbiClearance");
+              clearFieldError?.("nbiReason");
+            }
+          }}
           documentType="nbi-clearance"
           hint="NBI Clearance or additional valid ID"
-          hasError={showValidationErrors && !nbiClearance && !nbiReason}
+          hasError={Boolean(showValidationErrors && !nbiClearance && !nbiReason?.trim())}
         />
       </div>
 
@@ -458,7 +464,14 @@ const PersonalInfoSection = ({
           id="nbiReasonInput"
           className="form-textarea"
           value={nbiReason}
-          onChange={(e) => setNbiReason(e.target.value)}
+          onChange={(e) => {
+            const nextVal = e.target.value;
+            setNbiReason(nextVal);
+            if (nextVal?.trim()) {
+              clearFieldError?.("nbiReason");
+              clearFieldError?.("nbiClearance");
+            }
+          }}
           maxLength={300}
           placeholder={
             nbiClearance
@@ -467,16 +480,16 @@ const PersonalInfoSection = ({
           }
           style={{
             border: !nbiClearance
-              ? errBorder(showValidationErrors, nbiReason)
+              ? errBorder(showValidationErrors, nbiReason?.trim())
               : undefined,
           }}
-          aria-invalid={showValidationErrors && !nbiClearance && !nbiReason}
+          aria-invalid={Boolean(showValidationErrors && !nbiClearance && !nbiReason?.trim())}
         />
         <div className="rf-char-counter">
           {nbiReason?.length || 0}/300
         </div>
-        {showValidationErrors && !nbiClearance && (!nbiReason?.trim() || nbiReason.trim().length < 10) && (
-          <FieldError error="Please upload NBI Clearance or provide a detailed reason (at least 10 characters)" />
+        {showValidationErrors && !nbiClearance && !nbiReason?.trim() && (
+          <FieldError error="Please upload NBI Clearance or provide a reason why it is not yet available." />
         )}
       </div>
 

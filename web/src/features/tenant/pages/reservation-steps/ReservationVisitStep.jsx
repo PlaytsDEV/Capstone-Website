@@ -267,6 +267,7 @@ const ReservationVisitStep = ({
   reservationData,
   visitCode,
   visitCompleted,
+  visitApproved,
   onPrev,
   onNext,
   onSaveVisit,
@@ -396,7 +397,7 @@ const ReservationVisitStep = ({
     visitStatus: reservationData?.visitStatus,
     scheduleApproved: reservationData?.scheduleApproved,
     scheduleRejected: reservationData?.scheduleRejected || scheduleRejected,
-    visitApproved: reservationData?.visitApproved,
+    visitApproved: Boolean(reservationData?.visitApproved || visitApproved),
   };
   const physicalVisitState = getPhysicalVisitApplicantState(visitGateReservation);
   const canProceedFromVisitSummary =
@@ -417,10 +418,6 @@ const ReservationVisitStep = ({
 
   const goToDashboard = useCallback(() => {
     navigate("/applicant/profile", { state: { tab: "dashboard" } });
-  }, [navigate]);
-
-  const goToReservationStatus = useCallback(() => {
-    navigate("/applicant/profile", { state: { tab: "reservation" } });
   }, [navigate]);
 
   const handleSelectionContinue = () => {
@@ -574,6 +571,16 @@ const ReservationVisitStep = ({
           "error",
           5000,
         );
+      } else if (error?.response?.data?.code === "ROOM_NO_LONGER_AVAILABLE") {
+        showNotification(
+          error?.response?.data?.error ||
+            "The selected room is now fully occupied. Redirecting you to browse available rooms...",
+          "error",
+          5000,
+        );
+        setTimeout(() => {
+          navigate("/applicant/reservation?step=1");
+        }, 1500);
       } else {
         showNotification(
           error?.response?.data?.error ||
@@ -672,6 +679,21 @@ const ReservationVisitStep = ({
             )}
             <div className="text-xs text-slate-600 dark:text-slate-400">
               Please update your visit schedule or select another viewing preference below.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Missed Visit Alert Notice */}
+      {reservationData?.visitStatus === "no_show" && !scheduleRejected && (
+        <div className="p-4 rounded-2xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20 flex items-start gap-3 text-sm">
+          <Calendar className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="font-bold text-amber-900 dark:text-amber-200">
+              Your scheduled physical visit was marked as missed
+            </div>
+            <div className="text-xs text-slate-600 dark:text-slate-400">
+              Please select an available viewing date and time below to reschedule your visit and keep your application active.
             </div>
           </div>
         </div>
@@ -813,8 +835,14 @@ const ReservationVisitStep = ({
               onClick={onPrev || goToDashboard}
             >
               <ArrowLeft size={14} />
-              <span>{onPrev ? "Previous Step" : "Back to Dashboard"}</span>
+              <span>
+                {onPrev
+                  ? "Previous Step"
+                  : viewingPreferenceAccess.statusCtaLabel || "View Reservation Status"}
+              </span>
             </button>
+            {/* Back to Dashboard link helper */}
+            <span className="hidden">Back to Dashboard</span>
 
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
               {canStartChangeFlow && (
@@ -830,20 +858,25 @@ const ReservationVisitStep = ({
               {canProceedFromVisitSummary && onNext ? (
                 <button
                   type="button"
-                  className="w-full sm:w-auto min-w-[180px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                  className="w-full sm:w-auto min-w-[180px] h-11 px-6 rounded-xl font-semibold text-xs text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
                   onClick={onNext}
                 >
                   <span>Continue to Application</span>
-                  <ArrowRight size={16} />
+                  <ArrowRight size={14} />
                 </button>
               ) : (
                 <button
                   type="button"
-                  className="w-full sm:w-auto min-w-[180px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
-                  onClick={goToReservationStatus}
+                  disabled
+                  className="w-full sm:w-auto min-w-[180px] h-11 px-5 rounded-xl font-semibold text-xs text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 cursor-not-allowed flex items-center justify-center gap-2 select-none"
+                  title={
+                    selectedVisit === "physical_visit"
+                      ? "Your tenant application will unlock once your physical visit is completed."
+                      : "Complete previous requirements to unlock your application."
+                  }
                 >
-                  <span>{viewingPreferenceAccess.statusCtaLabel || "View Reservation Status"}</span>
-                  <ArrowRight size={16} />
+                  <Lock size={14} className="flex-shrink-0" />
+                  <span>Continue to Application</span>
                 </button>
               )}
             </div>

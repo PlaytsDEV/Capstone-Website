@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   History,
   Send,
@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardX,
+  MoreVertical,
 } from "lucide-react";
 import {
   fmtCurrency,
@@ -52,9 +53,35 @@ export default function UtilityCycleHistoryPanel({
   utilityType,
   selectedRoom,
 }) {
+  const [activeMenuPeriodId, setActiveMenuPeriodId] = useState(null);
+
   const hasActiveFilters = Boolean(
     periodStatusFilter || periodStartDate || periodEndDate || periodSearch,
   );
+
+  // Close active dropdown menu when clicking outside or pressing Escape
+  useEffect(() => {
+    if (!activeMenuPeriodId) return;
+
+    const handleClickOutside = (e) => {
+      if (!e.target.closest("[data-period-menu]")) {
+        setActiveMenuPeriodId(null);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setActiveMenuPeriodId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeMenuPeriodId]);
 
   return (
     <div className="space-y-4">
@@ -168,6 +195,7 @@ export default function UtilityCycleHistoryPanel({
             const status = getDisplayStatus(p);
             const isSelected = selectedPeriodId === p.id;
             const isSending = Boolean(sendingByPeriodId[p.id]);
+            const isMenuOpen = activeMenuPeriodId === p.id;
 
             return (
               <div
@@ -205,70 +233,118 @@ export default function UtilityCycleHistoryPanel({
                   </div>
                 </div>
 
-                {/* Right info: Rate + Status badge + Action buttons */}
+                {/* Right info: Rate + Status badge + Action buttons (One-to-Many Layout) */}
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    Rate: {fmtCurrency(p.ratePerUnit)}
-                  </span>
+                  {/* Structured Rate Tag */}
+                  <div className="flex items-center gap-1 rounded border border-border/70 bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
+                    <span>Rate:</span>
+                    <strong className="font-semibold text-foreground">{fmtCurrency(p.ratePerUnit)}</strong>
+                    <span className="text-[10px] text-muted-foreground">/{utilityType === "electricity" ? "kWh" : "cu.m."}</span>
+                  </div>
 
-                  {/* Transparent status badge with dot */}
-                  <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold ${getHistoryStatusClasses(status)}`}>
+                  {/* Status badge with semantic icon and dot */}
+                  <span className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold ${getHistoryStatusClasses(status)}`}>
                     {getDisplayStatusIcon(status)}
                     {getDisplayStatusLabel(p)}
                   </span>
 
-                  {/* Actions Group */}
+                  {/* Actions Group (One-to-Many Pattern) */}
                   <div
-                    className="flex items-center gap-1"
+                    className="relative flex items-center gap-1.5"
+                    data-period-menu
                     onClick={(e) => e.stopPropagation()}
                   >
+                    {/* Prominent Send CTA if ready to release */}
                     {status === "ready_to_send" && (
                       <button
                         type="button"
-                        className="inline-flex items-center gap-1 rounded-md bg-[#0A1628] px-2.5 py-1 text-xs font-semibold text-white shadow-xs hover:bg-[#13243D] active:scale-[0.98] transition-all disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+                        className="inline-flex items-center gap-1.5 rounded-md bg-[#0A1628] px-2.5 py-1 text-xs font-semibold text-white shadow-xs hover:bg-[#13243D] active:scale-[0.98] transition-all disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
                         onClick={() => onSendPeriod(p)}
                         disabled={isSending || isSendingPeriod}
                         title="Release this statement to tenants"
                       >
-                        <Send size={11} />
-                        {isSending ? "Sending..." : "Send"}
+                        <Send size={12} />
+                        <span>{isSending ? "Sending..." : "Send"}</span>
                       </button>
                     )}
 
-                    {canEditPeriod(p) && (
-                      <button
-                        type="button"
-                        className="rounded-md border border-border p-1 text-muted-foreground hover:bg-muted hover:text-foreground active:scale-[0.98] transition-all"
-                        onClick={() => onEditPeriod(p)}
-                        aria-label="Edit period details"
-                        title="Edit period details"
-                      >
-                        <Pencil size={13} />
-                      </button>
-                    )}
-
-                    {canDeletePeriod(p) && (
-                      <button
-                        type="button"
-                        className="rounded-md border border-border p-1 text-rose-600 hover:bg-rose-50 hover:text-rose-700 active:scale-[0.98] transition-all dark:text-rose-400 dark:hover:bg-rose-950/40"
-                        onClick={() => onDeletePeriod(p.id)}
-                        aria-label="Delete period"
-                        title="Delete period"
-                        disabled={isDeletingPeriod}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
-
+                    {/* Primary Action: View calculation snapshot */}
                     <button
                       type="button"
-                      className="rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground shadow-2xs hover:bg-muted hover:text-foreground active:scale-[0.98] transition-all"
                       onClick={() => onOpenHistoryModal(p.id)}
                       title="View detailed calculation snapshot"
                     >
-                      <Eye size={12} className="inline mr-1" />
-                      View
+                      <Eye size={13} className="text-muted-foreground" />
+                      <span>View</span>
                     </button>
+
+                    {/* One-to-Many Dropdown Trigger */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        className={`flex h-7 w-7 items-center justify-center rounded-md border transition-all ${
+                          isMenuOpen
+                            ? "border-slate-900 bg-muted text-foreground dark:border-slate-100"
+                            : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuPeriodId(isMenuOpen ? null : p.id);
+                        }}
+                        aria-label="More cycle actions"
+                        aria-haspopup="true"
+                        aria-expanded={isMenuOpen}
+                        title="More actions"
+                      >
+                        <MoreVertical size={14} />
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      {isMenuOpen && (
+                        <div
+                          className="absolute right-0 top-full mt-1 z-30 w-44 rounded-lg border border-border bg-card p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {canEditPeriod(p) && (
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-foreground hover:bg-muted font-medium transition-colors text-left"
+                              onClick={() => {
+                                setActiveMenuPeriodId(null);
+                                onEditPeriod(p);
+                              }}
+                              title="Edit period details"
+                            >
+                              <Pencil size={13} className="shrink-0 text-slate-500" />
+                              <span>Edit Cycle Details</span>
+                            </button>
+                          )}
+
+                          {canDeletePeriod(p) && (
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40 font-medium transition-colors text-left"
+                              onClick={() => {
+                                setActiveMenuPeriodId(null);
+                                onDeletePeriod(p.id);
+                              }}
+                              title="Delete period"
+                              disabled={isDeletingPeriod}
+                            >
+                              <Trash2 size={13} className="shrink-0" />
+                              <span>Delete Cycle</span>
+                            </button>
+                          )}
+
+                          {!canEditPeriod(p) && !canDeletePeriod(p) && (
+                            <div className="px-2.5 py-2 text-[11px] text-muted-foreground italic text-center">
+                              No further actions
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -56,25 +56,50 @@ export const StageConfirmModal = ({
   pendingAction,
   onConfirm,
   onCancel,
+  applicationSubmitted = false,
+  loading = false,
 }) => {
   const isStage1 = pendingAction === "stage1";
-  const title = isStage1
-    ? "Confirm Room Selection"
-    : "Confirm Reservation Submission";
-  const message = isStage1
-    ? "Are you sure you want to proceed with this room selection? A reservation draft will be created."
-    : "Are you sure you want to submit your reservation? Once submitted, you will need to wait for admin confirmation.";
+  const isApplicationSubmit =
+    pendingAction === "stage3" || pendingAction === "submit_application";
+
+  let title = "Confirm Reservation Submission";
+  let subtitle = "";
+  let message =
+    "Are you sure you want to submit your reservation? Once submitted, you will need to wait for admin confirmation.";
+  let confirmText = "Proceed";
+  let cancelText = "Cancel";
+
+  if (isStage1) {
+    title = "Confirm Room Selection";
+    message =
+      "Are you sure you want to proceed with this room selection? A reservation draft will be created.";
+    confirmText = "Proceed";
+    cancelText = "Cancel";
+  } else if (isApplicationSubmit) {
+    title = applicationSubmitted ? "Save Application Changes" : "Submit Application";
+    subtitle = applicationSubmitted
+      ? "Review your updated details before submitting"
+      : "Review your details before submitting";
+    message = applicationSubmitted
+      ? "Are you sure you want to save the changes made to your application? Your updated information and documents will be reviewed."
+      : "Are you sure you want to submit your tenant application? Please verify that all personal details and uploaded verification documents are accurate and complete.";
+    confirmText = applicationSubmitted ? "Save Changes" : "Submit Application";
+    cancelText = "Keep Editing";
+  }
 
   return (
     <BaseModal
       isOpen={show}
       onClose={onCancel}
       title={title}
+      subtitle={subtitle}
       variant="success"
       size="sm"
-      cancelText="Cancel"
-      confirmText="Proceed"
+      cancelText={cancelText}
+      confirmText={confirmText}
       onConfirm={onConfirm}
+      loading={loading}
     >
       <p style={{ margin: 0, color: "var(--text-secondary, var(--muted-foreground))", lineHeight: 1.5 }}>
         {message}
