@@ -11,7 +11,7 @@ jest.mock('../utils/socket', () => ({
 }), { virtual: true });
 
 const { ObjectId } = require('mongodb');
-const { reopenConversation, sendMessage } = require('./chat.controller.js');
+const { confirmResolution, downloadAttachment, reopenConversation, sendMessage } = require('./chat.controller.js');
 
 function response() {
   return {
@@ -137,10 +137,11 @@ describe('mobile support chat persistent-concern lifecycle', () => {
     );
   });
 
-  test('the explicit reopen endpoint reactivates a resolved concern without creating a message', async () => {
+  test('the explicit reopen endpoint reactivates a resolved concern and appends the reason to the same thread', async () => {
     const tenantId = new ObjectId();
     const conversation = closedConversation(tenantId, {
       status: 'resolved',
+      resolvedAt: new Date('2026-08-16T08:00:00Z'),
       closedAt: null,
       closedBy: null,
       closingNote: '',
@@ -163,6 +164,86 @@ describe('mobile support chat persistent-concern lifecycle', () => {
       status: 'open',
       note: 'The repair did not hold.',
     });
+    expect(res.body.conversation.reopenCount).toBe(1);
+    expect(res.body.conversation.resolvedAt).toBeTruthy();
+    expect(db.messages).toHaveLength(1);
+    expect(db.messages[0]).toMatchObject({
+      conversationId: conversation._id,
+      message: 'The repair did not hold.',
+    });
+  });
+
+  test('YES records tenant-confirmed resolution metadata', async () => {
+    const tenantId = new ObjectId();
+    const conversation = closedConversation(tenantId, {
+      status: 'waiting_tenant',
+      closedAt: null,
+      closedBy: null,
+      closingNote: '',
+    });
+    const db = makeDb(conversation);
+    mockGetDb.mockReturnValue(db);
+    const res = response();
+
+    await confirmResolution(request(conversation, tenantId, { resolved: true }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.conversation).toMatchObject({
+      id: String(conversation._id),
+      status: 'resolved',
+      resolvedBy: String(tenantId),
+      resolutionConfirmationSource: 'tenant_yes',
+    });
+    expect(res.body.conversation.resolvedAt).toBeTruthy();
     expect(db.messages).toHaveLength(0);
+  });
+
+  test('NO appends a tenant message and keeps the same conversation active', async () => {
+    const tenantId = new ObjectId();
+    const conversation = closedConversation(tenantId, {
+      status: 'waiting_tenant',
+      closedAt: null,
+      closedBy: null,
+      closingNote: '',
+    });
+    const db = makeDb(conversation);
+    mockGetDb.mockReturnValue(db);
+    const res = response();
+
+    await confirmResolution(request(conversation, tenantId, {
+      resolved: false,
+      note: 'The issue is still happening.',
+    }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.conversation).toMatchObject({
+      id: String(conversation._id),
+      status: 'open',
+    });
+    expect(db.messages).toHaveLength(1);
+    expect(db.messages[0].message).toBe('The issue is still happening.');
+  });
+
+  test("tenant A cannot fetch tenant B's chat attachment", async () => {
+    const tenantB = new ObjectId();
+    const tenantA = new ObjectId();
+    const conversation = closedConversation(tenantB, {
+      status: 'open',
+      tenantUserId: 'tenant-b',
+    });
+    const db = makeDb(conversation);
+    mockGetDb.mockReturnValue(db);
+    const res = response();
+
+    await downloadAttachment({
+      ...request(conversation, tenantA, {}),
+      params: {
+        conversationId: String(conversation._id),
+        attachmentId: String(new ObjectId()),
+      },
+    }, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.detail).toMatch(/do not have access/i);
   });
 });

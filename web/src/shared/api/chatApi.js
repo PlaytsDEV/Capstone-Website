@@ -1,4 +1,4 @@
-import { authFetch } from "./httpClient.js";
+import { authFetch, protectedFetch } from "./httpClient.js";
 
 const buildQuery = (filters = {}) => {
   const params = new URLSearchParams();
@@ -24,6 +24,25 @@ export const chatApi = {
       method: "POST",
       body: JSON.stringify({ message, attachments }),
     }),
+
+  uploadAttachment: async (conversationId, file) => {
+    const body = new FormData();
+    body.append("file", file);
+    return authFetch(`/chat/admin/conversations/${conversationId}/attachments`, {
+      method: "POST",
+      body,
+    });
+  },
+
+  getAttachmentBlob: async (attachment) => {
+    const url = attachment?.url || attachment?.fileUrl;
+    if (!String(url || "").startsWith("/chat/")) {
+      throw new Error("Invalid chat attachment URL.");
+    }
+    const response = await protectedFetch(url);
+    if (!response.ok) throw new Error("Unable to download attachment.");
+    return response.blob();
+  },
 
   markAdminRead: (conversationId) =>
     authFetch(`/chat/admin/conversations/${conversationId}/read`, {

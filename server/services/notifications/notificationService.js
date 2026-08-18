@@ -738,7 +738,7 @@ const notify = {
     const normalizedConversationId = String(conversationId);
     const normalizedMessageId = String(messageId);
     const title = "New Admin Reply";
-    const message = "You received a reply from LilyCrest Admin.";
+    const message = "You received a reply from LilyCrest Admin. Confirm whether your concern was resolved.";
 
     return createNotificationWithPush(
       userId,

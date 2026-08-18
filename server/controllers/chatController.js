@@ -93,27 +93,41 @@ function normalizeMessage(rawMessage, hasAttachments = false) {
   return message;
 }
 
-function normalizeAttachments(rawAttachments) {
-  if (!Array.isArray(rawAttachments)) return [];
-  return rawAttachments
-    .map((att) => {
-      if (!att || typeof att !== "object") return null;
-      const url = String(att.url || att.fileUrl || att.downloadUrl || "").trim();
-      if (!url) return null;
-      const name = String(att.name || att.fileName || att.originalName || "Attachment").trim();
-      const type = String(att.type || att.mimeType || "application/octet-stream").trim();
-      const size = Number(att.size || 0);
-      return {
-        url,
-        fileUrl: url,
-        name,
-        fileName: name,
-        type,
-        mimeType: type,
-        size,
-      };
-    })
-    .filter(Boolean);
+async function normalizeAttachments(rawAttachments, conversationId) {
+  if (!Array.isArray(rawAttachments) || rawAttachments.length === 0) return [];
+  if (rawAttachments.length > 5) {
+    throw createHttpError("A message can contain at most 5 attachments.", 400, "TOO_MANY_ATTACHMENTS");
+  }
+
+  const ids = rawAttachments.map((att) => att?.attachmentId || att?.id).filter(Boolean);
+  if (ids.length !== rawAttachments.length || ids.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
+    throw createHttpError("Upload each attachment before sending it.", 400, "INVALID_CHAT_ATTACHMENT");
+  }
+
+  const { default: ChatAttachment } = await import("../models/ChatAttachment.js");
+  const records = await ChatAttachment.find({
+    _id: { $in: ids },
+    conversationId: ensureObjectId(conversationId),
+  }).lean();
+  const byId = new Map(records.map((record) => [String(record._id), record]));
+  if (byId.size !== ids.length) {
+    throw createHttpError("An attachment does not belong to this conversation.", 403, "ATTACHMENT_ACCESS_DENIED");
+  }
+
+  return ids.map((id) => {
+    const record = byId.get(String(id));
+    const url = `/chat/${conversationId}/attachments/${id}`;
+    return {
+      attachmentId: record._id,
+      url,
+      fileUrl: url,
+      name: record.originalName,
+      fileName: record.originalName,
+      type: record.mimeType,
+      mimeType: record.mimeType,
+      size: record.size,
+    };
+  });
 }
 
 function normalizeCategory(rawCategory, { required = false } = {}) {
@@ -536,6 +550,11 @@ function serializeConversation(conversation) {
     closedAt: doc.closedAt || null,
     closedBy: doc.closedBy ? String(doc.closedBy) : null,
     closingNote: doc.closingNote || "",
+    resolvedAt: doc.resolvedAt || null,
+    resolvedBy: doc.resolvedBy ? String(doc.resolvedBy) : null,
+    resolutionConfirmationSource: doc.resolutionConfirmationSource || "",
+    reopenedAt: doc.reopenedAt || null,
+    reopenCount: Number(doc.reopenCount || 0),
     statusHistory: Array.isArray(doc.statusHistory)
       ? doc.statusHistory.map((entry) => ({
           status: entry.status || "",
@@ -573,8 +592,13 @@ function serializeMessage(message) {
     message: doc.message || "",
     attachments: Array.isArray(doc.attachments)
       ? doc.attachments.map((att) => ({
-          url: att.url || att.fileUrl || "",
-          fileUrl: att.fileUrl || att.url || "",
+          attachmentId: att.attachmentId ? String(att.attachmentId) : "",
+          url: att.attachmentId
+            ? `/chat/${doc.conversationId}/attachments/${att.attachmentId}`
+            : att.url || att.fileUrl || "",
+          fileUrl: att.attachmentId
+            ? `/chat/${doc.conversationId}/attachments/${att.attachmentId}`
+            : att.fileUrl || att.url || "",
           name: att.name || att.fileName || "attachment",
           fileName: att.fileName || att.name || "attachment",
           type: att.type || att.mimeType || "application/octet-stream",
@@ -1075,7 +1099,10 @@ export async function getConversationMessages(req, res) {
       }
     });
 
-    return res.json({ messages: messages.map(serializeMessage) });
+    return res.json({
+      messages: messages.map(serializeMessage),
+      conversation: serializeConversation(conversation),
+    });
   } catch (error) {
     return sendError(res, error, "Failed to load messages.");
   }
@@ -1089,7 +1116,7 @@ export async function sendTenantMessage(req, res) {
       tenantContext.user,
     );
 
-    const attachments = normalizeAttachments(req.body?.attachments);
+    const attachments = await normalizeAttachments(req.body?.attachments, conversation._id);
     const message = normalizeMessage(req.body?.message, attachments.length > 0);
     const result = await createMessageAndUpdateConversation({
       conversation,
@@ -1099,10 +1126,16 @@ export async function sendTenantMessage(req, res) {
       attachments,
       unreadTarget: "admin",
       nextStatus: "open",
-      statusNote: conversation.status === "closed"
+      statusNote: ["resolved", "closed"].includes(conversation.status)
         ? "Tenant replied because the concern persists; conversation reopened."
         : "Tenant replied.",
     });
+
+    if (["resolved", "closed"].includes(conversation.status)) {
+      result.conversation.reopenedAt = new Date();
+      result.conversation.reopenCount = Number(conversation.reopenCount || 0) + 1;
+      await result.conversation.save();
+    }
 
     await notifyAdminsOfTenantMessage(result.conversation);
 
@@ -1146,30 +1179,235 @@ export async function reopenTenantConversation(req, res) {
     const note = String(req.body?.note || "").trim().slice(0, 500)
       || "Tenant reports that the concern persists; conversation reopened.";
     const now = new Date();
-
-    conversation.status = "open";
-    conversation.closedAt = null;
-    conversation.closedBy = null;
-    conversation.closingNote = "";
-    conversation.statusHistory.push({
-      status: "open",
-      note,
-      actorId: tenantContext.user._id,
-      actorName: displayName(tenantContext.user, "Tenant"),
-      createdAt: now,
+    const result = await createMessageAndUpdateConversation({
+      conversation,
+      sender: tenantContext.user,
+      senderRole: "tenant",
+      message: note,
+      unreadTarget: "admin",
+      nextStatus: "open",
+      statusNote: "Tenant reopened the resolved concern in the same thread.",
     });
-    await conversation.save();
+    result.conversation.reopenedAt = now;
+    result.conversation.reopenCount = Number(conversation.reopenCount || 0) + 1;
+    await result.conversation.save();
 
-    const serializedConversation = serializeConversation(conversation);
+    await notifyAdminsOfTenantMessage(result.conversation);
+
+    const serializedMessage = serializeMessage(result.chatMessage);
+    const serializedConversation = serializeConversation(result.conversation);
+    emitToChatAdmins(result.conversation.branch, "chat:message-new", {
+      message: serializedMessage,
+      conversationId: String(result.conversation._id),
+    });
     emitToChatAdmins(
       conversation.branch,
       "chat:conversation-updated",
       serializedConversation,
     );
 
-    return res.json({ conversation: serializedConversation });
+    return res.json({ message: serializedMessage, conversation: serializedConversation });
   } catch (error) {
     return sendError(res, error, "Failed to reopen conversation.");
+  }
+}
+
+export async function confirmTenantResolution(req, res) {
+  try {
+    const tenantContext = await resolveTenantContext(req);
+    const conversation = await findConversationForTenant(
+      req.params.conversationId,
+      tenantContext.user,
+    );
+    if (typeof req.body?.resolved !== "boolean") {
+      throw createHttpError("Choose YES or NO to confirm resolution.", 400, "RESOLUTION_CHOICE_REQUIRED");
+    }
+    if (conversation.status !== "waiting_tenant") {
+      throw createHttpError(
+        "This conversation is not awaiting resolution confirmation.",
+        409,
+        "RESOLUTION_CONFIRMATION_NOT_PENDING",
+      );
+    }
+
+    if (!req.body.resolved) {
+      const note = normalizeOptionalNote(req.body?.note) || "My concern is not resolved yet.";
+      const result = await createMessageAndUpdateConversation({
+        conversation,
+        sender: tenantContext.user,
+        senderRole: "tenant",
+        message: note,
+        unreadTarget: "admin",
+        nextStatus: "open",
+        statusNote: "Tenant selected NO; concern remains active in the same thread.",
+      });
+      await notifyAdminsOfTenantMessage(result.conversation);
+      const message = serializeMessage(result.chatMessage);
+      const serializedConversation = serializeConversation(result.conversation);
+      emitToChatAdmins(result.conversation.branch, "chat:message-new", {
+        message,
+        conversationId: String(result.conversation._id),
+      });
+      emitToChatAdmins(result.conversation.branch, "chat:conversation-updated", serializedConversation);
+      return res.json({ message, conversation: serializedConversation });
+    }
+
+    const now = new Date();
+    conversation.status = "resolved";
+    conversation.resolvedAt = now;
+    conversation.resolvedBy = tenantContext.user._id;
+    conversation.resolutionConfirmationSource = "tenant_yes";
+    conversation.statusHistory.push({
+      status: "resolved",
+      note: "Tenant selected YES and confirmed that the concern was resolved.",
+      actorId: tenantContext.user._id,
+      actorName: displayName(tenantContext.user, "Tenant"),
+      createdAt: now,
+    });
+    await conversation.save();
+    const serializedConversation = serializeConversation(conversation);
+    emitToChatAdmins(conversation.branch, "chat:conversation-updated", serializedConversation);
+    return res.json({ conversation: serializedConversation });
+  } catch (error) {
+    return sendError(res, error, "Failed to confirm resolution.");
+  }
+}
+
+export async function uploadChatAttachment(req, res) {
+  try {
+    const [{ default: ChatAttachment }, { uploadAttachmentFile }] = await Promise.all([
+      import("../models/ChatAttachment.js"),
+      import("../services/attachmentUploadService.js"),
+    ]);
+    const role = String(req.authUser?.role || "").toLowerCase();
+    let conversation;
+    let uploaderRole = "tenant";
+    let uploader;
+    if (ADMIN_ROLES.has(role)) {
+      const adminContext = await resolveAdminContext(req);
+      conversation = await findConversationForAdmin(req.params.conversationId, adminContext);
+      uploaderRole = adminContext.senderRole;
+      uploader = adminContext.user;
+    } else {
+      const tenantContext = await resolveTenantContext(req);
+      conversation = await findConversationForTenant(req.params.conversationId, tenantContext.user);
+      uploader = tenantContext.user;
+    }
+
+    if (conversation.status === "closed") {
+      throw createHttpError("This conversation is closed.", 400, "CONVERSATION_CLOSED");
+    }
+
+    const stored = await uploadAttachmentFile({
+      req,
+      file: req.file,
+      options: {
+        context: "chat_attachment",
+        conversationId: String(conversation._id),
+        relatedId: String(conversation._id),
+        visibility: "tenant_admin",
+        senderRole: uploaderRole,
+      },
+    });
+    const attachment = await ChatAttachment.create({
+      conversationId: conversation._id,
+      branch: conversation.branch,
+      uploadedBy: uploader._id,
+      uploaderRole,
+      originalName: stored.originalName || stored.name,
+      mimeType: stored.mimeType || stored.type,
+      size: stored.size,
+      provider: stored.provider,
+      storagePath: stored.storagePath,
+      storageUrl: stored.downloadUrl || stored.url,
+    });
+    const url = `/chat/${conversation._id}/attachments/${attachment._id}`;
+    return res.status(201).json({
+      attachment: {
+        attachmentId: String(attachment._id),
+        id: String(attachment._id),
+        name: attachment.originalName,
+        fileName: attachment.originalName,
+        mimeType: attachment.mimeType,
+        type: attachment.mimeType,
+        size: attachment.size,
+        url,
+        fileUrl: url,
+      },
+    });
+  } catch (error) {
+    return sendError(res, error, "Failed to upload attachment.");
+  }
+}
+
+export async function downloadChatAttachment(req, res) {
+  try {
+    const [
+      { default: ChatAttachment },
+      { default: admin, resolveFirebaseStorageBucket },
+      { default: fs },
+      { default: path },
+      { fileURLToPath },
+    ] = await Promise.all([
+      import("../models/ChatAttachment.js"),
+      import("../config/firebase.js"),
+      import("fs"),
+      import("path"),
+      import("url"),
+    ]);
+    const controllerDir = path.dirname(fileURLToPath(import.meta.url));
+    const role = String(req.authUser?.role || "").toLowerCase();
+    let conversation;
+    if (ADMIN_ROLES.has(role)) {
+      const adminContext = await resolveAdminContext(req);
+      conversation = await findConversationForAdmin(req.params.conversationId, adminContext);
+    } else {
+      const tenantContext = await resolveTenantContext(req);
+      conversation = await findConversationForTenant(req.params.conversationId, tenantContext.user);
+    }
+
+    const attachment = await ChatAttachment.findOne({
+      _id: ensureObjectId(req.params.attachmentId),
+      conversationId: conversation._id,
+    }).select("+storageUrl");
+    if (!attachment) {
+      throw createHttpError("Attachment not found.", 404, "ATTACHMENT_NOT_FOUND");
+    }
+
+    res.setHeader("Content-Type", attachment.mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename*=UTF-8''${encodeURIComponent(attachment.originalName)}`,
+    );
+    res.setHeader("Cache-Control", "private, max-age=300");
+
+    if (attachment.provider === "local") {
+      const uploadRoot = path.resolve(controllerDir, "..", "uploads");
+      const relativePath = String(attachment.storagePath).replace(/^uploads[\\/]/, "");
+      const resolvedPath = path.resolve(uploadRoot, relativePath);
+      if (!resolvedPath.startsWith(`${uploadRoot}${path.sep}`)) {
+        throw createHttpError("Attachment path is invalid.", 400, "ATTACHMENT_PATH_INVALID");
+      }
+      return fs.createReadStream(resolvedPath)
+        .on("error", () => {
+          if (!res.headersSent) res.status(404).json({ error: "Attachment not found." });
+          else res.destroy();
+        })
+        .pipe(res);
+    }
+
+    const bucketName = resolveFirebaseStorageBucket();
+    if (!admin.apps.length || !bucketName) {
+      throw createHttpError("Attachment storage is unavailable.", 503, "ATTACHMENT_STORAGE_UNAVAILABLE");
+    }
+    return admin.storage().bucket(bucketName).file(attachment.storagePath).createReadStream()
+      .on("error", () => {
+        if (!res.headersSent) res.status(404).json({ error: "Attachment not found." });
+        else res.destroy();
+      })
+      .pipe(res);
+  } catch (error) {
+    return sendError(res, error, "Failed to download attachment.");
   }
 }
 
@@ -1307,7 +1545,7 @@ export async function sendAdminMessage(req, res) {
       throw createHttpError("This conversation is closed.", 400, "CONVERSATION_CLOSED");
     }
 
-    const attachments = normalizeAttachments(req.body?.attachments);
+    const attachments = await normalizeAttachments(req.body?.attachments, conversation._id);
     const message = normalizeMessage(req.body?.message, attachments.length > 0);
     const result = await createMessageAndUpdateConversation({
       conversation,
@@ -1439,6 +1677,13 @@ export async function updateAdminConversationStatus(req, res) {
         "Use close conversation to close this chat.",
         400,
         "USE_CLOSE_ENDPOINT",
+      );
+    }
+    if (status === "resolved") {
+      throw createHttpError(
+        "Only the tenant can confirm that a concern is resolved.",
+        409,
+        "TENANT_CONFIRMATION_REQUIRED",
       );
     }
     if (conversation.status === "closed") {

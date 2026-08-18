@@ -1065,7 +1065,7 @@ const resolveStoredAttachmentFile = async ({
   );
 };
 
-const assertUploadableAttachmentFile = (file) => {
+const assertUploadableAttachmentFile = (file, { validateSignature = false } = {}) => {
   if (!file) {
     throw new AppError("Please choose a photo or PDF to upload.", 400, "FILE_REQUIRED");
   }
@@ -1079,6 +1079,28 @@ const assertUploadableAttachmentFile = (file) => {
       ATTACHMENT_TYPE_ERROR_MESSAGE,
       400,
       "UNSUPPORTED_FILE_TYPE",
+    );
+  }
+
+  if (!validateSignature) return;
+
+  const mimeType = resolveAttachmentMimeType(file);
+  const buffer = file.buffer || Buffer.alloc(0);
+  const ascii = buffer.subarray(0, 16).toString("ascii");
+  const isoBrand = ascii.slice(8, 12);
+  const isHeifFamily = ascii.slice(4, 8) === "ftyp"
+    && new Set(["heic", "heix", "hevc", "hevx", "heim", "heis", "mif1", "msf1"]).has(isoBrand);
+  const isValidSignature =
+    (mimeType === "image/jpeg" && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) ||
+    (mimeType === "image/png" && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) ||
+    (mimeType === "image/webp" && ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") ||
+    (["image/heic", "image/heif"].includes(mimeType) && isHeifFamily) ||
+    (mimeType === "application/pdf" && ascii.startsWith("%PDF-"));
+  if (!isValidSignature) {
+    throw new AppError(
+      "The file content does not match its declared type.",
+      400,
+      "ATTACHMENT_SIGNATURE_INVALID",
     );
   }
 };
@@ -1207,7 +1229,9 @@ const storeAttachmentFile = async ({
 };
 
 export const uploadAttachmentFile = async ({ req, file, options = {} }) => {
-  assertUploadableAttachmentFile(file);
+  assertUploadableAttachmentFile(file, {
+    validateSignature: String(options.context || "").includes("chat"),
+  });
 
   const resolution = await resolveUploadBranch(req, options);
   const context = resolution.context;

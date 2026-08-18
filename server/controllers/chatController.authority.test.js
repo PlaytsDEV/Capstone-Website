@@ -42,6 +42,7 @@ const {
   getAdminConversationMessages,
   sendAdminMessage,
   sendTenantMessage,
+  updateAdminConversationStatus,
 } = await import("./chatController.js");
 
 function response() {
@@ -199,6 +200,26 @@ describe("chat controller authoritative branch scope", () => {
     expect(notifyAdminReply).not.toHaveBeenCalled();
   });
 
+  test("an admin cannot bypass tenant confirmation by setting resolved directly", async () => {
+    const conversationId = "507f1f77bcf86cd799439011";
+    conversationFindOne.mockResolvedValue({
+      _id: conversationId,
+      tenantId: "507f1f77bcf86cd799439099",
+      branch: "gil-puyat",
+      status: "waiting_tenant",
+      statusHistory: [],
+    });
+    const res = response();
+
+    await updateAdminConversationStatus(
+      adminRequest({ params: { conversationId }, body: { status: "resolved" } }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe("TENANT_CONFIRMATION_REQUIRED");
+  });
+
   test("tenant reply reopens a closed shared conversation and clears closure metadata", async () => {
     const tenantId = "507f1f77bcf86cd799439012";
     const conversationId = "507f1f77bcf86cd799439011";
@@ -243,6 +264,7 @@ describe("chat controller authoritative branch scope", () => {
       ...update.$set,
       unreadAdminCount: 1,
       statusHistory: update.$push.statusHistory.$each,
+      save: jest.fn(async () => {}),
     }));
     userFind.mockReturnValue({
       select: () => ({ lean: async () => [] }),

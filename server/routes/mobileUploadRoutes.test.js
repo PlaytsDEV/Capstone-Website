@@ -1,6 +1,7 @@
 import fs from "fs";
 import { afterEach, describe, expect, jest, test } from "@jest/globals";
 import express from "express";
+import { ObjectId } from "mongodb";
 
 describe("mobile Upload route safety (source inspection)", () => {
   const routes = fs.readFileSync(new URL("./mobileUploadRoutes.js", import.meta.url), "utf8");
@@ -25,6 +26,8 @@ describe("mobile Upload route (HTTP behavior)", () => {
   let baseUrl;
   let saveMock;
   let bucketMock;
+  let chatConversation;
+  let chatAttachmentInsert;
 
   afterEach(async () => {
     if (server) await new Promise((resolve) => server.close(resolve));
@@ -35,11 +38,40 @@ describe("mobile Upload route (HTTP behavior)", () => {
     jest.resetModules();
     saveMock = jest.fn().mockResolvedValue(undefined);
     bucketMock = jest.fn(() => ({ file: () => ({ save: saveMock }) }));
+    const tenantMongoId = new ObjectId();
+    chatConversation = {
+      _id: new ObjectId(),
+      tenantId: tenantMongoId,
+      tenantUserId: "tenant-a",
+      branch: "gil-puyat",
+      status: "open",
+    };
+    chatAttachmentInsert = jest.fn(async () => ({ acknowledged: true }));
 
     jest.unstable_mockModule("../middleware/mobileTenantAuth.js", () => ({
       mobileTenantAuth: (req, res, next) => {
-        req.mobileTenant = { user_id: "tenant-a" };
+        req.mobileTenant = { _id: tenantMongoId, user_id: "tenant-a" };
         next();
+      },
+    }));
+    jest.unstable_mockModule("mongoose", () => ({
+      default: {
+        Types: { ObjectId },
+        connection: {
+          db: {
+            collection: (name) => {
+              if (name === "chat_conversations") {
+                return { findOne: async (query) => (
+                  String(query._id) === String(chatConversation._id)
+                    ? chatConversation
+                    : null
+                ) };
+              }
+              if (name === "chat_attachments") return { insertOne: chatAttachmentInsert };
+              throw new Error(`Unexpected collection: ${name}`);
+            },
+          },
+        },
       },
     }));
     jest.unstable_mockModule("../config/firebase.js", () => ({
@@ -88,6 +120,86 @@ describe("mobile Upload route (HTTP behavior)", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mimeType: "application/x-msdownload", dataBase64: tinyPngBase64 }),
+    });
+    expect(res.status).toBe(400);
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  test("authorized chat upload returns only a protected attachment ID/URL and persists ownership metadata", async () => {
+    await startApp();
+    const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mimeType: "image/png",
+        fileName: "repair.png",
+        dataBase64: tinyPngBase64,
+        context: "chat",
+        conversationId: String(chatConversation._id),
+        entityId: String(chatConversation._id),
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.attachmentId).toMatch(/^[a-f0-9]{24}$/);
+    expect(body.url).toBe(`/chat/${chatConversation._id}/attachments/${body.attachmentId}`);
+    expect(body.url).not.toContain("firebasestorage.googleapis.com");
+    expect(body.storagePath).toBeUndefined();
+    expect(chatAttachmentInsert).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: chatConversation._id,
+      uploaderRole: "tenant",
+      originalName: "repair.png",
+    }));
+  });
+
+  test("chat upload rejects an arbitrary conversation ID before storage", async () => {
+    await startApp();
+    const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mimeType: "image/png",
+        fileName: "repair.png",
+        dataBase64: tinyPngBase64,
+        context: "chat",
+        conversationId: String(new ObjectId()),
+      }),
+    });
+    expect(res.status).toBe(403);
+    expect(saveMock).not.toHaveBeenCalled();
+    expect(chatAttachmentInsert).not.toHaveBeenCalled();
+  });
+
+  test("chat upload verifies file signatures instead of trusting the declared MIME type", async () => {
+    await startApp();
+    const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mimeType: "image/png",
+        fileName: "spoofed.png",
+        dataBase64: Buffer.from("not a PNG").toString("base64"),
+        context: "chat",
+        conversationId: String(chatConversation._id),
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  test("chat upload rejects a generic ISO media file spoofed as HEIC", async () => {
+    await startApp();
+    const spoofedMp4 = Buffer.from([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
+    const res = await fetch(`${baseUrl}/api/m/upload/firebase-storage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mimeType: "image/heic",
+        fileName: "spoofed.heic",
+        dataBase64: spoofedMp4.toString("base64"),
+        context: "chat",
+        conversationId: String(chatConversation._id),
+      }),
     });
     expect(res.status).toBe(400);
     expect(saveMock).not.toHaveBeenCalled();

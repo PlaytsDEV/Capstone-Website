@@ -44,6 +44,11 @@ const chatMessageSchema = new mongoose.Schema(
     },
     attachments: [
       {
+        attachmentId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "ChatAttachment",
+          default: null,
+        },
         url: { type: String, required: true },
         fileUrl: { type: String, default: "" },
         name: { type: String, default: "" },
