@@ -174,9 +174,9 @@ const EmploymentSection = ({
           }}
           style={{
             border: fieldErrors.employerContact
-              ? "1.5px solid var(--danger)"
+              ? "1px solid var(--danger)"
               : showValidationErrors && employerContact && !validatePHPhoneOrLandline(employerContact)
-              ? "1.5px solid var(--danger)"
+              ? "1px solid var(--danger)"
               : undefined,
           }}
           aria-invalid={Boolean(fieldErrors.employerContact || (showValidationErrors && employerContact && !validatePHPhoneOrLandline(employerContact)))}
@@ -228,7 +228,7 @@ const EmploymentSection = ({
           }}
           style={{
             border: fieldErrors.occupation
-              ? "1.5px solid var(--danger)"
+              ? "1px solid var(--danger)"
               : errBorder(showValidationErrors, occupation),
           }}
           aria-invalid={Boolean(fieldErrors.occupation || (showValidationErrors && !occupation))}
@@ -326,8 +326,8 @@ const EmploymentSection = ({
         <div className="rf-char-counter">
           {companyIDReason?.length || 0}/300
         </div>
-        {showValidationErrors && !companyID && !companyIDReason && (
-          <FieldError error="Please upload Company ID or provide a reason" />
+        {showValidationErrors && !companyID && (!companyIDReason?.trim() || companyIDReason.trim().length < 10) && (
+          <FieldError error="Please upload Company ID or provide a detailed reason (at least 10 characters)" />
         )}
       </div>
     </>

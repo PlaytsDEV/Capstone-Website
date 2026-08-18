@@ -32,8 +32,11 @@ const DashboardTab = ({
  const res = selectedReservation;
  const room = res?.roomId || {};
  const roomName = room.name;
+ const hasReservation = Boolean(selectedReservation || activeReservation);
  const canViewTenantModules =
  profileData?.role === "tenant" || profileData?.tenantStatus === "active";
+ const showBrowseRoomsShortcut = hasReservation;
+ const showShortcutsGrid = showBrowseRoomsShortcut || canViewTenantModules;
 
  // Responsive: detect if we're on mobile
  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
@@ -122,49 +125,43 @@ const DashboardTab = ({
             visits={visits}
             onGoToReservation={onGoToReservation}
           />
-          <div style={S.shortcutsGrid}>
-            <button
-              type="button"
-              onClick={() => navigate("/applicant/check-availability")}
-              style={shortcutCardStyle}
-            >
-              <span
-                style={{
-                  ...S.shortcutIconWrap,
-                  background: isDark ? "rgba(212, 175, 55, 0.22)" : "rgba(212, 175, 55, 0.14)",
-                }}
-              >
-                <Search size={19} color="var(--color-primary, #D4AF37)" />
-              </span>
-              <span style={S.shortcutContent}>
-                <span style={shortcutTitleStyle}>Browse Rooms</span>
-                <span style={shortcutSubtitleStyle}>View available rooms</span>
-              </span>
-              <ChevronRight size={18} color={shortcutChevronColor} />
-            </button>
-
-            {canViewTenantModules && (
-              <button
-                type="button"
-                onClick={() => navigate("/applicant/billing")}
-                style={shortcutCardStyle}
-              >
-                <span
-                  style={{
-                    ...S.shortcutIconWrap,
-                    background: isDark ? "rgba(16, 185, 129, 0.2)" : "rgba(16, 185, 129, 0.16)",
-                  }}
+          {showShortcutsGrid && (
+            <div style={S.shortcutsGrid}>
+              {showBrowseRoomsShortcut && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/applicant/check-availability")}
+                  style={shortcutCardStyle}
                 >
-                  <CreditCard size={18} color={isDark ? "#34D399" : "#059669"} />
-                </span>
-                <span style={S.shortcutContent}>
-                  <span style={shortcutTitleStyle}>My Bills</span>
-                  <span style={shortcutSubtitleStyle}>View billing details</span>
-                </span>
-                <ChevronRight size={18} color={shortcutChevronColor} />
-              </button>
-            )}
-          </div>
+                  <span style={S.shortcutIconWrap}>
+                    <Search size={20} color={isDark ? "#F8FAFC" : "var(--text-heading, #0A1628)"} />
+                  </span>
+                  <span style={S.shortcutContent}>
+                    <span style={shortcutTitleStyle}>Browse Rooms</span>
+                    <span style={shortcutSubtitleStyle}>View available rooms</span>
+                  </span>
+                  <ChevronRight size={18} color={shortcutChevronColor} />
+                </button>
+              )}
+
+              {canViewTenantModules && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/applicant/billing")}
+                  style={shortcutCardStyle}
+                >
+                  <span style={S.shortcutIconWrap}>
+                    <CreditCard size={20} color={isDark ? "#F8FAFC" : "var(--text-heading, #0A1628)"} />
+                  </span>
+                  <span style={S.shortcutContent}>
+                    <span style={shortcutTitleStyle}>My Bills</span>
+                    <span style={shortcutSubtitleStyle}>View billing details</span>
+                  </span>
+                  <ChevronRight size={18} color={shortcutChevronColor} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right col: spans both rows on desktop, below on mobile */}
@@ -252,15 +249,13 @@ const S = {
  boxShadow: "0 4px 14px rgba(0, 0, 0, 0.04)",
  transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease, border-color 0.2s ease",
  },
- shortcutIconWrap: {
- width: 46,
- height: 46,
- borderRadius: 14,
- display: "inline-flex",
- alignItems: "center",
- justifyContent: "center",
- flexShrink: 0,
- },
+  shortcutIconWrap: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    background: "transparent",
+  },
  shortcutContent: {
  minWidth: 0,
  display: "flex",

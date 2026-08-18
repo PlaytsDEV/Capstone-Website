@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import useBodyScrollLock from "../../../../shared/hooks/useBodyScrollLock";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
+import { sanitizeName, formatProperCase } from "../../../../shared/utils/authValidation";
 import { LoaderCircle } from "lucide-react";
 
 export default function EditUserModal({
@@ -159,10 +160,19 @@ export default function EditUserModal({
               <input
                 type="text"
                 value={editForm.firstName || ""}
-                onChange={(e) =>
-                  onFormChange({ ...editForm, firstName: e.target.value }, "firstName", e.target.value)
-                }
-                onBlur={() => handleBlur("firstName")}
+                onChange={(e) => {
+                  const sanitized = sanitizeName(e.target.value);
+                  onFormChange({ ...editForm, firstName: sanitized }, "firstName", sanitized);
+                }}
+                onBlur={() => {
+                  handleBlur("firstName");
+                  if (editForm.firstName && typeof editForm.firstName === "string") {
+                    const proper = formatProperCase(editForm.firstName.trim());
+                    if (proper !== editForm.firstName) {
+                      onFormChange({ ...editForm, firstName: proper }, "firstName", proper);
+                    }
+                  }
+                }}
                 required
                 maxLength={50}
               />
@@ -180,10 +190,19 @@ export default function EditUserModal({
               <input
                 type="text"
                 value={editForm.lastName || ""}
-                onChange={(e) =>
-                  onFormChange({ ...editForm, lastName: e.target.value }, "lastName", e.target.value)
-                }
-                onBlur={() => handleBlur("lastName")}
+                onChange={(e) => {
+                  const sanitized = sanitizeName(e.target.value);
+                  onFormChange({ ...editForm, lastName: sanitized }, "lastName", sanitized);
+                }}
+                onBlur={() => {
+                  handleBlur("lastName");
+                  if (editForm.lastName && typeof editForm.lastName === "string") {
+                    const proper = formatProperCase(editForm.lastName.trim());
+                    if (proper !== editForm.lastName) {
+                      onFormChange({ ...editForm, lastName: proper }, "lastName", proper);
+                    }
+                  }
+                }}
                 required
                 maxLength={50}
               />

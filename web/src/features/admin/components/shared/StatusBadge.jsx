@@ -65,7 +65,6 @@ export default function StatusBadge({
       "awaiting_notarization",
     ];
     const errorStatuses = [
-      "cancelled",
       "rejected",
       "overdue",
       "no-show",
@@ -93,11 +92,26 @@ export default function StatusBadge({
       "ready_for_publication",
       "provider_assigned",
     ];
+    const neutralStatuses = [
+      "cancelled",
+      "canceled",
+      "closed",
+      "archived",
+      "draft",
+      "inactive",
+      "vacant",
+      "maint",
+      "maintenance",
+      "moved_out",
+      "moveout",
+      "move_out",
+    ];
 
     if (successStatuses.includes(norm)) return "success";
     if (warningStatuses.includes(norm)) return "warning";
     if (errorStatuses.includes(norm)) return "error";
     if (infoStatuses.includes(norm)) return "info";
+    if (neutralStatuses.includes(norm)) return "neutral";
     return "neutral";
   };
 

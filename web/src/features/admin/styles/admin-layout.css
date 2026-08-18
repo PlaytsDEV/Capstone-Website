@@ -125,8 +125,7 @@ html:has(.admin-layout) body {
   );
   flex: 1;
   padding: var(--admin-content-padding);
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
+  overflow-y: auto;
   background: var(--bg-page);
   min-height: calc(100vh - 64px);
 }

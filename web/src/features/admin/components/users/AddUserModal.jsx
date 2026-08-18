@@ -5,6 +5,7 @@ import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import PasswordVisibilityButton from "../../../../shared/components/PasswordVisibilityButton";
 import { BRANCH_OPTIONS } from "../../../../shared/utils/constants";
 import { showNotification } from "../../../../shared/utils/notification";
+import { sanitizeName, formatProperCase } from "../../../../shared/utils/authValidation";
 
 function generateSecurePassword() {
   const lowercase = "abcdefghjkmnpqrstuvwxyz";
@@ -183,8 +184,16 @@ export default function AddUserModal({
             <input
               type="text"
               value={addForm.firstName}
-              onChange={(e) => onFormChange("firstName", e.target.value)}
-              onBlur={() => handleBlur("firstName")}
+              onChange={(e) => onFormChange("firstName", sanitizeName(e.target.value))}
+              onBlur={() => {
+                handleBlur("firstName");
+                if (addForm.firstName && typeof addForm.firstName === "string") {
+                  const proper = formatProperCase(addForm.firstName.trim());
+                  if (proper !== addForm.firstName) {
+                    onFormChange("firstName", proper);
+                  }
+                }
+              }}
               required
               maxLength={50}
               placeholder="John"
@@ -203,8 +212,16 @@ export default function AddUserModal({
             <input
               type="text"
               value={addForm.lastName}
-              onChange={(e) => onFormChange("lastName", e.target.value)}
-              onBlur={() => handleBlur("lastName")}
+              onChange={(e) => onFormChange("lastName", sanitizeName(e.target.value))}
+              onBlur={() => {
+                handleBlur("lastName");
+                if (addForm.lastName && typeof addForm.lastName === "string") {
+                  const proper = formatProperCase(addForm.lastName.trim());
+                  if (proper !== addForm.lastName) {
+                    onFormChange("lastName", proper);
+                  }
+                }
+              }}
               required
               maxLength={50}
               placeholder="Doe"

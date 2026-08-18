@@ -65,4 +65,35 @@ test("ChatMessageBubble retires older assistant action chips when not latest", (
   assert.match(rawBubbleCode, /isLatestAssistant\s*\?\s*"opacity-100"\s*:\s*"opacity-45 pointer-events-none select-none"/);
 });
 
+test("PublicChatbotLauncher and Modal enforce Navy Blue (light) and Golden Yellow (dark) parity", () => {
+  const rawLauncherCode = fs.readFileSync(
+    path.join(__dirname, "PublicChatbotLauncher.jsx"),
+    "utf8"
+  );
+  const rawModalCode = fs.readFileSync(
+    path.join(__dirname, "PublicChatbotModal.jsx"),
+    "utf8"
+  );
+  const rawBubbleCode = fs.readFileSync(
+    path.join(__dirname, "ChatMessageBubble.jsx"),
+    "utf8"
+  );
+
+  // Launcher light mode navy background & dark mode gold background
+  assert.match(rawLauncherCode, /\.lc-bot-btn\s*\{[^}]*background-color:\s*#0A1628/);
+  assert.match(rawLauncherCode, /\.dark \.lc-bot-btn[^{]*\{[^}]*background-color:\s*#D4AF37/);
+  assert.match(rawLauncherCode, /\.lc-radar-badge\s*\{[^}]*border-color:\s*#0A1628/);
+  assert.match(rawLauncherCode, /\.dark \.lc-radar-badge[^{]*\{[^}]*border-color:\s*#D4AF37/);
+
+  // Modal send button & input focus
+  assert.match(rawModalCode, /\.lc-public-send-btn\s*\{[^}]*background-color:\s*#0A1628/);
+  assert.match(rawModalCode, /\.dark \.lc-public-send-btn[^{]*\{[^}]*background-color:\s*#D4AF37/);
+  assert.match(rawModalCode, /\.lc-public-chat-input:focus\s*\{[^}]*border-color:\s*#0A1628/);
+  assert.match(rawModalCode, /\.dark \.lc-public-chat-input:focus[^{]*\{[^}]*border-color:\s*#D4AF37/);
+
+  // Message bubble user turn
+  assert.match(rawBubbleCode, /\.lc-user-bubble\s*\{[^}]*background-color:\s*#0A1628/);
+  assert.match(rawBubbleCode, /\.dark \.lc-user-bubble[^{]*\{[^}]*background-color:\s*#D4AF37/);
+});
+
 

@@ -6,6 +6,7 @@ import { useTheme } from "../context/ThemeContext";
 import hero1 from "../../../assets/images/hero1.webp";
 import hero2 from "../../../assets/images/hero2.webp";
 import hero3 from "../../../assets/images/hero3.webp";
+import { smoothScrollTo } from "../../../shared/utils/smoothScroll";
 
 
 const fadeUp = (delay = 0) => ({
@@ -151,13 +152,20 @@ export function HeroSection() {
             {/* Badge */}
             <motion.div
               {...fadeUp(0.2)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-sm mb-6"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md mb-6"
               style={{
-                backgroundColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(10,22,40,0.06)",
+                backgroundColor: isDark ? "rgba(10, 22, 40, 0.75)" : "rgba(255, 255, 255, 0.9)",
+                border: isDark ? "1px solid rgba(212, 175, 55, 0.35)" : "1px solid rgba(212, 175, 55, 0.35)",
+                boxShadow: isDark
+                  ? "0 2px 12px rgba(0, 0, 0, 0.35)"
+                  : "0 2px 14px rgba(212, 175, 55, 0.12), 0 1px 3px rgba(10, 22, 40, 0.03)",
               }}
             >
-              <Sparkles className="w-4 h-4" style={{ color: isDark ? "rgba(255,255,255,0.9)" : "var(--lp-accent)" }} />
-              <span className="text-xs font-light tracking-wider uppercase" style={{ color: heroTextSecondary }}>
+              <Sparkles className="w-4 h-4 flex-shrink-0" style={{ color: "var(--lp-accent)" }} />
+              <span
+                className="text-xs font-semibold tracking-[0.18em] uppercase"
+                style={{ color: isDark ? "#F8FAFC" : "var(--lp-navy)" }}
+              >
                 Quality Urban Living
               </span>
             </motion.div>
@@ -211,17 +219,23 @@ export function HeroSection() {
               </Link>
               <a
                 href="#inquiry"
-                className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-medium text-base transition-all duration-300"
+                onClick={(e) => {
+                  e.preventDefault();
+                  smoothScrollTo("inquiry", 80);
+                }}
+                className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-medium text-base transition-all duration-300 cursor-pointer"
                 style={{
                   border: isDark ? "1px solid rgba(255,255,255,0.25)" : "1px solid rgba(10,22,40,0.2)",
                   color: heroTextPrimary,
                   backgroundColor: "transparent",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = isDark ? "rgba(255,255,255,0.1)" : "rgba(10,22,40,0.06)";
+                  e.currentTarget.style.backgroundColor = isDark ? "rgba(255,255,255,0.1)" : "rgba(255, 255, 255, 0.85)";
+                  e.currentTarget.style.borderColor = "var(--lp-accent)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = "transparent";
+                  e.currentTarget.style.borderColor = isDark ? "rgba(255,255,255,0.25)" : "rgba(10,22,40,0.2)";
                 }}
               >
                 Contact Us
@@ -243,9 +257,10 @@ export function HeroSection() {
               ref={statRef}
               className="inline-flex items-center gap-0 flex-wrap"
               style={{
-                background: isDark ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.55)",
+                background: isDark ? "rgba(10, 22, 40, 0.65)" : "rgba(255, 255, 255, 0.75)",
                 backdropFilter: "blur(12px)",
-                border: isDark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(10,22,40,0.12)",
+                border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(212, 175, 55, 0.22)",
+                boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(212, 175, 55, 0.08)",
                 borderRadius: "50px",
                 padding: "10px 20px",
               }}

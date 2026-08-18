@@ -10,7 +10,7 @@ const tenantRoot = resolve(__dirname, "../../..");
 const readTenantSource = (relativePath) =>
   readFileSync(resolve(tenantRoot, relativePath), "utf8");
 
-test("PhotoEmailSection provides unlocked editable email with account suggestion chip and autocomplete", () => {
+test("PhotoEmailSection provides unlocked editable email with account datalist suggestions and autocomplete", () => {
   const source = readTenantSource("pages/reservation-steps/components/PhotoEmailSection.jsx");
 
   // Verify email input is NOT disabled
@@ -18,11 +18,11 @@ test("PhotoEmailSection provides unlocked editable email with account suggestion
   assert.match(source, /autoComplete="email"/, "Email input should have autoComplete='email'");
   assert.match(source, /inputMode="email"/, "Email input should have inputMode='email'");
   assert.match(source, /setBillingEmail/, "Email input should connect to setBillingEmail");
-  assert.match(source, /rf-suggestion-chip/, "Suggestion chip should be rendered for account email");
+  assert.match(source, /datalist id="billingEmail-suggestions"/, "Datalist suggestion dropdown should be rendered for account email");
   assert.match(source, /accountEmail/, "Component should accept and use accountEmail");
 });
 
-test("PersonalInfoSection provides autocomplete attributes, suggestion chips, and character counters", () => {
+test("PersonalInfoSection provides autocomplete attributes, datalist suggestions, and character counters", () => {
   const source = readTenantSource("pages/reservation-steps/components/PersonalInfoSection.jsx");
 
   assert.match(source, /autoComplete="family-name"/, "Last Name should have family-name autocomplete");
@@ -30,7 +30,7 @@ test("PersonalInfoSection provides autocomplete attributes, suggestion chips, an
   assert.match(source, /autoComplete="additional-name"/, "Middle Name should have additional-name autocomplete");
   assert.match(source, /autoComplete="nickname"/, "Nickname should have nickname autocomplete");
   assert.match(source, /autoComplete="tel"/, "Mobile number should have tel autocomplete");
-  assert.match(source, /rf-suggestion-chip/, "NameField should support suggestion chips");
+  assert.match(source, /datalist id=\{datalistId\}/, "NameField should support datalist suggestion dropdown");
   assert.match(source, /rf-char-counter/, "Personal notes and NBI reason should have character counters");
 });
 
@@ -71,10 +71,41 @@ test("useReservationFlow guards profile name initialization and manages billingE
   assert.match(source, /userAccountEmail/, "userAccountEmail should be exported from useReservationFlow");
 });
 
-test("ReservationApplicationStep calculates section completion and renders badges", () => {
+test("ReservationApplicationStep calculates section completion, renders progress bar and back navigation", () => {
   const source = readTenantSource("pages/reservation-steps/ReservationApplicationStep.jsx");
 
   assert.match(source, /sectionCompletionMap/, "Section completion map should be computed");
+  assert.match(source, /completedSectionsCount/, "completedSectionsCount should be computed from sectionCompletionMap");
+  assert.match(source, /<ApplicationProgressBar/, "ApplicationProgressBar should be rendered in header area");
   assert.match(source, /rf-section-badge--done/, "Completed sections should show completion badges");
   assert.match(source, /setBillingEmail/, "setBillingEmail should be passed to PhotoEmailSection");
+  assert.match(source, /Step 3 · Tenant Application/, "Header badge should state Step 3 · Tenant Application");
+  assert.match(source, /onPrev/, "onPrev Back button should be supported in Stage 3 navigation");
 });
+
+test("ApplicationProgressBar renders accessible progressbar semantics and saving indicators", () => {
+  const source = readTenantSource("pages/reservation-steps/components/ApplicationProgressBar.jsx");
+
+  assert.match(source, /role="progressbar"/, "Progress track should have role='progressbar'");
+  assert.match(source, /aria-valuenow=\{percentage\}/, "Progress track should have aria-valuenow");
+  assert.match(source, /rf-app-progress__save/, "Auto-save status indicator should be rendered");
+  assert.match(source, /Ready to submit/, "Ready to submit badge should show when all sections complete");
+});
+
+test("CSS rules suppress native datalist dropdown arrows across global and reservation flow styles", () => {
+  const globalCss = readFileSync(resolve(tenantRoot, "../../index.css"), "utf8");
+  const reservationCss = readTenantSource("styles/reservation-flow.css");
+
+  assert.match(
+    globalCss,
+    /input::-webkit-calendar-picker-indicator[\s\S]*?display:\s*none\s*!important/,
+    "Global index.css must suppress native calendar/datalist picker indicator",
+  );
+  assert.match(
+    reservationCss,
+    /\.form-input::-webkit-calendar-picker-indicator[\s\S]*?display:\s*none\s*!important/,
+    "Reservation flow CSS must explicitly suppress native calendar/datalist picker indicator",
+  );
+});
+
+

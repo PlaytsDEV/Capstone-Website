@@ -394,7 +394,7 @@ export default function SignedContractUploadSection({
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all ${
+                className={`border border-dashed rounded-xl p-5 text-center cursor-pointer transition-all ${
                   isDragging
                     ? "border-primary bg-primary/10 scale-[0.99]"
                     : "border-border hover:border-primary/60 bg-muted/20 hover:bg-muted/40"
@@ -450,10 +450,26 @@ export default function SignedContractUploadSection({
             <button
               type="submit"
               disabled={uploading || !selectedFile}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+              title={
+                !selectedFile
+                  ? "Please select a scanned contract PDF or image to upload"
+                  : uploading
+                  ? "Uploading scan..."
+                  : "Upload scanned contract"
+              }
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#0A1628] hover:bg-[#13243D] text-white text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:outline-none"
             >
-              <Upload className="w-3.5 h-3.5" />
-              <span>{uploading ? "Uploading Scan…" : "Upload Contract Scan"}</span>
+              {uploading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Uploading Scan…</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Contract Scan</span>
+                </>
+              )}
             </button>
           </div>
         </form>

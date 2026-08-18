@@ -8,7 +8,6 @@ import {
   Briefcase,
   Globe,
   ChevronDown,
-  Sparkles,
   Phone,
   Home,
   CalendarDays,
@@ -26,6 +25,7 @@ import { showNotification } from "../../../../shared/utils/notification";
 
 import {
   toTitleCase,
+  formatProperCase,
   formatBed,
   MONTH_OPTIONS,
   parseDateParts,
@@ -97,7 +97,8 @@ const s = {
     borderRadius: "50%",
     overflow: "hidden",
     flexShrink: 0,
-    border: "2px solid var(--border)",
+    border: "none",
+    boxShadow: "var(--avatar-shadow-lg)",
     background: "var(--muted)",
   },
   avatarFallback: {
@@ -113,7 +114,8 @@ const s = {
     fontWeight: "var(--font-weight-bold, 700)",
     letterSpacing: "0.5px",
     flexShrink: 0,
-    border: "2px solid var(--border)",
+    border: "none",
+    boxShadow: "var(--avatar-shadow-lg)",
   },
   avatarBadge: {
     position: "absolute",
@@ -173,9 +175,9 @@ const s = {
     gap: 5,
     fontSize: "var(--font-size-xs, 12px)",
     fontWeight: "var(--font-weight-medium, 500)",
-    color: "var(--muted-foreground)",
-    background: "var(--muted)",
-    border: "1px solid var(--border-light, var(--border))",
+    color: "var(--foreground)",
+    background: "transparent",
+    border: "1px solid var(--border)",
     borderRadius: "var(--radius-full, 999px)",
     padding: "3px 10px",
   },
@@ -284,14 +286,11 @@ const s = {
     padding: "16px 22px",
   },
   sectionIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: "var(--radius-md, 8px)",
-    display: "flex",
+    display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    background: "var(--accent)",
+    background: "transparent",
   },
   sectionTitle: {
     fontSize: "var(--font-size-base, 15px)",
@@ -306,26 +305,25 @@ const s = {
     margin: "0 22px",
   },
   sectionBody: {
-    padding: "20px 22px 24px",
+    padding: "20px 24px 24px",
   },
 
   /* ── Unified Grid System ── */
   grid3: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-    gap: 16,
+    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gap: "20px 24px",
   },
 
-  /* ── Structured Field Tile ── */
+  /* ── Structured Field Tile (Clean, unboxed presentation) ── */
   fieldTile: {
-    background: "var(--input-background, var(--card))",
-    border: "1px solid var(--border-light, var(--border))",
-    borderRadius: "var(--radius-md, 8px)",
-    padding: "12px 14px",
+    background: "transparent",
+    border: "none",
+    padding: 0,
     display: "flex",
     flexDirection: "column",
-    gap: 4,
-    minHeight: 64,
+    gap: 6,
+    minHeight: "auto",
     boxSizing: "border-box",
   },
   fieldHeader: {
@@ -374,10 +372,10 @@ const s = {
   /* ── Inputs ── */
   input: {
     width: "100%",
-    padding: "8px 10px",
+    padding: "9px 12px",
     fontSize: "var(--font-size-sm, 13px)",
-    border: "1.5px solid var(--border)",
-    borderRadius: "var(--radius-sm, 6px)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-md, 8px)",
     color: "var(--foreground)",
     background: "var(--card)",
     outline: "none",
@@ -407,10 +405,10 @@ const s = {
     lineHeight: 1.3,
   },
   inputLocked: {
-    background: "var(--muted)",
-    color: "var(--muted-foreground)",
+    background: "var(--card)",
+    color: "var(--foreground)",
     cursor: "not-allowed",
-    border: "1.5px solid var(--border-light, var(--border))",
+    border: "1px solid var(--border)",
   },
   errorText: {
     fontSize: "11px",
@@ -419,22 +417,14 @@ const s = {
     lineHeight: 1.3,
   },
 
-  /* ── Note banner ── */
-  noteBanner: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 10,
-    background: "var(--accent)",
-    border: "1px solid var(--border-light, var(--border))",
-    borderRadius: "var(--radius-md, 8px)",
-    padding: "12px 16px",
-    marginTop: 18,
-  },
+  /* ── Note text ── */
   noteText: {
-    fontSize: "var(--font-size-sm, 13px)",
-    color: "var(--accent-foreground)",
+    fontSize: "var(--font-size-xs, 12px)",
+    color: "var(--muted-foreground)",
+    fontStyle: "italic",
     lineHeight: 1.5,
-    margin: 0,
+    marginTop: 14,
+    marginBottom: 0,
   },
 };
 
@@ -524,7 +514,13 @@ const Field = ({
           </div>
         )
       ) : value && value !== "Not provided" ? (
-        <p style={s.fieldValue}>{type === "date" ? fmtDate(value) : value}</p>
+        <p style={s.fieldValue}>
+          {type === "date"
+            ? fmtDate(value)
+            : autoCapitalizeWords || field === "firstName" || field === "lastName" || field === "middleName"
+              ? formatProperCase(value)
+              : value}
+        </p>
       ) : (
         <div style={s.emptyLine}>
           <p style={s.fieldEmpty}>Not provided</p>
@@ -829,9 +825,11 @@ const SelectField = ({
 const SectionHeader = ({ icon: Icon, title }) => (
   <>
     <div style={s.sectionHeader}>
-      <div style={s.sectionIconWrap}>
-        <Icon size={16} color="var(--accent-foreground)" />
-      </div>
+      {Icon && (
+        <span style={s.sectionIconWrap}>
+          <Icon size={18} color="var(--foreground)" />
+        </span>
+      )}
       <h3 style={s.sectionTitle}>{title}</h3>
     </div>
     <div style={s.divider} />
@@ -904,38 +902,16 @@ const PersonalDetailsTab = ({
 
   const handleStartEditing = () => setIsEditingProfile(true);
 
-  const handleFileSelect = async (e) => {
+  const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
 
-    // If editing mode is active, stage preview for batch save
-    if (isEditingProfile) {
-      if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
-      const blobUrl = URL.createObjectURL(file);
-      setPendingFile(file);
-      setLocalPreviewUrl(blobUrl);
-      return;
-    }
-
-    // If not in edit mode, upload and save photo immediately
-    setUploading(true);
-    try {
-      const { uploadToFirebaseStorage } = await import(
-        "../../../../shared/utils/firebaseStorageUpload"
-      );
-      const { downloadUrl: imageUrl } = await uploadToFirebaseStorage(file, {
-        documentType: "profile-photo",
-      });
-      if (imageUrl) {
-        setEditData((prev) => ({ ...prev, profileImage: imageUrl }));
-        await onSave({ ...profileData, profileImage: imageUrl });
-      }
-    } catch {
-      showNotification("Failed to upload photo. Please try again.", "error", 3000);
-    } finally {
-      setUploading(false);
-    }
+    // In edit profile mode, stage preview for batch save
+    if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
+    const blobUrl = URL.createObjectURL(file);
+    setPendingFile(file);
+    setLocalPreviewUrl(blobUrl);
   };
 
   const hasChanges = useMemo(() => {
@@ -952,7 +928,8 @@ const PersonalDetailsTab = ({
       (editData.gender || "") !== (profileData.gender || "") ||
       (editData.civilStatus || "") !== (profileData.civilStatus || "") ||
       (editData.nationality || "").trim() !== (profileData.nationality || "").trim() ||
-      (editData.occupation || "").trim() !== (profileData.occupation || "").trim()
+      (editData.occupation || "").trim() !== (profileData.occupation || "").trim() ||
+      (editData.profileImage || "") !== (profileData.profileImage || "")
     );
   }, [editData, profileData, pendingFile]);
 
@@ -1037,13 +1014,16 @@ const PersonalDetailsTab = ({
 
       {/* ── Profile Summary Header Card ── */}
       <div style={s.headerCard}>
-        {/* Avatar with always-accessible photo upload */}
+        {/* Avatar (Photo editing enabled when editing profile) */}
         <div
-          style={s.avatarWrap}
-          title="Click to change profile photo"
-          onClick={() => !uploading && fileInputRef.current?.click()}
-          onMouseEnter={() => setHoveringAvatar(true)}
-          onMouseLeave={() => setHoveringAvatar(false)}
+          style={{
+            ...s.avatarWrap,
+            cursor: isEditingProfile ? "pointer" : "default",
+          }}
+          title={isEditingProfile ? "Click to change profile photo" : undefined}
+          onClick={isEditingProfile && !uploading ? () => fileInputRef.current?.click() : undefined}
+          onMouseEnter={isEditingProfile ? () => setHoveringAvatar(true) : undefined}
+          onMouseLeave={isEditingProfile ? () => setHoveringAvatar(false) : undefined}
         >
           {(() => {
             const img =
@@ -1063,43 +1043,47 @@ const PersonalDetailsTab = ({
             );
           })()}
 
-          {/* Hover / Uploading Overlay */}
-          <div
-            style={{
-              ...s.avatarOverlay,
-              opacity: uploading || hoveringAvatar ? 1 : 0,
-              pointerEvents: "none",
-            }}
-          >
-            {uploading ? (
-              <>
-                <Loader2 size={20} color="#fff" style={{ animation: "spin 1s linear infinite" }} />
-                <span style={{ color: "#fff", fontSize: 9, fontWeight: 700, marginTop: 2 }}>
-                  Uploading…
-                </span>
-              </>
-            ) : (
-              <>
-                <Camera size={16} color="#fff" />
-                <span style={{ color: "#fff", fontSize: 10, fontWeight: 700 }}>Change</span>
-              </>
-            )}
-          </div>
+          {/* Hover / Uploading Overlay - only in edit mode */}
+          {isEditingProfile && (
+            <div
+              style={{
+                ...s.avatarOverlay,
+                opacity: uploading || hoveringAvatar ? 1 : 0,
+                pointerEvents: "none",
+              }}
+            >
+              {uploading ? (
+                <>
+                  <Loader2 size={20} color="#fff" style={{ animation: "spin 1s linear infinite" }} />
+                  <span style={{ color: "#fff", fontSize: 9, fontWeight: 700, marginTop: 2 }}>
+                    Uploading…
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Camera size={16} color="#fff" />
+                  <span style={{ color: "#fff", fontSize: 10, fontWeight: 700 }}>Change</span>
+                </>
+              )}
+            </div>
+          )}
 
-          {/* Camera Badge indicator */}
-          {!uploading && (
+          {/* Camera Badge indicator - only in edit mode */}
+          {isEditingProfile && !uploading && (
             <div style={s.avatarBadge} title="Change photo">
               <Camera size={12} color="var(--primary-foreground)" />
             </div>
           )}
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: "none" }}
-            onChange={handleFileSelect}
-          />
+          {isEditingProfile && (
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={handleFileSelect}
+            />
+          )}
         </div>
 
         {/* Name + Meta Chips */}
@@ -1281,16 +1265,9 @@ const PersonalDetailsTab = ({
             />
           </div>
 
-          <div style={s.noteBanner}>
-            <Sparkles
-              size={15}
-              color="var(--accent-foreground)"
-              style={{ flexShrink: 0, marginTop: 1 }}
-            />
-            <p style={s.noteText}>
-              You can update your personal details and profile photo anytime. Changes will be saved and reflected immediately.
-            </p>
-          </div>
+          <p style={s.noteText}>
+            * You can update your personal details and profile photo anytime. Changes will be saved and reflected immediately.
+          </p>
         </div>
       </div>
 

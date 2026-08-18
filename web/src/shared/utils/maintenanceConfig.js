@@ -327,7 +327,7 @@ export function getNextRecommendedStageAction(request) {
       actionLabel: "Review Request",
       actionKey: "mark_reviewed",
       actionColor: "info",
-      contextNote: "Review the reported issue and resident photos to prepare for technician assignment.",
+      contextNote: "Review the reported issue and tenant photos to prepare for technician assignment.",
       requiresSchedule: false,
     };
   }
@@ -350,16 +350,16 @@ export function getNextRecommendedStageAction(request) {
       actionLabel: "Upload Proof & Mark Resolved",
       actionKey: "upload_proof",
       actionColor: "success",
-      contextNote: "Technician work in progress. Upload resolution photos to request resident verification.",
+      contextNote: "Technician work in progress. Upload resolution photos to request tenant verification.",
       requiresSchedule: false,
     };
   }
   if (status === "resolved") {
     return {
-      actionLabel: "Awaiting Resident Verification",
+      actionLabel: "Awaiting Tenant Verification",
       actionKey: "await_verification",
       actionColor: "warning",
-      contextNote: "Work is done. Awaiting the resident's confirmation that the issue is fully fixed.",
+      contextNote: "Work is done. Awaiting the tenant's confirmation that the issue is fully fixed.",
       requiresSchedule: false,
     };
   }
@@ -368,7 +368,7 @@ export function getNextRecommendedStageAction(request) {
       actionLabel: "Official Completion Report Ready",
       actionKey: "view_report",
       actionColor: "success",
-      contextNote: "Maintenance ticket completed and verified by resident. Official completion report available.",
+      contextNote: "Maintenance ticket completed and verified by tenant. Official completion report available.",
       requiresSchedule: false,
     };
   }
@@ -377,7 +377,7 @@ export function getNextRecommendedStageAction(request) {
       actionLabel: "Follow-Up Work In Progress",
       actionKey: "reopen_triage",
       actionColor: "danger",
-      contextNote: "Resident reported the issue still persists. Additional technician follow-up required.",
+      contextNote: "Tenant reported the issue still persists. Additional technician follow-up required.",
       requiresSchedule: true,
     };
   }

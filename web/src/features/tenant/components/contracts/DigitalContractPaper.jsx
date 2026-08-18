@@ -18,6 +18,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { tenantContractApi } from "../../api/tenantContractApi";
+import useBodyScrollLock from "../../../../shared/hooks/useBodyScrollLock";
 
 dayjs.extend(advancedFormat);
 
@@ -103,7 +104,7 @@ export default function DigitalContractPaper({
   const executionMonth = startDate.format("MMMM");
   const executionYear = startDate.format("YYYY");
 
-  const tenantName = stayData?.tenantLegalName || contract?.tenantLegalName || stayData?.tenantName || contract?.tenantName || "Resident Tenant";
+  const tenantName = stayData?.tenantLegalName || contract?.tenantLegalName || stayData?.tenantName || contract?.tenantName || "Valued Tenant";
   const tenantAddress = stayData?.tenantResidentialAddress || contract?.tenantResidentialAddress || "SMDC JAZZ RESIDENCES, Bel-Air, City of Makati, National Capital Region (NCR)";
   const roomNumber = stayData?.roomNumber || contract?.roomNumber || (isPrivate ? "GP-803" : "GP-305");
   const bedSlot = isPrivate ? "Entire Room" : (stayData?.bedLabel || contract?.bedLabel || "upper");
@@ -216,6 +217,8 @@ export default function DigitalContractPaper({
   }, []);
 
   // Keyboard Shortcuts & Body Scroll Lock
+  useBodyScrollLock(isFullscreenScanOpen);
+
   useEffect(() => {
     if (!isFullscreenScanOpen) return;
     const handleKeyDown = (e) => {
@@ -232,11 +235,8 @@ export default function DigitalContractPaper({
       }
     };
     window.addEventListener("keydown", handleKeyDown);
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = originalOverflow;
     };
   }, [isFullscreenScanOpen, handleModalZoomIn, handleModalZoomOut, resetModalView, handleModalRotate]);
 
@@ -655,7 +655,7 @@ export default function DigitalContractPaper({
                   </p>
 
                   <p className="indent-8 mb-2">
-                    <strong>SECTION 4 – DEPOSITS AND ADVANCES.</strong> Upon moving in, the LESSEE shall pay one (1) month advance rent in the amount of{" "}
+                    <strong>SECTION 4 – DEPOSITS AND ADVANCES.</strong> Prior to moving in, the LESSEE shall pay one (1) month advance rent in the amount of{" "}
                     <Populated>Php {formatMoney(advanceRent)}</Populated>, covering the period of <Populated>{advanceStart}</Populated> to <Populated>{advanceEnd}</Populated>, and one (1) month security deposit in the amount of{" "}
                     <Populated>Php {formatMoney(securityDeposit)}</Populated>.
                   </p>
@@ -1081,7 +1081,7 @@ export default function DigitalContractPaper({
             </p>
 
             <p style={{ textIndent: "24px", margin: "0 0 3px 0" }}>
-              <strong>SECTION 4 – DEPOSITS AND ADVANCES.</strong> Upon moving in, the LESSEE shall pay one (1) month advance rent in the amount of{" "}
+              <strong>SECTION 4 – DEPOSITS AND ADVANCES.</strong> Prior to moving in, the LESSEE shall pay one (1) month advance rent in the amount of{" "}
               <Populated>Php {formatMoney(advanceRent)}</Populated>, covering the period of <Populated>{advanceStart}</Populated> to <Populated>{advanceEnd}</Populated>, and one (1) month security deposit in the amount of{" "}
               <Populated>Php {formatMoney(securityDeposit)}</Populated>.
             </p>

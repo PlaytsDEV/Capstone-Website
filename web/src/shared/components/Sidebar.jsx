@@ -28,6 +28,9 @@ import { USER_ROLES } from "../utils/constants";
 import ConfirmModal from "./ConfirmModal";
 import { showNotification } from "../utils/notification";
 import { buildSignOutSuccessFlash } from "../utils/authToasts";
+import { formatDisplayName } from "../utils/formatDate";
+import ProfileAvatar, { getProfileInitials } from "./ProfileAvatar";
+
 import "./Sidebar.css";
 import logo from "../../assets/images/LOGO.svg";
 
@@ -172,9 +175,15 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
   const sidebarUnreadCount = unreadData?.unreadCount ?? 0;
 
   const currentTab = location.state?.tab || "dashboard";
-  const fullName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "User";
+  const rawFullName =
+    `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
+    user?.name ||
+    user?.fullName ||
+    user?.username ||
+    "User";
+  const fullName = formatDisplayName(rawFullName);
   const email = user?.email || "";
-  const initials = `${user?.firstName?.[0] || "U"}${user?.lastName?.[0] || ""}`.toUpperCase();
+  const initials = useMemo(() => getProfileInitials(user, "U"), [user]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -254,15 +263,9 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
         title="View My Profile"
         aria-label="View My Profile"
       >
-        <div className="sidebar-avatar">
-          {user?.profileImage ? (
-            <img src={user.profileImage} alt="Profile" className="sidebar-avatar-img" />
-          ) : (
-            <span className="sidebar-avatar-initials">{initials}</span>
-          )}
-        </div>
+        <ProfileAvatar user={user} initials={initials} size={36} className="sidebar-avatar" />
         <div className="sidebar-identity-text">
-          <p className="sidebar-identity-name">{fullName}</p>
+          <p className="sidebar-identity-name capitalize">{fullName}</p>
           <p className="sidebar-identity-email">{email}</p>
         </div>
       </button>

@@ -21,21 +21,28 @@ export const getDeviceId = () => {
 };
 
 export const getSessionId = () =>
-  sessionStorage.getItem(SESSION_ID_KEY) || "";
+  sessionStorage.getItem(SESSION_ID_KEY) ||
+  localStorage.getItem(SESSION_ID_KEY) ||
+  "";
 
 export const hasApplicationSession = () =>
-  sessionStorage.getItem(SESSION_ESTABLISHED_KEY) === "1";
+  sessionStorage.getItem(SESSION_ESTABLISHED_KEY) === "1" ||
+  localStorage.getItem(SESSION_ESTABLISHED_KEY) === "1";
 
 export const markApplicationSession = (sessionId = "") => {
   sessionStorage.setItem(SESSION_ESTABLISHED_KEY, "1");
+  localStorage.setItem(SESSION_ESTABLISHED_KEY, "1");
   if (sessionId && typeof sessionId === "string") {
     sessionStorage.setItem(SESSION_ID_KEY, sessionId);
+    localStorage.setItem(SESSION_ID_KEY, sessionId);
   }
 };
 
 export const clearApplicationSession = () => {
   sessionStorage.removeItem(SESSION_ESTABLISHED_KEY);
   sessionStorage.removeItem(SESSION_ID_KEY);
+  localStorage.removeItem(SESSION_ESTABLISHED_KEY);
+  localStorage.removeItem(SESSION_ID_KEY);
   localStorage.removeItem("lilycrest_session_id");
 };
 

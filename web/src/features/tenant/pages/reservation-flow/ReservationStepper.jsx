@@ -8,44 +8,71 @@ const ReservationStepper = ({
   applicationSubmitted,
   paymentSubmitted,
   paymentApproved,
-}) => (
-  <div className="rf-stepper">
-    <div className="rf-stepper-track">
-      {RESERVATION_STAGES.map((stage, index) => {
-        const stageState = getReservationFlowStageState({
-          stageId: stage.id,
-          currentStage,
-          reservation,
-          applicationSubmitted,
-          paymentSubmitted,
-          paymentApproved,
-        });
-        const isLast = index === RESERVATION_STAGES.length - 1;
+  onStepClick,
+}) => {
+  const stageStates = RESERVATION_STAGES.map((stage) =>
+    getReservationFlowStageState({
+      stageId: stage.id,
+      currentStage,
+      reservation,
+      applicationSubmitted,
+      paymentSubmitted,
+      paymentApproved,
+    })
+  );
 
-        let stepClass = "";
-        if (stageState.isComplete) stepClass = "complete";
-        else if (stageState.isActive) stepClass = "active";
-        else if (stageState.isReady) stepClass = "ongoing";
+  const totalSegments = Math.max(RESERVATION_STAGES.length - 1, 1);
+  const activeIndex = Math.max(0, (Number(currentStage) || 1) - 1);
+  const completedCount = stageStates.filter((s) => s.isComplete).length;
+  const progressSegments = Math.max(
+    0,
+    Math.min(totalSegments, Math.max(activeIndex, completedCount >= totalSegments + 1 ? totalSegments : completedCount))
+  );
+  const stepperProgressPercent = (progressSegments / totalSegments) * 100;
 
-        let icon;
-        if (stageState.isComplete || stageState.showCheck) {
-          icon = <CheckIcon />;
-        } else if (stageState.isLocked) {
-          icon = <LockIcon />;
-        } else {
-          icon = <span>{index + 1}</span>;
-        }
+  return (
+    <div className="rf-stepper">
+      <div className="rf-stepper-track">
+        <div className="rf-stepper-progress-rail" aria-hidden="true">
+          <div
+            className="rf-stepper-track-progress"
+            style={{ width: `${stepperProgressPercent}%` }}
+          />
+        </div>
+        {RESERVATION_STAGES.map((stage, index) => {
+          const stageState = stageStates[index];
+          let stepClass = "";
+          if (stageState.isComplete) stepClass = "complete";
+          else if (stageState.isActive) stepClass = "active";
+          else if (stageState.isReady) stepClass = "ready ongoing";
+          else if (stageState.isLocked) stepClass = "locked";
 
-        return (
-          <div key={stage.id} style={{ display: "contents" }}>
+          let icon;
+          if (stageState.isComplete || stageState.showCheck) {
+            icon = <CheckIcon />;
+          } else if (stageState.isLocked) {
+            icon = <LockIcon />;
+          } else {
+            icon = <span>{index + 1}</span>;
+          }
+
+          const isInteractive = Boolean(
+            onStepClick &&
+              (stageState.isActive || stageState.isComplete || stageState.isReady)
+          );
+
+          return (
             <div
+              key={stage.id}
               className={`rf-stepper-step ${stepClass}`}
+              aria-current={stageState.isActive ? "step" : undefined}
+              onClick={() => {
+                if (isInteractive) {
+                  onStepClick(stage.id);
+                }
+              }}
               style={{
-                cursor: "default",
-                opacity:
-                  stageState.isActive || stageState.isComplete || stageState.isReady
-                    ? 1
-                    : 0.4,
+                cursor: isInteractive ? "pointer" : "default",
               }}
               title={
                 stageState.helperLabel
@@ -57,30 +84,18 @@ const ReservationStepper = ({
               <span className="rf-stepper-label">
                 {stage.label}
                 {stageState.helperLabel && (
-                  <span
-                    style={{
-                      fontSize: "10px",
-                      display: "block",
-                    }}
-                  >
+                  <span className="rf-stepper-helper">
                     {stageState.helperLabel}
                   </span>
                 )}
               </span>
             </div>
-            {!isLast && (
-              <div
-                className={`rf-stepper-line ${
-                  stageState.isComplete ? "complete" : ""
-                }`}
-              />
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const CheckIcon = () => (
   <svg

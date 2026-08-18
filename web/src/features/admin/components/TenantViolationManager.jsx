@@ -76,25 +76,22 @@ function TenantAvatar({ avatarUrl, name, className = "h-8 w-8 text-[11px]" }) {
   );
 }
 
-const getStatusBadge = (status) => {
+const getStatusBadgeConfig = (status) => {
   switch (status) {
     case "confirmed":
-      return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300";
-    case "warning_issued":
-      return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300";
-    case "penalty_issued":
-      return "border-purple-200 bg-purple-50 text-purple-800 dark:border-purple-900/50 dark:bg-purple-950/40 dark:text-purple-300";
-    case "escalated":
-      return "border-red-200 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300";
-    case "dismissed":
-      return "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300";
     case "resolved":
-      return "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300";
+      return { text: "text-emerald-700 dark:text-emerald-400", dot: "bg-emerald-500" };
+    case "warning_issued":
     case "under_review":
     case "awaiting_response":
-      return "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-300";
+      return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
+    case "penalty_issued":
+      return { text: "text-purple-700 dark:text-purple-400", dot: "bg-purple-500" };
+    case "escalated":
+      return { text: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" };
+    case "dismissed":
     default:
-      return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300";
+      return { text: "text-slate-700 dark:text-slate-300", dot: "bg-slate-400" };
   }
 };
 
@@ -440,15 +437,7 @@ export default function TenantViolationManager({ branch }) {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           {v.warningNumber ? (
-                            <span
-                              className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-bold ${
-                                v.warningNumber >= 3
-                                  ? "border-red-300 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
-                                  : v.warningNumber === 2
-                                  ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-                                  : "border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                              }`}
-                            >
+                            <span className="inline-flex rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-slate-800 dark:text-slate-200">
                               #{v.warningNumber}
                             </span>
                           ) : (
@@ -456,13 +445,15 @@ export default function TenantViolationManager({ branch }) {
                           )}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <span
-                            className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getStatusBadge(
-                              v.status,
-                            )}`}
-                          >
-                            {v.status?.replace(/_/g, " ")}
-                          </span>
+                          {(() => {
+                            const badgeCfg = getStatusBadgeConfig(v.status);
+                            return (
+                              <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${badgeCfg.text}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${badgeCfg.dot}`} />
+                                <span>{v.status?.replace(/_/g, " ")}</span>
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                           {primaryPhoto ? (

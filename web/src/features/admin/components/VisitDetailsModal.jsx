@@ -198,9 +198,8 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
           {schedule.scheduleRejected && schedule.scheduleRejectionReason && (
             <div
               style={{
-                background: "#FEF2F2",
-                border: "1px solid #FECACA",
-                borderLeft: "4px solid #DC2626",
+                background: "var(--surface-card, #FFFFFF)",
+                border: "1px solid var(--border-card, #e2e8f0)",
                 borderRadius: "var(--radius-md, 8px)",
                 padding: "12px 14px",
               }}

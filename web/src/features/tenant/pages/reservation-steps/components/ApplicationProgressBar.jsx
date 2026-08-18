@@ -1,83 +1,84 @@
 import React from "react";
-import { Check } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 
 /**
- * Progress bar showing section completion count and auto-save status.
+ * Section progress bar showing completed section count, auto-save status,
+ * and visual completion percentage.
  */
 const ApplicationProgressBar = ({
- completedCount,
- totalSections,
- saveStatus,
-}) => (
- <div style={{ marginBottom: "24px" }}>
- <div
- style={{
- display: "flex",
- justifyContent: "space-between",
- alignItems: "center",
- marginBottom: "8px",
- }}
- >
- <span className="rf-step-progress-label">
- {completedCount} of {totalSections} sections complete
- </span>
- <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
- {saveStatus && (
- <span
- style={{
- fontSize: "12px",
- fontWeight: "500",
- color:
- saveStatus === "saving"
- ? "var(--muted-foreground)"
- : saveStatus === "saved"
- ? "var(--success)"
- : saveStatus === "error"
- ? "var(--danger)"
- : "var(--neutral)",
- display: "flex",
- alignItems: "center",
- gap: "4px",
- }}
- >
- {saveStatus === "saving" && "Saving..."}
- {saveStatus === "saved" && "Draft saved"}
- {saveStatus === "error" && "Save failed"}
- </span>
- )}
- <span
- style={{
- fontSize: "12px",
- color: completedCount === totalSections ? "var(--success)" : "var(--neutral)",
- }}
- >
- {completedCount === totalSections
- ? <span style={{ display: "flex", alignItems: "center", gap: 3 }}><Check size={12} /> Ready to submit</span>
- : `${Math.round((completedCount / totalSections) * 100)}%`}
- </span>
- </div>
- </div>
- <div
- style={{
- width: "100%",
- height: "6px",
- backgroundColor: "var(--border)",
- borderRadius: "999px",
- overflow: "hidden",
- }}
- >
- <div
- style={{
- width: `${(completedCount / totalSections) * 100}%`,
- height: "100%",
- backgroundColor:
- completedCount === totalSections ? "var(--success)" : "var(--primary)",
- borderRadius: "999px",
- transition: "width 0.3s ease",
- }}
- />
- </div>
- </div>
-);
+  completedCount = 0,
+  totalSections = 6,
+  saveStatus = null,
+}) => {
+  const percentage = totalSections > 0 ? Math.min(100, Math.round((completedCount / totalSections) * 100)) : 0;
+  const isAllComplete = completedCount === totalSections && totalSections > 0;
+
+  return (
+    <div className="rf-app-progress" aria-label="Application form progress">
+      <div className="rf-app-progress__header">
+        <div className="rf-app-progress__label-wrap">
+          <span className="rf-app-progress__label">
+            <strong>{completedCount}</strong> of <strong>{totalSections}</strong> sections completed
+          </span>
+        </div>
+
+        <div className="rf-app-progress__meta">
+          {saveStatus && (
+            <span
+              className={`rf-app-progress__save rf-app-progress__save--${saveStatus}`}
+              aria-live="polite"
+            >
+              {saveStatus === "saving" && (
+                <>
+                  <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                  <span>Saving draft...</span>
+                </>
+              )}
+              {saveStatus === "saved" && (
+                <>
+                  <span className="rf-app-progress__dot rf-app-progress__dot--success" aria-hidden="true" />
+                  <span>Draft saved</span>
+                </>
+              )}
+              {saveStatus === "error" && (
+                <>
+                  <span className="rf-app-progress__dot rf-app-progress__dot--error" aria-hidden="true" />
+                  <span>Save failed</span>
+                </>
+              )}
+            </span>
+          )}
+
+          <span
+            className={`rf-app-progress__percentage${isAllComplete ? " rf-app-progress__percentage--complete" : ""}`}
+          >
+            {isAllComplete ? (
+              <span className="rf-app-progress__ready">
+                <Check size={13} strokeWidth={2.5} aria-hidden="true" />
+                <span>Ready to submit</span>
+              </span>
+            ) : (
+              <span>{percentage}%</span>
+            )}
+          </span>
+        </div>
+      </div>
+
+      <div
+        className="rf-app-progress__track"
+        role="progressbar"
+        aria-valuenow={percentage}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Application form completion progress"
+      >
+        <div
+          className={`rf-app-progress__bar${isAllComplete ? " rf-app-progress__bar--complete" : ""}`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+    </div>
+  );
+};
 
 export default ApplicationProgressBar;

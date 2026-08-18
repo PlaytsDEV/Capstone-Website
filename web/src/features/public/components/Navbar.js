@@ -7,6 +7,9 @@ import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import ThemeToggleButton from "./ThemeToggleButton";
 import { useTheme } from "../context/ThemeContext";
 import logo from "../../../assets/images/LOGO.svg";
+import { formatDisplayName } from "../../../shared/utils/formatDate";
+import { smoothScrollTo } from "../../../shared/utils/smoothScroll";
+
 
 export function Navigation({ type } = {}) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -64,7 +67,15 @@ export function Navigation({ type } = {}) {
   const profileUrl = isAdmin ? "/admin/dashboard" : "/applicant/profile";
 
   // Display name: first name, or email prefix
-  const displayName = user?.firstName || user?.email?.split("@")[0] || "User";
+  const rawDisplayName =
+    (user?.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : null) ||
+    user?.name ||
+    user?.fullName ||
+    user?.username ||
+    user?.email?.split("@")[0] ||
+    "User";
+  const displayName = formatDisplayName(rawDisplayName);
+
 
   const navLinks = [
     { href: "#rooms", label: "Rooms", id: "rooms" },
@@ -73,21 +84,53 @@ export function Navigation({ type } = {}) {
     { href: "#inquiry", label: "Contact", id: "inquiry" },
   ];
 
+  const handleNavClick = (e, targetId) => {
+    e.preventDefault();
+    smoothScrollTo(targetId, 80);
+    setActiveSection(targetId);
+  };
+
+  const handleLogoClick = (e) => {
+    if (type === "landing" || window.location.pathname === "/") {
+      e.preventDefault();
+      smoothScrollTo("top");
+      setActiveSection("");
+    }
+  };
+
   // Colors adapt: transparent hero = always white text; scrolled = theme-aware
   const textColor = isScrolled ? "var(--lp-text)" : (isDark ? "rgba(255,255,255,0.9)" : "var(--lp-navy)");
 
-  // Ghost button styles for Sign In
+  // Ghost button styles for Sign In (clean transparent ghost pill with crisp border & micro-lift on hover)
+  const ghostBorderRest = isScrolled
+    ? (isDark ? "1px solid rgba(255, 255, 255, 0.20)" : "1px solid rgba(15, 23, 42, 0.18)")
+    : (isDark ? "1.5px solid rgba(255, 255, 255, 0.30)" : "1.5px solid rgba(10, 22, 40, 0.22)");
+
+  const ghostBorderHover = isScrolled
+    ? (isDark ? "1px solid rgba(255, 255, 255, 0.65)" : "1px solid var(--lp-navy)")
+    : (isDark ? "1.5px solid rgba(255, 255, 255, 0.75)" : "1.5px solid var(--lp-navy)");
+
+  const ghostBgHover = "transparent";
+
+  const ghostTextHover = isDark ? "#ffffff" : "var(--lp-navy)";
+
+  const ghostShadowHover = isDark
+    ? "0 3px 10px rgba(0, 0, 0, 0.35)"
+    : "0 2px 8px rgba(10, 22, 40, 0.08)";
+
   const ghostBtnStyle = {
     color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
     fontSize: "14px",
     fontWeight: "500",
     padding: "8px 22px",
-    borderRadius: "24px",
-    border: isScrolled ? "1px solid var(--lp-border)" : (isDark ? "1.5px solid rgba(255,255,255,0.3)" : "1.5px solid rgba(10,22,40,0.25)"),
+    borderRadius: "9999px",
+    border: ghostBorderRest,
     backgroundColor: "transparent",
-    transition: "all 0.3s ease",
+    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
     textDecoration: "none",
-    letterSpacing: "0.3px",
+    letterSpacing: "0.2px",
+    boxShadow: "none",
+    transform: "translateY(0)",
   };
 
   return (
@@ -120,7 +163,8 @@ export function Navigation({ type } = {}) {
           <div className="flex items-center gap-3">
             <Link
               to="/"
-              className="font-semibold tracking-wide no-underline inline-flex items-center gap-2"
+              onClick={handleLogoClick}
+              className="font-semibold tracking-wide no-underline inline-flex items-center gap-2 cursor-pointer"
               style={{
                 color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
                 fontSize: isScrolled ? "18px" : "22px",
@@ -163,7 +207,8 @@ export function Navigation({ type } = {}) {
                 <a
                   key={link.href}
                   href={link.href}
-                  className="no-underline"
+                  onClick={(e) => handleNavClick(e, link.id)}
+                  className="no-underline cursor-pointer"
                   aria-current={isActive ? "true" : undefined}
                   style={{
                     color: isScrolled
@@ -210,30 +255,34 @@ export function Navigation({ type } = {}) {
                 {isAuthenticated ? (
                   <Link
                     to={profileUrl}
-                    className="hidden md:flex items-center justify-center no-underline"
+                    className="hidden md:flex items-center justify-center no-underline cursor-pointer"
                     style={{
                       width: "36px",
                       height: "36px",
                       borderRadius: "50%",
-                      backgroundColor: isScrolled ? "var(--lp-icon-bg)" : "rgba(255,255,255,0.15)",
-                      border: isScrolled ? "1px solid var(--lp-border)" : "1.5px solid rgba(255,255,255,0.3)",
+                      backgroundColor: "transparent",
+                      border: ghostBorderRest,
                       color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
                       fontSize: "14px",
                       fontWeight: "500",
                       letterSpacing: "0.3px",
-                      transition: "all 0.3s ease",
+                      transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                      boxShadow: "none",
+                      transform: "translateY(0)",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = isScrolled
-                        ? "var(--lp-accent)"
-                        : (isDark ? "rgba(255,255,255,0.25)" : "rgba(10,22,40,0.12)");
-                      e.currentTarget.style.color = "white";
+                      e.currentTarget.style.backgroundColor = ghostBgHover;
+                      e.currentTarget.style.border = ghostBorderHover;
+                      e.currentTarget.style.color = ghostTextHover;
+                      e.currentTarget.style.transform = "translateY(-1px)";
+                      e.currentTarget.style.boxShadow = ghostShadowHover;
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = isScrolled
-                        ? "var(--lp-icon-bg)"
-                        : (isDark ? "rgba(255,255,255,0.15)" : "rgba(10,22,40,0.06)");
+                      e.currentTarget.style.backgroundColor = "transparent";
+                      e.currentTarget.style.border = ghostBorderRest;
                       e.currentTarget.style.color = isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)");
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.boxShadow = "none";
                     }}
                   >
                     {displayName.charAt(0).toUpperCase()}
@@ -242,23 +291,25 @@ export function Navigation({ type } = {}) {
                   /* Not logged in: ghost-button Sign In */
                   <Link
                     to="/signin"
-                    className="hidden md:inline-flex items-center justify-center no-underline"
+                    className="hidden md:inline-flex items-center justify-center no-underline cursor-pointer"
                     style={ghostBtnStyle}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = isScrolled
-                        ? "var(--lp-icon-bg)"
-                        : (isDark ? "rgba(255,255,255,0.1)" : "rgba(10,22,40,0.05)");
-                      e.currentTarget.style.borderColor = isScrolled
-                        ? "var(--lp-accent)"
-                        : (isDark ? "rgba(255,255,255,0.5)" : "rgba(10,22,40,0.35)");
-                      if (isScrolled) e.currentTarget.style.color = "var(--lp-accent)";
+                      e.currentTarget.style.backgroundColor = ghostBgHover;
+                      e.currentTarget.style.border = ghostBorderHover;
+                      e.currentTarget.style.color = ghostTextHover;
+                      e.currentTarget.style.transform = "translateY(-1px)";
+                      e.currentTarget.style.boxShadow = ghostShadowHover;
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = "transparent";
-                      e.currentTarget.style.borderColor = isScrolled
-                        ? "var(--lp-border)"
-                        : (isDark ? "rgba(255,255,255,0.3)" : "rgba(10,22,40,0.25)");
+                      e.currentTarget.style.border = ghostBorderRest;
                       e.currentTarget.style.color = isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)");
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.boxShadow = "none";
+                    }}
+                    onMouseDown={(e) => {
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.boxShadow = "none";
                     }}
                   >
                     Sign In
@@ -323,8 +374,11 @@ export function Navigation({ type } = {}) {
                 <a
                   key={link.href}
                   href={link.href}
-                  className="block font-light transition-colors no-underline"
-                  onClick={() => setIsMenuOpen(false)}
+                  className="block font-light transition-colors no-underline cursor-pointer"
+                  onClick={(e) => {
+                    setIsMenuOpen(false);
+                    handleNavClick(e, link.id);
+                  }}
                   style={{
                     color: activeSection === link.id
                       ? "var(--lp-accent)"
@@ -364,7 +418,7 @@ export function Navigation({ type } = {}) {
                 (isAuthenticated ? (
                   <Link
                     to={profileUrl}
-                    className="flex items-center justify-center gap-2 no-underline"
+                    className="flex items-center justify-center gap-2 no-underline capitalize"
                     onClick={() => setIsMenuOpen(false)}
                     style={{
                       flex: 1,
@@ -373,9 +427,7 @@ export function Navigation({ type } = {}) {
                       fontWeight: "500",
                       fontSize: "15px",
                       borderRadius: "12px",
-                      border: isScrolled
-                        ? "1px solid var(--lp-border)"
-                        : (isDark ? "1px solid rgba(255,255,255,0.25)" : "1px solid rgba(10,22,40,0.2)"),
+                      border: ghostBorderRest,
                       textAlign: "center",
                     }}
                   >
@@ -397,9 +449,7 @@ export function Navigation({ type } = {}) {
                       fontWeight: "500",
                       padding: "14px 0",
                       borderRadius: "12px",
-                      border: isScrolled
-                        ? "1px solid var(--lp-border)"
-                        : (isDark ? "1px solid rgba(255,255,255,0.25)" : "1px solid rgba(10,22,40,0.2)"),
+                      border: ghostBorderRest,
                       backgroundColor: "transparent",
                       transition: "all 0.2s ease",
                     }}

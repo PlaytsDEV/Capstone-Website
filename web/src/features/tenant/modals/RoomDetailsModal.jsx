@@ -23,7 +23,7 @@ import SpotlightCard from "../components/SpotlightCard";
 import BedSelector from "../components/BedSelector";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 import { showNotification } from "../../../shared/utils/notification";
-import { LEASE_OPTIONS } from "../pages/reservation-steps/applicationFormConstants";
+import { LEASE_OPTIONS, getAvailableLeaseOptions } from "../pages/reservation-steps/applicationFormConstants";
 import { getOptimizedUrl, getThumbnailUrl } from "../../../shared/utils/imageOptimizer";
 
 // Global cache of preloaded image URLs to prevent duplicate instances
@@ -133,7 +133,7 @@ const SectionHeading = ({ icon: Icon, tone = "primary", title, subtitle, action 
         {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
       </div>
     </div>
-    {action}
+    {action && <div className="shrink-0">{action}</div>}
   </div>
 );
 
@@ -236,7 +236,6 @@ export default function RoomDetailsModal({
     applianceFeesAmount,
     securityDepositAmount,
     calculatedUpfrontTotal,
-    calculatedContractTotal,
     totalSavingsAmount,
   } = useMemo(() => {
     const regularRate = isLongTerm ? flyer.regularLong : flyer.regularShort;
@@ -325,12 +324,7 @@ export default function RoomDetailsModal({
   const availability = useMemo(() => (room ? getAvailabilityMeta(room) : { label: "Available", bg: "var(--success)", fg: "#fff" }), [room]);
 
   const defaultTerms = useMemo(() => {
-    const terms = LEASE_OPTIONS.map((opt) => Number(opt.value)).sort((a, b) => a - b);
-    if (!terms.includes(minMonths)) {
-      terms.push(minMonths);
-      terms.sort((a, b) => a - b);
-    }
-    return terms;
+    return getAvailableLeaseOptions(minMonths).map((opt) => opt.months);
   }, [minMonths]);
 
   if (!isOpen || !room) return null;
@@ -480,7 +474,7 @@ export default function RoomDetailsModal({
                       onClick={() => setCurrentImageIndex(index)}
                       aria-label={`View photo ${index + 1}`}
                       aria-current={currentImageIndex === index}
-                      className="shrink-0 w-16 h-16 min-w-[4rem] min-h-[4rem] aspect-square rounded-lg overflow-hidden border-2 bg-muted relative flex items-center justify-center cursor-pointer transition-all"
+                      className="shrink-0 w-16 h-16 min-w-[4rem] min-h-[4rem] aspect-square rounded-lg overflow-hidden border bg-muted relative flex items-center justify-center cursor-pointer transition-all"
                       style={{
                         borderColor: currentImageIndex === index ? "var(--primary)" : "transparent",
                         opacity: currentImageIndex === index ? 1 : 0.75,
@@ -617,37 +611,13 @@ export default function RoomDetailsModal({
                   })}
                 </div>
 
-                {!hasLeaseSelected ? (
+                {!hasLeaseSelected && (
                   <div
                     className="mt-4 p-3 rounded-lg text-xs flex items-center gap-2.5"
                     style={{ backgroundColor: "var(--status-warning-bg)", color: "var(--warning-dark)" }}
                   >
                     <AlertCircle className="w-4 h-4 shrink-0" style={{ color: "var(--warning)" }} />
                     Select a lease term above to see pricing.
-                  </div>
-                ) : (
-                  <div className="mt-3">
-                    {isLongTerm ? (
-                      isDiscountEnabled && discountPercent > 0 ? (
-                        <span
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
-                          style={{ backgroundColor: "var(--status-success-bg)", color: "var(--success-dark)" }}
-                        >
-                          <Sparkles className="w-3.5 h-3.5" /> Long-term rate applied
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border">
-                          Long-term
-                        </span>
-                      )
-                    ) : (
-                      <span
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
-                        style={{ backgroundColor: "var(--status-info-bg)", color: "var(--info-dark)" }}
-                      >
-                        <Zap className="w-3.5 h-3.5" /> Short-term rate applied
-                      </span>
-                    )}
                   </div>
                 )}
               </div>
@@ -703,7 +673,53 @@ export default function RoomDetailsModal({
               {/* Cost summary */}
               <div className="rounded-2xl border border-border/70 overflow-hidden">
                 <div className="p-5 pb-0">
-                  <SectionHeading icon={Calculator} tone="primary" title="Cost summary" subtitle="Estimated charges based on your selection" />
+                  <SectionHeading
+                    icon={Calculator}
+                    tone="primary"
+                    title="Cost summary"
+                    subtitle="Estimated charges based on your selection"
+                    action={
+                      hasLeaseSelected ? (
+                        <div
+                          className="inline-flex items-center h-7 gap-1.5 px-2.5 rounded-md text-xs font-medium border border-dashed border-slate-300 dark:border-slate-700 bg-card text-foreground whitespace-nowrap"
+                          aria-label={
+                            isLongTerm
+                              ? `Long-term rate${discountPercent > 0 ? `, ${discountPercent}% discount` : ""}`
+                              : "Short-term rate"
+                          }
+                        >
+                          <Tag
+                            className={`w-3.5 h-3.5 shrink-0 ${
+                              isLongTerm
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : "text-sky-600 dark:text-sky-400"
+                            }`}
+                            aria-hidden="true"
+                          />
+                          <span
+                            className={`font-semibold ${
+                              isLongTerm
+                                ? "text-emerald-700 dark:text-emerald-400"
+                                : "text-sky-700 dark:text-sky-400"
+                            }`}
+                          >
+                            {isLongTerm ? "Long-term rate" : "Short-term rate"}
+                          </span>
+                          {isLongTerm && discountPercent > 0 && (
+                            <span
+                              className="ml-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold leading-none tracking-tight shrink-0"
+                              style={{
+                                backgroundColor: "var(--success)",
+                                color: "var(--success-foreground)",
+                              }}
+                            >
+                              -{discountPercent}%
+                            </span>
+                          )}
+                        </div>
+                      ) : null
+                    }
+                  />
                 </div>
 
                 {!hasLeaseSelected ? (
@@ -726,7 +742,7 @@ export default function RoomDetailsModal({
                       </div>
 
                       {activeFlyerDiscount > 0 && (
-                        <div className="p-3 flex items-center justify-between text-sm" style={{ backgroundColor: "var(--status-success-bg)" }}>
+                        <div className="p-3 flex items-center justify-between text-sm">
                           <span className="flex items-center gap-1.5 font-medium" style={{ color: "var(--success-dark)" }}>
                             <Tag className="w-3.5 h-3.5" /> Promo discount
                             <span
@@ -796,22 +812,14 @@ export default function RoomDetailsModal({
 
                     {totalSavingsAmount > 0 && (
                       <div
-                        className="p-3 rounded-xl text-xs font-medium flex items-center gap-2.5"
-                        style={{ backgroundColor: "var(--status-success-bg)", color: "var(--success-dark)" }}
+                        className="px-1 text-xs font-medium"
+                        style={{ color: "var(--success-dark)" }}
                       >
-                        <Sparkles className="w-4 h-4 shrink-0" style={{ color: "var(--success)" }} />
                         <span>
                           <strong>Total savings:</strong> ₱{totalSavingsAmount.toLocaleString()} over your {leaseMonths}-month term.
                         </span>
                       </div>
                     )}
-
-                    <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-                      <span>Total contract commitment ({leaseMonths} {leaseMonths === 1 ? "month" : "months"})</span>
-                      <span className="font-semibold text-foreground tabular-nums">
-                        ₱{calculatedContractTotal.toLocaleString()}
-                      </span>
-                    </div>
                   </div>
                 )}
               </div>

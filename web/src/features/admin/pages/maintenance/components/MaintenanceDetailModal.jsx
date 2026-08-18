@@ -806,10 +806,9 @@ export function MaintenanceDetailModal({
               </h2>
 
               <span
-                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0 bg-transparent border"
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0 bg-transparent border border-slate-200 dark:border-slate-700"
                 style={{
                   color: urgencyMeta.color,
-                  borderColor: `${urgencyMeta.color}60`,
                 }}
               >
                 <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: urgencyMeta.color }} />
@@ -1125,11 +1124,17 @@ export function MaintenanceDetailModal({
                       </div>
                     )}
 
-                    {/* Stage 5: Terminal Completed Banner with AI Report Generator */}
+                    {/* Stage 5: Terminal Completed / Cancelled / Rejected Banner with AI Report Generator */}
                     {isTerminal && (
                       <div className="flex flex-col gap-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 text-xs">
                         <div className="flex items-start gap-2.5">
-                          <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                          {request?.status === "completed" || request?.status === "closed" ? (
+                            <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                          ) : request?.status === "rejected" ? (
+                            <XCircle size={16} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                          ) : (
+                            <XCircle size={16} className="text-slate-500 dark:text-slate-400 shrink-0 mt-0.5" />
+                          )}
                           <div className="min-w-0 flex-1 space-y-1.5">
                             <div className="flex items-center justify-between flex-wrap gap-2">
                               <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -1142,10 +1147,18 @@ export function MaintenanceDetailModal({
                                       : "Stage 5: Ticket Closed & Archived"}
                               </span>
                               <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                                Officially Closed
+                                {request?.status === "cancelled" ? "Cancelled" : request?.status === "rejected" ? "Rejected" : "Officially Closed"}
                               </span>
                             </div>
-                            {request?.resolutionConfirmation?.confirmedAt ? (
+                            {request?.status === "cancelled" ? (
+                              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                                This maintenance request was cancelled. The ticket is closed and preserved in audit history.
+                              </p>
+                            ) : request?.status === "rejected" ? (
+                              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                                This request was reviewed and rejected. No further work orders will be scheduled.
+                              </p>
+                            ) : request?.resolutionConfirmation?.confirmedAt ? (
                               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                                 Tenant confirmed resolution on {fmtDateTime(request.resolutionConfirmation.confirmedAt)}
                                 {request.resolutionConfirmation.tenantFeedback
@@ -1195,7 +1208,7 @@ export function MaintenanceDetailModal({
                               Assign Service Provider &amp; Schedule Repair Visit
                             </h3>
                           </div>
-                          <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400 border border-amber-300/80 dark:border-amber-700/60">
+                          <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700">
                             Stage 2: Under Review
                           </span>
                         </div>
@@ -1325,7 +1338,7 @@ export function MaintenanceDetailModal({
                                 <PlayCircle size={16} className="text-amber-600 dark:text-amber-500" />
                                 <span>Active Work In Progress</span>
                               </h3>
-                              <span className="px-2.5 py-0.5 text-xs font-semibold rounded bg-transparent text-amber-700 dark:text-amber-400 border border-amber-300/80 dark:border-amber-700/60">
+                              <span className="px-2.5 py-0.5 text-xs font-semibold rounded bg-transparent text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700">
                                 Active on site
                               </span>
                             </div>
@@ -1677,7 +1690,7 @@ export function MaintenanceDetailModal({
                               Tenant Verification &amp; Feedback Window
                             </h3>
                           </div>
-                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-transparent text-amber-700 dark:text-amber-400 border border-amber-300/80 dark:border-amber-700/60">
+                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-transparent text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700">
                             Awaiting Feedback
                           </span>
                         </div>

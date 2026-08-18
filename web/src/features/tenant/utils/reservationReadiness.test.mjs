@@ -192,11 +192,50 @@ test("date labeling: no confirmed date yet -> falls back to requested as primary
   const reservation = { targetMoveInDate: "2026-08-10" };
   const result = resolveDisplayMoveInDate(reservation, readMoveInDate, formatDate);
   assert.equal(result.primaryDate, "2026-08-10");
+  assert.equal(result.dateType, "preferred");
+  assert.equal(result.displayLabel, "Preferred Move-in");
   assert.equal(result.showRequested, false);
 });
 
-test("date labeling: neither date present -> no primary date", () => {
+test("date labeling: confirmed reservation produces confirmed dateType and label", () => {
+  const reservation = { status: "reserved", confirmedMoveInDate: "2026-09-01" };
+  const result = resolveDisplayMoveInDate(reservation, readMoveInDate, formatDate);
+  assert.equal(result.primaryDate, "2026-09-01");
+  assert.equal(result.dateType, "confirmed");
+  assert.equal(result.displayLabel, "Confirmed Move-in");
+});
+
+test("date labeling: neither date present -> unset dateType and to-be-scheduled label", () => {
   const result = resolveDisplayMoveInDate({}, readMoveInDate, formatDate);
   assert.equal(result.primaryDate, null);
+  assert.equal(result.dateType, "unset");
+  assert.equal(result.displayLabel, "To be scheduled");
+  assert.equal(result.showRequested, false);
+});
+
+test("date labeling: draft reservation in early step with unsubmitted application ignores legacy date", () => {
+  const reservation = {
+    status: "pending",
+    moveInDate: "2026-09-17",
+    intendedMoveInDate: "2026-09-17",
+    viewingPreference: "physical_visit",
+  };
+  const result = resolveDisplayMoveInDate(reservation, readMoveInDate, formatDate);
+  assert.equal(result.primaryDate, null);
+  assert.equal(result.dateType, "unset");
+  assert.equal(result.displayLabel, "To be scheduled");
+  assert.equal(result.showRequested, false);
+});
+
+test("date labeling: submitted application in review displays preferred move-in date", () => {
+  const reservation = {
+    status: "pending_application_review",
+    intendedMoveInDate: "2026-09-25",
+    applicationSubmittedAt: new Date(),
+  };
+  const result = resolveDisplayMoveInDate(reservation, readMoveInDate, formatDate);
+  assert.equal(result.primaryDate, "2026-09-25");
+  assert.equal(result.dateType, "preferred");
+  assert.equal(result.displayLabel, "Preferred Move-in");
   assert.equal(result.showRequested, false);
 });

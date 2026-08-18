@@ -165,11 +165,11 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
     reservation = await Reservation.findById(reservationId).populate("roomId").lean();
   }
 
-  // 7. If user is found, lookup active reservation
+  // 7. If user is found, lookup active stay or confirmed paid reservation
   if (!reservation && user?._id) {
     reservation = await Reservation.findOne({
       userId: user._id,
-      status: { $in: ["approved", "active", "checked_in", "moveIn", "confirmed"] },
+      status: { $in: ["reserved", "moveIn", "checked_in", "active", "confirmed"] },
     }).sort({ createdAt: -1 }).populate("roomId").lean();
   }
 
@@ -198,7 +198,14 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
   }
 
   if (!user && !reservation && !contract) {
-    const err = new Error("No active stay or reservation record found.");
+    const err = new Error("No active stay or confirmed paid reservation record found.");
+    err.code = "STAY_NOT_FOUND";
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (!stay && !contract && (!reservation || !["reserved", "moveIn", "checked_in", "active", "confirmed"].includes(reservation.status))) {
+    const err = new Error("No active stay or confirmed paid reservation record found.");
     err.code = "STAY_NOT_FOUND";
     err.statusCode = 404;
     throw err;
@@ -219,7 +226,7 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
     applicantName ||
     reservation?.name ||
     [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
-    "Valued Resident";
+    "Valued Tenant";
 
   const branchName = (room?.branch || contract?.branch || reservation?.branch || "Guadalupe Branch")
     .replace(/_/g, " ")
@@ -238,16 +245,37 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
   const rawRef = contract?.contractNumber || reservation?.reservationCode || `LIL-${(user?._id || "RES").toString().slice(-8).toUpperCase()}`;
   const referenceNumber = rawRef.startsWith("LIL-") ? rawRef : `LIL-${rawRef}`;
 
-  const roomNumber = room?.roomNumber || room?.name || contract?.roomNumber || reservation?.room || "Room Assigned";
-  const rawBed = contract?.bedLabel || reservation?.bed || reservation?.bedPosition || "Standard Bed";
-  const formattedBed = rawBed.replace(/^upper$/i, "Upper Bed").replace(/^lower$/i, "Lower Bed");
+  const rawRoomType = String(
+    room?.type ||
+    contract?.roomType ||
+    reservation?.pricingSnapshot?.roomType ||
+    reservation?.preferredRoomType ||
+    reservation?.roomType ||
+    "double_sharing"
+  ).toLowerCase();
+  const isPrivate = rawRoomType.includes("private") || room?.capacity === 1;
+
+  const roomNumber =
+    room?.roomNumber ||
+    room?.name ||
+    contract?.roomNumber ||
+    reservation?.preferredRoomNumber ||
+    reservation?.room ||
+    (isPrivate ? "Private Room" : "Dorm Room");
+  const rawBed =
+    contract?.bedLabel ||
+    reservation?.selectedBed?.code ||
+    reservation?.selectedBed?.position ||
+    reservation?.bed ||
+    reservation?.bedPosition ||
+    (isPrivate ? "Entire Room" : "Bed 1");
+  const formattedBed = isPrivate
+    ? "Entire Room"
+    : String(rawBed).replace(/^upper$/i, "Upper Bed").replace(/^lower$/i, "Lower Bed");
 
   const leaseStartDate = contract?.leaseStartDate || reservation?.intendedMoveInDate || stay?.leaseStartDate || reservation?.createdAt || new Date();
   const leaseEndDate = contract?.leaseEndDate || reservation?.moveOut || stay?.leaseEndDate || dayjs(leaseStartDate).add(6, "month").toDate();
   const leaseDurationMonths = contract?.leaseDurationMonths || Math.max(1, dayjs(leaseEndDate).diff(dayjs(leaseStartDate), "month")) || 6;
-
-  const rawRoomType = String(room?.type || contract?.roomType || reservation?.roomType || "").toLowerCase();
-  const isPrivate = rawRoomType.includes("private") || room?.capacity === 1;
 
   let monthlyRent = Number(
     contract?.approvedMonthlyRate ??
@@ -255,14 +283,20 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
     reservation?.pricingDisplay?.finalMonthlyRate ??
     reservation?.monthlyRent ??
     room?.rate ??
+    room?.monthlyPrice ??
+    room?.price ??
     0
   );
 
-  if ((isPrivate && monthlyRent > 0 && monthlyRent < 10000) || (monthlyRent === 0 && rawRoomType)) {
-    const roomPricing = resolveRoomDiscountPricing(rawRoomType || "private", {}, room || {});
-    monthlyRent = leaseDurationMonths >= (roomPricing.longTermLeaseMinMonths || 6)
-      ? roomPricing.monthlyPrice
-      : roomPricing.shortTermRate;
+  if ((isPrivate && (monthlyRent <= 0 || monthlyRent < 10000)) || monthlyRent <= 0) {
+    try {
+      const roomPricing = resolveRoomDiscountPricing(rawRoomType || (isPrivate ? "private" : "double_sharing"), {}, room || {});
+      monthlyRent = leaseDurationMonths >= (roomPricing.longTermLeaseMinMonths || 6)
+        ? (roomPricing.monthlyPrice || (isPrivate ? 13500 : 5400))
+        : (roomPricing.shortTermRate || (isPrivate ? 16000 : 6000));
+    } catch {
+      monthlyRent = isPrivate ? 13500 : 5400;
+    }
   }
 
   let securityDeposit = Number(contract?.securityDepositAmount ?? reservation?.securityDeposit ?? monthlyRent);

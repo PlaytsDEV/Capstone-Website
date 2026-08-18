@@ -369,6 +369,21 @@ html[data-theme="dark"] .admin-notif-page__unread-toggle.is-active .admin-notif-
   color: #0F172A;
 }
 
+.admin-notif-page__branch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
 .admin-notif-page__clear-filters-btn {
   display: inline-flex;
   align-items: center;
@@ -427,18 +442,16 @@ html[data-theme="dark"] .admin-notif-page__unread-toggle.is-active .admin-notif-
   opacity: 0.88;
 }
 
-/* ── Clean Neutral Icon Box ── */
+/* ── Clean Standalone Icon ── */
 .admin-notif-item__icon-wrap {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: var(--muted);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: none;
   color: var(--foreground);
+  margin-top: 2px;
 }
 
 /* ── Card Content Body ── */
@@ -489,88 +502,53 @@ html[data-theme="dark"] .admin-notif-page__unread-toggle.is-active .admin-notif-
   margin-top: 4px;
 }
 
-/* ── Semantic Status Tags (High contrast, strict color objectives) ── */
+/* ── Semantic Status Tags (Transparent background, neutral 1px border, colored status dot) ── */
 .admin-notif-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   border-radius: 999px;
-  padding: 2px 9px;
+  padding: 2px 10px;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.01em;
   line-height: 1.2;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--foreground);
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-/* Critical (Cancellations, SLA Breaches, Suspended, Payment Rejected, No-show) */
-.admin-notif-tag--critical {
-  background: #FEF2F2;
-  color: #991B1B;
-  border: 1px solid #FECACA;
+.admin-notif-tag__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-.dark .admin-notif-tag--critical,
-html[data-theme="dark"] .admin-notif-tag--critical {
-  background: rgba(239, 68, 68, 0.15);
-  color: #FCA5A5;
-  border-color: rgba(239, 68, 68, 0.35);
+.admin-notif-tag__dot--critical {
+  background: #DC2626;
 }
 
-/* Warning (Action Needed: Maintenance, Payment Proof, Penalty, Unread Chat, Grace Period, Due Reminder) */
-.admin-notif-tag--warning {
-  background: #FFFBEB;
-  color: #92400E;
-  border: 1px solid #FDE68A;
+.admin-notif-tag__dot--warning {
+  background: #D97706;
 }
 
-.dark .admin-notif-tag--warning,
-html[data-theme="dark"] .admin-notif-tag--warning {
-  background: rgba(245, 158, 11, 0.15);
-  color: #FDE68A;
-  border-color: rgba(245, 158, 11, 0.35);
+.admin-notif-tag__dot--info {
+  background: #2563EB;
 }
 
-/* Info (New Application, Visit Requested, Inquiry New, Bill Generated, Contract Prepared) */
-.admin-notif-tag--info {
-  background: #EFF6FF;
-  color: #1E40AF;
-  border: 1px solid #BFDBFE;
+.admin-notif-tag__dot--success {
+  background: #059669;
 }
 
-.dark .admin-notif-tag--info,
-html[data-theme="dark"] .admin-notif-tag--info {
-  background: rgba(37, 99, 235, 0.15);
-  color: #93C5FD;
-  border-color: rgba(37, 99, 235, 0.35);
+.admin-notif-tag__dot--neutral {
+  background: #64748B;
 }
 
-/* Success (Payment Approved, Reservation Confirmed, Visit Approved, Contract Signed, Reactivated) */
-.admin-notif-tag--success {
-  background: #ECFDF5;
-  color: #065F46;
-  border: 1px solid #A7F3D0;
-}
-
-.dark .admin-notif-tag--success,
-html[data-theme="dark"] .admin-notif-tag--success {
-  background: rgba(16, 185, 129, 0.15);
-  color: #6EE7B7;
-  border-color: rgba(16, 185, 129, 0.35);
-}
-
-/* Neutral (General Notice, Expired, System) */
-.admin-notif-tag--neutral {
-  background: var(--muted);
+.admin-notif-tag__branch-icon {
   color: var(--muted-foreground);
-  border: 1px solid var(--border);
-}
-
-.dark .admin-notif-tag--neutral,
-html[data-theme="dark"] .admin-notif-tag--neutral {
-  background: #1E293B;
-  color: #94A3B8;
-  border-color: #334155;
+  flex-shrink: 0;
 }
 
 /* ── Entity Reference Monospace Pill ── */

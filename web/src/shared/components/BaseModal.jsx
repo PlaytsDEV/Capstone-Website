@@ -66,35 +66,30 @@ export default function BaseModal({
   const variantTokens = {
     primary: {
       icon: <CheckCircle size={20} color="#059669" />,
-      iconBg: "rgba(5, 150, 105, 0.08)",
       btnBg: "var(--color-success, #059669)",
       btnHoverBg: "#047857",
       btnText: "#ffffff",
     },
     danger: {
       icon: <AlertCircle size={20} color="#DC2626" />,
-      iconBg: "rgba(220, 38, 38, 0.08)",
       btnBg: "var(--color-danger, #DC2626)",
       btnHoverBg: "#b91c1c",
       btnText: "#ffffff",
     },
     warning: {
       icon: <AlertTriangle size={20} color="#D97706" />,
-      iconBg: "rgba(217, 119, 6, 0.08)",
       btnBg: "var(--color-warning, #D97706)",
       btnHoverBg: "#b45309",
       btnText: "#ffffff",
     },
     success: {
       icon: <CheckCircle size={20} color="#059669" />,
-      iconBg: "rgba(5, 150, 105, 0.08)",
       btnBg: "var(--color-success, #059669)",
       btnHoverBg: "#047857",
       btnText: "#ffffff",
     },
     info: {
       icon: <Info size={20} color="#059669" />,
-      iconBg: "rgba(5, 150, 105, 0.08)",
       btnBg: "var(--color-success, #059669)",
       btnHoverBg: "#047857",
       btnText: "#ffffff",
@@ -173,10 +168,6 @@ export default function BaseModal({
               {variant && (
                 <div
                   style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 10,
-                    background: v.iconBg,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",

@@ -46,7 +46,8 @@ export const formatRoomBed = (roomNumber, bedLabel) => {
 export const getTenantContractMessage = (contract) => {
   if (!contract) return {
     title: "Contract Not Available Yet",
-    message: "Your official contract or digital proof of stay has not been published yet. Once your stay is confirmed, you can view your lease details and download your official document here.",
+    message: "Your official lease contract will be generated once your 1-month advance rent and 1-month security deposit have been confirmed.",
+    nextAction: "Please complete your initial reservation payment to generate your lease contract.",
   };
   if (contract.tenantDocument?.type === "final_notarized") {
     return {

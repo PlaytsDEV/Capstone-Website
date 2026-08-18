@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import logo from "../../../../assets/images/LOGO.svg";
 import ProfileAvatar, { getProfileInitials } from "../../../../shared/components/ProfileAvatar";
+import { formatDisplayName } from "../../../../shared/utils/formatDate";
+
 
 /**
  * Redesigned header — single row: Logo | Filter Bar | Sign In + Quick Suggestion Pills
@@ -51,10 +53,16 @@ const AvailabilityHeader = React.memo(({
 
   const userInitials = getProfileInitials(user, "?");
   const userDisplayName = user
-    ? `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
-      user.email ||
-      "User"
+    ? formatDisplayName(
+        `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+          user.name ||
+          user.fullName ||
+          user.username ||
+          (user.email ? user.email.split("@")[0] : "") ||
+          "User"
+      )
     : "Guest";
+
 
   // Global keyboard shortcut '/' to focus search and 'Esc' to clear
   useEffect(() => {
@@ -91,35 +99,37 @@ const AvailabilityHeader = React.memo(({
   const roleBadge = (role) => {
     const map = {
       owner: {
-        bg: "color-mix(in srgb, var(--chart-3, #d97706) 14%, var(--card, #fff))",
+        dot: "var(--chart-3, #d97706)",
         color: "var(--chart-3, #d97706)",
         label: "Owner",
       },
       branch_admin: {
-        bg: "color-mix(in srgb, var(--info, #2563eb) 14%, var(--card, #fff))",
+        dot: "var(--info, #2563eb)",
         color: "var(--info-dark, #1e40af)",
         label: "Branch Admin",
       },
       tenant: {
-        bg: "color-mix(in srgb, var(--primary, #0a1628) 12%, var(--card, #fff))",
+        dot: "var(--primary, #0a1628)",
         color: "var(--primary, #0a1628)",
         label: "Tenant",
       },
     };
     const cfg = map[role] || {
-      bg: "color-mix(in srgb, var(--success, #059669) 14%, var(--card, #fff))",
+      dot: "var(--success, #059669)",
       color: "var(--success-dark, #065f46)",
       label: "Applicant",
     };
     return (
       <span
-        className="shrink-0 px-1.5 py-px text-[9px] font-semibold rounded uppercase tracking-wide border"
+        className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold rounded uppercase tracking-wide border border-slate-200 dark:border-slate-700 bg-transparent"
         style={{
-          backgroundColor: cfg.bg,
           color: cfg.color,
-          borderColor: "color-mix(in srgb, currentColor 20%, transparent)",
         }}
       >
+        <span
+          className="w-1.5 h-1.5 rounded-full shrink-0"
+          style={{ backgroundColor: cfg.dot }}
+        />
         {cfg.label}
       </span>
     );
@@ -132,61 +142,18 @@ const AvailabilityHeader = React.memo(({
     maxPrice !== 15000 ||
     searchQuery.trim() !== "";
 
-  // Active filter count for mobile badge
-  const activeFiltersCount = [
+  // Active secondary filter count for the Filters toggle button
+  const activeSecondaryFiltersCount = [
     selectedBranch !== "All",
     selectedRoomType !== "All",
     selectedLeaseTermFilter !== "All",
     maxPrice !== 15000,
-    searchQuery.trim() !== "",
   ].filter(Boolean).length;
 
-  const quickTags = [
-    { label: "All Rooms", action: () => onClearAll() },
-    {
-      label: "Guadalupe",
-      action: () => onBranchFilter(selectedBranch === "Guadalupe" ? "All" : "Guadalupe"),
-      isActive: selectedBranch === "Guadalupe",
-    },
-    {
-      label: "Gil Puyat",
-      action: () => onBranchFilter(selectedBranch === "Gil Puyat" ? "All" : "Gil Puyat"),
-      isActive: selectedBranch === "Gil Puyat",
-    },
-    {
-      label: "Private",
-      action: () => onRoomTypeFilter(selectedRoomType === "Private" ? "All" : "Private"),
-      isActive: selectedRoomType === "Private",
-    },
-    {
-      label: "Shared",
-      action: () => onRoomTypeFilter(selectedRoomType === "Shared" ? "All" : "Shared"),
-      isActive: selectedRoomType === "Shared",
-    },
-    {
-      label: "Quadruple",
-      action: () => onRoomTypeFilter(selectedRoomType === "Quadruple" ? "All" : "Quadruple"),
-      isActive: selectedRoomType === "Quadruple",
-    },
-    {
-      label: "Aircon",
-      action: () => setSearchQuery(searchQuery.toLowerCase().includes("aircon") ? "" : "aircon"),
-      isActive: searchQuery.toLowerCase().includes("aircon"),
-    },
-    {
-      label: "Under ₱6,000",
-      action: () => {
-        setMaxPrice(maxPrice === 6000 ? 15000 : 6000);
-        setLocalPrice(maxPrice === 6000 ? 15000 : 6000);
-      },
-      isActive: maxPrice === 6000,
-    },
-  ];
-
   return (
-    <header className="sticky top-0 z-50" style={{ backgroundColor: "var(--surface-card)", borderBottom: "1px solid var(--border-divider)" }}>
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-8 lg:px-12 py-1">
-        {/* Single row: Logo | Filter Bar | Sign In */}
+    <header className="sticky top-0 z-50 ca-header-root" style={{ backgroundColor: "var(--surface-card)", borderBottom: "1px solid var(--border-divider)" }}>
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+        {/* Main Header Row */}
         <div className="ca-header-row">
           {/* Logo */}
           <Link
@@ -197,21 +164,21 @@ const AvailabilityHeader = React.memo(({
             <img
               src={logo}
               alt="Lilycrest logo"
-              className="w-8 h-8 object-contain"
+              className="w-8 h-8 sm:w-9 sm:h-9 object-contain shrink-0"
             />
             <span
-              className="text-lg font-semibold tracking-tight"
+              className="text-lg sm:text-xl font-bold tracking-tight"
               style={{ color: "var(--text-heading)" }}
             >
               Lilycrest
             </span>
           </Link>
 
-          {/* Unified Filter Bar */}
+          {/* Unified Filter Bar / Search Container */}
           <div className="ca-filter-bar">
-            {/* Search Input */}
+            {/* Search Input Wrap */}
             <div className="ca-search-wrap">
-              <Search className="ca-search-icon" />
+              <Search className="ca-search-icon" size={17} />
               <input
                 ref={searchInputRef}
                 type="text"
@@ -232,7 +199,7 @@ const AvailabilityHeader = React.memo(({
                   title="Clear search text (Esc)"
                   aria-label="Clear search"
                 >
-                  <X size={13} />
+                  <X size={14} />
                 </button>
               ) : (
                 <span className="ca-search-shortcut-badge" title="Press / to search">
@@ -241,31 +208,25 @@ const AvailabilityHeader = React.memo(({
               )}
             </div>
 
-            {/* Mobile Filter Toggle */}
+            {/* Filter Toggle Button (visible on tablet, laptop, and mobile viewports) */}
             <button
               type="button"
-              className="ca-mobile-filter-toggle"
+              className={`ca-mobile-filter-toggle ${mobileFiltersOpen ? "ca-mobile-filter-toggle--active" : ""}`}
               onClick={() => setMobileFiltersOpen((prev) => !prev)}
               aria-label="Toggle filter options"
               aria-expanded={mobileFiltersOpen}
             >
-              <SlidersHorizontal size={14} />
-              <span>Filters</span>
-              {activeFiltersCount > 0 && (
-                <span
-                  className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
-                  style={{
-                    backgroundColor: "var(--text-heading)",
-                    color: "var(--surface-card)",
-                  }}
-                >
-                  {activeFiltersCount}
+              <SlidersHorizontal size={15} />
+              <span className="hidden sm:inline">Filters</span>
+              {activeSecondaryFiltersCount > 0 && (
+                <span className="ca-filter-count-badge">
+                  {activeSecondaryFiltersCount}
                 </span>
               )}
             </button>
 
-            {/* Controls group (dropdowns & slider) */}
-            <div className={`ca-filter-controls ${mobileFiltersOpen ? "ca-filter-controls--open" : ""}`}>
+            {/* Inline Controls group (visible only on large desktop screens >= 1280px) */}
+            <div className="ca-filter-controls--desktop">
               {/* Branch dropdown */}
               <select
                 className="ca-filter-select"
@@ -344,13 +305,13 @@ const AvailabilityHeader = React.memo(({
                   aria-expanded={showUserMenu}
                 >
                   <div className="ca-user-trigger-avatar">
-                    <ProfileAvatar user={user} initials={userInitials} size={32} />
+                    <ProfileAvatar user={user} initials={userInitials} size={34} />
                   </div>
-                  <span className="flex-1 text-sm font-medium truncate leading-tight text-left" style={{ color: "var(--text-heading)" }}>
+                  <span className="ca-user-trigger-name capitalize">
                     {userDisplayName}
                   </span>
                   <ChevronDown
-                    className={`w-3.5 h-3.5 ca-user-trigger-chevron shrink-0 ${showUserMenu ? "rotate-180" : ""}`}
+                    className="w-4 h-4 ca-user-trigger-chevron shrink-0"
                   />
                 </button>
 
@@ -366,13 +327,14 @@ const AvailabilityHeader = React.memo(({
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <p
-                              className="text-[13px] font-semibold truncate leading-none"
+                              className="text-[13px] font-semibold truncate leading-none capitalize"
                               style={{ color: "var(--text-heading)" }}
                             >
                               {userDisplayName}
                             </p>
                             {roleBadge(user?.role)}
                           </div>
+
                           <p
                             className="text-[11px] truncate mt-1.5 leading-tight"
                             style={{ color: "var(--text-muted)" }}
@@ -432,32 +394,103 @@ const AvailabilityHeader = React.memo(({
             ) : (
               <Link
                 to="/signin"
-                className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-border hover:border-gray-400 transition-colors text-sm font-medium"
-                style={{ color: "var(--text-heading)" }}
+                className="ca-signin-btn"
+                aria-label="Sign In"
               >
                 <User className="w-4 h-4" />
-                Sign In
+                <span>Sign In</span>
               </Link>
             )}
           </div>
         </div>
 
-        {/* Quick Filter Tags Row */}
-        <div className="ca-quick-tags pb-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground shrink-0 mr-1 flex items-center gap-1">
-            Quick:
-          </span>
-          {quickTags.map((tag) => (
-            <button
-              key={tag.label}
-              type="button"
-              onClick={tag.action}
-              className={`ca-quick-tag ${tag.isActive ? "ca-quick-tag--active" : ""}`}
-            >
-              {tag.label}
-            </button>
-          ))}
-        </div>
+        {/* Collapsible Secondary Filter Shelf (for Laptop, Tablet & Mobile) */}
+        {mobileFiltersOpen && (
+          <div className="ca-filter-shelf-panel">
+            <div className="ca-filter-shelf-grid">
+              {/* Branch */}
+              <div className="ca-shelf-field">
+                <label className="ca-shelf-field-label">Branch</label>
+                <select
+                  className="ca-filter-select ca-filter-select--full"
+                  value={selectedBranch}
+                  onChange={(e) => onBranchFilter(e.target.value)}
+                  aria-label="Filter by branch"
+                >
+                  <option value="All">All Branches</option>
+                  <option value="Gil Puyat">Gil Puyat</option>
+                  <option value="Guadalupe">Guadalupe</option>
+                </select>
+              </div>
+
+              {/* Room Type */}
+              <div className="ca-shelf-field">
+                <label className="ca-shelf-field-label">Room Type</label>
+                <select
+                  className="ca-filter-select ca-filter-select--full"
+                  value={selectedRoomType}
+                  onChange={(e) => onRoomTypeFilter(e.target.value)}
+                  aria-label="Filter by room type"
+                >
+                  {availableRoomTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {type === "All" ? "All Types" : type}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Stay Type */}
+              <div className="ca-shelf-field">
+                <label className="ca-shelf-field-label">Stay Type</label>
+                <select
+                  className="ca-filter-select ca-filter-select--full"
+                  value={selectedLeaseTermFilter}
+                  onChange={(e) => onLeaseTermFilterChange && onLeaseTermFilterChange(e.target.value)}
+                  aria-label="Filter by stay type"
+                >
+                  <option value="All">All Stay Types</option>
+                  <option value="longTerm">Long-Term (6+ mos)</option>
+                  <option value="shortTerm">Short-Term (1–5 mos)</option>
+                </select>
+              </div>
+
+              {/* Price Slider */}
+              <div className="ca-shelf-field ca-shelf-field--slider">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="ca-shelf-field-label mb-0">Max Price</label>
+                  <span className="text-xs font-semibold" style={{ color: "var(--text-heading)" }}>
+                    {priceLabel}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  className="ca-price-slider"
+                  min={3000}
+                  max={15000}
+                  step={500}
+                  value={localPrice}
+                  onChange={handleSliderChange}
+                  onMouseUp={handleSliderCommit}
+                  onTouchEnd={handleSliderCommit}
+                  aria-label="Filter by maximum price"
+                />
+              </div>
+            </div>
+
+            {hasActiveFilters && (
+              <div className="ca-shelf-actions">
+                <button
+                  type="button"
+                  onClick={onClearAll}
+                  className="ca-shelf-reset-btn"
+                >
+                  Reset All Filters
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );

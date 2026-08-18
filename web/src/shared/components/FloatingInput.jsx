@@ -37,6 +37,7 @@ const FloatingInput = ({
  endAdornment,
  inputMode,
  maxLength,
+ required = false,
  ...rest
 }) => {
  const [focused, setFocused] = useState(false);
@@ -73,6 +74,7 @@ const FloatingInput = ({
  onKeyDown={onKeyDown}
  onKeyUp={onKeyUp}
  disabled={disabled}
+ required={required}
  autoComplete={autoComplete}
  inputMode={inputMode}
  maxLength={maxLength}
@@ -84,6 +86,7 @@ const FloatingInput = ({
  />
  <label htmlFor={name} className="floating-field__label">
  {label}
+ {required && <span className="text-rose-500 ml-0.5" aria-hidden="true">*</span>}
  </label>
  {endAdornment && (
  <div className="floating-field__adornment">{endAdornment}</div>

@@ -74,8 +74,8 @@ export default function DepositRefundModal({
     >
       <div className="space-y-4 text-sm">
         {error && (
-          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-600 dark:text-red-400 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
+          <div role="alert" className="p-3 bg-rose-50/60 dark:bg-rose-950/20 border border-slate-200 dark:border-slate-700 rounded-lg text-rose-700 dark:text-rose-400 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
             <span>{error}</span>
           </div>
         )}
@@ -91,11 +91,12 @@ export default function DepositRefundModal({
 
           <div className="flex items-center justify-between text-xs border-t border-slate-200 dark:border-slate-800 pt-2">
             <span className="text-slate-500">Settlement Type</span>
-            <span className={`px-2 py-0.5 rounded-md font-medium ${
+            <span className={`inline-flex items-center gap-1.5 font-medium ${
               isForfeited
-                ? "bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                ? "text-rose-600 dark:text-rose-400"
+                : "text-emerald-600 dark:text-emerald-400"
             }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isForfeited ? "bg-rose-500" : "bg-emerald-500"}`} />
               {isForfeited ? "Deposit Forfeited" : "Refund Calculated"}
             </span>
           </div>

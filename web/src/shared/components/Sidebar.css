@@ -207,6 +207,8 @@ html[data-theme="dark"] .sidebar-collapse-toggle:hover,
   border-radius: 50%;
   flex-shrink: 0;
   overflow: hidden;
+  border: none;
+  box-shadow: var(--avatar-shadow);
 }
 
 .sidebar-avatar-img {

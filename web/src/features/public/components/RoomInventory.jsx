@@ -3,9 +3,10 @@ import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { roomApi } from '../../../shared/api/roomApi';
 import { ProgressiveImage } from '../../../shared/components/ProgressiveImage';
-import hero1 from "../../../assets/images/hero1.webp";
-import hero2 from "../../../assets/images/hero2.webp";
-import hero3 from "../../../assets/images/hero3.webp";
+import privateRoomImg from "../../../assets/images/branches/gil-puyat/Private - GP/private room copy.webp";
+import doubleRoomImg from "../../../assets/images/branches/gil-puyat/Double - GP/Double sharing room1.webp";
+import quadRoomImg from "../../../assets/images/branches/gil-puyat/Quadruple - GP/Pic quad.webp";
+import guadalupeSharedRoomImg from "../../../assets/images/branches/guadalupe/2d-viewing/Guadalupe shared room.webp";
 
 const DEFAULT_ROOM_LISTINGS = [
   {
@@ -13,10 +14,13 @@ const DEFAULT_ROOM_LISTINGS = [
     title: 'Private Room',
     subtitle: 'Gil Puyat Branch',
     description: 'Your own space with complete privacy. Each room has its own toilet, shower, and kitchenette.',
+    regularPrice: '₱15,000',
     price: '₱13,500',
     priceNote: '/room',
+    discountPercent: 10,
+    hasDiscount: true,
     popular: false,
-    image: hero1,
+    image: privateRoomImg,
     inclusions: ['Max 2 Pax', 'Private Restroom', 'Kitchenette', 'Lounge Area Access', 'Fully Furnished'],
     linkUrl: '/applicant/check-availability?branch=Gil%20Puyat&roomType=Private',
   },
@@ -25,10 +29,13 @@ const DEFAULT_ROOM_LISTINGS = [
     title: 'Double Sharing',
     subtitle: 'Gil Puyat Branch',
     description: 'Share with a roommate while enjoying your own space. Common areas per floor include lounge, toilet & shower.',
+    regularPrice: '₱9,000',
     price: '₱7,200',
     priceNote: '/pax',
+    discountPercent: 20,
+    hasDiscount: true,
     popular: true,
-    image: hero3,
+    image: doubleRoomImg,
     inclusions: ['Max 2 Pax', 'Double Decker Bed', 'Shared Floor Amenities', 'Common Bathroom', 'Fully Furnished'],
     linkUrl: '/applicant/check-availability?branch=Gil%20Puyat&roomType=Shared',
   },
@@ -37,10 +44,13 @@ const DEFAULT_ROOM_LISTINGS = [
     title: 'Quadruple Sharing',
     subtitle: 'Gil Puyat & Guadalupe',
     description: 'Budget-friendly with a vibrant community atmosphere. Common areas per floor include lounge, toilet & shower.',
+    regularPrice: '₱6,000',
     price: '₱5,400',
     priceNote: '/pax',
+    discountPercent: 10,
+    hasDiscount: true,
     popular: false,
-    image: hero2,
+    image: quadRoomImg,
     inclusions: ['Max 4 Pax', 'Double Decker Beds', 'Shared Floor Amenities', 'Common Bathroom', 'Aircon'],
     linkUrl: '/applicant/check-availability?roomType=Quadruple',
   },
@@ -74,9 +84,43 @@ export function RoomInventory() {
 
       if (!popularRoom) return DEFAULT_ROOM_LISTINGS[idx];
 
-      const priceVal = popularRoom.monthlyPrice || popularRoom.price || 0;
-      const formattedPrice = `₱${Number(priceVal).toLocaleString()}`;
-      const defaultHero = idx === 0 ? hero1 : idx === 1 ? hero3 : hero2;
+      const defaultRegularRate = type === "private" ? 15000 : type === "double-sharing" ? 9000 : 6000;
+      const defaultDiscountedRate = type === "private" ? 13500 : type === "double-sharing" ? 7200 : 5400;
+      const defaultDiscountPct = type === "private" ? 10 : type === "double-sharing" ? 20 : 10;
+
+      const regularRate = typeof popularRoom.regularLongRate === "number" && popularRoom.regularLongRate > 0
+        ? popularRoom.regularLongRate
+        : defaultRegularRate;
+
+      const currentRate = typeof popularRoom.monthlyPrice === "number" && popularRoom.monthlyPrice > 0
+        ? popularRoom.monthlyPrice
+        : typeof popularRoom.price === "number" && popularRoom.price > 0
+        ? popularRoom.price
+        : defaultDiscountedRate;
+
+      const discountPercentConfig = typeof popularRoom.longTermDiscountPercent === "number" && popularRoom.longTermDiscountPercent > 0
+        ? popularRoom.longTermDiscountPercent
+        : (regularRate > currentRate ? Math.round(((regularRate - currentRate) / regularRate) * 100) : defaultDiscountPct);
+
+      const isDiscountEnabled = popularRoom.isDiscountEnabled !== false;
+      const hasDiscount = isDiscountEnabled && regularRate > currentRate && discountPercentConfig > 0;
+
+      const formattedRegularPrice = `₱${Number(regularRate).toLocaleString()}`;
+      const formattedPrice = `₱${Number(currentRate).toLocaleString()}`;
+
+      const defaultRoomImage =
+        popularRoom.branch === "guadalupe"
+          ? guadalupeSharedRoomImg
+          : type === "private"
+          ? privateRoomImg
+          : type === "double-sharing"
+          ? doubleRoomImg
+          : quadRoomImg;
+
+      const displayImg =
+        (Array.isArray(popularRoom.images) && popularRoom.images.length > 0 && popularRoom.images[0]) ||
+        popularRoom.image ||
+        defaultRoomImage;
       const mapTypeParam = (t) => {
         if (t === "private") return "Private";
         if (t === "double-sharing") return "Shared";
@@ -89,11 +133,14 @@ export function RoomInventory() {
 
       return {
         id: popularRoom._id || idx + 1,
-        title: popularRoom.name || formatTypeTitle(type),
+        title: formatTypeTitle(type),
         subtitle: popularRoom.branch === "guadalupe" ? "Guadalupe Branch" : "Gil Puyat Branch",
         description: popularRoom.description || DEFAULT_ROOM_LISTINGS[idx].description,
+        regularPrice: formattedRegularPrice,
         price: formattedPrice,
         priceNote: type === "private" ? "/room" : "/pax",
+        discountPercent: discountPercentConfig,
+        hasDiscount,
         popular: Boolean(popularRoom.isPopular),
         image: displayImg,
         inclusions: popularRoom.amenities && popularRoom.amenities.length > 0
@@ -160,19 +207,40 @@ export function RoomInventory() {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-                {/* Price Badge */}
+                {/* Price Badge with Strikethrough & Discount Tag */}
                 <div
-                  className="absolute top-4 left-4 backdrop-blur-sm rounded-full px-4 py-2"
+                  className="absolute top-4 left-4 backdrop-blur-md rounded-full px-3.5 py-1.5 flex items-center gap-1.5 shadow-sm"
                   style={{
                     backgroundColor: 'var(--lp-bg)',
                     boxShadow: 'var(--lp-card-shadow)',
                     border: '1px solid var(--lp-border)',
                   }}
                 >
-                  <span className="text-lg font-medium" style={{ color: 'var(--lp-text)' }}>
+                  {room.hasDiscount && (
+                    <span
+                      className="text-xs line-through opacity-60 font-normal"
+                      style={{ color: 'var(--lp-text-muted)' }}
+                    >
+                      {room.regularPrice}
+                    </span>
+                  )}
+                  <span className="text-base sm:text-lg font-bold tracking-tight" style={{ color: 'var(--lp-text)' }}>
                     {room.price}
                   </span>
-                  <span className="text-xs ml-1" style={{ color: 'var(--lp-text-muted)' }}>{room.priceNote || '/mo'}</span>
+                  <span className="text-xs font-normal" style={{ color: 'var(--lp-text-muted)' }}>
+                    {room.priceNote || '/mo'}
+                  </span>
+                  {room.hasDiscount && room.discountPercent > 0 && (
+                    <span
+                      className="ml-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                      style={{
+                        backgroundColor: 'var(--lp-icon-bg)',
+                        color: 'var(--lp-accent)',
+                      }}
+                    >
+                      {room.discountPercent}% OFF
+                    </span>
+                  )}
                 </div>
 
                 {/* Corner Ribbon — replaces full-width bar */}

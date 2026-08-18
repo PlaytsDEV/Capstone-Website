@@ -37,14 +37,36 @@ export const WORK_SCHEDULE_OPTIONS = [
 ];
 
 export const LEASE_OPTIONS = [
- { value: "12", label: "1 year" },
- { value: "6", label: "6 months" },
- { value: "5", label: "5 months" },
- { value: "4", label: "4 months" },
- { value: "3", label: "3 months" },
- { value: "2", label: "2 months" },
- { value: "1", label: "1 month" },
+  { value: "1", label: "1 month", shortLabel: "1 mo", months: 1 },
+  { value: "2", label: "2 months", shortLabel: "2 mos", months: 2 },
+  { value: "3", label: "3 months", shortLabel: "3 mos", months: 3 },
+  { value: "4", label: "4 months", shortLabel: "4 mos", months: 4 },
+  { value: "5", label: "5 months", shortLabel: "5 mos", months: 5 },
+  { value: "6", label: "6 months", shortLabel: "6 mos", months: 6 },
+  { value: "10", label: "10 months", shortLabel: "10 mos", months: 10 },
+  { value: "12", label: "1 year", shortLabel: "1 yr", months: 12 },
 ];
+
+/**
+ * Returns available lease options sorted ascending, dynamically including
+ * room-specific minimum long-term duration (e.g., 10 months) if not already present.
+ */
+export function getAvailableLeaseOptions(minMonths = 6) {
+  const optionsMap = new Map();
+  LEASE_OPTIONS.forEach((opt) => optionsMap.set(Number(opt.value), opt));
+
+  if (minMonths && !optionsMap.has(Number(minMonths))) {
+    const num = Number(minMonths);
+    optionsMap.set(num, {
+      value: String(num),
+      label: num === 12 ? "1 year" : `${num} months`,
+      shortLabel: num === 12 ? "1 yr" : `${num} mos`,
+      months: num,
+    });
+  }
+
+  return Array.from(optionsMap.values()).sort((a, b) => a.months - b.months);
+}
 
 const formatDateInputValue = (date) => {
  const year = date.getFullYear();

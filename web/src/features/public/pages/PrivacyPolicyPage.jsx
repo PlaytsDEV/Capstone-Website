@@ -121,7 +121,7 @@ export function PrivacyPolicyPage() {
               You have the right to access, correct, or delete your personal
               information at any time. You may also opt out of receiving
               communications from us. To exercise these rights, please contact
-              us at hello@lilycrest.com.
+              us at lilycrestadmin@gmail.com.
             </p>
           </section>
 
@@ -134,7 +134,7 @@ export function PrivacyPolicyPage() {
             </h2>
             <p className="text-gray-600 leading-relaxed font-light">
               If you have any questions about this Privacy Policy, please
-              contact us at hello@lilycrest.com or call us at +63 912 345 6789.
+              contact us at lilycrestadmin@gmail.com or call us at +63 912 345 6789.
             </p>
           </section>
         </div>

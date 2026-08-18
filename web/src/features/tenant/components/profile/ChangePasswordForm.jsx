@@ -244,7 +244,7 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
             gap: "10px",
             padding: "12px 16px",
             backgroundColor: "var(--status-error-bg, #FEE2E2)",
-            border: "1px solid var(--danger, #EF4444)",
+            border: "1px solid var(--border-card, #e2e8f0)",
             borderRadius: "var(--radius-md, 8px)",
             color: "var(--danger-dark, #991B1B)",
             fontSize: "var(--font-size-sm, 13px)",
@@ -256,7 +256,6 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
         </div>
       )}
 
-      {/* CapsLock Indicator */}
       {capsLockActive && (
         <div
           style={{
@@ -265,7 +264,7 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
             gap: "8px",
             padding: "8px 14px",
             backgroundColor: "var(--status-warning-bg, #FEF3C7)",
-            border: "1px solid var(--warning, #F59E0B)",
+            border: "1px solid var(--border-card, #e2e8f0)",
             borderRadius: "var(--radius-md, 8px)",
             color: "var(--warning-dark, #92400E)",
             fontSize: "var(--font-size-xs, 12px)",
@@ -737,6 +736,21 @@ export default function ChangePasswordForm({ onCancel, onSuccess, onDirtyChange 
         <button
           type="submit"
           disabled={!canSubmit}
+          title={
+            !currentPassword
+              ? "Enter your current password to continue"
+              : !isAllRulesPassed
+              ? "Ensure new password meets all security requirements"
+              : !confirmPassword
+              ? "Confirm your new password"
+              : !isMatch
+              ? "Passwords must match"
+              : isSameAsCurrent
+              ? "New password must differ from current password"
+              : submitting
+              ? "Updating password..."
+              : "Update your password"
+          }
           className="st-btn st-btn-primary"
           style={{
             opacity: canSubmit ? 1 : 0.6,

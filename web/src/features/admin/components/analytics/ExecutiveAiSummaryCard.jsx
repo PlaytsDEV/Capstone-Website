@@ -3,9 +3,9 @@ import { Sparkles, ArrowRight, ShieldAlert, TrendingDown } from "lucide-react";
 
 export default function ExecutiveAiSummaryCard({ title, findings, recommendations }) {
   return (
-    <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-6 text-white shadow-lg border border-slate-700">
+    <div className="bg-[#0A1628] dark:bg-slate-900 rounded-xl p-6 text-white shadow-md border border-slate-700">
       <div className="flex items-center gap-2 mb-4">
-        <Sparkles className="text-blue-400" size={20} />
+        <Sparkles className="text-[#D4AF37]" size={20} />
         <h3 className="font-semibold text-lg">{title}</h3>
       </div>
       

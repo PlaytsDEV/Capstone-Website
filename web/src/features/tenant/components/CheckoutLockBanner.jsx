@@ -31,22 +31,18 @@ export default function CheckoutLockBanner({ lockId, roomId, bedId, initialTimeR
     <div
       role="region"
       aria-label="Bed Reservation Lock Timer"
-      className={`w-full p-4 mb-4 rounded-lg border text-sm font-medium transition-colors ${
-        isWarning
-          ? "bg-amber-50 border-amber-300 text-amber-900"
-          : "bg-emerald-50 border-emerald-300 text-emerald-900"
-      }`}
+      className="w-full p-4 mb-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 text-sm font-medium transition-colors"
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className={`w-2.5 h-2.5 rounded-full ${isWarning ? "bg-amber-500" : "bg-emerald-500"}`} />
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-2.5">
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isWarning ? "bg-amber-500" : "bg-emerald-500"}`} />
           <span>
             Bed checkout locked for Room <strong>{roomId}</strong> (Bed <strong>{bedId}</strong>)
           </span>
         </div>
-        <div className="flex items-center gap-2 font-mono text-base font-bold">
-          <span>Time Remaining:</span>
-          <span className="px-2 py-1 bg-white border rounded text-slate-800 shadow-xs">
+        <div className="flex items-center gap-2 font-mono text-sm font-bold">
+          <span className="text-slate-600 dark:text-slate-400 font-sans font-medium text-xs">Time Remaining:</span>
+          <span className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-slate-900 dark:text-slate-100 shadow-xs">
             {secondsLeft > 0 ? formattedTime : "EXPIRED"}
           </span>
         </div>

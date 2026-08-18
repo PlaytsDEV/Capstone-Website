@@ -47,9 +47,13 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   Stay: {},
   Contract: {},
   TenantViolation: { find: jest.fn(), findOne: jest.fn(), countDocuments: jest.fn() },
+  BusinessSettings: { findOne: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
   ROOM_BRANCHES: ["gil-puyat", "guadalupe"],
 }));
 
+await jest.unstable_mockModule("../models/BusinessSettings.js", () => ({
+  default: { findOne: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
+}));
 await jest.unstable_mockModule("../config/constants.js", () => ({
   BUSINESS: { DEPOSIT_AMOUNT: 2000 },
 }));

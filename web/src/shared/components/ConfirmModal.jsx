@@ -44,29 +44,25 @@ export default function ConfirmModal({
  const palette = {
     danger: {
       icon: "#EF4444",
-      iconBg: "#FEF2F2",
       btn: "#EF4444",
       btnHover: "#DC2626",
     },
- warning: {
- icon: "#D97706",
- iconBg: "rgba(217, 119, 6, 0.08)",
- btn: "#D97706",
- btnHover: "#B45309",
- },
- info: {
- icon: "#059669",
- iconBg: "rgba(5, 150, 105, 0.08)",
- btn: "#059669",
- btnHover: "#047857",
- },
- success: {
- icon: "#059669",
- iconBg: "rgba(5, 150, 105, 0.08)",
- btn: "#059669",
- btnHover: "#047857",
- },
- };
+    warning: {
+      icon: "#D97706",
+      btn: "#D97706",
+      btnHover: "#B45309",
+    },
+    info: {
+      icon: "#059669",
+      btn: "#059669",
+      btnHover: "#047857",
+    },
+    success: {
+      icon: "#059669",
+      btn: "#059669",
+      btnHover: "#047857",
+    },
+  };
  const c = palette[variant] || palette.info;
 
  const icons = {
@@ -187,10 +183,6 @@ export default function ConfirmModal({
  >
  <div
  style={{
- width: 36,
- height: 36,
- borderRadius: 8,
- background: c.iconBg,
  display: "flex",
  alignItems: "center",
  justifyContent: "center",

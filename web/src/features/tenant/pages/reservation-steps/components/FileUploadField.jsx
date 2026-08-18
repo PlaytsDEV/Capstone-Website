@@ -185,14 +185,11 @@ const FileUploadField = ({
   };
 
   const isAttached = isUploaded || isFile;
-  const canHoverGreen = !uploading && !isAttached && !error && !showFieldError;
 
   const zoneClass = [
     "rf-upload-zone",
-    canHoverGreen ? "rf-upload-zone--can-hover" : "",
-    isDragging && canHoverGreen ? "rf-upload-zone--hover" : "",
-    showFieldError ? "rf-upload-zone--error" : "",
-    error ? "rf-upload-zone--error" : "",
+    isDragging ? "rf-upload-zone--hover" : "",
+    showFieldError || error ? "rf-upload-zone--error" : "",
     isUploaded ? "rf-upload-zone--success" : "",
     uploading ? "rf-upload-zone--uploading" : "",
   ]

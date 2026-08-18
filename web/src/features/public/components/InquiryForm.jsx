@@ -73,14 +73,13 @@ function FormInput({ label, name, type = 'text', value, onChange, onBlur, error,
   const hasError = !!error;
   return (
     <div>
-      <label htmlFor={name} className="block text-sm font-medium mb-2" style={{ color: 'var(--lp-text)' }}>
+      <label htmlFor={name} className="block text-sm font-medium mb-1.5" style={{ color: 'var(--lp-text, #0f172a)' }}>
         {label}
       </label>
       <div className="relative">
         {prefix && (
           <span
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-medium pointer-events-none select-none"
-            style={{ color: 'var(--lp-text-muted)' }}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-medium pointer-events-none select-none text-slate-500"
           >
             {prefix}
           </span>
@@ -96,17 +95,19 @@ function FormInput({ label, name, type = 'text', value, onChange, onBlur, error,
           inputMode={inputMode}
           autoComplete={autoComplete}
           maxLength={maxLength}
-          className={`inquiry-field w-full py-3.5 px-4 rounded-xl text-[15px] transition-all duration-200${hasError ? ' has-error' : ''}`}
+          aria-invalid={hasError}
+          aria-describedby={hasError ? `${name}-error` : undefined}
+          className={`inquiry-field w-full py-3.5 px-4 rounded-xl text-[15px] transition-all duration-200 ${hasError ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
           style={{
-            backgroundColor: 'var(--lp-bg)',
-            color: 'var(--lp-text)',
-            border: hasError ? '1.5px solid #ef4444' : '1.5px solid var(--lp-border)',
+            backgroundColor: 'var(--lp-bg, #ffffff)',
+            color: 'var(--lp-text, #0f172a)',
+            border: hasError ? '1.5px solid var(--danger, #ef4444)' : '1px solid var(--border-card, #e2e8f0)',
             ...(prefix ? { paddingLeft: '3rem' } : {}),
           }}
         />
       </div>
       {children}
-      {hasError && <p className="text-xs mt-1.5 pl-0.5 font-medium" style={{ color: '#ef4444' }}>{error}</p>}
+      {hasError && <p id={`${name}-error`} role="alert" className="text-xs mt-1.5 pl-0.5 font-medium text-rose-600 dark:text-rose-400">{error}</p>}
     </div>
   );
 }
@@ -115,7 +116,7 @@ function FormSelect({ label, name, value, onChange, options, error }) {
   const hasError = !!error;
   return (
     <div>
-      <label htmlFor={name} className="block text-sm font-medium mb-2" style={{ color: 'var(--lp-text)' }}>
+      <label htmlFor={name} className="block text-sm font-medium mb-1.5" style={{ color: 'var(--lp-text, #0f172a)' }}>
         {label}
       </label>
       <div className="relative">
@@ -124,11 +125,13 @@ function FormSelect({ label, name, value, onChange, options, error }) {
           name={name}
           value={value}
           onChange={onChange}
-          className={`inquiry-field w-full py-3.5 px-4 pr-10 rounded-xl text-[15px] appearance-none transition-all duration-200 cursor-pointer${hasError ? ' has-error' : ''}`}
+          aria-invalid={hasError}
+          aria-describedby={hasError ? `${name}-error` : undefined}
+          className={`inquiry-field w-full py-3.5 px-4 pr-10 rounded-xl text-[15px] appearance-none transition-all duration-200 cursor-pointer ${hasError ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
           style={{
-            backgroundColor: 'var(--lp-bg)',
-            color: value ? 'var(--lp-text)' : 'var(--lp-text-muted)',
-            border: hasError ? '1.5px solid #ef4444' : '1.5px solid var(--lp-border)',
+            backgroundColor: 'var(--lp-bg, #ffffff)',
+            color: value ? 'var(--lp-text, #0f172a)' : 'var(--lp-text-muted, #64748b)',
+            border: hasError ? '1.5px solid var(--danger, #ef4444)' : '1px solid var(--border-card, #e2e8f0)',
           }}
         >
           <option value="" disabled>Select…</option>
@@ -136,9 +139,9 @@ function FormSelect({ label, name, value, onChange, options, error }) {
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
-        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--lp-text-muted)' }} />
+        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-slate-400" />
       </div>
-      {hasError && <p className="text-xs mt-1.5 pl-0.5 font-medium" style={{ color: '#ef4444' }}>{error}</p>}
+      {hasError && <p id={`${name}-error`} role="alert" className="text-xs mt-1.5 pl-0.5 font-medium text-rose-600 dark:text-rose-400">{error}</p>}
     </div>
   );
 }
@@ -147,7 +150,7 @@ function FormTextarea({ label, name, value, onChange, onBlur, rows = 4, maxLengt
   const hasError = !!error;
   return (
     <div>
-      <label htmlFor={name} className="block text-sm font-medium mb-2" style={{ color: 'var(--lp-text)' }}>
+      <label htmlFor={name} className="block text-sm font-medium mb-1.5" style={{ color: 'var(--lp-text, #0f172a)' }}>
         {label}
       </label>
       <textarea
@@ -158,22 +161,24 @@ function FormTextarea({ label, name, value, onChange, onBlur, rows = 4, maxLengt
         onBlur={onBlur}
         rows={rows}
         maxLength={maxLength}
-        className={`inquiry-field w-full py-3.5 px-4 rounded-xl text-[15px] transition-all duration-200 resize-none${hasError ? ' has-error' : ''}`}
+        aria-invalid={hasError}
+        aria-describedby={hasError ? `${name}-error` : undefined}
+        className={`inquiry-field w-full py-3.5 px-4 rounded-xl text-[15px] transition-all duration-200 resize-none ${hasError ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
         style={{
-          backgroundColor: 'var(--lp-bg)',
-          color: 'var(--lp-text)',
-          border: hasError ? '1.5px solid #ef4444' : '1.5px solid var(--lp-border)',
+          backgroundColor: 'var(--lp-bg, #ffffff)',
+          color: 'var(--lp-text, #0f172a)',
+          border: hasError ? '1.5px solid var(--danger, #ef4444)' : '1px solid var(--border-card, #e2e8f0)',
         }}
         placeholder="Tell us what you'd like to know…"
       />
       <div className="flex justify-between items-center mt-1.5">
         {hasError ? (
-          <p className="text-xs pl-0.5 font-medium" style={{ color: '#ef4444' }}>{error}</p>
+          <p id={`${name}-error`} role="alert" className="text-xs pl-0.5 font-medium text-rose-600 dark:text-rose-400">{error}</p>
         ) : (
           <span />
         )}
         {maxLength && (
-          <p className="text-xs" style={{ color: value.length > maxLength * 0.9 ? '#ef4444' : 'var(--lp-text-muted)' }}>
+          <p className={`text-xs ${value.length > maxLength * 0.9 ? 'text-rose-600 font-semibold' : 'text-slate-500'}`}>
             {value.length}/{maxLength}
           </p>
         )}
@@ -333,15 +338,15 @@ export function InquiryForm() {
         </div>
 
         {submitted ? (
-          <div className="rounded-2xl p-12 lg:p-16 text-center" style={{ backgroundColor: 'var(--lp-bg-card)', border: '1px solid var(--lp-border)', boxShadow: 'var(--lp-card-shadow-hover)' }}>
-            <div className="w-16 h-16 rounded-full mx-auto mb-6 flex items-center justify-center" style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)' }}>
-              <CheckCircle className="w-8 h-8" style={{ color: '#10B981' }} />
+          <div className="rounded-2xl p-10 lg:p-14 text-center border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
+            <div className="mx-auto mb-5 flex items-center justify-center">
+              <CheckCircle className="w-12 h-12 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <h3 className="text-2xl font-normal mb-3 tracking-tight" style={{ color: 'var(--lp-text)' }}>
+            <h3 className="text-2xl font-semibold mb-3 tracking-tight text-slate-900 dark:text-slate-100">
               Thank you for your inquiry!
             </h3>
-            <p className="font-light mb-8 leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
-              We'll contact you within 24 hours to schedule a viewing or answer your questions.
+            <p className="font-normal mb-8 leading-relaxed text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+              We'll contact you within our 24-hour target turnaround time to schedule a viewing or answer your questions.
             </p>
             <button
               onClick={() => {
@@ -350,26 +355,24 @@ export function InquiryForm() {
                 setErrors({});
                 setTouched({});
               }}
-              className="text-sm font-medium hover:underline transition-all cursor-pointer"
-              style={{ color: 'var(--lp-accent)' }}
+              className="text-sm font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
             >
-              Send another inquiry
+              Send Another Inquiry
             </button>
           </div>
         ) : (
           <form
             onSubmit={handleSubmit}
             noValidate
-            className="rounded-2xl p-8 lg:p-10"
-            style={{
-              backgroundColor: 'var(--lp-bg-card)',
-              border: '1px solid var(--lp-border)',
-              boxShadow: 'var(--lp-card-shadow-hover)',
-            }}
+            className="rounded-2xl p-8 lg:p-10 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm"
           >
             {apiError && (
-              <div className="mb-6 p-4 rounded-xl text-sm font-medium text-center" style={{ backgroundColor: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                {apiError}
+              <div
+                role="alert"
+                className="mb-6 p-4 rounded-xl text-sm font-medium flex items-center gap-3 border border-slate-200 dark:border-slate-700 bg-rose-50/60 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400"
+              >
+                <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-600" />
+                <span>{apiError}</span>
               </div>
             )}
 
@@ -425,7 +428,7 @@ export function InquiryForm() {
             </div>
 
             {/* ── Divider ── */}
-            <div className="my-6" style={{ borderTop: '1px solid var(--lp-border)' }} />
+            <div className="my-6 border-t border-slate-200 dark:border-slate-700" />
 
             {/* ── Section 2: Inquiry Details ── */}
             <div className="grid md:grid-cols-2 gap-x-5 gap-y-4 mb-5">
@@ -476,21 +479,17 @@ export function InquiryForm() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full text-white py-4 px-6 rounded-full font-medium text-base flex items-center justify-center gap-3 transition-all duration-300 cursor-pointer"
-              style={{
-                backgroundColor: submitting ? '#c4c4c4' : 'var(--lp-accent)',
-                boxShadow: submitting ? 'none' : '0 4px 16px rgba(212, 175, 55, 0.25)',
-                opacity: submitting ? 0.7 : 1,
-              }}
+              title={submitting ? "Submitting inquiry..." : "Click to submit your inquiry"}
+              className="w-full bg-[#0A1628] hover:bg-[#13243D] text-white py-3.5 px-6 rounded-xl font-medium text-base flex items-center justify-center gap-3 transition-all duration-200 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:outline-none"
             >
               {submitting ? (
-                <><Loader2 className="w-5 h-5 animate-spin" /><span>Submitting...</span></>
+                <><Loader2 className="w-5 h-5 animate-spin" /><span>Submitting Inquiry...</span></>
               ) : (
-                <><span>Submit Inquiry</span><Send className="w-5 h-5" /></>
+                <><span>Submit Inquiry</span><Send className="w-4 h-4" /></>
               )}
             </button>
 
-            <p className="text-xs text-center mt-5 font-light" style={{ color: 'var(--lp-text-muted)' }}>
+            <p className="text-xs text-center mt-5 font-light text-slate-500">
               By submitting this form, you agree to our privacy policy. We will never share your information with third parties.
             </p>
           </form>

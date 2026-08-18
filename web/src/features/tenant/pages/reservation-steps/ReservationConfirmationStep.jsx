@@ -7,6 +7,7 @@ import {
   CreditCard,
   Printer,
   CheckCircle,
+  CheckCircle2,
   Copy,
   Check,
   Download,
@@ -121,7 +122,38 @@ const ReservationConfirmationStep = ({
   };
 
   return (
-    <div ref={receiptRef} className="rf-confirmation-wrapper">
+    <div ref={receiptRef} className="w-full max-w-6xl mx-auto space-y-6 rf-confirmation-wrapper">
+      {/* Header Badge */}
+      <div className="space-y-2.5 border-b border-slate-200 dark:border-slate-800 pb-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex items-center px-3 py-1 bg-transparent border border-slate-200 dark:border-slate-700 rounded-full">
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+              Step 5 · Confirmation
+            </span>
+          </div>
+
+          {/* Room Designation Pill Badge */}
+          {room && (room.name || room.roomNumber || room.title || room.branch) && (
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 self-start sm:self-auto flex-shrink-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+              <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                {roomName} · {formatBranch(room.branch)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
+            <CheckCircle2 className="w-7 h-7 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+            <span>Reservation Confirmation</span>
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed mt-1 max-w-2xl">
+            Your room has been reserved and your details are registered in the Lilycrest system.
+          </p>
+        </div>
+      </div>
+
       <div className="rf-celebration-banner">
         <div className="rf-check-circle">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none">

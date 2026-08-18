@@ -1,5 +1,24 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "react-router-dom";
+import {
+  Bot,
+  Headphones,
+  RotateCcw,
+  X,
+  Sparkles,
+  Send,
+  LoaderCircle,
+  AlertCircle,
+  ArrowRight,
+  ShieldCheck,
+  ReceiptText,
+  Zap,
+  Droplet,
+  FileText,
+  Wrench,
+  Calendar,
+  UserCheck,
+} from "lucide-react";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { streamTenantAssistant } from "../../api/tenantAssistantApi";
 import TenantBillingBreakdownCard from "./cards/TenantBillingBreakdownCard";
@@ -12,33 +31,33 @@ const STORAGE_KEY = "lilycrest_tenant_assistant_msgs";
 
 const CATEGORIZED_PROMPTS = {
   applicant: [
-    { label: "Reservation status", prompt: "What is my current reservation status?" },
-    { label: "Deposit payment steps", prompt: "How do I settle the advance rent and security deposit?" },
-    { label: "Accepted KYC IDs", prompt: "What valid IDs are accepted for identity verification?" },
-    { label: "Viewing schedule", prompt: "How can I schedule an in-person room viewing appointment?" },
+    { label: "Reservation status", prompt: "What is my current reservation status?", icon: ShieldCheck },
+    { label: "Deposit payment steps", prompt: "How do I settle the advance rent and security deposit?", icon: ReceiptText },
+    { label: "Accepted KYC IDs", prompt: "What valid IDs are accepted for identity verification?", icon: FileText },
+    { label: "Viewing schedule", prompt: "How can I schedule an in-person room viewing appointment?", icon: Calendar },
   ],
   billing: [
-    { label: "Electricity math", prompt: "How was my submetered electricity share computed this month?" },
-    { label: "Payment due date", prompt: "When is my current bill due and how do I settle it?" },
-    { label: "Water consumption", prompt: "Is water really free and included in my monthly rent?" },
+    { label: "Electricity math", prompt: "How was my submetered electricity share computed this month?", icon: Zap },
+    { label: "Payment due date", prompt: "When is my current bill due and how do I settle it?", icon: Calendar },
+    { label: "Water consumption", prompt: "Is water really free and included in my monthly rent?", icon: Droplet },
   ],
   contracts: [
-    { label: "Lease expiration", prompt: "When does my current lease contract expire and how many days are left?" },
-    { label: "Renew contract", prompt: "What are the steps to request a lease renewal?" },
-    { label: "Deposit refund", prompt: "How does the security deposit refund and move-out clearance work?" },
+    { label: "Lease expiration", prompt: "When does my current lease contract expire and how many days are left?", icon: Calendar },
+    { label: "Renew contract", prompt: "What are the steps to request a lease renewal?", icon: FileText },
+    { label: "Deposit refund", prompt: "How does the security deposit refund and move-out clearance work?", icon: ShieldCheck },
   ],
   maintenance: [
-    { label: "Active tickets", prompt: "What is the current status of my room repair requests?" },
-    { label: "Report issue", prompt: "How do I submit an urgent plumbing or air-conditioning issue?" },
-    { label: "Technician hours", prompt: "What are the available hours for on-site technician repairs?" },
+    { label: "Active tickets", prompt: "What is the current status of my room repair requests?", icon: Wrench },
+    { label: "Report issue", prompt: "How do I submit an urgent plumbing or air-conditioning issue?", icon: Wrench },
+    { label: "Technician hours", prompt: "What are the available hours for on-site technician repairs?", icon: UserCheck },
   ],
   default: [
-    { label: "Active tickets", prompt: "Do I have any active maintenance tickets scheduled?" },
-    { label: "Report issue", prompt: "How do I submit an urgent plumbing or air-conditioning issue?" },
-    { label: "Bill breakdown", prompt: "Can you show my current monthly bill breakdown?" },
-    { label: "Electricity math", prompt: "How was my submetered electricity share computed this month?" },
-    { label: "Lease timeline", prompt: "How many days are left on my lease agreement?" },
-    { label: "Deposit refund", prompt: "How does the security deposit refund and move-out clearance work?" },
+    { label: "Active tickets", prompt: "Do I have any active maintenance tickets scheduled?", icon: Wrench },
+    { label: "Report issue", prompt: "How do I submit an urgent plumbing or air-conditioning issue?", icon: Wrench },
+    { label: "Bill breakdown", prompt: "Can you show my current monthly bill breakdown?", icon: ReceiptText },
+    { label: "Electricity math", prompt: "How was my submetered electricity share computed this month?", icon: Zap },
+    { label: "Lease timeline", prompt: "How many days are left on my lease agreement?", icon: FileText },
+    { label: "Deposit refund", prompt: "How does the security deposit refund and move-out clearance work?", icon: ShieldCheck },
   ],
 };
 
@@ -321,25 +340,31 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
     const widgetData = typeof widgetPayload === "object" ? widgetPayload.data || widgetPayload : contextSnapshot;
 
     if (type === "billing_breakdown") {
+      const billData = widgetData?.currentBill || (widgetData?.billId || widgetData?.billing_id ? widgetData : null);
+      if (!billData) return null;
       return (
         <TenantBillingBreakdownCard
-          data={widgetData?.currentBill || widgetData}
+          data={billData}
           onCloseDrawer={onClose}
         />
       );
     }
 
     if (type === "lease_timeline") {
+      const contractData = widgetData?.contract || (widgetData?.contractId ? widgetData : null);
+      if (!contractData) return null;
       return (
         <TenantLeaseTimelineCard
-          data={widgetData?.contract || widgetData}
+          data={contractData}
           onCloseDrawer={onClose}
         />
       );
     }
 
     if (type === "maintenance_status" || type === "maintenance_tracker" || type === "maintenance_card") {
-      const ticket = widgetData?.activeMaintenance?.[0] || widgetData;
+      if (isApplicant) return null;
+      const ticket = widgetData?.activeMaintenance?.[0] || (widgetData?.ticketCode || widgetData?.ticketNumber ? widgetData : null);
+      if (!ticket) return null;
       return (
         <TenantMaintenanceCard
           data={ticket}
@@ -371,6 +396,9 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
         <div className="tenant-assistant-header">
           <div className="tenant-assistant-header-top">
             <div className="tenant-assistant-header-brand">
+              <div className="tenant-assistant-avatar-badge" aria-hidden="true">
+                <Bot className="w-4 h-4" />
+              </div>
               <span className="tenant-assistant-title">{isApplicant ? "Applicant Assistant" : "Tenant Assistant"}</span>
             </div>
 
@@ -381,6 +409,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                 className="tenant-assistant-escalate-btn"
                 title="Speak directly with Branch Admin"
               >
+                <Headphones className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
                 <span>Admin Help</span>
               </button>
 
@@ -388,22 +417,22 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                 <button
                   type="button"
                   onClick={handleClearHistory}
-                  className="tenant-assistant-icon-btn text-xs font-semibold px-2 py-1"
+                  className="tenant-assistant-icon-btn"
                   aria-label="Clear chat history"
                   title="Clear conversation"
                 >
-                  Reset
+                  <RotateCcw className="w-4 h-4" aria-hidden="true" />
                 </button>
               )}
 
               <button
                 type="button"
                 onClick={onClose}
-                className="tenant-assistant-icon-btn text-xs font-semibold px-2 py-1"
+                className="tenant-assistant-icon-btn"
                 aria-label="Close assistant drawer"
                 title="Close drawer (Esc)"
               >
-                Close
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -473,9 +502,12 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
 
               {msg.isError ? (
                 <div className="tenant-msg-error-card">
-                  <div>
-                    <p className="font-semibold mb-0.5">Connection Notice</p>
-                    <p>{msg.content}</p>
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold mb-0.5">Connection Notice</p>
+                      <p>{msg.content}</p>
+                    </div>
                   </div>
                   <div className="tenant-msg-error-actions">
                     <button
@@ -483,6 +515,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                       onClick={() => handleSendMessage(messages[index - 1]?.content || "Check my maintenance status")}
                       className="tenant-msg-retry-btn"
                     >
+                      <RotateCcw className="w-3 h-3" />
                       <span>Retry Question</span>
                     </button>
                     <button
@@ -490,6 +523,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                       onClick={() => setIsEscalateOpen(true)}
                       className="tenant-msg-retry-btn"
                     >
+                      <Headphones className="w-3 h-3" />
                       <span>Speak with Admin</span>
                     </button>
                   </div>
@@ -512,6 +546,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                       className="tenant-action-suggestion-chip"
                     >
                       <span>{typeof act === "string" ? act : act.label}</span>
+                      <ArrowRight className="w-3 h-3 text-slate-400" aria-hidden="true" />
                     </button>
                   ))}
                 </div>
@@ -548,6 +583,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                       className="tenant-action-suggestion-chip"
                     >
                       <span>{typeof act === "string" ? act : act.label}</span>
+                      <ArrowRight className="w-3 h-3 text-slate-400" aria-hidden="true" />
                     </button>
                   ))}
                 </div>
@@ -559,10 +595,12 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
         {/* Categorized Route-Aware Quick Prompt Pills */}
         <div className="tenant-quick-prompts-container">
           <div className="tenant-quick-prompts-label">
+            <Sparkles className="w-3 h-3 text-amber-500" />
             <span>Quick Tenant Prompts</span>
           </div>
           <div className="tenant-quick-prompts-scroll">
             {activeRoutePrompts.map((item, idx) => {
+              const IconComp = item.icon || Sparkles;
               return (
                 <button
                   key={idx}
@@ -571,6 +609,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
                   disabled={isStreaming}
                   className="tenant-quick-prompt-pill"
                 >
+                  <IconComp className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                   <span>{item.label}</span>
                 </button>
               );
@@ -598,11 +637,15 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
               type="button"
               onClick={() => handleSendMessage()}
               disabled={!inputMessage.trim() || isStreaming}
-              className="tenant-assistant-send-btn text-xs font-bold px-3 py-1.5"
+              className="tenant-assistant-send-btn"
               aria-label="Send message"
               title="Send (Enter)"
             >
-              <span>{isStreaming ? "Sending..." : "Send"}</span>
+              {isStreaming ? (
+                <LoaderCircle className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
             </button>
           </div>
 

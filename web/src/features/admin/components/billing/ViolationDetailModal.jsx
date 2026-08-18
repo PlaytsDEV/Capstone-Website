@@ -49,25 +49,22 @@ function TenantAvatar({ avatarUrl, name, className = "h-10 w-10 text-xs" }) {
   );
 }
 
-const getStatusBadge = (status) => {
+const getStatusBadgeConfig = (status) => {
   switch (status) {
     case "confirmed":
-      return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300";
-    case "warning_issued":
-      return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300";
-    case "penalty_issued":
-      return "border-purple-200 bg-purple-50 text-purple-800 dark:border-purple-900/50 dark:bg-purple-950/40 dark:text-purple-300";
-    case "escalated":
-      return "border-red-200 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300";
-    case "dismissed":
-      return "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300";
     case "resolved":
-      return "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300";
+      return { text: "text-emerald-700 dark:text-emerald-400", dot: "bg-emerald-500" };
+    case "warning_issued":
     case "under_review":
     case "awaiting_response":
-      return "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-300";
+      return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
+    case "penalty_issued":
+      return { text: "text-purple-700 dark:text-purple-400", dot: "bg-purple-500" };
+    case "escalated":
+      return { text: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" };
+    case "dismissed":
     default:
-      return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300";
+      return { text: "text-slate-700 dark:text-slate-300", dot: "bg-slate-400" };
   }
 };
 
@@ -82,7 +79,11 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
 
   if (!isOpen || !violation) return null;
 
-  const isPendingDecision = !violation.adminDecision;
+  const isPendingDecision =
+    violation.status === "reported" ||
+    violation.status === "under_review" ||
+    violation.status === "awaiting_response" ||
+    !violation.adminDecision;
 
   const handleDecisionSubmit = async (e) => {
     e.preventDefault();
@@ -90,33 +91,33 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
     setSuccessMsg("");
 
     if (!decisionReason.trim()) {
-      setError("Please provide a detailed formal reason for the administrative decision.");
+      setError("Please provide a clear administrative rationale for this decision.");
       return;
     }
 
     try {
       setAdjudicating(true);
-      await billingApi.updateViolationDecision(violation._id, {
+      const res = await billingApi.adjudicateViolation(violation._id, {
         decision,
+        targetStatus: decision === "confirmed" ? targetStatus : "dismissed",
         decisionReason: decisionReason.trim(),
-        status: decision === "dismissed" ? "dismissed" : targetStatus,
-        penaltyApplied: violation.penaltyApplied,
-        penaltyReason: violation.penaltyReason,
-        chargeToBill: chargeToBill && Number(violation.penaltyApplied) > 0,
+        chargeToBill: decision === "confirmed" && Number(violation.penaltyApplied) > 0 ? chargeToBill : false,
       });
 
-      setSuccessMsg("Violation decision updated and recorded successfully.");
+      setSuccessMsg("Adjudication decision recorded and tenant notified successfully.");
       onRefresh?.();
       setTimeout(() => {
         onClose();
-      }, 1200);
+      }, 1500);
     } catch (err) {
-      console.error("Adjudication error:", err);
-      setError(err.message || "Failed to update violation decision.");
+      console.error("Decision recording error:", err);
+      setError(err.message || "Failed to record decision.");
     } finally {
       setAdjudicating(false);
     }
   };
+
+  const badgeCfg = getStatusBadgeConfig(violation.status);
 
   const formattedDate = violation.dateOfIncident
     ? new Date(violation.dateOfIncident).toLocaleDateString("en-PH", {
@@ -142,12 +143,9 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                 <h2 className="text-base font-bold text-card-foreground">
                   Infraction Record #{String(violation._id).slice(-6).toUpperCase()}
                 </h2>
-                <span
-                  className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getStatusBadge(
-                    violation.status,
-                  )}`}
-                >
-                  {violation.status?.replace(/_/g, " ")}
+                <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${badgeCfg.text}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${badgeCfg.dot}`} />
+                  <span>{violation.status?.replace(/_/g, " ")}</span>
                 </span>
                 {violation.warningNumber && (
                   <span className="inline-flex rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
@@ -172,15 +170,15 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
         {/* Content Body */}
         <div className="max-h-[75vh] overflow-y-auto p-6 space-y-5">
           {error && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
-              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-rose-50/60 dark:bg-rose-950/20 p-3.5 text-xs text-rose-700 dark:text-rose-300">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0 text-rose-600" />
               <span>{error}</span>
             </div>
           )}
 
           {successMsg && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
-              <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-emerald-50/60 dark:bg-emerald-950/20 p-3.5 text-xs text-emerald-700 dark:text-emerald-300">
+              <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
               <span>{successMsg}</span>
             </div>
           )}
@@ -308,8 +306,8 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
 
           {/* Adjudication Decision Section */}
           {isPendingDecision ? (
-            <form onSubmit={handleDecisionSubmit} className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3.5 dark:border-amber-900/50 dark:bg-amber-950/20">
-              <p className="text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-300">
+            <form onSubmit={handleDecisionSubmit} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-card p-4 space-y-3.5">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
                 Administrative Adjudication & Action
               </p>
 
@@ -364,7 +362,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
                     id="adjudicateChargeToBill"
                     checked={chargeToBill}
                     onChange={(e) => setChargeToBill(e.target.checked)}
-                    className="mt-0.5 h-3.5 w-3.5 rounded border-border"
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-[#D4AF37]"
                   />
                   <label htmlFor="adjudicateChargeToBill" className="cursor-pointer text-[11px] text-card-foreground">
                     Append penalty fee (₱{Number(violation.penaltyApplied).toFixed(2)}) to tenant's current/next billing statement
@@ -375,8 +373,9 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button
                   type="submit"
-                  disabled={adjudicating}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-[#0A1628] px-4 text-xs font-bold text-white shadow-xs hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                  disabled={adjudicating || !decisionReason.trim()}
+                  title={!decisionReason.trim() ? "Please enter a decision rationale" : "Save and action decision"}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-[#0A1628] px-4 text-xs font-bold text-white shadow-xs hover:bg-[#13243D] focus-visible:ring-2 focus-visible:ring-[#D4AF37] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
                 >
                   {adjudicating ? (
                     <>

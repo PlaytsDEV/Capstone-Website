@@ -92,10 +92,6 @@ export default function RejectPaymentModal({
           >
             <div
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 8,
-                background: "#FEE2E2",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -154,11 +150,11 @@ export default function RejectPaymentModal({
                   style={{
                     padding: "5px 12px",
                     borderRadius: 20,
-                    border: isActive ? "1.5px solid #DC2626" : "1px solid #FECACA",
-                    background: isActive ? "#DC2626" : "#FFFFFF",
+                    border: "1px solid var(--border-card, #e2e8f0)",
+                    background: isActive ? "#DC2626" : "var(--surface-muted, #f8fafc)",
                     fontSize: 12,
                     fontWeight: 600,
-                    color: isActive ? "#FFFFFF" : "#7F1D1D",
+                    color: isActive ? "#FFFFFF" : "var(--text-heading, #1e293b)",
                     cursor: loading ? "not-allowed" : "pointer",
                     transition: "all 0.15s ease",
                   }}
@@ -254,6 +250,13 @@ export default function RejectPaymentModal({
             type="button"
             onClick={handleConfirm}
             disabled={!canSubmit}
+            title={
+              !reason.trim()
+                ? "Please type or select a rejection reason before confirming"
+                : loading
+                ? "Rejecting payment..."
+                : "Reject this payment"
+            }
             style={{
               padding: "8px 18px",
               border: "none",

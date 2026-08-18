@@ -575,7 +575,7 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
           >
             <div className="pt-0.5 shrink-0">
               <div
-                className={`flex h-4.5 w-4.5 items-center justify-center rounded-full border-2 transition ${
+                className={`flex h-4.5 w-4.5 items-center justify-center rounded-full border transition ${
                   !isTenantChargeable
                     ? "border-[#0A1628] dark:border-slate-100"
                     : "border-slate-300 dark:border-slate-600 bg-transparent"
@@ -612,7 +612,7 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
           >
             <div className="pt-0.5 shrink-0">
               <div
-                className={`flex h-4.5 w-4.5 items-center justify-center rounded-full border-2 transition ${
+                className={`flex h-4.5 w-4.5 items-center justify-center rounded-full border transition ${
                   isTenantChargeable
                     ? "border-[#0A1628] dark:border-slate-100"
                     : "border-slate-300 dark:border-slate-600 bg-transparent"

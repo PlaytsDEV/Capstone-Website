@@ -19,12 +19,6 @@ const PhotoEmailSection = ({
 }) => {
   const normalizedBillingEmail = String(billingEmail || "").trim();
   const normalizedAccountEmail = String(accountEmail || "").trim();
-  const hasDiffFromAccount =
-    Boolean(normalizedAccountEmail) &&
-    normalizedBillingEmail.toLowerCase() !== normalizedAccountEmail.toLowerCase();
-  const showAccountSuggestion =
-    Boolean(normalizedAccountEmail) &&
-    (!normalizedBillingEmail || hasDiffFromAccount);
 
   const handleEmailChange = (e) => {
     const nextVal = e.target.value;
@@ -45,8 +39,12 @@ const PhotoEmailSection = ({
   };
 
   const handleEmailBlur = () => {
+    const cleaned = String(billingEmail || "").trim().toLowerCase();
+    if (cleaned !== billingEmail) {
+      setBillingEmail?.(cleaned);
+    }
     if (validateField) {
-      validateField("billingEmail", billingEmail, (v) => {
+      validateField("billingEmail", cleaned, (v) => {
         const trimmed = String(v || "").trim();
         if (!trimmed) {
           return { valid: false, error: "Billing email address is required" };
@@ -57,17 +55,6 @@ const PhotoEmailSection = ({
           error: valid ? null : "Please enter a valid email address (e.g. name@example.com)",
         };
       });
-    }
-  };
-
-  const handleApplyAccountSuggestion = () => {
-    if (!normalizedAccountEmail) return;
-    setBillingEmail?.(normalizedAccountEmail);
-    if (validateField) {
-      validateField("billingEmail", normalizedAccountEmail, () => ({
-        valid: true,
-        error: null,
-      }));
     }
   };
 
@@ -88,29 +75,22 @@ const PhotoEmailSection = ({
           autoComplete="email"
           inputMode="email"
           className="form-input"
+          list={normalizedAccountEmail ? "billingEmail-suggestions" : undefined}
           value={billingEmail || ""}
           placeholder="e.g. name@example.com"
           onChange={handleEmailChange}
           onBlur={handleEmailBlur}
           style={{
-            border: hasEmailError ? "1.5px solid var(--danger)" : undefined,
+            border: hasEmailError ? "1px solid var(--danger)" : undefined,
           }}
           aria-invalid={hasEmailError}
           aria-describedby="billingEmailHelper billingEmailError"
         />
 
-        {showAccountSuggestion && (
-          <div className="rf-suggestion-row">
-            <button
-              type="button"
-              className="rf-suggestion-chip"
-              onClick={handleApplyAccountSuggestion}
-              title="Click to use your account login email"
-            >
-              <span className="rf-suggestion-chip__icon" aria-hidden="true">💡</span>
-              <span>Use account email: <strong>{normalizedAccountEmail}</strong></span>
-            </button>
-          </div>
+        {normalizedAccountEmail && (
+          <datalist id="billingEmail-suggestions">
+            <option value={normalizedAccountEmail} />
+          </datalist>
         )}
 
         <div id="billingEmailHelper" className="form-helper">

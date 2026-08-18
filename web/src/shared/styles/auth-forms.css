@@ -28,6 +28,8 @@
   border: 1px solid var(--border-color, var(--fi-border));
   border-radius: var(--fi-radius);
   background: var(--fi-bg);
+  background-clip: padding-box;
+  box-sizing: border-box;
   transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -63,6 +65,8 @@
   background: transparent;
   border: none;
   outline: none;
+  border-radius: calc(var(--fi-radius) - 1px);
+  box-sizing: border-box;
   line-height: 1.4;
   -webkit-appearance: none;
   appearance: none;
@@ -81,12 +85,14 @@
   box-shadow: 0 0 0 9999px var(--fi-bg) inset !important;
   -webkit-text-fill-color: var(--fi-text) !important;
   caret-color: var(--fi-text) !important;
+  border-radius: calc(var(--fi-radius) - 1px) !important;
   transition: background-color 600000s 0s, color 600000s 0s !important;
 }
 .floating-field__input:autofill {
   -webkit-box-shadow: 0 0 0 9999px var(--fi-bg) inset !important;
   box-shadow: 0 0 0 9999px var(--fi-bg) inset !important;
   -webkit-text-fill-color: var(--fi-text) !important;
+  border-radius: calc(var(--fi-radius) - 1px) !important;
 }
 
 .floating-field__input:disabled {
@@ -194,6 +200,8 @@
 .floating-field__textarea {
   min-height: 100px;
   line-height: 1.6;
+  border-radius: calc(var(--fi-radius) - 1px);
+  box-sizing: border-box;
 }
 
 .floating-field__label--textarea {
@@ -205,6 +213,8 @@
 .floating-field__textarea:not(:placeholder-shown) ~ .floating-field__label--textarea {
   top: 0;
   transform: translateY(-50%) scale(0.72);
+  background: var(--fi-bg);
+  padding: 0 6px;
 }
 
 /* ── Select Variant ── */
@@ -213,22 +223,19 @@
   -moz-appearance: none;
   appearance: none;
   padding-right: 40px;
+  border-radius: calc(var(--fi-radius) - 1px);
+  box-sizing: border-box;
 }
 
-/* Always float label for select when it has a value */
-.floating-field__wrapper.active .floating-field__select ~ .floating-field__label {
+/* Always float label for select when it has a value or is focused */
+.floating-field__wrapper.active .floating-field__select ~ .floating-field__label,
+.floating-field__select:focus ~ .floating-field__label {
   top: 0;
   transform: translateY(-50%) scale(0.72);
   color: var(--fi-label-active);
   font-weight: 500;
   background: var(--fi-bg);
   padding: 0 6px;
-}
-
-/* ── Fix: use variable bg instead of hardcoded white ── */
-.floating-field__input:focus ~ .floating-field__label,
-.floating-field__input:not(:placeholder-shown) ~ .floating-field__label {
-  background: var(--fi-bg);
 }
 
 /* ── Password input needs right padding for adornment ── */
@@ -243,6 +250,7 @@
   width: 100%;
   height: 55px;
   box-sizing: border-box;
+  border-radius: calc(var(--fi-radius) - 1px);
   padding-top: 18px;
   padding-bottom: 0px;
 }
@@ -358,6 +366,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
+  margin: 0;
+  margin-bottom: 0;
 }
 
 .auth-form .form-row > * {
@@ -366,7 +376,7 @@
 
 /* ── Auth Header ── */
 .auth-header {
-  margin-bottom: 8px;
+  margin-bottom: 24px;
 }
 
 .auth-header__title {
@@ -502,6 +512,63 @@
   width: 20px;
   height: 20px;
   flex-shrink: 0;
+}
+
+/* ── Outline Button (Compact & High Contrast) ── */
+.auth-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 150px;
+  padding: 10px 22px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 9999px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 550;
+  cursor: pointer;
+  gap: 8px;
+  text-decoration: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.auth-btn-outline:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.auth-btn-outline:active:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #64748b;
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.auth-btn-outline:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.auth-btn-outline svg {
+  width: 16px;
+  height: 16px;
+  color: #64748b;
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s ease;
+}
+
+.auth-btn-outline:hover:not(:disabled) svg {
+  transform: translateX(-3px);
+  color: #0f172a;
 }
 
 /* ── Remember Me / Forgot Password Row ── */
@@ -737,7 +804,8 @@
   }
 
   .auth-btn-primary,
-  .auth-btn-google {
+  .auth-btn-google,
+  .auth-btn-outline {
     padding-left: 12px;
     padding-right: 12px;
   }
@@ -806,6 +874,32 @@ html[data-theme="dark"] .auth-btn-google:hover:not(:disabled) {
   background: var(--surface-hover) !important;
   border-color: #64748b !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Outline button */
+html[data-theme="dark"] .auth-btn-outline {
+  background: #1e293b !important;
+  border-color: #475569 !important;
+  color: #f1f5f9 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+}
+html[data-theme="dark"] .auth-btn-outline svg {
+  color: #94a3b8 !important;
+}
+html[data-theme="dark"] .auth-btn-outline:hover:not(:disabled) {
+  background: #334155 !important;
+  border-color: #64748b !important;
+  color: #ffffff !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+}
+html[data-theme="dark"] .auth-btn-outline:hover:not(:disabled) svg {
+  color: #ffffff !important;
+  transform: translateX(-3px) !important;
+}
+html[data-theme="dark"] .auth-btn-outline:active:not(:disabled) {
+  background: #1e293b !important;
+  transform: translateY(0) !important;
 }
 
 /* Divider */

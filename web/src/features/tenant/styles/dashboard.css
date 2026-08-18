@@ -330,7 +330,7 @@
 .btn-primary-outline {
   background: white;
   color: var(--text-heading);
-  border: 2px solid var(--text-heading);
+  border: 1px solid var(--text-heading);
 }
 
 .btn-primary-outline:hover {
@@ -341,7 +341,7 @@
 .btn-secondary-outline {
   background: white;
   color: #6b7280;
-  border: 2px solid var(--border-card);
+  border: 1px solid var(--border-card);
 }
 
 .btn-secondary-outline:hover {

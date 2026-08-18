@@ -190,3 +190,43 @@ export const formatBranch = (branch) =>
 /** Format room type slug → display name */
 export const formatRoomType = (type) =>
   type ? ROOM_TYPE_MAP[toLookupKey(type)] || toDisplayString(type) || "Unknown" : "Unknown";
+
+/**
+ * Capitalize the first letter of each word in a string/name (Title Case).
+ * e.g., "vince palicpic" -> "Vince Palicpic"
+ *       "VINCE PALICPIC" -> "Vince Palicpic"
+ *       "juan dela cruz" -> "Juan Dela Cruz"
+ *       "mary-jane"      -> "Mary-Jane"
+ * @param {string} str
+ * @returns {string}
+ */
+export const formatDisplayName = (str) => {
+  if (!str || typeof str !== "string") return "";
+  return str
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      return word
+        .split("-")
+        .map((part) => {
+          if (!part) return "";
+          return part
+            .split("'")
+            .map((sub) => {
+              if (!sub) return "";
+              if (sub === sub.toUpperCase() || sub === sub.toLowerCase()) {
+                return sub.charAt(0).toUpperCase() + sub.slice(1).toLowerCase();
+              }
+              return sub.charAt(0).toUpperCase() + sub.slice(1);
+            })
+            .join("'");
+        })
+        .join("-");
+    })
+    .join(" ");
+};
+
+export const toTitleCase = formatDisplayName;
+export const capitalizeWords = formatDisplayName;
+

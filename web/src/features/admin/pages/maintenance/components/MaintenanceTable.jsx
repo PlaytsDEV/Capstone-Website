@@ -180,15 +180,10 @@ export function MaintenanceTable({
           return (
             <div className="flex items-start gap-3">
               <span
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border mt-0.5"
-                style={{
-                  backgroundColor: `${typeMeta.color}14`,
-                  borderColor: `${typeMeta.color}33`,
-                  color: typeMeta.color,
-                }}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-transparent text-slate-700 dark:text-slate-300 mt-0.5"
                 title={typeMeta.label}
               >
-                <TypeIcon size={16} />
+                <TypeIcon size={16} className="text-slate-600 dark:text-slate-400" />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -381,10 +376,10 @@ export function MaintenanceTable({
     <div className="space-y-3">
       {/* Sticky Bulk Action Bar */}
       {selectedRequestIds.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/90 dark:bg-blue-950/60 p-3 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 p-3 shadow-xs">
           <div className="flex items-center gap-2.5">
-            <CheckCircle2 size={16} className="text-blue-600 dark:text-blue-400" />
-            <span className="text-xs font-bold text-blue-900 dark:text-blue-200">
+            <CheckCircle2 size={16} className="text-slate-700 dark:text-slate-300" />
+            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
               {selectedRequestIds.length} request{selectedRequestIds.length === 1 ? "" : "s"} selected
             </span>
           </div>

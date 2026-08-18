@@ -4,7 +4,7 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  border: 2px dashed #E2E8F0;
+  border: 1px dashed var(--border, #E2E8F0);
   border-radius: 14px;
   padding: 36px 24px;
   background: #FAFBFC;

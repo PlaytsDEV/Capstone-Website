@@ -235,7 +235,7 @@ export default function MoveInSettlementCard({
             }}
           >
             {isSettled ? <CheckCircle2 size={13} /> : <Clock size={13} />}
-            <span>{isSettled ? "Settled" : "Due on Move-In"}</span>
+            <span>{isSettled ? "Settled" : "Due Before Move-In"}</span>
           </div>
 
           {/* Quick Action in Header (only shown when collapsed to prevent redundancy with expanded actions) */}
@@ -449,7 +449,7 @@ export default function MoveInSettlementCard({
               }}
             >
               <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-heading, #0F172A)" }}>
-                Remaining Balance Due on Move-In:
+                Remaining Balance (Due Before Move-In):
               </span>
               <span
                 style={{

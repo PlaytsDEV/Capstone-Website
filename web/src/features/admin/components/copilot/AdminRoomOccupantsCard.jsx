@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { Home, Users, ArrowRight } from "lucide-react";
 import ProfileAvatar from "../../../../shared/components/ProfileAvatar";
 
 export default function AdminRoomOccupantsCard({ roomDetails, occupants = [], onSelectTenant, onCloseDrawer }) {
@@ -18,14 +19,20 @@ export default function AdminRoomOccupantsCard({ roomDetails, occupants = [], on
     <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-xs text-xs">
       {/* Room Header */}
       <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-border">
-        <div>
-          <h4 className="font-bold text-sm text-foreground">Room {roomDetails.roomNumber}</h4>
-          <p className="text-[11px] text-muted-foreground">
-            {branchLabel} · Floor {roomDetails.floor || 1} · {roomDetails.type || "Sharing"}
-          </p>
+        <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center justify-center text-primary">
+            <Home size={18} />
+          </div>
+          <div>
+            <h4 className="font-bold text-sm text-foreground">Room {roomDetails.roomNumber}</h4>
+            <p className="text-[11px] text-muted-foreground">
+              {branchLabel} · Floor {roomDetails.floor || 1} · {roomDetails.type || "Sharing"}
+            </p>
+          </div>
         </div>
 
         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-foreground border border-border px-2 py-0.5 rounded-md">
+          <Users size={12} className="text-muted-foreground" />
           <span>
             {occupants.length}/{roomDetails.capacity || 4} Occupants
           </span>
@@ -69,6 +76,7 @@ export default function AdminRoomOccupantsCard({ roomDetails, occupants = [], on
                 className="inline-flex items-center gap-1 text-[11px] text-primary font-semibold hover:underline cursor-pointer ml-2 shrink-0"
               >
                 <span>View Details</span>
+                <ArrowRight size={11} />
               </button>
             </div>
           ))

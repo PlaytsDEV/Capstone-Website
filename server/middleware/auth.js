@@ -201,6 +201,15 @@ export const verifyToken = async (req, res, next) => {
         sessionId,
       );
 
+      if (!session) {
+        return sendError(
+          res,
+          "Session verification required. Please sign in again.",
+          401,
+          "OTP_SESSION_REQUIRED",
+        );
+      }
+
       if (!isSessionAuthorizedForRole(session, dbUser.role)) {
         return sendError(
           res,

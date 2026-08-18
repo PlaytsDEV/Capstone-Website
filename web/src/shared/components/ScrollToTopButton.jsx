@@ -36,7 +36,7 @@ export default function ScrollToTopButton() {
         .scroll-to-top-btn {
           background-color: var(--lp-bg-card, #ffffff);
           color: var(--lp-text, #0A1628);
-          border: 1.5px solid var(--lp-border, #E6D9B2);
+          border: 1px solid var(--lp-border, #E6D9B2);
           box-shadow: 0 2px 8px rgba(10, 22, 40, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
         }
 

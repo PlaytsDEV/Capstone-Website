@@ -54,9 +54,18 @@ import "../../../shared/styles/auth-forms.css";
 import "../../public/styles/tenant-signin.css";
 import "../../../shared/styles/notification.css";
 import hero3 from "../../../assets/images/hero3.jpg";
+import {
+  getLockoutState,
+  recordFailedLoginAttempt,
+  resetLockoutState,
+  setResendCooldown as setPersistentResendCooldown,
+  getResendCooldown,
+  subscribeToAuthStorage,
+} from "../../../shared/utils/authLockout";
 import { normalizeInternalContinuation } from "../../../shared/utils/emailVerificationFlow";
 
 const SIGNIN_IMAGE = hero3;
+const RESEND_COOLDOWN_KEY = "unverified_email_resend";
 
 function SignIn() {
   const navigate = useNavigate();
@@ -67,6 +76,7 @@ function SignIn() {
     normalizeInternalContinuation(new URLSearchParams(window.location.search).get("continue")),
   );
 
+  const initialLockout = getLockoutState();
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -75,13 +85,12 @@ function SignIn() {
   const [touched, setTouched] = useState({});
   const [fieldValid, setFieldValid] = useState({});
   const [rememberMe, setRememberMe] = useState(false);
-  const [failedAttempts, setFailedAttempts] = useState(0);
-  const [lockoutUntil, setLockoutUntil] = useState(null);
-  const [lockoutCountdown, setLockoutCountdown] = useState(0);
+  const [failedAttempts, setFailedAttempts] = useState(initialLockout.attempts);
+  const [lockoutUntil, setLockoutUntil] = useState(initialLockout.lockoutUntil);
+  const [lockoutCountdown, setLockoutCountdown] = useState(initialLockout.remainingSeconds);
   const [unverifiedEmail, setUnverifiedEmail] = useState(null);
   const [resending, setResending] = useState(false);
-  const [resendCooldownEnd, setResendCooldownEnd] = useState(null);
-  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendCooldown, setResendCooldown] = useState(() => getResendCooldown(RESEND_COOLDOWN_KEY));
   const [verifiedSuccess, setVerifiedSuccess] = useState(false);
   const [capsLockActive, setCapsLockActive] = useState(false);
   const debounceTimersRef = useRef({});
@@ -164,54 +173,67 @@ function SignIn() {
     }
   }, [location.state]);
 
- // ── Lockout countdown timer ────────────────────────────────
- useEffect(() => {
- if (!lockoutUntil) return;
- const tick = () => {
- const remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
- if (remaining <= 0) {
- setLockoutUntil(null);
- setLockoutCountdown(0);
- setFailedAttempts(0);
- } else {
- setLockoutCountdown(remaining);
- }
- };
- tick();
- const interval = setInterval(tick, 1000);
- return () => clearInterval(interval);
- }, [lockoutUntil]);
+  // ── Lockout countdown timer (persistent timestamp-based) ──
+  useEffect(() => {
+    if (!lockoutUntil) return;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000));
+      if (remaining <= 0) {
+        setLockoutUntil(null);
+        setLockoutCountdown(0);
+        getLockoutState(); // Clean up expired storage
+        setTimeout(() => {
+          const pw = document.getElementById("password");
+          if (pw) pw.focus();
+        }, 100);
+      } else {
+        setLockoutCountdown(remaining);
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [lockoutUntil]);
 
- // ── Resend cooldown (precise timestamp-based) ─────────────
- useEffect(() => {
- if (!resendCooldownEnd) return;
- const tick = () => {
- const remaining = Math.ceil((resendCooldownEnd - Date.now()) / 1000);
- if (remaining <= 0) {
- setResendCooldownEnd(null);
- setResendCooldown(0);
- } else {
- setResendCooldown(remaining);
- }
- };
- tick();
- const interval = setInterval(tick, 500);
- return () => clearInterval(interval);
- }, [resendCooldownEnd]);
+  // ── Resend cooldown (persistent timestamp-based) ─────────────
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const tick = () => {
+      const remaining = getResendCooldown(RESEND_COOLDOWN_KEY);
+      setResendCooldown(remaining);
+    };
+    tick();
+    const interval = setInterval(tick, 500);
+    return () => clearInterval(interval);
+  }, [resendCooldown]);
 
- const isLockedOut = lockoutUntil && Date.now() < lockoutUntil;
+  // ── Multi-tab sync via storage listener ────────────────────
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthStorage(() => {
+      const latest = getLockoutState(formData.email);
+      setFailedAttempts(latest.attempts);
+      setLockoutUntil(latest.lockoutUntil);
+      setLockoutCountdown(latest.remainingSeconds);
+      setResendCooldown(getResendCooldown(RESEND_COOLDOWN_KEY));
+    });
+    return unsubscribe;
+  }, [formData.email]);
 
- const recordFailedAttempt = () => {
- const next = failedAttempts + 1;
- setFailedAttempts(next);
- if (next >= 5) {
- setLockoutUntil(Date.now() + 60_000);
- showNotification(
- "Too many failed attempts. Please wait 60 seconds.",
- "error",
- );
- }
- };
+  const isLockedOut = Boolean(lockoutUntil && Date.now() < lockoutUntil);
+
+  const recordFailedAttempt = () => {
+    const result = recordFailedLoginAttempt(formData.email);
+    setFailedAttempts(result.attempts);
+    setLockoutUntil(result.lockoutUntil);
+    setLockoutCountdown(result.remainingSeconds);
+    if (result.isLockedOut) {
+      showNotification(
+        `Too many failed sign-in attempts. For your security, sign-in is paused for ${result.remainingSeconds} seconds.`,
+        "error",
+        7000,
+      );
+    }
+  };
 
   // ── Form handling ──────────────────────────────────────────
   const handleChange = (e) => {
@@ -318,30 +340,31 @@ function SignIn() {
  };
 
  // ── Auth handlers ──────────────────────────────────────────
- const handlePostAuthFlow = (
- loginResponse,
- fallbackName = "there",
- options = {},
- ) => {
- clearOtpPending();
- navigateAfterAuth(loginResponse.user, fallbackName, options);
- };
+  const handlePostAuthFlow = (
+    loginResponse,
+    fallbackName = "there",
+    options = {},
+  ) => {
+    resetLockoutState(formData.email);
+    clearOtpPending();
+    navigateAfterAuth(loginResponse.user, fallbackName, options);
+  };
 
- const handleEmailPasswordLogin = async (e) => {
- e.preventDefault();
- if (!validateForm()) return;
- if (isLockedOut) {
- showNotification(
- `Too many attempts. Try again in ${lockoutCountdown}s.`,
- "error",
- );
- return;
- }
-  setSubmitting(true);
-  setGlobalLoading(true);
-  setLoginInProgress();
+  const handleEmailPasswordLogin = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+    if (isLockedOut) {
+      showNotification(
+        `Too many attempts. Try again in ${lockoutCountdown}s.`,
+        "error",
+      );
+      return;
+    }
+    setSubmitting(true);
+    setGlobalLoading(true);
+    setLoginInProgress();
 
- try {
+    try {
       const userCredential = await signInWithEmailAndPassword(
         auth,
         formData.email,
@@ -394,6 +417,7 @@ function SignIn() {
 
  try {
  const loginResponse = await login();
+ resetLockoutState(formData.email);
  if (isOtpDeliveryAccepted(loginResponse)) {
   setOtpPending();
   navigate("/verify-otp");
@@ -463,6 +487,7 @@ function SignIn() {
 
  try {
  const loginResponse = await login();
+ resetLockoutState();
  handlePostAuthFlow(loginResponse, firebaseUser.displayName || firebaseUser.email || "there");
  } catch (loginError) {
  // Preserve the Firebase identity. Backend failures are recoverable and must
@@ -558,8 +583,8 @@ function SignIn() {
  subtitle="Premium living in the heart of Manila"
  />
 
- <div className="flex items-center justify-center p-8 lg:p-12 bg-card">
- <div className="w-full max-w-md">
+      <div className="flex items-center justify-center p-8 lg:p-12 bg-card overflow-y-auto">
+        <div className="w-full max-w-md my-auto">
  <Link
  to="/"
  className="lg:hidden inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors"
@@ -650,8 +675,9 @@ function SignIn() {
  navigate("/auth-action?state=sent", { replace: true });
  return;
  } catch (err) {
- const retryAfter = err.response?.data?.retryAfterSeconds;
- if (retryAfter) setResendCooldownEnd(Date.now() + retryAfter * 1000);
+ const retryAfter = err.response?.data?.retryAfterSeconds || 60;
+ setPersistentResendCooldown(RESEND_COOLDOWN_KEY, retryAfter);
+ setResendCooldown(retryAfter);
  showNotification(resolveResendVerificationMessage(err), "error");
  } finally {
  try {
@@ -688,7 +714,7 @@ function SignIn() {
  value={formData.email}
  onChange={handleChange}
  onBlur={() => handleBlur("email")}
- disabled={submitting}
+ disabled={submitting || isLockedOut}
  autoComplete="email"
  error={touched.email ? validationErrors.email : null}
  valid={touched.email && fieldValid.email}
@@ -704,7 +730,7 @@ function SignIn() {
  onKeyUp={handlePasswordKey}
  onBlur={() => handleBlur("password")}
  onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
- disabled={submitting}
+ disabled={submitting || isLockedOut}
  autoComplete="current-password"
  error={touched.password ? validationErrors.password : null}
  valid={touched.password && fieldValid.password}

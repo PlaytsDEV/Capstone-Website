@@ -118,6 +118,8 @@ const RoomCard = React.memo(({
     minMonths,
     shortTermRate,
     longTermRate,
+    regularLongRate,
+    regularShortRate,
     discountPercent,
   } = useMemo(() => {
     const totalBedsCount = room.capacity || room.beds?.length || parseInt(room.occupancy?.split("/")[1]) || 0;
@@ -199,6 +201,8 @@ const RoomCard = React.memo(({
       minMonths: minMonthsVal,
       shortTermRate: finalShortTermRate,
       longTermRate: finalLongTermRate,
+      regularLongRate: activeRegRate,
+      regularShortRate: regularShort,
       discountPercent: discountPct,
     };
   }, [room]);
@@ -373,6 +377,11 @@ const RoomCard = React.memo(({
             </>
           ) : selectedLeaseTermFilter === "longTerm" ? (
             <>
+              {discountPercent > 0 && regularLongRate > longTermRate && (
+                <span className="text-xs line-through opacity-60 font-normal text-muted-foreground mr-0.5">
+                  ₱{regularLongRate.toLocaleString()}
+                </span>
+              )}
               <span className="ca-price-primary">
                 ₱{longTermRate.toLocaleString()}
               </span>
@@ -390,8 +399,13 @@ const RoomCard = React.memo(({
             </>
           ) : (
             <>
-              {shortTermRate > longTermRate && (
+              {shortTermRate > longTermRate && !discountPercent && (
                 <span className="ca-price-prefix">Starts at</span>
+              )}
+              {discountPercent > 0 && regularLongRate > longTermRate && (
+                <span className="text-xs line-through opacity-60 font-normal text-muted-foreground mr-0.5">
+                  ₱{regularLongRate.toLocaleString()}
+                </span>
               )}
               <span className="ca-price-primary">
                 ₱{longTermRate.toLocaleString()}

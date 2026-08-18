@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Calculator, ArrowRight, Zap, Wifi } from "lucide-react";
 
 const ESTIMATED_ELECTRICITY_PER_BED = 650; // Pro-rata submetered aircon estimate in PHP
 
@@ -64,13 +65,18 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
       }}
     >
       {/* Header */}
-      <div className="mb-3 pb-2 border-b" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
-        <h4 className="text-xs sm:text-sm font-bold" style={{ color: "var(--lp-text, #162f53)" }}>
-          Monthly Budget Estimator
-        </h4>
-        <p className="text-[10px]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
-          Slide to estimate rent, utilities, and recommended accommodation.
-        </p>
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{ borderColor: "var(--lp-border, #E6D9B2)" }}>
+        <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+          <Calculator className="w-4 h-4 text-amber-700 dark:text-amber-400" />
+        </div>
+        <div>
+          <h4 className="text-xs sm:text-sm font-bold" style={{ color: "var(--lp-text, #162f53)" }}>
+            Monthly Budget Estimator
+          </h4>
+          <p className="text-[10px]" style={{ color: "var(--lp-text-secondary, #64748B)" }}>
+            Slide to estimate rent, utilities, and recommended accommodation.
+          </p>
+        </div>
       </div>
 
       {/* Interactive Budget Slider */}
@@ -142,7 +148,8 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
           </div>
 
           <div className="flex justify-between">
-            <span className="text-slate-500">
+            <span className="text-slate-500 flex items-center gap-1">
+              <Zap className="w-3 h-3 text-amber-500" />
               Est. Electricity Share:
             </span>
             <span className="font-semibold text-slate-700 dark:text-slate-300">
@@ -151,7 +158,8 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
           </div>
 
           <div className="flex justify-between">
-            <span className="text-slate-500">
+            <span className="text-slate-500 flex items-center gap-1">
+              <Wifi className="w-3 h-3 text-emerald-500" />
               Water & High-Speed Wi-Fi:
             </span>
             <span className="font-semibold text-emerald-600 dark:text-emerald-400">
@@ -186,7 +194,7 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
       <button
         type="button"
         onClick={handleViewRooms}
-        className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center focus:outline-none active:scale-98 shadow-xs"
+        className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none active:scale-98 shadow-xs"
         style={{
           backgroundColor: "#0A1628",
           border: "1px solid #0A1628",
@@ -200,6 +208,7 @@ export function ChatBudgetEstimatorWidget({ data = {}, onNavigate }) {
         }}
       >
         <span className="text-white font-bold">View Available {recommendation.roomTypeParam} Rooms</span>
+        <ArrowRight className="w-3.5 h-3.5" />
       </button>
     </div>
   );

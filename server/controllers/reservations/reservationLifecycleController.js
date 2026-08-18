@@ -104,6 +104,7 @@ import {
   getStructuredMoveInBlockers,
 } from "../../services/structuredInitialPaymentService.js";
 import { usesStructuredInitialPayment } from "../../config/structuredInitialPayment.js";
+import { buildPricingDisplay } from "../../services/contractPricingResolver.js";
 
 export const updateReservation = async (req, res, next) => {
   try {
@@ -1067,9 +1068,19 @@ export const updateReservation = async (req, res, next) => {
       }
     }
 
+    const settings = await getBusinessSettings();
+    const serialized = serializeReservation(updatedReservation);
+    if (serialized) {
+      serialized.pricingDisplay = buildPricingDisplay({
+        reservation: updatedReservation,
+        room: updatedReservation.roomId,
+        settings,
+      });
+    }
+
     res.json({
       message: "Reservation updated successfully",
-      reservation: serializeReservation(updatedReservation),
+      reservation: serialized || updatedReservation,
     });
 
     try {
@@ -2011,9 +2022,19 @@ export const updateReservationByUser = async (req, res, next) => {
       }
     }
 
+    const settings = await getBusinessSettings();
+    const serialized = serializeReservation(updatedReservation);
+    if (serialized) {
+      serialized.pricingDisplay = buildPricingDisplay({
+        reservation: updatedReservation,
+        room: updatedReservation.roomId,
+        settings,
+      });
+    }
+
     res.json({
       message: "Reservation updated successfully",
-      reservation: updatedReservation,
+      reservation: serialized || updatedReservation,
       ...(appliedPricing ? { pricing: appliedPricing.breakdown } : {}),
     });
 

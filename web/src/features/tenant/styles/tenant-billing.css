@@ -325,7 +325,7 @@
   margin: 0 0 1.5rem;
 }
 .proof-upload-zone {
-  border: 2px dashed var(--border-card);
+  border: 1px dashed var(--border-card);
   border-radius: var(--radius-md);
   padding: 2rem;
   text-align: center;

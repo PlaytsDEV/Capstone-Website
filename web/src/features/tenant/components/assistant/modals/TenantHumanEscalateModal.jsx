@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { UserCheck, X, AlertCircle, CheckCircle2, LoaderCircle } from "lucide-react";
 import { escalateTenantAssistant } from "../../../api/tenantAssistantApi";
 
 const CATEGORIES = [
@@ -107,29 +108,33 @@ export default function TenantHumanEscalateModal({
       <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
-          <div>
-            <h2 id="escalate-modal-title" className="text-base font-bold text-slate-900 dark:text-slate-100">
-              Escalate to Branch Admin
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Connect with our local front desk team for personalized human assistance.
-            </p>
+          <div className="flex items-center gap-2.5">
+            <UserCheck className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden="true" />
+            <div>
+              <h2 id="escalate-modal-title" className="text-base font-bold text-slate-900 dark:text-slate-100">
+                Escalate to Branch Admin
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Connect with our local front desk team for personalized human assistance.
+              </p>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-700"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             aria-label="Close dialog"
           >
-            Close
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
         {/* Content Body */}
         {successData ? (
           <div className="p-8 text-center flex flex-col items-center gap-3">
+            <CheckCircle2 className="w-10 h-10 text-emerald-600 dark:text-emerald-400 mx-auto" />
             <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
               Escalation Submitted
             </h3>
@@ -141,9 +146,10 @@ export default function TenantHumanEscalateModal({
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             {errorMsg && (
               <div
-                className="p-3 text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl"
+                className="flex items-start gap-2 p-3 text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-slate-200 dark:border-slate-800 rounded-xl"
                 role="alert"
               >
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                 <span>{errorMsg}</span>
               </div>
             )}
@@ -243,9 +249,16 @@ export default function TenantHumanEscalateModal({
               <button
                 type="submit"
                 disabled={isSubmitting || (touched && !summary.trim())}
-                className="px-5 py-2 text-sm font-semibold text-white bg-slate-900 dark:bg-slate-100 dark:text-slate-900 rounded-xl hover:bg-slate-800 dark:hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-slate-900 dark:bg-slate-100 dark:text-slate-900 rounded-xl hover:bg-slate-800 dark:hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                <span>{isSubmitting ? "Submitting..." : "Submit Escalation"}</span>
+                {isSubmitting ? (
+                  <>
+                    <LoaderCircle className="w-4 h-4 animate-spin" />
+                    <span>Submitting...</span>
+                  </>
+                ) : (
+                  <span>Submit Escalation</span>
+                )}
               </button>
             </div>
           </form>

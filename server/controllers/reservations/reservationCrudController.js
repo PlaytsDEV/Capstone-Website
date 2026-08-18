@@ -235,25 +235,28 @@ export const createReservation = async (req, res) => {
         existingStatus: existingActive.status,
       });
 
-    const { roomId, roomName, roomNumber, moveInDate } = payload;
-    if ((!roomId && !roomNumber && !roomName) || !moveInDate)
+    const { roomId, roomName, roomNumber } = payload;
+    if (!roomId && !roomNumber && !roomName)
       return res.status(400).json({
         error:
-          "Missing required fields: roomId, roomNumber, or roomName plus moveInDate are required",
+          "Missing required fields: roomId, roomNumber, or roomName is required",
         code: "MISSING_REQUIRED_FIELDS",
       });
 
-    if (!validateMoveInDate(moveInDate))
-      return res.status(400).json({
-        error: "Move-in date must be within 3 months from today.",
-        code: "MOVEIN_DATE_OUT_OF_RANGE",
-      });
+    const moveInDateToCheck = payload.moveInDate || payload.intendedMoveInDate || payload.targetMoveInDate;
+    if (moveInDateToCheck) {
+      if (!validateMoveInDate(moveInDateToCheck))
+        return res.status(400).json({
+          error: "Move-in date must be within 3 months from today.",
+          code: "MOVEIN_DATE_OUT_OF_RANGE",
+        });
 
-    if (dayjs(moveInDate).isBefore(dayjs().add(3, "day").startOf("day")))
-      return res.status(400).json({
-        error: "Move-in date must be at least 3 days from today.",
-        code: "MOVEIN_DATE_TOO_SOON",
-      });
+      if (dayjs(moveInDateToCheck).isBefore(dayjs().add(3, "day").startOf("day")))
+        return res.status(400).json({
+          error: "Move-in date must be at least 3 days from today.",
+          code: "MOVEIN_DATE_TOO_SOON",
+        });
+    }
 
     let room = null;
     try {
@@ -326,13 +329,14 @@ export const createReservation = async (req, res) => {
       userId: dbUser._id,
       roomId: room._id,
       selectedBed,
-      // intendedMoveInDate = canonical field for tenant's desired move-in date (Step 1).
-      // targetMoveInDate kept for backward compat with older records.
-      intendedMoveInDate: b.moveInDate
-        ? new Date(b.moveInDate)
+      // intendedMoveInDate is set when tenant fills application or explicitly submits a date
+      intendedMoveInDate: b.intendedMoveInDate
+        ? new Date(b.intendedMoveInDate)
         : b.targetMoveInDate
           ? new Date(b.targetMoveInDate)
-          : null,
+          : b.moveInDate
+            ? new Date(b.moveInDate)
+            : null,
       targetMoveInDate: b.targetMoveInDate
         ? new Date(b.targetMoveInDate)
         : null,
@@ -407,8 +411,13 @@ export const createReservation = async (req, res) => {
       reservationFeeAmount: pricing.reservationFeeAmount,
       monthlyRent: pricing.monthlyRent,
       selectedAppliances: pricing.selectedAppliances,
-      applianceFees: pricing.applianceFees,
-      moveInDate: b.moveInDate,
+      moveInDate: b.moveInDate
+        ? new Date(b.moveInDate)
+        : b.intendedMoveInDate
+          ? new Date(b.intendedMoveInDate)
+          : b.targetMoveInDate
+            ? new Date(b.targetMoveInDate)
+            : null,
       moveOutDate: null,
       totalPrice: pricing.totalPrice,
       notes: b.notes || "",

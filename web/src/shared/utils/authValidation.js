@@ -194,8 +194,21 @@ export const validatePassword = (password) => {
   return null; // Valid
 };
 
-/** Sanitize name fields — allow only letters, spaces, hyphens, apostrophes */
-export const sanitizeName = (value) => value.replace(/[^a-zA-Z\s'-]/g, "");
+/** Capitalize the first letter of each word (after start, whitespace, hyphens, apostrophes) */
+export const formatProperCase = (str) => {
+  if (!str || typeof str !== "string") return "";
+  return String(str).replace(/(?:^|[\s'-])([a-zA-Z])/g, (char) => char.toUpperCase());
+};
+
+/** Sanitize name fields — allow only letters, spaces, hyphens, apostrophes, and auto-capitalize first letter of each word */
+export const sanitizeName = (value) => {
+  if (!value || typeof value !== "string") return "";
+  let cleaned = value
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/[^a-zA-Z\s'-]/g, "");
+  return formatProperCase(cleaned);
+};
 
 /** Generate a backend-compatible 3-30 character username from an email. */
 export const generateUsername = (email, attempt = 0) => {

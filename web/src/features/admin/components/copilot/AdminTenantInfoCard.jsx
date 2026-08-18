@@ -1,5 +1,16 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  MessageSquare,
+  CreditCard,
+  ExternalLink,
+  Phone,
+  Mail,
+  Copy,
+  CheckCircle2,
+  Home,
+  Wrench,
+} from "lucide-react";
 import ProfileAvatar from "../../../../shared/components/ProfileAvatar";
 
 const formatCurrency = (amount) =>
@@ -93,8 +104,9 @@ export default function AdminTenantInfoCard({ tenant, onCloseDrawer }) {
       <div className="grid grid-cols-2 gap-2">
         {/* Room Info Box */}
         <div className="p-2.5 rounded-lg bg-muted/30 border border-border space-y-1">
-          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-            Room & Unit
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            <Home size={12} className="text-primary shrink-0" />
+            <span>Room & Unit</span>
           </div>
           <div className="font-bold text-foreground text-xs">
             {tenant.roomNumber !== "Unassigned" ? `Room ${tenant.roomNumber}` : "Unassigned"}
@@ -104,8 +116,9 @@ export default function AdminTenantInfoCard({ tenant, onCloseDrawer }) {
 
         {/* Billing Info Box */}
         <div className="p-2.5 rounded-lg bg-muted/30 border border-border space-y-1">
-          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-            Outstanding Balance
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            <CreditCard size={12} className="text-primary shrink-0" />
+            <span>Outstanding Balance</span>
           </div>
           <div className={`font-bold text-xs ${isOverdue ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
             {formatCurrency(tenant.balance)}
@@ -126,6 +139,7 @@ export default function AdminTenantInfoCard({ tenant, onCloseDrawer }) {
         </div>
 
         <div className="flex items-center gap-1.5">
+          <Wrench size={12} className="text-muted-foreground shrink-0" />
           <span className="text-muted-foreground">Open Tickets:</span>
           <span className={`font-semibold ${tenant.openMaintenanceCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
             {tenant.openMaintenanceCount}
@@ -138,6 +152,7 @@ export default function AdminTenantInfoCard({ tenant, onCloseDrawer }) {
         {tenant.phone && tenant.phone !== "No phone on file" && (
           <div className="flex items-center justify-between text-[11px] px-2 py-1 rounded bg-muted/20 border border-border/50">
             <div className="flex items-center gap-1.5 text-foreground truncate min-w-0">
+              <Phone size={11} className="text-muted-foreground shrink-0" />
               <span className="truncate">{tenant.phone}</span>
             </div>
             <button
@@ -146,6 +161,7 @@ export default function AdminTenantInfoCard({ tenant, onCloseDrawer }) {
               className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground font-medium shrink-0 cursor-pointer ml-2"
               title="Copy phone"
             >
+              {copiedPhone ? <CheckCircle2 size={11} className="text-emerald-600" /> : <Copy size={11} />}
               <span>{copiedPhone ? "Copied" : "Copy"}</span>
             </button>
           </div>
@@ -154,6 +170,7 @@ export default function AdminTenantInfoCard({ tenant, onCloseDrawer }) {
         {tenant.email && tenant.email !== "No email on file" && (
           <div className="flex items-center justify-between text-[11px] px-2 py-1 rounded bg-muted/20 border border-border/50">
             <div className="flex items-center gap-1.5 text-foreground truncate min-w-0">
+              <Mail size={11} className="text-muted-foreground shrink-0" />
               <span className="truncate">{tenant.email}</span>
             </div>
             <button
@@ -162,6 +179,7 @@ export default function AdminTenantInfoCard({ tenant, onCloseDrawer }) {
               className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground font-medium shrink-0 cursor-pointer ml-2"
               title="Copy email"
             >
+              {copiedEmail ? <CheckCircle2 size={11} className="text-emerald-600" /> : <Copy size={11} />}
               <span>{copiedEmail ? "Copied" : "Copy"}</span>
             </button>
           </div>
@@ -173,24 +191,27 @@ export default function AdminTenantInfoCard({ tenant, onCloseDrawer }) {
         <button
           type="button"
           onClick={handleOpenChat}
-          className="flex items-center justify-center py-1.5 px-2 rounded-lg bg-primary text-primary-foreground font-semibold text-[11px] hover:bg-primary/90 transition-colors cursor-pointer shadow-2xs"
+          className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-primary text-primary-foreground font-semibold text-[11px] hover:bg-primary/90 transition-colors cursor-pointer shadow-2xs"
         >
+          <MessageSquare size={12} />
           <span>Chat</span>
         </button>
 
         <button
           type="button"
           onClick={handleOpenBilling}
-          className="flex items-center justify-center py-1.5 px-2 rounded-lg bg-card border border-border text-foreground font-semibold text-[11px] hover:bg-muted transition-colors cursor-pointer"
+          className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-card border border-border text-foreground font-semibold text-[11px] hover:bg-muted transition-colors cursor-pointer"
         >
+          <CreditCard size={12} />
           <span>Billing</span>
         </button>
 
         <button
           type="button"
           onClick={handleOpenProfile}
-          className="flex items-center justify-center py-1.5 px-2 rounded-lg bg-card border border-border text-foreground font-semibold text-[11px] hover:bg-muted transition-colors cursor-pointer"
+          className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-card border border-border text-foreground font-semibold text-[11px] hover:bg-muted transition-colors cursor-pointer"
         >
+          <ExternalLink size={12} />
           <span>Profile</span>
         </button>
       </div>

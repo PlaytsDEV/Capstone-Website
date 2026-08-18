@@ -554,12 +554,18 @@ const notify = {
     );
   },
 
-  overdueMoveIn: (userId, reservationCode, roomName, tenantName, daysOverdue) => {
+  overdueMoveIn: (userId, reservationCode, roomName, tenantName, daysOverdue, options = {}) => {
     const code = formatCode(reservationCode);
     const codeStr = code ? ` (${code})` : "";
-    return createNotification(userId, "grace_period_warning", "Overdue Move-In",
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const dedupeKey = options.dedupeKey || (userId ? `overdue_move_in:${String(userId)}:${todayStr}` : undefined);
+    return createNotificationWithPush(
+      userId,
+      "grace_period_warning",
+      "Overdue Move-In",
       `${tenantName}${codeStr} is ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue for move-in to ${roomName}. Please extend or cancel.`,
-      { entityType: "reservation" });
+      { entityType: "reservation", dedupeKey, ...options },
+    );
   },
 
   accountSuspended: (userId, reason) =>
@@ -582,6 +588,8 @@ const notify = {
         ? `Your bill of ₱${totalAmount.toLocaleString()} for ${billingMonth} is due tomorrow.`
         : `Your bill of ₱${totalAmount.toLocaleString()} for ${billingMonth} is due in ${daysUntilDue} days.`;
     const billId = options.billId || null;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const dedupeKey = options.dedupeKey || (billId ? `bill_due_reminder:${String(billId)}:${daysUntilDue}:${todayStr}` : undefined);
 
     return createNotificationWithPush(
       userId,
@@ -592,11 +600,10 @@ const notify = {
         entityType: "bill",
         entityId: billId ? String(billId) : null,
         actionUrl: billId ? `/billing?billId=${String(billId)}` : "/billing",
-        dedupeKey: buildEventDedupeKey(
-          "bill_due_reminder",
-          billId,
-          options.eventId,
-        ),
+        dedupeKey:
+          buildEventDedupeKey("bill_due_reminder", billId, options.eventId) ||
+          dedupeKey,
+        ...options,
       },
       () =>
         sendMobilePushToRecipients([userId], {
@@ -616,6 +623,8 @@ const notify = {
     const title = "Late Payment Penalty";
     const message = `A penalty of ₱${penaltyAmount.toLocaleString()} (${daysLate} day${daysLate === 1 ? "" : "s"} late) has been applied to your ${billingMonth} bill.`;
     const billId = options.billId || null;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const dedupeKey = options.dedupeKey || (billId ? `penalty_applied:${String(billId)}:${daysLate}:${todayStr}` : undefined);
 
     return createNotificationWithPush(
       userId,
@@ -626,11 +635,10 @@ const notify = {
         entityType: "bill",
         entityId: billId ? String(billId) : null,
         actionUrl: billId ? `/billing?billId=${String(billId)}` : "/billing",
-        dedupeKey: buildEventDedupeKey(
-          "penalty_applied",
-          billId,
-          options.eventId,
-        ),
+        dedupeKey:
+          buildEventDedupeKey("penalty_applied", billId, options.eventId) ||
+          dedupeKey,
+        ...options,
       },
       () =>
         sendMobilePushToRecipients([userId], {
@@ -686,28 +694,42 @@ const notify = {
       { entityType: "reservation" });
   },
 
-  stalePendingVisitWarning: (adminUserId, tenantName, roomName, daysPending) =>
-    createNotification(adminUserId, "general", "Unactioned Visit Request",
+  stalePendingVisitWarning: (adminUserId, tenantName, roomName, daysPending, options = {}) => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const dedupeKey = options.dedupeKey || `stale_visit_warning:${String(adminUserId)}:${String(tenantName)}:${todayStr}`;
+    return createNotificationWithPush(
+      adminUserId,
+      "general",
+      "Unactioned Visit Request",
       `${tenantName} has a visit request for ${roomName} pending for ${daysPending} days. It will auto-expire in ${14 - daysPending} day${(14 - daysPending) === 1 ? "" : "s"} if not acted on.`,
-      { entityType: "reservation" }),
+      { entityType: "reservation", actionUrl: "/admin/reservations?tab=visits", dedupeKey, ...options },
+    );
+  },
 
-  slaBreachAlert: (adminUserId, branch, delayedCount, urgencyBreakdown) =>
-    createNotification(
+  slaBreachAlert: (adminUserId, branch, delayedCount, urgencyBreakdown, options = {}) => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const dedupeKey = options.dedupeKey || `sla_breach:${String(adminUserId)}:${String(branch)}:${todayStr}`;
+    const branchParam = branch ? `&branch=${encodeURIComponent(branch)}` : "";
+    return createNotificationWithPush(
       adminUserId,
       "sla_breach",
       `SLA Breach — ${delayedCount} Request${delayedCount > 1 ? "s" : ""} Overdue`,
       `${delayedCount} maintenance request${delayedCount > 1 ? "s" : ""} in ${branch} ${delayedCount > 1 ? "have" : "has"} breached SLA. (${urgencyBreakdown}). Immediate attention required.`,
-      { actionUrl: "/admin/maintenance?quickFilter=delayed", entityType: "maintenance" },
-    ),
+      { actionUrl: `/admin/maintenance?quickFilter=delayed${branchParam}`, entityType: "maintenance", dedupeKey, ...options },
+    );
+  },
 
-  chatUnresponded: (adminUserId, branch, conversationCount) =>
-    createNotification(
+  chatUnresponded: (adminUserId, branch, conversationCount, options = {}) => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const dedupeKey = options.dedupeKey || `chat_unresponded:${String(adminUserId)}:${String(branch)}:${todayStr}`;
+    return createNotificationWithPush(
       adminUserId,
       "chat_unresponded",
       `${conversationCount} Chat${conversationCount > 1 ? "s" : ""} Awaiting Response`,
       `${conversationCount} open conversation${conversationCount > 1 ? "s" : ""} in ${branch} ${conversationCount > 1 ? "have" : "has"} not received an admin reply in over 4 hours.`,
-      { actionUrl: "/admin/chat", entityType: "chat" },
-    ),
+      { actionUrl: "/admin/chat", entityType: "chat", dedupeKey, ...options },
+    );
+  },
 
   moveOutComplete: (userId, roomName) =>
     createNotificationWithPush(

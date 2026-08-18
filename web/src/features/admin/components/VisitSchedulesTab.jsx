@@ -646,14 +646,14 @@ function VisitSchedulesTab() {
         {summaryItems.map((item) => {
           const Icon = item.icon;
 
-          const badgeClass =
+          const iconColorClass =
             item.color === "blue"
-              ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400"
+              ? "text-sky-600 dark:text-sky-400"
               : item.color === "orange"
-              ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400"
+              ? "text-amber-600 dark:text-amber-400"
               : item.color === "green"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"
-              : "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400";
+              ? "text-emerald-600 dark:text-emerald-400"
+              : "text-rose-600 dark:text-rose-400";
 
           return (
             <div
@@ -664,8 +664,8 @@ function VisitSchedulesTab() {
                 <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
                   {item.label}
                 </span>
-                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${badgeClass}`}>
-                  <Icon size={15} />
+                <div className={`flex shrink-0 items-center justify-center ${iconColorClass}`}>
+                  <Icon size={18} />
                 </div>
               </div>
               <div className="text-2xl font-bold tracking-tight text-foreground mt-2">

@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from "react";
+import { X, Bot } from "lucide-react";
+import { motion } from "framer-motion";
 import PublicChatbotModal from "./PublicChatbotModal";
 
 /**
  * PublicChatbotLauncher
  *
  * Floating bottom-right circular launcher button that toggles the AI receptionist modal.
- * Listens to custom window event 'open-lilycrest-chatbot' for external cross-component triggers.
+ * Uses hardware-accelerated Framer Motion for buttery-smooth 60fps floating
+ * with zero layout repaints and optimal battery/CPU efficiency.
  */
 export function PublicChatbotLauncher() {
   const [isOpen, setIsOpen] = useState(false);
@@ -49,12 +52,12 @@ export function PublicChatbotLauncher() {
     <>
       {/* Scoped Micro-Animations for Floating Bot */}
       <style>{`
-        @keyframes botFloat {
+        @keyframes lcBotFloat {
           0%, 100% {
             transform: translateY(0px);
           }
           50% {
-            transform: translateY(-2.5px);
+            transform: translateY(-14px);
           }
         }
 
@@ -73,35 +76,85 @@ export function PublicChatbotLauncher() {
           }
         }
 
+        .lc-bot-float-anim {
+          animation: lcBotFloat 2.2s ease-in-out infinite !important;
+          will-change: transform;
+        }
+
         .lc-bot-btn {
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
+          transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+          background-color: #0A1628 !important;
+          border: 1.5px solid #1e293b !important;
+          color: #D4AF37 !important;
+          box-shadow: 0 6px 20px rgba(10, 22, 40, 0.35) !important;
         }
 
         .lc-bot-btn:hover {
-          transform: scale(1.05);
-          box-shadow: 0 10px 28px rgba(10, 22, 40, 0.22), 0 0 0 3px rgba(212, 175, 55, 0.35) !important;
+          transform: scale(1.08);
+          background-color: #162f53 !important;
+          border-color: #D4AF37 !important;
+          box-shadow: 0 10px 28px rgba(10, 22, 40, 0.45), 0 0 0 3px rgba(212, 175, 55, 0.25) !important;
         }
 
         .lc-bot-btn:active {
           transform: scale(0.95);
         }
 
-        .lc-bot-icon-idle {
-          animation: botFloat 2.6s ease-in-out infinite;
-          transform-origin: center bottom;
+        .dark .lc-bot-btn,
+        [data-theme="dark"] .lc-bot-btn {
+          background-color: #D4AF37 !important;
+          border: 1.5px solid #B9921F !important;
+          color: #0A1628 !important;
+          box-shadow: 0 6px 20px rgba(212, 175, 55, 0.45) !important;
+        }
+
+        .dark .lc-bot-btn:hover,
+        [data-theme="dark"] .lc-bot-btn:hover {
+          background-color: #E5C358 !important;
+          border-color: #F3E4B0 !important;
+          box-shadow: 0 10px 28px rgba(212, 175, 55, 0.55), 0 0 0 3px rgba(212, 175, 55, 0.35) !important;
+        }
+
+        .lc-bot-icon-svg {
+          color: #D4AF37;
+          transition: color 0.2s ease;
+        }
+
+        .dark .lc-bot-icon-svg,
+        [data-theme="dark"] .lc-bot-icon-svg {
+          color: #0A1628;
         }
 
         .lc-radar-badge {
           animation: radarPing 2s ease-in-out infinite;
+          border-color: #0A1628 !important;
+        }
+
+        .dark .lc-radar-badge,
+        [data-theme="dark"] .lc-radar-badge {
+          border-color: #D4AF37 !important;
+        }
+
+        .lc-tooltip-btn {
+          background-color: #ffffff;
+          border: 1px solid #D4AF37;
+          color: #0A1628;
+          box-shadow: 0 4px 16px rgba(10, 22, 40, 0.12);
+        }
+
+        .dark .lc-tooltip-btn,
+        [data-theme="dark"] .lc-tooltip-btn {
+          background-color: #08111F;
+          border: 1px solid #D4AF37;
+          color: #F8FAFC;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
         }
       `}</style>
 
       {/* Floating Launcher Container */}
       <div
-        className="fixed z-[990] flex items-center gap-3 select-none"
+        className="fixed z-[990] flex items-center gap-3 select-none pointer-events-none"
         style={{ bottom: "24px", right: "24px" }}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
       >
         {/* Floating Attention Pill / Tooltip (pure fade on hover, perfectly centered) */}
         {!isOpen && (
@@ -110,58 +163,57 @@ export function PublicChatbotLauncher() {
             onClick={handleToggle}
             aria-label="Open AI Chatbot prompt"
             tabIndex={isHovered ? 0 : -1}
-            className={`hidden sm:flex items-center gap-2 py-2 px-3.5 rounded-full text-xs font-semibold cursor-pointer whitespace-nowrap transition-opacity duration-300 ease-in-out ${
+            className={`pointer-events-auto hidden sm:flex items-center gap-2 py-2 px-3.5 rounded-full text-xs font-semibold cursor-pointer whitespace-nowrap transition-opacity duration-300 ease-in-out lc-tooltip-btn ${
               isHovered
-                ? "opacity-100 pointer-events-auto"
-                : "opacity-0 pointer-events-none"
+                ? "opacity-100"
+                : "opacity-0"
             }`}
-            style={{
-              backgroundColor: "var(--lp-bg, #ffffff)",
-              border: "1px solid var(--lp-accent, #D4AF37)",
-              color: "var(--lp-text, #162f53)",
-              boxShadow: "0 4px 16px rgba(10, 22, 40, 0.12)",
-              transition: "opacity 350ms cubic-bezier(0.4, 0, 0.2, 1)",
-            }}
           >
             <span>Need Help? Ask Lilycrest AI Chatbot</span>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-0.5 flex-shrink-0" />
           </button>
         )}
 
-        {/* Main Floating Button */}
-        <button
-          type="button"
-          onClick={handleToggle}
-          onFocus={() => setIsHovered(true)}
-          onBlur={() => setIsHovered(false)}
-          aria-expanded={isOpen}
-          aria-label={isOpen ? "Close AI Chatbot" : "Open Lilycrest AI Chatbot"}
-          title={isOpen ? "Close Chatbot" : "Chat with Lilycrest AI Chatbot"}
-          className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer focus:outline-none relative ${!isOpen ? "lc-bot-btn" : "shadow-xl"}`}
-          style={{
-            backgroundColor: "var(--lp-bg, #ffffff)",
-            border: "2px solid var(--lp-accent, #D4AF37)",
-            color: "var(--lp-text, #162f53)",
-            boxShadow: "0 6px 20px rgba(10, 22, 40, 0.14)",
+        {/* Main Floating Button in Hardware-Accelerated Container */}
+        <motion.div
+          className="pointer-events-auto"
+          animate={!isOpen ? { y: [0, -12, 0] } : { y: 0 }}
+          transition={{
+            duration: 2.4,
+            repeat: Infinity,
+            ease: "easeInOut",
           }}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
         >
-          {isOpen ? (
-            <span className="text-xs font-bold text-amber-700">Close</span>
-          ) : (
-            <div className="relative flex items-center justify-center">
-              <div className="lc-bot-icon-idle flex items-center justify-center">
-                <img
-                  src="/lilycrest-logo.png"
-                  alt="Lilycrest Chatbot"
-                  className="w-7 h-7 object-contain"
-                />
+          <motion.button
+            type="button"
+            onClick={handleToggle}
+            onFocus={() => setIsHovered(true)}
+            onBlur={() => setIsHovered(false)}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.95 }}
+            aria-expanded={isOpen}
+            aria-label={isOpen ? "Close AI Chatbot" : "Open Lilycrest AI Chatbot"}
+            title={isOpen ? "Close Chatbot" : "Chat with Lilycrest AI Chatbot"}
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer focus:outline-none relative lc-bot-btn ${
+              isOpen ? "shadow-xl" : ""
+            }`}
+          >
+            {isOpen ? (
+              <X className="w-5 h-5 lc-bot-icon-svg" aria-hidden="true" />
+            ) : (
+              <div className="relative flex items-center justify-center">
+                <div className="flex items-center justify-center">
+                  <Bot className="w-5 h-5 lc-bot-icon-svg" aria-hidden="true" />
+                </div>
+                {hasUnread && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white dark:border-slate-900 lc-radar-badge" />
+                )}
               </div>
-              {hasUnread && (
-                <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-500 border-2 border-white lc-radar-badge" />
-              )}
-            </div>
-          )}
-        </button>
+            )}
+          </motion.button>
+        </motion.div>
       </div>
 
       {/* Chatbot Modal */}

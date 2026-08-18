@@ -585,6 +585,22 @@ export const normalizePHPhone = (raw) => {
 };
 
 /**
+ * Capitalize first letter of each word
+ */
+export const formatProperCase = (str) => {
+  if (!str || typeof str !== "string") return "";
+  return str.replace(/(?:^|[\s'-])([a-zA-Z])/g, (char) => char.toUpperCase());
+};
+
+const PROPER_CASE_FLAT_FIELDS = new Set([
+  "firstName",
+  "lastName",
+  "middleName",
+  "nickname",
+  "referrerName",
+]);
+
+/**
  * Build the $set update object from req.body using the config arrays above.
  * Replaces ~50 manual setField() calls.
  * Phone fields are normalized to local 09 format on the way in.
@@ -605,6 +621,8 @@ export const buildUserUpdatePayload = (body) => {
       } else if (key === "leaseDuration") {
         // leaseDuration is optional (Number field) — skip empty string to prevent CastError
         if (body[key] !== "" && body[key] !== null) updates[key] = body[key];
+      } else if (PROPER_CASE_FLAT_FIELDS.has(key)) {
+        updates[key] = typeof body[key] === "string" ? formatProperCase(body[key].trim()) : body[key];
       } else {
         updates[key] = body[key];
       }
@@ -616,7 +634,7 @@ export const buildUserUpdatePayload = (body) => {
     if (body[bodyKey] !== undefined) updates[schemaKey] = body[bodyKey];
   }
 
-  // Nested fields — normalize phone numbers
+  // Nested fields — normalize phone numbers and name formatting
   for (const [bodyKey, path] of Object.entries(USER_UPDATE_NESTED_FIELDS)) {
     if (body[bodyKey] !== undefined) {
       // Strict phone fields: skip if normalization fails (emergency contact, visitor)
@@ -642,6 +660,8 @@ export const buildUserUpdatePayload = (body) => {
           }
         }
         // empty: skip — leave existing DB value unchanged
+      } else if (bodyKey === "emergencyContactName" || bodyKey === "occupation") {
+        updates[path] = typeof body[bodyKey] === "string" ? formatProperCase(body[bodyKey].trim()) : body[bodyKey];
       } else {
         updates[path] = body[bodyKey];
       }
