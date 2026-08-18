@@ -642,7 +642,7 @@ function normalizePushTokenEntry(entry) {
   if (typeof entry === 'string') {
     const token = entry.trim();
     return token
-      ? { token, provider: null, platform: null, enabled: true, updated_at: null }
+      ? { token, provider: null, platform: null, device_id: null, enabled: true, updated_at: null, last_seen_at: null }
       : null;
   }
 
@@ -660,8 +660,12 @@ function normalizePushTokenEntry(entry) {
     platform: typeof entry.platform === 'string'
       ? entry.platform.trim().toLowerCase()
       : (typeof entry.device_platform === 'string' ? entry.device_platform.trim().toLowerCase() : null),
+    device_id: typeof entry.device_id === 'string' && entry.device_id.trim()
+      ? entry.device_id.trim()
+      : null,
     enabled: entry.enabled !== false,
     updated_at: entry.updated_at || null,
+    last_seen_at: entry.last_seen_at || entry.updated_at || null,
   };
 }
 
@@ -672,11 +676,59 @@ async function savePushToken(req, res) {
     const notificationsEnabled = req.body?.notifications_enabled !== false;
     const provider = typeof req.body?.provider === 'string' ? req.body.provider.trim().toLowerCase() : null;
     const devicePlatform = typeof req.body?.device_platform === 'string' ? req.body.device_platform.trim().toLowerCase() : null;
+    const deviceId = typeof req.body?.device_id === 'string' ? req.body.device_id.trim() : '';
+    const replaceLegacyPlatformTokens = req.body?.replace_legacy_platform_tokens === true;
     const db = getDb();
     const now = new Date();
 
     if (!rawPushToken && notificationsEnabled) {
       return res.status(400).json({ detail: 'push_token is required when notifications are enabled.' });
+    }
+
+    if (deviceId && !/^[A-Za-z0-9._:-]{16,128}$/.test(deviceId)) {
+      return res.status(400).json({ detail: 'device_id must be a stable 16-128 character installation identifier.' });
+    }
+    if (provider && !['expo', 'fcm', 'apns'].includes(provider)) {
+      return res.status(400).json({ detail: 'provider must be expo, fcm, or apns.' });
+    }
+    if (devicePlatform && !['android', 'ios'].includes(devicePlatform)) {
+      return res.status(400).json({ detail: 'device_platform must be android or ios.' });
+    }
+
+    // A token or installation belongs to one account at a time. This is
+    // essential on shared QA devices and after account switching: otherwise
+    // an old account can keep receiving a new tenant's private alerts.
+    const otherUserFilter = { user_id: { $ne: req.user.user_id } };
+    if (rawPushToken) {
+      await Promise.all([
+        db.collection('users').updateMany(
+          { ...otherUserFilter, push_token: rawPushToken },
+          {
+            $set: {
+              push_token: null,
+              push_provider: null,
+              push_platform: null,
+              push_token_updated: now,
+            },
+          }
+        ),
+        db.collection('users').updateMany(
+          { ...otherUserFilter, 'push_tokens.token': rawPushToken },
+          {
+            $pull: { push_tokens: { token: rawPushToken } },
+            $set: { push_token_updated: now },
+          }
+        ),
+      ]);
+    }
+    if (deviceId) {
+      await db.collection('users').updateMany(
+        { ...otherUserFilter, 'push_tokens.device_id': deviceId },
+        {
+          $pull: { push_tokens: { device_id: deviceId } },
+          $set: { push_token_updated: now },
+        }
+      );
     }
 
     const user = await db.collection('users').findOne(
@@ -701,22 +753,39 @@ async function savePushToken(req, res) {
         token: user.push_token,
         provider: user.push_provider,
         platform: user.push_platform,
+        device_id: null,
         updated_at: user.push_token_updated,
+        last_seen_at: user.push_token_updated,
         enabled: true,
       }));
     }
 
     const filteredEntries = existingEntries
       .filter(Boolean)
-      .filter((entry) => entry.token !== rawPushToken);
+      .filter((entry) => entry.token !== rawPushToken)
+      .filter((entry) => !deviceId || entry.device_id !== deviceId)
+      // Before installation IDs existed, every token refresh appended a new
+      // active token. A current client explicitly opts into pruning those
+      // indistinguishable legacy registrations for its platform once, which
+      // stops one physical device receiving the same event through Expo and
+      // FCM while preserving other identified installations.
+      .filter((entry) => !(
+        deviceId
+        && replaceLegacyPlatformTokens
+        && !entry.device_id
+        && devicePlatform
+        && entry.platform === devicePlatform
+      ));
 
     if (rawPushToken) {
       filteredEntries.unshift({
         token: rawPushToken,
         provider,
         platform: devicePlatform,
+        device_id: deviceId || null,
         enabled: notificationsEnabled,
         updated_at: now,
+        last_seen_at: now,
       });
     }
 
@@ -746,6 +815,7 @@ async function savePushToken(req, res) {
       status: 'ok',
       notifications_enabled: notificationsEnabled,
       token_saved: Boolean(rawPushToken && notificationsEnabled),
+      installation_registered: Boolean(deviceId),
     });
   } catch (error) {
     console.error('Save push token error:', error);

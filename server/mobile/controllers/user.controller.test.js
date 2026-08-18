@@ -10,7 +10,7 @@ jest.mock('uuid', () => ({ v4: () => 'test-uuid-0000-0000-0000-000000000000' }))
 // — stub it, matching announcement.controller.test.js's own mock.
 jest.mock('../services/pushService.js', () => ({ notifyNewAnnouncement: jest.fn() }));
 
-const { getMe, updateMe, sanitizeUserForClient, normalizeUser, resolveTenantBranchLocation } = require('./user.controller.js');
+const { getMe, updateMe, savePushToken, sanitizeUserForClient, normalizeUser, resolveTenantBranchLocation } = require('./user.controller.js');
 
 function response() {
   return {
@@ -95,6 +95,90 @@ describe('sanitizeUserForClient', () => {
   test('drops any field not on the allowlist', () => {
     const safe = sanitizeUserForClient({ user_id: 'x', email: 'e', push_token: 'leak', role: 'tenant', hashedPassword: 'nope' });
     expect(safe).toEqual({ user_id: 'x', email: 'e', role: 'tenant' });
+  });
+});
+
+describe('user.controller savePushToken — installation ownership and deduplication', () => {
+  beforeEach(() => { mockGetDb.mockReset(); });
+
+  test('replaces legacy same-platform tokens and the prior token for one stable installation', async () => {
+    const currentUser = {
+      user_id: 'tenant-1',
+      push_token: 'old-expo-token',
+      push_provider: 'expo',
+      push_platform: 'android',
+      push_tokens: [
+        { token: 'old-expo-token', provider: 'expo', platform: 'android', enabled: true },
+        { token: 'old-fcm-token', provider: 'fcm', platform: 'android', enabled: true },
+        { token: 'same-device-old-token', provider: 'expo', platform: 'android', device_id: 'lilycrest-android-device-1234', enabled: true },
+        { token: 'other-ios-token', provider: 'expo', platform: 'ios', device_id: 'lilycrest-ios-device-567890', enabled: true },
+      ],
+    };
+    const updateMany = jest.fn().mockResolvedValue({ modifiedCount: 0 });
+    const updateOne = jest.fn().mockResolvedValue({ matchedCount: 1 });
+    mockGetDb.mockReturnValue({
+      collection: () => ({
+        findOne: jest.fn().mockResolvedValue(currentUser),
+        updateMany,
+        updateOne,
+      }),
+    });
+
+    const res = response();
+    await savePushToken({
+      user: { user_id: 'tenant-1' },
+      body: {
+        push_token: 'new-expo-token',
+        provider: 'expo',
+        device_platform: 'android',
+        device_id: 'lilycrest-android-device-1234',
+        notifications_enabled: true,
+        replace_legacy_platform_tokens: true,
+      },
+    }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(updateMany).toHaveBeenCalledTimes(3);
+    const nextTokens = updateOne.mock.calls[0][1].$set.push_tokens;
+    expect(nextTokens.map((entry) => entry.token)).toEqual(['new-expo-token', 'other-ios-token']);
+    expect(nextTokens[0].device_id).toBe('lilycrest-android-device-1234');
+    expect(updateOne.mock.calls[0][1].$set.push_token).toBe('new-expo-token');
+  });
+
+  test('rejects malformed installation identifiers before any database mutation', async () => {
+    const updateMany = jest.fn();
+    mockGetDb.mockReturnValue({ collection: () => ({ updateMany }) });
+    const res = response();
+
+    await savePushToken({
+      user: { user_id: 'tenant-1' },
+      body: { push_token: 'token', notifications_enabled: true, device_id: 'too-short' },
+    }, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [{ provider: 'unknown' }, 'provider must be expo, fcm, or apns.'],
+    [{ device_platform: 'web' }, 'device_platform must be android or ios.'],
+  ])('rejects unsupported push registration enums', async (invalidFields, detail) => {
+    const updateMany = jest.fn();
+    mockGetDb.mockReturnValue({ collection: () => ({ updateMany }) });
+    const res = response();
+
+    await savePushToken({
+      user: { user_id: 'tenant-1' },
+      body: {
+        push_token: 'token',
+        notifications_enabled: true,
+        ...invalidFields,
+      },
+    }, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ detail });
+    expect(updateMany).not.toHaveBeenCalled();
   });
 });
 

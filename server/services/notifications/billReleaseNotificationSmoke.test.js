@@ -29,6 +29,7 @@ await jest.unstable_mockModule("../../utils/socket.js", () => ({
 }));
 
 const notify = (await import("./notificationService.js")).default;
+const { sendMobilePushToRecipients } = await import("./mobilePushService.js");
 const Notification = (await import("../../models/Notification.js")).default;
 
 let mongod;
@@ -64,6 +65,48 @@ async function seedTenantWithPushToken(pushToken = "ExponentPushToken[smoke-test
 }
 
 describe("bill release -> mobile push smoke test", () => {
+  test("dispatches a shared token only once even if legacy data still assigns it to two recipients", async () => {
+    const sharedToken = "ExponentPushToken[shared-installation]";
+    const firstId = new mongoose.Types.ObjectId();
+    const secondId = new mongoose.Types.ObjectId();
+    await mongoose.connection.db.collection("users").insertMany([
+      { _id: firstId, user_id: "first", push_tokens: [{ token: sharedToken, platform: "android", enabled: true }] },
+      { _id: secondId, user_id: "second", push_token: sharedToken },
+    ]);
+
+    await sendMobilePushToRecipients([firstId, secondId], {
+      title: "One event",
+      body: "One delivery",
+      data: { event_key: "chat_reply:conversation:message" },
+    });
+
+    expect(axiosPost).toHaveBeenCalledTimes(1);
+    const [, messages] = axiosPost.mock.calls[0];
+    expect(messages).toHaveLength(1);
+    expect(messages[0].collapseId).toBe("chat_reply:conversation:message");
+    expect(messages[0].tag).toBe("chat_reply:conversation:message");
+  });
+
+  test("never dispatches a token that the tenant disabled during logout or in Settings", async () => {
+    const userId = new mongoose.Types.ObjectId();
+    await mongoose.connection.db.collection("users").insertOne({
+      _id: userId,
+      user_id: "disabled-user",
+      push_tokens: [{ token: "ExponentPushToken[disabled-device]", enabled: false }],
+      // Legacy scalar can lag behind the installation array on old clients;
+      // an explicit disabled registration must still win.
+      push_token: "ExponentPushToken[disabled-device]",
+    });
+
+    await sendMobilePushToRecipients([userId], {
+      title: "Should not send",
+      body: "Disabled",
+      data: { event_key: "disabled:test" },
+    });
+
+    expect(axiosPost).not.toHaveBeenCalled();
+  });
+
   test("rent bill release (billGenerated) writes a Notification and dispatches a push with the correct billing_id/screen/url", async () => {
     const userId = await seedTenantWithPushToken();
     const billId = new mongoose.Types.ObjectId().toString();

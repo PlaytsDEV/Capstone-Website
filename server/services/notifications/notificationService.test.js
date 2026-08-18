@@ -83,6 +83,15 @@ describe("notify.utilityChargeAvailable — push + billId (bill-release notifica
     expect(sendMobilePushToRecipientsMock).toHaveBeenCalledTimes(1);
   });
 
+  test("does not dispatch an orphan push when canonical notification persistence fails", async () => {
+    saveMock.mockRejectedValueOnce(new Error("database unavailable"));
+    await notify.utilityChargeAvailable(
+      "user-123", "electricity", "August 2026", 1760, 1760, "August 23, 2026",
+      { billId: "abc123" },
+    );
+    expect(sendMobilePushToRecipientsMock).not.toHaveBeenCalled();
+  });
+
   test("push payload carries screen: 'billing' and a non-empty billing_id so the mobile app can deep-link to the specific bill", async () => {
     await notify.utilityChargeAvailable(
       "user-123", "water", "August 2026", 450, 2210, "August 23, 2026",

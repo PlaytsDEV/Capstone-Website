@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const utilityPeriodFindOne = jest.fn();
 const utilityPeriodFind = jest.fn();
+const utilityPeriodFindById = jest.fn();
 const utilityPeriodUpdateOne = jest.fn();
 const utilityPeriodFindByIdAndUpdate = jest.fn();
 const roomFindById = jest.fn();
 const utilityReadingFind = jest.fn();
+const utilityReadingFindById = jest.fn();
+const utilityReadingUpdateMany = jest.fn();
 const reservationFind = jest.fn();
 const billFind = jest.fn();
+const billFindById = jest.fn();
 const resolveAdminAccessContext = jest.fn();
 const deriveUtilityPeriodBillingState = jest.fn();
 const buildElectricityReview = jest.fn();
@@ -36,14 +40,18 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   UtilityPeriod: {
     findOne: utilityPeriodFindOne,
     find: utilityPeriodFind,
+    findById: utilityPeriodFindById,
     updateOne: utilityPeriodUpdateOne,
     findByIdAndUpdate: utilityPeriodFindByIdAndUpdate,
   },
   UtilityReading: {
     find: utilityReadingFind,
+    findById: utilityReadingFindById,
+    updateMany: utilityReadingUpdateMany,
   },
   Bill: {
     find: billFind,
+    findById: billFindById,
   },
   BedHistory: {},
 }));
@@ -128,7 +136,12 @@ await jest.unstable_mockModule("../middleware/logger.js", () => ({
   },
 }));
 
-const { exportUtilityRows, getUtilityAiReview } = await import("./utilityBillingController.js");
+const {
+  deleteUtilityPeriod,
+  deleteUtilityReading,
+  exportUtilityRows,
+  getUtilityAiReview,
+} = await import("./utilityBillingController.js");
 
 const createRes = () => ({
   statusCode: 200,
@@ -491,5 +504,82 @@ describe("exportUtilityRows", () => {
     expect(res.payload).toEqual({ error: "Invalid utility type specified" });
     expect(utilityPeriodFind).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe("utility archive safety", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resolveAdminAccessContext.mockResolvedValue({
+      isOwner: false,
+      branch: "gil-puyat",
+    });
+    utilityReadingUpdateMany.mockResolvedValue({ modifiedCount: 1 });
+  });
+
+  test("archives an unsent period and its boundary readings without hard deletion", async () => {
+    const period = {
+      _id: "period-1",
+      branch: "gil-puyat",
+      isArchived: false,
+      tenantSummaries: [],
+      save: jest.fn(),
+    };
+    utilityPeriodFindById.mockResolvedValue(period);
+    const res = createRes();
+    const next = jest.fn();
+
+    await deleteUtilityPeriod(
+      { params: { utilityType: "electricity", id: "period-1" } },
+      res,
+      next,
+    );
+
+    expect(period.isArchived).toBe(true);
+    expect(period.revised).toBe(true);
+    expect(period.save).toHaveBeenCalledTimes(1);
+    expect(utilityReadingUpdateMany).toHaveBeenCalledTimes(2);
+    expect(res.payload).toEqual({
+      success: true,
+      message: "Billing period archived",
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("denies cross-branch period and reading archive requests", async () => {
+    const period = {
+      _id: "period-1",
+      branch: "guadalupe",
+      isArchived: false,
+      tenantSummaries: [],
+      save: jest.fn(),
+    };
+    const reading = {
+      _id: "reading-1",
+      branch: "guadalupe",
+      isArchived: false,
+      save: jest.fn(),
+    };
+    utilityPeriodFindById.mockResolvedValue(period);
+    utilityReadingFindById.mockResolvedValue(reading);
+
+    const periodRes = createRes();
+    const readingRes = createRes();
+    await deleteUtilityPeriod(
+      { params: { utilityType: "electricity", id: "period-1" } },
+      periodRes,
+      jest.fn(),
+    );
+    await deleteUtilityReading(
+      { params: { utilityType: "electricity", id: "reading-1" } },
+      readingRes,
+      jest.fn(),
+    );
+
+    expect(periodRes.status).toHaveBeenCalledWith(403);
+    expect(readingRes.status).toHaveBeenCalledWith(403);
+    expect(period.save).not.toHaveBeenCalled();
+    expect(reading.save).not.toHaveBeenCalled();
+    expect(utilityReadingUpdateMany).not.toHaveBeenCalled();
   });
 });
