@@ -811,7 +811,7 @@ const reservationSchema = new mongoose.Schema(
     // --- Reservation Dates & Pricing ---
     moveInDate: {
       type: Date,
-      required: true,
+      default: null,
     },
     // Admin-confirmed actual move-in date — set when admin executes the moveIn action.
     // Takes precedence over moveInDate for lease calculations once populated.

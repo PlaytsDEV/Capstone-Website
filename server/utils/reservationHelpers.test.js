@@ -116,6 +116,28 @@ describe("tenant reservation update helpers", () => {
       "emergencyContact.contactNumber": "09181234567",
     });
   });
+
+  test("converts name fields and emergency contacts to proper case with first letters capitalized", () => {
+    const updates = buildUserUpdatePayload({
+      firstName: "vince",
+      lastName: "palicpic",
+      middleName: "santos",
+      nickname: "vin",
+      referrerName: "juan dela cruz",
+      emergencyContactName: "maria clara",
+      occupation: "software engineer",
+    });
+
+    expect(updates).toEqual({
+      firstName: "Vince",
+      lastName: "Palicpic",
+      middleName: "Santos",
+      nickname: "Vin",
+      referrerName: "Juan Dela Cruz",
+      "emergencyContact.name": "Maria Clara",
+      "employment.occupation": "Software Engineer",
+    });
+  });
 });
 
 describe("syncReservationUserLifecycle", () => {

@@ -218,6 +218,19 @@ userSessionSchema.statics.findValidSession = function (userId, deviceId, session
 };
 
 /**
+ * Find the most recent active, non-expired session for a user on a specific device.
+ */
+userSessionSchema.statics.findValidSessionForDevice = function (userId, deviceId) {
+  if (!userId || !deviceId) return null;
+  return this.findOne({
+    userId,
+    deviceId,
+    isActive: true,
+    expiresAt: { $gt: new Date() },
+  }).sort({ lastActivityAt: -1, loginTime: -1 });
+};
+
+/**
  * Find the newest pending OTP challenge for this user/device.
  */
 userSessionSchema.statics.findPendingOtp = function (userId, deviceId, purpose = "login") {

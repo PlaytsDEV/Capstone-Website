@@ -85,30 +85,47 @@ ${JSON.stringify(contextSnapshot, null, 2)}
 `;
 }
 
-export function detectTenantWidgetIntent(message = "") {
-  const lower = String(message || "").toLowerCase();
+export function detectTenantWidgetIntent(message = "", contextSnapshot = null) {
+  // If the user is an applicant, they do not have active billing statements, submeter shares, or active room maintenance tickets
+  const isApplicant = Boolean(
+    contextSnapshot?.isApplicant ||
+    contextSnapshot?.userRole === "applicant" ||
+    (!contextSnapshot?.contract && (contextSnapshot?.reservation || contextSnapshot?.userRole === "applicant"))
+  );
 
+  if (isApplicant) {
+    return null;
+  }
+
+  const lower = String(message || "").toLowerCase().trim();
+  if (!lower) return null;
+
+  // Maintenance Status Widget: Require explicit maintenance query from active tenant
   if (
-    lower.match(/\b(maintenance|ticket|tickets|repair|repairs|plumbing|aircon|air-con|electrician|leak|faucet|outlet|ayos|sira|gawain)\b/) ||
+    lower.match(/\b(maintenance ticket|repair ticket|active tickets|my tickets|maintenance status|repair status|technician status|plumbing repair|aircon repair|electrician visit)\b/) ||
     lower.includes("active tickets") ||
     lower.includes("report issue") ||
-    lower.includes("technician")
+    lower.includes("my maintenance")
   ) {
     return "maintenance_status";
   }
 
+  // Billing Breakdown Widget: Trigger on explicit billing queries from active tenants
   if (
-    lower.match(/\b(bill|billing|rent|electricity|kuryente|tubig|water|appliance|appliances|charges|bayad|bayarin|penalty|discount|total)\b/) ||
+    lower.match(/\b(my bill|monthly bill|billing breakdown|electric bill|view bill|bill statement|statement of account|unpaid bill|pay bill|billing summary|my balance|current balance|rent balance|due balance|electricity share|electricity math)\b/) ||
     lower.includes("electricity math") ||
-    lower.includes("due date") ||
-    lower.includes("payment")
+    lower.includes("payment due date") ||
+    lower.includes("show my bill") ||
+    lower.includes("show my statement") ||
+    lower.includes("my bill breakdown")
   ) {
     return "billing_breakdown";
   }
 
+  // Lease / Contract Timeline Widget: Trigger on explicit lease/contract queries
   if (
-    lower.match(/\b(contract|lease|deposit|security deposit|move-out|move out|clearance|expiration|expire|renew|renewal|kontrata)\b/) ||
-    lower.includes("lease expiration") ||
+    lower.match(/\b(my contract|lease contract|lease expiration|lease renewal|renew lease|renew contract|deposit refund|move-out clearance|contract status|how many days left on my lease|lease timeline)\b/) ||
+    lower.includes("lease timeline") ||
     lower.includes("renew contract") ||
     lower.includes("deposit refund")
   ) {
@@ -119,8 +136,22 @@ export function detectTenantWidgetIntent(message = "") {
 }
 
 export function determineTenantSuggestedActions(message = "", botReply = "", contextSnapshot = null) {
+  const isApplicant = Boolean(
+    contextSnapshot?.isApplicant ||
+    contextSnapshot?.userRole === "applicant" ||
+    (!contextSnapshot?.contract && (contextSnapshot?.reservation || contextSnapshot?.userRole === "applicant"))
+  );
+
+  if (isApplicant) {
+    return [
+      { label: "Reservation Status", prompt: "What is my current reservation status?" },
+      { label: "Deposit Payment Steps", prompt: "How do I settle the advance rent and security deposit?" },
+      { label: "Chat with Admin", action: "open_escalate_modal" },
+    ];
+  }
+
   const combined = `${message} ${botReply}`.toLowerCase();
-  const widget = detectTenantWidgetIntent(combined);
+  const widget = detectTenantWidgetIntent(message, contextSnapshot);
   const actions = [];
 
   if (widget === "maintenance_status" || combined.includes("maintenance") || combined.includes("repair")) {
@@ -259,7 +290,7 @@ export async function streamTenantGeminiChatbot({
   signal,
 }) {
   const trimmedMessage = (message || "").trim();
-  const widget = detectTenantWidgetIntent(trimmedMessage);
+  const widget = detectTenantWidgetIntent(trimmedMessage, contextSnapshot);
   if (widget && typeof onWidget === "function") {
     try {
       onWidget(widget);
@@ -306,7 +337,7 @@ export async function streamTenantGeminiChatbot({
 
     if (signal?.aborted) return;
 
-    const detectedWidget = detectTenantWidgetIntent(trimmedMessage) || detectTenantWidgetIntent(fullReply);
+    const detectedWidget = detectTenantWidgetIntent(trimmedMessage, contextSnapshot);
     if (detectedWidget && typeof onWidget === "function") {
       onWidget(detectedWidget);
     }
@@ -322,7 +353,7 @@ export async function streamTenantGeminiChatbot({
     console.warn("Gemini AI Streaming fallback invoked:", error?.message);
     const fallbackReply = getTenantRuleBasedFallback(trimmedMessage, contextSnapshot);
     await simulateStreamTokens(fallbackReply, { onToken, signal });
-    const detectedWidget = detectTenantWidgetIntent(trimmedMessage);
+    const detectedWidget = detectTenantWidgetIntent(trimmedMessage, contextSnapshot);
     if (detectedWidget && typeof onWidget === "function") {
       onWidget(detectedWidget);
     }
@@ -340,7 +371,7 @@ export async function queryTenantGeminiChatbot({ message, conversationHistory = 
 
   if (!genAI) {
     const fallbackReply = getTenantRuleBasedFallback(trimmedMessage, contextSnapshot);
-    const widget = detectTenantWidgetIntent(trimmedMessage);
+    const widget = detectTenantWidgetIntent(trimmedMessage, contextSnapshot);
     const suggestedActions = determineTenantSuggestedActions(trimmedMessage, fallbackReply, contextSnapshot);
     return { reply: fallbackReply, widget, suggestedActions, contextSnapshot };
   }
@@ -362,14 +393,14 @@ export async function queryTenantGeminiChatbot({ message, conversationHistory = 
 
     const result = await chat.sendMessage(trimmedMessage);
     const reply = result.response.text();
-    const widget = detectTenantWidgetIntent(trimmedMessage) || detectTenantWidgetIntent(reply);
+    const widget = detectTenantWidgetIntent(trimmedMessage, contextSnapshot);
     const suggestedActions = determineTenantSuggestedActions(trimmedMessage, reply, contextSnapshot);
 
     return { reply, widget, suggestedActions, contextSnapshot };
   } catch (error) {
     console.warn("Gemini AI Query fallback invoked:", error?.message);
     const fallbackReply = getTenantRuleBasedFallback(trimmedMessage, contextSnapshot);
-    const widget = detectTenantWidgetIntent(trimmedMessage);
+    const widget = detectTenantWidgetIntent(trimmedMessage, contextSnapshot);
     const suggestedActions = determineTenantSuggestedActions(trimmedMessage, fallbackReply, contextSnapshot);
 
     return { reply: fallbackReply, widget, suggestedActions, contextSnapshot };

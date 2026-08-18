@@ -132,10 +132,22 @@ export const sanitizePhone = (phone) => {
 };
 
 /**
+ * Capitalize the first letter of each word (after start, whitespace, hyphens, apostrophes)
+ *
+ * @param {string} str - String to format
+ * @returns {string} Proper-cased string
+ */
+export const formatProperCase = (str) => {
+  if (!str || typeof str !== "string") return "";
+  return str.replace(/(?:^|[\s'-])([a-zA-Z])/g, (char) => char.toUpperCase());
+};
+
+/**
  * Sanitize name input (firstName, lastName)
  * - Allows letters, spaces, hyphens, apostrophes
- * - 2-50 characters
+ * - 1-50 characters
  * - Removes HTML/script tags
+ * - Converts the first letter of each word to uppercase
  *
  * @param {string} name - Name to sanitize
  * @returns {string|null} Sanitized name or null if invalid
@@ -156,7 +168,7 @@ export const sanitizeName = (name) => {
     return null;
   }
 
-  return sanitized;
+  return formatProperCase(sanitized);
 };
 
 /**
@@ -530,7 +542,7 @@ export const validateProfileUpdateInput = (body) => {
     if (body.emergencyContact.length > 100) {
       errors.push("Emergency contact name must be 100 characters or less");
     } else {
-      data.emergencyContact = body.emergencyContact.trim();
+      data.emergencyContact = formatProperCase(body.emergencyContact.trim());
     }
   }
 
@@ -612,6 +624,7 @@ export default {
   sanitizeUsername,
   sanitizePhone,
   sanitizeName,
+  formatProperCase,
   validateBranch,
   validateRole,
   isValidObjectId,

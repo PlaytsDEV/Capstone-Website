@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import fs from "fs";
 import fsPromises from "fs/promises";
-import { Contract, Reservation, User } from "../models/index.js";
+import { Contract, Reservation, Stay, User } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
 import logger from "../middleware/logger.js";
 import { notify } from "../utils/notificationService.js";
@@ -1089,35 +1089,47 @@ export const getMyCurrentContract = async (req, res) => {
     const contract = await resolveTenantCanonicalContract(user._id);
     if (!contract) {
       try {
-        const stayData = await resolveDigitalStayProofData({ tenantId: user._id });
-        if (stayData) {
-          return res.json({
-            contractAvailable: true,
-            state: "STAY_PROOF_AVAILABLE",
-            contract: {
-              id: stayData.referenceNumber,
-              contractId: stayData.referenceNumber,
-              contractNumber: stayData.referenceNumber,
-              isCanonical: true,
-              status: "active",
-              displayStatus: "Verified Active Stay",
-              branch: stayData.branchName,
-              propertyName: "Lilycrest Dormitory",
-              roomNumber: stayData.roomNumber,
-              bedLabel: stayData.bedLabel,
-              roomType: stayData.roomType,
-              leaseStartDate: stayData.leaseStartDate,
-              leaseEndDate: stayData.leaseEndDate,
-              leaseDurationMonths: stayData.leaseDurationMonths,
-              approvedMonthlyRate: stayData.monthlyRent,
-              advanceRentAmount: stayData.advanceRent,
-              securityDepositAmount: stayData.securityDeposit,
-              stayProofAvailable: true,
-              preparedDocument: { available: true },
-              finalDocument: { available: true },
-            },
-            documents: { prepared: { available: true } },
-          });
+        const activeStay = await Stay.findOne({
+          tenantId: user._id,
+          status: { $in: ["active", "ending_soon"] },
+        }).lean();
+        if (activeStay) {
+          const stayData = await resolveDigitalStayProofData({ tenantId: user._id });
+          if (stayData) {
+            return res.json({
+              contractAvailable: true,
+              state: "STAY_PROOF_AVAILABLE",
+              contract: {
+                id: stayData.referenceNumber,
+                contractId: stayData.referenceNumber,
+                contractNumber: stayData.referenceNumber,
+                isCanonical: true,
+                status: "generated",
+                displayStatus: "Lease Draft — Review Copy",
+                branch: stayData.branchName,
+                propertyName: "Lilycrest Dormitory",
+                roomNumber: stayData.roomNumber,
+                bedLabel: stayData.bedLabel,
+                roomType: stayData.roomType,
+                leaseStartDate: stayData.leaseStartDate,
+                leaseEndDate: stayData.leaseEndDate,
+                leaseDurationMonths: stayData.leaseDurationMonths,
+                approvedMonthlyRate: stayData.monthlyRent,
+                advanceRentAmount: stayData.advanceRent,
+                securityDepositAmount: stayData.securityDeposit,
+                stayProofAvailable: true,
+                preparedDocument: { available: true },
+                finalDocument: { available: false },
+                tenantDocument: {
+                  available: true,
+                  type: "generated_draft",
+                  label: "Lease Draft — For Review",
+                  isFinal: false,
+                },
+              },
+              documents: { prepared: { available: true } },
+            });
+          }
         }
       } catch {
         // Fall through to standard empty response
