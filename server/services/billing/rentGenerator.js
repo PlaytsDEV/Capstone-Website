@@ -317,6 +317,7 @@ export async function ensureCurrentCycleRentBill({
         billId: bill._id,
         billType: "rent",
         actionUrl: `/bill-details?billId=${String(bill._id)}`,
+        eventId: `invoice:${Number(bill.invoiceVersion || 1)}`,
       });
       delivery.notification.status = "sent";
       delivery.notification.sentAt = new Date();

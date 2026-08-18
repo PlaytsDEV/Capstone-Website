@@ -19,6 +19,8 @@ const applyBillPayment = jest.fn();
 const generateBillPdf = jest.fn();
 const logBillingAudit = jest.fn();
 const notifyBillGenerated = jest.fn();
+const notifyPaymentApproved = jest.fn();
+const notifyPaymentRejected = jest.fn();
 
 const getVisibleBillSnapshot = jest.fn((bill) => ({
   charges: bill.charges || {},
@@ -65,6 +67,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   UtilityPeriod: {
     findOne: utilityPeriodFindOne,
   },
+  Payment: { find: jest.fn(() => makeQueryChain([])) },
   TenantViolation: {},
   TerminationReview: {},
   OverdueNotice: {},
@@ -138,13 +141,16 @@ await jest.unstable_mockModule("../utils/businessSettings.js", () => ({
   resolvePenaltyRatePerDay: jest.fn((rate) => rate || 50),
 }));
 
-await jest.unstable_mockModule("../utils/notificationService.js", () => ({
-  default: {
+await jest.unstable_mockModule("../utils/notificationService.js", () => {
+  const notificationMock = {
     billGenerated: notifyBillGenerated,
     billDueReminder: jest.fn(),
     general: jest.fn(),
-  },
-}));
+    paymentApproved: notifyPaymentApproved,
+    paymentRejected: notifyPaymentRejected,
+  };
+  return { default: notificationMock, notify: notificationMock };
+});
 
 await jest.unstable_mockModule("../utils/utilityBillFlow.js", () => ({
   sendDraftUtilityBills: jest.fn(),
@@ -152,6 +158,11 @@ await jest.unstable_mockModule("../utils/utilityBillFlow.js", () => ({
 
 await jest.unstable_mockModule("../utils/pdfGenerator.js", () => ({
   generateBillPdf,
+  generateBillReceiptPdf: jest.fn(),
+}));
+
+await jest.unstable_mockModule("../services/mobileBillingBridge.js", () => ({
+  isMobileEffectivelyPaid: jest.fn(() => true),
 }));
 
 await jest.unstable_mockModule("../utils/billingAudit.js", () => ({
@@ -221,6 +232,8 @@ describe("billingController tenant endpoints", () => {
     generateBillPdf.mockReset();
     logBillingAudit.mockReset();
     notifyBillGenerated.mockReset();
+    notifyPaymentApproved.mockReset();
+    notifyPaymentRejected.mockReset();
     sendBillGeneratedEmail.mockResolvedValue({ success: true });
     sendOverdueNoticeEmail.mockResolvedValue({ success: true });
     sendPaymentApprovedEmail.mockResolvedValue({ success: true });
@@ -228,6 +241,8 @@ describe("billingController tenant endpoints", () => {
     sendPaymentRejectedEmail.mockResolvedValue({ success: true });
     generateBillPdf.mockResolvedValue("uploads/bills/bill-1.pdf");
     notifyBillGenerated.mockResolvedValue({});
+    notifyPaymentApproved.mockResolvedValue({});
+    notifyPaymentRejected.mockResolvedValue({});
     getVisibleBillSnapshot.mockClear();
     getVisibleBillCharges.mockClear();
   });
@@ -284,6 +299,7 @@ describe("billingController tenant endpoints", () => {
     const next = jest.fn();
 
     await getCurrentBilling(req, res, next);
+    await getCurrentBilling(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
     expect(billFind).toHaveBeenCalledWith(
@@ -300,6 +316,9 @@ describe("billingController tenant endpoints", () => {
         additionalCharges: [{ name: "Aircon", amount: 500 }],
       }),
     );
+    expect(notifyBillGenerated).not.toHaveBeenCalled();
+    expect(notifyPaymentApproved).not.toHaveBeenCalled();
+    expect(notifyPaymentRejected).not.toHaveBeenCalled();
   });
 
   test("getBillingHistory queries by bill ownership instead of reservation branch and returns recurring fee lines", async () => {
@@ -502,7 +521,9 @@ describe("billingController tenant endpoints", () => {
   test("markBillAsPaid writes a manual ledger payment and preserves the bill note", async () => {
     const bill = {
       _id: "bill-admin-1",
+      userId: "user-1",
       branch: "gil-puyat",
+      billingMonth: new Date("2026-03-01T00:00:00.000Z"),
       remainingAmount: 1200,
       totalAmount: 1200,
       toObject: jest.fn(() => ({ _id: "bill-admin-1", notes: "GCash received at desk" })),
@@ -512,7 +533,11 @@ describe("billingController tenant endpoints", () => {
     };
 
     billFindById.mockResolvedValue(bill);
-    applyBillPayment.mockResolvedValue({ bill, appliedAmount: 1200 });
+    applyBillPayment.mockResolvedValue({
+      bill,
+      appliedAmount: 1200,
+      payment: { _id: "payment-admin-1" },
+    });
 
     const req = {
       params: { billId: "bill-admin-1" },
@@ -536,11 +561,47 @@ describe("billingController tenant endpoints", () => {
     );
     expect(bill.notes).toBe("GCash received at desk");
     expect(bill.save).toHaveBeenCalledTimes(1);
+    expect(notifyPaymentApproved).toHaveBeenCalledWith(
+      bill.userId,
+      expect.any(String),
+      1200,
+      { billId: bill._id, eventId: "payment-admin-1" },
+    );
+    expect(bill.save.mock.invocationCallOrder[0]).toBeLessThan(
+      notifyPaymentApproved.mock.invocationCallOrder[0],
+    );
     expect(res.json).toHaveBeenCalledWith({
       success: true,
       bill: { _id: "bill-admin-1", notes: "GCash received at desk" },
     });
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("markBillAsPaid never emits approval when the canonical payment mutation fails", async () => {
+    const bill = {
+      _id: "bill-admin-failed",
+      userId: "user-1",
+      branch: "gil-puyat",
+      billingMonth: new Date("2026-03-01T00:00:00.000Z"),
+      remainingAmount: 1200,
+      totalAmount: 1200,
+    };
+    billFindById.mockResolvedValue(bill);
+    applyBillPayment.mockRejectedValue(new Error("ledger persistence failed"));
+
+    const next = jest.fn();
+    await markBillAsPaid(
+      {
+        params: { billId: bill._id },
+        body: { amount: 1200 },
+        user: { uid: "firebase-admin" },
+      },
+      createRes(),
+      next,
+    );
+
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
+    expect(notifyPaymentApproved).not.toHaveBeenCalled();
   });
 
   test("verifyPayment approval records a tenant-proof ledger entry with the proof image", async () => {
@@ -561,7 +622,11 @@ describe("billingController tenant endpoints", () => {
     };
 
     billFindById.mockResolvedValue(bill);
-    applyBillPayment.mockResolvedValue({ bill, appliedAmount: 1500 });
+    applyBillPayment.mockResolvedValue({
+      bill,
+      appliedAmount: 1500,
+      payment: { _id: "payment-proof-1" },
+    });
     userFindById.mockReturnValue({
       lean: jest.fn().mockResolvedValue({
         email: "tenant@example.com",
@@ -594,6 +659,15 @@ describe("billingController tenant endpoints", () => {
       }),
     );
     expect(bill.paymentProof.verificationStatus).toBe("approved");
+    expect(notifyPaymentApproved).toHaveBeenCalledWith(
+      "user-1",
+      "March 2026",
+      1500,
+      { billId: "bill-proof-1", eventId: "payment-proof-1" },
+    );
+    expect(bill.save.mock.invocationCallOrder[0]).toBeLessThan(
+      notifyPaymentApproved.mock.invocationCallOrder[0],
+    );
     expect(sendPaymentApprovedEmail).toHaveBeenCalledWith(
       expect.objectContaining({ paidAmount: 1500 }),
     );

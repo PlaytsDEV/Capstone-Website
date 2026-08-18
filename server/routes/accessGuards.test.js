@@ -146,6 +146,7 @@ await jest.unstable_mockModule("../controllers/billingController.js", () => ({
   getBillingHistory: noop,
   getMyBills: noop,
   downloadBillPdf: noop,
+  downloadBillReceipt: noop,
   getMyUtilityBreakdownByBillId: noop,
   submitPaymentProof: noop,
   getBillingStats: noop,

@@ -17,6 +17,7 @@
 import { getVisibleBillSnapshot, getUtilityDispatchEntry } from "../utils/billingPolicy.js";
 import { PAYMENT_METHOD_LABELS } from "../utils/paymongoPaymentMethod.js";
 import { BILL_STATEMENT_TEMPLATE_VERSION } from "./billingStatementTemplate.js";
+import { BILL_RECEIPT_TEMPLATE_VERSION } from "./billingReceiptTemplate.js";
 
 // "Which bill is the tenant's current bill" selection rule (NON_DRAFT_BILL_
 // FILTER / CURRENT_BILL_SORT / selectCurrentBillFromList) lives in
@@ -160,6 +161,55 @@ function mobileUtilityDeadlines(bill, charges = {}) {
   return deadlines;
 }
 
+function toIsoOrNull(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+/**
+ * Explicit mobile schedule state derived only from canonical persisted data.
+ * A utility card therefore always has dates or an honest pending/unavailable
+ * state; the client never invents billing dates.
+ */
+export function buildMobileUtilitySchedule(bill, utilityType, charge, breakdown = null) {
+  const amount = Number(charge || 0);
+  const rawAmount = Number(bill?.charges?.[utilityType] || 0);
+  const dispatch = getUtilityDispatchEntry(bill, utilityType);
+  const periodStart = breakdown?.period?.startDate || bill?.utilityCycleStart || null;
+  const periodEnd = breakdown?.period?.endDate || bill?.utilityCycleEnd || null;
+  const readingDate = bill?.utilityReadingDate || dispatch.publishedAt || null;
+  const dueDate = dispatch.dueDate || bill?.dueDate || null;
+  const releaseDate = bill?.releasedAt || null;
+
+  if (amount <= 0 && rawAmount <= 0) {
+    return { state: "not_applicable", amount: 0, source: "canonical_bill" };
+  }
+  if (dispatch.state !== "sent" || amount <= 0) {
+    return {
+      state: "pending",
+      amount,
+      period_start: toIsoOrNull(periodStart),
+      period_end: toIsoOrNull(periodEnd),
+      reading_date: toIsoOrNull(readingDate),
+      release_date: toIsoOrNull(releaseDate),
+      due_date: toIsoOrNull(dueDate),
+      source: breakdown ? "canonical_utility_period" : "canonical_bill",
+    };
+  }
+  const state = periodStart && periodEnd && dueDate ? "available" : "unavailable";
+  return {
+    state,
+    amount,
+    period_start: toIsoOrNull(periodStart),
+    period_end: toIsoOrNull(periodEnd),
+    reading_date: toIsoOrNull(readingDate),
+    release_date: toIsoOrNull(releaseDate),
+    due_date: toIsoOrNull(dueDate),
+    source: breakdown ? "canonical_utility_period" : "canonical_bill",
+  };
+}
+
 /**
  * Format canonical electricity breakdown (buildTenantUtilityBreakdown) into
  * the mobile app's legacy-compatible segment array structure.
@@ -275,6 +325,10 @@ export function toMobileBill(bill, { electricityBreakdown = null, waterBreakdown
   const charges = visible.charges || {};
   const formattedElectricityBreakdown = formatMobileElectricityBreakdown(electricityBreakdown);
   const formattedWaterBreakdown = formatMobileWaterBreakdown(waterBreakdown);
+  const sourceRevision = String(
+    (bill.updatedAt || bill.createdAt || new Date()).getTime?.()
+    ?? new Date(bill.updatedAt || bill.createdAt || Date.now()).getTime(),
+  );
 
   return {
     billing_id: String(bill._id),
@@ -318,11 +372,13 @@ export function toMobileBill(bill, { electricityBreakdown = null, waterBreakdown
     // when statement presentation changes. Either change forces the app to
     // refetch instead of serving a stale cached PDF. Falls back to createdAt
     // so a never-updated bill still has a stable, present version string.
-    statement_version: `${String(
-      (bill.updatedAt || bill.createdAt || new Date()).getTime?.()
-      ?? new Date(bill.updatedAt || bill.createdAt || Date.now()).getTime(),
-    )}-t${BILL_STATEMENT_TEMPLATE_VERSION}`,
+    statement_version: `${sourceRevision}-i${Number(bill.invoiceVersion || 1)}-t${BILL_STATEMENT_TEMPLATE_VERSION}`,
+    receipt_version: `${bill.receiptSourceVersion || sourceRevision}-i${Number(bill.invoiceVersion || 1)}-t${BILL_RECEIPT_TEMPLATE_VERSION}`,
     utility_deadlines: mobileUtilityDeadlines(bill, charges),
+    utility_schedules: {
+      electricity: buildMobileUtilitySchedule(bill, "electricity", charges.electricity, electricityBreakdown),
+      water: buildMobileUtilitySchedule(bill, "water", charges.water, waterBreakdown),
+    },
     electricity_breakdown: formattedElectricityBreakdown,
     water_breakdown: formattedWaterBreakdown,
     utility_breakdowns: {

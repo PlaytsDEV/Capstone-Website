@@ -191,6 +191,15 @@ const formatCode = (code) => {
   return String(code).trim();
 };
 
+const buildEventDedupeKey = (eventType, sourceId, eventId) => {
+  const normalizedSourceId = String(sourceId || "").trim();
+  const normalizedEventId = eventId instanceof Date
+    ? eventId.toISOString()
+    : String(eventId || "").trim();
+  if (!normalizedSourceId || !normalizedEventId) return null;
+  return `${eventType}:${normalizedSourceId}:${normalizedEventId}`;
+};
+
 const notify = {
   reservationConfirmed: (userId, reservationCode, roomName) => {
     const code = formatCode(reservationCode);
@@ -301,6 +310,11 @@ const notify = {
     const formattedAmount = typeof amount === "number" ? amount.toLocaleString() : amount;
     const message = `Your payment of ₱${formattedAmount} for ${billingMonth} has been approved.`;
     const billId = options.billId || null;
+    const dedupeKey = buildEventDedupeKey(
+      "payment_approved",
+      billId || "account",
+      options.eventId,
+    );
 
     return createNotificationWithPush(
       userId,
@@ -311,6 +325,7 @@ const notify = {
         entityType: "bill",
         entityId: billId ? String(billId) : null,
         actionUrl: billId ? `/billing?billId=${String(billId)}` : "/billing",
+        dedupeKey,
       },
       () =>
         sendMobilePushToRecipients([userId], {
@@ -335,6 +350,7 @@ const notify = {
       billId = null,
       actionUrl = "/billing",
       pushType = "billing_notice",
+      eventId = null,
     } = {},
   ) =>
     createNotificationWithPush(
@@ -346,6 +362,11 @@ const notify = {
         entityType: "bill",
         entityId: billId ? String(billId) : null,
         actionUrl,
+        dedupeKey: buildEventDedupeKey(
+          notificationType,
+          billId,
+          eventId,
+        ),
       },
       () =>
         sendMobilePushToRecipients([userId], {
@@ -364,6 +385,11 @@ const notify = {
     const title = "Payment Rejected";
     const message = `Your payment for ${billingMonth} was rejected. ${reason || "Please resubmit."}`;
     const billId = options.billId || null;
+    const dedupeKey = buildEventDedupeKey(
+      "payment_rejected",
+      billId || "account",
+      options.eventId,
+    );
 
     return createNotificationWithPush(
       userId,
@@ -374,6 +400,7 @@ const notify = {
         entityType: "bill",
         entityId: billId ? String(billId) : null,
         actionUrl: billId ? `/billing?billId=${String(billId)}` : "/billing",
+        dedupeKey,
       },
       () =>
         sendMobilePushToRecipients([userId], {
@@ -401,6 +428,11 @@ const notify = {
         entityType: "bill",
         entityId: options.billId || null,
         actionUrl: options.actionUrl || null,
+        dedupeKey: buildEventDedupeKey(
+          "bill_released",
+          options.billId,
+          options.eventId,
+        ),
       },
       () => sendMobilePushBill(userId, null, {
         billingMonth,
@@ -439,6 +471,11 @@ const notify = {
         entityType: "bill",
         entityId: billId ? String(billId) : null,
         actionUrl: billId ? `/bill-details?billId=${String(billId)}` : "/tenant/account?tab=billing",
+        dedupeKey: buildEventDedupeKey(
+          "utility_charge_available",
+          billId,
+          options.eventId,
+        ),
       },
       () =>
         sendMobilePushToRecipients([userId], {
@@ -555,6 +592,11 @@ const notify = {
         entityType: "bill",
         entityId: billId ? String(billId) : null,
         actionUrl: billId ? `/billing?billId=${String(billId)}` : "/billing",
+        dedupeKey: buildEventDedupeKey(
+          "bill_due_reminder",
+          billId,
+          options.eventId,
+        ),
       },
       () =>
         sendMobilePushToRecipients([userId], {
@@ -584,6 +626,11 @@ const notify = {
         entityType: "bill",
         entityId: billId ? String(billId) : null,
         actionUrl: billId ? `/billing?billId=${String(billId)}` : "/billing",
+        dedupeKey: buildEventDedupeKey(
+          "penalty_applied",
+          billId,
+          options.eventId,
+        ),
       },
       () =>
         sendMobilePushToRecipients([userId], {
@@ -683,20 +730,110 @@ const notify = {
   general: (userId, title, message, options = {}) =>
     createNotification(userId, "general", title, message, options),
 
+  adminReply: (userId, conversationId, messageId) => {
+    if (!userId || !conversationId || !messageId) {
+      return Promise.reject(new Error("A tenant, conversation, and persisted message are required."));
+    }
+
+    const normalizedConversationId = String(conversationId);
+    const normalizedMessageId = String(messageId);
+    const title = "New Admin Reply";
+    const message = "You received a reply from LilyCrest Admin. Confirm whether your concern was resolved.";
+
+    return createNotificationWithPush(
+      userId,
+      "chat_reply",
+      title,
+      message,
+      {
+        entityType: "chat",
+        entityId: normalizedConversationId,
+        actionUrl: "/(tabs)/chatbot",
+        dedupeKey: `chat_reply:${normalizedConversationId}:${normalizedMessageId}`,
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "chat_reply",
+            conversation_id: normalizedConversationId,
+            message_id: normalizedMessageId,
+            screen: "chat",
+          },
+        }),
+    );
+  },
+
   maintenanceUpdated: async (userId, requestType, status, requestId, options = {}) => {
-    const notification = await createNotification(
+    const title = buildMaintenanceNotificationTitle(requestType);
+    const message = buildMaintenanceUpdateMessage(requestType, status, options);
+    const normalizedRequestId = requestId ? String(requestId) : null;
+    return createNotificationWithPush(
       userId,
       "maintenance_update",
-      buildMaintenanceNotificationTitle(requestType),
-      buildMaintenanceUpdateMessage(requestType, status, options),
+      title,
+      message,
       {
         entityType: "maintenance",
-        entityId: requestId || null,
+        entityId: normalizedRequestId,
         actionUrl: "/applicant/maintenance",
+        dedupeKey: buildEventDedupeKey(
+          "maintenance_update",
+          normalizedRequestId,
+          options.eventId,
+        ),
       },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "maintenance_update",
+            request_id: normalizedRequestId || "",
+            screen: "maintenance",
+          },
+        }),
     );
+  },
 
-    return notification;
+  maintenanceProviderAssigned: (
+    userId,
+    requestType,
+    tenantVisibleProviderLabel,
+    requestId,
+    options = {},
+  ) => {
+    const normalizedRequestId = requestId ? String(requestId) : null;
+    const safeProviderLabel = String(tenantVisibleProviderLabel || "the maintenance team").trim();
+    const title = buildMaintenanceNotificationTitle(requestType);
+    const message = `${safeProviderLabel} has been assigned to your maintenance request.`;
+    return createNotificationWithPush(
+      userId,
+      "maintenance_update",
+      title,
+      message,
+      {
+        entityType: "maintenance",
+        entityId: normalizedRequestId,
+        actionUrl: "/applicant/maintenance",
+        dedupeKey: buildEventDedupeKey(
+          "maintenance_provider_assigned",
+          normalizedRequestId,
+          options.eventId,
+        ),
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "maintenance_update",
+            request_id: normalizedRequestId || "",
+            screen: "maintenance",
+          },
+        }),
+    );
   },
 
   newMaintenanceTicket: (branch, tenantName, roomName, urgency, category, requestId) => {
@@ -712,10 +849,10 @@ const notify = {
     });
   },
 
-  maintenanceScheduled: (userId, requestType, scheduledDate, notes, requestId) => {
+  maintenanceScheduled: (userId, requestType, scheduledDate, _notes, requestId, options = {}) => {
     const formattedDate = scheduledDate instanceof Date ? scheduledDate.toLocaleString() : String(scheduledDate || "");
     const title = "Maintenance Visit Scheduled";
-    const message = `Service visit for your ${requestType || "maintenance"} request has been scheduled for ${formattedDate}.${notes ? ` Note: ${notes}` : ""}`;
+    const message = `Service visit for your ${requestType || "maintenance"} request has been scheduled for ${formattedDate}.`;
     return createNotificationWithPush(
       userId,
       "maintenance_update",
@@ -725,6 +862,11 @@ const notify = {
         entityType: "maintenance",
         entityId: requestId ? String(requestId) : null,
         actionUrl: "/applicant/maintenance",
+        dedupeKey: buildEventDedupeKey(
+          "maintenance_scheduled",
+          requestId,
+          options.eventId,
+        ),
       },
       () =>
         sendMobilePushToRecipients([userId], {
@@ -739,7 +881,7 @@ const notify = {
     );
   },
 
-  maintenanceReportFinalized: (userId, requestType, requestId) => {
+  maintenanceReportFinalized: (userId, requestType, requestId, options = {}) => {
     const title = "Official Completion Report Ready";
     const message = `The official completion report for your ${requestType || "maintenance"} request is now ready for your review.`;
     return createNotificationWithPush(
@@ -751,6 +893,11 @@ const notify = {
         entityType: "maintenance",
         entityId: requestId ? String(requestId) : null,
         actionUrl: "/applicant/maintenance",
+        dedupeKey: buildEventDedupeKey(
+          "maintenance_report_finalized",
+          requestId,
+          options.eventId,
+        ),
       },
       () =>
         sendMobilePushToRecipients([userId], {

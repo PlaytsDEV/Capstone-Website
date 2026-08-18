@@ -161,6 +161,7 @@ async function getAllAnnouncements(req, res) {
   try {
     const db = getDb();
     const userId = req.user?.user_id || null;
+    const userMongoId = req.user?._id || null;
 
     // Handle both snake_case (app-created) and camelCase (admin-panel-created) documents.
     // Web admin docs may lack is_active/isActive entirely — treat missing as active.
@@ -177,6 +178,7 @@ async function getAllAnnouncements(req, res) {
       $or: [
         { is_private: { $ne: true }, isPrivate: { $ne: true } },
         ...(userId ? [{ is_private: true, user_id: userId }, { isPrivate: true, userId }] : []),
+        ...(userMongoId ? [{ isPrivate: true, userId: userMongoId }] : []),
       ],
     };
 
@@ -232,7 +234,7 @@ async function getAllAnnouncements(req, res) {
     const tenantContext = await buildTenantContext(db, {
       tenant: req.user,
       userId,
-      userMongoId: req.user?._id || null,
+      userMongoId,
     });
     let visible = announcements.filter((doc) => canTenantViewAnnouncement({ announcement: doc, tenantContext }));
 
@@ -316,6 +318,7 @@ async function dismissAnnouncement(req, res) {
   try {
     const db = getDb();
     const userId = req.user?.user_id || null;
+    const userMongoId = req.user?._id || null;
     const announcementId = String(req.params.announcementId || req.params.id || '').trim();
 
     if (!userId) {
@@ -338,6 +341,7 @@ async function dismissAnnouncement(req, res) {
         { is_private: { $ne: true }, isPrivate: { $ne: true } },
         { is_private: true, user_id: userId },
         { isPrivate: true, userId },
+        ...(userMongoId ? [{ isPrivate: true, userId: userMongoId }] : []),
       ],
     };
     const idFilter = isHexObjectId(announcementId)
@@ -355,7 +359,7 @@ async function dismissAnnouncement(req, res) {
     const tenantContext = await buildTenantContext(db, {
       tenant: req.user,
       userId,
-      userMongoId: req.user?._id || null,
+      userMongoId,
     });
     if (!canTenantViewAnnouncement({ announcement, tenantContext })) {
       return res.status(404).json({ detail: 'Announcement not found.' });
@@ -424,6 +428,7 @@ const MAX_BULK_DISMISS_IDS = 100;
 async function dismissAnnouncementsBulk(req, res) {
   try {
     const userId = req.user?.user_id || null;
+    const userMongoId = req.user?._id || null;
     if (!userId) {
       return res.status(401).json({ detail: 'Authentication required.' });
     }
@@ -454,6 +459,7 @@ async function dismissAnnouncementsBulk(req, res) {
         { is_private: { $ne: true }, isPrivate: { $ne: true } },
         { is_private: true, user_id: userId },
         { isPrivate: true, userId },
+        ...(userMongoId ? [{ isPrivate: true, userId: userMongoId }] : []),
       ],
     };
     const idFilter = {
@@ -469,7 +475,7 @@ async function dismissAnnouncementsBulk(req, res) {
     const tenantContext = await buildTenantContext(db, {
       tenant: req.user,
       userId,
-      userMongoId: req.user?._id || null,
+      userMongoId,
     });
     const visibleMatches = matches.filter((doc) => canTenantViewAnnouncement({ announcement: doc, tenantContext }));
     const visibleIds = new Set(visibleMatches.map((doc) => doc.announcement_id || doc._id?.toString()));

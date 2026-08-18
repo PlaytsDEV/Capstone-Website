@@ -96,6 +96,7 @@ function inferCategoryFromType(type) {
   if (value.startsWith("contract_")) return "account";
   if (value.startsWith("account_")) return "account";
   if (value === "maintenance_update") return "maintenance";
+  if (value === "chat_reply") return "assistant";
   return "";
 }
 
@@ -146,7 +147,15 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
   const isCanonicalBillEntity = entityType === "bill" && entityId;
   const isCanonicalContractEntity = entityType === "contract" && entityId;
   const isCanonicalAnnouncementEntity = entityType === "announcement" && entityId;
+  const isCanonicalChatEntity = entityType === "chat" && entityId;
+  const isCanonicalMaintenanceEntity = entityType === "maintenance" && entityId;
   const data = sanitizePayload(doc.data);
+  if (isCanonicalBillEntity) {
+    data.type ||= type;
+    data.billing_id ||= entityId;
+    data.screen ||= "billing";
+    data.url ||= `/bill-details?billId=${entityId}`;
+  }
   if (isCanonicalContractEntity) {
     data.type ||= type;
     data.contract_id ||= entityId;
@@ -158,6 +167,16 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
     data.announcement_id ||= entityId;
     data.screen ||= "announcements";
     data.url ||= "/(tabs)/announcements";
+  }
+  if (isCanonicalChatEntity) {
+    data.type ||= "chat_reply";
+    data.conversation_id ||= entityId;
+    data.screen ||= "chat";
+  }
+  if (isCanonicalMaintenanceEntity) {
+    data.type ||= type;
+    data.request_id ||= entityId;
+    data.screen ||= "maintenance";
   }
   return {
     notification_id: doc.notification_id || doc._id?.toString?.() || "",
@@ -177,7 +196,12 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
     // Canonical actionUrl is a web route. Contract notifications need the
     // Expo route when projected through the mobile bridge.
     url: normalizeString(
-      doc.url || doc.data?.url || (isCanonicalContractEntity ? "/contract-viewer" : doc.actionUrl) || "",
+      doc.url || doc.data?.url
+        || (isCanonicalContractEntity ? "/contract-viewer" : "")
+        || (isCanonicalBillEntity ? `/bill-details?billId=${entityId}` : "")
+        || (isCanonicalChatEntity ? "/(tabs)/chatbot" : "")
+        || (isCanonicalMaintenanceEntity ? "/(tabs)/services" : "")
+        || doc.actionUrl || "",
     ),
     read: doc.read === true || doc.isRead === true,
     announcement_id: normalizeString(
@@ -190,10 +214,18 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
     contract_id: normalizeString(
       doc.contract_id || doc.data?.contract_id || (isCanonicalContractEntity ? entityId : ""),
     ),
-    request_id: normalizeString(doc.request_id || doc.data?.request_id || ""),
+    request_id: normalizeString(
+      doc.request_id || doc.data?.request_id || (isCanonicalMaintenanceEntity ? entityId : ""),
+    ),
+    conversation_id: normalizeString(
+      doc.conversation_id || doc.data?.conversation_id || (isCanonicalChatEntity ? entityId : ""),
+    ),
     session_id: normalizeString(doc.session_id || doc.data?.session_id || ""),
     reservation_id: normalizeString(doc.reservation_id || doc.data?.reservation_id || ""),
-    dedup_key: normalizeString(doc.event_key || ""),
+    // Canonical Notification documents use `dedupeKey` (models/Notification.js).
+    // Older mobile writers used event_key/eventKey. Preserve all three shapes,
+    // but expose one stable event key to the read/dismissal pipeline.
+    dedup_key: normalizeString(doc.dedupeKey || doc.event_key || doc.eventKey || ""),
   };
 }
 
@@ -252,6 +284,15 @@ function buildNotificationKey(notification = {}) {
   if (preferred) return preferred;
 
   if (notification.announcement_id) return `announcement:${notification.announcement_id}`;
+
+  // A persisted notification row is one event. Its immutable database/business
+  // id is therefore the safest fallback identity: two admin replies or two
+  // maintenance updates for the same source record receive different ids and
+  // remain independently dismissible. The previous source-level fallbacks
+  // below collapsed those later events into the dismissed historical one.
+  const notificationId = normalizeString(notification.notification_id);
+  if (notificationId) return `notification:${notificationId}`;
+
   if (notification.billing_id && notification.type) return `${notification.type}:${notification.billing_id}`;
   if (notification.request_id && notification.type) return `${notification.type}:${notification.request_id}`;
   if (notification.session_id && notification.type) return `${notification.type}:${notification.session_id}`;
@@ -263,6 +304,37 @@ function buildNotificationKey(notification = {}) {
     normalizeString(notification.body || notification.content),
     notification.created_at ? new Date(notification.created_at).toISOString() : "no-date",
   ].join(":");
+}
+
+// Dismissals/read receipts written by older releases used source-level keys.
+// Continue recognizing those rows so an upgrade never resurrects already
+// dismissed history, while all new writes use buildNotificationKey()'s
+// event-specific identity above.
+function buildLegacyNotificationKeys(notification = {}) {
+  const keys = [];
+  if (notification.announcement_id) keys.push(`announcement:${notification.announcement_id}`);
+  if (notification.billing_id && notification.type) keys.push(`${notification.type}:${notification.billing_id}`);
+  if (notification.request_id && notification.type) keys.push(`${notification.type}:${notification.request_id}`);
+  if (notification.session_id && notification.type) keys.push(`${notification.type}:${notification.session_id}`);
+  if (notification.reservation_id && notification.type) keys.push(`${notification.type}:${notification.reservation_id}`);
+  keys.push([
+    normalizeString(notification.type || "notification"),
+    normalizeString(notification.title),
+    normalizeString(notification.body || notification.content),
+    notification.created_at ? new Date(notification.created_at).toISOString() : "no-date",
+  ].join(":"));
+  return [...new Set(keys.filter(Boolean))];
+}
+
+function notificationIdentityKeys(notification = {}) {
+  return [...new Set([buildNotificationKey(notification), ...buildLegacyNotificationKeys(notification)].filter(Boolean))];
+}
+
+function matchesNotificationIdentity(notification, rawKey) {
+  const candidate = normalizeString(rawKey);
+  if (!candidate) return false;
+  return notification.notification_id === candidate
+    || notificationIdentityKeys(notification).includes(candidate);
 }
 
 function sortNotifications(list = []) {
@@ -407,14 +479,18 @@ async function listUserNotifications(db, userId, userMongoId) {
   }
 
   const [readReceipts, readState, dismissalReceipts, clearState] = await Promise.all([
-    db.collection("notification_reads").find({ user_id: userId }).project({ notification_key: 1 }).toArray().catch(() => []),
+    db.collection("notification_reads").find({ user_id: userId }).project({ notification_key: 1, read_at: 1 }).toArray().catch(() => []),
     db.collection("notification_read_state").findOne({ user_id: userId }).catch(() => null),
-    db.collection("notification_dismissals").find({ user_id: userId }).project({ notification_key: 1 }).toArray().catch(() => []),
+    db.collection("notification_dismissals").find({ user_id: userId }).project({ notification_key: 1, dismissed_at: 1 }).toArray().catch(() => []),
     db.collection("notification_clear_state").findOne({ user_id: userId }).catch(() => null),
   ]);
-  const readKeys = new Set(readReceipts.map((entry) => normalizeString(entry.notification_key)).filter(Boolean));
+  const readByKey = new Map(readReceipts
+    .map((entry) => [normalizeString(entry.notification_key), entry.read_at || entry.created_at || null])
+    .filter(([key]) => Boolean(key)));
   const allReadAt = readState?.all_read_at ? new Date(readState.all_read_at).getTime() : 0;
-  const dismissedKeys = new Set(dismissalReceipts.map((entry) => normalizeString(entry.notification_key)).filter(Boolean));
+  const dismissedByKey = new Map(dismissalReceipts
+    .map((entry) => [normalizeString(entry.notification_key), entry.dismissed_at || entry.created_at || null])
+    .filter(([key]) => Boolean(key)));
   const clearedBefore = clearState?.cleared_before ? new Date(clearState.cleared_before).getTime() : 0;
 
   const mergedByKey = new Map();
@@ -430,8 +506,19 @@ async function listUserNotifications(db, userId, userMongoId) {
       body: normalizeString(notification.body || notification.content),
     };
     const notificationTime = normalizedNotification.created_at ? new Date(normalizedNotification.created_at).getTime() : 0;
+    const identityKeys = notificationIdentityKeys(normalizedNotification);
+    const stateAppliesToEvent = (stateByKey) => identityKeys.some((identityKey) => {
+      if (!stateByKey.has(identityKey)) return false;
+      if (identityKey === key) return true;
+      const recordedAt = stateByKey.get(identityKey);
+      const recordedTime = recordedAt ? new Date(recordedAt).getTime() : 0;
+      // Legacy source-level rows apply only to events that already existed
+      // when the user acted. A later event for the same bill/request/chat must
+      // not inherit the old dismissal/read state.
+      return recordedTime <= 0 || notificationTime <= recordedTime;
+    });
     normalizedNotification.read = normalizedNotification.read === true
-      || readKeys.has(key)
+      || stateAppliesToEvent(readByKey)
       || (allReadAt > 0 && notificationTime <= allReadAt);
 
     // Dismissal/clear are per-tenant feed visibility only — they never
@@ -441,7 +528,7 @@ async function listUserNotifications(db, userId, userMongoId) {
     // permanent hide-all: only items that already existed at clear time
     // are hidden; anything created after clearedBefore (a new
     // notification, or a newly published announcement) still appears.
-    if (dismissedKeys.has(key)) return;
+    if (stateAppliesToEvent(dismissedByKey)) return;
     if (clearedBefore > 0 && notificationTime <= clearedBefore) return;
 
     const existing = mergedByKey.get(key);
@@ -469,12 +556,12 @@ async function markNotificationRead(db, userId, notificationKeyRaw, userMongoId)
   const { storedNotifications: stored, announcements } = await loadAuthorizedSources(db, userId, userMongoId);
   let ownedNotification = stored
     .map((doc) => sanitizeStoredNotification(doc))
-    .find((item) => buildNotificationKey(item) === notificationKey || item.notification_id === notificationKey);
+    .find((item) => matchesNotificationIdentity(item, notificationKey));
 
   if (!ownedNotification) {
     ownedNotification = announcements
       .map((doc) => normalizeAnnouncementNotification(doc))
-      .find((item) => buildNotificationKey(item) === notificationKey || item.notification_id === notificationKey);
+      .find((item) => matchesNotificationIdentity(item, notificationKey));
   }
 
   if (!ownedNotification) return { status: 404, detail: "Notification not found." };
@@ -522,12 +609,12 @@ async function resolveOwnedNotificationKey(db, userId, notificationKeyRaw, userM
   const { storedNotifications: stored, announcements } = await loadAuthorizedSources(db, userId, userMongoId);
   let owned = stored
     .map((doc) => sanitizeStoredNotification(doc))
-    .find((item) => buildNotificationKey(item) === notificationKey || item.notification_id === notificationKey);
+    .find((item) => matchesNotificationIdentity(item, notificationKey));
 
   if (!owned) {
     owned = announcements
       .map((doc) => normalizeAnnouncementNotification(doc))
-      .find((item) => buildNotificationKey(item) === notificationKey || item.notification_id === notificationKey);
+      .find((item) => matchesNotificationIdentity(item, notificationKey));
   }
 
   return owned ? buildNotificationKey(owned) : null;
@@ -572,6 +659,7 @@ export {
   sanitizeStoredNotification,
   normalizeAnnouncementNotification,
   buildNotificationKey,
+  buildLegacyNotificationKeys,
   buildOwnerFilter,
   loadAuthorizedSources,
   listUserNotifications,

@@ -16,6 +16,9 @@ const serviceProviderFindById = jest.fn();
 const serviceProviderCreate = jest.fn();
 const sendSuccess = jest.fn();
 const maintenanceUpdated = jest.fn();
+const maintenanceProviderAssigned = jest.fn();
+const maintenanceScheduled = jest.fn();
+const maintenanceReportFinalized = jest.fn();
 let lastCreatedMaintenanceRequest = null;
 
 class MockMaintenanceRequest {
@@ -73,6 +76,9 @@ await jest.unstable_mockModule("../utils/sanitize.js", () => ({
 await jest.unstable_mockModule("../utils/notificationService.js", () => ({
   notify: {
     maintenanceUpdated,
+    maintenanceProviderAssigned,
+    maintenanceScheduled,
+    maintenanceReportFinalized,
   },
 }));
 await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
@@ -117,6 +123,8 @@ const {
   uploadAdminMaintenanceAttachment,
   removeAdminMaintenanceAttachment,
   updateAdminRequestStatus,
+  scheduleAdminMaintenance,
+  finalizeAdminMaintenanceReport,
   confirmResolution,
   requestMaintenanceReschedule,
 } = await import("./maintenanceController.js");
@@ -310,6 +318,13 @@ describe("maintenanceController", () => {
     serviceProviderCreate.mockReset();
     sendSuccess.mockReset();
     maintenanceUpdated.mockReset();
+    maintenanceProviderAssigned.mockReset();
+    maintenanceScheduled.mockReset();
+    maintenanceReportFinalized.mockReset();
+    maintenanceUpdated.mockResolvedValue({});
+    maintenanceProviderAssigned.mockResolvedValue({});
+    maintenanceScheduled.mockResolvedValue({});
+    maintenanceReportFinalized.mockResolvedValue({});
     lastCreatedMaintenanceRequest = null;
   });
 
@@ -1155,6 +1170,7 @@ describe("maintenanceController", () => {
         hasAdminNote: true,
         hasProgressEntry: false,
         hasProgressAttachments: false,
+        eventId: expect.stringMatching(/^status:/),
       },
     );
     expect(sendSuccess).toHaveBeenCalledTimes(1);
@@ -1587,6 +1603,7 @@ describe("maintenanceController", () => {
         hasAdminNote: true,
         hasProgressEntry: false,
         hasProgressAttachments: false,
+        eventId: expect.stringMatching(/^reply:/),
       },
     );
     expect(sendSuccess).toHaveBeenCalledTimes(1);
@@ -1776,6 +1793,135 @@ describe("maintenanceController", () => {
     expect(markModified).toHaveBeenCalledWith("conversation");
     expect(requestDoc.save).toHaveBeenCalledTimes(1);
     expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("scheduleAdminMaintenance persists the schedule before notifying the canonical tenant", async () => {
+    const requestDoc = buildRequestDoc();
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation((query) => buildLeanQuery(
+      query.firebaseUid
+        ? {
+            _id: "admin_user_1",
+            user_id: "admin_1",
+            firstName: "Branch",
+            lastName: "Admin",
+            branch: "gil-puyat",
+            role: "branch_admin",
+          }
+        : {
+            _id: "tenant_user_1",
+            user_id: requestDoc.user_id,
+            branch: "gil-puyat",
+            role: "tenant",
+          },
+    ));
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        scheduledDate: "2026-08-20T02:00:00.000Z",
+        notes: "Private access coordination note",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await scheduleAdminMaintenance(req, res, next);
+
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(maintenanceScheduled).toHaveBeenCalledWith(
+      "tenant_user_1",
+      "plumbing",
+      new Date("2026-08-20T02:00:00.000Z"),
+      "Private access coordination note",
+      requestDoc.request_id,
+      { eventId: expect.stringMatching(/^schedule:/) },
+    );
+    expect(requestDoc.save.mock.invocationCallOrder[0]).toBeLessThan(
+      maintenanceScheduled.mock.invocationCallOrder[0],
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("scheduleAdminMaintenance never emits a tenant event when the request save fails", async () => {
+    const requestDoc = buildRequestDoc({
+      save: jest.fn().mockRejectedValue(new Error("maintenance persistence failed")),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(buildLeanQuery({
+      _id: "admin_user_1",
+      user_id: "admin_1",
+      firstName: "Branch",
+      lastName: "Admin",
+      branch: "gil-puyat",
+      role: "branch_admin",
+    }));
+    const next = jest.fn();
+
+    await scheduleAdminMaintenance(
+      {
+        user: { uid: "firebase-admin-1" },
+        params: { requestId: requestDoc.request_id },
+        body: { scheduledDate: "2026-08-20T02:00:00.000Z" },
+        branchFilter: "gil-puyat",
+        isOwner: false,
+      },
+      {},
+      next,
+    );
+
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
+    expect(maintenanceScheduled).not.toHaveBeenCalled();
+  });
+
+  test("finalizeAdminMaintenanceReport persists the report before notifying the canonical tenant", async () => {
+    const requestDoc = buildRequestDoc();
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation((query) => buildLeanQuery(
+      query.firebaseUid
+        ? {
+            _id: "admin_user_1",
+            user_id: "admin_1",
+            firstName: "Branch",
+            lastName: "Admin",
+            email: "admin@example.com",
+            branch: "gil-puyat",
+            role: "branch_admin",
+          }
+        : {
+            _id: "tenant_user_1",
+            user_id: requestDoc.user_id,
+            branch: "gil-puyat",
+            role: "tenant",
+          },
+    ));
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: { summary: "Leak repaired and tested." },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await finalizeAdminMaintenanceReport(req, res, next);
+
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(maintenanceReportFinalized).toHaveBeenCalledWith(
+      "tenant_user_1",
+      "plumbing",
+      requestDoc.request_id,
+      { eventId: expect.stringMatching(/^report:rep_/) },
+    );
+    expect(requestDoc.save.mock.invocationCallOrder[0]).toBeLessThan(
+      maintenanceReportFinalized.mock.invocationCallOrder[0],
+    );
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -1980,6 +2126,16 @@ describe("maintenanceController", () => {
       }),
     ]);
     expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(maintenanceProviderAssigned).toHaveBeenCalledWith(
+      "tenant_user_1",
+      "plumbing",
+      "Authorized Plumbing Specialist",
+      requestDoc.request_id,
+      { eventId: expect.stringMatching(/^service_provider_assigned:/) },
+    );
+    expect(requestDoc.save.mock.invocationCallOrder[0]).toBeLessThan(
+      maintenanceProviderAssigned.mock.invocationCallOrder[0],
+    );
     expect(sendSuccess).toHaveBeenCalledTimes(1);
     expect(next).not.toHaveBeenCalled();
   });
@@ -2679,6 +2835,7 @@ describe("maintenanceController", () => {
           hasAdminNote: true,
           hasProgressEntry: false,
           hasProgressAttachments: false,
+          eventId: expect.stringMatching(/^reply:/),
         },
       );
       expect(sendSuccess.mock.calls[0][1].report).toEqual(

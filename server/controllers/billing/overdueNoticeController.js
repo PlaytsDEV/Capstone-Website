@@ -368,11 +368,12 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
           : `Friendly Reminder: Your bill #${String(bill._id).slice(-6)} (₱${totalFrozenAmount.toLocaleString()}) was due on ${dayjs(bill.dueDate).format("MM/DD/YYYY")}. Please settle immediately.`;
 
       await notify.billingNotice(tenantUser._id, {
-        notificationType: "overdue_notice",
+        notificationType: "bill_due_reminder",
         title: notifTitle,
         message: notifMsg,
         billId: bill._id,
         pushType: "overdue_notice",
+        eventId: noticeDoc._id,
       });
 
       notificationDelivered = true;

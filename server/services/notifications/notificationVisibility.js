@@ -31,6 +31,8 @@ export const TENANT_NOTIFICATION_TYPES = new Set([
   "grace_period_warning",
   "move_in_reminder",
   "maintenance_update",
+  "contract_document_ready",
+  "chat_reply",
   "payment_approved",
   "payment_rejected",
   "account_suspended",

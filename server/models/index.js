@@ -82,6 +82,7 @@ import MoveOutClearance from "./MoveOutClearance.js";
 // 6. Communication Domain
 import ChatConversation from "./ChatConversation.js";
 import ChatMessage from "./ChatMessage.js";
+import ChatAttachment from "./ChatAttachment.js";
 
 // 7. System Administration Domain
 import AuditLog from "./AuditLog.js";
@@ -129,6 +130,7 @@ export {
   LeaseRenewal,
   ChatConversation,
   ChatMessage,
+  ChatAttachment,
   WaterBillingRecord,
   UtilityPeriod,
   UtilityReading,
@@ -246,6 +248,7 @@ export default {
   LeaseRenewal,
   ChatConversation,
   ChatMessage,
+  ChatAttachment,
   WaterBillingRecord,
   UtilityPeriod,
   UtilityReading,

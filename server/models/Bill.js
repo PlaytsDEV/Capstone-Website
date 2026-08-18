@@ -500,6 +500,11 @@ const billSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    // Payment-receipt cache provenance is independent from the Statement.
+    receiptPath: { type: String, default: null },
+    receiptGeneratedAt: { type: Date, default: null },
+    receiptTemplateVersion: { type: Number, default: null },
+    receiptSourceVersion: { type: String, default: null },
 
     // --- Payment Proof (tenant submission) ---
     paymentProof: {

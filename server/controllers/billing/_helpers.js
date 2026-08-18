@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import mongoose from "mongoose";
-import { Bill, Reservation, Room, User, UtilityPeriod } from "../../models/index.js";
+import { Bill, Payment, Reservation, Room, User, UtilityPeriod } from "../../models/index.js";
 
 export const RoomBill = mongoose.models.RoomBill || mongoose.model("RoomBill", new mongoose.Schema({}, { strict: false }));
 import logger from "../../middleware/logger.js";
@@ -50,8 +50,14 @@ export {
 import { computePenalty, fetchPenaltySettings } from "../../utils/penaltyCalculator.js";
 import notify from "../../utils/notificationService.js";
 import { sendDraftUtilityBills } from "../../utils/utilityBillFlow.js";
-import { generateBillPdf } from "../../utils/pdfGenerator.js";
+import { generateBillPdf, generateBillReceiptPdf } from "../../utils/pdfGenerator.js";
 import { recordBillPdfGeneration } from "../../services/billPdfCache.js";
+import {
+  buildBillReceiptSourceVersion,
+  isBillReceiptStale,
+  recordBillReceiptGeneration,
+  SETTLED_PAYMENT_STATUSES,
+} from "../../services/billReceiptCache.js";
 import { logBillingAudit } from "../../utils/billingAudit.js";
 import { isWaterBillableRoom } from "../../utils/utilityFlowRules.js";
 import {
@@ -67,12 +73,17 @@ import {
   buildRollingRentalPeriod,
   resolveVisibleStructuredRentPeriod,
 } from "../../services/structuredInitialPaymentPolicy.js";
+import { isPathInsideRoot } from "../../services/billingDocumentPath.js";
 
 export const getAdminInfo = resolveAdminAccessContext;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 export const SERVER_ROOT = path.join(__dirname, "..", "..");
 export const BILL_PDF_ROOT = path.join(SERVER_ROOT, "uploads", "bills");
+
+export function isPathInsideBillingPdfRoot(candidatePath) {
+  return isPathInsideRoot(BILL_PDF_ROOT, candidatePath);
+}
 
 export function resolveManualPaymentMethod(note = "") {
   const normalized = String(note || "").trim().toLowerCase();
@@ -442,6 +453,8 @@ export async function buildTenantUtilityBreakdown({ dbUser, bill, utilityType })
         endDate: period.endDate,
       },
       ratePerKwh: period.ratePerUnit,
+      totalRoomKwh: period.computedTotalUsage,
+      totalRoomCost: period.computedTotalCost,
       myTotalKwh: tenantSummary?.totalUsage || 0,
       myBillAmount: tenantSummary?.billAmount || chargeAmount,
       segments: activeSegments.map((segment) => ({
@@ -451,6 +464,7 @@ export async function buildTenantUtilityBreakdown({ dbUser, bill, utilityType })
         readingFrom: segment.readingFrom,
         readingTo: segment.readingTo,
         segmentTotalKwh: segment.unitsConsumed,
+        segmentTotalCost: segment.totalCost,
         activeTenantCount: segment.activeTenantCount,
         sharePerTenantKwh: segment.sharePerTenantUnits,
         sharePerTenantCost: segment.sharePerTenantCost,
@@ -1088,13 +1102,23 @@ export function formatRentBillPreview({ reservation, bill, duplicate = null, cyc
 export async function generateRentBillPdf({ bill, reservation }) {
   const room = reservation.roomId || bill.roomId;
   const tenant = reservation.userId || bill.userId;
+  const visible = getVisibleBillSnapshot(bill);
   const billPayload = {
     ...(bill.toObject ? bill.toObject() : bill),
     billReference: formatBillReference(bill),
+    charges: visible.charges,
+    totalAmount: visible.totalAmount,
+    remainingAmount: visible.remainingAmount,
+    dueDate: visible.dueDate,
+    issuedAt: visible.issuedAt,
   };
+  const electricityBreakdown = Number(billPayload.charges?.electricity || 0) > 0
+    ? await buildTenantUtilityBreakdown({ dbUser: { _id: bill.userId?._id || bill.userId }, bill, utilityType: "electricity" })
+    : null;
   const pdfPath = await generateBillPdf({
     bill: billPayload,
     billingResult: null,
+    electricityBreakdown,
     period: {
       startDate: bill.billingCycleStart || bill.billingMonth,
       endDate: bill.billingCycleEnd || bill.dueDate,
@@ -1106,6 +1130,47 @@ export async function generateRentBillPdf({ bill, reservation }) {
 
   await recordBillPdfGeneration(bill, pdfPath);
   return pdfPath;
+}
+
+export async function loadSettledBillPayments(bill) {
+  return Payment.find({
+    billId: bill._id,
+    tenantId: bill.userId?._id || bill.userId,
+    status: { $in: SETTLED_PAYMENT_STATUSES },
+  }).sort({ settlementTimestamp: 1, processedAt: 1, createdAt: 1 }).lean();
+}
+
+/** Generate/reuse one canonical receipt projection for mobile and web. */
+export async function generateCanonicalBillReceiptPdf({ bill, tenant, room = null }) {
+  const payments = await loadSettledBillPayments(bill);
+  const sourceVersion = buildBillReceiptSourceVersion(bill, payments);
+  let absolutePath = bill.receiptPath ? path.resolve(SERVER_ROOT, bill.receiptPath) : null;
+  if (
+    !absolutePath
+    || !isPathInsideBillingPdfRoot(absolutePath)
+    || !fs.existsSync(absolutePath)
+    || isBillReceiptStale(bill, sourceVersion)
+  ) {
+    const visible = getVisibleBillSnapshot(bill);
+    const receiptPath = await generateBillReceiptPdf({
+      bill: bill.toObject ? bill.toObject() : bill,
+      tenant,
+      room,
+      billReference: formatBillReference(bill),
+      payments,
+      legacyPayment: payments.length === 0 ? {
+        amount: Number(bill.paidAmount || visible.totalAmount || 0),
+        method: bill.paymentMethod || null,
+        settledAt: bill.paymentDate || null,
+        reference: bill.paymongoPaymentId || null,
+      } : null,
+      remainingAmount: visible.remainingAmount,
+    });
+    await recordBillReceiptGeneration(bill, receiptPath, sourceVersion);
+    absolutePath = path.resolve(SERVER_ROOT, receiptPath);
+  }
+
+  return { absolutePath, payments, sourceVersion };
 }
 
 export async function finalizeRentBill({
@@ -1229,12 +1294,13 @@ export function buildPenaltyNoticeReason(bill = {}) {
 }
 
 export async function deliverBillNotification({ bill, tenant, room, billType = null }) {
+  const visible = getVisibleBillSnapshot(bill);
   const tenantName =
     [tenant?.firstName, tenant?.lastName].filter(Boolean).join(" ").trim() ||
     "Tenant";
   const billingMonthLabel = dayjs(bill.billingMonth).format("MMMM YYYY");
-  const dueDateLabel = bill.dueDate
-    ? dayjs(bill.dueDate).format("MMMM D, YYYY")
+  const dueDateLabel = visible.dueDate
+    ? dayjs(visible.dueDate).format("MMMM D, YYYY")
     : "the due date";
   const delivery = {
     email: { status: "not_attempted", sentAt: null, error: "" },
@@ -1246,7 +1312,7 @@ export async function deliverBillNotification({ bill, tenant, room, billType = n
       to: tenant.email,
       tenantName,
       billingMonth: billingMonthLabel,
-      totalAmount: bill.totalAmount,
+      totalAmount: visible.totalAmount,
       dueDate: dueDateLabel,
       branchName: room?.branch || bill.branch || "Lilycrest",
       billType: billType || resolveRentBillType(bill),
@@ -1267,12 +1333,13 @@ export async function deliverBillNotification({ bill, tenant, room, billType = n
     await notify.billGenerated(
       bill.userId,
       billingMonthLabel,
-      bill.totalAmount,
+      visible.totalAmount,
       dueDateLabel,
       {
         billType: billType || resolveRentBillType(bill),
         billId: bill._id,
         actionUrl: "/billing",
+        eventId: `invoice:${Number(bill.invoiceVersion || 1)}`,
       },
     );
     delivery.notification.status = "sent";

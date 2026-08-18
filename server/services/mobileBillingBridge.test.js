@@ -8,6 +8,7 @@ import {
   MOBILE_BILL_STATUSES,
 } from "./mobileBillingBridge.js";
 import { BILL_STATEMENT_TEMPLATE_VERSION } from "./billingStatementTemplate.js";
+import { BILL_RECEIPT_TEMPLATE_VERSION } from "./billingReceiptTemplate.js";
 
 describe("resolveMobileBillStatus", () => {
   test("unpaid: no payments made yet, not overdue", () => {
@@ -215,7 +216,7 @@ describe("toMobileBill statement_version (PDF cache-busting)", () => {
   test("falls back to createdAt so a never-updated bill still has a stable, present version", () => {
     const mobileBill = toMobileBill(makeBill({ updatedAt: undefined, createdAt: new Date("2026-05-01T00:00:00Z") }));
     expect(mobileBill.statement_version).toBe(
-      `${new Date("2026-05-01T00:00:00Z").getTime()}-t${BILL_STATEMENT_TEMPLATE_VERSION}`,
+      `${new Date("2026-05-01T00:00:00Z").getTime()}-i1-t${BILL_STATEMENT_TEMPLATE_VERSION}`,
     );
   });
 
@@ -225,9 +226,34 @@ describe("toMobileBill statement_version (PDF cache-busting)", () => {
       new RegExp(`-t${BILL_STATEMENT_TEMPLATE_VERSION}$`),
     );
   });
+
+  test("Statement and Receipt expose independent template cache versions", () => {
+    const mobileBill = toMobileBill(makeBill({ updatedAt: new Date("2026-05-01T00:00:00Z") }));
+    expect(mobileBill.receipt_version).toMatch(new RegExp(`-t${BILL_RECEIPT_TEMPLATE_VERSION}$`));
+    expect(mobileBill.receipt_version).not.toBe(mobileBill.statement_version);
+  });
 });
 
 describe("toMobileBill utility_deadlines", () => {
+  test("an undispatched canonical utility has an explicit pending schedule instead of a blank card", () => {
+    const mobileBill = toMobileBill(makeBill({ utilityDispatch: { electricity: { state: "draft" } } }));
+    expect(mobileBill.utility_schedules.electricity.state).toBe("pending");
+    expect(mobileBill.utility_schedules.electricity.source).toBe("canonical_bill");
+  });
+
+  test("a dispatched utility with persisted period dates has an available schedule", () => {
+    const mobileBill = toMobileBill(makeBill({
+      utilityCycleStart: new Date("2026-05-01"),
+      utilityCycleEnd: new Date("2026-05-31"),
+      utilityDispatch: { electricity: { state: "sent", dueDate: new Date("2026-06-08") } },
+    }));
+    expect(mobileBill.utility_schedules.electricity).toEqual(expect.objectContaining({
+      state: "available",
+      period_start: "2026-05-01T00:00:00.000Z",
+      period_end: "2026-05-31T00:00:00.000Z",
+      due_date: "2026-06-08T00:00:00.000Z",
+    }));
+  });
   // Regression for the exact bug this bridge reconciliation phase was
   // built to close: a bill with an electricity/water charge but no
   // utility_deadlines entry renders as permanently "not released" on the

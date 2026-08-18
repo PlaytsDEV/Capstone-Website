@@ -671,10 +671,11 @@ async function googleSignIn(req, res) {
     markStage('identity_conflict_check_ms');
 
     // Build update — only set email if it won't conflict with another user
+    // Authentication establishes identity; it is not a profile mutation.
+    // Keep the canonical users.name/users.picture values instead of replacing
+    // them with Firebase displayName/photoURL on every Google re-login.
     const updateFields = {
       google_email: email,
-      name: decoded.name || tenant.name || email.split('@')[0],
-      picture: decoded.picture || tenant.picture || null,
       last_login: new Date(),
     };
 

@@ -258,8 +258,10 @@ describe('announcement.controller dismissAnnouncement — News-tab-only per-tena
     expect(dismissRes.body.status).toBe('dismissed');
 
     const listRes = response();
-    await getAllAnnouncements(req, listRes);
+    // A distinct request object represents a fresh authenticated session.
+    await getAllAnnouncements({ user: { user_id: 't1', _id: 'mongo1' } }, listRes);
     expect(listRes.body).toEqual([]);
+    expect((await db.collection('announcements').find().sort().toArray())).toHaveLength(1);
   });
 
   test('Undo restores the same tenant\'s archived announcement without mutating the shared document', async () => {

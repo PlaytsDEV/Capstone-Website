@@ -53,6 +53,9 @@ await jest.unstable_mockModule("../controllers/chatController.js", () => ({
   getMyConversations: controller,
   getConversationMessages: controller,
   sendTenantMessage: controller,
+  uploadChatAttachment: controller,
+  downloadChatAttachment: controller,
+  confirmTenantResolution: controller,
   reopenTenantConversation: controller,
 }));
 
@@ -67,6 +70,7 @@ const { port } = server.address();
 const ADMIN_ROUTES = [
   ["GET", "/chat/admin/conversations"],
   ["GET", "/chat/admin/conversations/507f1f77bcf86cd799439011/messages"],
+  ["POST", "/chat/admin/conversations/507f1f77bcf86cd799439011/attachments"],
   ["POST", "/chat/admin/conversations/507f1f77bcf86cd799439011/messages"],
   ["PATCH", "/chat/admin/conversations/507f1f77bcf86cd799439011/read"],
   ["PATCH", "/chat/admin/conversations/507f1f77bcf86cd799439011/assign"],

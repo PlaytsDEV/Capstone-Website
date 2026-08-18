@@ -148,6 +148,18 @@ export const billingApi = {
     return { filename };
   },
 
+  downloadBillReceipt: async (billId, fallbackFilename = "payment-receipt.pdf") => {
+    const response = await protectedFetch(`/billing/${billId}/receipt`, { method: "GET" });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: response.statusText }));
+      throw new Error(error.error || error.message || "Failed to download Receipt.");
+    }
+    const blob = await response.blob();
+    const filename = getDownloadFilename(response, fallbackFilename);
+    downloadBlob(blob, filename);
+    return { filename };
+  },
+
   verifyPayment: (billId, data) =>
     authFetch(`/billing/${billId}/verify`, {
       method: "POST",

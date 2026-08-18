@@ -771,6 +771,16 @@ export const checkSessionStatus = async (req, res, next) => {
         } else {
           const monthStr = dayjs(bill.billingMonth).format("MMMM YYYY");
 
+          await notify.paymentApproved(
+            bill.userId,
+            monthStr,
+            settlement.appliedAmount,
+            {
+              billId: bill._id,
+              eventId: settlement.payment?._id || paymentReference,
+            },
+          );
+
             // Email + in-app notification to tenant
             try {
               const tenant = await User.findById(bill.userId).lean();
@@ -928,6 +938,7 @@ export const checkSessionStatus = async (req, res, next) => {
                 dbUser._id,
                 `${settledBills.length} statements`,
                 totalSettled,
+                { eventId: paymentReference },
               );
             } catch (notifErr) {
               logger.warn({ err: notifErr }, "Multi-bill tenant notification error");

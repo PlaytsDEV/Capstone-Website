@@ -1,4 +1,6 @@
 const { Types: { ObjectId } } = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 const { getDb } = require('../config/database');
 const { resolveRequesterBranchCode, normalizedBranchReference } = require('./announcement.controller');
 
@@ -100,27 +102,43 @@ function normalizeMessage(rawMessage, hasAttachments = false) {
   return message;
 }
 
-function normalizeAttachments(rawAttachments) {
-  if (!Array.isArray(rawAttachments)) return [];
-  return rawAttachments
-    .map((att) => {
-      if (!att || typeof att !== 'object') return null;
-      const url = String(att.url || att.fileUrl || att.downloadUrl || '').trim();
-      if (!url) return null;
-      const name = String(att.name || att.fileName || att.originalName || 'Attachment').trim();
-      const type = String(att.type || att.mimeType || 'application/octet-stream').trim();
-      const size = Number(att.size || 0);
-      return {
-        url,
-        fileUrl: url,
-        name,
-        fileName: name,
-        type,
-        mimeType: type,
-        size,
-      };
-    })
-    .filter(Boolean);
+async function normalizeAttachments(db, rawAttachments, conversationId) {
+  if (!Array.isArray(rawAttachments) || rawAttachments.length === 0) return [];
+  if (rawAttachments.length > 5) {
+    const error = new Error('A message can contain at most 5 attachments.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const ids = rawAttachments.map((att) => toObjectId(att?.attachmentId || att?.id));
+  if (ids.some((id) => !id)) {
+    const error = new Error('Upload each attachment before sending it.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const records = await db.collection('chat_attachments').find({
+    _id: { $in: ids },
+    conversationId,
+  }).toArray();
+  const byId = new Map(records.map((record) => [String(record._id), record]));
+  if (byId.size !== ids.length) {
+    const error = new Error('An attachment does not belong to this conversation.');
+    error.statusCode = 403;
+    throw error;
+  }
+  return ids.map((id) => {
+    const record = byId.get(String(id));
+    const url = `/chat/${conversationId}/attachments/${id}`;
+    return {
+      attachmentId: id,
+      url,
+      fileUrl: url,
+      name: record.originalName,
+      fileName: record.originalName,
+      type: record.mimeType,
+      mimeType: record.mimeType,
+      size: Number(record.size || 0),
+    };
+  });
 }
 
 function normalizeCategory(rawCategory, { required = false } = {}) {
@@ -206,6 +224,11 @@ function serializeConversation(conversation) {
     closedAt: conversation.closedAt || null,
     closedBy: conversation.closedBy ? String(conversation.closedBy) : null,
     closingNote: conversation.closingNote || '',
+    resolvedAt: conversation.resolvedAt || null,
+    resolvedBy: conversation.resolvedBy ? String(conversation.resolvedBy) : null,
+    resolutionConfirmationSource: conversation.resolutionConfirmationSource || '',
+    reopenedAt: conversation.reopenedAt || null,
+    reopenCount: Number(conversation.reopenCount || 0),
     statusHistory: Array.isArray(conversation.statusHistory)
       ? conversation.statusHistory.map((entry) => ({
           status: entry.status || '',
@@ -235,8 +258,13 @@ function serializeMessage(message) {
     message: message.message || '',
     attachments: Array.isArray(message.attachments)
       ? message.attachments.map((att) => ({
-          url: att.url || att.fileUrl || '',
-          fileUrl: att.fileUrl || att.url || '',
+          attachmentId: att.attachmentId ? String(att.attachmentId) : '',
+          url: att.attachmentId
+            ? `/chat/${message.conversationId}/attachments/${att.attachmentId}`
+            : att.url || att.fileUrl || '',
+          fileUrl: att.attachmentId
+            ? `/chat/${message.conversationId}/attachments/${att.attachmentId}`
+            : att.fileUrl || att.url || '',
           name: att.name || att.fileName || 'attachment',
           fileName: att.fileName || att.name || 'attachment',
           type: att.type || att.mimeType || 'application/octet-stream',
@@ -619,90 +647,93 @@ async function getConversationMessages(req, res) {
   }
 }
 
+async function appendTenantMessage(db, tenant, reqUser, conversation, messageText, attachments = [], options = {}) {
+  const now = new Date();
+  const messageDoc = {
+    conversationId: conversation._id,
+    senderId: tenant.mongoId,
+    senderUserId: reqUser.user_id || '',
+    senderName: tenant.tenantName,
+    senderRole: 'tenant',
+    senderProfileImage: tenant.tenantProfileImage || '',
+    message: messageText || '',
+    attachments,
+    readAt: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const insertResult = await db.collection(CHAT_MESSAGES).insertOne(messageDoc);
+  messageDoc._id = insertResult.insertedId;
+  const lastMessagePreview = messageText || (
+    attachments.some((a) => String(a.type || a.mimeType || '').startsWith('image'))
+      ? 'Photo'
+      : 'Attachment'
+  );
+  const update = {
+    $set: {
+      lastMessage: lastMessagePreview,
+      lastMessageAt: now,
+      status: 'open',
+      closedAt: null,
+      closedBy: null,
+      closingNote: '',
+      updatedAt: now,
+      ...(options.reopened ? { reopenedAt: now } : {}),
+    },
+    $inc: {
+      unreadAdminCount: 1,
+      ...(options.reopened ? { reopenCount: 1 } : {}),
+    },
+  };
+  if (conversation.status !== 'open') {
+    update.$push = {
+      statusHistory: {
+        $each: [{
+          status: 'open',
+          note: options.statusNote || 'Tenant replied; concern remains active.',
+          actorId: tenant.mongoId,
+          actorName: tenant.tenantName,
+          createdAt: now,
+        }],
+        $slice: -25,
+      },
+    };
+  }
+  await db.collection(CHAT_CONVERSATIONS).updateOne({ _id: conversation._id }, update);
+  const updatedConversation = await db.collection(CHAT_CONVERSATIONS).findOne({ _id: conversation._id });
+  await notifyAdminsOfTenantMessage(db, updatedConversation);
+  const serializedMsg = serializeMessage(messageDoc);
+  const serializedConv = serializeConversation(updatedConversation);
+  safeEmitChatAdmins(updatedConversation.branch, 'chat:message-new', {
+    message: serializedMsg,
+    conversationId: String(updatedConversation._id),
+  });
+  safeEmitChatAdmins(updatedConversation.branch, 'chat:conversation-updated', serializedConv);
+  return { message: serializedMsg, conversation: serializedConv };
+}
+
 async function sendMessage(req, res) {
   try {
     const db = getDb();
     const tenant = await resolveTenantContext(db, req.user);
     const conversation = await getTenantConversation(db, req.params.conversationId, req.user);
-
-    const attachments = normalizeAttachments(req.body?.attachments);
+    const attachments = await normalizeAttachments(db, req.body?.attachments, conversation._id);
     const messageText = normalizeMessage(req.body?.message, attachments.length > 0);
-    const now = new Date();
-    const messageDoc = {
-      conversationId: conversation._id,
-      senderId: tenant.mongoId,
-      senderUserId: req.user.user_id || '',
-      senderName: tenant.tenantName,
-      senderRole: 'tenant',
-      message: messageText || '',
-      attachments: attachments || [],
-      readAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    const insertResult = await db.collection(CHAT_MESSAGES).insertOne(messageDoc);
-    messageDoc._id = insertResult.insertedId;
-
-    const lastMessagePreview = messageText || (
-      attachments.some((a) => String(a.type || a.mimeType || '').startsWith('image'))
-        ? '📷 Photo'
-        : '📎 Attachment'
-    );
-
-    await db.collection(CHAT_CONVERSATIONS).updateOne(
-      { _id: conversation._id },
+    const isReopening = ['resolved', 'closed'].includes(conversation.status);
+    return res.json(await appendTenantMessage(
+      db,
+      tenant,
+      req.user,
+      conversation,
+      messageText,
+      attachments,
       {
-        $set: {
-          lastMessage: lastMessagePreview,
-          lastMessageAt: now,
-          status: 'open',
-          closedAt: null,
-          closedBy: null,
-          closingNote: '',
-          updatedAt: now,
-        },
-        $inc: { unreadAdminCount: 1 },
-        ...(conversation.status !== 'open'
-          ? {
-              $push: {
-                statusHistory: {
-                  $each: [{
-                    status: 'open',
-                    note: conversation.status === 'closed'
-                      ? 'Tenant replied because the concern persists; conversation reopened.'
-                      : 'Tenant replied.',
-                    actorId: tenant.mongoId,
-                    actorName: tenant.tenantName,
-                    createdAt: now,
-                  }],
-                  $slice: -25,
-                },
-              },
-            }
-          : {}),
+        reopened: isReopening,
+        statusNote: isReopening
+          ? 'Tenant replied because the concern persists; conversation reopened.'
+          : 'Tenant replied; concern remains active.',
       },
-    );
-
-    const updatedConversation = await db.collection(CHAT_CONVERSATIONS).findOne({
-      _id: conversation._id,
-    });
-
-    await notifyAdminsOfTenantMessage(db, updatedConversation);
-
-    // Push real-time events to any web admin panel currently open.
-    const serializedMsg = serializeMessage(messageDoc);
-    const serializedConv = serializeConversation(updatedConversation);
-    safeEmitChatAdmins(updatedConversation.branch, 'chat:message-new', {
-      message: serializedMsg,
-      conversationId: String(updatedConversation._id),
-    });
-    safeEmitChatAdmins(updatedConversation.branch, 'chat:conversation-updated', serializedConv);
-
-    return res.json({
-      message: serializedMsg,
-      conversation: serializedConv,
-    });
+    ));
   } catch (error) {
     return sendError(res, error, 'Failed to send message.');
   }
@@ -718,25 +749,68 @@ async function reopenConversation(req, res) {
       return res.json({ conversation: serializeConversation(conversation) });
     }
 
-    const now = new Date();
     const note = String(req.body?.note || '').trim().slice(0, 500)
       || 'Tenant reports that the concern persists; conversation reopened.';
+    return res.json(await appendTenantMessage(
+      db,
+      tenant,
+      req.user,
+      conversation,
+      note,
+      [],
+      { reopened: true, statusNote: note },
+    ));
+  } catch (error) {
+    return sendError(res, error, 'Failed to reopen conversation.');
+  }
+}
 
+async function confirmResolution(req, res) {
+  try {
+    const db = getDb();
+    const tenant = await resolveTenantContext(db, req.user);
+    const conversation = await getTenantConversation(db, req.params.conversationId, req.user);
+    if (typeof req.body?.resolved !== 'boolean') {
+      const error = new Error('Choose YES or NO to confirm resolution.');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (conversation.status !== 'waiting_tenant') {
+      const error = new Error('This conversation is not awaiting resolution confirmation.');
+      error.statusCode = 409;
+      throw error;
+    }
+
+    if (!req.body.resolved) {
+      const note = String(req.body?.note || '').trim().slice(0, 500)
+        || 'My concern is not resolved yet.';
+      return res.json(await appendTenantMessage(
+        db,
+        tenant,
+        req.user,
+        conversation,
+        note,
+        [],
+        { statusNote: 'Tenant selected NO; concern remains active in the same thread.' },
+      ));
+    }
+
+    const now = new Date();
     await db.collection(CHAT_CONVERSATIONS).updateOne(
-      { _id: conversation._id },
+      { _id: conversation._id, status: 'waiting_tenant' },
       {
         $set: {
-          status: 'open',
-          closedAt: null,
-          closedBy: null,
-          closingNote: '',
+          status: 'resolved',
+          resolvedAt: now,
+          resolvedBy: tenant.mongoId,
+          resolutionConfirmationSource: 'tenant_yes',
           updatedAt: now,
         },
         $push: {
           statusHistory: {
             $each: [{
-              status: 'open',
-              note,
+              status: 'resolved',
+              note: 'Tenant selected YES and confirmed that the concern was resolved.',
               actorId: tenant.mongoId,
               actorName: tenant.tenantName,
               createdAt: now,
@@ -746,13 +820,66 @@ async function reopenConversation(req, res) {
         },
       },
     );
-
-    const reopened = await db.collection(CHAT_CONVERSATIONS).findOne({ _id: conversation._id });
-    safeEmitChatAdmins(reopened.branch, 'chat:conversation-updated', serializeConversation(reopened));
-
-    return res.json({ conversation: serializeConversation(reopened) });
+    const resolved = await db.collection(CHAT_CONVERSATIONS).findOne({ _id: conversation._id });
+    const serialized = serializeConversation(resolved);
+    safeEmitChatAdmins(resolved.branch, 'chat:conversation-updated', serialized);
+    return res.json({ conversation: serialized });
   } catch (error) {
-    return sendError(res, error, 'Failed to reopen conversation.');
+    return sendError(res, error, 'Failed to confirm resolution.');
+  }
+}
+
+async function downloadAttachment(req, res) {
+  try {
+    const db = getDb();
+    await resolveTenantContext(db, req.user);
+    const conversation = await getTenantConversation(db, req.params.conversationId, req.user);
+    const attachmentId = requireConversationId(req.params.attachmentId);
+    const attachment = await db.collection('chat_attachments').findOne({
+      _id: attachmentId,
+      conversationId: conversation._id,
+    });
+    if (!attachment) {
+      const error = new Error('Attachment not found.');
+      error.statusCode = 404;
+      throw error;
+    }
+    res.setHeader('Content-Type', attachment.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(attachment.originalName || 'attachment')}`);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+
+    if (attachment.provider === 'local') {
+      const uploadRoot = path.resolve(__dirname, '..', '..', 'uploads');
+      const relativePath = String(attachment.storagePath || '').replace(/^uploads[\\/]/, '');
+      const resolvedPath = path.resolve(uploadRoot, relativePath);
+      if (!resolvedPath.startsWith(`${uploadRoot}${path.sep}`)) {
+        const error = new Error('Attachment path is invalid.');
+        error.statusCode = 400;
+        throw error;
+      }
+      return fs.createReadStream(resolvedPath)
+        .on('error', () => {
+          if (!res.headersSent) res.status(404).json({ detail: 'Attachment not found.' });
+          else res.destroy();
+        })
+        .pipe(res);
+    }
+
+    const { admin, resolveFirebaseStorageBucket } = require('../config/firebase');
+    const bucketName = resolveFirebaseStorageBucket();
+    if (!admin?.apps?.length || !bucketName) {
+      const error = new Error('Attachment storage is unavailable.');
+      error.statusCode = 503;
+      throw error;
+    }
+    return admin.storage().bucket(bucketName).file(attachment.storagePath).createReadStream()
+      .on('error', () => {
+        if (!res.headersSent) res.status(404).json({ detail: 'Attachment not found.' });
+        else res.destroy();
+      })
+      .pipe(res);
+  } catch (error) {
+    return sendError(res, error, 'Failed to download attachment.');
   }
 }
 
@@ -809,5 +936,7 @@ module.exports = {
   getConversationMessages,
   sendMessage,
   reopenConversation,
+  confirmResolution,
+  downloadAttachment,
   closeConversation,
 };

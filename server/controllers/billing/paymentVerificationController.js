@@ -15,6 +15,7 @@ import {
 } from "./_helpers.js";
 import { logBillingAudit } from "../../utils/billingAudit.js";
 import dayjs from "dayjs";
+import { notify } from "../../utils/notificationService.js";
 
 export const markBillAsPaid = async (req, res, next) => {
   try {
@@ -34,7 +35,7 @@ export const markBillAsPaid = async (req, res, next) => {
     const appliedAmount = Number(
       amount ?? bill.remainingAmount ?? bill.totalAmount,
     );
-    await applyBillPayment({
+    const paymentResult = await applyBillPayment({
       bill,
       amount: appliedAmount,
       method: resolveManualPaymentMethod(note),
@@ -66,6 +67,17 @@ export const markBillAsPaid = async (req, res, next) => {
         userId: bill.userId,
       },
     });
+
+    const monthStr = dayjs(bill.billingMonth).format("MMMM YYYY");
+    await notify.paymentApproved(
+      bill.userId,
+      monthStr,
+      paymentResult.appliedAmount,
+      {
+        billId: bill._id,
+        eventId: paymentResult.payment?._id || paymentResult.payment?.paymentId,
+      },
+    );
 
     res.json({ success: true, bill: bill.toObject() });
   } catch (error) {
@@ -156,11 +168,12 @@ export const verifyPayment = async (req, res, next) => {
         .status(400)
         .json({ error: "No pending payment proof to verify" });
 
+    let paymentResult = null;
     if (action === "approve") {
       const approvedAmount = Number(
         bill.paymentProof.submittedAmount || bill.totalAmount || 0,
       );
-      await applyBillPayment({
+      paymentResult = await applyBillPayment({
         bill,
         amount: approvedAmount,
         method: resolveProofPaymentMethod(bill),
@@ -219,6 +232,32 @@ export const verifyPayment = async (req, res, next) => {
           userId: bill.userId,
         },
       });
+    }
+
+    const monthStr = dayjs(bill.billingMonth).format("MMMM YYYY");
+    const proofEventId = bill.paymentProof?.submittedAt
+      ? new Date(bill.paymentProof.submittedAt).toISOString()
+      : new Date(bill.paymentProof.verifiedAt).toISOString();
+    if (action === "approve") {
+      await notify.paymentApproved(
+        bill.userId,
+        monthStr,
+        paymentResult.appliedAmount,
+        {
+          billId: bill._id,
+          eventId: paymentResult.payment?._id || paymentResult.payment?.paymentId || `proof:${proofEventId}`,
+        },
+      );
+    } else {
+      await notify.paymentRejected(
+        bill.userId,
+        monthStr,
+        bill.paymentProof.rejectionReason,
+        {
+          billId: bill._id,
+          eventId: `proof:${proofEventId}`,
+        },
+      );
     }
 
     try {

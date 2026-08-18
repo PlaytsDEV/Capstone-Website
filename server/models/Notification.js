@@ -61,6 +61,7 @@ const notificationSchema = new mongoose.Schema(
         "account_suspended",
         "account_reactivated",
         "maintenance_update",
+        "chat_reply",
         "announcement",
         "sla_breach",
         "chat_unresponded",

@@ -135,6 +135,7 @@ export async function settlePaymongoBill({
     reason: "settled",
     bill,
     appliedAmount: paymentResult.appliedAmount,
+    payment: paymentResult.payment,
   };
 }
 

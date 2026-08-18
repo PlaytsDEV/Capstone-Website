@@ -117,6 +117,15 @@ const chatConversationSchema = new mongoose.Schema(
       default: "",
       maxlength: 1000,
     },
+    resolvedAt: { type: Date, default: null },
+    resolvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    resolutionConfirmationSource: { type: String, trim: true, default: "" },
+    reopenedAt: { type: Date, default: null },
+    reopenCount: { type: Number, default: 0, min: 0 },
     statusHistory: [
       {
         status: {

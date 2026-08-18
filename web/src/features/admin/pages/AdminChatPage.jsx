@@ -40,11 +40,7 @@ import { useAuth } from "../../../shared/hooks/useAuth";
 import useChatSocket from "../../../shared/hooks/useChatSocket.js";
 import { showConfirmation, showNotification } from "../../../shared/utils/notification";
 import { BRANCH_DISPLAY_NAMES, BRANCH_OPTIONS } from "../../../shared/utils/constants";
-import {
-  uploadToFirebaseStorage,
-  validateFile,
-} from "../../../shared/utils/firebaseStorageUpload.js";
-import ProgressiveImage from "../../../shared/components/ProgressiveImage";
+import { validateFile } from "../../../shared/utils/firebaseStorageUpload.js";
 import {
   AdminChatSkeleton,
   ChatConversationListSkeleton,
@@ -70,8 +66,8 @@ const STATUS_OPTIONS = [
 const STATUS_DESCRIPTIONS = {
   open: "Conversation is active and awaiting staff response or triage.",
   in_review: "Staff is currently investigating and working on the tenant's concern.",
-  waiting_tenant: "Staff replied; awaiting response or documents from the tenant.",
-  resolved: "Tenant concern has been addressed and settled successfully.",
+  waiting_tenant: "Staff replied; awaiting the tenant's YES / NO resolution confirmation.",
+  resolved: "The tenant confirmed that the concern was resolved.",
   closed: "Permanently closes and archives the conversation thread with an audit note.",
 };
 
@@ -110,7 +106,7 @@ const QUICK_REPLIES = [
   "We have received your concern.",
   "Please provide more details.",
   "Your request is being processed.",
-  "This issue has been resolved.",
+  "Please confirm whether this resolved your concern.",
 ];
 
 const PRIORITY_RANK = { urgent: 0, high: 1, normal: 2 };
@@ -126,6 +122,45 @@ const fmtDateTime = (value) => {
     minute: "2-digit",
   });
 };
+
+function ProtectedChatImage({ attachment, className, onOpen }) {
+  const [source, setSource] = useState("");
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    chatApi.getAttachmentBlob(attachment)
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        if (active) setSource(objectUrl);
+      })
+      .catch(() => setSource(""));
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attachment]);
+
+  if (!source) {
+    return <div className={`${className} bg-muted animate-pulse`} aria-label="Loading protected attachment" />;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen?.({ ...attachment, objectUrl: source })}
+      className="relative group rounded-lg overflow-hidden border border-border/40 focus:outline-none cursor-pointer block"
+      title="Click to enlarge"
+    >
+      <img
+        src={source}
+        alt={attachment.name || "Attachment"}
+        className={className}
+      />
+      <span className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity flex items-center justify-center text-white">
+        <Eye size={18} />
+      </span>
+    </button>
+  );
+}
 
 const fmtShortTime = (value) => {
   if (!value) return "";
@@ -614,6 +649,22 @@ export default function AdminChatPage() {
     });
   };
 
+  const handleDownloadAttachment = async (attachment) => {
+    try {
+      const blob = await chatApi.getAttachmentBlob(attachment);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = attachment.name || attachment.fileName || "attachment";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (error) {
+      showNotification(getErrorMessage(error, "Unable to download attachment."), "error");
+    }
+  };
+
   const handlePaste = (e) => {
     const clipboardItems = e.clipboardData?.items;
     if (!clipboardItems) return;
@@ -676,18 +727,8 @@ export default function AdminChatPage() {
       if (stagedAttachments.length > 0) {
         setUploadingAttachments(true);
         const uploadPromises = stagedAttachments.map(async (item) => {
-          const result = await uploadToFirebaseStorage(item.file, {
-            documentType: "chat-attachment",
-          });
-          return {
-            url: result.downloadUrl || result.url,
-            fileUrl: result.downloadUrl || result.url,
-            name: result.originalName || item.name,
-            fileName: result.originalName || item.name,
-            type: result.mimeType || item.type,
-            mimeType: result.mimeType || item.type,
-            size: result.size ?? item.size,
-          };
+          const result = await chatApi.uploadAttachment(selectedConversation.id, item.file);
+          return result.attachment;
         });
         uploadedAttachments = await Promise.all(uploadPromises);
       }
@@ -830,7 +871,7 @@ export default function AdminChatPage() {
   const handleConfirmClose = async () => {
     const note = closeNote.trim();
     if (!note) {
-      setCloseNoteError("A closing / resolution note is required.");
+      setCloseNoteError("A closing note is required.");
       return;
     }
     if (note.length < 5) {
@@ -844,7 +885,7 @@ export default function AdminChatPage() {
       setSelectedConversation(data.conversation);
       await loadConversations({ silent: true });
       setCloseModalOpen(false);
-      showNotification("Conversation resolved and closed successfully.", "success");
+      showNotification("Conversation closed successfully.", "success");
     } catch (error) {
       const msg = getErrorMessage(error, "Failed to close conversation.");
       setCloseNoteError(msg);
@@ -1703,22 +1744,12 @@ export default function AdminChatPage() {
                                         String(a.type || a.mimeType || "").startsWith("image"),
                                       )
                                       .map((img, imgIdx) => (
-                                        <button
-                                          type="button"
+                                        <ProtectedChatImage
                                           key={imgIdx}
-                                          onClick={() => setPreviewImageModal(img)}
-                                          className="relative group rounded-lg overflow-hidden border border-border/40 focus:outline-none cursor-pointer block"
-                                          title="Click to enlarge"
-                                        >
-                                          <ProgressiveImage
-                                            src={img.url || img.fileUrl}
-                                            alt={img.name || "Attachment"}
-                                            className="w-full h-32 object-cover transition-transform group-hover:scale-105"
-                                          />
-                                          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                                            <Eye size={18} />
-                                          </div>
-                                        </button>
+                                          attachment={img}
+                                          className="w-full h-32 object-cover transition-transform group-hover:scale-105"
+                                          onOpen={setPreviewImageModal}
+                                        />
                                       ))}
                                   </div>
                                 )}
@@ -1736,12 +1767,10 @@ export default function AdminChatPage() {
                                           !String(a.type || a.mimeType || "").startsWith("image"),
                                       )
                                       .map((doc, docIdx) => (
-                                        <a
+                                        <button
+                                          type="button"
                                           key={docIdx}
-                                          href={doc.url || doc.fileUrl}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          download={doc.name || "document"}
+                                          onClick={() => handleDownloadAttachment(doc)}
                                           className={`flex items-center gap-2 p-2 rounded-lg border text-xs transition-colors ${
                                             isTenant
                                               ? "bg-muted/40 hover:bg-muted border-border text-foreground"
@@ -1760,7 +1789,7 @@ export default function AdminChatPage() {
                                             )}
                                           </div>
                                           <Download size={13} className="shrink-0 opacity-70" />
-                                        </a>
+                                        </button>
                                       ))}
                                   </div>
                                 )}
@@ -2096,7 +2125,7 @@ export default function AdminChatPage() {
                 <div className="flex shrink-0 items-center justify-center text-rose-600 dark:text-rose-400">
                   <Lock size={18} />
                 </div>
-                <h3 className="text-sm font-bold text-foreground">Resolve & Close Conversation</h3>
+                <h3 className="text-sm font-bold text-foreground">Close Conversation</h3>
               </div>
               <button
                 type="button"
@@ -2109,16 +2138,16 @@ export default function AdminChatPage() {
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Resolving and closing this conversation with{" "}
+              Administratively closing this conversation with{" "}
               <strong className="text-foreground">
                 {selectedConversation?.tenantName}
               </strong>{" "}
-              will archive the active thread and lock future replies. Please enter a formal resolution note for auditing.
+              will archive the active thread and lock future replies. This is separate from tenant-confirmed resolution. Please enter a closing note for auditing.
             </p>
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground block">
-                Resolution Note <span className="text-destructive">*</span>
+                Closing Note <span className="text-destructive">*</span>
               </label>
               <textarea
                 value={closeNote}
@@ -2126,7 +2155,7 @@ export default function AdminChatPage() {
                   setCloseNote(e.target.value);
                   if (closeNoteError) setCloseNoteError("");
                 }}
-                placeholder="Describe how this tenant concern was resolved..."
+                placeholder="Explain why this conversation is being closed..."
                 rows={4}
                 maxLength={500}
                 className="w-full rounded-lg border border-border bg-input-background p-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-border resize-none"
@@ -2161,7 +2190,7 @@ export default function AdminChatPage() {
                 ) : (
                   <Lock size={14} />
                 )}
-                <span>{closing ? "Resolving..." : "Confirm Resolution & Close"}</span>
+                <span>{closing ? "Closing..." : "Confirm Close"}</span>
               </button>
             </div>
           </div>
@@ -2193,7 +2222,7 @@ export default function AdminChatPage() {
             </p>
 
             <div className="space-y-2">
-              {STATUS_OPTIONS.filter((opt) => opt.value !== "all").map((opt) => {
+              {STATUS_OPTIONS.filter((opt) => !["all", "resolved"].includes(opt.value)).map((opt) => {
                 const isSelected = pendingStatus === opt.value;
                 const isCurrent = selectedConversation?.status === opt.value;
 
@@ -2386,7 +2415,7 @@ export default function AdminChatPage() {
                 </p>
                 <div className="flex items-center gap-2 shrink-0">
                   <a
-                    href={previewImageModal.url || previewImageModal.fileUrl}
+                    href={previewImageModal.objectUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     download={previewImageModal.name || "photo"}
@@ -2408,7 +2437,7 @@ export default function AdminChatPage() {
               </div>
 
               <img
-                src={previewImageModal.url || previewImageModal.fileUrl}
+                src={previewImageModal.objectUrl}
                 alt={previewImageModal.name || "Full Preview"}
                 className="max-w-full max-h-[80vh] rounded-xl object-contain shadow-2xl ring-1 ring-white/10"
               />

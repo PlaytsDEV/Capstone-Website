@@ -134,6 +134,7 @@ export const appendStatusHistory = (request, event) => {
     ...(Array.isArray(request.statusHistory) ? request.statusHistory : []),
     event,
   ];
+  return event;
 };
 
 export const appendWorkLogEntry = (request, entry) => {
@@ -166,6 +167,7 @@ export const appendConversationEntry = (request, entry) => {
     ...(Array.isArray(request.tenantReplies) ? request.tenantReplies : []),
     normalizedEntry,
   ];
+  return normalizedEntry;
 };
 
 export const getSlaState = (request) => {

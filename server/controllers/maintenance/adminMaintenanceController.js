@@ -308,6 +308,7 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     statusChanged,
     notesChanged,
     hasTenantVisibleUpdate: statusChanged,
+    eventId: statusChanged ? `status:${eventTimestamp.toISOString()}` : null,
   };
 };
 
@@ -475,7 +476,7 @@ export const updateAdminRequestStatus = async (req, res, next) => {
     ensureAdminAccess(request, req);
     const adminUser = await getDbUser(req.user.uid);
 
-    const { statusChanged, notesChanged, hasTenantVisibleUpdate } = applyAdminUpdateToRequest({
+    let updateResult = applyAdminUpdateToRequest({
       request,
       adminUser,
       payload: req.body,
@@ -489,7 +490,7 @@ export const updateAdminRequestStatus = async (req, res, next) => {
         // Refetch latest document and reapply the admin update to resolve concurrency conflict
         const freshRequest = await findAccessibleRequest(req.params.requestId);
         ensureAdminAccess(freshRequest, req);
-        applyAdminUpdateToRequest({
+        updateResult = applyAdminUpdateToRequest({
           request: freshRequest,
           adminUser,
           payload: req.body,
@@ -500,6 +501,8 @@ export const updateAdminRequestStatus = async (req, res, next) => {
         throw saveError;
       }
     }
+
+    const { statusChanged, notesChanged, hasTenantVisibleUpdate, eventId } = updateResult;
 
     await auditLogger.logModification(
       req,
@@ -530,6 +533,7 @@ export const updateAdminRequestStatus = async (req, res, next) => {
               ? req.body.work_log_attachments
               : req.body.workLogAttachments,
           ).length > 0,
+          eventId,
         },
       );
     }
@@ -825,6 +829,16 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
       .select(USER_SELECT_FIELDS)
       .lean();
 
+    if (nextProvider && tenantUser?._id) {
+      await notify.maintenanceProviderAssigned(
+        tenantUser._id,
+        request.request_type,
+        request.providerDetails?.tenantVisibleLabel,
+        request.request_id,
+        { eventId: `${event}:${eventTimestamp.toISOString()}` },
+      );
+    }
+
     sendSuccess(res, {
       request: serializeMaintenanceRequest(
         request.toObject(),
@@ -945,7 +959,7 @@ export const sendAdminTenantSummary = async (req, res, next) => {
     }
 
     const eventTimestamp = new Date();
-    appendConversationEntry(request, {
+    const tenantSummaryEntry = appendConversationEntry(request, {
       type: "tenant_summary",
       kind: "tenant_summary",
       message,
@@ -975,6 +989,7 @@ export const sendAdminTenantSummary = async (req, res, next) => {
           hasAdminNote: true,
           hasProgressEntry: false,
           hasProgressAttachments: false,
+          eventId: `reply:${tenantSummaryEntry.update_id}`,
         },
       );
     }
@@ -1063,7 +1078,7 @@ export const sendAdminReply = async (req, res, next) => {
     }
 
     const eventTimestamp = new Date();
-    appendConversationEntry(request, {
+    const replyEntry = appendConversationEntry(request, {
       message,
       attachments,
       sender_id: adminUser?.user_id || null,
@@ -1095,6 +1110,7 @@ export const sendAdminReply = async (req, res, next) => {
           hasAdminNote: true,
           hasProgressEntry: false,
           hasProgressAttachments: false,
+          eventId: `reply:${replyEntry.update_id}`,
         },
       );
     }
@@ -1175,7 +1191,7 @@ export const updateAdminBulkRequests = async (req, res, next) => {
         const request = await findAccessibleRequest(requestId);
         ensureAdminAccess(request, req);
 
-        const { statusChanged, notesChanged, hasTenantVisibleUpdate } = applyAdminUpdateToRequest({
+        const { statusChanged, notesChanged, hasTenantVisibleUpdate, eventId } = applyAdminUpdateToRequest({
           request,
           adminUser,
           payload,
@@ -1202,6 +1218,7 @@ export const updateAdminBulkRequests = async (req, res, next) => {
                     ? payload.work_log_attachments
                     : payload.workLogAttachments,
                 ).length > 0,
+                eventId,
               },
             );
           }
@@ -1473,28 +1490,32 @@ export const scheduleAdminMaintenance = async (req, res, next) => {
       request.status = "scheduled";
     }
 
+    const scheduleEventTimestamp = new Date();
     appendStatusHistory(request, {
       event: "work_scheduled",
       status: request.status,
       ...buildActorSnapshot(adminUser),
       note: notes || `Work scheduled for ${scheduledDate.toISOString()}`,
-      timestamp: new Date(),
+      timestamp: scheduleEventTimestamp,
     });
 
     await request.save();
     await emitMaintenanceUpdated(request);
 
-    try {
-      if (request.userId) {
-        notify.maintenanceScheduled(request.userId, request.request_type, scheduledDate, notes, request.request_id);
-      }
-    } catch {
-      // non-fatal
-    }
-
     const tenantUser = await User.findOne({ user_id: request.user_id })
       .select(USER_SELECT_FIELDS)
       .lean();
+
+    if (tenantUser?._id) {
+      await notify.maintenanceScheduled(
+        tenantUser._id,
+        request.request_type,
+        scheduledDate,
+        notes,
+        request.request_id,
+        { eventId: `schedule:${scheduleEventTimestamp.toISOString()}` },
+      );
+    }
 
     sendSuccess(res, {
       message: "Maintenance visit scheduled successfully.",
@@ -1641,17 +1662,18 @@ export const finalizeAdminMaintenanceReport = async (req, res, next) => {
     await request.save();
     await emitMaintenanceUpdated(request);
 
-    try {
-      if (request.userId) {
-        notify.maintenanceReportFinalized(request.userId, request.request_type, request.request_id);
-      }
-    } catch {
-      // non-fatal
-    }
-
     const tenantUser = await User.findOne({ user_id: request.user_id })
       .select(USER_SELECT_FIELDS)
       .lean();
+
+    if (tenantUser?._id) {
+      await notify.maintenanceReportFinalized(
+        tenantUser._id,
+        request.request_type,
+        request.request_id,
+        { eventId: `report:${reportId}:${finalizedAt.toISOString()}` },
+      );
+    }
 
     sendSuccess(res, {
       message: "Completion report finalized and signed successfully.",
@@ -1817,6 +1839,7 @@ export const saveResolutionProof = async (req, res, next) => {
     });
 
     const eventTimestamp = new Date();
+    const statusChanged = request.status !== targetStatus;
     
     request.work_log = [
       ...(Array.isArray(request.work_log) ? request.work_log : []),
@@ -1868,10 +1891,11 @@ export const saveResolutionProof = async (req, res, next) => {
           request.status,
           request.request_id,
           {
-            statusChanged: true,
+            statusChanged,
             hasAdminNote: true,
             hasProgressEntry: true,
             hasProgressAttachments: attachments.length > 0,
+            eventId: `resolution-proof:${eventTimestamp.toISOString()}`,
           }
         );
       } catch {

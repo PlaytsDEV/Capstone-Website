@@ -54,10 +54,12 @@ await jest.unstable_mockModule("../middleware/mobileTenantAuth.js", () => ({
 }));
 await jest.unstable_mockModule("../controllers/billing/_helpers.js", () => ({
   generateRentBillPdf,
+  generateCanonicalBillReceiptPdf: jest.fn(),
   formatBillReference: jest.fn(() => "LC-RB-RUNTIME"),
   buildTenantUtilityBreakdown: jest.fn(async () => null),
   SERVER_ROOT: serverRoot,
   BILL_PDF_ROOT: pdfRoot,
+  isPathInsideBillingPdfRoot: jest.fn((candidate) => candidate.startsWith(pdfRoot)),
 }));
 await jest.unstable_mockModule("../services/mobileBillingBridge.js", () => ({
   toMobileBill: jest.fn((value) => value),

@@ -40,7 +40,7 @@ describe("mobile Billing route safety", () => {
 
   test("reads canonical billing status/amounts through billingPolicy — never re-derives its own status math", () => {
     const bridgeImportBlock = routes.match(/import \{([^}]*)\} from "\.\.\/services\/mobileBillingBridge\.js";/s)?.[1] || "";
-    for (const name of ["toMobileBill", "isMobileEffectivelyPaid", "toMobilePaymentMethodLabel"]) {
+    for (const name of ["toMobileBill", "isMobileEffectivelyPaid"]) {
       expect(bridgeImportBlock).toContain(name);
     }
     expect(routes).not.toMatch(/function\s+(normalizeBillStatus|getEffectiveBillStatus)/);
@@ -88,6 +88,13 @@ describe("mobile Billing route safety", () => {
     expect(breakdownHandler).toMatch(/req\.mobileTenant\._id/);
   });
 
+  test("latest uses an explicit successful no-bill contract and wraps a current bill", () => {
+    const latestHandler = routes.split('router.get("/billing/me/latest"')[1]?.split("router.")[0] || "";
+    expect(latestHandler).toContain('state: "NO_CURRENT_BILL"');
+    expect(latestHandler).toContain('state: hasPendingUtility ? "UTILITY_PENDING" : "CURRENT_BILL"');
+    expect(latestHandler).not.toContain('status(404)');
+  });
+
   // Phase: distinct Payment Receipt endpoint, separate from the Billing
   // Statement PDF above — matches the LilyCrest-Mobile Phase 2 reference
   // implementation this reconciliation phase ported: 404 for an unpaid
@@ -100,9 +107,9 @@ describe("mobile Billing route safety", () => {
     expect(receiptHandler).toMatch(/status\(404\)/);
   });
 
-  test("the receipt route generates a distinct PDF from the statement route (generateBillReceiptPdf, not generateRentBillPdf)", () => {
+  test("the receipt route delegates to the shared canonical Receipt resolver, not the Statement renderer", () => {
     const receiptHandler = routes.split('router.get("/billing/:billingId/receipt"')[1]?.split("router.")[0] || "";
-    expect(receiptHandler).toContain("generateBillReceiptPdf");
+    expect(receiptHandler).toContain("generateCanonicalBillReceiptPdf");
     expect(receiptHandler).not.toContain("generateRentBillPdf");
   });
 
