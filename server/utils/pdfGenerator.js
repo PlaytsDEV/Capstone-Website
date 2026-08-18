@@ -28,7 +28,11 @@ import {
   BILL_STATEMENT_TEMPLATE_MARKER,
   BILL_STATEMENT_TEMPLATE_VERSION,
 } from "../services/billingStatementTemplate.js";
-import { BILL_RECEIPT_TEMPLATE_MARKER } from "../services/billingReceiptTemplate.js";
+import {
+  BILL_RECEIPT_TEMPLATE_MARKER,
+  BILL_RECEIPT_TEMPLATE_VERSION,
+} from "../services/billingReceiptTemplate.js";
+import { formatDocumentBranch as formatCanonicalDocumentBranch } from "./branchPresentation.js";
 
 // ============================================================================
 // PATH SETUP
@@ -39,6 +43,24 @@ const __dirname = path.dirname(__filename);
 
 /** Absolute path to the bills output directory */
 const BILLS_DIR = path.join(__dirname, "..", "uploads", "bills");
+const BRAND_LOGO_PATH = path.join(__dirname, "..", "..", "web", "public", "lilycrest-logo.png");
+
+const PDF_THEME = Object.freeze({
+  navy: "#0A1628",
+  gold: "#D4AF37",
+  goldSubtle: "#FBF7EA",
+  goldBorder: "#F3E4B0",
+  heading: "#0A1628",
+  body: "#1E293B",
+  secondary: "#4B5563",
+  muted: "#6B7280",
+  border: "#E5E7EB",
+  surface: "#F8FAFC",
+  success: "#059669",
+  warningText: "#92400E",
+  warningBg: "#FFFBEB",
+  danger: "#DC2626",
+});
 
 // ============================================================================
 // FORMATTING HELPERS
@@ -81,10 +103,7 @@ function formatDate(d) {
  * @returns {string}
  */
 function formatBranch(branch) {
-  if (!branch) return "Lilycrest Dormitory";
-  if (branch === "gil-puyat") return "Lilycrest — Gil Puyat Branch";
-  if (branch === "guadalupe") return "Lilycrest — Guadalupe Branch";
-  return branch;
+  return formatCanonicalDocumentBranch(branch);
 }
 
 /**
@@ -120,8 +139,8 @@ export function drawTable(doc, { headers, widths, rows, x, rowHeight = 22, fontS
   const pageBottom = () => doc.page.height - doc.page.margins.bottom;
 
   const drawHeaderRow = (y) => {
-    doc.rect(startX, y, totalWidth, rowHeight).fill("#1a1a2e");
-    doc.fillColor("#ffffff").fontSize(fontSize).font("Helvetica-Bold");
+    doc.rect(startX, y, totalWidth, rowHeight).fill(PDF_THEME.navy);
+    doc.fillColor("#FFFFFF").fontSize(fontSize).font("Helvetica-Bold");
     let headerX = startX;
     for (let i = 0; i < headers.length; i++) {
       doc.text(headers[i], headerX + 4, y + 6, {
@@ -147,32 +166,32 @@ export function drawTable(doc, { headers, widths, rows, x, rowHeight = 22, fontS
   currentY += rowHeight;
 
   // ── Data rows ────────────────────────────────────────────────────────────
-  doc.font("Helvetica").fontSize(fontSize).fillColor("#1a1a2e");
+  doc.font("Helvetica").fontSize(fontSize).fillColor(PDF_THEME.body);
 
   rows.forEach((row, rowIdx) => {
     if (currentY + rowHeight > pageBottom()) {
       doc.rect(startX, segmentStartY, totalWidth, (segmentRowCount + 1) * rowHeight)
-        .stroke("#dee2e6");
+        .stroke(PDF_THEME.border);
       doc.addPage();
       currentY = doc.page.margins.top;
       segmentStartY = currentY;
       segmentRowCount = 0;
       drawHeaderRow(currentY);
       currentY += rowHeight;
-      doc.font("Helvetica").fontSize(fontSize).fillColor("#1a1a2e");
+      doc.font("Helvetica").fontSize(fontSize).fillColor(PDF_THEME.body);
     }
 
     const isEven = rowIdx % 2 === 0;
-    const bgColor = isEven ? "#f8f9fa" : "#ffffff";
+    const bgColor = isEven ? PDF_THEME.surface : "#FFFFFF";
     doc.rect(startX, currentY, totalWidth, rowHeight).fill(bgColor);
 
     // Draw light border bottom
-    doc.rect(startX, currentY + rowHeight - 1, totalWidth, 1).fill("#dee2e6");
+    doc.rect(startX, currentY + rowHeight - 1, totalWidth, 1).fill(PDF_THEME.border);
 
     let colX = startX;
     // Restore text colour (fillColor is shared with rect fill)
     const isGrayed = row._grayed === true;
-    doc.fillColor(isGrayed ? "#adb5bd" : "#1a1a2e");
+    doc.fillColor(isGrayed ? PDF_THEME.muted : PDF_THEME.body);
 
     for (let i = 0; i < row.length; i++) {
       if (row[i] === undefined || row[i] === "_grayed") {
@@ -192,7 +211,7 @@ export function drawTable(doc, { headers, widths, rows, x, rowHeight = 22, fontS
 
   // Border around the final page segment (earlier segments were bordered before each page break).
   doc.rect(startX, segmentStartY, totalWidth, (segmentRowCount + 1) * rowHeight)
-    .stroke("#dee2e6");
+    .stroke(PDF_THEME.border);
 
   // Move cursor past the table
   doc.y = currentY + 6;
@@ -202,7 +221,7 @@ export function drawTable(doc, { headers, widths, rows, x, rowHeight = 22, fontS
 // HORIZONTAL RULE HELPER
 // ============================================================================
 
-function drawHR(doc, color = "#dee2e6") {
+function drawHR(doc, color = PDF_THEME.border) {
   const left = doc.page.margins.left;
   const right = doc.page.width - doc.page.margins.right;
   doc
@@ -221,10 +240,36 @@ function sectionHeading(doc, title) {
   doc
     .fontSize(9)
     .font("Helvetica-Bold")
-    .fillColor("#1a1a2e")
+    .fillColor(PDF_THEME.heading)
     .text(title.toUpperCase());
-  drawHR(doc, "#1a1a2e");
+  drawHR(doc, PDF_THEME.heading);
   doc.moveDown(0.2);
+}
+
+function drawBrandHeader(doc, { x, y, width, documentTitle, branch }) {
+  doc.rect(x, y, width, 60).fill(PDF_THEME.navy);
+  const hasLogo = fs.existsSync(BRAND_LOGO_PATH);
+  const textX = hasLogo ? x + 58 : x + 12;
+  if (hasLogo) {
+    doc.image(BRAND_LOGO_PATH, x + 12, y + 10, { fit: [40, 40] });
+  }
+  doc
+    .fillColor("#FFFFFF")
+    .fontSize(15)
+    .font("Helvetica-Bold")
+    .text("LILYCREST DORMITORY", textX, y + 11, { width: width - (textX - x) - 12 });
+  doc
+    .fontSize(8.5)
+    .font("Helvetica")
+    .fillColor("#FFFFFF")
+    .text(formatBranch(branch), textX, y + 33, { width: width - (textX - x) - 12 });
+  doc
+    .fontSize(10.5)
+    .font("Helvetica-Bold")
+    .fillColor(PDF_THEME.gold)
+    .text(documentTitle, x + 12, y + 21, { width: width - 24, align: "right" });
+  doc.y = y + 70;
+  doc.fillColor(PDF_THEME.body);
 }
 
 // ============================================================================
@@ -329,15 +374,13 @@ export async function generateBillPdf({ bill, billingResult, electricityBreakdow
 
   // ── HEADER BANNER ─────────────────────────────────────────────────────────
   const statementHeaderY = doc.y;
-  doc.rect(L, statementHeaderY, contentWidth, 60).fill("#1a1a2e");
-  doc.fillColor("#ffffff").fontSize(16).font("Helvetica-Bold")
-    .text("LILYCREST DORMITORY", L + 12, statementHeaderY + 12, { width: contentWidth - 24 });
-  doc.fontSize(9).font("Helvetica").fillColor("#dbe2f0")
-    .text(formatBranch(room?.branch || period?.branch), L + 12, statementHeaderY + 34, { width: contentWidth - 24 });
-  doc.fontSize(11).font("Helvetica-Bold").fillColor("#f8c42b")
-    .text("BILLING STATEMENT", L + 12, statementHeaderY + 20, { width: contentWidth - 24, align: "right" });
-  doc.y = statementHeaderY + 70;
-  doc.fillColor("#1a1a2e");
+  drawBrandHeader(doc, {
+    x: L,
+    y: statementHeaderY,
+    width: contentWidth,
+    documentTitle: "BILLING STATEMENT",
+    branch: room?.branch || period?.branch,
+  });
 
   // ── TENANT / PERIOD INFO ──────────────────────────────────────────────────
   sectionHeading(doc, "Billing Information");
@@ -368,9 +411,9 @@ export async function generateBillPdf({ bill, billingResult, electricityBreakdow
     .font("Helvetica-Bold")
     .text("Due Date:", rightCol, doc.y)
     .font("Helvetica")
-    .fillColor("#c0392b")  // red due date for urgency
+    .fillColor(PDF_THEME.danger)
     .text(formatDate(bill.dueDate), rightCol + 75, doc.y)
-    .fillColor("#1a1a2e");
+    .fillColor(PDF_THEME.body);
 
   doc
     .font("Helvetica-Bold")
@@ -466,8 +509,8 @@ export async function generateBillPdf({ bill, billingResult, electricityBreakdow
     // Tenant total electricity
     if (mySummary) {
       const shareY = doc.y + 2;
-      doc.rect(L, shareY, contentWidth, 28).fill("#fff8dc");
-      doc.font("Helvetica-Bold").fontSize(9).fillColor("#5f4b00")
+      doc.rect(L, shareY, contentWidth, 28).fill(PDF_THEME.goldSubtle);
+      doc.font("Helvetica-Bold").fontSize(9).fillColor(PDF_THEME.heading)
         .text("YOUR ELECTRICITY SHARE", L + 10, shareY + 8, { width: 190 });
       doc.text(
         `${Number(mySummary.totalKwh || 0).toLocaleString()} kWh  |  ${formatPeso(mySummary.billAmount)}`,
@@ -476,7 +519,7 @@ export async function generateBillPdf({ bill, billingResult, electricityBreakdow
         { width: contentWidth - 220, align: "right" },
       );
       doc.y = shareY + 34;
-      doc.fillColor("#1a1a2e").font("Helvetica");
+      doc.fillColor(PDF_THEME.body).font("Helvetica");
     }
 
     doc.moveDown(0.8);
@@ -507,9 +550,9 @@ export async function generateBillPdf({ bill, billingResult, electricityBreakdow
   // Total due — large, bold
   doc.moveDown(0.3);
   const totalBoxY = doc.y;
-  doc.rect(L, totalBoxY, contentWidth, 28).fill("#1a1a2e");
+  doc.rect(L, totalBoxY, contentWidth, 28).fill(PDF_THEME.navy);
   doc
-    .fillColor("#ffffff")
+    .fillColor("#FFFFFF")
     .fontSize(11)
     .font("Helvetica-Bold")
     .text(
@@ -518,7 +561,7 @@ export async function generateBillPdf({ bill, billingResult, electricityBreakdow
       totalBoxY + 7,
       { width: contentWidth - 20, align: "right" },
     )
-    .fillColor("#1a1a2e");
+    .fillColor(PDF_THEME.body);
 
   doc.moveDown(2);
 
@@ -540,12 +583,12 @@ export async function generateBillPdf({ bill, billingResult, electricityBreakdow
   if (bill.isManuallyAdjusted) {
     doc
       .fontSize(8)
-      .fillColor("#c0392b")
+      .fillColor(PDF_THEME.danger)
       .font("Helvetica-Bold")
       .text("* This bill has been manually adjusted by your branch administrator.", {
         indent: 10,
       })
-      .fillColor("#1a1a2e")
+      .fillColor(PDF_THEME.body)
       .font("Helvetica");
   }
 
@@ -553,7 +596,7 @@ export async function generateBillPdf({ bill, billingResult, electricityBreakdow
   const footerY = doc.page.height - doc.page.margins.bottom - 24;
   doc
     .fontSize(7.5)
-    .fillColor("#6c757d")
+    .fillColor(PDF_THEME.muted)
     .font("Helvetica")
     .text(
       `Generated by Lilycrest DMS  •  ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}  •  Template v${BILL_STATEMENT_TEMPLATE_VERSION}  •  System-generated document — no signature required`,
@@ -629,31 +672,35 @@ export async function generateTransferSettlementPdf({ bill, tenant }) {
   const fmtMoney = (v) => `₱${Number(v || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   // ── HEADER ────────────────────────────────────────────────────────────────
-  doc.rect(L, doc.y, contentWidth, 60).fill("#1a1a2e");
-  doc.fillColor("#ffffff").fontSize(16).font("Helvetica-Bold")
-    .text("LILYCREST DORMITORY", L + 12, doc.y - 52, { width: contentWidth - 24 });
-  doc.fontSize(9).font("Helvetica").text(formatBranch(room?.branch || bill.branch), L + 12, doc.y, { width: contentWidth - 24 });
+  const transferHeaderY = doc.y;
+  drawBrandHeader(doc, {
+    x: L,
+    y: transferHeaderY,
+    width: contentWidth,
+    documentTitle: "TRANSFER SETTLEMENT",
+    branch: bill.branch,
+  });
 
   doc.moveDown(0.5);
-  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor("#e2e8f0").lineWidth(1).stroke();
+  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor(PDF_THEME.border).lineWidth(1).stroke();
   doc.moveDown(0.5);
 
   // ── DOCUMENT TITLE ────────────────────────────────────────────────────────
-  doc.fontSize(14).font("Helvetica-Bold").fillColor("#1a1a2e").text("TRANSFER ROOM SETTLEMENT RECEIPT", L, doc.y, { align: "center", width: contentWidth });
+  doc.fontSize(14).font("Helvetica-Bold").fillColor(PDF_THEME.heading).text("TRANSFER ROOM SETTLEMENT RECEIPT", L, doc.y, { align: "center", width: contentWidth });
   doc.moveDown(0.3);
-  doc.fontSize(10).font("Helvetica").fillColor("#4a5568")
+  doc.fontSize(10).font("Helvetica").fillColor(PDF_THEME.secondary)
     .text(`${fromRoom}  →  ${toRoom}`, L, doc.y, { align: "center", width: contentWidth });
   doc.moveDown(0.2);
-  doc.fontSize(9).fillColor("#6c757d").text(`Effective Transfer Date: ${transferDate}`, L, doc.y, { align: "center", width: contentWidth });
+  doc.fontSize(9).fillColor(PDF_THEME.muted).text(`Effective Transfer Date: ${transferDate}`, L, doc.y, { align: "center", width: contentWidth });
 
   doc.moveDown(0.8);
-  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor("#e2e8f0").lineWidth(0.5).stroke();
+  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor(PDF_THEME.border).lineWidth(0.5).stroke();
   doc.moveDown(0.5);
 
   // ── TENANT INFO ───────────────────────────────────────────────────────────
-  doc.fontSize(9).font("Helvetica-Bold").fillColor("#374151").text("TENANT INFORMATION", L, doc.y);
+  doc.fontSize(9).font("Helvetica-Bold").fillColor(PDF_THEME.heading).text("TENANT INFORMATION", L, doc.y);
   doc.moveDown(0.25);
-  doc.fontSize(9).font("Helvetica").fillColor("#374151")
+  doc.fontSize(9).font("Helvetica").fillColor(PDF_THEME.body)
     .text(`Name: ${tenantName}`, L, doc.y)
     .text(`Previous Room: ${fromRoom}  (${snap.fromRoomType || ""}  •  ${fmtMoney(snap.fromRoomPrice)}/mo)`, L, doc.y)
     .text(`New Room: ${toRoom}  (${snap.toRoomType || ""}  •  ${fmtMoney(snap.toRoomPrice)}/mo)`, L, doc.y);
@@ -661,16 +708,16 @@ export async function generateTransferSettlementPdf({ bill, tenant }) {
   doc.moveDown(0.8);
 
   // ── CHARGES TABLE ─────────────────────────────────────────────────────────
-  doc.fontSize(9).font("Helvetica-Bold").fillColor("#374151").text("SETTLEMENT CHARGES", L, doc.y);
+  doc.fontSize(9).font("Helvetica-Bold").fillColor(PDF_THEME.heading).text("SETTLEMENT CHARGES", L, doc.y);
   doc.moveDown(0.3);
 
   const drawRow = (label, amount, note = "") => {
     const y = doc.y;
-    doc.fontSize(9).font("Helvetica").fillColor("#374151").text(label, L + 10, y, { width: contentWidth * 0.6 });
+    doc.fontSize(9).font("Helvetica").fillColor(PDF_THEME.body).text(label, L + 10, y, { width: contentWidth * 0.6 });
     if (note) {
-      doc.fontSize(8).fillColor("#6c757d").text(note, L + 10, doc.y - 2, { width: contentWidth * 0.6 });
+      doc.fontSize(8).fillColor(PDF_THEME.muted).text(note, L + 10, doc.y - 2, { width: contentWidth * 0.6 });
     }
-    doc.fontSize(9).font("Helvetica").fillColor("#374151")
+    doc.fontSize(9).font("Helvetica").fillColor(PDF_THEME.body)
       .text(fmtMoney(amount), L + contentWidth * 0.6, y, { width: contentWidth * 0.4, align: "right" });
     doc.moveDown(0.5);
   };
@@ -690,22 +737,22 @@ export async function generateTransferSettlementPdf({ bill, tenant }) {
   }
 
   doc.moveDown(0.2);
-  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor("#374151").lineWidth(0.5).stroke();
+  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor(PDF_THEME.border).lineWidth(0.5).stroke();
   doc.moveDown(0.3);
 
   // Total
   const yTotal = doc.y;
-  doc.fontSize(10).font("Helvetica-Bold").fillColor("#1a1a2e")
+  doc.fontSize(10).font("Helvetica-Bold").fillColor(PDF_THEME.heading)
     .text("Settlement Total", L + 10, yTotal, { width: contentWidth * 0.6 })
     .text(fmtMoney(totalAmount), L + contentWidth * 0.6, yTotal, { width: contentWidth * 0.4, align: "right" });
   doc.moveDown(0.8);
 
   // ── METER READINGS ────────────────────────────────────────────────────────
   if (snap.fromRoomName) {
-    doc.fontSize(9).font("Helvetica-Bold").fillColor("#374151").text("METER READINGS AT TRANSFER", L, doc.y);
+    doc.fontSize(9).font("Helvetica-Bold").fillColor(PDF_THEME.heading).text("METER READINGS AT TRANSFER", L, doc.y);
     doc.moveDown(0.25);
     if (bill.charges?.electricity != null || kwhDelta != null) {
-      doc.fontSize(9).font("Helvetica").fillColor("#374151")
+      doc.fontSize(9).font("Helvetica").fillColor(PDF_THEME.body)
         .text(`Previous Room Final Meter (${fromRoom}): ${
           bill.transferSnapshot?.estimatedElectricityKwh != null
             ? `Δ ${kwhDelta?.toLocaleString()} kWh`
@@ -713,26 +760,26 @@ export async function generateTransferSettlementPdf({ bill, tenant }) {
         }`, L + 10, doc.y)
         .text(`New Room Opening Meter (${toRoom}): Recorded at transfer`, L + 10, doc.y);
     } else {
-      doc.fontSize(9).font("Helvetica").fillColor("#6c757d").text("No meter readings were recorded for this transfer.", L + 10, doc.y);
+      doc.fontSize(9).font("Helvetica").fillColor(PDF_THEME.muted).text("No meter readings were recorded for this transfer.", L + 10, doc.y);
     }
     doc.moveDown(0.8);
   }
 
   // ── OUTSTANDING BALANCE ───────────────────────────────────────────────────
   if (outstandingBal > 0) {
-    doc.rect(L, doc.y, contentWidth, 30).fillColor("#FFF7ED").fill();
+    doc.rect(L, doc.y, contentWidth, 30).fillColor(PDF_THEME.warningBg).fill();
     const warnY = doc.y + 8;
-    doc.fontSize(9).font("Helvetica-Bold").fillColor("#92400e")
+    doc.fontSize(9).font("Helvetica-Bold").fillColor(PDF_THEME.warningText)
       .text(`Outstanding Balance at Transfer: ${fmtMoney(outstandingBal)}`, L + 10, warnY, { width: contentWidth - 20 });
     doc.moveDown(1.2);
-    doc.fontSize(8).font("Helvetica").fillColor("#92400e")
+    doc.fontSize(8).font("Helvetica").fillColor(PDF_THEME.warningText)
       .text("This balance was outstanding at the time of room transfer. Please settle at the branch.", L + 10, doc.y, { width: contentWidth - 20 });
     doc.moveDown(0.8);
   }
 
   // ── FOOTER ────────────────────────────────────────────────────────────────
   const footerYTs = doc.page.height - doc.page.margins.bottom - 24;
-  doc.fontSize(7.5).font("Helvetica").fillColor("#6c757d")
+  doc.fontSize(7.5).font("Helvetica").fillColor(PDF_THEME.muted)
     .text(
       `Generated by Lilycrest DMS  •  ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}  •  System-generated document`,
       L, footerYTs, { width: contentWidth, align: "center" },
@@ -818,36 +865,34 @@ export async function generateBillReceiptPdf({
 
   // ── HEADER ────────────────────────────────────────────────────────────────
   const receiptHeaderY = doc.y;
-  doc.rect(L, receiptHeaderY, contentWidth, 60).fill("#1a1a2e");
-  doc.fillColor("#ffffff").fontSize(16).font("Helvetica-Bold")
-    .text("LILYCREST DORMITORY", L + 12, receiptHeaderY + 12, { width: contentWidth - 24 });
-  doc.fontSize(9).font("Helvetica").fillColor("#dbe2f0")
-    .text(formatBranch(room?.branch || bill.branch), L + 12, receiptHeaderY + 34, { width: contentWidth - 24 });
-  doc.fontSize(11).font("Helvetica-Bold").fillColor("#f8c42b")
-    .text("PAYMENT RECEIPT", L + 12, receiptHeaderY + 20, { width: contentWidth - 24, align: "right" });
-  doc.y = receiptHeaderY + 70;
-  doc.fillColor("#1a1a2e");
+  drawBrandHeader(doc, {
+    x: L,
+    y: receiptHeaderY,
+    width: contentWidth,
+    documentTitle: "PAYMENT RECEIPT",
+    branch: room?.branch || bill.branch,
+  });
 
   doc.moveDown(0.5);
-  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor("#e2e8f0").lineWidth(1).stroke();
+  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor(PDF_THEME.border).lineWidth(1).stroke();
   doc.moveDown(0.5);
 
   // ── DOCUMENT TITLE ────────────────────────────────────────────────────────
   sectionHeading(doc, "Payment Confirmation");
   if (billingPeriod) {
     doc.moveDown(0.3);
-    doc.fontSize(10).font("Helvetica").fillColor("#4a5568").text(billingPeriod, L, doc.y, { align: "center", width: contentWidth });
+    doc.fontSize(10).font("Helvetica").fillColor(PDF_THEME.secondary).text(billingPeriod, L, doc.y, { align: "center", width: contentWidth });
   }
 
   doc.moveDown(0.8);
-  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor("#e2e8f0").lineWidth(0.5).stroke();
+  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor(PDF_THEME.border).lineWidth(0.5).stroke();
   doc.moveDown(0.5);
 
   // ── RECEIPT DETAILS ───────────────────────────────────────────────────────
   const row = (label, value) => {
     const y = doc.y;
-    doc.fontSize(9).font("Helvetica-Bold").fillColor("#6c757d").text(label, L, y, { width: contentWidth * 0.35 });
-    doc.fontSize(9).font("Helvetica").fillColor("#1a1a2e").text(String(value ?? "—"), L + contentWidth * 0.35, y, { width: contentWidth * 0.65 });
+    doc.fontSize(9).font("Helvetica-Bold").fillColor(PDF_THEME.secondary).text(label, L, y, { width: contentWidth * 0.35 });
+    doc.fontSize(9).font("Helvetica").fillColor(PDF_THEME.body).text(String(value ?? "—"), L + contentWidth * 0.35, y, { width: contentWidth * 0.65 });
     doc.moveDown(0.5);
   };
 
@@ -858,7 +903,7 @@ export async function generateBillReceiptPdf({
   if (billingPeriod) row("Billing Period", billingPeriod);
 
   doc.moveDown(0.3);
-  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor("#374151").lineWidth(0.5).stroke();
+  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor(PDF_THEME.border).lineWidth(0.5).stroke();
   doc.moveDown(0.4);
 
   if (paymentRows.length > 0) {
@@ -879,13 +924,13 @@ export async function generateBillReceiptPdf({
   row("Remaining Balance", formatPeso(remainingAmount));
 
   doc.moveDown(0.3);
-  doc.fontSize(11).font("Helvetica-Bold").fillColor("#15803d").text("STATUS: PAID", L, doc.y);
+  doc.fontSize(11).font("Helvetica-Bold").fillColor(PDF_THEME.success).text("STATUS: PAID", L, doc.y);
 
   // ── FOOTER ────────────────────────────────────────────────────────────────
   const footerY = doc.page.height - doc.page.margins.bottom - 24;
-  doc.fontSize(7.5).font("Helvetica").fillColor("#6c757d")
+  doc.fontSize(7.5).font("Helvetica").fillColor(PDF_THEME.muted)
     .text(
-      `Generated by Lilycrest DMS  •  ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}  •  System-generated document`,
+      `Generated by Lilycrest DMS  •  ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}  •  Template v${BILL_RECEIPT_TEMPLATE_VERSION}  •  System-generated document`,
       L, footerY, { width: contentWidth, align: "center" },
     );
 

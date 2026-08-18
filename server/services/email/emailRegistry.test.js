@@ -41,12 +41,20 @@ describe("emailRegistry — coverage integrity", () => {
 });
 
 describe("describeEmailRouting", () => {
-  test("reports resend_template when a template ID is configured, inline_html otherwise", () => {
-    const routing = describeEmailRouting({ RESEND_TEMPLATE_PASSWORD_RESET: "tmpl_123" });
+  test("reports resend_template only when Dashboard mode and a template ID are configured", () => {
+    const routing = describeEmailRouting({
+      RESEND_TEMPLATE_MODE: "dashboard",
+      RESEND_TEMPLATE_PASSWORD_RESET: "tmpl_123",
+    });
     const passwordReset = routing.find((r) => r.templateKey === "PASSWORD_RESET");
     const otp = routing.find((r) => r.templateKey === "LOGIN_OTP");
     expect(passwordReset.path).toBe("resend_template");
     expect(otp.path).toBe("inline_html");
+  });
+
+  test("keeps the audited inline shell authoritative when legacy template IDs exist without opt-in", () => {
+    const routing = describeEmailRouting({ RESEND_TEMPLATE_PASSWORD_RESET: "tmpl_legacy" });
+    expect(routing.find((r) => r.templateKey === "PASSWORD_RESET").path).toBe("inline_html");
   });
 
   test("never reports 'unavailable' for any current template key (every key has a builder)", () => {

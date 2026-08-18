@@ -7,10 +7,10 @@
  * copy is passed as variables).
  *
  * None of these env vars are required: every key here also has a matching
- * inline HTML builder in emailRegistry.js that server/services/email/
- * lilycrestEmailService.js uses whenever the template ID below is unset.
- * Setting one here only overrides that one email type onto a Resend
- * Dashboard Template instead.
+ * repository-controlled inline HTML builder in emailRegistry.js. Dashboard
+ * templates are used only when RESEND_TEMPLATE_MODE=dashboard; this explicit
+ * opt-in prevents an old remote template from silently overriding a newly
+ * audited release merely because a legacy template ID remains configured.
  *
  * Each template ID is resolved from an env var at call time (not cached at
  * import time) so tests and ops tooling can change it without a process
@@ -44,7 +44,11 @@ export const TEMPLATE_KEYS = Object.freeze(Object.keys(TEMPLATE_ENV_KEYS));
 
 export const getTemplateEnvKey = (templateKey) => TEMPLATE_ENV_KEYS[templateKey] || null;
 
+export const isDashboardTemplateMode = (environment = process.env) =>
+  String(environment.RESEND_TEMPLATE_MODE || "").trim().toLowerCase() === "dashboard";
+
 export const getTemplateId = (templateKey, environment = process.env) => {
+  if (!isDashboardTemplateMode(environment)) return null;
   const envKey = TEMPLATE_ENV_KEYS[templateKey];
   if (!envKey) return null;
   return String(environment[envKey] || "").trim() || null;

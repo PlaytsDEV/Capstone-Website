@@ -9,6 +9,7 @@ process.env.NODE_ENV = "test";
 process.env.RESEND_API_KEY = "resend-test-key";
 process.env.RESEND_FROM_EMAIL = "no-reply@example.test";
 process.env.RESEND_TEMPLATE_PASSWORD_RESET = "tmpl_password_reset";
+process.env.RESEND_TEMPLATE_MODE = "dashboard";
 
 const resendSend = jest.fn();
 

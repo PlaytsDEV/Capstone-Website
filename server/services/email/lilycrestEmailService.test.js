@@ -13,6 +13,7 @@ process.env.RESEND_FROM_EMAIL = "no-reply@example.test";
 delete process.env.RESEND_TEMPLATE_PASSWORD_RESET;
 delete process.env.RESEND_TEMPLATE_EMAIL_VERIFICATION;
 delete process.env.RESEND_TEMPLATE_LOGIN_OTP;
+delete process.env.RESEND_TEMPLATE_MODE;
 
 const resendSend = jest.fn();
 
@@ -34,6 +35,7 @@ const RESET_URL = "https://www.lilycrest.space/auth-action?mode=resetPassword&oo
 describe("Case 1 — template configured", () => {
   test("sends `template`, never `html`/`subject`, with the exact variables passed", async () => {
     process.env.RESEND_TEMPLATE_PASSWORD_RESET = "tmpl_password_reset";
+    process.env.RESEND_TEMPLATE_MODE = "dashboard";
     const result = await sendLilycrestEmail({
       to: "tenant@example.test",
       templateKey: "PASSWORD_RESET",
@@ -46,6 +48,7 @@ describe("Case 1 — template configured", () => {
     expect(payload).not.toHaveProperty("html");
     expect(payload).not.toHaveProperty("subject");
     delete process.env.RESEND_TEMPLATE_PASSWORD_RESET;
+    delete process.env.RESEND_TEMPLATE_MODE;
   });
 });
 
@@ -94,6 +97,7 @@ describe("Case 3 — missing both a template and a builder", () => {
 describe("Case 4 — an invalid configured template does not trigger a second inline send", () => {
   test("Resend rejecting the configured template ID is reported as the real failure, Resend is called exactly once", async () => {
     process.env.RESEND_TEMPLATE_PASSWORD_RESET = "tmpl_that_does_not_exist";
+    process.env.RESEND_TEMPLATE_MODE = "dashboard";
     resendSend.mockResolvedValue({ data: null, error: { statusCode: 422, message: "template not found" } });
 
     const result = await sendLilycrestEmail({
@@ -108,12 +112,14 @@ describe("Case 4 — an invalid configured template does not trigger a second in
     expect(payload).toHaveProperty("template");
     expect(payload).not.toHaveProperty("html");
     delete process.env.RESEND_TEMPLATE_PASSWORD_RESET;
+    delete process.env.RESEND_TEMPLATE_MODE;
   });
 });
 
 describe("Case 5 — variable mapping stays identical across both paths", () => {
   test("the same variables object reaches Resend for the template path", async () => {
     process.env.RESEND_TEMPLATE_LOGIN_OTP = "tmpl_login_otp";
+    process.env.RESEND_TEMPLATE_MODE = "dashboard";
     await sendLilycrestEmail({
       to: "tenant@example.test",
       templateKey: "LOGIN_OTP",
@@ -123,6 +129,7 @@ describe("Case 5 — variable mapping stays identical across both paths", () => 
       USER_NAME: "Jose", OTP_CODE: "482913", EXPIRY_MINUTES: 10,
     });
     delete process.env.RESEND_TEMPLATE_LOGIN_OTP;
+    delete process.env.RESEND_TEMPLATE_MODE;
   });
 
   test("the inline HTML for the same email type renders the same OTP code", async () => {
@@ -175,9 +182,54 @@ describe("Case 7 — URL correctness", () => {
   });
 });
 
+describe("Case 8 — canonical branch personalization", () => {
+  const billingVariables = (branch) => ({
+    TENANT_NAME: "Jose",
+    BILL_TYPE_LABEL: "Electricity",
+    ROOM_NAME: "Room 202",
+    BILLING_MONTH: "September 2026",
+    TOTAL_AMOUNT: "7,200.00",
+    DUE_DATE: "September 28, 2026",
+    BRANCH_NAME: branch,
+  });
+
+  test.each([
+    ["GP", "Gil Puyat Branch"],
+    ["guadalupe", "Guadalupe Branch"],
+    ["client supplied branch", "Lilycrest Dormitory"],
+  ])("%s renders the safe subtitle %s", async (branch, expected) => {
+    await sendLilycrestEmail({
+      to: "tenant@example.test",
+      templateKey: "BILL_GENERATED",
+      variables: billingVariables(branch),
+    });
+    const html = resendSend.mock.calls[0][0].html;
+    expect(html).toContain(expected);
+    expect(html).not.toContain("LilyCrest Branch");
+    expect(html).not.toMatch(/linear-gradient|radial-gradient/i);
+  });
+
+  test("the dashboard-template path receives normalized branch variables", async () => {
+    process.env.RESEND_TEMPLATE_BILL_GENERATED = "tmpl_bill";
+    process.env.RESEND_TEMPLATE_MODE = "dashboard";
+    await sendLilycrestEmail({
+      to: "tenant@example.test",
+      templateKey: "BILL_GENERATED",
+      variables: billingVariables("GUA"),
+    });
+    expect(resendSend.mock.calls[0][0].template.variables).toMatchObject({
+      BRANCH_NAME: "Guadalupe",
+      BRANCH_SUBTITLE: "Guadalupe Branch",
+    });
+    delete process.env.RESEND_TEMPLATE_BILL_GENERATED;
+    delete process.env.RESEND_TEMPLATE_MODE;
+  });
+});
+
 describe("routing is deterministic, never a try/fallback chain", () => {
   test("a template-configured send that fails does not fall back to an inline second send", async () => {
     process.env.RESEND_TEMPLATE_EMAIL_VERIFICATION = "tmpl_verify";
+    process.env.RESEND_TEMPLATE_MODE = "dashboard";
     resendSend.mockResolvedValueOnce({ data: null, error: { statusCode: 500, message: "provider error" } });
     await sendLilycrestEmail({
       to: "tenant@example.test",
@@ -186,5 +238,6 @@ describe("routing is deterministic, never a try/fallback chain", () => {
     });
     expect(resendSend).toHaveBeenCalledTimes(1);
     delete process.env.RESEND_TEMPLATE_EMAIL_VERIFICATION;
+    delete process.env.RESEND_TEMPLATE_MODE;
   });
 });

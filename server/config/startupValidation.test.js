@@ -22,6 +22,7 @@ const validProductionEnvironment = {
   PAYMONGO_WEBHOOK_SECRET: "webhook-secret",
   RESEND_API_KEY: "resend-key",
   RESEND_FROM_EMAIL: "sender@example.test",
+  RESEND_TEMPLATE_MODE: "dashboard",
   ...resendTemplateEnvironment,
   MOBILE_OTP_SECRET: "mobile-secret",
   PUBLIC_FRONTEND_URL: "https://www.lilycrest.space",
@@ -75,6 +76,15 @@ describe("production startup validation", () => {
     expect(() => validateStartupConfig()).not.toThrow();
     const [[loggedPayload]] = infoSpy.mock.calls.slice(-1);
     expect(Object.values(loggedPayload.emailRouting)).not.toContain("UNAVAILABLE");
+    expect(Object.values(loggedPayload.emailRouting).every((v) => v === "Inline HTML")).toBe(true);
+    infoSpy.mockRestore();
+  });
+
+  test("legacy template IDs do not override the audited inline shell unless Dashboard mode is explicit", () => {
+    const infoSpy = jest.spyOn(logger, "info").mockImplementation(() => {});
+    delete process.env.RESEND_TEMPLATE_MODE;
+    expect(() => validateStartupConfig()).not.toThrow();
+    const [[loggedPayload]] = infoSpy.mock.calls.slice(-1);
     expect(Object.values(loggedPayload.emailRouting).every((v) => v === "Inline HTML")).toBe(true);
     infoSpy.mockRestore();
   });
