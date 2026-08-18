@@ -37,6 +37,12 @@ await jest.unstable_mockModule("../utils/socket.js", () => ({
   emitToUser: jest.fn(),
 }));
 
+await jest.unstable_mockModule("../services/chatTicketIdService.js", () => ({
+  ensureChatTicketId: jest.fn(async (conversation) => conversation),
+  ensureChatTicketIds: jest.fn(async (conversations) => conversations),
+  generateChatTicketId: jest.fn(async () => "INQ-2026-000001"),
+}));
+
 const {
   getAdminConversations,
   getAdminConversationMessages,
