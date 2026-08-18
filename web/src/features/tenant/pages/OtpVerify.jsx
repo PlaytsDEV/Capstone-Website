@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
 import { authApi } from "../../../shared/api/authApi";
@@ -18,10 +18,17 @@ import { getAuthenticatedUserDestination } from "../../../shared/api/loginRoutin
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import "../../../shared/styles/auth-forms.css";
 import "../../../shared/styles/notification.css";
-import hero3 from "../../../assets/images/hero3.jpg";
+import {
+  getResendCooldown,
+  setResendCooldown as setPersistentResendCooldown,
+  clearResendCooldown,
+  subscribeToAuthStorage,
+} from "../../../shared/utils/authLockout";
 import { auth } from "../../../firebase/config";
+import hero3 from "../../../assets/images/hero3.jpg";
 
 const OTP_LENGTH = 6;
+const OTP_RESEND_KEY = "otp_resend";
 
 function OtpVerify() {
   const navigate = useNavigate();
@@ -31,9 +38,17 @@ function OtpVerify() {
   const [digits, setDigits] = useState(Array(OTP_LENGTH).fill(""));
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
-  const [resendCooldownEnd, setResendCooldownEnd] = useState(null);
-  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendCooldown, setResendCooldown] = useState(() => getResendCooldown(OTP_RESEND_KEY));
   const inputRefs = useRef([]);
+
+  const setResendCooldownEnd = (secondsOrTimestamp) => {
+    const seconds =
+      secondsOrTimestamp > 1000000000
+        ? Math.max(0, Math.ceil((secondsOrTimestamp - Date.now()) / 1000))
+        : Number(secondsOrTimestamp);
+    setPersistentResendCooldown(OTP_RESEND_KEY, seconds);
+    setResendCooldown(seconds);
+  };
 
   const pendingData = getOtpPending();
 
@@ -44,22 +59,25 @@ function OtpVerify() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Resend cooldown timer
+  // Resend cooldown timer (persistent timestamp-based)
   useEffect(() => {
-    if (!resendCooldownEnd) return;
+    if (resendCooldown <= 0) return;
     const tick = () => {
-      const remaining = Math.ceil((resendCooldownEnd - Date.now()) / 1000);
-      if (remaining <= 0) {
-        setResendCooldownEnd(null);
-        setResendCooldown(0);
-      } else {
-        setResendCooldown(remaining);
-      }
+      const remaining = getResendCooldown(OTP_RESEND_KEY);
+      setResendCooldown(remaining);
     };
     tick();
     const interval = setInterval(tick, 500);
     return () => clearInterval(interval);
-  }, [resendCooldownEnd]);
+  }, [resendCooldown]);
+
+  // Multi-tab storage sync
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthStorage(() => {
+      setResendCooldown(getResendCooldown(OTP_RESEND_KEY));
+    });
+    return unsubscribe;
+  }, []);
 
   const navigateAfterAuth = (user) => {
     const name = buildAuthSuccessMessage(user);
@@ -115,6 +133,7 @@ function OtpVerify() {
     setGlobalLoading(true);
     try {
       await authApi.verifyOtp(code);
+      clearResendCooldown(OTP_RESEND_KEY);
       clearOtpPending();
       const user = await refreshUser();
       if (!user) {
@@ -186,16 +205,17 @@ function OtpVerify() {
         subtitle="Premium living in the heart of Manila"
       />
 
-      <div className="flex items-center justify-center p-8 lg:p-12 bg-card">
-        <div className="w-full max-w-md">
+      <div className="flex items-center justify-center p-8 lg:p-12 bg-card overflow-y-auto">
+        <div className="w-full max-w-md my-auto">
           <Link
             to="/signin"
-            className="lg:hidden inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors"
+            className="lg:hidden inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors text-sm font-medium"
           >
-            <span className="text-sm font-light">← Back to sign in</span>
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to sign in</span>
           </Link>
 
-          <div className="auth-header">
+          <div className="auth-header text-center">
             <h1 className="auth-header__title">Check your email</h1>
             <p className="auth-header__subtitle">
               We sent a 6-digit code to{" "}
@@ -237,20 +257,20 @@ function OtpVerify() {
                     fontWeight: 600,
                     borderRadius: "12px",
                     border: digit
-                      ? "2px solid var(--color-primary, #4f46e5)"
+                      ? "2px solid var(--fi-border-focus, #D4AF37)"
                       : "2px solid var(--border)",
                     backgroundColor: "var(--muted)",
                     color: "var(--foreground)",
                     outline: "none",
-                    transition: "border-color 0.15s",
+                    transition: "border-color 0.15s, box-shadow 0.15s",
                     caretColor: "transparent",
                   }}
                   onFocus={(e) =>
-                    (e.target.style.borderColor = "var(--color-primary, #4f46e5)")
+                    (e.target.style.borderColor = "var(--fi-border-focus, #D4AF37)")
                   }
                   onBlur={(e) =>
                     (e.target.style.borderColor = digit
-                      ? "var(--color-primary, #4f46e5)"
+                      ? "var(--fi-border-focus, #D4AF37)"
                       : "var(--border)")
                   }
                 />
@@ -272,15 +292,15 @@ function OtpVerify() {
               )}
             </button>
 
-            <p
+            <div
               style={{
                 textAlign: "center",
-                marginTop: "20px",
+                marginTop: "16px",
                 fontSize: "14px",
                 color: "var(--muted-foreground)",
               }}
             >
-              Didn&apos;t receive the code?{" "}
+              <span>Didn&apos;t receive the code? </span>
               <button
                 type="button"
                 onClick={handleResend}
@@ -293,10 +313,11 @@ function OtpVerify() {
                   color:
                     resending || resendCooldown > 0
                       ? "var(--muted-foreground)"
-                      : "var(--color-primary, #4f46e5)",
+                      : "#D4AF37",
                   fontWeight: 500,
                   fontSize: "14px",
                   textDecoration: resendCooldown > 0 ? "none" : "underline",
+                  textUnderlineOffset: "3px",
                 }}
               >
                 {resending ? (
@@ -318,25 +339,19 @@ function OtpVerify() {
                   "Resend"
                 )}
               </button>
-            </p>
+            </div>
 
-            <p
-              style={{
-                textAlign: "center",
-                marginTop: "16px",
-                fontSize: "14px",
-                color: "var(--muted-foreground)",
-              }}
-            >
+            <div className="flex justify-center mt-3">
               <Link
                 to="/signin"
                 state={{ email }}
                 onClick={clearOtpPending}
-                style={{ color: "var(--muted-foreground)", textDecoration: "underline" }}
+                className="auth-btn-outline"
               >
-                ← Back to sign in
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back to sign in</span>
               </Link>
-            </p>
+            </div>
           </form>
         </div>
       </div>

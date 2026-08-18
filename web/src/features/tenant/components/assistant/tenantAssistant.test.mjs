@@ -79,3 +79,40 @@ test("CSS strictly enforces solid HSL design with zero gradients and fluid respo
   assert.match(stylesSource, /@media\s*\(max-width:\s*640px\)/);
   assert.match(stylesSource, /max-width:\s*100vw/);
 });
+
+test("CSS enforces Navy Blue in light mode and Golden Yellow in dark mode for launcher and assistant UI", () => {
+  // Light mode launcher: Navy background, gold icon, navy badge shadow
+  assert.match(stylesSource, /\.tenant-assistant-launcher\s*\{[^}]*background-color:\s*#0A1628;/);
+  assert.match(stylesSource, /\.tenant-assistant-launcher\s*\{[^}]*color:\s*#D4AF37/);
+  assert.match(stylesSource, /\.tenant-assistant-launcher-badge\s*\{[^}]*box-shadow:\s*0 0 0 2px #0A1628;/);
+
+  // Dark mode launcher: Gold background, navy icon, gold badge shadow
+  assert.match(stylesSource, /\.dark \.tenant-assistant-launcher[^{]*\{[^}]*background-color:\s*#D4AF37;/);
+  assert.match(stylesSource, /\.dark \.tenant-assistant-launcher[^{]*\{[^}]*color:\s*#0A1628/);
+  assert.match(stylesSource, /\.dark \.tenant-assistant-launcher-badge[^{]*\{[^}]*box-shadow:\s*0 0 0 2px #D4AF37;/);
+
+  // Drawer avatar badge
+  assert.match(stylesSource, /\.tenant-assistant-avatar-badge\s*\{[^}]*background-color:\s*#0A1628;/);
+  assert.match(stylesSource, /\.dark \.tenant-assistant-avatar-badge[^{]*\{[^}]*background-color:\s*#D4AF37;/);
+
+  // User chat bubbles
+  assert.match(stylesSource, /\.tenant-msg-row\.user \.tenant-msg-bubble\s*\{[^}]*background-color:\s*#0A1628;/);
+  assert.match(stylesSource, /\.dark \.tenant-msg-row\.user \.tenant-msg-bubble[^{]*\{[^}]*background-color:\s*#D4AF37;/);
+
+  // Send buttons
+  assert.match(stylesSource, /\.tenant-assistant-send-btn\s*\{[^}]*background-color:\s*#0A1628;/);
+  assert.match(stylesSource, /\.dark \.tenant-assistant-send-btn[^{]*\{[^}]*background-color:\s*#D4AF37;/);
+
+  // Snapshot card action buttons and progress bar
+  assert.match(stylesSource, /\.dark \.tenant-snapshot-action-btn[^{]*\{[^}]*background-color:\s*#D4AF37;/);
+  assert.match(stylesSource, /\.dark \.tenant-lease-progress-fill[^{]*\{[^}]*background-color:\s*#D4AF37;/);
+});
+
+test("TenantBillingBreakdownCard and TenantLeaseTimelineCard enforce strict data validity checks", () => {
+  assert.match(billingCardSource, /hasValidBillData/);
+  assert.match(billingCardSource, /if \(!data \|\| !hasValidBillData\) return null;/);
+  assert.match(leaseCardSource, /hasValidContract/);
+  assert.match(leaseCardSource, /if \(!data \|\| !hasValidContract\) return null;/);
+  assert.match(drawerSource, /const billData = widgetData\?\.currentBill/);
+});
+

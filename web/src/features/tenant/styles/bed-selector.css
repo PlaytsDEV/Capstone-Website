@@ -1,9 +1,10 @@
 /* ==========================================================================
-   BED SELECTOR — Minimalist & Professional
+   BED SELECTOR — Minimalist, High-Contrast & Accessible
    ========================================================================== */
 
 .bed-selector {
-  padding: 16px 0;
+  padding: 12px 0;
+  width: 100%;
 }
 
 /* ── Header ── */
@@ -11,15 +12,15 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   flex-wrap: wrap;
   gap: 10px;
 }
 
 .bs-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
-  color: #1F2937;
+  color: var(--foreground);
   margin: 0;
   letter-spacing: -0.01em;
 }
@@ -28,14 +29,16 @@
 .bs-legend {
   display: flex;
   gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .bs-legend-item {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--muted-foreground);
   font-weight: 500;
 }
 
@@ -43,17 +46,28 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
 
-.bs-legend-avail { background: #10B981; }
-.bs-legend-occ   { background: #EF4444; }
-.bs-legend-resv  { background: var(--color-warning); }
-.bs-legend-lock  { background: var(--text-muted); }
+.bs-legend-avail { background: var(--success, #10B981); }
+.bs-legend-occ   { background: var(--danger, #EF4444); }
+.bs-legend-resv  { background: var(--warning, #F59E0B); }
+
+.bs-no-avail-msg {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-align: center;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+}
 
 /* ── Bunk container ── */
 .bs-bunks {
   display: flex;
-  gap: 16px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
@@ -62,20 +76,20 @@
   flex: 1;
   min-width: 200px;
   max-width: 280px;
-  border: 1.5px solid var(--border-card);
+  border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
-  background: #FAFAFA;
+  background: var(--muted);
   position: relative;
 }
 
 .bs-frame-label {
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-muted);
-  padding: 8px 14px 0;
+  color: var(--muted-foreground);
+  padding: 10px 12px 6px;
 }
 
 .bs-tier {
@@ -84,19 +98,23 @@
 
 .bs-divider {
   height: 1px;
-  background: var(--border-card);
-  margin: 0 12px;
+  background: var(--border);
+  margin: 2px 10px;
 }
 
 /* ══════════════════════════════════════════════════════════════
-   INDIVIDUAL BED
+   INDIVIDUAL BED ITEM
    ══════════════════════════════════════════════════════════════ */
 .bs-bed {
   border-radius: 8px;
-  padding: 12px;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 10px 12px;
+  transition: background-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
-  border: 1.5px solid transparent;
+  border: 1px solid var(--border);
+  background: var(--card);
   will-change: transform;
   transform: translateZ(0);
   backface-visibility: hidden;
@@ -106,137 +124,177 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 
 .bs-bed-left {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 /* ── Status dot ── */
 .bs-dot {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   flex-shrink: 0;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.bs-dot-available   { background: #10B981; box-shadow: 0 0 0 3px rgba(16,185,129,0.15); }
-.bs-dot-occupied    { background: #EF4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.12); }
-.bs-dot-reserved    { background: var(--color-warning); box-shadow: 0 0 0 3px rgba(245,158,11,0.15); }
-.bs-dot-locked      { background: var(--text-muted); box-shadow: 0 0 0 3px rgba(156,163,175,0.15); }
-.bs-dot-maintenance { background: #D1D5DB; }
+.bs-dot-available   { background: var(--success, #10B981); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--success, #10B981) 22%, transparent); }
+.bs-dot-occupied    { background: var(--danger, #EF4444); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--danger, #EF4444) 18%, transparent); }
+.bs-dot-reserved    { background: var(--warning, #F59E0B); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--warning, #F59E0B) 22%, transparent); }
+.bs-dot-locked      { background: var(--neutral, #94A3B8); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--neutral, #94A3B8) 18%, transparent); }
+.bs-dot-maintenance { background: var(--neutral, #94A3B8); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--neutral, #94A3B8) 18%, transparent); }
+.bs-dot-selected    { background: var(--primary, #D4AF37); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary, #D4AF37) 30%, transparent); }
 
 /* ── Labels ── */
 .bs-label {
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
-  line-height: 1.2;
+  color: var(--foreground);
+  line-height: 1.25;
 }
 
 .bs-id {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--muted-foreground);
   font-family: "SF Mono", "Fira Code", monospace;
+  margin-top: 1px;
 }
 
-/* ── Badge ── */
+/* ── Badge (Clean, transparent background per design system invariants) ── */
 .bs-badge {
   font-size: 11px;
   font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 20px;
+  padding: 0;
+  background: transparent;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
-/* ── Status-specific styles ── */
+/* ── 1. DEFAULT: Available ── */
 .bs-available {
-  background: white;
+  background: var(--card);
+  border-color: var(--border);
 }
 .bs-available .bs-badge {
-  background: var(--color-success-bg);
-  color: var(--color-success);
+  color: var(--success, #16a34a);
+}
+html:not(.dark) .bs-available .bs-badge {
+  color: #15803d;
+}
+.dark .bs-available .bs-badge,
+html[data-theme="dark"] .bs-available .bs-badge {
+  color: #4ade80;
 }
 
+/* ── 2. HOVER: Clickable / Available ── */
+.bs-clickable {
+  cursor: pointer;
+}
+.bs-clickable:not(.bs-selected):hover {
+  background: color-mix(in srgb, var(--primary, #D4AF37) 5%, var(--card));
+  border-color: color-mix(in srgb, var(--primary, #D4AF37) 50%, var(--border));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transform: translateY(-1px);
+}
+.bs-clickable:not(.bs-selected):active {
+  transform: translateY(0);
+  background: color-mix(in srgb, var(--primary, #D4AF37) 8%, var(--card));
+}
+
+/* ── 3. CLICKED / SELECTED ── */
+.bs-selected {
+  background: color-mix(in srgb, var(--primary, #D4AF37) 8%, var(--card)) !important;
+  border-color: var(--primary, #D4AF37) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  opacity: 1 !important;
+}
+.bs-selected .bs-label {
+  color: var(--foreground) !important;
+}
+.bs-selected .bs-id {
+  color: var(--muted-foreground) !important;
+}
+.bs-selected .bs-badge {
+  color: #92400e !important;
+  font-weight: 700;
+}
+.dark .bs-selected .bs-badge,
+html[data-theme="dark"] .bs-selected .bs-badge {
+  color: #fde047 !important;
+}
+
+/* ── Disabled / Non-selectable status states ── */
 .bs-occupied {
-  background: #FEFEFE;
+  background: var(--card);
+  border-color: var(--border);
   opacity: 0.65;
   cursor: not-allowed;
 }
 .bs-occupied .bs-badge {
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
+  color: var(--danger, #EF4444);
+}
+html:not(.dark) .bs-occupied .bs-badge {
+  color: #dc2626;
+}
+.dark .bs-occupied .bs-badge,
+html[data-theme="dark"] .bs-occupied .bs-badge {
+  color: #f87171;
 }
 .bs-occupied .bs-label {
-  color: var(--text-muted);
+  color: var(--muted-foreground);
 }
 
 .bs-reserved {
-  background: #FFFDF7;
-  opacity: 0.75;
+  background: var(--card);
+  border-color: var(--border);
+  opacity: 0.7;
   cursor: not-allowed;
 }
 .bs-reserved .bs-badge {
-  background: #FEF3C7;
-  color: #92400E;
+  color: var(--warning, #F59E0B);
+}
+html:not(.dark) .bs-reserved .bs-badge {
+  color: #b45309;
+}
+.dark .bs-reserved .bs-badge,
+html[data-theme="dark"] .bs-reserved .bs-badge {
+  color: #fbbf24;
 }
 .bs-reserved .bs-label {
-  color: #B45309;
+  color: var(--muted-foreground);
 }
 
 .bs-locked {
-  background: #FAFAFA;
+  background: var(--card);
+  border-color: var(--border);
   opacity: 0.55;
   cursor: not-allowed;
 }
 .bs-locked .bs-badge {
-  background: #F3F4F6;
-  color: #6B7280;
+  color: var(--muted-foreground);
 }
 .bs-locked .bs-label {
-  color: var(--text-muted);
+  color: var(--muted-foreground);
 }
 
 .bs-maintenance {
-  background: #FEFEFE;
+  background: var(--card);
+  border-color: var(--border);
   opacity: 0.55;
   cursor: not-allowed;
 }
 .bs-maintenance .bs-badge {
-  background: #F3F4F6;
-  color: #6B7280;
+  color: var(--muted-foreground);
 }
 .bs-maintenance .bs-label {
-  color: var(--text-muted);
-}
-
-/* ── Clickable ── */
-.bs-clickable {
-  cursor: pointer;
-}
-.bs-clickable:hover {
-  background: var(--color-warning-bg);
-  border-color: #86EFAC;
-}
-
-/* ── Selected ── */
-.bs-selected {
-  background: var(--color-warning-bg) !important;
-  border-color: var(--color-warning) !important;
-  opacity: 1 !important;
-}
-.bs-selected .bs-badge {
-  background: #FEF3C7 !important;
-  color: #92400E !important;
-}
-.bs-selected .bs-dot {
-  background: var(--color-warning) !important;
-  box-shadow: 0 0 0 3px rgba(245,158,11,0.2) !important;
-}
-.bs-selected .bs-label {
-  color: #92400E !important;
+  color: var(--muted-foreground);
 }
 
 /* ── Responsive ── */

@@ -28,27 +28,27 @@ export default function CheckAvailabilityPageSkeleton() {
           borderBottom: "1px solid var(--border-divider)",
         }}
       >
-        <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="ca-header-row">
             {/* Logo */}
             <div className="ca-logo" style={{ pointerEvents: "none" }}>
-              <SkeletonPulse width="32px" height="32px" borderRadius="8px" />
-              <SkeletonPulse width="80px" height="18px" />
+              <SkeletonPulse width="36px" height="36px" borderRadius="8px" />
+              <SkeletonPulse width="95px" height="22px" />
             </div>
 
             {/* Filter bar */}
             <div className="ca-filter-bar" style={{ pointerEvents: "none" }}>
               {/* Search input pill */}
-              <SkeletonPulse height="38px" borderRadius="999px" style={{ flex: 1, minWidth: 160 }} />
+              <SkeletonPulse height="44px" borderRadius="10px" style={{ flex: 1, minWidth: 160 }} />
               {/* Filter dropdown pills */}
-              <SkeletonPulse width="110px" height="38px" borderRadius="999px" />
-              <SkeletonPulse width="120px" height="38px" borderRadius="999px" />
-              <SkeletonPulse width="110px" height="38px" borderRadius="999px" />
-              <SkeletonPulse width="130px" height="38px" borderRadius="999px" />
+              <SkeletonPulse width="120px" height="44px" borderRadius="10px" />
+              <SkeletonPulse width="130px" height="44px" borderRadius="10px" />
+              <SkeletonPulse width="130px" height="44px" borderRadius="10px" />
+              <SkeletonPulse width="215px" height="44px" borderRadius="10px" />
             </div>
 
             {/* User / Sign-in button */}
-            <SkeletonPulse width="88px" height="36px" borderRadius="999px" style={{ flexShrink: 0 }} />
+            <SkeletonPulse width="120px" height="44px" borderRadius="9999px" style={{ flexShrink: 0 }} />
           </div>
         </div>
       </header>

@@ -99,13 +99,13 @@ function ReservationFlowPage() {
       />
 
       <div className="reservation-layout">
-        {/* Back Button */}
-        <div className="rf-back-navigation">
+        {/* Top Header & Exit to Dashboard Navigation */}
+        <header className="rf-top-header" aria-label="Reservation navigation">
           <button
             type="button"
-            className="rf-back-button"
-            onClick={() => flow.navigate("/applicant/profile")}
-            aria-label="Back to Dashboard"
+            className="rf-exit-button"
+            onClick={flow.handleExitToDashboard}
+            aria-label="Exit to dashboard"
           >
             <svg
               width="16"
@@ -116,13 +116,40 @@ function ReservationFlowPage() {
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
+              aria-hidden="true"
             >
               <path d="M19 12H5" />
               <polyline points="12 19 5 12 12 5" />
             </svg>
-            Dashboard
+            <span>Exit to Dashboard</span>
           </button>
-        </div>
+
+          <div className="rf-autosave-indicator" aria-live="polite">
+            {flow.saveStatus === "saving" ? (
+              <span className="rf-autosave-status rf-autosave-saving">
+                <span className="rf-autosave-spinner" aria-hidden="true" />
+                Saving draft...
+              </span>
+            ) : flow.saveStatus === "error" ? (
+              <span className="rf-autosave-status rf-autosave-error">
+                <span className="rf-autosave-dot error" aria-hidden="true" />
+                Draft saved locally
+              </span>
+            ) : flow.hasUnsavedApplicationChanges ? (
+              <span className="rf-autosave-status rf-autosave-pending">
+                <span className="rf-autosave-dot warning" aria-hidden="true" />
+                Unsaved changes
+              </span>
+            ) : flow.reservationData ? (
+              <span className="rf-autosave-status rf-autosave-saved">
+                <span className="rf-autosave-dot success" aria-hidden="true" />
+                {flow.currentStage === 3 && flow.lastApplicationDraftSavedAt
+                  ? "Draft auto-saved"
+                  : "Progress auto-saved"}
+              </span>
+            ) : null}
+          </div>
+        </header>
 
         <ReservationStepper
           currentStage={flow.currentStage}
@@ -130,10 +157,7 @@ function ReservationFlowPage() {
           applicationSubmitted={flow.applicationSubmitted}
           paymentSubmitted={flow.paymentSubmitted}
           paymentApproved={flow.paymentApproved}
-        />
-        <RoomInfoBanner
-          room={flow.reservationData?.room}
-          pricingDisplay={flow.reservationData?.pricingDisplay}
+          onStepClick={flow.handleStepperClick}
         />
 
         <main className="reservation-main">
@@ -141,6 +165,11 @@ function ReservationFlowPage() {
             <ReservationSummaryStep
               reservationData={flow.reservationData}
               onNext={flow.handleNextStage}
+              onUpdateStayPackage={flow.updateStayPackage}
+              targetMoveInDate={flow.targetMoveInDate}
+              setTargetMoveInDate={flow.setTargetMoveInDate}
+              leaseDuration={flow.leaseDuration}
+              setLeaseDuration={flow.setLeaseDuration}
               onChangeRoom={() => {
                 if (flow.roomSelectionLocked) {
                   flow.notifyRoomSelectionLocked();
@@ -318,6 +347,7 @@ function ReservationFlowPage() {
                 {...{
                   billingEmail: flow.billingEmail,
                   setBillingEmail: flow.setBillingEmail,
+                  reservationData: flow.reservationData,
                   accountEmail: flow.userAccountEmail || flow.user?.email || "",
                   accountPhone: flow.userProfilePhone || flow.user?.phone || "",
                   accountFirstName: flow.user?.firstName || "",
@@ -454,6 +484,8 @@ function ReservationFlowPage() {
                 setAgreedToFeePolicy: flow.setAgreedToFeePolicy,
                 paymentCancelled: flow.paymentCancelled,
                 paymentApproved: flow.paymentApproved,
+                onUpdateStayPackage: flow.updateStayPackage,
+                roomSelectionLocked: flow.roomSelectionLocked,
               }}
               onPrev={flow.handlePrevStage}
               onNext={flow.handleNextStage}

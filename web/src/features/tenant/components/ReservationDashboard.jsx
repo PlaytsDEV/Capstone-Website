@@ -14,6 +14,7 @@ import {
   ArrowRight,
   AlertCircle,
   MapPin,
+  RotateCcw,
 } from "lucide-react";
 import {
   canReservationAccessPayment,
@@ -546,13 +547,30 @@ export default function ReservationDashboard({
             You don't have a reservation yet. Start by browsing available rooms.
           </p>
           <button
+            type="button"
             onClick={() => navigate("/applicant/check-availability")}
             style={styles.primaryButton}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--color-accent-hover, #B9921F)";
+              e.currentTarget.style.transform = "translateY(-1px)";
+              e.currentTarget.style.boxShadow = "0 3px 8px rgba(212, 175, 55, 0.28)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--color-accent, #D4AF37)";
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "0 1px 2px rgba(0, 0, 0, 0.05)";
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = "scale(0.98)";
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = "translateY(-1px)";
+            }}
           >
             Browse Rooms
             <ArrowRight
               size={16}
-              style={{ marginLeft: 8, color: "var(--color-primary, #D4AF37)" }}
+              style={{ marginLeft: 8, color: "inherit" }}
             />
           </button>
         </div>
@@ -590,9 +608,18 @@ export default function ReservationDashboard({
           <div style={styles.headerRow}>
             <h3 style={styles.roomTitle}>{roomName}</h3>
             {isConfirmed ? (
-              <span style={styles.confirmedBadge}>✓ Reserved</span>
+              <span style={styles.confirmedBadge}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#10B981", flexShrink: 0 }} />
+                Reserved
+              </span>
             ) : (
-              <span style={styles.pendingBadge}>In Progress</span>
+              <span style={styles.pendingBadge}>
+                <span
+                  className="animate-pulse"
+                  style={{ width: 7, height: 7, borderRadius: "50%", background: "#F59E0B", flexShrink: 0 }}
+                />
+                In Progress
+              </span>
             )}
           </div>
           <div style={styles.headerMeta}>
@@ -602,16 +629,24 @@ export default function ReservationDashboard({
             </span>
 
             {(() => {
-              const { primaryDate } = resolveDisplayMoveInDate(
+              const { primaryDate, dateType } = resolveDisplayMoveInDate(
                 reservation,
                 readMoveInDate,
                 formatDate,
               );
-              if (!primaryDate) return null;
+              if (!primaryDate) {
+                return (
+                  <>
+                    <span style={styles.metaDot}>·</span>
+                    <span style={styles.metaItem}>Move-in: To be scheduled</span>
+                  </>
+                );
+              }
+              const label = dateType === "confirmed" ? "Move-in" : "Preferred Move-in";
               return (
                 <>
                   <span style={styles.metaDot}>·</span>
-                  <span style={styles.metaItem}>Move-in: {formatDate(primaryDate)}</span>
+                  <span style={styles.metaItem}>{label}: {formatDate(primaryDate)}</span>
                 </>
               );
             })()}
@@ -635,6 +670,20 @@ export default function ReservationDashboard({
                       : styles.receiptPillRemote),
                 }}
               >
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: "50%",
+                    flexShrink: 0,
+                    background:
+                      feedback.viewingPreference === "physical_visit"
+                        ? "#F59E0B"
+                        : feedback.viewingPreference === "urgent_move_in_review"
+                          ? "#6366F1"
+                          : "#3B82F6",
+                  }}
+                />
                 {feedback.viewingPreference === "physical_visit"
                   ? "Physical Visit"
                   : feedback.viewingPreference === "urgent_move_in_review"
@@ -804,14 +853,11 @@ export default function ReservationDashboard({
                     status === "rejected"
                       ? "pointer"
                       : "default",
-                  opacity: status === "locked" ? 0.4 : 1,
                   borderRadius: 8,
                   transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
                 }}
                 onMouseEnter={(e) => {
                   if (!isMobile && status !== "locked") {
-                    e.currentTarget.style.backgroundColor =
-                      "rgba(255, 255, 255, 0.08)";
                     e.currentTarget.style.transform = isFirst
                       ? "translateX(-18px) translateY(-2px)"
                       : isLast
@@ -821,7 +867,6 @@ export default function ReservationDashboard({
                 }}
                 onMouseLeave={(e) => {
                   if (!isMobile && status !== "locked") {
-                    e.currentTarget.style.backgroundColor = "transparent";
                     e.currentTarget.style.transform = isFirst
                       ? "translateX(-18px)"
                       : isLast
@@ -898,7 +943,7 @@ export default function ReservationDashboard({
                       status === "complete"
                         ? "#059669"
                         : status === "current"
-                          ? "var(--color-primary, #D4AF37)"
+                          ? "#B48208"
                           : status === "waiting"
                             ? "#2563EB"
                             : status === "rejected"
@@ -908,8 +953,8 @@ export default function ReservationDashboard({
                       status === "current" ||
                       status === "waiting" ||
                       status === "rejected"
-                        ? 600
-                        : 500,
+                        ? 500
+                        : 400,
                   }}
                 >
                   {step.label}
@@ -933,13 +978,11 @@ export default function ReservationDashboard({
                         }
                       : {}),
                     color:
-                      status === "complete"
-                        ? "#059669"
-                        : status === "current"
-                          ? "#D97706"
-                          : status === "rejected"
-                            ? "#DC2626"
-                            : "#94A3B8",
+                      status === "rejected"
+                        ? "#DC2626"
+                        : status === "locked"
+                          ? "#94A3B8"
+                          : "var(--text-secondary, #64748B)",
                   }}
                 >
                   {getStepDesc(step, status, reservation)}
@@ -957,42 +1000,41 @@ export default function ReservationDashboard({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: 12,
-            padding: "12px 16px",
-            borderRadius: 8,
-            background: action.isRejected
-              ? "rgba(220, 38, 38, 0.08)"
-              : action.isWaiting
-                ? "rgba(37, 99, 235, 0.06)"
-                : "rgba(15, 23, 42, 0.08)",
-            border: `1px solid ${action.isRejected ? "rgba(220, 38, 38, 0.2)" : action.isWaiting ? "rgba(37, 99, 235, 0.15)" : "rgba(15, 23, 42, 0.2)"}`,
+            gap: 16,
+            padding: "14px 18px",
+            borderRadius: 10,
+            background: "var(--surface-card, #FFFFFF)",
+            border: "1px solid var(--border-card, #E2E8F0)",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.02)",
+            flexWrap: "wrap",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
             <div
               style={{
-                width: 7,
-                height: 7,
+                width: 8,
+                height: 8,
                 borderRadius: "50%",
                 flexShrink: 0,
                 background: action.isRejected
                   ? "#DC2626"
                   : action.isWaiting
                     ? "#2563EB"
-                    : "var(--text-heading, #0F172A)",
+                    : "#059669",
               }}
             />
-            <div>
+            <div style={{ minWidth: 0 }}>
               <span
                 style={{
-                  fontSize: 13,
+                  fontSize: 14,
                   fontWeight: 600,
                   color: action.isRejected
                     ? "#DC2626"
                     : action.isWaiting
                       ? "#1D4ED8"
-                      : "#0F172A",
-                  marginRight: 6,
+                      : "var(--text-heading, #0F172A)",
+                  marginRight: 8,
+                  display: "inline-block",
                 }}
               >
                 {action.title}
@@ -1000,7 +1042,10 @@ export default function ReservationDashboard({
               <span
                 style={{
                   fontSize: 13,
-                  color: action.isRejected ? "#7F1D1D" : "#94A3B8",
+                  color: action.isRejected
+                    ? "#991B1B"
+                    : "var(--text-secondary, #64748B)",
+                  lineHeight: 1.4,
                 }}
               >
                 {action.description}
@@ -1012,61 +1057,53 @@ export default function ReservationDashboard({
               onClick={() => goToFlow(action.route)}
               style={{
                 flexShrink: 0,
-                padding: "7px 16px",
+                padding: "8px 20px",
                 background: action.isRejected
                   ? "#DC2626"
-                  : "#059669",
+                  : action.isWaiting
+                    ? "#2563EB"
+                    : "#059669",
                 color: "#ffffff",
                 border: "none",
-                borderRadius: 6,
+                borderRadius: 8,
                 fontSize: 13,
                 fontWeight: 600,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
-                boxShadow: action.isRejected
-                  ? "0 1px 2px rgba(0, 0, 0, 0.05)"
-                  : "0 2px 8px rgba(5, 150, 105, 0.25)",
-                transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+                transition: "all 0.15s ease",
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = "translateY(-1px)";
                 if (action.isRejected) {
                   e.currentTarget.style.backgroundColor = "#B91C1C";
-                  e.currentTarget.style.boxShadow =
-                    "0 4px 12px rgba(220, 38, 38, 0.35)";
+                  e.currentTarget.style.boxShadow = "0 3px 8px rgba(220, 38, 38, 0.3)";
+                } else if (action.isWaiting) {
+                  e.currentTarget.style.backgroundColor = "#1D4ED8";
+                  e.currentTarget.style.boxShadow = "0 3px 8px rgba(37, 99, 235, 0.25)";
                 } else {
                   e.currentTarget.style.backgroundColor = "#047857";
-                  e.currentTarget.style.boxShadow =
-                    "0 4px 14px rgba(5, 150, 105, 0.35)";
+                  e.currentTarget.style.boxShadow = "0 3px 8px rgba(5, 150, 105, 0.25)";
                 }
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = "translateY(0)";
                 if (action.isRejected) {
                   e.currentTarget.style.backgroundColor = "#DC2626";
-                  e.currentTarget.style.boxShadow =
-                    "0 1px 2px rgba(0, 0, 0, 0.05)";
+                  e.currentTarget.style.boxShadow = "0 1px 2px rgba(0, 0, 0, 0.05)";
+                } else if (action.isWaiting) {
+                  e.currentTarget.style.backgroundColor = "#2563EB";
+                  e.currentTarget.style.boxShadow = "0 1px 2px rgba(0, 0, 0, 0.05)";
                 } else {
                   e.currentTarget.style.backgroundColor = "#059669";
-                  e.currentTarget.style.boxShadow =
-                    "0 2px 8px rgba(5, 150, 105, 0.25)";
+                  e.currentTarget.style.boxShadow = "0 1px 2px rgba(0, 0, 0, 0.05)";
                 }
               }}
               onMouseDown={(e) => {
-                e.currentTarget.style.transform = "translateY(0)";
-                if (action.isRejected) {
-                  e.currentTarget.style.backgroundColor = "#991B1B";
-                } else {
-                  e.currentTarget.style.backgroundColor = "#065F46";
-                }
+                e.currentTarget.style.transform = "scale(0.98)";
               }}
               onMouseUp={(e) => {
                 e.currentTarget.style.transform = "translateY(-1px)";
-                if (action.isRejected) {
-                  e.currentTarget.style.backgroundColor = "#B91C1C";
-                } else {
-                  e.currentTarget.style.backgroundColor = "#047857";
-                }
               }}
             >
               {action.buttonLabel.replace(/\s*(->|→)\s*$/, "")}
@@ -1168,17 +1205,35 @@ export default function ReservationDashboard({
                     style={styles.footerLinkSecondary}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.backgroundColor =
-                        "var(--surface-muted, #F1F5F9)";
+                        "var(--surface-muted, #F8FAFC)";
+                      e.currentTarget.style.borderColor =
+                        "var(--border-strong, #94A3B8)";
                       e.currentTarget.style.color =
                         "var(--text-heading, #0F172A)";
+                      e.currentTarget.style.transform = "translateY(-1px)";
+                      e.currentTarget.style.boxShadow =
+                        "0 2px 4px rgba(0, 0, 0, 0.05)";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
+                      e.currentTarget.style.backgroundColor =
+                        "var(--surface-card, #FFFFFF)";
+                      e.currentTarget.style.borderColor =
+                        "var(--border-card, #CBD5E1)";
                       e.currentTarget.style.color =
-                        "var(--text-secondary, #64748B)";
+                        "var(--text-secondary, #475569)";
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.boxShadow =
+                        "0 1px 2px rgba(0, 0, 0, 0.04)";
+                    }}
+                    onMouseDown={(e) => {
+                      e.currentTarget.style.transform = "scale(0.98)";
+                    }}
+                    onMouseUp={(e) => {
+                      e.currentTarget.style.transform = "translateY(-1px)";
                     }}
                   >
-                    ↩ Change Room
+                    <RotateCcw size={13} style={{ flexShrink: 0 }} />
+                    Change Room
                   </button>
                 )
               )}
@@ -1374,7 +1429,8 @@ const styles = {
     width: 64,
     height: 64,
     borderRadius: "50%",
-    background: "var(--surface-muted, #F1F5F9)",
+    background: "var(--surface-card, #FFFFFF)",
+    border: "1px solid var(--border-card, #E2E8F0)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1396,14 +1452,15 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     padding: "10px 24px",
-    background: "#FFFFFF",
-    color: "var(--color-primary, #D4AF37)",
-    border: "1px solid var(--color-primary, #D4AF37)",
+    background: "var(--color-accent, #D4AF37)",
+    color: "#FFFFFF",
+    border: "none",
     borderRadius: 8,
     fontSize: 14,
     fontWeight: 600,
     cursor: "pointer",
-    transition: "background 0.2s",
+    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+    transition: "background-color 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease",
   },
 
   /* header */
@@ -1427,17 +1484,21 @@ const styles = {
     fontSize: 12,
     fontWeight: 600,
     color: "#059669",
-    background: "rgba(16, 185, 129, 0.12)",
-    padding: "3px 10px",
-    borderRadius: 999,
+    background: "transparent",
+    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
   },
   pendingBadge: {
     fontSize: 12,
-    fontWeight: 500,
-    color: "var(--color-primary, #D4AF37)",
-    background: "rgba(212, 175, 55, 0.14)",
-    padding: "3px 10px",
-    borderRadius: 999,
+    fontWeight: 600,
+    color: "#D97706",
+    background: "transparent",
+    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
   },
   headerMeta: {
     display: "flex",
@@ -1460,55 +1521,52 @@ const styles = {
   /* receipt card */
   receiptCard: {
     marginBottom: 18,
-    padding: "14px 16px",
+    padding: "16px 18px",
     borderRadius: 10,
-    background: "rgba(15, 23, 42, 0.03)",
-    border: "1px solid rgba(15, 23, 42, 0.1)",
+    background: "var(--surface-card, #FFFFFF)",
+    border: "1px solid var(--border-card, #E2E8F0)",
   },
   receiptCardHeader: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 12,
   },
   receiptCardHeaderLeft: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     flexWrap: "wrap",
   },
   receiptCardTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 700,
     color: "var(--text-heading, #0F172A)",
     letterSpacing: "-0.01em",
   },
   receiptStatusPill: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 600,
-    padding: "2px 8px",
-    borderRadius: 999,
-    letterSpacing: "0.02em",
+    padding: 0,
+    background: "transparent",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
   },
   receiptPillPhysical: {
-    background: "rgba(212, 175, 55, 0.14)",
-    color: "#92650a",
+    color: "#D97706",
   },
   receiptPillRemote: {
-    background: "rgba(37, 99, 235, 0.1)",
-    color: "#1D4ED8",
+    color: "#2563EB",
   },
   receiptPillUrgent: {
-    background: "rgba(99, 102, 241, 0.1)",
     color: "#4F46E5",
   },
   receiptPillSuccess: {
-    background: "rgba(16, 185, 129, 0.12)",
-    color: "#047857",
+    color: "#059669",
   },
   receiptPillDanger: {
-    background: "rgba(220, 38, 38, 0.12)",
-    color: "#B91C1C",
+    color: "#DC2626",
   },
   receiptDismissBtn: {
     background: "transparent",
@@ -1523,26 +1581,26 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: 0,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   receiptRow: {
     display: "flex",
     alignItems: "baseline",
     justifyContent: "space-between",
     gap: 8,
-    fontSize: 12,
-    padding: "5px 0",
-    borderBottom: "1px solid rgba(15, 23, 42, 0.05)",
+    fontSize: 13,
+    padding: "6px 0",
+    borderBottom: "1px solid var(--border-subtle, #F1F5F9)",
   },
   receiptRowLabel: {
-    color: "#94A3B8",
+    color: "var(--text-secondary, #64748B)",
     fontWeight: 500,
     whiteSpace: "nowrap",
     flexShrink: 0,
   },
   receiptRowValue: {
     color: "var(--text-heading, #0F172A)",
-    fontWeight: 500,
+    fontWeight: 600,
     textAlign: "right",
   },
   receiptCode: {
@@ -1551,53 +1609,55 @@ const styles = {
     letterSpacing: "0.05em",
   },
   receiptNote: {
-    fontSize: 11,
-    color: "#64748B",
+    fontSize: 12,
+    color: "var(--text-secondary, #64748B)",
     lineHeight: 1.5,
-    marginBottom: 10,
+    marginBottom: 12,
     paddingTop: 2,
   },
   receiptSubnote: {
-    fontSize: 11,
-    color: "#334155",
+    fontSize: 12,
+    color: "var(--text-body, #334155)",
     lineHeight: 1.5,
-    marginBottom: 10,
+    marginBottom: 12,
     padding: "10px 12px",
     borderRadius: 8,
-    background: "rgba(15, 23, 42, 0.04)",
-    border: "1px solid rgba(15, 23, 42, 0.08)",
+    background: "var(--surface-card, #FFFFFF)",
+    border: "1px solid var(--border-card, #E2E8F0)",
   },
   receiptActions: {
     display: "flex",
-    gap: 8,
+    gap: 10,
     flexWrap: "wrap",
   },
   receiptPrimaryBtn: {
     flex: 1,
     minWidth: 140,
-    padding: "7px 12px",
+    padding: "8px 16px",
     background: "#059669",
     color: "#fff",
     border: "none",
-    borderRadius: 6,
-    fontSize: 12,
+    borderRadius: 8,
+    fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",
     textAlign: "center",
-    boxShadow: "0 2px 8px rgba(5, 150, 105, 0.25)",
+    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+    transition: "all 0.15s ease",
   },
   receiptSecondaryBtn: {
     flex: 1,
     minWidth: 140,
-    padding: "7px 12px",
-    background: "transparent",
-    color: "var(--text-secondary, #64748B)",
-    border: "1px solid rgba(15, 23, 42, 0.15)",
-    borderRadius: 6,
-    fontSize: 12,
+    padding: "8px 16px",
+    background: "var(--surface-card, #FFFFFF)",
+    color: "var(--text-secondary, #475569)",
+    border: "1px solid var(--border-card, #E2E8F0)",
+    borderRadius: 8,
+    fontSize: 13,
     fontWeight: 500,
     cursor: "pointer",
     textAlign: "center",
+    transition: "all 0.15s ease",
   },
 
   /* category row */
@@ -1641,6 +1701,7 @@ const styles = {
     borderRadius: 999,
     overflow: "hidden",
     zIndex: 0,
+    background: "var(--border-card, #E2E8F0)",
   },
   stepperTrackProgress: {
     height: "100%",
@@ -1682,28 +1743,29 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
+    zIndex: 2,
+    background: "var(--surface-card, #FFFFFF)",
     transition: "all 0.2s",
   },
   stepComplete: {
     background: "#059669",
-    boxShadow: "0 0 0 3px rgba(16, 185, 129, 0.2)",
+    boxShadow: "0 0 0 2px rgba(16, 185, 129, 0.2)",
   },
   stepCurrent: {
     background: "#D4AF37",
-    boxShadow:
-      "0 0 0 4px rgba(212, 175, 55, 0.25), 0 0 12px rgba(212, 175, 55, 0.3)",
+    boxShadow: "0 0 0 3px rgba(212, 175, 55, 0.28)",
   },
   stepWaiting: {
     background: "#2563EB",
-    boxShadow: "0 0 0 4px rgba(37, 99, 235, 0.15)",
+    boxShadow: "0 0 0 2px rgba(37, 99, 235, 0.2)",
   },
   stepRejected: {
     background: "#DC2626",
-    boxShadow:
-      "0 0 0 4px rgba(220, 38, 38, 0.2), 0 0 12px rgba(220, 38, 38, 0.15)",
+    boxShadow: "0 0 0 2px rgba(220, 38, 38, 0.2)",
   },
   stepLocked: {
-    background: "var(--surface-muted, #F1F5F9)",
+    background: "var(--surface-card, #FFFFFF)",
     border: "1px solid var(--border-card, #E2E8F0)",
   },
   stepLabel: {
@@ -1724,14 +1786,15 @@ const styles = {
 
   /* action card */
   actionCard: {
-    background: "var(--surface-muted, #F8FAFC)",
-    borderRadius: 8,
+    background: "var(--surface-card, #FFFFFF)",
+    borderRadius: 10,
     padding: "16px 20px",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     gap: 16,
     flexWrap: "wrap",
+    border: "1px solid var(--border-card, #E2E8F0)",
   },
   actionContent: {
     display: "flex",
@@ -1757,12 +1820,13 @@ const styles = {
     background: "#059669",
     color: "#fff",
     border: "none",
-    borderRadius: 6,
+    borderRadius: 8,
     fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",
     whiteSpace: "nowrap",
-    boxShadow: "0 2px 8px rgba(5, 150, 105, 0.25)",
+    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+    transition: "all 0.15s ease",
   },
 
   /* post-confirmation dashboard */
@@ -1832,15 +1896,19 @@ const styles = {
     gap: 8,
   },
   footerLinkSecondary: {
-    background: "none",
-    border: "none",
-    color: "var(--text-secondary, #64748B)",
-    fontSize: 13,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    background: "var(--surface-card, #FFFFFF)",
+    border: "1px solid var(--border-card, #CBD5E1)",
+    color: "var(--text-secondary, #475569)",
+    fontSize: 12,
     cursor: "pointer",
-    padding: "6px 10px",
+    padding: "7px 14px",
     borderRadius: 6,
-    fontWeight: 500,
-    transition: "background 0.15s, color 0.15s",
+    fontWeight: 600,
+    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04)",
+    transition: "all 0.15s ease",
   },
   footerLinkDanger: {
     background: "var(--color-danger-bg, rgba(220, 38, 38, 0.08))",
@@ -1916,9 +1984,9 @@ const styles = {
   modalBtnSecondary: {
     flex: 1,
     padding: "12px",
-    background: "var(--surface-muted, #F3F4F6)",
+    background: "var(--surface-card, #FFFFFF)",
     color: "var(--text-body, #374151)",
-    border: "none",
+    border: "1px solid var(--border-card, #E2E8F0)",
     borderRadius: 8,
     cursor: "pointer",
     fontWeight: 500,

@@ -2134,7 +2134,7 @@ html[data-theme="dark"] .filter-tabs .tab.active {
   height: 22px;
   border-radius: 50%;
   background: var(--card);
-  border: 2px solid var(--border);
+  border: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;

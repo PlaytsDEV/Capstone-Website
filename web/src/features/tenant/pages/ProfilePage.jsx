@@ -8,6 +8,7 @@ import ProfilePageSkeleton from "../components/profile/ProfilePageSkeleton";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { authFetch } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
+import { formatDisplayName } from "../../../shared/utils/formatDate";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
 import { useReservations, useReservation } from "../../../shared/hooks/queries/useReservations";
@@ -464,8 +465,12 @@ const ProfilePage = () => {
  return () => window.removeEventListener("popstate", handlePopState);
  }, [isReservationConfirmed]);
 
- const fullName =
- `${profileData.firstName || ""} ${profileData.lastName || ""}`.trim() || "User";
+  const fullName = formatDisplayName(
+    `${profileData.firstName || ""} ${profileData.lastName || ""}`.trim() ||
+      profileData.name ||
+      profileData.username ||
+      "User"
+  );
 
  if (loading) return <ProfilePageSkeleton />;
 

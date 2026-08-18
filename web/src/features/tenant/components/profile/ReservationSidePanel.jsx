@@ -15,10 +15,11 @@ import { generateDepositReceipt } from "../../../../shared/utils/receiptGenerato
 import { useCurrentUser } from "../../../../shared/hooks/queries/useUsers";
 import DeadlineBadge from "../../../../shared/components/DeadlineBadge";
 import {
- canReservationAccessPayment,
- hasReservationStatus,
- readMoveInDate,
+  canReservationAccessPayment,
+  hasReservationStatus,
+  readMoveInDate,
 } from "../../../../shared/utils/lifecycleNaming";
+import { resolveDisplayMoveInDate } from "../../utils/reservationReadiness";
 import { resolveReservationFinancials } from "../../../../shared/utils/depositUtils";
 import { fmtDate, fmtShortDate } from "../../../../shared/utils/dateFormat";
 
@@ -189,14 +190,8 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
         }}
       >
         <div style={S.roomSection}>
-          <div
-            style={{
-              ...S.roomIconWrap,
-              background: isDark ? "rgba(212, 175, 55, 0.2)" : "rgba(212, 175, 55, 0.14)",
-              borderColor: isDark ? "rgba(212, 175, 55, 0.35)" : "rgba(212, 175, 55, 0.26)",
-            }}
-          >
-            <Home size={20} color={isDark ? "#F8FAFC" : "var(--text-secondary, #64748B)"} />
+          <div style={S.roomIconWrap}>
+            <Home size={22} color={isDark ? "#F8FAFC" : "var(--text-secondary, #64748B)"} />
           </div>
           <div style={S.roomInfo}>
             <h3 style={{ ...S.roomName, color: isDark ? "#FFFFFF" : "var(--text-heading, #0F172A)" }}>{roomName}</h3>
@@ -265,22 +260,22 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
         })()}
 
         {(() => {
-          const moveInDateValue =
-            readMoveInDate(reservation) || reservation.targetMoveInDate;
-          if (!moveInDateValue) return null;
+          const { primaryDate, dateType } = resolveDisplayMoveInDate(
+            reservation,
+            readMoveInDate,
+            fmtDate,
+          );
 
-          const isScheduleConfirmed =
-            isConfirmed ||
-            hasReservationStatus(status, "reserved", "moveIn", "moveOut");
-          const moveInLabel = isScheduleConfirmed
-            ? "Move-in"
-            : "Move-in";
+          const moveInLabel =
+            dateType === "confirmed"
+              ? "Confirmed Move-in"
+              : "Preferred Move-in";
 
           return (
             <DetailRow
               icon={<Calendar size={15} color={isDark ? "#94A3B8" : "var(--text-secondary, #64748B)"} />}
               label={moveInLabel}
-              value={fmtDate(moveInDateValue)}
+              value={primaryDate ? fmtDate(primaryDate) : "Not specified yet"}
               isDark={isDark}
             />
           );
@@ -351,21 +346,21 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
       </div>
 
       {panelState === "scheduled" && (
-        <div style={S.pendingBanner}>
+        <div style={{ ...S.pendingBanner, borderColor: isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)" }}>
           <Clock size={14} color="#2563EB" />
           <span style={S.pendingText}>Saved for viewing coordination only</span>
         </div>
       )}
 
       {panelState === "preference" && viewingPreference === "remote_2d_viewing" && (
-        <div style={{ ...S.pendingBanner, background: "rgba(37, 99, 235, 0.08)", border: "1px solid rgba(37, 99, 235, 0.2)" }}>
+        <div style={{ ...S.pendingBanner, borderColor: isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)" }}>
           <Clock size={14} color="#2563EB" />
           <span style={{ ...S.pendingText, color: "#2563EB" }}>Admin will arrange a remote viewing for your room</span>
         </div>
       )}
 
       {panelState === "preference" && viewingPreference === "urgent_move_in_review" && (
-        <div style={{ ...S.pendingBanner, background: "rgba(220, 38, 38, 0.08)", border: "1px solid rgba(220, 38, 38, 0.2)" }}>
+        <div style={{ ...S.pendingBanner, borderColor: isDark ? "var(--border-card, #2A3B57)" : "var(--border-card, #E2E8F0)" }}>
           <Clock size={14} color="#DC2626" />
           <span style={{ ...S.pendingText, color: "#DC2626" }}>Priority review request is under review</span>
         </div>
@@ -530,17 +525,13 @@ const S = {
  alignItems: "center",
  gap: 12,
  },
- roomIconWrap: {
- width: 48,
- height: 48,
- borderRadius: 12,
- background: "rgba(212, 175, 55, 0.14)",
- border: "1px solid rgba(212, 175, 55, 0.26)",
- display: "flex",
- alignItems: "center",
- justifyContent: "center",
- flexShrink: 0,
- },
+  roomIconWrap: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    background: "transparent",
+  },
  roomInfo: {
  minWidth: 0,
  },
@@ -606,8 +597,8 @@ const S = {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    background: "rgba(37, 99, 235, 0.08)",
-    border: "1px solid rgba(37, 99, 235, 0.2)",
+    background: "var(--surface-card, #FFFFFF)",
+    border: "1px solid var(--border-card, #E2E8F0)",
     borderRadius: 10,
     padding: "10px 12px",
     margin: "0 16px 12px",
@@ -615,7 +606,7 @@ const S = {
   pendingText: {
     fontSize: 13,
     fontWeight: 600,
-    color: "#2563EB",
+    color: "var(--text-secondary, #475569)",
   },
 
  footerShell: {
@@ -664,16 +655,17 @@ const S = {
     height: "auto",
     boxSizing: "border-box",
   },
- emptyIconWrap: {
- width: 50,
- height: 50,
- borderRadius: "50%",
- background: "var(--surface-muted, #F8FAFC)",
- display: "flex",
- alignItems: "center",
- justifyContent: "center",
- marginBottom: 12,
- },
+  emptyIconWrap: {
+    width: 50,
+    height: 50,
+    borderRadius: "50%",
+    background: "var(--surface-card, #FFFFFF)",
+    border: "1px solid var(--border-card, #E2E8F0)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
  emptyText: {
  fontSize: 13,
  color: "var(--text-secondary, #94A3B8)",

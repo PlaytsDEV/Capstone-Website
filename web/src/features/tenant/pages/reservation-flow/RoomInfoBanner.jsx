@@ -5,6 +5,7 @@ import { getResolvedMonthlyRate, isPricingDisplayUsable } from "../../utils/pric
 
 /**
  * Compact room info banner showing room name, branch, type, and price.
+ * Follows Lilycrest DMS solid design system and neutral 1px borders.
  */
 const RoomInfoBanner = ({ room, pricingDisplay }) => {
   if (!room) return null;
@@ -40,9 +41,6 @@ const RoomInfoBanner = ({ room, pricingDisplay }) => {
     room.title || room.name || room.roomNumber || room.id,
     "Room",
   );
-  // Lease-duration-aware final rate isn't knowable from the flat room object
-  // alone (short-term vs. long-term discount) — only trust the server-derived
-  // pricingDisplay preview/snapshot from GET /reservations/:id.
   const hasResolvedMonthlyRate = isPricingDisplayUsable(pricingDisplay);
   const applianceFees = toFiniteNumber(room.applianceFees, 0);
   const roomPrice = hasResolvedMonthlyRate
@@ -50,29 +48,33 @@ const RoomInfoBanner = ({ room, pricingDisplay }) => {
     : null;
 
   return (
-    <div className="rf-room-banner">
-      <div className="rf-room-banner-icon">
-        <Home size={18} color="#ffffff" />
-      </div>
-      <div className="rf-room-banner-info">
-        <div className="rf-room-banner-name">{roomName}</div>
-        <div className="rf-room-banner-meta">
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <MapPin size={12} /> {formatBranch(room.branch) || "Branch"}
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <Tag size={12} /> {formatRoomType(room.type) || "Type"}
-          </span>
+    <div className="w-full p-4 sm:px-5 sm:py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm flex items-center justify-between gap-4">
+      <div className="flex items-center gap-3.5 min-w-0">
+        <div className="w-10 h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-center text-slate-700 dark:text-slate-300 flex-shrink-0">
+          <Home size={18} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+            {roomName}
+          </div>
+          <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
+            <span className="flex items-center gap-1">
+              <MapPin size={12} className="text-slate-400" /> {formatBranch(room.branch) || "Branch"}
+            </span>
+            <span className="flex items-center gap-1">
+              <Tag size={12} className="text-slate-400" /> {formatRoomType(room.type) || "Type"}
+            </span>
+          </div>
         </div>
       </div>
-      <div className="rf-room-banner-price">
+      <div className="text-right flex-shrink-0">
         {hasResolvedMonthlyRate ? (
-          <>
+          <div className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
             {"\u20b1"}{roomPrice.toLocaleString()}
-            <small> /mo</small>
-          </>
+            <span className="text-xs font-normal text-slate-500 dark:text-slate-400"> /mo</span>
+          </div>
         ) : (
-          <small>Pricing confirmed during review</small>
+          <span className="text-xs text-slate-500 dark:text-slate-400">Pricing confirmed during review</span>
         )}
       </div>
     </div>

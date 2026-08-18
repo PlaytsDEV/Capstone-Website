@@ -15,11 +15,18 @@ import {
   ChevronRight,
   Check,
   Home,
+  X,
   Calendar,
   AlertCircle,
   CheckCircle2,
   ArrowLeft,
+  Edit3,
+  Loader2,
+  Sparkles,
 } from "lucide-react";
+import { getAvailableLeaseOptions } from "./applicationFormConstants";
+import { getResolvedMonthlyRate, isPricingDisplayUsable } from "../../utils/pricingDisplayHelpers";
+import { showNotification } from "../../../../shared/utils/notification";
 
 const formatCurrency = (amount) =>
   `PHP ${Number.isFinite(Number(amount)) ? Number(amount).toLocaleString("en-PH") : "0"}`;
@@ -55,6 +62,7 @@ const ReservationPaymentStep = ({
   leaseDuration,
   targetMoveInDate,
   isLoading,
+  onPrev,
   onPayOnline,
   payingOnline,
   paymentAvailable = false,
@@ -64,12 +72,48 @@ const ReservationPaymentStep = ({
   setAgreedToFeePolicy = () => {},
   paymentCancelled = false,
   paymentApproved = false,
+  onUpdateStayPackage,
+  roomSelectionLocked = false,
 }) => {
+  const [isEditingTerm, setIsEditingTerm] = React.useState(false);
+  const [isUpdatingTerm, setIsUpdatingTerm] = React.useState(false);
+
   const room = reservationData?.room || {};
   const roomName = toDisplayString(room.name || room.roomNumber || room.title || room.id, "N/A");
   const reservationFeeAmount = Number.isFinite(Number(reservationData?.reservationFeeAmount))
     ? Number(reservationData.reservationFeeAmount)
     : 2000;
+
+  const pricingDisplay = reservationData?.pricingDisplay;
+  const hasResolvedMonthlyRate = isPricingDisplayUsable(pricingDisplay);
+  const monthlyRent = getResolvedMonthlyRate(pricingDisplay) || Number(reservationData?.monthlyRent || room?.price || 0);
+
+  const minMonths = room?.longTermLeaseMinMonths ?? 6;
+  const leaseOptions = React.useMemo(() => getAvailableLeaseOptions(minMonths), [minMonths]);
+  const activeLease = leaseDuration || reservationData?.leaseDuration || room?.leaseDuration || "6";
+
+  const handleSelectTerm = async (termValue) => {
+    if (String(termValue) === String(activeLease)) {
+      setIsEditingTerm(false);
+      return;
+    }
+    setIsUpdatingTerm(true);
+    try {
+      if (onUpdateStayPackage) {
+        await onUpdateStayPackage({ leaseDuration: termValue });
+        showNotification(
+          `Lease duration updated to ${termValue === "12" ? "1 Year" : `${termValue} Months`}.`,
+          "success"
+        );
+      }
+      setIsEditingTerm(false);
+    } catch (err) {
+      console.error("Failed to update lease term:", err);
+      showNotification("Failed to update lease duration. Please try again.", "error");
+    } finally {
+      setIsUpdatingTerm(false);
+    }
+  };
 
   const selectedBed = reservationData?.selectedBed;
   const roomNumber = toDisplayString(room.roomNumber || room.name || room.title || room.id, "");
@@ -102,16 +146,34 @@ const ReservationPaymentStep = ({
   };
 
   return (
-    <div className="reservation-card rf-payment-stage">
-      {/* Header */}
-      <div className="main-header">
-        <div className="main-header-badge">
-          <span>Step 4 - Finalization</span>
+    <div className="w-full max-w-6xl mx-auto space-y-6">
+      {/* Main Header (Solid Colors, Standalone Icons, Room Designation Pill) */}
+      <div className="space-y-2.5 border-b border-slate-200 dark:border-slate-800 pb-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex items-center px-3 py-1 bg-transparent border border-slate-200 dark:border-slate-700 rounded-full">
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+              Step 4 · Payment
+            </span>
+          </div>
+
+          {/* Room Designation Pill Badge */}
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 self-start sm:self-auto flex-shrink-0">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+              {roomName} · {formatBranch(room.branch || reservationData?.branch)}
+            </span>
+          </div>
         </div>
-        <h2 className="main-header-title">Reservation Fee Payment</h2>
-        <p className="main-header-subtitle">
-          Pay the one-time reservation fee deposit to lock and secure your room.
-        </p>
+
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
+            <CreditCard className="w-7 h-7 text-slate-800 dark:text-slate-200 flex-shrink-0" />
+            <span>Reservation Fee Payment</span>
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed mt-1 max-w-2xl">
+            Pay the one-time reservation fee deposit to lock and secure your room.
+          </p>
+        </div>
       </div>
 
       {/* Payment Cancelled Recovery Banner */}
@@ -146,7 +208,6 @@ const ReservationPaymentStep = ({
         <div className="rf-unified-checkout-card">
           {/* Top Hero Banner */}
           <div className="rf-uc-hero">
-            <div className="rf-uc-hero-badge">STEP 4 • FINALIZATION</div>
             <span className="rf-uc-hero-label">One-Time Reservation Fee</span>
             <div className="rf-uc-hero-amount whitespace-nowrap">
               {formatCurrency(reservationFeeAmount)}
@@ -190,6 +251,114 @@ const ReservationPaymentStep = ({
                   </div>
                   <div className="rf-uc-row-right">
                     <span className="rf-uc-val-primary whitespace-nowrap">{fmtDate(targetMoveInDate)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Lease Duration Row */}
+              <div className="rf-uc-summary-row">
+                <div className="rf-uc-row-left">
+                  <Calendar size={15} className="rf-uc-icon" />
+                  <span className="rf-uc-label">Duration of Lease</span>
+                </div>
+                <div className="rf-uc-row-right flex items-center gap-2">
+                  <span className="rf-uc-val-primary">
+                    {Number(activeLease) === 12
+                      ? "1 Year (12 Months)"
+                      : `${activeLease} ${Number(activeLease) === 1 ? "Month" : "Months"}`}
+                  </span>
+                  {!readOnly && !roomSelectionLocked && onUpdateStayPackage && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingTerm((prev) => !prev)}
+                      className="px-2 py-0.5 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      <span>{isEditingTerm ? "Close" : "Edit"}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* In-Line Lease Term Selector when editing */}
+              {isEditingTerm && (
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 my-2 space-y-2">
+                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                    <span>Select New Lease Duration</span>
+                    {isUpdatingTerm && (
+                      <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Updating...
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {leaseOptions.map((opt) => {
+                      const isSelected = String(activeLease) === String(opt.value);
+                      const isLongTerm = opt.months >= minMonths;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          disabled={isUpdatingTerm}
+                          onClick={() => handleSelectTerm(opt.value)}
+                          className={`p-2 rounded-lg text-xs flex flex-col items-center justify-center transition-all border ${
+                            isSelected
+                              ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-slate-900 dark:border-slate-100 font-bold"
+                              : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                          }`}
+                        >
+                          <span>{opt.shortLabel}</span>
+                          {isLongTerm && (
+                            <span
+                              className={`text-[8px] mt-0.5 font-medium ${
+                                isSelected ? "text-emerald-300 dark:text-emerald-700" : "text-emerald-600 dark:text-emerald-400"
+                              }`}
+                            >
+                              Long-Term
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Move-In Requirements Summary Preview */}
+              {monthlyRent > 0 && (
+                <div className="rounded-xl bg-slate-50/70 dark:bg-slate-800/40 p-3.5 border border-slate-200 dark:border-slate-700/80 my-2">
+                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-2 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                    <span>Move-In Balance Preview</span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
+                    <div className="flex justify-between">
+                      <span>1 Month Advance Rent:</span>
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        {formatCurrency(monthlyRent)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>1 Month Security Deposit:</span>
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        {formatCurrency(monthlyRent)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between pt-1 border-t border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-200">
+                      <span>Total Move-In Requirements:</span>
+                      <span>{formatCurrency(monthlyRent * 2)}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                      <span>Less Reservation Fee (Paid Now):</span>
+                      <span className="font-semibold">-{formatCurrency(reservationFeeAmount)}</span>
+                    </div>
+                    <div className="flex justify-between pt-1.5 border-t border-dashed border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-slate-100 text-xs">
+                      <span>Estimated Balance (Due Before Move-In):</span>
+                      <span className="text-amber-700 dark:text-amber-400 font-bold">
+                        {formatCurrency(Math.max(0, monthlyRent * 2 - reservationFeeAmount))}
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -294,6 +463,19 @@ const ReservationPaymentStep = ({
           </div>
         </div>
       </div>
+
+      {onPrev && !readOnly && (
+        <div className="flex items-center justify-start pt-4 border-t border-slate-200 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={onPrev}
+            className="w-full sm:w-auto h-11 px-5 rounded-xl font-medium text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"
+          >
+            <ArrowLeft size={14} />
+            <span>Back to Application</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

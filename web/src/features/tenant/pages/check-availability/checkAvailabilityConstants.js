@@ -148,10 +148,10 @@ export const getRoomImages = (type, branch) => {
  normalizedType === "private" &&
  (normalizedBranch === "gil-puyat" || normalizedBranch === "gil puyat")
  ) {
- return [gpPrivateRoom, gpPrivateTnb, gpDoubleRoom];
+ return [gpPrivateRoom, gpPrivateTnb, gp2dLoungeCommon];
  }
 
- return [getPrimaryImage(type), gpDoubleRoom, gpQuadRoom];
+ return [getPrimaryImage(type), gp2dLoungeCommon, gpQuadRoom];
 };
 
 const isGilPuyatBranch = (branch) => {
@@ -265,14 +265,33 @@ export const ROOM_IMAGES = {
  gd2dSharedRoom2,
 };
 
-export const buildBedsFromCapacity = (roomNumber, type, occupiedCount = 0) => {
- const positions =
- type === "private" || type === "double-sharing"
- ? ["upper", "lower"]
- : ["upper", "lower", "upper", "lower"];
- return positions.map((position, index) => ({
- id: `${roomNumber}-B${index + 1}`,
- position,
- available: index >= occupiedCount,
- }));
+export const buildBedsFromCapacity = (roomNumber = "Room", type = "quadruple-sharing", occupiedCount = 0) => {
+  const normType = String(type || "").toLowerCase();
+  const isPrivate = normType === "private" || normType === "single";
+  const isDouble = normType === "double-sharing" || normType === "double";
+  const positions = isPrivate
+    ? ["single"]
+    : isDouble
+    ? ["upper", "lower"]
+    : ["upper", "lower", "upper", "lower"];
+
+  return positions.map((position, index) => {
+    const isUpper = position === "upper";
+    const bunkIndex = Math.floor(index / 2);
+    const bunkLetter = isPrivate ? "none" : String.fromCharCode(65 + bunkIndex);
+    const code = isPrivate
+      ? `${roomNumber}-S`
+      : `${roomNumber}-${bunkLetter}-${isUpper ? "U" : "L"}`;
+    const id = `${roomNumber}-B${index + 1}`;
+    const isAvail = index >= occupiedCount;
+
+    return {
+      id,
+      code,
+      position,
+      bunkBlock: bunkLetter,
+      available: isAvail,
+      status: isAvail ? "available" : "occupied",
+    };
+  });
 };

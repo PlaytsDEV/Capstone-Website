@@ -553,22 +553,7 @@ const ReceiptModal = ({ isOpen, step, reservation, onClose }) => {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div
-              style={{
-                width: "36px",
-                height: "36px",
-                borderRadius: "8px",
-                backgroundColor: "#0F172A",
-                color: "#FFFFFF",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: "800",
-                fontSize: "14px",
-              }}
-            >
-              <Building2 size={18} />
-            </div>
+            <Building2 size={24} style={{ color: "#0F172A", flexShrink: 0 }} />
             <div>
               <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "800", color: "#0F172A", letterSpacing: "0.2px" }}>
                 LILYCREST DORMITORY

@@ -10,8 +10,10 @@ test("profile details and profile image have editing affordances enabled", () =>
   assert.match(source, /handleFileSelect/);
 });
 
-test("profile image upload is always accessible via avatar click and camera badge", () => {
+test("profile image upload and camera badge are gated to edit profile mode", () => {
   assert.match(source, /fileInputRef\.current\?\.click\(\)/);
   assert.match(source, /accept="image\/\*"/);
+  assert.match(source, /isEditingProfile/);
 });
+
 

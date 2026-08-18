@@ -72,8 +72,8 @@ const PRIVACY_SECTIONS = [
     content: (
       <p>
         You have the right to access, correct, or delete your personal information at any time. You may also opt out of receiving communications from us. To exercise these rights, please contact us at{" "}
-        <a href="mailto:hello@lilycrest.com" className="terms-link">
-          hello@lilycrest.com
+        <a href="mailto:lilycrestadmin@gmail.com" className="terms-link">
+          lilycrestadmin@gmail.com
         </a>
         .
       </p>
@@ -85,9 +85,9 @@ const PRIVACY_SECTIONS = [
     content: (
       <p>
         If you have any questions about this Privacy Policy, please contact us at{" "}
-        <a href="mailto:hello@lilycrest.com" className="terms-link">
+        <a href="mailto:lilycrestadmin@gmail.com" className="terms-link">
           <Mail size={13} style={{ display: "inline", verticalAlign: "-2px", marginRight: 3 }} />
-          hello@lilycrest.com
+          lilycrestadmin@gmail.com
         </a>{" "}
         or call us at{" "}
         <a href="tel:+639123456789" className="terms-link">

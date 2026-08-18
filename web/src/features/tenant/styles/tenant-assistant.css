@@ -8,6 +8,15 @@
    ============================================================================= */
 
 /* ─── Floating Launcher Button ────────────────────────────────────────── */
+@keyframes tenantAssistantFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
 .tenant-assistant-launcher {
   position: fixed;
   bottom: 1.5rem;
@@ -15,53 +24,61 @@
   z-index: 50;
   display: flex;
   align-items: center;
-  gap: 0.625rem;
-  height: 3rem;
-  padding: 0 1rem;
-  background-color: #0f172a;
-  color: #ffffff !important;
-  border: 1px solid #334155;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  background-color: #0A1628;
+  color: #D4AF37 !important;
+  border: 1px solid #1e293b;
   border-radius: 9999px;
-  box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.25), 0 2px 6px -1px rgba(0, 0, 0, 0.1);
-  font-size: 0.84375rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  box-shadow: 0 4px 14px -2px rgba(10, 22, 40, 0.35), 0 2px 6px -1px rgba(10, 22, 40, 0.15);
   cursor: pointer;
   transition: transform 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  animation: tenantAssistantFloat 2.2s ease-in-out infinite !important;
   user-select: none;
   text-decoration: none !important;
 }
 
-.tenant-assistant-launcher span {
-  color: #ffffff !important;
-}
-
 .tenant-assistant-launcher:hover {
-  background-color: #1e293b;
-  border-color: #475569;
-  transform: translateY(-2px);
-  box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.32), 0 4px 10px -2px rgba(0, 0, 0, 0.15);
+  animation: none;
+  background-color: #162f53;
+  border-color: #D4AF37;
+  transform: translateY(-4px) scale(1.06);
+  box-shadow: 0 8px 20px -2px rgba(10, 22, 40, 0.45), 0 0 0 2px rgba(212, 175, 55, 0.25);
 }
 
 .tenant-assistant-launcher:active {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.96);
 }
 
 .tenant-assistant-launcher:focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid #0A1628;
   outline-offset: 2px;
 }
 
-.dark .tenant-assistant-launcher {
-  background-color: #2563eb;
-  color: #ffffff !important;
-  border-color: #3b82f6;
-  box-shadow: 0 8px 24px -4px rgba(37, 99, 235, 0.35);
+.dark .tenant-assistant-launcher,
+[data-theme="dark"] .tenant-assistant-launcher {
+  background-color: #D4AF37;
+  color: #0A1628 !important;
+  border-color: #B9921F;
+  box-shadow: 0 4px 16px -2px rgba(212, 175, 55, 0.45);
+  animation-name: tenantAssistantFloatDark;
 }
 
-.dark .tenant-assistant-launcher:hover {
-  background-color: #1d4ed8;
-  border-color: #60a5fa;
+.dark .tenant-assistant-launcher:hover,
+[data-theme="dark"] .tenant-assistant-launcher:hover {
+  animation: none;
+  background-color: #E5C358;
+  border-color: #F3E4B0;
+  transform: translateY(-4px) scale(1.06);
+  box-shadow: 0 8px 20px -2px rgba(212, 175, 55, 0.55), 0 0 0 2px rgba(212, 175, 55, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tenant-assistant-launcher {
+    animation: none !important;
+  }
 }
 
 .tenant-assistant-launcher-icon {
@@ -71,8 +88,24 @@
   width: 1.625rem;
   height: 1.625rem;
   border-radius: 9999px;
-  background-color: rgba(255, 255, 255, 0.15);
-  color: #ffffff !important;
+  background-color: rgba(212, 175, 55, 0.12);
+  color: #D4AF37 !important;
+}
+
+.dark .tenant-assistant-launcher-icon,
+[data-theme="dark"] .tenant-assistant-launcher-icon {
+  background-color: rgba(10, 22, 40, 0.12);
+  color: #0A1628 !important;
+}
+
+.tenant-assistant-launcher-bot-icon {
+  color: #D4AF37 !important;
+  transition: color 0.15s ease;
+}
+
+.dark .tenant-assistant-launcher-bot-icon,
+[data-theme="dark"] .tenant-assistant-launcher-bot-icon {
+  color: #0A1628 !important;
 }
 
 .tenant-assistant-launcher-badge {
@@ -81,13 +114,14 @@
   justify-content: center;
   width: 0.5rem;
   height: 0.5rem;
-  background-color: #10b981;
+  background-color: #059669;
   border-radius: 9999px;
-  box-shadow: 0 0 0 2px #0f172a;
+  box-shadow: 0 0 0 2px #0A1628;
 }
 
-.dark .tenant-assistant-launcher-badge {
-  box-shadow: 0 0 0 2px #2563eb;
+.dark .tenant-assistant-launcher-badge,
+[data-theme="dark"] .tenant-assistant-launcher-badge {
+  box-shadow: 0 0 0 2px #D4AF37;
 }
 
 /* ─── Drawer Backdrop Overlay ─────────────────────────────────────────── */
@@ -181,14 +215,15 @@
   width: 1.875rem;
   height: 1.875rem;
   border-radius: 0.5rem;
-  background-color: #0f172a;
-  color: #ffffff;
+  background-color: #0A1628;
+  color: #D4AF37;
   flex-shrink: 0;
 }
 
-.dark .tenant-assistant-avatar-badge {
-  background-color: #2563eb;
-  color: #ffffff;
+.dark .tenant-assistant-avatar-badge,
+[data-theme="dark"] .tenant-assistant-avatar-badge {
+  background-color: #D4AF37;
+  color: #0A1628;
 }
 
 .tenant-assistant-title {
@@ -413,7 +448,7 @@
 
 .tenant-msg-row.user .tenant-msg-bubble {
   max-width: 82%;
-  background-color: #0f172a;
+  background-color: #0A1628;
   color: #ffffff !important;
   border-top-right-radius: 0.25rem;
   border: 1px solid #1e293b;
@@ -424,11 +459,17 @@
   color: #ffffff !important;
 }
 
-.dark .tenant-msg-row.user .tenant-msg-bubble {
-  background-color: #2563eb;
-  color: #ffffff !important;
-  border-color: #3b82f6;
+.dark .tenant-msg-row.user .tenant-msg-bubble,
+[data-theme="dark"] .tenant-msg-row.user .tenant-msg-bubble {
+  background-color: #D4AF37;
+  color: #0A1628 !important;
+  border: 1px solid #B9921F;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.dark .tenant-msg-row.user .tenant-msg-bubble *,
+[data-theme="dark"] .tenant-msg-row.user .tenant-msg-bubble * {
+  color: #0A1628 !important;
 }
 
 .tenant-msg-row.assistant .tenant-msg-bubble {
@@ -440,7 +481,8 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
-.dark .tenant-msg-row.assistant .tenant-msg-bubble {
+.dark .tenant-msg-row.assistant .tenant-msg-bubble,
+[data-theme="dark"] .tenant-msg-row.assistant .tenant-msg-bubble {
   background-color: #0f172a;
   color: #f1f5f9;
   border-color: #1e293b;
@@ -467,13 +509,14 @@
 }
 
 .tenant-msg-bubble a {
-  color: #2563eb;
+  color: #0A1628;
   text-decoration: underline;
   font-weight: 600;
 }
 
-.dark .tenant-msg-bubble a {
-  color: #60a5fa;
+.dark .tenant-msg-bubble a,
+[data-theme="dark"] .tenant-msg-bubble a {
+  color: #FCD34D;
 }
 
 .tenant-msg-bubble strong {
@@ -728,19 +771,21 @@
 }
 
 .tenant-assistant-input-wrapper:focus-within {
-  border-color: #0f172a;
-  box-shadow: 0 0 0 1px #0f172a;
+  border-color: #0A1628;
+  box-shadow: 0 0 0 1px #0A1628;
   background-color: #ffffff;
 }
 
-.dark .tenant-assistant-input-wrapper {
+.dark .tenant-assistant-input-wrapper,
+[data-theme="dark"] .tenant-assistant-input-wrapper {
   background-color: #1e293b;
   border-color: #334155;
 }
 
-.dark .tenant-assistant-input-wrapper:focus-within {
-  border-color: #38bdf8;
-  box-shadow: 0 0 0 1px #38bdf8;
+.dark .tenant-assistant-input-wrapper:focus-within,
+[data-theme="dark"] .tenant-assistant-input-wrapper:focus-within {
+  border-color: #D4AF37;
+  box-shadow: 0 0 0 1px #D4AF37;
   background-color: #1e293b;
 }
 
@@ -758,7 +803,8 @@
   padding: 0.25rem 0;
 }
 
-.dark .tenant-assistant-textarea {
+.dark .tenant-assistant-textarea,
+[data-theme="dark"] .tenant-assistant-textarea {
   color: #f8fafc;
 }
 
@@ -773,7 +819,7 @@
   width: 2rem;
   height: 2rem;
   border-radius: 0.375rem;
-  background-color: #0f172a;
+  background-color: #0A1628;
   color: #ffffff !important;
   border: none;
   cursor: pointer;
@@ -787,7 +833,7 @@
 }
 
 .tenant-assistant-send-btn:hover:not(:disabled) {
-  background-color: #1e293b;
+  background-color: #162f53;
 }
 
 .tenant-assistant-send-btn:disabled {
@@ -795,13 +841,21 @@
   cursor: not-allowed;
 }
 
-.dark .tenant-assistant-send-btn {
-  background-color: #2563eb;
-  color: #ffffff !important;
+.dark .tenant-assistant-send-btn,
+[data-theme="dark"] .tenant-assistant-send-btn {
+  background-color: #D4AF37;
+  color: #0A1628 !important;
 }
 
-.dark .tenant-assistant-send-btn:hover:not(:disabled) {
-  background-color: #1d4ed8;
+.dark .tenant-assistant-send-btn svg,
+[data-theme="dark"] .tenant-assistant-send-btn svg {
+  color: #0A1628 !important;
+  stroke: #0A1628 !important;
+}
+
+.dark .tenant-assistant-send-btn:hover:not(:disabled),
+[data-theme="dark"] .tenant-assistant-send-btn:hover:not(:disabled) {
+  background-color: #E5C358;
 }
 
 .tenant-assistant-footer-meta {
@@ -973,11 +1027,12 @@
 .tenant-snapshot-cell-val.highlight {
   font-size: 0.875rem;
   font-weight: 700;
-  color: #0f172a;
+  color: #0A1628;
 }
 
-.dark .tenant-snapshot-cell-val.highlight {
-  color: #38bdf8;
+.dark .tenant-snapshot-cell-val.highlight,
+[data-theme="dark"] .tenant-snapshot-cell-val.highlight {
+  color: #FCD34D;
 }
 
 .tenant-snapshot-cell-val.free {
@@ -1001,7 +1056,7 @@ button.tenant-snapshot-action-btn {
   font-weight: 600;
   letter-spacing: -0.01em;
   border-radius: 0.5rem;
-  background-color: #0f172a;
+  background-color: #0A1628;
   color: #ffffff !important;
   border: 1px solid #1e293b;
   cursor: pointer;
@@ -1023,20 +1078,40 @@ a.tenant-snapshot-action-btn svg,
 
 .tenant-snapshot-action-btn:hover,
 a.tenant-snapshot-action-btn:hover {
-  background-color: #1e293b;
+  background-color: #162f53;
   color: #ffffff !important;
 }
 
 .dark .tenant-snapshot-action-btn,
-.dark a.tenant-snapshot-action-btn {
-  background-color: #2563eb;
-  color: #ffffff !important;
-  border-color: #3b82f6;
+.dark a.tenant-snapshot-action-btn,
+[data-theme="dark"] .tenant-snapshot-action-btn,
+[data-theme="dark"] a.tenant-snapshot-action-btn {
+  background-color: #D4AF37;
+  color: #0A1628 !important;
+  border-color: #B9921F;
+}
+
+.dark .tenant-snapshot-action-btn span,
+.dark a.tenant-snapshot-action-btn span,
+[data-theme="dark"] .tenant-snapshot-action-btn span,
+[data-theme="dark"] a.tenant-snapshot-action-btn span {
+  color: #0A1628 !important;
+}
+
+.dark .tenant-snapshot-action-btn svg,
+.dark a.tenant-snapshot-action-btn svg,
+[data-theme="dark"] .tenant-snapshot-action-btn svg,
+[data-theme="dark"] a.tenant-snapshot-action-btn svg {
+  color: #0A1628 !important;
+  stroke: #0A1628 !important;
 }
 
 .dark .tenant-snapshot-action-btn:hover,
-.dark a.tenant-snapshot-action-btn:hover {
-  background-color: #1d4ed8;
+.dark a.tenant-snapshot-action-btn:hover,
+[data-theme="dark"] .tenant-snapshot-action-btn:hover,
+[data-theme="dark"] a.tenant-snapshot-action-btn:hover {
+  background-color: #E5C358;
+  color: #0A1628 !important;
 }
 
 /* ─── Progress Bar for Lease Timeline ─────────────────────────────────── */
@@ -1050,18 +1125,20 @@ a.tenant-snapshot-action-btn:hover {
   border: 1px solid #e2e8f0;
 }
 
-.dark .tenant-lease-progress-track {
+.dark .tenant-lease-progress-track,
+[data-theme="dark"] .tenant-lease-progress-track {
   background-color: #1e293b;
   border-color: #334155;
 }
 
 .tenant-lease-progress-fill {
   height: 100%;
-  background-color: #0f172a;
+  background-color: #0A1628;
   border-radius: 9999px;
   transition: width 0.3s ease;
 }
 
-.dark .tenant-lease-progress-fill {
-  background-color: #38bdf8;
+.dark .tenant-lease-progress-fill,
+[data-theme="dark"] .tenant-lease-progress-fill {
+  background-color: #D4AF37;
 }

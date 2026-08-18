@@ -93,38 +93,23 @@ function matchesFilter(notification, filter) {
 const NOTIFICATION_COLOR_SCHEMES = {
 	success: {
 		icon: "#059669",
-		iconBg: "#F0FDF4",
-		badgeBg: "#F0FDF4",
-		badgeText: "#047857",
-		border: "#BBF7D0",
+		dot: "#059669",
 	},
 	danger: {
 		icon: "#DC2626",
-		iconBg: "#FEF2F2",
-		badgeBg: "#FEF2F2",
-		badgeText: "#B91C1C",
-		border: "#FECACA",
+		dot: "#DC2626",
 	},
 	warning: {
 		icon: "#D97706",
-		iconBg: "#FFFBEB",
-		badgeBg: "#FFFBEB",
-		badgeText: "#B45309",
-		border: "#FDE68A",
+		dot: "#D97706",
 	},
 	info: {
 		icon: "#2563EB",
-		iconBg: "#EFF6FF",
-		badgeBg: "#EFF6FF",
-		badgeText: "#1D4ED8",
-		border: "#BFDBFE",
+		dot: "#2563EB",
 	},
 	neutral: {
 		icon: "#64748B",
-		iconBg: "#F8FAFC",
-		badgeBg: "#F8FAFC",
-		badgeText: "#475569",
-		border: "#E2E8F0",
+		dot: "#64748B",
 	},
 };
 
@@ -528,16 +513,12 @@ const NotificationsTab = () => {
 											}}
 										>
 											{/* Icon */}
-											<div
+											<span
 												style={{
-													width: "36px",
-													height: "36px",
-													borderRadius: "10px",
-													backgroundColor: config.colors.iconBg,
-													border: `1px solid ${config.colors.border}`,
-													display: "flex",
+													display: "inline-flex",
 													alignItems: "center",
 													justifyContent: "center",
+													marginTop: "2px",
 													flexShrink: 0,
 												}}
 											>
@@ -548,7 +529,7 @@ const NotificationsTab = () => {
 														color: config.colors.icon,
 													}}
 												/>
-											</div>
+											</span>
 
 											{/* Content */}
 											<div style={{ flex: 1, minWidth: 0 }}>
@@ -575,17 +556,29 @@ const NotificationsTab = () => {
 													</span>
 													<span
 														style={{
+															display: "inline-flex",
+															alignItems: "center",
+															gap: "5px",
 															fontSize: "11px",
 															fontWeight: 600,
-															color: config.colors.badgeText,
-															backgroundColor: config.colors.badgeBg,
-															border: `1px solid ${config.colors.border}`,
-															padding: "1px 7px",
-															borderRadius: "4px",
+															color: "var(--foreground)",
+															backgroundColor: "transparent",
+															border: "1px solid var(--border)",
+															padding: "1px 8px",
+															borderRadius: "999px",
 															flexShrink: 0,
 														}}
 													>
-														{config.label}
+														<span
+															style={{
+																width: "6px",
+																height: "6px",
+																borderRadius: "50%",
+																backgroundColor: config.colors.dot,
+																flexShrink: 0,
+															}}
+														/>
+														<span>{config.label}</span>
 													</span>
 												</div>
 												<p

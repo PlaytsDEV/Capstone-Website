@@ -68,6 +68,7 @@ import {
   hasRecoverableApplicationDraft,
   hasSubstantiveApplicationDraft,
 } from "../utils/applicationDraftAutosave";
+import { formatProperCase } from "../../../shared/utils/authValidation";
 
 // Returns a sessionStorage key scoped to the Firebase UID when known,
 // falling back to the legacy unscoped key for backward compatibility.
@@ -195,9 +196,12 @@ const getProfileName = (profile) => {
     .split(/\s+/)
     .filter(Boolean);
 
+  const rawFirst = profile?.firstName || displayParts[0] || "";
+  const rawLast = profile?.lastName || displayParts.slice(1).join(" ") || "";
+
   return {
-    firstName: profile?.firstName || displayParts[0] || "",
-    lastName: profile?.lastName || displayParts.slice(1).join(" ") || "",
+    firstName: formatProperCase(rawFirst),
+    lastName: formatProperCase(rawLast),
   };
 };
 
@@ -673,25 +677,8 @@ export default function useReservationFlow() {
 
   const handleStepperClick = (stageId) => {
     if (!isStageClickable(stageId)) return;
-    if (stageId === 1 && roomSelectionLocked) {
-      setCurrentStage(1);
-      notifyRoomSelectionLocked();
-      return;
-    }
-    if (stageId === 2 && viewingPreferenceStepAccess.readOnly) {
-      setCurrentStage(2);
-      notifyViewingPreferenceLocked();
-      return;
-    }
     if (stageId === 3 && !applicationAccessAllowed) {
       returnToDashboardForApplicationGate();
-      return;
-    }
-    if (isStageLocked(stageId)) return;
-    if (stageId === 1 && reservationId) {
-      navigate(
-        `/applicant/check-availability?changeRoom=1&reservationId=${reservationId}`,
-      );
       return;
     }
     setCurrentStage(stageId);
@@ -1196,6 +1183,8 @@ export default function useReservationFlow() {
             capacity: room.capacity || 0,
             currentOccupancy: room.currentOccupancy || 0,
             description: room.description || "",
+            beds: Array.isArray(room.beds) ? room.beds : [],
+            longTermLeaseMinMonths: room.longTermLeaseMinMonths ?? 6,
           },
           viewingPreference: active.viewingPreference || active.viewingType || "",
           viewingType: active.viewingType || active.viewingPreference || "",
@@ -1606,21 +1595,15 @@ export default function useReservationFlow() {
       } else {
         setCurrentStage(targetStage);
       }
-      // Suppress generic "data loaded" toast when returning from PayMongo cancellation.
-      // The inline cancelled banner on Step 4 already communicates the right context.
-      if (paymentReturnStatusRef.current !== "cancelled") {
+      if (stepOverride) {
         showNotification(
-          applicationStageBlocked
-            ? TENANT_APPLICATION_LOCKED_MESSAGE
-            : stepOverride
-            ? "Editing your application. Make your changes and save."
-            : "Reservation data loaded. Continue where you left off!",
-          applicationStageBlocked ? "info" : "success",
-          applicationStageBlocked ? 5000 : 3000,
+          "Editing your application. Make your changes and save.",
+          "info",
+          3000,
         );
       }
     } catch (err) {
-      console.error("Γ¥î [LOAD_RESERVATION] Failed to load reservation id:", resId, "| status:", err?.response?.status, "| message:", err?.message, err);
+      console.error("⚠ [LOAD_RESERVATION] Failed to load reservation id:", resId, "| status:", err?.response?.status, "| message:", err?.message, err);
       const status = err?.response?.status;
       if (status === 404) {
         sessionStorage.removeItem(getActiveResKey(user?.firebaseUid));
@@ -1639,7 +1622,7 @@ export default function useReservationFlow() {
           },
         });
       } else {
-        showNotification("Failed to load reservation data", "error", 3000);
+        showNotification("Unable to load reservation data right now. Please refresh the page to try again.", "error", 5000);
       }
     } finally {
       paymentVerifyingRef.current = false;
@@ -1648,7 +1631,7 @@ export default function useReservationFlow() {
     }
   };
 
-  // ΓöÇΓöÇ Form change tracking (Stage 1) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ─── Form change tracking (Stage 1) ──────────────────────
   useEffect(() => {
     if (currentStage === 1) {
       setIsFormDirty(
@@ -1665,7 +1648,7 @@ export default function useReservationFlow() {
     currentStage,
   ]);
 
-  // ΓöÇΓöÇ API helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ─── API helpers ─────────────────────────────────────────
   const advanceStage = async (nextStage, message) => {
     setHighestStageReached((prev) => Math.max(prev, nextStage));
     await queryClient.invalidateQueries({ queryKey: ["reservations"] });
@@ -1714,17 +1697,13 @@ export default function useReservationFlow() {
     const roomId = await resolveRoomId();
     if (!roomId) {
       showNotification(
-        "Room details are missing. Please reselect a room.",
-        "error",
-        3000,
+        "Room details are missing. Please select a room to continue.",
+        "warning",
+        4000,
       );
       return null;
     }
-    const moveInDate = getMoveInDate();
-    if (!moveInDate) {
-      showNotification("Please set a move-in date.", "error", 3000);
-      return null;
-    }
+    const moveInDate = getMoveInDate() || null;
     const totalPrice = getTotalPrice();
     if (!totalPrice || totalPrice <= 0) {
       showNotification(
@@ -1743,13 +1722,13 @@ export default function useReservationFlow() {
               position: reservationData.selectedBed.position,
             }
           : null,
-        targetMoveInDate: getFieldValue(targetMoveInDate, moveInDate),
+        targetMoveInDate: targetMoveInDate || moveInDate || null,
         leaseDuration: leaseDuration || "",
         billingEmail: getFieldValue(
           billingEmail,
           user?.email || "test@example.com",
         ),
-        moveInDate,
+        moveInDate: moveInDate || null,
         selectedAppliances: reservationData?.selectedAppliances || [],
         totalPrice,
         applianceFees: reservationData?.applianceFees || 0,
@@ -1890,12 +1869,55 @@ export default function useReservationFlow() {
         selectedAppliances:
           updated.selectedAppliances ?? previous?.selectedAppliances ?? [],
         applianceFees: updated.applianceFees ?? previous?.applianceFees ?? 0,
+        leaseDuration: updated.leaseDuration ?? previous?.leaseDuration,
+        monthlyRent: updated.monthlyRent ?? previous?.monthlyRent,
+        totalPrice: updated.totalPrice ?? previous?.totalPrice,
+        pricingDisplay: updated.pricingDisplay ?? previous?.pricingDisplay,
+        targetMoveInDate: updated.targetMoveInDate ?? previous?.targetMoveInDate,
+        intendedMoveInDate: updated.intendedMoveInDate ?? previous?.intendedMoveInDate,
         applicationReviewReason:
           updated.applicationReviewReason ?? previous?.applicationReviewReason ?? "",
       }));
     }
     return updated;
   };
+
+  const updateStayPackage = useCallback(
+    async ({ leaseDuration: newLeaseDuration, targetMoveInDate: newMoveInDate, selectedBed: newBed } = {}) => {
+      if (newLeaseDuration !== undefined && newLeaseDuration !== null) {
+        setLeaseDuration(String(newLeaseDuration));
+      }
+      if (newMoveInDate !== undefined && newMoveInDate !== null) {
+        setTargetMoveInDate(newMoveInDate);
+      }
+
+      const payload = {
+        ...(newLeaseDuration !== undefined && newLeaseDuration !== null ? { leaseDuration: String(newLeaseDuration) } : {}),
+        ...(newMoveInDate !== undefined && newMoveInDate !== null ? { targetMoveInDate: newMoveInDate, intendedMoveInDate: newMoveInDate } : {}),
+        ...(newBed !== undefined
+          ? {
+              selectedBed: newBed
+                ? {
+                    id: newBed.id,
+                    position: newBed.position,
+                    code: newBed.code,
+                    bunkBlock: newBed.bunkBlock,
+                  }
+                : null,
+            }
+          : {}),
+      };
+
+      try {
+        const updated = await updateReservationDraft(payload);
+        return updated;
+      } catch (err) {
+        console.error("Failed to update stay package:", err);
+        throw err;
+      }
+    },
+    [updateReservationDraft]
+  );
 
   const returnToDashboardAfterViewingPreference = useCallback(
     ({
@@ -2110,7 +2132,8 @@ export default function useReservationFlow() {
     () => {
       const includeViewingPreferenceDraft =
         Boolean(viewingType) &&
-        (currentStage === 2 || !viewingPreferenceStepAccess.submitted);
+        !viewingPreferenceStepAccess.submitted &&
+        !viewingPreferenceStepAccess.readOnly;
       const payload = {
         ...(includeViewingPreferenceDraft
           ? {
@@ -2397,11 +2420,11 @@ export default function useReservationFlow() {
     try {
       if (currentStage === 1) {
         if (roomSelectionLocked) {
-          notifyRoomSelectionLocked();
+          setCurrentStage(2);
           return;
         }
         if (!reservationData?.room) {
-          showNotification("Please select a room to continue", "error", 3000);
+          showNotification("Please select a room to continue.", "warning", 4000);
           return;
         }
         setPendingStageAction("stage1");
@@ -2409,7 +2432,13 @@ export default function useReservationFlow() {
         return;
       } else if (currentStage === 2) {
         if (viewingPreferenceStepAccess.readOnly) {
-          notifyViewingPreferenceLocked();
+          if (applicationAccessAllowed) {
+            setHighestStageReached((prev) => Math.max(prev, 3));
+            setCurrentStage(3);
+            return;
+          }
+          setHighestStageReached((prev) => Math.max(prev, 2));
+          returnToDashboardForApplicationGate();
           return;
         }
         if (!applicationAccessAllowed) {
@@ -2429,24 +2458,34 @@ export default function useReservationFlow() {
 
         if (!devBypassValidation) {
           const hasText = (value) => Boolean(value?.trim?.() || value);
-          // 09XXXXXXXXX format ΓÇö matches backend normalization and new input constraint.
+          // 09XXXXXXXXX format — matches backend normalization and new input constraint.
           const isValidPhone = (value) => validatePHPhoneLocal(value).valid;
+          const cleanPhoneDigits = (num) => String(num || "").replace(/\D+/g, "");
+          const isSamePhoneCheck = (a, b) => {
+            const na = cleanPhoneDigits(a);
+            const nb = cleanPhoneDigits(b);
+            if (!na || !nb || na.length < 7 || nb.length < 7) return false;
+            return na === nb || na.endsWith(nb) || nb.endsWith(na);
+          };
+
+          const isSelfEmergencyContact = isSamePhoneCheck(emergencyContactNumber, mobileNumber);
+
           const requiredFields = [
             { key: "billingEmail", label: "Billing Email", isMissing: !hasText(billingEmail) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(billingEmail).trim()), message: "Please enter a valid billing email address to continue." },
             { key: "selfiePhoto", label: "Selfie Photo", isMissing: !selfiePhoto },
-            { key: "lastName", label: "Last Name", isMissing: !hasText(lastName) },
-            { key: "firstName", label: "First Name", isMissing: !hasText(firstName) },
+            { key: "lastName", label: "Last Name", isMissing: !hasText(lastName) || String(lastName).trim().length < 2, message: "Last name must be at least 2 characters." },
+            { key: "firstName", label: "First Name", isMissing: !hasText(firstName) || String(firstName).trim().length < 2, message: "First name must be at least 2 characters." },
             {
               key: "mobileNumber",
               label: "Mobile Number",
               isMissing: !isValidPhone(mobileNumber),
-              message: "Enter a valid mobile number (e.g. 9123456789).",
+              message: "Enter a valid mobile number (e.g. 09123456789).",
             },
             {
               key: "birthday",
               label: "Birthday",
               isMissing: !validateBirthday(birthday).valid,
-              message: "Please enter a valid birthday to continue.",
+              message: "Please enter a valid birthday (at least 15 years old) to continue.",
             },
             { key: "gender", label: "Gender", isMissing: !hasText(gender) },
             { key: "maritalStatus", label: "Marital Status", isMissing: !hasText(maritalStatus) },
@@ -2464,13 +2503,14 @@ export default function useReservationFlow() {
             {
               key: "nbiClearance",
               label: "NBI Clearance",
-              isMissing: !nbiClearance && !hasText(nbiReason),
-              message: "Please upload NBI Clearance or provide a reason to continue.",
+              isMissing: !nbiClearance && (!hasText(nbiReason) || String(nbiReason).trim().length < 10),
+              message: "Please upload NBI Clearance or provide a detailed reason (at least 10 characters) to continue.",
             },
             {
               key: "emergencyContactName",
               label: "Emergency Contact Name",
-              isMissing: !hasText(emergencyContactName),
+              isMissing: !hasText(emergencyContactName) || String(emergencyContactName).trim().length < 2,
+              message: "Emergency contact name must be at least 2 characters.",
             },
             {
               key: "emergencyRelationship",
@@ -2480,8 +2520,10 @@ export default function useReservationFlow() {
             {
               key: "emergencyContactNumber",
               label: "Emergency Contact Number",
-              isMissing: !isValidPhone(emergencyContactNumber),
-              message: "Please enter a valid emergency contact number to continue.",
+              isMissing: !isValidPhone(emergencyContactNumber) || isSelfEmergencyContact,
+              message: isSelfEmergencyContact
+                ? "Emergency contact number cannot be the same as your personal mobile number."
+                : "Please enter a valid emergency contact number to continue.",
             },
             { key: "healthConcerns", label: "Health Concerns", isMissing: !hasText(healthConcerns) },
             { key: "employerSchool", label: "Current Employer", isMissing: !hasText(employerSchool) },
@@ -2496,10 +2538,16 @@ export default function useReservationFlow() {
             {
               key: "companyID",
               label: "Company ID",
-              isMissing: !companyID && !hasText(companyIDReason),
-              message: "Please upload Company ID or provide a reason to continue.",
+              isMissing: !companyID && (!hasText(companyIDReason) || String(companyIDReason).trim().length < 10),
+              message: "Please upload Company ID or provide a detailed reason (at least 10 characters) to continue.",
             },
             { key: "referralSource", label: "Referral Source", isMissing: !hasText(referralSource) },
+            {
+              key: "referrerName",
+              label: "Referrer Name",
+              isMissing: referralSource === "friend" && !hasText(referrerName),
+              message: "Please provide the name of the person who referred you.",
+            },
             {
               key: "targetMoveInDate",
               label: "Move-in Date",
@@ -2523,8 +2571,8 @@ export default function useReservationFlow() {
               key: "workScheduleOther",
               label: "Work Schedule Details",
               isMissing:
-                workSchedule === "others" && !hasText(workScheduleOther),
-              message: "Please describe your work schedule to continue.",
+                workSchedule === "others" && (!hasText(workScheduleOther) || String(workScheduleOther).trim().length < 5),
+              message: "Please describe your work schedule (at least 5 characters) to continue.",
             },
           ];
           const firstInvalid = requiredFields.find((field) => field.isMissing);
@@ -2698,9 +2746,9 @@ export default function useReservationFlow() {
         });
       }
       showNotification(
-        getFriendlyError(error, "Failed to process reservation. Please try again."),
+        getFriendlyError(error, "Unable to process reservation. Please try again."),
         "error",
-        6000,
+        5000,
       );
     } finally {
       setIsLoading(false);
@@ -2711,22 +2759,38 @@ export default function useReservationFlow() {
     if (currentStage === 1) {
       if (isFormDirty) setShowCancelConfirm(true);
       else navigate("/applicant/check-availability");
-    } else {
-      if (reservationId && !isStageLocked(currentStage)) {
-        try {
-          setSaveStatus("saving");
-          await updateReservationDraft(buildDraftPayload());
-          setHasUnsavedApplicationChanges(false);
-          setLastApplicationDraftSavedAt(new Date().toISOString());
-          setSaveStatus("saved");
-          showNotification("Progress saved", "success", 2000);
-          setTimeout(() => setSaveStatus(""), 3000);
-        } catch (err) {
-          showNotification("Could not save progress", "warning", 2000);
-        }
-      }
-      setCurrentStage((prev) => Math.max(1, prev - 1));
+      return;
     }
+
+    if (
+      currentStage === 3 &&
+      hasUnsavedApplicationChanges &&
+      reservationId &&
+      !isStageLocked(3)
+    ) {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      try {
+        setSaveStatus("saving");
+        const payload = {
+          ...buildDraftPayload(),
+          applicationDraftAutosave: true,
+        };
+        await updateReservationDraft(payload);
+        lastSavedApplicationDraftRef.current = JSON.stringify({
+          payload,
+          documentPrechecks,
+          idValidationResult,
+        });
+        setLastApplicationDraftSavedAt(new Date().toISOString());
+        setHasUnsavedApplicationChanges(false);
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus(""), 3000);
+      } catch (err) {
+        console.warn("Could not save application draft on navigating back:", err);
+      }
+    }
+
+    setCurrentStage((prev) => Math.max(1, prev - 1));
   };
 
   const handleStageConfirm = async () => {
@@ -2772,15 +2836,70 @@ export default function useReservationFlow() {
       showNotification(
         error?.response?.data?.error ||
           error?.message ||
-          "Failed to process reservation. Please try again.",
+          "Unable to process reservation. Please try again.",
         "error",
-        3000,
+        5000,
       );
     }
     setPendingStageAction(null);
   };
 
-  // ΓöÇΓöÇΓöÇ Return everything the page component needs ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  const handleExitToDashboard = async () => {
+    // If user is in Stage 3 and has unsaved application changes, flush immediately
+    if (currentStage === 3 && hasUnsavedApplicationChanges && reservationId) {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      try {
+        setSaveStatus("saving");
+        const payload = {
+          ...buildDraftPayload(),
+          applicationDraftAutosave: true,
+        };
+        await updateReservationDraft(payload);
+        setLastApplicationDraftSavedAt(new Date().toISOString());
+        setHasUnsavedApplicationChanges(false);
+        setSaveStatus("saved");
+      } catch (e) {
+        console.warn("Could not flush draft on exit:", e);
+      }
+    }
+
+    // If user is in Stage 2 with a viewing preference selected
+    if (
+      currentStage === 2 &&
+      viewingType &&
+      reservationId &&
+      !viewingPreferenceStepAccess.readOnly
+    ) {
+      try {
+        await updateReservationDraft({
+          viewingPreference: viewingType,
+          viewingType:
+            viewingType === "physical_visit"
+              ? "inperson"
+              : viewingType === "remote_2d_viewing"
+                ? "remote_2d"
+                : viewingType === "urgent_move_in_review"
+                  ? "urgent_move_in"
+                  : viewingType,
+          ...(viewingType === "physical_visit" ? { visitDate, visitTime } : {}),
+        });
+      } catch (e) {
+        console.warn("Could not flush viewing preference draft on exit:", e);
+      }
+    }
+
+    navigatingAwayRef.current = true;
+    showNotification(
+      "Your reservation progress has been saved. You can resume at any time from your Dashboard.",
+      "success",
+      3000,
+    );
+    appNavigate("/applicant/profile", {
+      state: { tab: "dashboard" },
+    });
+  };
+
+  // ─── Return everything the page component needs ────────
   return {
     // Navigation
     navigate,
@@ -2922,7 +3041,9 @@ export default function useReservationFlow() {
     validateApplicantIdDocument,
     runDocumentPrecheck,
     updateReservationDraft,
+    updateStayPackage,
     returnToDashboardAfterViewingPreference,
+    handleExitToDashboard,
     validateViewingPreferenceChange,
     forceEditMode,
     notifyRoomSelectionLocked,

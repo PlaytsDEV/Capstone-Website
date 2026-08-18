@@ -13,6 +13,11 @@ export const toTitleCase = (str) => {
     .join(" ");
 };
 
+export const formatProperCase = (str) => {
+  if (!str || typeof str !== "string") return "";
+  return String(str).replace(/(?:^|[\s'-])([a-zA-Z])/g, (match) => match.toUpperCase());
+};
+
 export const formatBed = (bed) => {
   if (!bed) return "";
   const b = String(bed).toLowerCase().trim();

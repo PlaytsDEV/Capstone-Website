@@ -118,16 +118,13 @@ const ScopedStyles = () => (
     }
 
     .st-icon-badge {
-      width: 40px;
-      height: 40px;
-      border-radius: var(--radius-md, 8px);
-      display: flex;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      background-color: color-mix(in srgb, var(--primary) 14%, var(--surface-card, var(--card)));
-      border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
-      color: var(--primary);
+      background: transparent;
+      border: none;
+      color: var(--foreground);
     }
 
     /* ── Realtime Theme Grid ── */
@@ -184,22 +181,16 @@ const ScopedStyles = () => (
     }
 
     .st-theme-icon-box {
-      width: 36px;
-      height: 36px;
-      border-radius: var(--radius-md, 8px);
-      display: flex;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: color-mix(in srgb, var(--primary) 10%, var(--surface-card, #FFFFFF));
-      border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
-      color: var(--text-heading, var(--foreground));
-      transition: background-color var(--duration-fast) var(--ease-out),
-        color var(--duration-fast) var(--ease-out);
+      background: transparent;
+      border: none;
+      color: var(--foreground);
     }
     .st-theme-card.is-active .st-theme-icon-box {
-      background: var(--primary);
-      color: var(--primary-foreground);
-      border-color: var(--primary);
+      background: transparent;
+      color: var(--primary);
     }
 
     .st-theme-active-tag {
@@ -689,22 +680,17 @@ const SettingsTab = () => {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                <div
+                <span
                   style={{
-                    width: "42px",
-                    height: "42px",
-                    borderRadius: "var(--radius-md, 8px)",
-                    backgroundColor: "color-mix(in srgb, var(--primary) 14%, var(--surface-card, var(--card)))",
-                    border: "1px solid color-mix(in srgb, var(--primary) 30%, transparent)",
-                    display: "flex",
+                    display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "var(--primary)",
+                    color: "var(--foreground)",
                     flexShrink: 0,
                   }}
                 >
-                  <KeyRound size={20} />
-                </div>
+                  <KeyRound size={22} />
+                </span>
                 <div>
                   <p
                     style={{

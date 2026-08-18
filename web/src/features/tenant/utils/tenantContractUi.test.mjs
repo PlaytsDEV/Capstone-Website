@@ -16,7 +16,7 @@ test("formats tenant Contract statuses without raw enum values", () => {
 test("does not infer an active Contract when no dedicated record exists", () => {
   const message = getTenantContractMessage(null);
   assert.equal(message.title, "Contract Not Available Yet");
-  assert.match(message.message, /has not been published yet/i);
+  assert.match(message.message, /lease contract will be generated/i);
   assert.doesNotMatch(message.title, /active/i);
 });
 

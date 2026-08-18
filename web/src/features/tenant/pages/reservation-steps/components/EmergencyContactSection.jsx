@@ -1,8 +1,18 @@
 import React from "react";
 import PhoneInput from "../../../../../shared/components/PhoneInput";
+import { formatProperCase, sanitizeName } from "../../../../../shared/utils/authValidation";
 
 const errBorder = (show, value) =>
   show && !value ? "1.5px solid var(--danger)" : undefined;
+
+const normalizePhoneDigits = (num) => String(num || "").replace(/\D+/g, "");
+
+const isSamePhone = (a, b) => {
+  const na = normalizePhoneDigits(a);
+  const nb = normalizePhoneDigits(b);
+  if (!na || !nb || na.length < 7 || nb.length < 7) return false;
+  return na === nb || na.endsWith(nb) || nb.endsWith(na);
+};
 
 /**
  * Section 3: Emergency Contact — name, relationship, phone, health concerns.
@@ -14,6 +24,7 @@ const EmergencyContactSection = ({
   setEmergencyRelationship,
   emergencyContactNumber,
   setEmergencyContactNumber,
+  mobileNumber = "",
   healthConcerns,
   setHealthConcerns,
   validateField,
@@ -23,6 +34,41 @@ const EmergencyContactSection = ({
   const handleSetHealthNa = () => {
     setHealthConcerns("N/A");
     validateField("healthConcerns", "N/A", () => ({ valid: true, error: null }));
+  };
+
+  const handleNameBlur = () => {
+    if (emergencyContactName && typeof emergencyContactName === "string") {
+      const proper = formatProperCase(emergencyContactName.trim());
+      if (proper !== emergencyContactName) {
+        setEmergencyContactName(proper);
+      }
+    }
+    if (validateField) {
+      validateField("emergencyContactName", emergencyContactName, (v) => {
+        const valid = Boolean(v && v.trim().length >= 2);
+        return {
+          valid,
+          error: valid ? null : "Please enter the contact person's full name (at least 2 characters)",
+        };
+      });
+    }
+  };
+
+  const validatePhone = (numberVal) => {
+    if (!numberVal) {
+      return { valid: false, error: "Contact number is required" };
+    }
+    if (isSamePhone(numberVal, mobileNumber)) {
+      return {
+        valid: false,
+        error: "Emergency contact number cannot be the same as your personal mobile number",
+      };
+    }
+    const valid = /^\+\d{10,15}$/.test(numberVal || "");
+    return {
+      valid,
+      error: valid ? null : "Please enter a valid contact number",
+    };
   };
 
   return (
@@ -41,17 +87,9 @@ const EmergencyContactSection = ({
           value={emergencyContactName}
           maxLength={100}
           onChange={(e) => {
-            setEmergencyContactName(e.target.value);
+            setEmergencyContactName(sanitizeName(e.target.value));
           }}
-          onBlur={() =>
-            validateField("emergencyContactName", emergencyContactName, (v) => {
-              const valid = Boolean(v && v.trim().length >= 2);
-              return {
-                valid,
-                error: valid ? null : "Please enter the contact person's full name (at least 2 characters)",
-              };
-            })
-          }
+          onBlur={handleNameBlur}
           style={{
             border: fieldErrors.emergencyContactName
               ? "1.5px solid var(--danger)"
@@ -118,22 +156,10 @@ const EmergencyContactSection = ({
             value={emergencyContactNumber}
             onChange={(e164) => {
               setEmergencyContactNumber(e164);
-              validateField("emergencyContactNumber", e164, (value) => {
-                const valid = /^\+\d{10,15}$/.test(value || "");
-                return {
-                  valid,
-                  error: valid ? null : "Please enter a valid contact number",
-                };
-              });
+              validateField("emergencyContactNumber", e164, validatePhone);
             }}
             onBlur={() =>
-              validateField("emergencyContactNumber", emergencyContactNumber, (value) => {
-                const valid = /^\+\d{10,15}$/.test(value || "");
-                return {
-                  valid,
-                  error: valid ? null : "Please enter a valid contact number",
-                };
-              })
+              validateField("emergencyContactNumber", emergencyContactNumber, validatePhone)
             }
             hasError={
               Boolean(fieldErrors.emergencyContactNumber) ||

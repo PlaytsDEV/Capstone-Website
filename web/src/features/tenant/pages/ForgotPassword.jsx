@@ -14,33 +14,32 @@ import { Mail, ArrowLeft, CheckCircle, Loader2 } from "lucide-react";
 import { authApi } from "../../../shared/api/authApi";
 import { showNotification } from "../../../shared/utils/notification";
 import { validateEmail } from "../../../shared/utils/authValidation";
+import {
+  getResendCooldown,
+  setResendCooldown as setPersistentResendCooldown,
+  clearResendCooldown,
+  subscribeToAuthStorage,
+} from "../../../shared/utils/authLockout";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
+import "../../../shared/styles/auth-forms.css";
 import "../../../shared/styles/notification.css";
 import Lounge from "../../../assets/images/facilities/RD Lounge Area.jpg"; 
 
 const RESET_IMAGE = Lounge; 
 function ForgotPassword() {
- const navigate = useNavigate();
- const [email, setEmail] = useState("");
- const [loading, setLoading] = useState(false);
- const [emailSent, setEmailSent] = useState(false);
- const [touched, setTouched] = useState(false);
- const [validationError, setValidationError] = useState(null);
- const [fieldValid, setFieldValid] = useState(false);
- const [resending, setResending] = useState(false);
- const [resendCooldown, setResendCooldown] = useState(0);
- // A ref, not state, because state updates aren't visible to a second click
- // that lands before React commits the re-render — that's how a fast
- // double-click sneaks past a state-only guard and fires two sends.
- const resendInFlightRef = useRef(false);
-
- useEffect(() => {
-    if (resendCooldown <= 0) return undefined;
-    const interval = setInterval(() => {
-      setResendCooldown((current) => (current <= 1 ? 0 : current - 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [resendCooldown]);
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [touched, setTouched] = useState(false);
+  const [validationError, setValidationError] = useState(null);
+  const [fieldValid, setFieldValid] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  // A ref, not state, because state updates aren't visible to a second click
+  // that lands before React commits the re-render — that's how a fast
+  // double-click sneaks past a state-only guard and fires two sends.
+  const resendInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!email) return;
@@ -57,22 +56,58 @@ function ForgotPassword() {
     }
   }, [email]);
 
- const handleChange = (e) => {
- const value = e.target.value;
- setEmail(value);
- setTouched(true);
- const error = validateEmail(value);
- setValidationError(error);
- setFieldValid(!error);
- };
+  useEffect(() => {
+    if (resendCooldown <= 0 || !email) return undefined;
+    const key = `pw_reset_cooldown_${email.trim().toLowerCase()}`;
+    const tick = () => {
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        const endTime = parseInt(stored, 10);
+        const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+        setResendCooldown(remaining);
+        if (remaining <= 0) localStorage.removeItem(key);
+      } else {
+        setResendCooldown(0);
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 500);
+    return () => clearInterval(interval);
+  }, [resendCooldown, email]);
 
- // Shared by the initial submit and the "Resend email" action. The backend
- // (passwordResetController.js) always returns the same generic,
- // enumeration-safe response regardless of whether the address is
- // registered, so — unlike the old direct Firebase-client call this
- // replaced — there is no longer a distinct "user-not-found" branch to
- // handle here: any resolved response is shown as the same success state.
- const requestPasswordReset = async (targetEmail) => {
+  useEffect(() => {
+    if (!email) return undefined;
+    const key = `pw_reset_cooldown_${email.trim().toLowerCase()}`;
+    const unsubscribe = subscribeToAuthStorage((event) => {
+      if (event.key === key) {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+          const endTime = parseInt(stored, 10);
+          setResendCooldown(Math.max(0, Math.ceil((endTime - Date.now()) / 1000)));
+        } else {
+          setResendCooldown(0);
+        }
+      }
+    });
+    return unsubscribe;
+  }, [email]);
+
+  const handleChange = (e) => {
+    const value = e.target.value;
+    setEmail(value);
+    setTouched(true);
+    const error = validateEmail(value);
+    setValidationError(error);
+    setFieldValid(!error);
+  };
+
+  // Shared by the initial submit and the "Resend email" action. The backend
+  // (passwordResetController.js) always returns the same generic,
+  // enumeration-safe response regardless of whether the address is
+  // registered, so — unlike the old direct Firebase-client call this
+  // replaced — there is no longer a distinct "user-not-found" branch to
+  // handle here: any resolved response is shown as the same success state.
+  const requestPasswordReset = async (targetEmail) => {
     const normEmail = targetEmail.trim().toLowerCase();
     const storageKey = `pw_reset_cooldown_${normEmail}`;
 
@@ -128,7 +163,7 @@ function ForgotPassword() {
     localStorage.setItem(storageKey, endTime.toString());
     setResendCooldown(30);
     return true;
- };
+  };
 
  const handleResetPassword = async (e) => {
  e.preventDefault();
@@ -175,8 +210,8 @@ function ForgotPassword() {
  subtitle="No worries — we'll help you get back in"
  />
 
- <div className="flex items-center justify-center p-8 lg:p-12 bg-card">
- <div className="w-full max-w-md">
+ <div className="flex items-center justify-center p-8 lg:p-12 bg-card overflow-y-auto">
+ <div className="w-full max-w-md my-auto">
  <Link
  to="/"
  className="lg:hidden inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors"
@@ -260,15 +295,17 @@ function ForgotPassword() {
  )}
  </button>
 
- <button
- type="button"
- onClick={() => navigate("/signin")}
- className="w-full flex items-center justify-center gap-2 py-3 text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
- >
- <ArrowLeft style={{ width: "16px", height: "16px" }} />
- Back to sign in
- </button>
- </form>
+  <div className="flex justify-center mt-2">
+    <button
+      type="button"
+      onClick={() => navigate("/signin")}
+      className="auth-btn-outline"
+    >
+      <ArrowLeft className="w-4 h-4" />
+      <span>Back to sign in</span>
+    </button>
+  </div>
+  </form>
  </>
  ) : (
  /* Success State */
@@ -347,24 +384,24 @@ function ForgotPassword() {
  ? `Resend email in ${resendCooldown}s`
  : "Didn't receive it? Resend email"}
  </button>
- <button
- type="button"
- disabled={resending}
-  onClick={() => {
-    if (email) {
-      localStorage.removeItem(`pw_reset_cooldown_${email.trim().toLowerCase()}`);
-    }
-    setEmailSent(false);
-    setEmail("");
-    setTouched(false);
-    setFieldValid(false);
-    setResendCooldown(0);
-  }}
- className="w-full py-2 text-xs font-light text-muted-foreground hover:text-foreground transition-colors underline"
- style={{ opacity: resending ? 0.5 : 1, cursor: resending ? "not-allowed" : "pointer" }}
- >
- Use a different email
- </button>
+  <button
+    type="button"
+    disabled={resending}
+    onClick={() => {
+      if (email) {
+        clearResendCooldown(`pw_reset_${email.trim().toLowerCase()}`);
+      }
+      setEmailSent(false);
+      setEmail("");
+      setTouched(false);
+      setFieldValid(false);
+      setResendCooldown(0);
+    }}
+    className="w-full py-2 text-xs font-light text-muted-foreground hover:text-foreground transition-colors underline"
+    style={{ opacity: resending ? 0.5 : 1, cursor: resending ? "not-allowed" : "pointer" }}
+  >
+    Use a different email
+  </button>
  </div>
  </div>
  )}

@@ -303,7 +303,7 @@
   flex-direction: column;
   padding: 1.35rem 1.5rem;
   background: var(--card, #ffffff);
-  border: 1.5px solid #cbd5e1;
+  border: 1px solid var(--border, #cbd5e1);
   border-radius: 12px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
   position: relative;

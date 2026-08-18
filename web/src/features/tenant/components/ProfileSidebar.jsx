@@ -2,50 +2,53 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { Bed, History, LayoutDashboard, LogOut, User } from "lucide-react";
 import ProfileAvatar, { getProfileInitials } from "../../../shared/components/ProfileAvatar";
+import { formatDisplayName } from "../../../shared/utils/formatDate";
 
 const ProfileSidebar = ({
- activeTab,
- setActiveTab,
- fullName,
- email,
- handleLogout,
+  activeTab,
+  setActiveTab,
+  fullName,
+  email,
+  handleLogout,
 }) => {
- const profileUser = { name: fullName, email };
- const initials = getProfileInitials(profileUser, "U");
+  const formattedName = formatDisplayName(fullName);
+  const profileUser = { name: formattedName, email };
+  const initials = getProfileInitials(profileUser, "U");
 
- return (
- <aside
- className="w-64 bg-card border-r flex flex-col h-screen sticky top-0 self-start overflow-y-auto"
- style={{ borderColor: "var(--border-card, #E8EBF0)" }}
- >
- <div className="p-6 border-b" style={{ borderColor: "var(--border-card, #E8EBF0)" }}>
- <Link to="/applicant/check-availability" className="flex items-center gap-3">
- <div
- className="w-8 h-8 rounded-lg flex items-center justify-center"
- style={{ backgroundColor: "#0A1628" }}
- >
- <Bed className="w-5 h-5 text-primary-foreground" />
- </div>
- <span className="font-semibold text-lg" style={{ color: "var(--text-heading, #0A1628)" }}>
- Lilycrest
- </span>
- </Link>
- </div>
+  return (
+    <aside
+      className="w-64 bg-card border-r flex flex-col h-screen sticky top-0 self-start overflow-y-auto"
+      style={{ borderColor: "var(--border-card, #E8EBF0)" }}
+    >
+      <div className="p-6 border-b" style={{ borderColor: "var(--border-card, #E8EBF0)" }}>
+        <Link to="/applicant/check-availability" className="flex items-center gap-3">
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: "#0A1628" }}
+          >
+            <Bed className="w-5 h-5 text-primary-foreground" />
+          </div>
+          <span className="font-semibold text-lg" style={{ color: "var(--text-heading, #0A1628)" }}>
+            Lilycrest
+          </span>
+        </Link>
+      </div>
 
- <div className="p-4 border-b" style={{ borderColor: "var(--border-card, #E8EBF0)" }}>
- <div className="flex items-center gap-3">
- <ProfileAvatar user={profileUser} initials={initials} size={40} />
- <div className="flex-1 min-w-0">
- <p
- className="text-sm font-medium truncate"
- style={{ color: "var(--text-heading, #1F2937)" }}
- >
- {fullName}
- </p>
- <p className="text-xs text-muted-foreground truncate">{email}</p>
- </div>
- </div>
- </div>
+      <div className="p-4 border-b" style={{ borderColor: "var(--border-card, #E8EBF0)" }}>
+        <div className="flex items-center gap-3">
+          <ProfileAvatar user={profileUser} initials={initials} size={40} />
+          <div className="flex-1 min-w-0">
+            <p
+              className="text-sm font-medium truncate capitalize"
+              style={{ color: "var(--text-heading, #1F2937)" }}
+            >
+              {formattedName}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">{email}</p>
+          </div>
+        </div>
+      </div>
+
 
  <nav className="flex-1 p-4 space-y-6">
  <div>

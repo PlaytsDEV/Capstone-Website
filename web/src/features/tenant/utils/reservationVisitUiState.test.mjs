@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   canFreelyEditViewingPreference,
+  formatVisitSlotLabel,
   getVisitScheduleSubmitLabel,
   getVisitSummaryUiState,
 } from "./reservationVisitUiState.js";
@@ -128,4 +129,18 @@ test("locked remote and urgent summaries hide editable actions", () => {
     assert.equal(ui.applicationCtaLabel, "View Reservation Status");
     assert.match(ui.lockedMessage, /already submitted and locked/i);
   }
+});
+
+test("formatVisitSlotLabel formats various time representations properly", () => {
+  assert.equal(formatVisitSlotLabel(""), "Not scheduled");
+  assert.equal(formatVisitSlotLabel(null), "Not scheduled");
+  assert.equal(formatVisitSlotLabel(undefined), "Not scheduled");
+  assert.equal(formatVisitSlotLabel("09:00 AM"), "09:00 AM");
+  assert.equal(formatVisitSlotLabel("9:00 am"), "09:00 AM");
+  assert.equal(formatVisitSlotLabel("13:00"), "01:00 PM");
+  assert.equal(formatVisitSlotLabel("08:30"), "08:30 AM");
+  assert.equal(formatVisitSlotLabel("00:00"), "12:00 AM");
+  assert.equal(formatVisitSlotLabel({ label: "10:00 AM" }), "10:00 AM");
+  assert.equal(formatVisitSlotLabel({ slot: "02:00 PM" }), "02:00 PM");
+  assert.equal(formatVisitSlotLabel(null, "No visit selected"), "No visit selected");
 });

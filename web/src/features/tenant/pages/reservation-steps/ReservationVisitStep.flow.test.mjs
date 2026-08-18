@@ -34,3 +34,8 @@ test("change preference requires confirmation and latest reservation validation"
   assert.match(source, /Changing your viewing preference may reset your current viewing request/);
   assert.match(source, /onValidatePreferenceChange/);
 });
+
+test("formats visit slot label safely without undefined references", () => {
+  assert.match(source, /formatVisitSlotLabel/);
+  assert.match(source, /import\s*\{[^}]*formatVisitSlotLabel[^}]*\}\s*from/);
+});

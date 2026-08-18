@@ -5,7 +5,7 @@ import getFriendlyError from "../../../shared/utils/friendlyError";
 import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
 import { useRouteFlash } from "../../../shared/hooks/useRouteFlash";
 import { reservationApi } from "../../../shared/api/reservationApi";
-import { Search, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, X, ArrowLeft } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { buildSignOutSuccessFlash } from "../../../shared/utils/authToasts";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
@@ -599,8 +599,6 @@ function CheckAvailabilityPage() {
  }
 
     try {
-      const checkInDate = new Date();
-      checkInDate.setDate(checkInDate.getDate() + 30);
       const payload = {
         roomId: selectedRoom.roomId,
         selectedBed: selectedBed
@@ -608,7 +606,8 @@ function CheckAvailabilityPage() {
           : null,
         selectedAppliances: buildSelectedAppliancesPayload(),
         leaseDuration: selectedLeaseDuration || "6",
-        moveInDate: checkInDate.toISOString(),
+        moveInDate: null,
+        targetMoveInDate: null,
         totalPrice: selectedRoom.price || 5000,
         applianceFees: calculateApplianceFees(),
         viewingType: null,
@@ -699,42 +698,61 @@ function CheckAvailabilityPage() {
         onLogout={handleLogout}
       />
 
-  <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
-  {isChangeRoomMode && (
-  <div className="ca-change-room-banner">
-  <div>
-  <h1 className="ca-section-title">Change Selected Room</h1>
-  <p className="ca-change-room-copy">
-  Choose a replacement room for your current reservation. Confirming a room here updates your existing reservation instead of creating a new one.
-  </p>
-  </div>
-  <button
-  type="button"
-  className="ca-change-room-back"
-  onClick={() => navigate("/applicant/profile")}
-  >
-  Back to profile
-  </button>
-  </div>
-  )}
+    <div className="ca-page-head">
+      <div className="ca-page-head__content">
+        <div className="ca-page-head__title-row">
+          <h1 className="ca-section-title">
+            {isChangeRoomMode ? "Change Selected Room" : "Available Rooms"}
+          </h1>
+          {isChangeRoomMode && (
+            <span className="ca-mode-tag">
+              <span className="ca-mode-tag__dot" />
+              Reservation Replacement
+            </span>
+          )}
+        </div>
 
-  <div style={{ marginBottom: "16px" }}>
-  {!isChangeRoomMode && <h1 className="ca-section-title">Available Rooms</h1>}
-  {!roomsLoading && (
-   <p className="ca-room-count" style={{ margin: "4px 0 0" }}>
-   {`${filteredRooms.length} available room${filteredRooms.length !== 1 ? "s" : ""} found`}
-   </p>
-  )}
-  {!user && (
-  <p className="ca-signin-prompt">
-  <button onClick={() => navigate("/signin")}>Sign in</button>{" "}
-  or{" "}
-  <button onClick={() => navigate("/signup?continue=%2Fapplicant%2Fcheck-availability")}>create an account</button>{" "}
-  to reserve a room
-  </p>
-  )}
-  </div>
+        <div className="ca-page-head__meta">
+          {!roomsLoading && (
+            <span className="ca-room-count">
+              {`${filteredRooms.length} available room${filteredRooms.length !== 1 ? "s" : ""} found`}
+            </span>
+          )}
+          {isChangeRoomMode && (
+            <>
+              <span className="ca-meta-divider">•</span>
+              <span className="ca-change-room-hint">
+                Confirming a room here updates your existing reservation instead of creating a new one.
+              </span>
+            </>
+          )}
+          {!user && !isChangeRoomMode && (
+            <span className="ca-signin-prompt">
+              <button onClick={() => navigate("/signin")}>Sign in</button>{" "}
+              or{" "}
+              <button onClick={() => navigate("/signup?continue=%2Fapplicant%2Fcheck-availability")}>
+                create an account
+              </button>{" "}
+              to reserve a room
+            </span>
+          )}
+        </div>
+      </div>
+
+      {isChangeRoomMode && (
+        <button
+          type="button"
+          className="ca-change-room-back"
+          onClick={() => navigate("/applicant/profile")}
+          title="Back to profile"
+        >
+          <ArrowLeft size={14} />
+          <span>Back to profile</span>
+        </button>
+      )}
+    </div>
 
   {/* Active Filters Bar */}
   {(debouncedSearchQuery.trim() !== "" ||

@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { ChevronDown, Loader2, User, CheckCircle2 } from "lucide-react";
+import { ChevronDown, Loader2, User, CheckCircle2, ArrowLeft, ArrowRight } from "lucide-react";
+import { formatBranch } from "../../../../shared/utils/formatDate";
+import { sanitizeName, formatProperCase } from "../../../../shared/utils/authValidation";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import FormScrollArrows from "../../../../shared/components/FormScrollArrows";
 import {
@@ -20,6 +22,31 @@ import {
 } from "../../utils/reservationValidation";
 import { getDateConstraints } from "./applicationFormConstants";
 
+const toDisplayString = (value, fallback = "") => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "object") {
+    return toDisplayString(
+      value.displayName ??
+        value.name ??
+        value.label ??
+        value.title ??
+        value.roomNumber ??
+        value.slug ??
+        value.key ??
+        value.code ??
+        value.value ??
+        value.id,
+      fallback,
+    );
+  }
+  return fallback;
+};
+
+const getRoomName = (room) =>
+  toDisplayString(room?.name || room?.roomNumber || room?.title || room?.id, "N/A");
+
 import {
   PhotoEmailSection,
   PersonalInfoSection,
@@ -27,6 +54,7 @@ import {
   EmploymentSection,
   DormPreferencesSection,
   AgreementsSection,
+  ApplicationProgressBar,
 } from "./components";
 
 const APPLICATION_SECTIONS = [
@@ -66,7 +94,11 @@ const CollapsibleSection = React.memo(
           aria-expanded={isOpen}
           aria-controls={`section-${sectionKey}-panel`}
         >
-          <span className="rf-app-section__num">{number}</span>
+          <span
+            className={`rf-app-section__num${isCompleted ? " is-complete rf-app-section__num--completed" : ""}`}
+          >
+            {isCompleted ? <CheckCircle2 size={16} strokeWidth={2.5} aria-hidden="true" /> : number}
+          </span>
           <span className="rf-app-section__title-wrap">
             <span className="rf-app-section__title">{title}</span>
             {isCompleted && (
@@ -99,6 +131,7 @@ const CollapsibleSection = React.memo(
 const ReservationApplicationStep = ({
   billingEmail,
   setBillingEmail,
+  reservationData,
   accountEmail,
   accountPhone,
   accountFirstName,
@@ -292,6 +325,58 @@ const ReservationApplicationStep = ({
     ]
   );
 
+  const completedSectionsCount = useMemo(
+    () => Object.values(sectionCompletionMap).filter(Boolean).length,
+    [sectionCompletionMap]
+  );
+
+  // Auto-advance to next incomplete section when an active section becomes completed (with gentle pause)
+  const prevCompletionMapRef = useRef(sectionCompletionMap);
+  const autoAdvanceTimerRef = useRef(null);
+
+  useEffect(() => {
+    const prevMap = prevCompletionMapRef.current;
+    prevCompletionMapRef.current = sectionCompletionMap;
+
+    const sectionKeys = APPLICATION_SECTIONS.map((s) => s.key);
+    for (let i = 0; i < sectionKeys.length; i++) {
+      const key = sectionKeys[i];
+      if (!prevMap[key] && sectionCompletionMap[key]) {
+        const nextIncomplete = sectionKeys.find(
+          (k, idx) => idx > i && !sectionCompletionMap[k]
+        );
+        if (nextIncomplete) {
+          if (autoAdvanceTimerRef.current) {
+            clearTimeout(autoAdvanceTimerRef.current);
+          }
+
+          // Gentle 650ms pause so applicant sees the emerald completion checkmark before auto-transitioning
+          autoAdvanceTimerRef.current = setTimeout(() => {
+            setOpenSections((prev) => ({
+              ...prev,
+              [key]: false,
+              [nextIncomplete]: true,
+            }));
+
+            setTimeout(() => {
+              const el = sectionRefs.current[nextIncomplete];
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "start" });
+              }
+            }, 180);
+          }, 650);
+        }
+        break;
+      }
+    }
+
+    return () => {
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current);
+      }
+    };
+  }, [sectionCompletionMap]);
+
   useEffect(() => {
     if (!showValidationErrors) return;
     setOpenSections(buildOpenSectionState(true));
@@ -306,21 +391,27 @@ const ReservationApplicationStep = ({
       const el = sectionRefs.current[scrollToSection];
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "start" });
-        el.style.transition = "background-color 0.3s ease";
-        el.style.backgroundColor = "color-mix(in srgb, var(--foreground) 12%, transparent)";
+        el.style.transition = "background-color 0.4s ease";
+        el.style.backgroundColor = "color-mix(in srgb, var(--foreground) 6%, transparent)";
         setTimeout(() => {
           el.style.backgroundColor = "";
-        }, 1500);
+        }, 1800);
       }
       onClearScrollToSection?.();
-    }, 120);
+    }, 180);
 
     return () => clearTimeout(timer);
   }, [scrollToSection, onClearScrollToSection]);
 
   const toggleSection = (sectionKey) => setOpenSections((prev) => ({ ...prev, [sectionKey]: !prev[sectionKey] }));
 
-  const handleNameInput = (value, setter) => setter(value.replace(/\d+/g, ""));
+  const handleNameInput = (value, setter) => {
+    if (!value) {
+      setter("");
+      return;
+    }
+    setter(sanitizeName(value));
+  };
   const handleGeneralInput = (value, setter, maxLength = 100) => { if (value.length <= maxLength) setter(value); };
   const validateField = (fieldName, value, validator) => { const result = validator(value); setFieldErrors((p) => ({ ...p, [fieldName]: result.error })); return result.valid; };
   const clearFieldError = (fieldName) => setFieldErrors((p) => (p[fieldName] ? { ...p, [fieldName]: null } : p));
@@ -328,7 +419,7 @@ const ReservationApplicationStep = ({
   const handleTargetDateInput = (value) => { validateField("targetMoveInDate", value, validateTargetMoveInDate); setTargetMoveInDate(value); };
 
   const handleResetAll = () => {
-    setConfirmModal({ open: true, title: "Reset All Fields", message: "This will clear all fields in the application form. This action cannot be undone.", variant: "danger", confirmText: "Reset All", onConfirm: () => { setConfirmModal((p) => ({ ...p, open: false })); doResetAll(); } });
+    setConfirmModal({ open: true, title: "Reset Form Fields", message: "This will clear all filled fields in the application form. This action cannot be undone.", variant: "danger", confirmText: "Reset Form", onConfirm: () => { setConfirmModal((p) => ({ ...p, open: false })); doResetAll(); } });
   };
 
   const doResetAll = () => {
@@ -367,29 +458,68 @@ const ReservationApplicationStep = ({
 
   const { birthdayMin, birthdayMax, moveInMin, moveInMax } = useMemo(() => getDateConstraints(), []);
   const readonlyContentClass = readOnly ? "rf-readonly-wrapper" : "";
+  const room = reservationData?.room || {};
 
   return (
-    <div className="reservation-card rf-application-card">
-      <div className="rf-app-header">
-        <div className="rf-app-header__icon" aria-hidden="true"><User size={32} strokeWidth={1.8} /></div>
-        <div className="rf-app-header__content">
-          <div className="rf-app-header__copy">
-            <div className="main-header-badge"><span>Step 3 · Verification</span></div>
-            <div className="rf-app-header__title-row">
-              <h2 className="rf-app-header__title">Tenant Application</h2>
-              {saveStatus && <span className="rf-save-status">{saveStatus === "saving" ? "Saving…" : "✓ Saved"}</span>}
-            </div>
-            <p className="rf-app-header__subtitle">Complete all fields below. Required fields are marked with <span className="rf-required">*</span></p>
+    <div className="w-full max-w-6xl mx-auto space-y-6">
+      {/* Main Header (Solid Colors, Standalone Icons, Room Designation Pill) */}
+      <div className="space-y-2.5 border-b border-slate-200 dark:border-slate-800 pb-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex items-center px-3 py-1 bg-transparent border border-slate-200 dark:border-slate-700 rounded-full">
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+              Step 3 · Tenant Application
+            </span>
           </div>
 
-          {!readOnly && (
-            <div className="rf-app-actions">
-              <button type="button" onClick={handleResetAll} className="rf-reset-btn">Reset All</button>
-              {import.meta.env.DEV && <button type="button" onClick={devAutoFill} className="rf-dev-fill-btn">⚡ Dev Auto-Fill</button>}
-            </div>
-          )}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {room && (room.name || room.roomNumber || room.title || room.branch || reservationData?.branch) && (
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 self-start sm:self-auto flex-shrink-0">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  {getRoomName(room)} · {formatBranch(room.branch || reservationData?.branch)}
+                </span>
+              </div>
+            )}
+            {!readOnly && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetAll}
+                  className="h-8 px-3 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Reset Form
+                </button>
+                {import.meta.env.DEV && (
+                  <button
+                    type="button"
+                    onClick={devAutoFill}
+                    className="h-8 px-3 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
+                  >
+                    <span>⚡</span>
+                    <span>Dev Auto-Fill</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
+            <User className="w-7 h-7 text-slate-800 dark:text-slate-200 flex-shrink-0" />
+            <span>Tenant Application</span>
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed mt-1 max-w-2xl">
+            Complete all fields below. Required fields are marked with <span className="text-rose-500 font-bold">*</span>
+          </p>
         </div>
       </div>
+
+      <ApplicationProgressBar
+        completedCount={completedSectionsCount}
+        totalSections={APPLICATION_SECTIONS.length}
+        saveStatus={saveStatus}
+      />
 
       {showValidationErrors && !applicationSubmitted && <div className="rf-form-alert" role="alert">Please complete the highlighted required fields before submitting.</div>}
 
@@ -516,6 +646,7 @@ const ReservationApplicationStep = ({
               setEmergencyRelationship,
               emergencyContactNumber,
               setEmergencyContactNumber,
+              mobileNumber,
               healthConcerns,
               setHealthConcerns,
               validateField,
@@ -630,24 +761,50 @@ const ReservationApplicationStep = ({
       <PoliciesTermsModal isOpen={showPoliciesModal} onClose={() => setShowPoliciesModal(false)} />
       <PrivacyConsentModal isOpen={showPrivacyModal} onClose={() => setShowPrivacyModal(false)} />
 
-      {readOnly && applicationSubmitted && !paymentApproved && (
-        <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
-          <button onClick={onEditApplication} className="btn btn-success">Edit Application</button>
-        </div>
-      )}
+      {/* Bottom Action Footer */}
+      <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-3 pt-6 border-t border-slate-200 dark:border-slate-800 mt-6">
+        {onPrev ? (
+          <button
+            type="button"
+            onClick={onPrev}
+            className="w-full sm:w-auto h-11 px-5 rounded-xl font-medium text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"
+          >
+            <ArrowLeft size={14} />
+            <span>Previous Step</span>
+          </button>
+        ) : (
+          <div />
+        )}
 
-      {!readOnly && (
-        <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
-          <button onClick={onNext} className="btn btn-success" disabled={submitDisabled}>
+        {readOnly && applicationSubmitted && !paymentApproved ? (
+          <button
+            type="button"
+            onClick={onEditApplication}
+            className="w-full sm:w-auto min-w-[180px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2"
+          >
+            <span>Edit Application</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={submitDisabled}
+            className="w-full sm:w-auto min-w-[200px] h-11 px-6 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center gap-2"
+          >
             {isSubmittingApplication ? (
               <>
-                <Loader2 size={15} className="auth-spinner" style={{ marginRight: 6 }} />
-                Submitting…
+                <Loader2 size={16} className="animate-spin" />
+                <span>Submitting Application...</span>
               </>
-            ) : applicationSubmitted ? "Save Changes" : visitPending ? "Save Progress" : "Submit Application"}
+            ) : (
+              <>
+                <span>{applicationSubmitted ? "Save Changes" : visitPending ? "Save Progress" : "Submit Application"}</span>
+                <ArrowRight size={16} />
+              </>
+            )}
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       <ConfirmModal isOpen={confirmModal.open} onClose={() => setConfirmModal((p) => ({ ...p, open: false }))} onConfirm={confirmModal.onConfirm} title={confirmModal.title} message={confirmModal.message} variant={confirmModal.variant} confirmText={confirmModal.confirmText || "Confirm"} />
 

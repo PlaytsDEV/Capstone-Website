@@ -208,7 +208,7 @@ function ResetPassword() {
         subtitle="Secure your Lilycrest account"
       />
 
-      <div className="flex items-center justify-center p-8 lg:p-12 bg-white">
+      <div className="flex items-start justify-center p-8 lg:p-12 lg:py-16 bg-white overflow-y-auto">
         <div className="w-full max-w-md">
           {status === "checking" && (
             <div className="text-center">

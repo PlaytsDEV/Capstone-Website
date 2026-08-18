@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import FileUploadField from "./FileUploadField";
 import AddressCascadeFields from "./AddressCascadeFields";
 import PhoneInput from "../../../../../shared/components/PhoneInput";
+import { formatProperCase, sanitizeName } from "../../../../../shared/utils/authValidation";
 import { validateBirthday } from "../../../utils/reservationValidation";
 
 const errBorder = (show, value) =>
-  show && !value ? "1.5px solid var(--danger)" : undefined;
+  show && !value ? "1px solid var(--danger)" : undefined;
 
 const ID_TYPE_LABELS = {
   national_id: "National ID",
@@ -125,10 +126,6 @@ const PersonalInfoSection = ({
   birthdayMax,
   showValidationErrors,
 }) => {
-  const showPhoneSuggestion =
-    Boolean(accountPhone) &&
-    (!mobileNumber || mobileNumber.trim() !== accountPhone.trim());
-
   return (
     <>
       {/* Names — 3-column row */}
@@ -188,6 +185,14 @@ const PersonalInfoSection = ({
             autoComplete="nickname"
             value={nickname}
             onChange={(e) => handleNameInput(e.target.value, setNickname)}
+            onBlur={() => {
+              if (nickname && typeof nickname === "string") {
+                const proper = formatProperCase(nickname.trim());
+                if (proper !== nickname) {
+                  setNickname(proper);
+                }
+              }
+            }}
           />
         </div>
         <div className="form-group" data-field="gender">
@@ -266,19 +271,12 @@ const PersonalInfoSection = ({
             hasError={showValidationErrors && !mobileNumber}
             autoComplete="tel"
             required
+            list={accountPhone ? "mobileNumber-suggestions" : undefined}
           />
-          {showPhoneSuggestion && (
-            <div className="rf-suggestion-row">
-              <button
-                type="button"
-                className="rf-suggestion-chip"
-                onClick={() => setMobileNumber(accountPhone)}
-                title="Click to use your account profile phone number"
-              >
-                <span className="rf-suggestion-chip__icon" aria-hidden="true">💡</span>
-                <span>Use profile phone: <strong>{accountPhone}</strong></span>
-              </button>
-            </div>
+          {accountPhone && (
+            <datalist id="mobileNumber-suggestions">
+              <option value={accountPhone} />
+            </datalist>
           )}
           <FieldError
             error={
@@ -477,8 +475,8 @@ const PersonalInfoSection = ({
         <div className="rf-char-counter">
           {nbiReason?.length || 0}/300
         </div>
-        {showValidationErrors && !nbiClearance && !nbiReason && (
-          <FieldError error="Please upload NBI Clearance or provide a reason" />
+        {showValidationErrors && !nbiClearance && (!nbiReason?.trim() || nbiReason.trim().length < 10) && (
+          <FieldError error="Please upload NBI Clearance or provide a detailed reason (at least 10 characters)" />
         )}
       </div>
 
@@ -510,6 +508,19 @@ const FieldError = ({ error }) => {
   return <div className="rf-field-error">{error}</div>;
 };
 
+const calculateAge = (bdayStr) => {
+  if (!bdayStr || !/^\d{4}-\d{2}-\d{2}$/.test(bdayStr)) return null;
+  const [y, m, d] = bdayStr.split("-").map(Number);
+  const birthDate = new Date(y, m - 1, d);
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const mDiff = today.getMonth() - birthDate.getMonth();
+  if (mDiff < 0 || (mDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age >= 0 && age <= 120 ? age : null;
+};
+
 const BirthdaySelectField = ({
   birthday,
   setBirthday,
@@ -531,6 +542,7 @@ const BirthdaySelectField = ({
     [maxDay],
   );
   const hasError = (showValidationErrors && !birthday) || fieldErrors.birthday;
+  const calculatedAge = useMemo(() => calculateAge(birthday), [birthday]);
 
   useEffect(() => {
     if ((birthday || "") === lastEmittedValue.current) return;
@@ -562,6 +574,11 @@ const BirthdaySelectField = ({
     <div className="form-group" data-field="birthday">
       <label className="form-label">
         Birthday <span className="rf-required">*</span>
+        {calculatedAge !== null && (
+          <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 ml-2">
+            ({calculatedAge} years old)
+          </span>
+        )}
       </label>
       <div
         className={`rf-date-part-row${hasError ? " rf-date-part-row--error" : ""}`}
@@ -609,7 +626,7 @@ const BirthdaySelectField = ({
           ))}
         </select>
       </div>
-      <div className="form-helper">Applicant must be at least 18 years old</div>
+      <div className="form-helper">Applicant must be at least 15 years old</div>
       <FieldError
         error={
           showValidationErrors && !birthday
@@ -635,11 +652,30 @@ const NameField = ({
   optional,
   showValidationErrors,
 }) => {
-  const normalizedValue = String(value || "").trim();
   const normalizedSuggestion = String(suggestion || "").trim();
-  const showSuggestion =
-    Boolean(normalizedSuggestion) &&
-    (!normalizedValue || normalizedValue.toLowerCase() !== normalizedSuggestion.toLowerCase());
+  const datalistId = normalizedSuggestion ? `${fieldKey}-suggestions` : undefined;
+
+  const handleBlur = () => {
+    if (value && typeof value === "string") {
+      const proper = formatProperCase(value.trim());
+      if (proper !== value) {
+        setter(proper);
+      }
+    }
+    if (validate) {
+      validate(fieldKey, value, (v) => {
+        const trimmed = String(v || "").trim();
+        if (!required && !trimmed) {
+          return { valid: true, error: null };
+        }
+        const valid = trimmed.length >= 2;
+        return {
+          valid,
+          error: valid ? null : `${label} must be at least 2 characters`,
+        };
+      });
+    }
+  };
 
   return (
     <div className="form-group" data-field={fieldKey}>
@@ -654,42 +690,23 @@ const NameField = ({
         placeholder={label}
         maxLength={32}
         autoComplete={autoComplete}
+        list={datalistId}
         value={value}
         onChange={(e) => handler(e.target.value, setter)}
-        onBlur={() =>
-          validate(fieldKey, value, (v) => {
-            const trimmed = String(v || "").trim();
-            if (!required && !trimmed) {
-              return { valid: true, error: null };
-            }
-            const valid = trimmed.length >= 2;
-            return {
-              valid,
-              error: valid ? null : `${label} must be at least 2 characters`,
-            };
-          })
-        }
+        onBlur={handleBlur}
         style={{
           border:
             (showValidationErrors && required && !value) || errors[fieldKey]
-              ? "1.5px solid var(--danger)"
+              ? "1px solid var(--danger)"
               : undefined,
         }}
         aria-invalid={Boolean((showValidationErrors && required && !value) || errors[fieldKey])}
       />
 
-      {showSuggestion && (
-        <div className="rf-suggestion-row">
-          <button
-            type="button"
-            className="rf-suggestion-chip"
-            onClick={() => handler(normalizedSuggestion, setter)}
-            title={`Click to use ${label} from profile`}
-          >
-            <span className="rf-suggestion-chip__icon" aria-hidden="true">💡</span>
-            <span>Use profile: <strong>{normalizedSuggestion}</strong></span>
-          </button>
-        </div>
+      {normalizedSuggestion && (
+        <datalist id={datalistId}>
+          <option value={normalizedSuggestion} />
+        </datalist>
       )}
 
       <FieldError

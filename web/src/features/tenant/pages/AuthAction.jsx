@@ -7,12 +7,19 @@ import { authApi } from "../../../shared/api/authApi";
 import { normalizeVerificationErrorCode } from "../../../shared/api/apiError";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import {
+  getResendCooldown,
+  setResendCooldown as setPersistentResendCooldown,
+  subscribeToAuthStorage,
+} from "../../../shared/utils/authLockout";
+import {
   EMAIL_VERIFICATION_STATES,
   classifyFailedVerification,
   classifyVerificationSession,
   cleanAuthActionUrl,
   normalizeInternalContinuation,
 } from "../../../shared/utils/emailVerificationFlow";
+
+const EMAIL_ACTION_COOLDOWN_KEY = "email_action_verification";
 import Lounge from "../../../assets/images/facilities/RD Lounge Area.jpg";
 
 const COPY = {
@@ -101,8 +108,7 @@ function AuthAction() {
   const [resending, setResending] = useState(false);
   const [reconciling, setReconciling] = useState(false);
   const [verifiedIdentityMatchesSession, setVerifiedIdentityMatchesSession] = useState(false);
-  const [cooldownEnd, setCooldownEnd] = useState(0);
-  const [cooldown, setCooldown] = useState(0);
+  const [cooldown, setCooldown] = useState(() => getResendCooldown(EMAIL_ACTION_COOLDOWN_KEY));
 
   const applyServerDetails = (data = {}) => {
     setDetails((current) => ({
@@ -115,24 +121,28 @@ function AuthAction() {
       continuePath: normalizeInternalContinuation(data.continuePath || current.continuePath),
     }));
     if (data.retryAfterSeconds > 0) {
-      setCooldownEnd(Date.now() + data.retryAfterSeconds * 1000);
+      setPersistentResendCooldown(EMAIL_ACTION_COOLDOWN_KEY, data.retryAfterSeconds);
+      setCooldown(data.retryAfterSeconds);
     }
   };
 
   useEffect(() => {
-    if (!cooldownEnd) {
-      setCooldown(0);
-      return undefined;
-    }
+    if (cooldown <= 0) return undefined;
     const tick = () => {
-      const next = Math.max(0, Math.ceil((cooldownEnd - Date.now()) / 1000));
-      setCooldown(next);
-      if (!next) setCooldownEnd(0);
+      const remaining = getResendCooldown(EMAIL_ACTION_COOLDOWN_KEY);
+      setCooldown(remaining);
     };
     tick();
     const timer = window.setInterval(tick, 500);
     return () => window.clearInterval(timer);
-  }, [cooldownEnd]);
+  }, [cooldown]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthStorage(() => {
+      setCooldown(getResendCooldown(EMAIL_ACTION_COOLDOWN_KEY));
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     const mode = searchParams.get("mode");
@@ -308,6 +318,10 @@ function AuthAction() {
     try {
       const result = await authApi.resendEmailVerification();
       applyServerDetails(result);
+      if (!result?.retryAfterSeconds) {
+        setPersistentResendCooldown(EMAIL_ACTION_COOLDOWN_KEY, 60);
+        setCooldown(60);
+      }
       setState(result.state);
       navigate("/auth-action?state=sent", { replace: true });
     } catch (error) {

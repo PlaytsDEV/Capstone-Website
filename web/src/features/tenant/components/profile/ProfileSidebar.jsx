@@ -21,7 +21,9 @@ import {
  Megaphone,
 } from "lucide-react";
 import ProfileAvatar, { getProfileInitials } from "../../../../shared/components/ProfileAvatar";
+import { formatDisplayName } from "../../../../shared/utils/formatDate";
 import useBodyScrollLock from "../../../../shared/hooks/useBodyScrollLock";
+
 
 /* ── Timing ─────────────────────────────────────────────────────────────── */
 const TRANSITION = "0.3s cubic-bezier(0.4, 0, 0.2, 1)";
@@ -249,25 +251,38 @@ const ProfileSidebar = ({
  <div
  style={{
  padding: "14px 14px",
- borderBottom: "1px solid var(--border-subtle)",
+ borderBottom: "1px solid var(--border-card)",
  display: "flex",
  alignItems: "center",
  gap: 12,
  cursor: "default",
  }}
  >
- <div
- onClick={onUpdateImage ? handleAvatarClick : undefined}
- style={{
- position: "relative",
- width: 36,
- height: 36,
- borderRadius: "50%",
- cursor: onUpdateImage ? "pointer" : "default",
- flexShrink: 0,
- }}
- >
- <ProfileAvatar user={profileData} initials={initials} size={36} />
+            <div
+              onClick={onUpdateImage ? handleAvatarClick : undefined}
+              style={{
+                position: "relative",
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                border: "none",
+                boxShadow: "var(--avatar-shadow)",
+                overflow: "hidden",
+                boxSizing: "border-box",
+                cursor: onUpdateImage ? "pointer" : "default",
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "var(--surface-muted, #f1f5f9)",
+              }}
+            >
+              <ProfileAvatar
+                user={profileData}
+                initials={initials}
+                size={36}
+                style={{ border: "none", boxShadow: "none", width: "100%", height: "100%" }}
+              />
  {onUpdateImage && (
  <div
  style={{
@@ -307,8 +322,8 @@ const ProfileSidebar = ({
  transition: `opacity ${TRANSITION}`,
  }}
  >
- <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--text-heading)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
- {fullName}
+ <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--text-heading)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textTransform: "capitalize" }}>
+ {formatDisplayName(fullName)}
  </p>
  <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
  {profileData.email}
