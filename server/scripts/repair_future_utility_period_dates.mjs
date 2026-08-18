@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-import { Bill, UtilityPeriod, UtilityReading } from "../models/index.js";
+import { AuditLog, Bill, UtilityPeriod, UtilityReading } from "../models/index.js";
 import { getManilaDayjs } from "../utils/dateUtils.js";
 import {
   getUtilityDueDate,
@@ -13,6 +13,9 @@ dotenv.config();
 
 const isWrite = process.argv.includes("--write");
 const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
+const REPAIR_NOTE = "Corrected impossible future utility dates using the persisted period-finalization date; financial amounts and payment history were preserved.";
+const ARCHIVE_NOTE = "Archived a redundant unbilled utility period whose corrected start date would duplicate another active period; readings and history were preserved as archived records.";
+const AUDIT_ACTION = "utility date integrity repair";
 
 function day(value) {
   return value ? getManilaDayjs(value).startOf("day") : null;
@@ -82,6 +85,26 @@ function correctedSentBillDates(bill, period, range) {
   return { issuedAt, dueDate: getUtilityDueDate(issuedAt) };
 }
 
+async function logRepairAuditOnce(period, metadata, details) {
+  const entityId = String(period._id);
+  const exists = await AuditLog.exists({
+    action: AUDIT_ACTION,
+    entityType: "utility",
+    entityId,
+  });
+  if (exists) return;
+
+  await logBillingAudit({
+    action: "utility_date_integrity_repair",
+    severity: "warning",
+    details,
+    metadata,
+    entityType: "utility",
+    entityId,
+    branch: period.branch || null,
+  });
+}
+
 async function main() {
   if (!mongoUri) throw new Error("MONGODB_URI is not configured");
   await mongoose.connect(mongoUri, process.env.DB_NAME ? { dbName: process.env.DB_NAME } : {});
@@ -100,13 +123,40 @@ async function main() {
 
   const report = [];
   for (const { period, range } of targets) {
+    const remainsActive = await UtilityPeriod.exists({ _id: period._id, isArchived: false });
+    if (!remainsActive) continue;
+    const rawPeriod = await UtilityPeriod.collection.findOne(
+      { _id: period._id },
+      { projection: { roomId: 1 } },
+    );
+    if (!rawPeriod) continue;
+
     const dispatchPath = `utilityDispatch.${period.utilityType}.periodId`;
     const bills = await Bill.find({ [dispatchPath]: period._id, isArchived: false });
-    report.push({
+    const startDateConflicts = await UtilityPeriod.collection.find({
+      _id: { $ne: period._id },
+      utilityType: period.utilityType,
+      roomId: rawPeriod.roomId,
+      startDate: range.startDate,
+      isArchived: false,
+    }).project({ _id: 1 }).toArray();
+    const shouldArchiveAsRedundant = startDateConflicts.length > 0 && bills.length === 0;
+
+    if (startDateConflicts.length > 0 && bills.length > 0) {
+      throw new Error(
+        `Refusing to repair billed period ${period._id}: corrected start date conflicts with active period ${startDateConflicts[0]._id}`,
+      );
+    }
+
+    const reportEntry = {
       periodId: String(period._id),
       utilityType: period.utilityType,
+      action: shouldArchiveAsRedundant ? "archive_redundant_unbilled_period" : "repair_dates",
+      conflictingPeriodIds: startDateConflicts.map((entry) => String(entry._id)),
       before: { startDate: dateKey(period.startDate), endDate: dateKey(period.endDate), closedAt: dateKey(period.closedAt) },
-      after: { startDate: dateKey(range.startDate), endDate: dateKey(range.endDate) },
+      after: shouldArchiveAsRedundant
+        ? { isArchived: true, startDate: dateKey(period.startDate), endDate: dateKey(period.endDate) }
+        : { isArchived: false, startDate: dateKey(range.startDate), endDate: dateKey(range.endDate) },
       linkedBills: bills.map((bill) => {
         const corrected = correctedSentBillDates(bill, period, range);
         return {
@@ -126,20 +176,49 @@ async function main() {
         };
       }),
       settledBillCount: bills.filter((bill) => Number(bill.paidAmount || 0) > 0).length,
-    });
+    };
+    report.push(reportEntry);
 
     if (!isWrite) continue;
 
     const session = await mongoose.startSession();
     try {
       await session.withTransaction(async () => {
-        period.startDate = range.startDate;
-        period.endDate = range.endDate;
-        period.segments = repairedSegments(period.segments, range);
-        period.revised = true;
-        period.revisedAt = new Date();
-        period.revisionNote = "Corrected impossible future utility dates using the persisted period-finalization date; financial amounts and payment history were preserved.";
-        await period.save({ session });
+        if (shouldArchiveAsRedundant) {
+          await UtilityPeriod.updateOne(
+            { _id: period._id, isArchived: false },
+            {
+              $set: {
+                isArchived: true,
+                revised: true,
+                revisedAt: new Date(),
+                revisionNote: ARCHIVE_NOTE,
+              },
+            },
+            { session },
+          );
+          await UtilityReading.updateMany(
+            { utilityPeriodId: period._id, isArchived: false },
+            { $set: { isArchived: true } },
+            { session },
+          );
+          return;
+        }
+
+        await UtilityPeriod.updateOne(
+          { _id: period._id, isArchived: false },
+          {
+            $set: {
+              startDate: range.startDate,
+              endDate: range.endDate,
+              segments: repairedSegments(period.segments, range),
+              revised: true,
+              revisedAt: new Date(),
+              revisionNote: REPAIR_NOTE,
+            },
+          },
+          { session },
+        );
 
         await UtilityReading.updateMany(
           { utilityPeriodId: period._id, eventType: "periodStart", isArchived: false },
@@ -170,19 +249,38 @@ async function main() {
         }
       });
 
-      await logBillingAudit({
-        action: "utility_date_integrity_repair",
-        severity: "warning",
-        details: "Corrected impossible utility cycle and sent-bill dates; recalculated lifecycle status while preserving financial amounts and payment ledger history.",
-        metadata: report[report.length - 1],
-        entityType: "utility_period",
-        entityId: period._id,
-        branch: period.branch || null,
-      }).catch((error) => {
+      await logRepairAuditOnce(
+        period,
+        reportEntry,
+        shouldArchiveAsRedundant
+          ? "Archived a redundant unbilled utility period and its readings after a corrected-date collision; no financial record was removed."
+          : "Corrected impossible utility cycle and sent-bill dates; recalculated lifecycle status while preserving financial amounts and payment ledger history.",
+      ).catch((error) => {
         console.warn(`[repair-future-utility-period-dates] Audit log failed for ${period._id}: ${error.message}`);
       });
     } finally {
       await session.endSession();
+    }
+  }
+
+  if (isWrite) {
+    const previouslyRepaired = await UtilityPeriod.find({ revisionNote: REPAIR_NOTE });
+    for (const period of previouslyRepaired) {
+      await logRepairAuditOnce(
+        period,
+        {
+          periodId: String(period._id),
+          utilityType: period.utilityType,
+          action: "repair_dates",
+          auditRecovered: true,
+          after: {
+            isArchived: Boolean(period.isArchived),
+            startDate: dateKey(period.startDate),
+            endDate: dateKey(period.endDate),
+          },
+        },
+        "Recorded the audit entry for an already-committed utility date integrity repair; financial amounts and payment history were preserved.",
+      );
     }
   }
 
