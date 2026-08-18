@@ -17,7 +17,9 @@ function response() {
   return {
     statusCode: 200,
     body: null,
+    headers: {},
     status(code) { this.statusCode = code; return this; },
+    setHeader(name, value) { this.headers[name] = value; return this; },
     json(body) { this.body = body; return this; },
   };
 }
@@ -36,7 +38,7 @@ function applyConversationUpdate(conversation, update) {
   }
 }
 
-function makeDb(conversation) {
+function makeDb(conversation, attachments = []) {
   const messages = [];
   return {
     messages,
@@ -58,6 +60,14 @@ function makeDb(conversation) {
             messages.push(document);
             return { insertedId: document._id };
           },
+        };
+      }
+      if (name === 'chat_attachments') {
+        return {
+          findOne: async ({ _id, conversationId }) => attachments.find(
+            (attachment) => String(attachment._id) === String(_id)
+              && String(attachment.conversationId) === String(conversationId),
+          ) || null,
         };
       }
       if (name === 'users') {
@@ -245,5 +255,55 @@ describe('mobile support chat persistent-concern lifecycle', () => {
 
     expect(res.statusCode).toBe(403);
     expect(res.body.detail).toMatch(/do not have access/i);
+  });
+
+  test("tenant A cannot reopen tenant B's resolved conversation", async () => {
+    const tenantB = new ObjectId();
+    const tenantA = new ObjectId();
+    const conversation = closedConversation(tenantB, {
+      status: 'resolved',
+      tenantUserId: 'tenant-b',
+      resolvedAt: new Date('2026-08-16T08:00:00Z'),
+    });
+    const db = makeDb(conversation);
+    mockGetDb.mockReturnValue(db);
+    const res = response();
+
+    await reopenConversation(
+      request(conversation, tenantA, { note: 'Unauthorized reopen attempt.' }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.detail).toMatch(/do not have access/i);
+    expect(conversation.status).toBe('resolved');
+    expect(db.messages).toHaveLength(0);
+  });
+
+  test('local attachment paths cannot traverse outside the upload root', async () => {
+    const tenantId = new ObjectId();
+    const conversation = closedConversation(tenantId, { status: 'open' });
+    const attachment = {
+      _id: new ObjectId(),
+      conversationId: conversation._id,
+      provider: 'local',
+      storagePath: '../../outside-upload-root.pdf',
+      originalName: 'document.pdf',
+      mimeType: 'application/pdf',
+    };
+    const db = makeDb(conversation, [attachment]);
+    mockGetDb.mockReturnValue(db);
+    const res = response();
+
+    await downloadAttachment({
+      ...request(conversation, tenantId, {}),
+      params: {
+        conversationId: String(conversation._id),
+        attachmentId: String(attachment._id),
+      },
+    }, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.detail).toMatch(/path is invalid/i);
   });
 });
