@@ -278,6 +278,9 @@ export function formatMobileWaterBreakdown(breakdown) {
   const tenantsSharing = Number(rec.tenantsSharing || 1);
 
   return {
+    period_start: toIsoOrNull(breakdown?.period?.startDate),
+    period_end: toIsoOrNull(breakdown?.period?.endDate),
+    reading_date: toIsoOrNull(breakdown?.period?.endDate),
     reading_from: readingFrom,
     reading_to: readingTo,
     consumption: +consumption.toFixed(1),

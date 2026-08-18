@@ -110,6 +110,13 @@ async function createNotificationWithPush(
     notification = await createNotification(userId, type, title, message, options);
   }
 
+  // The database row is the canonical event. Never deliver an orphan push
+  // if persistence failed, because the Notification Center could not later
+  // reconcile that device alert to authoritative state.
+  if (!notification) {
+    return null;
+  }
+
   // A duplicate event (same dedupeKey already delivered) must not also
   // re-send the OS push — the tenant already saw this in-app and/or on
   // their device the first time.
@@ -122,7 +129,11 @@ async function createNotificationWithPush(
   }
 
   try {
-    const delivered = await pushSender();
+    const pushIdentity = {
+      notification_id: notification?._id ? String(notification._id) : "",
+      event_key: String(options.dedupeKey || notification?._id || ""),
+    };
+    const delivered = await pushSender(notification, pushIdentity);
     logger.info(
       {
         userId: String(userId || ""),
@@ -327,11 +338,12 @@ const notify = {
         actionUrl: billId ? `/billing?billId=${String(billId)}` : "/billing",
         dedupeKey,
       },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: "payment_approved",
             billing_id: billId ? String(billId) : "",
             screen: "billing",
@@ -368,11 +380,12 @@ const notify = {
           eventId,
         ),
       },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: pushType,
             billing_id: billId ? String(billId) : "",
             screen: "billing",
@@ -402,11 +415,12 @@ const notify = {
         actionUrl: billId ? `/billing?billId=${String(billId)}` : "/billing",
         dedupeKey,
       },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: "payment_rejected",
             billing_id: billId ? String(billId) : "",
             screen: "billing",
@@ -434,12 +448,13 @@ const notify = {
           options.eventId,
         ),
       },
-      () => sendMobilePushBill(userId, null, {
+      (_notification, pushIdentity) => sendMobilePushBill(userId, null, {
         billingMonth,
         totalAmount,
         dueDate,
         billId: options.billId || null,
         billType: options.billType || "bill",
+        data: pushIdentity,
       }),
     ),
 
@@ -477,11 +492,12 @@ const notify = {
           options.eventId,
         ),
       },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: "bill_generated",
             billing_id: billId ? String(billId) : "",
             screen: "billing",
@@ -540,11 +556,12 @@ const notify = {
         actionUrl: "/tenant/documents",
         dedupeKey,
       },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: "contract_document_ready",
             contract_id: normalizedContractId,
             screen: "contract",
@@ -605,11 +622,12 @@ const notify = {
           dedupeKey,
         ...options,
       },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: "bill_due_reminder",
             billing_id: billId ? String(billId) : "",
             screen: "billing",
@@ -640,11 +658,12 @@ const notify = {
           dedupeKey,
         ...options,
       },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: "penalty_applied",
             billing_id: billId ? String(billId) : "",
             screen: "billing",
@@ -664,11 +683,12 @@ const notify = {
       title,
       message,
       { entityType: "reservation", actionUrl: "/applicant/profile" },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: "contract_expiring",
             screen: "home",
           },
@@ -738,11 +758,12 @@ const notify = {
       "Move-Out Complete",
       `You have been moved out from ${roomName}. Thank you for staying at Lilycrest!`,
       { entityType: "stay" },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title: "Move-Out Complete",
           body: `You have been moved out from ${roomName}. Thank you for staying at Lilycrest!`,
           data: {
+            ...pushIdentity,
             type: "move_out",
             screen: "home",
           },
@@ -773,15 +794,17 @@ const notify = {
         actionUrl: "/(tabs)/chatbot",
         dedupeKey: `chat_reply:${normalizedConversationId}:${normalizedMessageId}`,
       },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: "chat_reply",
             conversation_id: normalizedConversationId,
             message_id: normalizedMessageId,
             screen: "chat",
+            url: `/(tabs)/chatbot?conversationId=${encodeURIComponent(normalizedConversationId)}`,
           },
         }),
     );
@@ -806,11 +829,12 @@ const notify = {
           options.eventId,
         ),
       },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: "maintenance_update",
             request_id: normalizedRequestId || "",
             screen: "maintenance",
@@ -845,11 +869,12 @@ const notify = {
           options.eventId,
         ),
       },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: "maintenance_update",
             request_id: normalizedRequestId || "",
             screen: "maintenance",
@@ -890,11 +915,12 @@ const notify = {
           options.eventId,
         ),
       },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: "maintenance_status",
             request_id: requestId ? String(requestId) : "",
             screen: "maintenance",
@@ -921,11 +947,12 @@ const notify = {
           options.eventId,
         ),
       },
-      () =>
+      (_notification, pushIdentity) =>
         sendMobilePushToRecipients([userId], {
           title,
           body: message,
           data: {
+            ...pushIdentity,
             type: "maintenance_status",
             request_id: requestId ? String(requestId) : "",
             screen: "maintenance",
