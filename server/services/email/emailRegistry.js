@@ -1,14 +1,15 @@
 /**
  * The one authoritative subject + inline-builder registry, keyed by the
  * same TEMPLATE_KEYS used in templateRegistry.js (which resolves the
- * optional RESEND_TEMPLATE_* env var for each key). Subjects live here —
+ * optional RESEND_TEMPLATE_* env var for each key, enabled only when
+ * RESEND_TEMPLATE_MODE=dashboard). Subjects live here —
  * not scattered across controllers or builders — so there is exactly one
  * place that owns "what does this email say in the inbox list view".
  *
  * `subject` may be a plain string or a `(variables) => string` function for
  * emails whose subject line is data-dependent (e.g. BILL_GENERATED includes
  * the billing month). `builder` is the Path B inline-HTML renderer used only
- * when no RESEND_TEMPLATE_* is configured for that key — it MUST accept the
+ * when Dashboard mode is not explicitly enabled for that key — it MUST accept the
  * exact same variables object the Resend Template path receives.
  */
 import { getTemplateEnvKey, getTemplateId, TEMPLATE_KEYS } from "./templateRegistry.js";
@@ -42,7 +43,8 @@ export const EMAIL_TEMPLATES = Object.freeze({
   PASSWORD_CHANGED: { subject: "Your Lilycrest password was changed", builder: buildPasswordChangedEmail },
 
   INQUIRY_RESPONSE: {
-    subject: (v) => `Re: Your Inquiry - Lilycrest Dormitory ${v.BRANCH_NAME || ""}`.trim(),
+    subject: (v) =>
+      `New reply to ${v.TICKET_ID ? `#${v.TICKET_ID}` : "your inquiry"} | Lilycrest Dormitory`,
     builder: buildInquiryResponseEmail,
   },
   RESERVATION_CONFIRMED: {

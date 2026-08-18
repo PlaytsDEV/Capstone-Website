@@ -10,7 +10,7 @@
  *   sendLilycrestEmail({ to, templateKey, variables })
  *        |
  *        v
- *   Is RESEND_TEMPLATE_<templateKey> configured?
+ *   Is RESEND_TEMPLATE_MODE=dashboard and the template configured?
  *        |
  *   +----+----+
  *   |         |
@@ -38,6 +38,22 @@ import { getTemplateId } from "./templateRegistry.js";
 import { getEmailTemplateConfig, resolveSubject } from "./emailRegistry.js";
 import { sendInlineHtmlEmail, sendTemplateEmail } from "./resendEmailService.js";
 import { isResendConfigured } from "./resendClient.js";
+import {
+  formatBranchName,
+  formatBranchSubtitle,
+} from "../../utils/branchPresentation.js";
+
+export const normalizeEmailVariables = (variables = {}) => {
+  if (!Object.prototype.hasOwnProperty.call(variables, "BRANCH_NAME")) {
+    return variables;
+  }
+
+  return {
+    ...variables,
+    BRANCH_NAME: formatBranchName(variables.BRANCH_NAME),
+    BRANCH_SUBTITLE: formatBranchSubtitle(variables.BRANCH_NAME),
+  };
+};
 
 /**
  * @param {object} params
@@ -71,13 +87,25 @@ export const sendLilycrestEmail = async ({
     return { success: false, provider: "resend", category: "configuration", code: "EMAIL_PROVIDER_NOT_CONFIGURED" };
   }
 
+  const normalizedVariables = normalizeEmailVariables(variables);
+
   const templateId = getTemplateId(templateKey);
 
-  // Path A — Resend Dashboard Template configured. Deterministic: no
+  // Path A — Resend Dashboard Template explicitly enabled and configured.
+  // Deterministic: no
   // try/catch fallback to the inline path on failure (see module docblock).
   if (templateId) {
     console.log("[Email] routing via Resend Dashboard Template", { templateKey });
-    return sendTemplateEmail({ emailType: templateKey, to, templateKey, variables, from, replyTo, tags, idempotencyKey });
+    return sendTemplateEmail({
+      emailType: templateKey,
+      to,
+      templateKey,
+      variables: normalizedVariables,
+      from,
+      replyTo,
+      tags,
+      idempotencyKey,
+    });
   }
 
   // Path B — no template ID configured. Inline HTML is a first-class path,
@@ -89,8 +117,8 @@ export const sendLilycrestEmail = async ({
   }
 
   console.log("[Email] routing via inline HTML builder", { templateKey });
-  const html = config.builder(variables);
-  const resolvedSubject = subject || resolveSubject(templateKey, variables) || "Lilycrest Dormitory";
+  const html = config.builder(normalizedVariables);
+  const resolvedSubject = subject || resolveSubject(templateKey, normalizedVariables) || "Lilycrest Dormitory";
 
   return sendInlineHtmlEmail({
     emailType: templateKey,

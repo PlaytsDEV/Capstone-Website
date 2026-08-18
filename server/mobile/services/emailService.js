@@ -108,7 +108,7 @@ async function sendPaymentReceiptEmail(toEmail, userName = 'Tenant', receipt = {
     return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
   })();
   const paymentDateText = paymentDate.toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'long', timeStyle: 'short' });
-  const amountText = `PHP ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const amountText = amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const idempotencyKey = referenceNumber && referenceNumber !== 'N/A'
     ? crypto.createHash('sha256').update(`payment-receipt:${referenceNumber}`).digest('hex')
@@ -128,7 +128,7 @@ async function sendPaymentReceiptEmail(toEmail, userName = 'Tenant', receipt = {
       REFERENCE_NUMBER: String(referenceNumber),
       RESERVATION_CODE: '',
       ROOM_NAME: '',
-      BRANCH_NAME: 'Lilycrest',
+      BRANCH_NAME: receipt.branch || null,
     },
   });
 

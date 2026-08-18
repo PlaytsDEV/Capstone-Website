@@ -50,7 +50,14 @@ const formatVisitScheduleLabel = (visitDate, visitTime) => {
 // INQUIRY RESPONSE EMAIL
 // =============================================================================
 
-export const sendInquiryResponseEmail = async ({ to, customerName, inquirySubject, response, branchName = "Lilycrest" }) => {
+export const sendInquiryResponseEmail = async ({
+  to,
+  customerName,
+  inquirySubject,
+  response,
+  ticketId,
+  branchName = null,
+}) => {
   const cleanTo = String(to || "").trim().replace(/,/g, ".");
   if (!cleanTo || !cleanTo.includes("@")) {
     return { success: false, provider: "resend", category: "invalid_recipient", code: "EMAIL_INVALID_RECIPIENT" };
@@ -62,6 +69,7 @@ export const sendInquiryResponseEmail = async ({ to, customerName, inquirySubjec
       CUSTOMER_NAME: customerName,
       INQUIRY_SUBJECT: inquirySubject,
       RESPONSE: response,
+      TICKET_ID: ticketId,
       BRANCH_NAME: branchName,
     },
   });
@@ -165,7 +173,7 @@ export const sendPhysicalVisitStatusEmail = async ({
     variables: {
       TENANT_NAME: tenantName || "Applicant",
       ROOM_NAME: roomName || "your room",
-      BRANCH_NAME: branchName || "Lilycrest",
+      BRANCH_NAME: branchName || null,
       VISIT_CODE: visitCode || "Pending",
       VISIT_SCHEDULE: formatVisitScheduleLabel(visitDate, visitTime),
       PREVIOUS_SCHEDULE:
@@ -182,7 +190,7 @@ export const sendPhysicalVisitStatusEmail = async ({
 // DOCUMENTS REJECTED EMAIL
 // =============================================================================
 
-export const sendDocumentsRejectedEmail = async ({ to, tenantName, rejectionReason, branchName = "Lilycrest" }) =>
+export const sendDocumentsRejectedEmail = async ({ to, tenantName, rejectionReason, branchName = null }) =>
   sendLilycrestEmail({
     to,
     templateKey: "DOCUMENTS_REJECTED",
@@ -199,7 +207,7 @@ export const sendBillGeneratedEmail = async ({
   billingMonth,
   totalAmount,
   dueDate,
-  branchName = "Lilycrest",
+  branchName = null,
   billType = "bill",
   roomName = "",
 }) => {
@@ -237,7 +245,7 @@ export const sendUtilityChargeAvailableEmail = async ({
   utilityAmount,
   totalAmount,
   dueDate,
-  branchName = "Lilycrest",
+  branchName = null,
 }) => {
   const utilityLabel = utilityType === "water" ? "Water" : "Electricity";
   return sendLilycrestEmail({
@@ -266,7 +274,7 @@ export const sendPaymentReminderEmail = async ({
   totalAmount,
   dueDate,
   billType = "Bill",
-  branchName = "Lilycrest",
+  branchName = null,
 }) =>
   sendLilycrestEmail({
     to,
@@ -296,7 +304,7 @@ export const sendOverdueNoticeEmail = async ({
   billType = "Bill",
   reason = "",
   noticeVariant = "overdue",
-  branchName = "Lilycrest",
+  branchName = null,
 }) =>
   sendLilycrestEmail({
     to,
@@ -319,7 +327,7 @@ export const sendOverdueNoticeEmail = async ({
 // PAYMENT APPROVED EMAIL
 // =============================================================================
 
-export const sendPaymentApprovedEmail = async ({ to, tenantName, billingMonth, paidAmount, branchName = "Lilycrest" }) =>
+export const sendPaymentApprovedEmail = async ({ to, tenantName, billingMonth, paidAmount, branchName = null }) =>
   sendLilycrestEmail({
     to,
     templateKey: "PAYMENT_APPROVED",
@@ -335,7 +343,7 @@ export const sendPaymentApprovedEmail = async ({ to, tenantName, billingMonth, p
 // PAYMENT REJECTED EMAIL
 // =============================================================================
 
-export const sendPaymentRejectedEmail = async ({ to, tenantName, billingMonth, rejectionReason, branchName = "Lilycrest" }) =>
+export const sendPaymentRejectedEmail = async ({ to, tenantName, billingMonth, rejectionReason, branchName = null }) =>
   sendLilycrestEmail({
     to,
     templateKey: "PAYMENT_REJECTED",
@@ -386,7 +394,7 @@ export const sendPaymentReceiptEmail = async ({
       REFERENCE_NUMBER: referenceId,
       RESERVATION_CODE: reservationCode || "",
       ROOM_NAME: roomName || "",
-      BRANCH_NAME: branch || "Lilycrest",
+      BRANCH_NAME: branch || null,
     },
   });
 

@@ -995,9 +995,7 @@ export const updateReservation = async (req, res, next) => {
           await sendVisitApprovedEmail({
             to: updatedReservation.userId.email,
             tenantName: `${updatedReservation.userId.firstName || ""} ${updatedReservation.userId.lastName || ""}`.trim(),
-            roomName: updatedReservation.roomId?.name || "your room",
-            visitDate: updatedReservation.visitDate,
-            visitTime: updatedReservation.visitTime,
+            branchName: updatedReservation.roomId?.branch || updatedReservation.branch || null,
           });
         } catch (e) {
           logger.warn(
@@ -1021,6 +1019,7 @@ export const updateReservation = async (req, res, next) => {
             updatedReservation.applicationReviewReason ||
             updatedReservation.documentRejectionReason ||
             "Please review your uploaded documents and resubmit.",
+          branchName: updatedReservation.roomId?.branch || updatedReservation.branch || null,
         });
       } catch (e) {
         logger.warn(
@@ -1056,6 +1055,7 @@ export const updateReservation = async (req, res, next) => {
             tenantName: `${updatedReservation.userId.firstName || ""} ${updatedReservation.userId.lastName || ""}`.trim(),
             reservationCode: updatedReservation.reservationCode,
             roomName: updatedReservation.roomId?.name || "your room",
+            branchName: updatedReservation.roomId?.branch || updatedReservation.branch || null,
             moveInDate: updatedReservation.moveInDate,
             totalPrice: updatedReservation.totalPrice,
           });

@@ -741,6 +741,7 @@ export const updateInquiry = async (req, res, next) => {
           customerName: existingInquiry.name || existingInquiry.fullName || "Valued Customer",
           inquirySubject: existingInquiry.subject || "General Inquiry",
           response: req.body.response.trim(),
+          ticketId: existingInquiry.ticketId,
           branchName,
         });
 
@@ -889,6 +890,7 @@ export const retryInquiryEmail = async (req, res, next) => {
         customerName: inquiry.name || inquiry.fullName || "Valued Customer",
         inquirySubject: inquiry.subject || "General Inquiry",
         response: responseText,
+        ticketId: inquiry.ticketId,
         branchName,
       });
 

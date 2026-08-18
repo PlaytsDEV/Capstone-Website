@@ -130,13 +130,15 @@ describe("Email Builders Layout & Standardization Tests", () => {
 
       // Structure checks
       expect(html).toContain("<!DOCTYPE html>");
-      expect(html).toContain("LilyCrest Dormitory");
-      expect(html).toContain("This is an automated message from LilyCrest Dormitory Management System");
-      expect(html).toContain("© " + new Date().getFullYear() + " LilyCrest Dormitory");
+      expect(html).toContain("Lilycrest Dormitory");
+      expect(html).toContain("Automated service email");
+      expect(html).toContain("© " + new Date().getFullYear() + " Lilycrest Dormitory");
 
       // Brand token checks
       expect(html).toContain(THEME.navy);
       expect(html).toContain(THEME.gold);
+      expect(html).toContain('alt="Lilycrest Dormitory logo"');
+      expect(html).not.toMatch(/linear-gradient|radial-gradient/i);
     });
   });
 

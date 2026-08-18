@@ -370,6 +370,7 @@ async function sendPaymentReceiptForBill(db, {
           email: 1,
           emailAddress: 1,
           google_email: 1,
+          branch: 1,
         },
       },
     );
@@ -396,6 +397,7 @@ async function sendPaymentReceiptForBill(db, {
       paymentDate: new Date(),
       referenceNumber,
       paymentId,
+      branch: bill?.branch || userDoc?.branch || null,
     });
   } catch (error) {
     console.warn(`[PayMongo] Failed to send receipt email for bill ${billingId}:`, error?.message);

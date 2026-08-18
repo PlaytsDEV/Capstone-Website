@@ -1,19 +1,34 @@
-/**
- * Inline HTML builders for general notification emails.
- */
-import { callout, escapeHtml, p, renderLilycrestEmail } from "../emailLayout.js";
+/** Inline HTML builders for tenant-facing support notifications. */
+import {
+  button,
+  callout,
+  detailsPanel,
+  escapeHtml,
+  getPortalUrl,
+  p,
+  renderLilycrestEmail,
+  row,
+} from "../emailLayout.js";
 
-export const buildInquiryResponseEmail = ({ CUSTOMER_NAME, INQUIRY_SUBJECT, RESPONSE, BRANCH_NAME }) =>
+export const buildInquiryResponseEmail = ({
+  CUSTOMER_NAME,
+  INQUIRY_SUBJECT,
+  RESPONSE,
+  BRANCH_NAME,
+  TICKET_ID,
+}) =>
   renderLilycrestEmail({
-    title: "Lilycrest Dormitory - Response to Your Inquiry",
+    title: "New Reply to Your Inquiry - Lilycrest Dormitory",
     branchName: BRANCH_NAME,
-    heading: `Hello ${CUSTOMER_NAME}!`,
-    footerNote: "This is an automated response. Please do not reply directly to this email.",
+    heading: "New Reply to Your Inquiry",
     body:
-      p(
-        `Hello <strong>${escapeHtml(CUSTOMER_NAME)}</strong>, thank you for reaching out to us. We have reviewed your inquiry and here is our response:`,
-      ) +
-      callout("Your Inquiry", `<em>${escapeHtml(INQUIRY_SUBJECT)}</em>`) +
-      callout("Our Response", escapeHtml(RESPONSE)) +
-      p("If you have any further questions, feel free to submit another inquiry through our website.", { margin: "20px 0 0" }),
+      p(`Hi <strong>${escapeHtml(CUSTOMER_NAME)}</strong>,`) +
+      p("An administrator has replied to your concern.") +
+      detailsPanel(row("Ticket", TICKET_ID ? `#${TICKET_ID}` : "") + row("Subject", INQUIRY_SUBJECT)) +
+      callout("Administrator response", escapeHtml(RESPONSE), "info") +
+      button("Open Inquiry", getPortalUrl()) +
+      p("Continue the conversation in the Lilycrest tenant app if you need more help.", {
+        size: "13px",
+        margin: "0",
+      }),
   });

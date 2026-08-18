@@ -56,8 +56,9 @@ export function validateStartupConfig() {
     failures.push("resend: RESEND_API_KEY and RESEND_FROM_EMAIL are required — Resend is the only email provider");
   }
 
-  // A Resend Dashboard Template ID is an OPTIONAL override, not a system
-  // requirement: every email type has a first-class inline HTML builder
+  // A Resend Dashboard Template ID is an OPTIONAL, explicitly enabled
+  // override, not a system requirement: every email type has a first-class
+  // inline HTML builder
   // (server/services/email/builders/*.js) it falls back to when no
   // RESEND_TEMPLATE_<KEY> is set, so an unconfigured template must never be
   // startup-fatal or read as an alarming warning. This just reports, per

@@ -6,6 +6,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(here, "..");
 const tenant = { firstName: "Ava", lastName: "Santos" };
 const room = { roomNumber: "GP-202", branch: "gil-puyat" };
+const guadalupeRoom = { roomNumber: "GUA-304", branch: "guadalupe" };
 const period = {
   startDate: new Date("2026-08-01T00:00:00Z"),
   endDate: new Date("2026-09-01T00:00:00Z"),
@@ -81,6 +82,38 @@ outputs.push(await generateBillReceiptPdf({
   payments: [{
     paymentId: "PAY-7F3A91C2",
     amount: 6208,
+    method: "gcash",
+    settlementTimestamp: new Date("2026-08-18T05:30:00Z"),
+  }],
+  remainingAmount: 0,
+}));
+outputs.push(await generateBillPdf({
+  bill: {
+    ...baseBill,
+    _id: "phase3-qa-guadalupe-statement",
+    billReference: "LC-RB-202608-GUA304",
+    branch: "guadalupe",
+    charges: { rent: 5400, water: 320 },
+    totalAmount: 5720,
+  },
+  billingResult: null,
+  period: { ...period, branch: "guadalupe" },
+  room: guadalupeRoom,
+  tenant,
+}));
+outputs.push(await generateBillReceiptPdf({
+  bill: {
+    ...baseBill,
+    _id: "phase3-qa-guadalupe-receipt",
+    billReference: "LC-RB-202608-GUA304",
+    branch: "guadalupe",
+  },
+  tenant,
+  room: guadalupeRoom,
+  billReference: "LC-RB-202608-GUA304",
+  payments: [{
+    paymentId: "PAY-GUA-7F3A91C2",
+    amount: 5720,
     method: "gcash",
     settlementTimestamp: new Date("2026-08-18T05:30:00Z"),
   }],
