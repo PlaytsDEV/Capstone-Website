@@ -818,21 +818,35 @@
 .gpuyat-carousel-btn {
   position: absolute;
   top: 50%;
-  transform: translateY(-50%);
-  width: 48px;
-  height: 48px;
+  transform: translateY(-50%) translateZ(0);
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.95);
-  border: none;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.85);
   color: var(--color-text-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: var(--transition-all);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14), 0 1px 3px rgba(15, 23, 42, 0.08);
   z-index: var(--z-carousel);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  will-change: transform, box-shadow, background-color;
+  backface-visibility: hidden;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.2s ease,
+              border-color 0.2s ease,
+              box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              color 0.2s ease;
+}
+
+.gpuyat-carousel-btn svg {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .gpuyat-carousel-prev {
@@ -845,12 +859,30 @@
 
 .gpuyat-carousel-btn:hover {
   background-color: var(--color-white);
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-50%) scale(1.1);
+  border-color: var(--color-white);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.12);
+  transform: translateY(-50%) scale(1.08) translateZ(0);
+}
+
+.gpuyat-carousel-prev:hover svg {
+  transform: translateX(-1.5px);
+}
+
+.gpuyat-carousel-next:hover svg {
+  transform: translateX(1.5px);
 }
 
 .gpuyat-carousel-btn:active {
-  transform: translateY(-50%) scale(1.05);
+  background-color: #f1f5f9;
+  border-color: rgba(226, 232, 240, 0.9);
+  transform: translateY(-50%) scale(0.93) translateZ(0);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.16), 0 1px 2px rgba(15, 23, 42, 0.08);
+  transition-duration: 0.08s;
+}
+
+.gpuyat-carousel-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .gpuyat-carousel-indicators {

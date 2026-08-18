@@ -154,153 +154,185 @@ const ReservationConfirmationStep = ({
         </div>
       </div>
 
-      <div className="rf-celebration-banner">
-        <div className="rf-check-circle">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M20 6L9 17l-5-5"
-              stroke="var(--text-inverse)"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-        <h1 className="rf-celebration-title">{confirmationState.title}</h1>
-        <p className="rf-celebration-subtitle">{confirmationState.message}</p>
-      </div>
-
-      {confirmationState.showReservationCodeCard ? (
-        <div className="rf-code-card">
-          <div className="rf-code-header-row">
-            <div className="rf-code-label">Your Official Reservation Code</div>
-            <button
-              type="button"
-              onClick={handleCopyCode}
-              className="rf-code-copy-btn"
-              title="Copy reservation code"
-            >
-              {copiedCode ? (
-                <>
-                  <Check size={13} /> Copied!
-                </>
-              ) : (
-                <>
-                  <Copy size={13} /> Copy Code
-                </>
-              )}
-            </button>
-          </div>
-          <div className="rf-code-value">{confirmedReservationCode}</div>
-          <div className="rf-code-hint">Keep this code handy for verification on move-in day.</div>
-        </div>
-      ) : confirmationState.showFinalizingCodeMessage ? (
-        <div className="rf-code-card">
-          <div className="rf-code-label">Reservation Code</div>
-          <div className="rf-code-hint">
-            Your reservation details are being finalized. You will be notified once your reservation code is available.
-          </div>
-        </div>
-      ) : null}
-
-      <div className="rf-summary-grid">
-        <div className="rf-summary-card">
-          <div className="rf-summary-icon">
-            <Home size={22} />
-          </div>
-          <div className="rf-summary-label">Secured Room</div>
-          <div className="rf-summary-value">{roomName}</div>
-          <div className="rf-summary-meta">{formatBranch(room.branch)}</div>
-        </div>
-
-        <div className="rf-summary-card">
-          <div className="rf-summary-icon">
-            <Calendar size={22} />
-          </div>
-          <div className="rf-summary-label">Move-In Schedule</div>
-          <div className="rf-summary-value">{fmtDate(finalMoveInDate)}</div>
-          <div className="rf-summary-meta">
-            {leaseDuration
-              ? (Number(leaseDuration) === 12 ? "12-month lease (1 year)" : `${leaseDuration}-month lease`)
-              : "Selected lease term"}
-          </div>
-        </div>
-
-        {confirmationState.showPaymentCard && (
-          <div className="rf-summary-card rf-summary-card--payment">
-            <div className="rf-summary-icon">
-              <CreditCard size={22} />
+      {/* Main 2-Column Responsive Bento Layout (12 Columns) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column: Status Hero, Official Code Card & Summary Cards */}
+        <div className="lg:col-span-7 flex flex-col gap-5">
+          {/* Celebration Banner */}
+          <div className="rf-celebration-banner m-0">
+            <div className="rf-check-circle">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M20 6L9 17l-5-5"
+                  stroke="var(--text-inverse, #ffffff)"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </div>
-            <div className="rf-summary-label">Reservation Slot Secured</div>
-            <div className="rf-summary-value rf-summary-value--paid">
-              <CheckCircle size={15} /> ₱{reservationFeeAmount.toLocaleString("en-PH")} (Paid)
-            </div>
-            <div className="rf-summary-meta">
-              Remaining Move-In Balance: ₱{Math.max(0, (Number(getResolvedMonthlyRate(reservationData?.pricingDisplay) || room?.price || 0) * 2) - reservationFeeAmount).toLocaleString("en-PH")}
-            </div>
+            <h1 className="rf-celebration-title">{confirmationState.title}</h1>
+            <p className="rf-celebration-subtitle">{confirmationState.message}</p>
           </div>
-        )}
-      </div>
 
-      <div className="rf-next-steps-card">
-        <div className="rf-next-steps-title">
-          <span>What happens next</span>
-        </div>
-        <div className="rf-steps-list">
-          {confirmationState.nextSteps.map(({ step, detail }, idx) => (
-            <div key={idx} className="rf-next-step">
-              <div className="rf-step-number">{idx + 1}</div>
-              <div>
-                <div className="rf-step-text">{step}</div>
-                <div className="rf-step-detail">{detail}</div>
+          {/* Official Code Card */}
+          {confirmationState.showReservationCodeCard ? (
+            <div className="rf-code-card m-0">
+              <div className="rf-code-header-row">
+                <div className="rf-code-label">Your Official Reservation Code</div>
+                <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  className="rf-code-copy-btn"
+                  title="Copy reservation code"
+                >
+                  {copiedCode ? (
+                    <>
+                      <Check size={13} /> Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={13} /> Copy Code
+                    </>
+                  )}
+                </button>
+              </div>
+              <div className="rf-code-value">{confirmedReservationCode}</div>
+              <div className="rf-code-hint">Keep this code handy for verification on move-in day.</div>
+            </div>
+          ) : confirmationState.showFinalizingCodeMessage ? (
+            <div className="rf-code-card m-0">
+              <div className="rf-code-label">Reservation Code</div>
+              <div className="rf-code-hint">
+                Your reservation details are being finalized. You will be notified once your reservation code is available.
               </div>
             </div>
-          ))}
+          ) : null}
+
+          {/* Summary Grid (3 spacious cards) */}
+          <div className="rf-summary-grid m-0">
+            <div className="rf-summary-card">
+              <div className="rf-summary-icon">
+                <Home size={20} />
+              </div>
+              <div className="rf-summary-label">Secured Room</div>
+              <div className="rf-summary-value">{roomName}</div>
+              <div className="rf-summary-meta">{formatBranch(room.branch)}</div>
+            </div>
+
+            <div className="rf-summary-card">
+              <div className="rf-summary-icon">
+                <Calendar size={20} />
+              </div>
+              <div className="rf-summary-label">Move-In Schedule</div>
+              <div className="rf-summary-value">{fmtDate(finalMoveInDate)}</div>
+              <div className="rf-summary-meta">
+                {leaseDuration
+                  ? (Number(leaseDuration) === 12 ? "12-month lease (1 year)" : `${leaseDuration}-month lease`)
+                  : "Selected lease term"}
+              </div>
+            </div>
+
+            {confirmationState.showPaymentCard && (
+              <div className="rf-summary-card rf-summary-card--payment">
+                <div className="rf-summary-icon">
+                  <CreditCard size={20} />
+                </div>
+                <div className="rf-summary-label">Reservation Slot Secured</div>
+                <div className="rf-summary-value rf-summary-value--paid">
+                  <CheckCircle size={14} /> ₱{reservationFeeAmount.toLocaleString("en-PH")} (Paid)
+                </div>
+                <div className="rf-summary-meta">
+                  Remaining Move-In Balance: ₱{Math.max(0, (Number(getResolvedMonthlyRate(reservationData?.pricingDisplay) || room?.price || 0) * 2) - reservationFeeAmount).toLocaleString("en-PH")}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: What Happens Next & Actions Card */}
+        <div className="lg:col-span-5 flex flex-col gap-5">
+          {/* What happens next */}
+          <div className="rf-next-steps-card m-0 flex-1">
+            <div className="rf-next-steps-title">
+              <span>What happens next</span>
+            </div>
+            <div className="rf-steps-list">
+              {confirmationState.nextSteps.map(({ step, detail }, idx) => (
+                <div key={idx} className="rf-next-step">
+                  <div className="rf-step-number">{idx + 1}</div>
+                  <div>
+                    <div className="rf-step-text">{step}</div>
+                    <div className="rf-step-detail">{detail}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Actions & Official Receipt Card */}
+          <div className="content-card m-0 p-5 space-y-4 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-2xl shadow-sm">
+            <div className="card-section-title pb-3 mb-1 border-b border-slate-100 dark:border-slate-800 text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center justify-between">
+              <span>Reservation Navigation</span>
+            </div>
+
+            <div className="space-y-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  pauseRedirect();
+                  onViewDetails?.();
+                }}
+                className="w-full h-11 px-5 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 cursor-pointer"
+              >
+                View My Reservation
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  pauseRedirect();
+                  onReturnHome?.();
+                }}
+                className="w-full h-11 px-5 rounded-xl font-medium text-xs sm:text-sm text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700/80 transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+              >
+                Go to Dashboard
+              </button>
+            </div>
+
+            {confirmationState.showReceiptAction && (
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={handleViewReceipt}
+                  className="flex-1 h-9 px-3 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Printer size={13} className="text-slate-500 dark:text-slate-400" />
+                  <span>View / Print Receipt</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadReceipt}
+                  className="flex-1 h-9 px-3 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Download size={13} className="text-slate-500 dark:text-slate-400" />
+                  <span>Download PDF</span>
+                </button>
+              </div>
+            )}
+
+            {isPaymentReturn && !paused && countdown > 0 && (
+              <div className="rf-redirect-row mt-2">
+                <span className="rf-redirect-text">
+                  Taking you to your reservation in <strong>{countdown}s</strong>...
+                </span>
+                <button type="button" onClick={pauseRedirect} className="rf-redirect-cancel">
+                  Stay here
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      <div className="rf-conf-buttons-row">
-        <button
-          onClick={() => {
-            pauseRedirect();
-            onViewDetails?.();
-          }}
-          className="rf-conf-primary-btn"
-        >
-          View My Reservation
-        </button>
-        <button
-          onClick={() => {
-            pauseRedirect();
-            onReturnHome?.();
-          }}
-          className="rf-conf-secondary-btn"
-        >
-          Go to Dashboard
-        </button>
-      </div>
-
-      {confirmationState.showReceiptAction && (
-        <div className="rf-print-row" style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
-          <button onClick={handleViewReceipt} className="rf-print-link">
-            <Printer size={14} /> View / Print Official Receipt
-          </button>
-          <button onClick={handleDownloadReceipt} className="rf-print-link">
-            <Download size={14} /> Download PDF
-          </button>
-        </div>
-      )}
-
-      {isPaymentReturn && !paused && countdown > 0 && (
-        <div className="rf-redirect-row">
-          <span className="rf-redirect-text">
-            Taking you to your reservation in <strong>{countdown}s</strong>...
-          </span>
-          <button onClick={pauseRedirect} className="rf-redirect-cancel">
-            Stay here
-          </button>
-        </div>
-      )}
     </div>
   );
 };

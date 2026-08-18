@@ -27,12 +27,8 @@ export default function TenantAssistantLauncher({ onClick, isOpen = false }) {
         repeat: Infinity,
         ease: "easeInOut",
       }}
-      whileHover={{
-        scale: 1.08,
-        transition: { duration: 0.15 },
-      }}
       whileTap={{
-        scale: 0.95,
+        scale: 0.96,
       }}
       aria-label="Open Lilycrest AI Assistant"
       title="Lilycrest Tenant Assistant"

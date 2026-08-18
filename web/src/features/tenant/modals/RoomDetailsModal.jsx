@@ -22,8 +22,12 @@ import {
 import SpotlightCard from "../components/SpotlightCard";
 import BedSelector from "../components/BedSelector";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
-import { showNotification } from "../../../shared/utils/notification";
-import { LEASE_OPTIONS, getAvailableLeaseOptions } from "../pages/reservation-steps/applicationFormConstants";
+import {
+  LEASE_OPTIONS,
+  getAvailableLeaseOptions,
+  getMoveInDateConstraints,
+} from "../pages/reservation-steps/applicationFormConstants";
+import { validateTargetMoveInDate } from "../utils/reservationValidation";
 import { getOptimizedUrl, getThumbnailUrl } from "../../../shared/utils/imageOptimizer";
 
 // Global cache of preloaded image URLs to prevent duplicate instances
@@ -169,10 +173,14 @@ export default function RoomDetailsModal({
   proceedButtonText = "Proceed to Reservation",
   selectedLeaseDuration = "",
   onSelectLeaseDuration,
+  selectedIntendedMoveInDate = "",
+  onSelectIntendedMoveInDate,
 }) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [hdLoadedMap, setHdLoadedMap] = useState({});
   const [internalLeaseDuration, setInternalLeaseDuration] = useState("");
+  const [internalMoveInDate, setInternalMoveInDate] = useState("");
+  const datePickerRef = React.useRef(null);
 
   useEscapeClose(isOpen && !!room, onClose);
 
@@ -217,6 +225,29 @@ export default function RoomDetailsModal({
     setInternalLeaseDuration(val);
     if (onSelectLeaseDuration) onSelectLeaseDuration(val);
   }, [onSelectLeaseDuration]);
+
+  const activeMoveInDate =
+    onSelectIntendedMoveInDate && selectedIntendedMoveInDate !== undefined
+      ? selectedIntendedMoveInDate
+      : internalMoveInDate;
+
+  const handleMoveInDateChange = useCallback(
+    (val) => {
+      setInternalMoveInDate(val);
+      if (onSelectIntendedMoveInDate) onSelectIntendedMoveInDate(val);
+    },
+    [onSelectIntendedMoveInDate],
+  );
+
+  const { minMoveInDate, maxMoveInDate } = useMemo(() => {
+    return getMoveInDateConstraints();
+  }, []);
+
+  const isMoveInDateValid = useMemo(() => {
+    if (!activeMoveInDate) return true; // Optional on room selection
+    const validation = validateTargetMoveInDate(activeMoveInDate);
+    return validation.valid;
+  }, [activeMoveInDate]);
 
   const flyer = useMemo(
     () => (room ? getFlyerRates(room.type, room) : { regularShort: 0, shortTerm: 0, regularLong: 0, longTerm: 0, discountPercent: 0 }),
@@ -277,7 +308,7 @@ export default function RoomDetailsModal({
   );
 
   const proceedDisabled =
-    isOverbooked || !hasLeaseSelected || (requiresBedSelection && !selectedBed);
+    isOverbooked || !hasLeaseSelected || !isMoveInDateValid || (requiresBedSelection && !selectedBed);
 
   const handleProceedClick = useCallback(() => {
     if (!hasLeaseSelected) {
@@ -288,12 +319,19 @@ export default function RoomDetailsModal({
       showNotification("Please select a bed location before proceeding.", "warning");
       return;
     }
+    if (activeMoveInDate && !isMoveInDateValid) {
+      showNotification(
+        "Intended move-in date must be at least 3 days from today, up to 3 months.",
+        "warning",
+      );
+      return;
+    }
     if (isOverbooked) {
       showNotification("This room is currently fully booked.", "warning");
       return;
     }
     if (onProceed) onProceed();
-  }, [hasLeaseSelected, requiresBedSelection, selectedBed, isOverbooked, onProceed]);
+  }, [hasLeaseSelected, requiresBedSelection, selectedBed, activeMoveInDate, isMoveInDateValid, isOverbooked, onProceed]);
 
   const { totalBeds, availableBeds, occupancyPercentage } = useMemo(() => {
     if (!room) return { totalBeds: 0, availableBeds: 0, occupancyPercentage: 0 };
@@ -622,6 +660,86 @@ export default function RoomDetailsModal({
                 )}
               </div>
 
+              {/* Intended Move-in Date */}
+              <div className="rounded-2xl border border-border/70 p-5">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-primary shrink-0" />
+                    <span className="font-semibold text-sm text-foreground">Intended Move-in Date</span>
+                  </div>
+                  <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                    Optional
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Feel free to pick a date now or skip this step. You can also adjust this date before submitting in your application form.
+                </p>
+
+                <div className="relative flex items-center group mt-2">
+                  <input
+                    ref={datePickerRef}
+                    id="modalIntendedMoveInDate"
+                    type="date"
+                    min={minMoveInDate}
+                    max={maxMoveInDate}
+                    value={activeMoveInDate ? String(activeMoveInDate).substring(0, 10) : ""}
+                    onClick={(e) => {
+                      try {
+                        e.currentTarget.showPicker?.();
+                      } catch (_) {}
+                    }}
+                    onChange={(e) => handleMoveInDateChange(e.target.value)}
+                    className="w-full px-3.5 py-2.5 pr-16 text-sm rounded-xl border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 shadow-xs cursor-pointer"
+                    style={{
+                      colorScheme: "light",
+                      border: activeMoveInDate && !isMoveInDateValid ? "1.5px solid var(--danger)" : "1px solid var(--border)",
+                    }}
+                  />
+                  <div className="absolute right-2.5 flex items-center gap-1">
+                    {activeMoveInDate && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMoveInDateChange("");
+                        }}
+                        className="p-1 rounded-lg text-muted-foreground hover:text-foreground transition-colors focus:outline-none cursor-pointer"
+                        title="Clear date"
+                        aria-label="Clear date"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          datePickerRef.current?.showPicker?.();
+                        } catch (_) {
+                          datePickerRef.current?.focus();
+                        }
+                      }}
+                      className="p-1 rounded-lg text-muted-foreground hover:text-foreground transition-colors focus:outline-none cursor-pointer"
+                      title="Open calendar picker"
+                      aria-label="Open calendar picker"
+                    >
+                      <Calendar className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                {activeMoveInDate && !isMoveInDateValid ? (
+                  <p className="text-xs text-rose-600 dark:text-rose-400 mt-2 font-medium">
+                    Must be at least 3 days from today, up to 3 months.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {activeMoveInDate
+                      ? "Selected date will be automatically pre-filled in your application form."
+                      : "Optional on room selection. If selected, must be at least 3 days from today, up to 3 months."}
+                  </p>
+                )}
+              </div>
+
               {/* Appliance add-ons */}
               {room.applianceFeeEnabled && (
                 <div className="rounded-2xl border border-border/70 p-5">
@@ -858,6 +976,8 @@ export default function RoomDetailsModal({
                 ? "Select a lease term"
                 : requiresBedSelection && !selectedBed
                 ? "Select a bed"
+                : activeMoveInDate && !isMoveInDateValid
+                ? "Invalid move-in date"
                 : proceedButtonText}
             </button>
           </div>

@@ -114,33 +114,38 @@ const parseDateInputValue = (date) => {
 };
 
 export const validateTargetMoveInDate = (date) => {
- if (!date) return { valid: false, error: "This field is required" };
+  if (!date) return { valid: false, error: "Intended move-in date is required" };
 
- const selectedDate = parseDateInputValue(date);
- const minimumAllowedDate = new Date();
- minimumAllowedDate.setHours(0, 0, 0, 0);
- minimumAllowedDate.setDate(minimumAllowedDate.getDate() + 3);
+  const selectedDate = parseDateInputValue(date);
+  if (isNaN(selectedDate.getTime())) {
+    return { valid: false, error: "Please enter a valid date" };
+  }
 
- // Date must be at least 3 days from today
- if (selectedDate < minimumAllowedDate) {
- return {
- valid: false,
- error: "Date must be at least 3 days from today",
- };
- }
+  const minimumAllowedDate = new Date();
+  minimumAllowedDate.setHours(0, 0, 0, 0);
+  minimumAllowedDate.setDate(minimumAllowedDate.getDate() + 3);
 
- // Must be within 3 months
- const threeMonthsLater = new Date();
- threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+  // Date must be at least 3 days from today
+  if (selectedDate < minimumAllowedDate) {
+    return {
+      valid: false,
+      error: "Move-in date must be at least 3 days from today, up to 3 months.",
+    };
+  }
 
- if (selectedDate > threeMonthsLater) {
- return {
- valid: false,
- error: "Target move-in date must be within 3 months",
- };
- }
+  // Must be within 3 months
+  const threeMonthsLater = new Date();
+  threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+  threeMonthsLater.setHours(23, 59, 59, 999);
 
- return { valid: true };
+  if (selectedDate > threeMonthsLater) {
+    return {
+      valid: false,
+      error: "Move-in date must be at least 3 days from today, up to 3 months.",
+    };
+  }
+
+  return { valid: true };
 };
 
 export const validateEstimatedTime = (time) => {

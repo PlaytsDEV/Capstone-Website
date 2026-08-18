@@ -91,6 +91,8 @@ function ReservationFlowPage() {
       <StageConfirmModal
         show={flow.showStageConfirm}
         pendingAction={flow.pendingStageAction}
+        applicationSubmitted={flow.applicationSubmitted}
+        loading={flow.isSubmittingApplication}
         onConfirm={flow.handleStageConfirm}
         onCancel={() => {
           flow.setShowStageConfirm(false);
@@ -456,6 +458,7 @@ function ReservationFlowPage() {
                   showValidationErrors: flow.showValidationErrors,
                   isSubmittingApplication: flow.isSubmittingApplication,
                   applicationSubmitted: flow.applicationSubmitted,
+                  isApplicationApproved: flow.isApplicationApproved,
                   paymentApproved: flow.paymentApproved,
                   visitPending:
                     !flow.applicationAccessAllowed &&

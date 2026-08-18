@@ -247,7 +247,7 @@ const ReservationPaymentStep = ({
                 <div className="rf-uc-summary-row">
                   <div className="rf-uc-row-left">
                     <Calendar size={15} className="rf-uc-icon" />
-                    <span className="rf-uc-label">Target Move-In</span>
+                    <span className="rf-uc-label">Intended Move-in Date</span>
                   </div>
                   <div className="rf-uc-row-right">
                     <span className="rf-uc-val-primary whitespace-nowrap">{fmtDate(targetMoveInDate)}</span>
@@ -355,7 +355,7 @@ const ReservationPaymentStep = ({
                     </div>
                     <div className="flex justify-between pt-1.5 border-t border-dashed border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-slate-100 text-xs">
                       <span>Estimated Balance (Due Before Move-In):</span>
-                      <span className="text-amber-700 dark:text-amber-400 font-bold">
+                      <span className="text-slate-900 dark:text-slate-100 font-bold">
                         {formatCurrency(Math.max(0, monthlyRent * 2 - reservationFeeAmount))}
                       </span>
                     </div>
@@ -443,6 +443,13 @@ const ReservationPaymentStep = ({
                     className={`btn btn-success btn-pay-online-reservation ${payingOnline ? "is-loading" : ""} ${!canPay ? "is-disabled-btn" : ""}`}
                     disabled={!canPay}
                     aria-describedby="reservation-payment-help"
+                    title={
+                      !agreedToFeePolicy
+                        ? "Please acknowledge the non-refundable fee policy above to proceed"
+                        : !paymentAvailable
+                        ? "Payment is locked pending application review"
+                        : ""
+                    }
                   >
                     {payingOnline ? (
                       <span className="rf-pay-btn-inner rf-pay-btn-icon">

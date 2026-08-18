@@ -68,40 +68,56 @@ export function getAvailableLeaseOptions(minMonths = 6) {
   return Array.from(optionsMap.values()).sort((a, b) => a.months - b.months);
 }
 
-const formatDateInputValue = (date) => {
- const year = date.getFullYear();
- const month = String(date.getMonth() + 1).padStart(2, "0");
- const day = String(date.getDate()).padStart(2, "0");
- return `${year}-${month}-${day}`;
+export const formatDateInputValue = (date) => {
+  if (!date) return "";
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 };
+
+/** Compute intended move-in date constraints relative to a reference date (defaults to today) */
+export function getMoveInDateConstraints(referenceDate = new Date()) {
+  const today = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
+  const moveInMin = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() + 3,
+  );
+  const moveInMax = new Date(
+    today.getFullYear(),
+    today.getMonth() + 3,
+    today.getDate(),
+  );
+  return {
+    moveInMin: formatDateInputValue(moveInMin),
+    moveInMax: formatDateInputValue(moveInMax),
+    minMoveInDate: formatDateInputValue(moveInMin),
+    maxMoveInDate: formatDateInputValue(moveInMax),
+  };
+}
 
 /** Compute date constraints relative to today */
 export function getDateConstraints() {
- const today = new Date();
- const birthdayMax = new Date(
- today.getFullYear() - 18,
- today.getMonth(),
- today.getDate(),
- );
- const birthdayMin = new Date(
- today.getFullYear() - 80,
- today.getMonth(),
- today.getDate(),
- );
- const moveInMin = new Date(
- today.getFullYear(),
- today.getMonth(),
- today.getDate() + 3,
- );
- const moveInMax = new Date(
- today.getFullYear(),
- today.getMonth(),
- today.getDate() + 90,
- );
- return {
- birthdayMin: formatDateInputValue(birthdayMin),
- birthdayMax: formatDateInputValue(birthdayMax),
- moveInMin: formatDateInputValue(moveInMin),
- moveInMax: formatDateInputValue(moveInMax),
- };
+  const today = new Date();
+  const birthdayMax = new Date(
+    today.getFullYear() - 18,
+    today.getMonth(),
+    today.getDate(),
+  );
+  const birthdayMin = new Date(
+    today.getFullYear() - 80,
+    today.getMonth(),
+    today.getDate(),
+  );
+  const { moveInMin, moveInMax } = getMoveInDateConstraints(today);
+  return {
+    birthdayMin: formatDateInputValue(birthdayMin),
+    birthdayMax: formatDateInputValue(birthdayMax),
+    moveInMin,
+    moveInMax,
+  };
 }
+

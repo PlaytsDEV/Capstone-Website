@@ -1,5 +1,5 @@
 import { Sun, Moon } from "lucide-react";
-import { useRef, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useTheme } from "../context/ThemeContext";
 
 /**
@@ -12,18 +12,14 @@ import { useTheme } from "../context/ThemeContext";
  */
 export default function ThemeToggleButton({ variant = "hero" }) {
   const { theme, toggleTheme } = useTheme();
-  const btnRef = useRef(null);
+  const [isGlowing, setIsGlowing] = useState(false);
   const isDark = theme === "dark";
 
   const handleClick = useCallback(() => {
-    // Trigger glow ring animation
-    const btn = btnRef.current;
-    if (btn) {
-      btn.classList.remove("theme-toggle--glow");
-      // Force reflow so re-adding the class restarts the animation
-      void btn.offsetWidth;
-      btn.classList.add("theme-toggle--glow");
-    }
+    setIsGlowing(false);
+    requestAnimationFrame(() => {
+      setIsGlowing(true);
+    });
     toggleTheme();
   }, [toggleTheme]);
 
@@ -31,9 +27,9 @@ export default function ThemeToggleButton({ variant = "hero" }) {
   if (variant === "mobile") {
     return (
       <button
-        ref={btnRef}
         onClick={handleClick}
-        className="theme-toggle-btn theme-toggle-mobile"
+        onAnimationEnd={() => setIsGlowing(false)}
+        className={`theme-toggle-btn theme-toggle-mobile ${isGlowing ? "theme-toggle--glow" : ""}`}
         aria-label="Toggle theme"
         style={{
           display: "flex",
@@ -91,9 +87,9 @@ export default function ThemeToggleButton({ variant = "hero" }) {
 
   return (
     <button
-      ref={btnRef}
       onClick={handleClick}
-      className="theme-toggle-btn hidden md:flex items-center justify-center"
+      onAnimationEnd={() => setIsGlowing(false)}
+      className={`theme-toggle-btn hidden md:flex items-center justify-center ${isGlowing ? "theme-toggle--glow" : ""}`}
       aria-label="Toggle theme"
       style={btnStyles}
       onMouseEnter={(e) => {

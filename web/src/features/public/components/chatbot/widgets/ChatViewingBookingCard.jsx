@@ -10,7 +10,22 @@ const TIME_SLOTS = ["10:00 AM", "2:00 PM", "4:00 PM", "6:00 PM"];
 function getTomorrowDateString() {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  return tomorrow.toISOString().split("T")[0];
+  const year = tomorrow.getFullYear();
+  const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
+  const day = String(tomorrow.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Helper to get date 3 months from today formatted as YYYY-MM-DD for max date constraint.
+ */
+function getThreeMonthsLaterDateString() {
+  const max = new Date();
+  max.setMonth(max.getMonth() + 3);
+  const year = max.getFullYear();
+  const month = String(max.getMonth() + 1).padStart(2, "0");
+  const day = String(max.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 /**
@@ -55,6 +70,13 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
 
   if (!date) {
     errors.date = "Tour date is required";
+  } else {
+    const minD = new Date(getTomorrowDateString());
+    const maxD = new Date(getThreeMonthsLaterDateString());
+    const selectedD = new Date(date);
+    if (isNaN(selectedD.getTime()) || selectedD < minD || selectedD > maxD) {
+      errors.date = "Tour date must be between tomorrow and 3 months from today";
+    }
   }
 
   const isValid = Object.keys(errors).length === 0;
@@ -238,6 +260,7 @@ export function ChatViewingBookingCard({ data = {}, onBookingComplete }) {
               id="tour-date-input"
               type="date"
               min={getTomorrowDateString()}
+              max={getThreeMonthsLaterDateString()}
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className="w-full py-1.5 px-2.5 rounded-lg border text-xs outline-none font-medium"

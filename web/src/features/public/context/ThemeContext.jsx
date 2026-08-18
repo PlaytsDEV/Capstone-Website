@@ -24,10 +24,32 @@ export function ThemeProvider({ children }) {
       : "light";
   };
 
+  const updateDOMTheme = (resolved) => {
+    const root = document.documentElement;
+    root.setAttribute("data-theme", resolved);
+    root.classList.toggle("dark", resolved === "dark");
+  };
+
   const applyThemeWithTransition = (newResolved) => {
     const root = document.documentElement;
-    root.setAttribute("data-theme", newResolved);
-    root.classList.toggle("dark", newResolved === "dark");
+    const currentTheme = root.getAttribute("data-theme");
+    if (currentTheme === newResolved) return;
+
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (
+      typeof document !== "undefined" &&
+      typeof document.startViewTransition === "function" &&
+      !prefersReducedMotion
+    ) {
+      document.startViewTransition(() => {
+        updateDOMTheme(newResolved);
+      });
+    } else {
+      updateDOMTheme(newResolved);
+    }
   };
 
   useEffect(() => {
@@ -39,8 +61,7 @@ export function ThemeProvider({ children }) {
 
     // Initial sync without transition flicker on page load
     if (!root.hasAttribute("data-theme")) {
-      root.setAttribute("data-theme", resolved);
-      root.classList.toggle("dark", resolved === "dark");
+      updateDOMTheme(resolved);
     } else {
       applyThemeWithTransition(resolved);
     }

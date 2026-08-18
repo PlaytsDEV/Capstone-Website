@@ -188,10 +188,10 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
     case "no_show":
       return {
         statusKey: status,
-        title: "Visit Marked as No-Show",
+        title: "Visit Marked as Missed",
         message:
-          "Your scheduled visit was marked as missed. Please reschedule your visit or contact administration.",
-        buttonLabel: "View Status",
+          "Your scheduled viewing was marked as missed. Please select a new visit schedule to continue your tenant application.",
+        buttonLabel: "Reschedule Visit",
         route: "/applicant/reservation?step=2",
         canFillApplication: false,
         isWaiting: false,

@@ -766,7 +766,7 @@ export default function ReservationDashboard({
             {feedback.viewingPreference === "physical_visit" ? (
               <button
                 type="button"
-                onClick={() => goToFlow("/applicant/reservation?step=2&edit=1")}
+                onClick={() => goToFlow("/applicant/reservation?step=2")}
                 style={styles.receiptPrimaryBtn}
               >
                 Review Visit Schedule
@@ -1113,73 +1113,15 @@ export default function ReservationDashboard({
       )}
 
       {/* ── Post-Confirmation Dashboard ─────────────────────────────────── */}
-      {isConfirmed &&
-        (() => {
-          // Use the confirmed move-in date (readMoveInDate) as the active
-          // date; fall back to the originally requested date only when no
-          // confirmed date has been reconciled yet.
-          const moveIn = readMoveInDate(reservation) || reservation.targetMoveInDate;
-          const daysLeft = moveIn
-            ? Math.ceil(
-                (new Date(moveIn) - new Date()) / (1000 * 60 * 60 * 24),
-              )
-            : null;
-          const isCheckedIn =
-            hasReservationStatus(getReservationStatus(reservation), "moveIn", "moveOut") ||
-            Boolean(reservation.checkInDate);
-          const showCountdown = daysLeft !== null && daysLeft >= 0 && !isCheckedIn;
-
-          return (
-            <div style={styles.confirmedDashboard}>
-              {showCountdown && (
-                <div style={styles.countdownCard}>
-                  <div style={styles.countdownLeft}>
-                    <div
-                      style={{
-                        width: 34,
-                        height: 34,
-                        borderRadius: 8,
-                        background: "var(--surface-card, #FFFFFF)",
-                        border: "1px solid var(--border-card, #E2E8F0)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "var(--text-heading, #0A1628)",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Calendar size={17} />
-                    </div>
-                    <div>
-                      <div style={styles.countdownLabel}>Move-in Date</div>
-                      <div style={styles.countdownDate}>
-                        {formatDate(moveIn)}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={styles.countdownBadge}>
-                    {daysLeft > 0 ? (
-                      <>
-                        <span style={styles.countdownNumber}>{daysLeft}</span>{" "}
-                        day{daysLeft !== 1 ? "s" : ""} away
-                      </>
-                    ) : (
-                      <span style={{ color: "#059669", fontWeight: 700 }}>
-                        Today!
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Move-In Settlement Hub Card */}
-              <MoveInSettlementCard
-                reservation={reservation}
-                profileData={profileData}
-              />
-            </div>
-          );
-        })()}
+      {isConfirmed && (
+        <div style={styles.confirmedDashboard}>
+          {/* Move-In Settlement Hub Card */}
+          <MoveInSettlementCard
+            reservation={reservation}
+            profileData={profileData}
+          />
+        </div>
+      )}
 
       {/* ── Footer — full width ───────────────────────────────────────────── */}
       {(reservation.reservationStatus || reservation.status) !== "cancelled" &&
@@ -1834,49 +1776,6 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: 12,
-  },
-  countdownCard: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    background: "var(--surface-card, #FFFFFF)",
-    borderRadius: 10,
-    padding: "14px 18px",
-    border: "1px solid var(--border-card, #E2E8F0)",
-  },
-  countdownLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-  },
-  countdownLabel: {
-    fontSize: 11,
-    color: "var(--text-secondary, #64748B)",
-    fontWeight: 600,
-    marginBottom: 2,
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-  },
-  countdownDate: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: "var(--text-heading, #0F172A)",
-  },
-  countdownBadge: {
-    fontSize: 12,
-    color: "var(--text-heading, #0F172A)",
-    fontWeight: 600,
-    background: "var(--surface-card, #FFFFFF)",
-    border: "1px solid var(--border-card, #CBD5E1)",
-    padding: "5px 12px",
-    borderRadius: 20,
-    whiteSpace: "nowrap",
-  },
-  countdownNumber: {
-    fontSize: 15,
-    fontWeight: 800,
-    color: "var(--text-heading, #0A1628)",
-    marginRight: 3,
   },
 
   /* footer */

@@ -63,16 +63,13 @@ export function PublicChatbotLauncher() {
 
         @keyframes radarPing {
           0% {
-            transform: scale(0.9);
-            box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.75);
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
           }
           70% {
-            transform: scale(1.08);
-            box-shadow: 0 0 0 7px rgba(212, 175, 55, 0);
+            box-shadow: 0 0 0 5px rgba(16, 185, 129, 0);
           }
           100% {
-            transform: scale(0.9);
-            box-shadow: 0 0 0 0 rgba(212, 175, 55, 0);
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
           }
         }
 
@@ -82,22 +79,21 @@ export function PublicChatbotLauncher() {
         }
 
         .lc-bot-btn {
-          transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+          transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
           background-color: #0A1628 !important;
           border: 1.5px solid #1e293b !important;
           color: #D4AF37 !important;
-          box-shadow: 0 6px 20px rgba(10, 22, 40, 0.35) !important;
+          box-shadow: 0 4px 14px rgba(10, 22, 40, 0.3) !important;
         }
 
         .lc-bot-btn:hover {
-          transform: scale(1.08);
           background-color: #162f53 !important;
           border-color: #D4AF37 !important;
-          box-shadow: 0 10px 28px rgba(10, 22, 40, 0.45), 0 0 0 3px rgba(212, 175, 55, 0.25) !important;
+          box-shadow: 0 6px 20px rgba(10, 22, 40, 0.4) !important;
         }
 
         .lc-bot-btn:active {
-          transform: scale(0.95);
+          transform: scale(0.96);
         }
 
         .dark .lc-bot-btn,
@@ -105,14 +101,14 @@ export function PublicChatbotLauncher() {
           background-color: #D4AF37 !important;
           border: 1.5px solid #B9921F !important;
           color: #0A1628 !important;
-          box-shadow: 0 6px 20px rgba(212, 175, 55, 0.45) !important;
+          box-shadow: 0 4px 14px rgba(212, 175, 55, 0.4) !important;
         }
 
         .dark .lc-bot-btn:hover,
         [data-theme="dark"] .lc-bot-btn:hover {
           background-color: #E5C358 !important;
           border-color: #F3E4B0 !important;
-          box-shadow: 0 10px 28px rgba(212, 175, 55, 0.55), 0 0 0 3px rgba(212, 175, 55, 0.35) !important;
+          box-shadow: 0 6px 20px rgba(212, 175, 55, 0.5) !important;
         }
 
         .lc-bot-icon-svg {
@@ -191,8 +187,7 @@ export function PublicChatbotLauncher() {
             onClick={handleToggle}
             onFocus={() => setIsHovered(true)}
             onBlur={() => setIsHovered(false)}
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.95 }}
+            whileTap={{ scale: 0.96 }}
             aria-expanded={isOpen}
             aria-label={isOpen ? "Close AI Chatbot" : "Open Lilycrest AI Chatbot"}
             title={isOpen ? "Close Chatbot" : "Chat with Lilycrest AI Chatbot"}

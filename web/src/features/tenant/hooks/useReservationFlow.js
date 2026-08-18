@@ -25,6 +25,7 @@ import {
   canReservationAccessPayment,
   hasReservationStatus,
   normalizeReservationStatus,
+  isApplicationApprovedStatus,
 } from "../../../shared/utils/lifecycleNaming";
 import { usePaymentRedirect } from "./usePaymentRedirect";
 import { classifyActiveReservations } from "../utils/reservationSelection";
@@ -528,6 +529,24 @@ export default function useReservationFlow() {
     () => getViewingPreferenceStepAccess(reservationData, viewingType),
     [reservationData, viewingType],
   );
+  const isApplicationApproved = useMemo(() => {
+    const reservationStatus = normalizeReservationStatus(reservationData?.status);
+    return Boolean(
+      isApplicationApprovedStatus(reservationStatus, reservationData) ||
+        paymentApproved,
+    );
+  }, [reservationData, paymentApproved]);
+
+  const handleSetEditingApplication = useCallback(
+    (value) => {
+      if (isApplicationApproved) {
+        setEditingApplication(false);
+        return;
+      }
+      setEditingApplication(typeof value === "function" ? value : Boolean(value));
+    },
+    [isApplicationApproved],
+  );
 
   const validateViewingPreferenceChange = useCallback(async () => {
     const targetReservationId =
@@ -604,7 +623,7 @@ export default function useReservationFlow() {
     returnToDashboardForApplicationGate,
   ]);
 
-  // ΓöÇΓöÇ Warn before leaving mid-flow (skip if intentional navigation) ΓöÇΓöÇ
+  // ── Warn before leaving mid-flow (skip if intentional navigation) ──
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (navigatingAwayRef.current) return;
@@ -623,7 +642,7 @@ export default function useReservationFlow() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [currentStage, hasUnsavedApplicationChanges, isFormDirty, saveStatus]);
 
-  // ΓöÇΓöÇ Stepper locking ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ── Stepper locking ────────────────────────────────────────────────────────
   const isStageLocked = (stageId) => {
     const reservationStatus = normalizeReservationStatus(reservationData?.status);
     const needsRevision = hasReservationStatus(reservationStatus, "needs_revision");
@@ -651,6 +670,7 @@ export default function useReservationFlow() {
         (applicationSubmitted && !needsRevision && !scheduleRejected)
       );
     if (stageId === 3) {
+      if (isApplicationApproved) return true;
       return (
         !applicationAccess ||
         (applicationSubmitted && !editingApplication && !needsRevision)
@@ -735,10 +755,14 @@ export default function useReservationFlow() {
     if (r.estimatedMoveInTime) setEstimatedMoveInTime(r.estimatedMoveInTime);
     if (r.workSchedule) setWorkSchedule(r.workSchedule);
     if (r.workScheduleOther) setWorkScheduleOther(r.workScheduleOther);
-    if (r.targetMoveInDate)
+    const savedMoveInDate = r.intendedMoveInDate || r.targetMoveInDate || r.moveInDate;
+    if (savedMoveInDate) {
       setTargetMoveInDate(
-        r.targetMoveInDate.split?.("T")?.[0] || r.targetMoveInDate,
+        typeof savedMoveInDate === "string"
+          ? savedMoveInDate.split("T")[0]
+          : new Date(savedMoveInDate).toISOString().split("T")[0],
       );
+    }
     if (r.leaseDuration) setLeaseDuration(String(r.leaseDuration));
     // Restore agreements ONLY if the application was previously submitted
     // (prevents step 2's agreedToPrivacy from pre-checking step 3's consent)
@@ -1111,6 +1135,101 @@ export default function useReservationFlow() {
     // Payment redirect is handled by usePaymentRedirect hook
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, location.key]);
+
+  // Real-time synchronization when admin updates visit/reservation status
+  useEffect(() => {
+    const handleRealtimeReservationUpdate = (event) => {
+      const detail = event?.detail || {};
+      const currentResId =
+        reservationData?._id ||
+        reservationId ||
+        sessionStorage.getItem(getActiveResKey(user?.firebaseUid)) ||
+        sessionStorage.getItem("activeReservationId");
+
+      if (!currentResId) return;
+
+      // If the event specifies a reservationId and it does not match, ignore
+      if (detail.reservationId && String(detail.reservationId) !== String(currentResId)) {
+        return;
+      }
+
+      // If visit is approved/completed, update live state and auto-advance if on Step 2
+      const isVisitApproved =
+        detail.visitApproved === true ||
+        detail.action === "mark_visited" ||
+        detail.action === "allow_without_visit" ||
+        detail.visitStatus === "visit_completed" ||
+        detail.status === "visit_approved";
+
+      if (isVisitApproved) {
+        setVisitApproved(true);
+        setVisitCompleted(true);
+        setReservationData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            visitApproved: true,
+            visitStatus: detail.visitStatus || prev.visitStatus || "visit_completed",
+            status: detail.status || prev.status,
+          };
+        });
+
+        // If currently on Step 2 (Viewing Preference / Visit Step), auto-advance to Step 3 (Application Form)
+        setCurrentStage((prevStage) => {
+          if (prevStage === 2) {
+            setHighestStageReached((prevHigh) => Math.max(prevHigh || 1, 3));
+            showNotification(
+              "Physical visit confirmed! You can now proceed with your tenant application.",
+              "success",
+              4000,
+            );
+            return 3;
+          }
+          return prevStage;
+        });
+
+        setHighestStageReached((prevHigh) => Math.max(prevHigh || 1, 3));
+      } else if (detail.scheduleRejected || detail.action === "reject_schedule") {
+        setScheduleRejected(true);
+        setScheduleRejectionReason(detail.scheduleRejectionReason || "");
+        setVisitApproved(false);
+        setVisitCompleted(false);
+        setReservationData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            scheduleRejected: true,
+            scheduleRejectionReason: detail.scheduleRejectionReason || "",
+            visitApproved: false,
+          };
+        });
+      }
+
+      // Also reload fresh reservation from server in background to sync any newly populated fields
+      void reservationApi.getById(currentResId).then((freshRes) => {
+        if (!freshRes) return;
+        const fresh = freshRes?.reservation || freshRes;
+        if (!fresh?._id) return;
+        setReservationData((prev) => ({
+          ...(prev || {}),
+          ...fresh,
+          room: fresh.roomId || prev?.room,
+        }));
+        if (fresh.visitApproved) {
+          setVisitApproved(true);
+          setVisitCompleted(true);
+        }
+      }).catch(() => {});
+    };
+
+    window.addEventListener("lilycrest:reservation-updated", handleRealtimeReservationUpdate);
+    window.addEventListener("lilycrest:visit-updated", handleRealtimeReservationUpdate);
+
+    return () => {
+      window.removeEventListener("lilycrest:reservation-updated", handleRealtimeReservationUpdate);
+      window.removeEventListener("lilycrest:visit-updated", handleRealtimeReservationUpdate);
+    };
+  }, [user, reservationData?._id, reservationId]);
 
   const loadActiveReservation = async (verifyPaymentReturn = false) => {
     // Keep the flow in a loading state until this decision resolves —
@@ -1595,9 +1714,9 @@ export default function useReservationFlow() {
       } else {
         setCurrentStage(targetStage);
       }
-      if (stepOverride) {
+      if (stepOverride === 3 && forceEditMode && !applicationSubmitted) {
         showNotification(
-          "Editing your application. Make your changes and save.",
+          "Editing your application draft. Make your changes and save.",
           "info",
           3000,
         );
@@ -1722,6 +1841,7 @@ export default function useReservationFlow() {
               position: reservationData.selectedBed.position,
             }
           : null,
+        intendedMoveInDate: targetMoveInDate || moveInDate || null,
         targetMoveInDate: targetMoveInDate || moveInDate || null,
         leaseDuration: leaseDuration || "",
         billingEmail: getFieldValue(
@@ -2427,6 +2547,22 @@ export default function useReservationFlow() {
           showNotification("Please select a room to continue.", "warning", 4000);
           return;
         }
+        const effectiveDate =
+          targetMoveInDate ||
+          reservationData?.targetMoveInDate ||
+          reservationData?.intendedMoveInDate;
+        if (effectiveDate) {
+          const dateValidation = validateTargetMoveInDate(effectiveDate);
+          if (!dateValidation.valid) {
+            showNotification(
+              dateValidation.error ||
+                "Intended move-in date must be at least 3 days from today (within 3 months).",
+              "warning",
+              4000,
+            );
+            return;
+          }
+        }
         setPendingStageAction("stage1");
         setShowStageConfirm(true);
         return;
@@ -2453,6 +2589,13 @@ export default function useReservationFlow() {
       } else if (currentStage === 3) {
         if (!applicationAccessAllowed) {
           returnToDashboardForApplicationGate();
+          return;
+        }
+
+        if (isApplicationApproved) {
+          const nextStage = paymentApproved ? 5 : 4;
+          setHighestStageReached((prev) => Math.max(prev, nextStage));
+          setCurrentStage(nextStage);
           return;
         }
 
@@ -2503,8 +2646,8 @@ export default function useReservationFlow() {
             {
               key: "nbiClearance",
               label: "NBI Clearance",
-              isMissing: !nbiClearance && (!hasText(nbiReason) || String(nbiReason).trim().length < 10),
-              message: "Please upload NBI Clearance or provide a detailed reason (at least 10 characters) to continue.",
+              isMissing: !nbiClearance && !hasText(nbiReason),
+              message: "Please upload NBI Clearance or provide a reason why it is not yet available.",
             },
             {
               key: "emergencyContactName",
@@ -2538,8 +2681,8 @@ export default function useReservationFlow() {
             {
               key: "companyID",
               label: "Company ID",
-              isMissing: !companyID && (!hasText(companyIDReason) || String(companyIDReason).trim().length < 10),
-              message: "Please upload Company ID or provide a detailed reason (at least 10 characters) to continue.",
+              isMissing: !companyID && !hasText(companyIDReason),
+              message: "Please upload Company ID or provide a reason why it is not yet available.",
             },
             { key: "referralSource", label: "Referral Source", isMissing: !hasText(referralSource) },
             {
@@ -2611,95 +2754,10 @@ export default function useReservationFlow() {
             return;
           }
         }
-        setIsSubmittingApplication(true);
-        try {
-          const selfiePhotoUrl = await uploadIfFile(selfiePhoto);
-          const validIDFrontUrl = await uploadIfFile(validIDFront);
-          const validIDBackUrl = await uploadIfFile(validIDBack);
-          const nbiClearanceUrl = await uploadIfFile(nbiClearance);
-          const companyIDUrl = await uploadIfFile(companyID);
-          const applicationPayload = {
-            firstName,
-            lastName,
-            middleName,
-            nickname,
-            mobileNumber,
-            billingEmail,
-            birthday,
-            gender,
-            maritalStatus,
-            nationality,
-            educationLevel,
-            addressUnitHouseNo,
-            addressStreet,
-            addressRegion,
-            addressBarangay,
-            addressCity,
-            addressProvince,
-            emergencyContactName,
-            emergencyRelationship,
-            emergencyContactNumber,
-            healthConcerns,
-            employerSchool,
-            employerAddress,
-            employerContact,
-            startDate,
-            occupation,
-            previousEmployment,
-            roomType,
-            preferredRoomNumber,
-            referralSource,
-            referrerName,
-            estimatedMoveInTime,
-            workSchedule,
-            workScheduleOther,
-            targetMoveInDate,
-            leaseDuration,
-            agreedToPrivacy,
-            agreedToCertification,
-            selfiePhotoUrl,
-            validIDFrontUrl,
-            validIDBackUrl,
-            nbiClearanceUrl,
-            nbiReason,
-            personalNotes,
-            companyIDUrl,
-            companyIDReason,
-            validIDType,
-            idType: validIDType,
-          };
-          if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-          if (applicationDraftSaveClearTimerRef.current) {
-            clearTimeout(applicationDraftSaveClearTimerRef.current);
-          }
-          // First-time and re-submission both use the same dedicated endpoint
-          await reservationApi.submitApplication(reservationId, applicationPayload);
-          const draftKey = getApplicationDraftStorageKey(user?.firebaseUid, reservationId);
-          if (draftKey && typeof window !== "undefined" && window.localStorage) {
-            window.localStorage.removeItem(draftKey);
-          }
-          lastSavedApplicationDraftRef.current = "";
-          setHasUnsavedApplicationChanges(false);
-          setSaveStatus("");
-          setDraftRecoveryMessage("");
-          setApplicationSubmitted(true);
-          setEditingApplication(false);
-          await queryClient.invalidateQueries({ queryKey: ["reservations"] });
-          setSuccessOverlay({
-            show: true,
-            title: "Application Submitted!",
-            subtitle: "Your application is under review. We will notify you once approved.",
-          });
-          appNavigate("/applicant/profile", {
-            flash: {
-              type: "success",
-              title: "Application Submitted!",
-              message: "Your application is under review. We will notify you once approved.",
-            },
-          });
-        } finally {
-          setIsSubmittingApplication(false);
-        }
+
+        setPendingStageAction("submit_application");
+        setShowStageConfirm(true);
+        return;
       } else if (currentStage === 4) {
         // Stage 4 only uses PayMongo online checkout.
         // If user got here via the "Confirm" button, show overlay and go to profile.
@@ -2817,6 +2875,96 @@ export default function useReservationFlow() {
             message: "Continue from your dashboard to schedule a visit.",
           },
         });
+      } else if (pendingStageAction === "submit_application" || pendingStageAction === "stage3") {
+        setIsSubmittingApplication(true);
+        try {
+          const selfiePhotoUrl = await uploadIfFile(selfiePhoto);
+          const validIDFrontUrl = await uploadIfFile(validIDFront);
+          const validIDBackUrl = await uploadIfFile(validIDBack);
+          const nbiClearanceUrl = await uploadIfFile(nbiClearance);
+          const companyIDUrl = await uploadIfFile(companyID);
+          const applicationPayload = {
+            firstName,
+            lastName,
+            middleName,
+            nickname,
+            mobileNumber,
+            billingEmail,
+            birthday,
+            gender,
+            maritalStatus,
+            nationality,
+            educationLevel,
+            addressUnitHouseNo,
+            addressStreet,
+            addressRegion,
+            addressBarangay,
+            addressCity,
+            addressProvince,
+            emergencyContactName,
+            emergencyRelationship,
+            emergencyContactNumber,
+            healthConcerns,
+            employerSchool,
+            employerAddress,
+            employerContact,
+            startDate,
+            occupation,
+            previousEmployment,
+            roomType,
+            preferredRoomNumber,
+            referralSource,
+            referrerName,
+            estimatedMoveInTime,
+            workSchedule,
+            workScheduleOther,
+            targetMoveInDate,
+            leaseDuration,
+            agreedToPrivacy,
+            agreedToCertification,
+            selfiePhotoUrl,
+            validIDFrontUrl,
+            validIDBackUrl,
+            nbiClearanceUrl,
+            nbiReason,
+            personalNotes,
+            companyIDUrl,
+            companyIDReason,
+            validIDType,
+            idType: validIDType,
+          };
+          if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+          if (applicationDraftSaveClearTimerRef.current) {
+            clearTimeout(applicationDraftSaveClearTimerRef.current);
+          }
+          // First-time and re-submission both use the same dedicated endpoint
+          await reservationApi.submitApplication(reservationId, applicationPayload);
+          const draftKey = getApplicationDraftStorageKey(user?.firebaseUid, reservationId);
+          if (draftKey && typeof window !== "undefined" && window.localStorage) {
+            window.localStorage.removeItem(draftKey);
+          }
+          lastSavedApplicationDraftRef.current = "";
+          setHasUnsavedApplicationChanges(false);
+          setSaveStatus("");
+          setDraftRecoveryMessage("");
+          setApplicationSubmitted(true);
+          setEditingApplication(false);
+          await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+          setSuccessOverlay({
+            show: true,
+            title: "Application Submitted!",
+            subtitle: "Your application is under review. We will notify you once approved.",
+          });
+          appNavigate("/applicant/profile", {
+            flash: {
+              type: "success",
+              title: "Application Submitted!",
+              message: "Your application is under review. We will notify you once approved.",
+            },
+          });
+        } finally {
+          setIsSubmittingApplication(false);
+        }
       } else if (pendingStageAction === "stage4") {
         await queryClient.invalidateQueries({ queryKey: ["reservations"] });
         setSuccessOverlay({
@@ -2918,6 +3066,7 @@ export default function useReservationFlow() {
     scheduleRejectionReason,
     applicationSubmitted,
     editingApplication,
+    isApplicationApproved,
     paymentApproved,
     reservationId,
     devBypassValidation, setDevBypassValidation,
@@ -3048,7 +3197,7 @@ export default function useReservationFlow() {
     forceEditMode,
     notifyRoomSelectionLocked,
     notifyViewingPreferenceLocked,
-    setEditingApplication,
+    setEditingApplication: handleSetEditingApplication,
     setScrollToSection,
     setShowStageConfirm,
     setPendingStageAction,

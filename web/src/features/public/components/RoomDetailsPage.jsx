@@ -110,20 +110,23 @@ function RoomDetailsPage({
           <div className="room-details-carousel-wrapper">
             <div className="room-details-carousel">
               <button
+                type="button"
                 className="room-details-carousel-btn room-details-carousel-prev"
                 onClick={prevSlide}
+                aria-label="Previous image"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  width="8"
-                  height="14"
+                  width="10"
+                  height="16"
                   viewBox="0 0 8 14"
                   fill="none"
+                  aria-hidden="true"
                 >
                   <path
                     d="M7 13L1 7L7 1"
-                    stroke="#364153"
-                    strokeWidth="2"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
@@ -155,20 +158,23 @@ function RoomDetailsPage({
               </div>
 
               <button
+                type="button"
                 className="room-details-carousel-btn room-details-carousel-next"
                 onClick={nextSlide}
+                aria-label="Next image"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  width="8"
-                  height="14"
+                  width="10"
+                  height="16"
                   viewBox="0 0 8 14"
                   fill="none"
+                  aria-hidden="true"
                 >
                   <path
                     d="M1 13L7 7L1 1"
-                    stroke="#364153"
-                    strokeWidth="2"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
@@ -179,6 +185,8 @@ function RoomDetailsPage({
                 {images.map((_, index) => (
                   <button
                     key={index}
+                    type="button"
+                    aria-label={`Go to slide ${index + 1}`}
                     className={`room-details-indicator ${index === currentSlide ? "active" : ""}`}
                     onClick={() => setCurrentSlide(index)}
                   ></button>
