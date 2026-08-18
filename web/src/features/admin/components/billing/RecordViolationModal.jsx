@@ -603,7 +603,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
             {!evidencePreview && !evidenceUrl ? (
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/20 p-5 text-center transition hover:border-slate-400 hover:bg-muted/30"
+                className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-5 text-center transition hover:border-slate-400 hover:bg-muted/30"
               >
                 <input
                   ref={fileInputRef}

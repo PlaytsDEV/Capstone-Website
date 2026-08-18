@@ -1,5 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
+import { X, FileText } from "lucide-react";
 
 export default function AdminSopReferenceModal({ sop, onClose }) {
   if (!sop) return null;
@@ -11,14 +12,16 @@ export default function AdminSopReferenceModal({ sop, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-border bg-card">
-          <div className="text-foreground font-semibold">
+          <div className="flex items-center gap-2 text-foreground font-semibold">
+            <FileText size={18} className="text-primary shrink-0" />
             <span>Standard Operating Procedure</span>
           </div>
           <button
             onClick={onClose}
-            className="px-2 py-1 hover:bg-muted rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer border border-border"
+            className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            aria-label="Close dialog"
           >
-            Close
+            <X size={18} />
           </button>
         </div>
 

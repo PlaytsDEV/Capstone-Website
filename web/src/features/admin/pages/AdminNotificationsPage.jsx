@@ -18,6 +18,7 @@ import {
   ArrowUpRight,
   ShieldCheck,
   Sparkles,
+  Building2,
 } from "lucide-react";
 import {
   useNotifications,
@@ -25,6 +26,11 @@ import {
   useMarkAllAsRead,
   useUnreadCount,
 } from "../../../shared/hooks/queries/useNotifications";
+import { useAuth } from "../../../shared/hooks/useAuth";
+import {
+  OWNER_BRANCH_FILTER_OPTIONS,
+  BRANCH_DISPLAY_NAMES,
+} from "../../../shared/utils/constants";
 import SummaryBar from "../components/shared/SummaryBar";
 import { AdminTablePageSkeleton } from "../components/AdminContentSkeletons";
 import AdminPageHeader from "../../../shared/components/AdminPageHeader";
@@ -383,6 +389,19 @@ function getActionUrl(notification) {
   return notification.actionUrl || ACTION_URLS[notification.type] || null;
 }
 
+function resolveNotificationBranch(notification = {}) {
+  if (notification.branch) return String(notification.branch).toLowerCase().trim();
+  const url = String(notification.actionUrl || "").toLowerCase();
+  if (url.includes("branch=gil-puyat") || url.includes("/gil-puyat")) return "gil-puyat";
+  if (url.includes("branch=guadalupe") || url.includes("/guadalupe")) return "guadalupe";
+
+  const text = `${notification.title || ""} ${notification.message || ""}`.toLowerCase();
+  if (text.includes("gil puyat") || text.includes("gil-puyat")) return "gil-puyat";
+  if (text.includes("guadalupe")) return "guadalupe";
+
+  return "";
+}
+
 function fmtRelative(dateValue) {
   if (!dateValue) return "";
   const diff = Date.now() - new Date(dateValue).getTime();
@@ -415,10 +434,13 @@ function fmtFullDateTime(dateValue) {
 
 export default function AdminNotificationsPage() {
   const navigate = useNavigate();
+  const { user, isOwner } = useAuth();
+  const isOwnerUser = Boolean(isOwner && isOwner());
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [branchFilter, setBranchFilter] = useState("all");
   const [unreadOnly, setUnreadOnly] = useState(false);
 
   const { data, isLoading } = useNotifications(page, { unreadOnly });
@@ -511,6 +533,14 @@ export default function AdminNotificationsPage() {
     return notifications.filter((n) => {
       const meta = getMeta(n.type);
 
+      // Branch filter (Dorm Owner can select; Branch Admin is scoped by server)
+      if (isOwnerUser && branchFilter !== "all") {
+        const notifBranch = resolveNotificationBranch(n);
+        if (notifBranch && notifBranch !== branchFilter) {
+          return false;
+        }
+      }
+
       // Search filter
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase().trim();
@@ -598,7 +628,7 @@ export default function AdminNotificationsPage() {
 
       return true;
     });
-  }, [notifications, searchTerm, categoryFilter, priorityFilter]);
+  }, [notifications, searchTerm, categoryFilter, priorityFilter, branchFilter, isOwnerUser]);
 
   const handleNotificationClick = (notification) => {
     if (!notification.isRead) {
@@ -623,6 +653,7 @@ export default function AdminNotificationsPage() {
     setSearchTerm("");
     setCategoryFilter("all");
     setPriorityFilter("all");
+    setBranchFilter("all");
     setUnreadOnly(false);
     setPage(1);
   };
@@ -781,6 +812,33 @@ export default function AdminNotificationsPage() {
 
           {/* Auxiliary Dropdowns & Toggles */}
           <div className="admin-notif-page__aux-filters">
+            {/* Branch Filter: Selector for Dorm Owner; static badge for Branch Admin */}
+            {isOwnerUser ? (
+              <select
+                value={branchFilter}
+                onChange={(e) => {
+                  setBranchFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="admin-notif-page__select"
+                title="Filter notifications by branch location"
+              >
+                {OWNER_BRANCH_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            ) : user?.branch ? (
+              <span
+                className="admin-notif-page__branch-badge"
+                title={`Notifications scoped to ${BRANCH_DISPLAY_NAMES[user.branch] || user.branch} branch`}
+              >
+                <Building2 size={13} />
+                <span>{BRANCH_DISPLAY_NAMES[user.branch] || user.branch}</span>
+              </span>
+            ) : null}
+
             <select
               value={priorityFilter}
               onChange={(e) => {
@@ -822,6 +880,7 @@ export default function AdminNotificationsPage() {
             {(searchTerm ||
               categoryFilter !== "all" ||
               priorityFilter !== "all" ||
+              (isOwnerUser && branchFilter !== "all") ||
               unreadOnly) && (
               <button
                 type="button"
@@ -865,6 +924,7 @@ export default function AdminNotificationsPage() {
               {searchTerm ||
               categoryFilter !== "all" ||
               priorityFilter !== "all" ||
+              (isOwnerUser && branchFilter !== "all") ||
               unreadOnly
                 ? "No notifications match your selected filter criteria. Try resetting the filters or modifying your search query."
                 : "You are all caught up! There are currently no new notifications or alerts requiring your attention."}
@@ -872,6 +932,7 @@ export default function AdminNotificationsPage() {
             {(searchTerm ||
               categoryFilter !== "all" ||
               priorityFilter !== "all" ||
+              (isOwnerUser && branchFilter !== "all") ||
               unreadOnly) && (
               <button
                 type="button"
@@ -899,6 +960,7 @@ export default function AdminNotificationsPage() {
             );
             const variant = meta.variant || meta.priority || "neutral";
             const isPrimaryAction = meta.isPrimaryAction ?? (meta.priority === "critical" || meta.priority === "high");
+            const notifBranch = resolveNotificationBranch(notification);
 
             return (
               <article
@@ -959,11 +1021,17 @@ export default function AdminNotificationsPage() {
                   <p className="admin-notif-item__message">{cleanedMessage}</p>
 
                   <div className="admin-notif-item__meta-row">
-                    <span
-                      className={`admin-notif-tag admin-notif-tag--${variant}`}
-                    >
-                      {meta.label}
+                    <span className="admin-notif-tag">
+                      <span className={`admin-notif-tag__dot admin-notif-tag__dot--${variant}`} />
+                      <span>{meta.label}</span>
                     </span>
+
+                    {notifBranch && (
+                      <span className="admin-notif-tag">
+                        <Building2 size={11} className="admin-notif-tag__branch-icon" />
+                        <span>{BRANCH_DISPLAY_NAMES[notifBranch] || notifBranch}</span>
+                      </span>
+                    )}
 
                     {notification.entityId && (
                       <span

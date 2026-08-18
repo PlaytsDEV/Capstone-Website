@@ -6,6 +6,7 @@ import AdminCopilotDrawer from "./copilot/AdminCopilotDrawer";
 import ProfileAvatar, { getProfileInitials } from "../../../shared/components/ProfileAvatar";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useTheme } from "../../public/context/ThemeContext";
+import { formatDisplayName } from "../../../shared/utils/formatDate";
 
 export default function TopBar({
   darkMode,
@@ -23,12 +24,16 @@ export default function TopBar({
 
   const displayName = useMemo(() => {
     if (!user) return "Admin User";
-    return (
+    const raw = (
       `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+      user.name ||
+      user.fullName ||
       user.username ||
       "Admin User"
     );
+    return formatDisplayName(raw);
   }, [user]);
+
 
   const roleLabel = useMemo(() => {
     if (!user?.role) return "Administrator";
@@ -186,7 +191,7 @@ export default function TopBar({
             <ProfileAvatar user={user} initials={initials} size={32} />
           </div>
           <div className="hidden min-w-0 text-left md:block">
-            <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
+            <div className="truncate text-sm font-semibold text-[var(--text-primary)] capitalize">
               {displayName}
             </div>
             <div className="text-xs text-[var(--text-muted)]">{roleLabel}</div>

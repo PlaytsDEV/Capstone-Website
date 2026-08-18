@@ -440,16 +440,17 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
       case "approved":
       case "paid":
       case "completed":
-        return "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800";
+        return "bg-transparent text-emerald-700 dark:text-emerald-400 border-slate-200 dark:border-slate-700";
       case "pending":
       case "under_review":
-        return "bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800";
+        return "bg-transparent text-amber-700 dark:text-amber-400 border-slate-200 dark:border-slate-700";
       case "rejected":
       case "failed":
+        return "bg-transparent text-rose-700 dark:text-rose-400 border-slate-200 dark:border-slate-700";
       case "cancelled":
-        return "bg-red-50 text-red-800 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800";
+      case "canceled":
       default:
-        return "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300";
+        return "bg-transparent text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700";
     }
   };
 
@@ -1156,7 +1157,7 @@ export default function ReservationPaymentReviewTab({ isActive, branch = "" }) {
               </div>
 
               {/* Status Verification Banner */}
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300 flex items-center gap-2.5">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-emerald-50/70 p-3.5 text-xs text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300 flex items-center gap-2.5">
                 <ShieldCheck size={18} className="shrink-0 text-emerald-700 dark:text-emerald-500" />
                 <span className="font-medium leading-relaxed">
                   Verified via PayMongo Gateway — this reservation payment was processed and reconciled with the dormitory reservation.

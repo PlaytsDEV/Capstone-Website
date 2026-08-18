@@ -365,7 +365,7 @@ export default function ConsolidatedBillingMonitorTab({
                               type="button"
                               onClick={() => handleSendReminder(row)}
                               disabled={sendingReminderId === row.id}
-                              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300"
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-rose-700 dark:text-rose-400 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer disabled:opacity-50"
                               title="Send payment reminder to tenant"
                             >
                               <Send size={11} className={sendingReminderId === row.id ? "animate-spin" : ""} />

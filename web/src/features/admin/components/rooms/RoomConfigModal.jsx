@@ -497,8 +497,8 @@ export default function RoomConfigModal({
         {/* Header */}
         <div className="admin-modal-header rfm-header">
           <div className="rfm-header__title-block">
-            <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-[#0A1628] dark:text-[#D4AF37] border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
-              <Building2 size={20} />
+            <div className="text-[#0A1628] dark:text-[#D4AF37] flex items-center justify-center shrink-0">
+              <Building2 size={24} />
             </div>
             <div>
               <h2>Configure Room: {draftRoom.name || `Room ${draftRoom.roomNumber}`}</h2>

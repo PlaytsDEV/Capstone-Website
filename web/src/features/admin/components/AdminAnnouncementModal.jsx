@@ -571,17 +571,13 @@ export default function AdminAnnouncementModal({
             {/* Checkboxes */}
             <div className="space-y-2 pt-1">
               <label
-                className="flex cursor-pointer items-start gap-3 rounded-md border px-4 py-3"
-                style={{
-                  borderColor: "color-mix(in srgb, var(--warning) 40%, var(--border))",
-                  background: "color-mix(in srgb, var(--warning) 8%, var(--card))",
-                }}
+                className="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 dark:border-slate-700 bg-card px-4 py-3 hover:bg-muted/40 transition-colors"
               >
                 <input
                   type="checkbox"
                   checked={Boolean(form.requiresAcknowledgment)}
                   onChange={(event) => handleChange("requiresAcknowledgment", event.target.checked)}
-                  className="mt-0.5"
+                  className="mt-0.5 accent-[#D4AF37]"
                 />
                 <div>
                   <div className="text-sm font-semibold text-card-foreground">Require acknowledgment</div>
@@ -592,17 +588,13 @@ export default function AdminAnnouncementModal({
               </label>
 
               <label
-                className="flex cursor-pointer items-start gap-3 rounded-md border px-4 py-3"
-                style={{
-                  borderColor: "color-mix(in srgb, var(--warning) 40%, var(--border))",
-                  background: "color-mix(in srgb, var(--warning) 8%, var(--card))",
-                }}
+                className="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 dark:border-slate-700 bg-card px-4 py-3 hover:bg-muted/40 transition-colors"
               >
                 <input
                   type="checkbox"
                   checked={Boolean(form.isPinned)}
                   onChange={(event) => handleChange("isPinned", event.target.checked)}
-                  className="mt-0.5"
+                  className="mt-0.5 accent-[#D4AF37]"
                 />
                 <div>
                   <div className="text-sm font-semibold text-card-foreground">Pin this notice</div>
@@ -620,15 +612,23 @@ export default function AdminAnnouncementModal({
               type="button"
               onClick={handleAttemptClose}
               disabled={isPending}
-              className="h-10 rounded-md border border-border bg-card px-4 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-50"
+              className="h-10 rounded-md border border-border bg-card px-4 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-50 cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isPending || !hasChanges || (Object.keys(touched).length > 0 && !isFormValid)}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-5 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}
+              title={
+                !hasChanges
+                  ? "No changes detected to save"
+                  : Object.keys(touched).length > 0 && !isFormValid
+                  ? "Please resolve highlighted form validation errors"
+                  : isPending
+                  ? "Saving changes..."
+                  : "Save announcement changes"
+              }
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-5 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer bg-[#0A1628] hover:bg-[#13243D] text-white focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:outline-none"
             >
               {isPending ? (
                 <LoaderCircle size={15} className="animate-spin" />

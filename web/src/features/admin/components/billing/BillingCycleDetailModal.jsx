@@ -119,8 +119,7 @@ const BillingCycleDetailModal = ({
                 value: result ? fmtNumber(result.computedTotalUsage, 2) : "-",
                 sub: unitLabel,
                 icon: UtilityIcon,
-                badgeBg: "bg-primary-light",
-                badgeText: "text-primary-dark",
+                colorClass: "text-sky-600 dark:text-sky-400",
               },
               {
                 label: "ROOM COST",
@@ -129,26 +128,23 @@ const BillingCycleDetailModal = ({
                   : "-",
                 sub: "total for cycle",
                 icon: Home,
-                badgeBg: "bg-info-light",
-                badgeText: "text-info-dark",
+                colorClass: "text-sky-600 dark:text-sky-400",
               },
               {
                 label: "CURRENT RATE",
                 value: result ? fmtCurrency(result.ratePerUnit) : "-",
                 sub: `per ${unitLabel}`,
                 icon: Tag,
-                badgeBg: "bg-warning-light",
-                badgeText: "text-warning-dark",
+                colorClass: "text-amber-600 dark:text-amber-400",
               },
               {
                 label: "SEGMENTS",
                 value: result?.segments?.length ?? 0,
                 sub: "active segments",
                 icon: Layers,
-                badgeBg: "bg-success-light",
-                badgeText: "text-success-dark",
+                colorClass: "text-emerald-600 dark:text-emerald-400",
               },
-            ].map(({ label, value, sub, icon: Icon, badgeBg, badgeText }) => (
+            ].map(({ label, value, sub, icon: Icon, colorClass }) => (
               <div
                 key={label}
                 className="group relative flex flex-col justify-between min-h-[108px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default"
@@ -157,8 +153,8 @@ const BillingCycleDetailModal = ({
                   <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
                     {label}
                   </span>
-                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 ${badgeBg} ${badgeText}`}>
-                    <Icon size={15} />
+                  <div className={`flex shrink-0 items-center justify-center ${colorClass}`}>
+                    <Icon size={18} />
                   </div>
                 </div>
                 <div className="mt-2">

@@ -15,6 +15,9 @@ export {
  fmtCurrency,
  formatBranch,
  formatRoomType,
+ formatDisplayName,
+ capitalizeWords,
+ toTitleCase,
 } from "../../../shared/utils/formatDate.js";
 
 export { getReservationStatusLabel } from "../../../shared/utils/lifecycleNaming.js";

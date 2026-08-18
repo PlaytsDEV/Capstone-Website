@@ -186,16 +186,21 @@ const getTenantStatus = (tenant, bill, paymentRecord = null) => {
   return getNormalizedBillSnapshot(bill, paymentRecord).status;
 };
 
-const getStatusStyles = (status) => {
+const getStatusConfig = (status) => {
   switch (status) {
-    case "paid": return "bg-emerald-50 text-emerald-800 border-emerald-200 font-bold shadow-xs";
-    case "sent": return "bg-blue-50 text-blue-800 border-blue-200 font-bold shadow-xs";
-    case "generated": return "bg-amber-50 text-amber-900 border-amber-200 font-bold shadow-xs";
-    case "ready": return "bg-slate-100 text-slate-800 border-slate-200 font-bold shadow-xs";
-    case "pending_generation": return "bg-amber-50 text-amber-900 border-amber-300 font-bold shadow-xs";
-    case "overdue": return "bg-red-50 text-red-800 border-red-200 font-bold shadow-xs";
-    case "missing_data": return "bg-red-100 text-red-900 border-red-200 font-bold shadow-xs";
-    default: return "bg-muted text-muted-foreground border-border font-semibold";
+    case "paid":
+      return { text: "text-emerald-700 dark:text-emerald-400", dot: "bg-emerald-500" };
+    case "sent":
+      return { text: "text-sky-700 dark:text-sky-400", dot: "bg-sky-500" };
+    case "generated":
+    case "pending_generation":
+      return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
+    case "overdue":
+    case "missing_data":
+      return { text: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" };
+    case "ready":
+    default:
+      return { text: "text-slate-700 dark:text-slate-300", dot: "bg-slate-400" };
   }
 };
 
@@ -774,8 +779,9 @@ export default function RentBillingTab({ isActive }) {
                 <Clock3 size={16} className="text-sky-600 dark:text-sky-400" />
                 Automated Cron System
               </div>
-              <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200 uppercase">
-                Active
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>Active</span>
               </span>
             </div>
             <p className="mt-1.5 text-[11px] text-muted-foreground">Generates bills 7 days before due date automatically.</p>
@@ -950,7 +956,7 @@ export default function RentBillingTab({ isActive }) {
                               <span>•</span>
                               <span className="uppercase text-[10px] tracking-wider opacity-85 font-semibold">{formatBranch(row.branch)}</span>
                               {row.bill?.billType === "transfer_settlement" && row.bill?.transferSnapshot?.fromRoomName && (
-                                <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 border border-blue-200">
+                                <span className="inline-flex items-center gap-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-[10px] font-bold text-slate-800 dark:text-slate-200">
                                   <span>TRANSFER: {row.bill.transferSnapshot.fromRoomName}</span>
                                   <span>→</span>
                                   <span>{row.bill.transferSnapshot.toRoomName || row.roomName}</span>
@@ -962,11 +968,17 @@ export default function RentBillingTab({ isActive }) {
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex flex-col items-start gap-1">
-                          <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getStatusStyles(row.computedStatus)}`}>
-                            {row.computedStatus === 'missing_data' && <AlertCircle size={11} />}
-                            {row.computedStatus === 'pending_generation' && <Clock3 size={11} />}
-                            {TENANT_STATUS_LABELS[row.computedStatus] || row.computedStatus}
-                          </span>
+                          {(() => {
+                            const cfg = getStatusConfig(row.computedStatus);
+                            return (
+                              <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${cfg.text}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                                {row.computedStatus === 'missing_data' && <AlertCircle size={11} className="text-rose-600 shrink-0" />}
+                                {row.computedStatus === 'pending_generation' && <Clock3 size={11} className="text-amber-600 shrink-0" />}
+                                <span>{TENANT_STATUS_LABELS[row.computedStatus] || row.computedStatus}</span>
+                              </span>
+                            );
+                          })()}
                           {row.daysOverdue > 0 && (
                             <p className="text-[10px] font-bold text-red-600">
                               {row.daysOverdue} DAYS OVERDUE

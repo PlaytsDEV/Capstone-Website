@@ -195,7 +195,7 @@ export function ProviderRatingCard({
           </h3>
         </div>
         {isResolvedOrCompleted && (
-          <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400 border border-amber-300/80 dark:border-amber-700/60">
+          <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700">
             Pending Feedback
           </span>
         )}

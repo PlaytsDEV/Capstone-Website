@@ -11,6 +11,8 @@ import {
 } from "../../../shared/utils/authToasts";
 import LilycrestLogo from "../../../shared/components/LilycrestLogo";
 import ProfileAvatar, { getProfileInitials } from "../../../shared/components/ProfileAvatar";
+import { formatDisplayName } from "../../../shared/utils/formatDate";
+
 import {
  LayoutDashboard,
  CalendarCheck,
@@ -124,10 +126,16 @@ export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }
  };
 
  /* ── User display name ── */
- const displayName = user
- ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username || "Admin"
- : "Admin";
- const roleLabel = isOwner ? "Owner" : "Branch Admin";
+  const rawDisplayName = user
+    ? `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+      user.name ||
+      user.fullName ||
+      user.username ||
+      "Admin"
+    : "Admin";
+  const displayName = formatDisplayName(rawDisplayName);
+  const roleLabel = isOwner ? "Owner" : "Branch Admin";
+
  const initials = getProfileInitials(user, "A");
 
  const renderGroup = (group) => {
@@ -214,12 +222,12 @@ export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }
  />
  {!collapsed && (
  <div className="sb-profile-info">
- <span className="sb-profile-name">{displayName}</span>
+ <span className="sb-profile-name capitalize">{displayName}</span>
  <span className="sb-profile-role">{roleLabel}</span>
  </div>
  )}
  {collapsed && hoveredItem === "__profile" && (
- <span className="sb-tooltip">
+ <span className="sb-tooltip capitalize">
  {displayName} · {roleLabel}
  </span>
  )}

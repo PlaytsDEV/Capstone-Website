@@ -2541,18 +2541,15 @@ body.modal-open {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: var(--bg-inset, #f1f5f9);
-  border: 1px solid var(--border-subtle, #e2e8f0);
+  background: transparent;
+  border: none;
   color: var(--color-primary, #0A1628);
   flex-shrink: 0;
 }
 
 .dark .rfm-friendly-header__icon-badge {
-  background: #0f172a;
-  border-color: #334155;
+  background: transparent;
+  border: none;
   color: var(--color-accent, #d4af37);
 }
 

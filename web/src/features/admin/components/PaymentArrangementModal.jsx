@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Info, LoaderCircle } from "lucide-react";
 import { billingApi } from "../../../shared/api/billingApi.js";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock.js";
 
@@ -49,28 +50,33 @@ export default function PaymentArrangementModal({ open, bill, onClose, onSuccess
     }
   };
 
+  const isFormFilled = Boolean(milestone1Amount && milestone1Date && milestone2Amount && milestone2Date);
+
   return (
     <div className="tenant-workspace-modal__overlay" onClick={onClose}>
       <div className="tenant-workspace-modal" onClick={(e) => e.stopPropagation()}>
         <div className="tenant-workspace-modal__header">
-          <h3>Create Payment Arrangement (Milestone Invoices)</h3>
-          <button type="button" className="tenant-workspace-modal__close" onClick={onClose}>
+          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Create Payment Arrangement (Milestone Invoices)</h3>
+          <button type="button" className="tenant-workspace-modal__close" onClick={onClose} aria-label="Close modal">
             ×
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="tenant-workspace-modal__body">
-          {error && <div className="tenant-workspace-modal__error">{error}</div>}
+          {error && <div className="tenant-workspace-modal__error mb-4" role="alert">{error}</div>}
 
-          <div style={{ backgroundColor: "#eff6ff", border: "1px solid #93c5fd", padding: "0.75rem", borderRadius: "6px", color: "#1e40af", fontSize: "0.875rem", marginBottom: "1rem" }}>
-            Master Invoice Total: <strong>PHP {totalBillAmount.toLocaleString()}</strong>.
-            Voiding this bill will generate 2 exact-amount milestone sub-invoices.
+          <div className="flex items-start gap-3 p-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-sky-50/60 dark:bg-sky-950/20 text-sky-800 dark:text-sky-300 text-xs mb-4">
+            <Info size={16} className="text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
+            <div>
+              Master Invoice Total: <strong>PHP {totalBillAmount.toLocaleString()}</strong>.
+              Voiding this bill will generate 2 exact-amount milestone sub-invoices.
+            </div>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div className="flex flex-col gap-4">
             <div>
-              <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.25rem" }}>
-                Milestone 1 Amount (PHP)
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Milestone 1 Amount (PHP) *
               </label>
               <input
                 type="number"
@@ -78,22 +84,22 @@ export default function PaymentArrangementModal({ open, bill, onClose, onSuccess
                 placeholder="e.g. 2500"
                 value={milestone1Amount}
                 onChange={(e) => setMilestone1Amount(e.target.value)}
-                style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 outline-none focus:border-[#0A1628] dark:focus:border-slate-500"
               />
-              <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, marginTop: "0.5rem", marginBottom: "0.25rem" }}>
-                Milestone 1 Due Date
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mt-2 mb-1">
+                Milestone 1 Due Date *
               </label>
               <input
                 type="date"
                 value={milestone1Date}
                 onChange={(e) => setMilestone1Date(e.target.value)}
-                style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 outline-none focus:border-[#0A1628] dark:focus:border-slate-500"
               />
             </div>
 
             <div>
-              <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.25rem" }}>
-                Milestone 2 Amount (PHP)
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Milestone 2 Amount (PHP) *
               </label>
               <input
                 type="number"
@@ -101,26 +107,44 @@ export default function PaymentArrangementModal({ open, bill, onClose, onSuccess
                 placeholder="e.g. 2500"
                 value={milestone2Amount}
                 onChange={(e) => setMilestone2Amount(e.target.value)}
-                style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 outline-none focus:border-[#0A1628] dark:focus:border-slate-500"
               />
-              <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, marginTop: "0.5rem", marginBottom: "0.25rem" }}>
-                Milestone 2 Due Date
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mt-2 mb-1">
+                Milestone 2 Due Date *
               </label>
               <input
                 type="date"
                 value={milestone2Date}
                 onChange={(e) => setMilestone2Date(e.target.value)}
-                style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 outline-none focus:border-[#0A1628] dark:focus:border-slate-500"
               />
             </div>
           </div>
 
-          <div className="tenant-workspace-modal__actions" style={{ marginTop: "1.5rem", display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={loading}>
+          <div className="tenant-workspace-modal__actions mt-6 flex justify-end gap-2.5">
+            <button type="button" className="btn btn-secondary cursor-pointer" onClick={onClose} disabled={loading}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? "Creating..." : "Issue Milestone Invoices"}
+            <button
+              type="submit"
+              disabled={loading || !isFormFilled}
+              title={
+                !isFormFilled
+                  ? "Please fill in amounts and due dates for both milestones"
+                  : loading
+                  ? "Creating milestone invoices..."
+                  : "Issue milestone invoices"
+              }
+              className="btn btn-primary cursor-pointer bg-[#0A1628] hover:bg-[#13243D] text-white flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <>
+                  <LoaderCircle size={14} className="animate-spin" />
+                  <span>Creating...</span>
+                </>
+              ) : (
+                <span>Issue Milestone Invoices</span>
+              )}
             </button>
           </div>
         </form>

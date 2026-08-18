@@ -282,6 +282,7 @@ export default function ForceDeleteModal({
                 className="force-delete-modal__btn force-delete-modal__btn--next"
                 onClick={() => setStep(3)}
                 disabled={!nameMatches}
+                title={!nameMatches ? "Please type the exact tenant name to proceed" : "Confirm tenant name"}
               >
                 <span>Confirm Name & Continue</span>
                 <ArrowRight size={14} />
@@ -305,6 +306,13 @@ export default function ForceDeleteModal({
                 className="force-delete-modal__btn force-delete-modal__btn--destroy"
                 onClick={onConfirm}
                 disabled={!codeMatches || loading}
+                title={
+                  !codeMatches
+                    ? "Type exactly 'FORCE DELETE' to confirm irrevocable deletion"
+                    : loading
+                    ? "Deleting account..."
+                    : "Permanently delete this account"
+                }
               >
                 {loading ? (
                   <>

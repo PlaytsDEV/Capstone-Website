@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Sparkles, LoaderCircle } from "lucide-react";
 import { chatbotApi } from "../../../../shared/api/chatbotApi";
 
 const TONES = ["Formal", "Empathetic", "Firm", "Concise"];
@@ -57,9 +58,10 @@ export default function AdminReplyDraftButton({
         type="button"
         onClick={handleGenerate}
         disabled={disabled || loading}
-        className="flex items-center justify-center px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-md hover:bg-primary/90 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-md hover:bg-primary/90 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
       >
-        <span>{loading ? "Drafting..." : "Auto-Draft Reply"}</span>
+        {loading ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
+        <span>Auto-Draft Reply</span>
       </button>
 
       <div className="flex items-center gap-1 sm:border-l sm:border-border sm:pl-2.5">
