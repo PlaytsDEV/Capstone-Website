@@ -4,6 +4,7 @@ import {
   mobileBillStatusLabel,
   toMobilePaymentMethodLabel,
   toMobileBill,
+  formatMobileElectricityBreakdown,
   isMobileEffectivelyPaid,
   MOBILE_BILL_STATUSES,
 } from "./mobileBillingBridge.js";
@@ -143,6 +144,28 @@ describe("toMobilePaymentMethodLabel", () => {
     expect(toMobilePaymentMethodLabel(null)).toBeNull();
     expect(toMobilePaymentMethodLabel("")).toBeNull();
     expect(toMobilePaymentMethodLabel("some_future_unmapped_channel")).toBeNull();
+  });
+});
+
+describe("formatMobileElectricityBreakdown", () => {
+  test("formats canonical timestamps as Manila calendar dates instead of UTC date keys", () => {
+    const [segment] = formatMobileElectricityBreakdown({
+      ratePerKwh: 16,
+      segments: [{
+        startDate: new Date("2026-08-17T16:00:00.000Z"),
+        endDate: "2026-08-17T16:00:00.000Z",
+        readingFrom: 1000,
+        readingTo: 1459,
+        segmentTotalKwh: 459,
+        activeTenantCount: 1,
+        sharePerTenantCost: 7344,
+      }],
+    });
+
+    expect(segment.reading_date_from).toBe("2026-08-18");
+    expect(segment.reading_date_to).toBe("2026-08-18");
+    expect(segment.period_start).toBe("2026-08-18");
+    expect(segment.period_end).toBe("2026-08-18");
   });
 });
 
