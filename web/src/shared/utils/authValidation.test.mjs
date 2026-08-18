@@ -8,6 +8,8 @@ import {
   evaluateNewPassword,
   NEW_PASSWORD_MAX_LENGTH,
   calculatePasswordStrength,
+  formatProperCase,
+  sanitizeName,
 } from "./authValidation.js";
 
 test("validateEmail gives plain-language guidance, not technical jargon", () => {
@@ -75,3 +77,24 @@ test("getFirebaseErrorMessage maps duplicate-email signup to a sign-in prompt", 
   assert.match(message, /already exists/i);
   assert.match(message, /sign in/i);
 });
+
+test("formatProperCase capitalizes first letter of words and after spaces, hyphens, and apostrophes", () => {
+  assert.equal(formatProperCase(""), "");
+  assert.equal(formatProperCase("palicpic"), "Palicpic");
+  assert.equal(formatProperCase("vince"), "Vince");
+  assert.equal(formatProperCase("vince palicpic"), "Vince Palicpic");
+  assert.equal(formatProperCase("juan dela cruz"), "Juan Dela Cruz");
+  assert.equal(formatProperCase("mary-jane"), "Mary-Jane");
+  assert.equal(formatProperCase("o'connor"), "O'Connor");
+  assert.equal(formatProperCase("p"), "P");
+});
+
+test("sanitizeName strips forbidden characters and capitalizes the first letter of each word", () => {
+  assert.equal(sanitizeName(""), "");
+  assert.equal(sanitizeName("palicpic"), "Palicpic");
+  assert.equal(sanitizeName("palicpic123"), "Palicpic");
+  assert.equal(sanitizeName("vince<script>alert(1)</script>"), "Vince");
+  assert.equal(sanitizeName("dela cruz"), "Dela Cruz");
+  assert.equal(sanitizeName("anne-marie"), "Anne-Marie");
+});
+

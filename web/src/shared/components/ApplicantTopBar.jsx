@@ -4,6 +4,7 @@ import NotificationBell from "./NotificationBell";
 import ProfileAvatar, { getProfileInitials } from "./ProfileAvatar";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../../features/public/context/ThemeContext";
+import { formatDisplayName } from "../utils/formatDate";
 
 export default function ApplicantTopBar({ onOpenSidebar }) {
   const { user } = useAuth();
@@ -11,12 +12,16 @@ export default function ApplicantTopBar({ onOpenSidebar }) {
 
   const displayName = useMemo(() => {
     if (!user) return "User";
-    return (
+    const raw = (
       `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+      user.name ||
+      user.fullName ||
       user.username ||
       "User"
     );
+    return formatDisplayName(raw);
   }, [user]);
+
 
   const roleLabel = useMemo(() => {
     return user?.role === "tenant" ? "Tenant" : "Applicant";
@@ -80,7 +85,7 @@ export default function ApplicantTopBar({ onOpenSidebar }) {
         >
           <ProfileAvatar user={user} initials={initials} size={32} />
           <div className="hidden min-w-0 text-left md:block">
-            <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
+            <div className="truncate text-sm font-semibold text-[var(--text-primary)] capitalize">
               {displayName}
             </div>
             <div className="text-xs text-[var(--text-muted)]">{roleLabel}</div>

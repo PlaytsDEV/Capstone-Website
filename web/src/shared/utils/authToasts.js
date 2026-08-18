@@ -1,3 +1,5 @@
+import { formatDisplayName } from "./formatDate.js";
+
 export const AUTH_TOAST_DURATION = 5000;
 
 const emailPrefix = (email) => {
@@ -14,7 +16,8 @@ export const resolveAuthDisplayName = (user, fallbackName = "there") => {
   const emailName = emailPrefix(user?.email) || emailPrefix(fallbackName);
   const fallback = fallbackName?.trim?.() || "there";
 
-  return fullName || displayName || username || emailName || fallback;
+  const resolved = fullName || displayName || username || emailName || fallback;
+  return formatDisplayName(resolved);
 };
 
 export const buildAuthSuccessMessage = (user, fallbackName = "there") => {

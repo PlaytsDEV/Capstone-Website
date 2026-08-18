@@ -135,6 +135,7 @@ const PhoneInput = ({
  noDefault = false,
  label = "Phone number",
  className,
+ list,
 }) => {
  const parsed = parseE164(value);
 
@@ -386,6 +387,7 @@ const PhoneInput = ({
               aria-invalid={showError}
               aria-describedby={error ? phoneErrorId : undefined}
               className="floating-field__phone-input"
+              list={list}
             />
 
             {/* Real-time counter (hidden in full-int mode, and on very narrow
@@ -435,7 +437,7 @@ const PhoneInput = ({
       <div
         style={{
           display: "flex",
-          border: `1.5px solid ${showError ? "#dc2626" : "#D1D5DB"}`,
+          border: `1px solid ${showError ? "#dc2626" : "#D1D5DB"}`,
           borderRadius: 8,
           background: "var(--surface-card, #fff)",
           transition: "border-color 0.15s, box-shadow 0.15s",
@@ -516,6 +518,7 @@ const PhoneInput = ({
           onBlur={onBlur}
           maxLength={localNumber.startsWith("+") ? 16 : expectedLength}
           placeholder={getPlaceholder()}
+          list={list}
           style={{
             flex: 1,
             border: "none",

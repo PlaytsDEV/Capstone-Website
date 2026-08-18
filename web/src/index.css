@@ -2,9 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-html {
-  scrollbar-gutter: stable;
-}
 
 /* =============================================================================
    LILYCREST DESIGN SYSTEM — CSS Custom Properties
@@ -98,8 +95,8 @@ html {
   --transition-normal: 0.2s ease;
 
   /* ── Focus Ring ────────────────────────────────────────────── */
-  --focus-ring: 0 0 0 1.5px rgba(10, 22, 40, 0.07);
-  --focus-outline: 1.5px solid rgba(15, 23, 42, 0.45);
+  --focus-ring: 0 0 0 1px rgba(10, 22, 40, 0.07);
+  --focus-outline: 1px solid rgba(15, 23, 42, 0.45);
 
   --chart-gold: var(--color-accent);
   --primary: var(--color-primary);
@@ -115,11 +112,14 @@ html {
   /* ── Avatar Profile Tokens (Light: Navy bg + White text | Dark: Gold bg + Navy text) ── */
   --avatar-bg: #0A1628;
   --avatar-color: #ffffff;
-  --avatar-border: rgba(10, 22, 40, 0.15);
+  --avatar-border: transparent;
+  --avatar-shadow: 0 2px 6px rgba(10, 36, 99, 0.08), 0 1px 2px rgba(10, 36, 99, 0.04);
+  --avatar-shadow-lg: 0 4px 12px rgba(10, 36, 99, 0.10), 0 1px 3px rgba(10, 36, 99, 0.06);
 }
 
 html {
   scroll-behavior: smooth;
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -153,6 +153,16 @@ body {
 input[type="password"]::-ms-reveal,
 input[type="password"]::-ms-clear {
   display: none;
+}
+
+/* ── Hide Native Datalist / Autocomplete Dropdown Arrow Indicators ─── */
+/* Prevents intrusive native dropdown arrow (▼) on inputs with datalist / suggestions */
+input::-webkit-calendar-picker-indicator,
+input::-webkit-list-button {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  -webkit-appearance: none !important;
 }
 
 /* Offset anchor scroll for sticky navbar */
@@ -300,22 +310,22 @@ section[id] {
 /* ── Inquiry Form Focus States (CSS-only, no JS delay) ──── */
 .inquiry-field:focus {
   border-color: var(--lp-accent) !important;
-  box-shadow: 0 0 0 1.5px rgba(212, 175, 55, 0.15);
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.15);
   outline: none;
 }
 
 .inquiry-field.has-error:focus {
   border-color: #ef4444 !important;
-  box-shadow: 0 0 0 1.5px rgba(239, 68, 68, 0.08);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.08);
 }
 
 /* Stronger glow on dark backgrounds */
 .landing-page[data-theme="dark"] .inquiry-field:focus {
-  box-shadow: 0 0 0 1.5px rgba(212, 175, 55, 0.25);
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.25);
 }
 
 .landing-page[data-theme="dark"] .inquiry-field.has-error:focus {
-  box-shadow: 0 0 0 1.5px rgba(239, 68, 68, 0.15);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.15);
 }
 
 /* ── Dark Mode Global Overrides ───────────────────────────── */
@@ -510,8 +520,8 @@ html[data-theme="dark"] {
   --border-strong:  #334155;
 
   /* ── Focus Ring & Interactive Accents ────────────────────────── */
-  --focus-ring: 0 0 0 1.5px rgba(212, 175, 55, 0.25);
-  --focus-outline: 1.5px solid #D4AF37;
+  --focus-ring: 0 0 0 1px rgba(212, 175, 55, 0.25);
+  --focus-outline: 1px solid #D4AF37;
 
   /* ── Legacy compat aliases ───────────────────────────────────── */
   --bg-page:  #0B1120;
@@ -529,7 +539,9 @@ html[data-theme="dark"] {
   /* ── Avatar Profile Tokens (Dark: Golden Yellow bg + Navy text) ── */
   --avatar-bg: #D4AF37;
   --avatar-color: #0A1628;
-  --avatar-border: rgba(212, 175, 55, 0.35);
+  --avatar-border: transparent;
+  --avatar-shadow: 0 0 8px rgba(255, 255, 255, 0.08), 0 1px 3px rgba(0, 0, 0, 0.30);
+  --avatar-shadow-lg: 0 0 12px rgba(255, 255, 255, 0.10), 0 2px 6px rgba(0, 0, 0, 0.40);
 
   color-scheme: dark;
 }
@@ -580,13 +592,47 @@ html[data-theme="dark"] textarea::placeholder {
   color: var(--text-muted) !important;
 }
 
-/* ── Scrollbar ───────────────────────────────────────────────── */
-html[data-theme="dark"] {
-  scrollbar-color: #1E293B #0B1120;
+/* ── Global Sleek Scrollbar System ───────────────────────────── */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 }
-html[data-theme="dark"] ::-webkit-scrollbar { width: 8px; height: 8px; }
-html[data-theme="dark"] ::-webkit-scrollbar-track { background: #0B1120; }
-html[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 4px; }
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Dark Mode Scrollbar */
+html[data-theme="dark"] {
+  scrollbar-color: #334155 transparent;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 9999px;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
 
 /* ══════════════════════════════════════════════════════════════════
    CSS ATTRIBUTE OVERRIDES
@@ -687,6 +733,26 @@ html[data-theme="dark"] .border-gray-100 {
 .btn-success,
 .btn-danger,
 .auth-btn-primary,
-.auth-btn-google {
+.auth-btn-google,
+.auth-btn-outline {
   border-radius: 9999px !important;
 }
+
+/* =============================================================================
+   FLOATING AI ASSISTANT / CHATBOT ANIMATION
+   Smooth sinusoidal vertical floating motion for the floating action buttons.
+   ============================================================================= */
+@keyframes lcBotFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
+.lc-bot-float-anim {
+  animation: lcBotFloat 2.2s ease-in-out infinite !important;
+  will-change: transform;
+}
+
