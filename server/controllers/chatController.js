@@ -10,6 +10,11 @@ import { CURRENT_RESIDENT_STATUS_QUERY } from "../utils/lifecycleNaming.js";
 import { notify } from "../utils/notificationService.js";
 import { emitToChatAdmins, emitToUser } from "../utils/socket.js";
 import { ADMIN_ROLE_VALUES, OWNER_ROLE_VALUES, isOwnerRole } from "../config/roles.js";
+import {
+  ensureChatTicketId,
+  ensureChatTicketIds,
+  generateChatTicketId,
+} from "../services/chatTicketIdService.js";
 
 const MAX_MESSAGE_CHARS = 1000;
 const ADMIN_ROLES = new Set(ADMIN_ROLE_VALUES);
@@ -526,6 +531,7 @@ function serializeConversation(conversation) {
 
   return {
     id: String(doc._id || doc.id),
+    ticketId: doc.ticketId || "",
     tenantId: tenantIdStr,
     tenantName:
       doc.tenantName ||
@@ -1009,10 +1015,12 @@ export async function startConversation(req, res) {
       if (!conversation.category) conversation.category = "general_inquiry";
       if (!conversation.priority) conversation.priority = "normal";
       await conversation.save();
+      conversation = await ensureChatTicketId(conversation);
     } else {
       const category = normalizeCategory(req.body?.category, { required: true });
       const priority = normalizePriority(req.body?.priority, category);
       conversation = await ChatConversation.create({
+        ticketId: await generateChatTicketId(),
         tenantId: tenantContext.user._id,
         tenantUserId: tenantContext.user.user_id || "",
         tenantName,
@@ -1048,7 +1056,7 @@ export async function startConversation(req, res) {
 export async function getMyConversations(req, res) {
   try {
     const tenantContext = await resolveTenantContext(req);
-    const conversations = await ChatConversation.find({
+    let conversations = await ChatConversation.find({
       tenantId: tenantContext.user._id,
     })
       .populate("tenantId", "profileImage firstName lastName email user_id")
@@ -1056,6 +1064,7 @@ export async function getMyConversations(req, res) {
       .limit(50)
       .lean();
 
+    conversations = await ensureChatTicketIds(conversations);
     await batchResolveConversationPhotos(conversations);
 
     return res.json({
@@ -1069,10 +1078,11 @@ export async function getMyConversations(req, res) {
 export async function getConversationMessages(req, res) {
   try {
     const tenantContext = await resolveTenantContext(req);
-    const conversation = await findConversationForTenant(
+    let conversation = await findConversationForTenant(
       req.params.conversationId,
       tenantContext.user,
     );
+    conversation = await ensureChatTicketId(conversation);
 
     await markAdminMessagesRead(conversation._id);
 
@@ -1448,6 +1458,7 @@ export async function getAdminConversations(req, res) {
     if (search) {
       const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
       filter.$or = [
+        { ticketId: regex },
         { tenantName: regex },
         { tenantEmail: regex },
         { roomNumber: regex },
@@ -1456,12 +1467,13 @@ export async function getAdminConversations(req, res) {
       ];
     }
 
-    const conversations = await ChatConversation.find(filter)
+    let conversations = await ChatConversation.find(filter)
       .populate("tenantId", "profileImage firstName lastName email user_id")
       .sort({ lastMessageAt: -1, updatedAt: -1 })
       .limit(200)
       .lean();
 
+    conversations = await ensureChatTicketIds(conversations);
     await batchResolveConversationPhotos(conversations);
 
     conversations.sort((left, right) => {
@@ -1497,10 +1509,11 @@ export async function getAdminConversations(req, res) {
 export async function getAdminConversationMessages(req, res) {
   try {
     const adminContext = await resolveAdminContext(req);
-    const conversation = await findConversationForAdmin(
+    let conversation = await findConversationForAdmin(
       req.params.conversationId,
       adminContext,
     );
+    conversation = await ensureChatTicketId(conversation);
 
     await markTenantMessagesRead(conversation._id);
 

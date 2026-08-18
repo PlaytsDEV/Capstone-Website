@@ -35,6 +35,7 @@ function makeDb({
   conversations = [],
 } = {}) {
   const conversationStore = [...conversations];
+  let ticketSequence = 0;
   return {
     collection(name) {
       if (name === 'roomoccupancyhistories') return { findOne: async () => occupancyDoc };
@@ -42,6 +43,15 @@ function makeDb({
       if (name === 'reservations') return { findOne: async () => reservationDoc };
       if (name === 'contracts') return { findOne: async () => contractDoc };
       if (name === 'rooms') return { findOne: async () => room };
+      if (name === 'chatTicketCounters') {
+        return {
+          findOneAndUpdate: async () => ({
+            _id: 'inquiry:2026',
+            year: 2026,
+            sequence: ++ticketSequence,
+          }),
+        };
+      }
       if (name === 'chat_conversations') {
         return {
           findOne: async () => conversationStore.find((c) => c.status !== 'closed') || null,

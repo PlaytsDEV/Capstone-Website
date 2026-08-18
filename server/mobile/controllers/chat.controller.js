@@ -2,6 +2,11 @@ const { Types: { ObjectId } } = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 const { getDb } = require('../config/database');
+const {
+  ensureChatTicketId,
+  ensureChatTicketIds,
+  generateChatTicketId,
+} = require('../services/chatTicketId.service');
 const { resolveRequesterBranchCode, normalizedBranchReference } = require('./announcement.controller');
 
 // Lazy-load socket module (shimmed by mobileRoutes.js to call emitToChatAdmins).
@@ -198,6 +203,7 @@ function serializeConversation(conversation) {
   if (!conversation) return null;
   return {
     id: String(conversation._id),
+    ticketId: conversation.ticketId || '',
     tenantId: conversation.tenantId ? String(conversation.tenantId) : '',
     tenantName: conversation.tenantName || 'Tenant',
     tenantEmail: conversation.tenantEmail || '',
@@ -540,10 +546,12 @@ async function startConversation(req, res) {
         },
       );
       conversation = await conversations.findOne({ _id: conversation._id });
+      conversation = await ensureChatTicketId(db, conversations, conversation);
     } else {
       const category = normalizeCategory(req.body?.category, { required: true });
       const priority = normalizePriority(req.body?.priority, category);
       conversation = {
+        ticketId: await generateChatTicketId(db, now),
         tenantId: tenant.mongoId,
         tenantUserId: req.user.user_id || '',
         tenantName: tenant.tenantName,
@@ -590,12 +598,14 @@ async function getMyConversations(req, res) {
   try {
     const db = getDb();
     await resolveTenantContext(db, req.user);
-    const conversations = await db.collection(CHAT_CONVERSATIONS)
+    const conversationsCollection = db.collection(CHAT_CONVERSATIONS);
+    let conversations = await conversationsCollection
       .find(tenantQuery(req.user))
       .sort({ lastMessageAt: -1, updatedAt: -1 })
       .limit(50)
       .toArray();
 
+    conversations = await ensureChatTicketIds(db, conversationsCollection, conversations);
     return res.json({ conversations: conversations.map(serializeConversation) });
   } catch (error) {
     return sendError(res, error, 'Failed to load conversations.');
@@ -606,11 +616,13 @@ async function getConversationMessages(req, res) {
   try {
     const db = getDb();
     await resolveTenantContext(db, req.user);
-    const conversation = await getTenantConversation(db, req.params.conversationId, req.user);
+    const conversations = db.collection(CHAT_CONVERSATIONS);
+    let conversation = await getTenantConversation(db, req.params.conversationId, req.user);
+    conversation = await ensureChatTicketId(db, conversations, conversation);
     const now = new Date();
 
     await Promise.all([
-      db.collection(CHAT_CONVERSATIONS).updateOne(
+      conversations.updateOne(
         { _id: conversation._id },
         { $set: { unreadTenantCount: 0, updatedAt: now } },
       ),
@@ -635,7 +647,7 @@ async function getConversationMessages(req, res) {
         .find({ conversationId: conversation._id })
         .sort({ createdAt: 1 })
         .toArray(),
-      db.collection(CHAT_CONVERSATIONS).findOne({ _id: conversation._id }),
+      conversations.findOne({ _id: conversation._id }),
     ]);
 
     return res.json({

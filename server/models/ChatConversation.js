@@ -3,6 +3,12 @@ import { ROOM_BRANCHES } from "../config/branches.js";
 
 const chatConversationSchema = new mongoose.Schema(
   {
+    ticketId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      immutable: true,
+    },
     tenantId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -168,6 +174,7 @@ chatConversationSchema.virtual("id").get(function getId() {
 });
 
 chatConversationSchema.index({ tenantId: 1, status: 1 });
+chatConversationSchema.index({ ticketId: 1 }, { unique: true, sparse: true });
 chatConversationSchema.index({ branch: 1, status: 1, lastMessageAt: -1 });
 chatConversationSchema.index({ branch: 1, priority: 1, lastMessageAt: -1 });
 chatConversationSchema.index({ updatedAt: -1 });

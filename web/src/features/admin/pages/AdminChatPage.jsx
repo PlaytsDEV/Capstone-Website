@@ -542,6 +542,7 @@ export default function AdminChatPage() {
       // 1. Search filter
       if (q) {
         const matchesSearch =
+          (item.ticketId || "").toLowerCase().includes(q) ||
           (item.tenantName || "").toLowerCase().includes(q) ||
           (item.tenantEmail || "").toLowerCase().includes(q) ||
           (item.roomNumber || "").toLowerCase().includes(q) ||
@@ -929,6 +930,7 @@ export default function AdminChatPage() {
       y += 10;
 
       const details = [
+        ["Inquiry ID", selectedConversation.ticketId || "Not assigned"],
         ["Tenant", selectedConversation.tenantName],
         ["Branch / Room", `${getBranchLabel(selectedConversation.branch)} - ${getRoomLabel(selectedConversation)}`],
         ["Category", getCategoryLabel(selectedConversation.category)],
@@ -1377,7 +1379,7 @@ export default function AdminChatPage() {
                             </div>
 
                             <div className="text-[11px] text-muted-foreground truncate font-normal">
-                              {getBranchLabel(conversation.branch)} · {getRoomLabel(conversation)}
+                              {conversation.ticketId || "Inquiry ID pending"} · {getBranchLabel(conversation.branch)} · {getRoomLabel(conversation)}
                             </div>
 
                             <p className="text-[11px] text-muted-foreground truncate line-clamp-1 leading-tight font-normal">
@@ -1435,6 +1437,11 @@ export default function AdminChatPage() {
                       <span className="text-xs font-medium text-muted-foreground">
                         {getBranchLabel(selectedConversation.branch)} · {getRoomLabel(selectedConversation)}
                       </span>
+                      {selectedConversation.ticketId && (
+                        <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-[11px] font-semibold text-foreground">
+                          {selectedConversation.ticketId}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 text-xs">
