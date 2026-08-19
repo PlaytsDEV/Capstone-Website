@@ -1488,6 +1488,19 @@ export default function AdminChatPage() {
                       <span>{getCategoryLabel(selectedConversation.category)}</span>
                     </span>
 
+                    {/* Contract context — this conversation was started from a specific lease Contract */}
+                    {selectedConversation.context?.entityType === "contract" && (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/admin/contracts/${selectedConversation.context.entityId}`)}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-transparent px-2 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-400 hover:bg-muted/40 transition-colors cursor-pointer"
+                        title="Open the related Contract"
+                      >
+                        <FileText size={12} />
+                        <span>View Contract</span>
+                      </button>
+                    )}
+
                     {/* Interactive Status Badge Button */}
                     <button
                       type="button"

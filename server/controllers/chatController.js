@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import {
   ChatConversation,
   ChatMessage,
+  Contract,
   Reservation,
   User,
 } from "../models/index.js";
@@ -156,6 +157,40 @@ function normalizeCategory(rawCategory, { required = false } = {}) {
   }
 
   return category;
+}
+
+const VALID_CONTEXT_ENTITY_TYPES = new Set(["contract"]);
+
+// Never trusts a client-supplied context at face value — a tenant could
+// otherwise attach any contractId to a conversation and have Admin see it
+// as "their" contract concern. Ownership is verified server-side against
+// the authenticated tenant before the reference is ever persisted; an
+// invalid/unowned reference is silently dropped (falls back to no context)
+// rather than failing the whole start-conversation request — starting a
+// conversation must not fail because of a bad context hint.
+async function resolveConversationContext(rawContext, tenantUser) {
+  const entityType = String(rawContext?.entityType || "").trim().toLowerCase();
+  const entityId = String(rawContext?.entityId || "").trim();
+  if (!entityType || !entityId) return null;
+  if (!VALID_CONTEXT_ENTITY_TYPES.has(entityType)) return null;
+  if (!mongoose.Types.ObjectId.isValid(entityId)) return null;
+
+  if (entityType === "contract") {
+    const owned = await Contract.exists({ _id: entityId, tenantId: tenantUser._id });
+    if (!owned) return null;
+    return { entityType: "contract", entityId, sourceModule: "contract" };
+  }
+
+  return null;
+}
+
+function serializeContext(context) {
+  if (!context?.entityType || !context?.entityId) return null;
+  return {
+    entityType: context.entityType,
+    entityId: String(context.entityId),
+    sourceModule: context.sourceModule || "",
+  };
 }
 
 function normalizePriority(rawPriority, category = "") {
@@ -547,6 +582,7 @@ function serializeConversation(conversation) {
     priority: doc.priority || "normal",
     assignedAdminId: doc.assignedAdminId ? String(doc.assignedAdminId) : "",
     assignedAdminName: doc.assignedAdminName || "",
+    context: serializeContext(doc.context),
     lastMessage: doc.lastMessage || "",
     lastMessageAt: doc.lastMessageAt || doc.updatedAt || doc.createdAt || null,
     unreadAdminCount: doc.unreadAdminCount || 0,
@@ -1010,10 +1046,31 @@ export async function startConversation(req, res) {
       reservation: tenantContext.activeReservation,
     });
 
-    let conversation = await ChatConversation.findOne({
-      tenantId: tenantContext.user._id,
-      status: { $in: ["open", "in_review", "waiting_tenant"] },
-    }).sort({ updatedAt: -1 });
+    const context = await resolveConversationContext(req.body?.context, tenantContext.user);
+
+    // With a context (e.g. "this concerns Contract X"), only reuse/reopen an
+    // existing conversation about that SAME entity — never silently attach
+    // to an unrelated open thread. Without a context, preserve the original
+    // behavior of reusing the tenant's most recent active conversation, but
+    // scoped to other context-less conversations so a generic "talk to
+    // admin" request can never hijack an existing contract-specific thread.
+    const reuseFilter = context
+      ? {
+          tenantId: tenantContext.user._id,
+          status: { $in: ["open", "in_review", "waiting_tenant"] },
+          "context.entityType": context.entityType,
+          "context.entityId": context.entityId,
+        }
+      : {
+          tenantId: tenantContext.user._id,
+          status: { $in: ["open", "in_review", "waiting_tenant"] },
+          $or: [
+            { "context.entityType": "" },
+            { "context.entityType": { $exists: false } },
+          ],
+        };
+
+    let conversation = await ChatConversation.findOne(reuseFilter).sort({ updatedAt: -1 });
 
     if (conversation) {
       conversation.tenantName = tenantName;
@@ -1044,6 +1101,7 @@ export async function startConversation(req, res) {
         status: "open",
         category,
         priority,
+        context: context || undefined,
         statusHistory: [
           {
             status: "open",
