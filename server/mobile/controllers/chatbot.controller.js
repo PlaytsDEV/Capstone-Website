@@ -115,6 +115,14 @@ function classifyIntentLocal(message) {
   return { intent: bestIntent, confidence };
 }
 
+function isLeasingPricingInquiry(message = '') {
+  const normalized = String(message).toLowerCase().replace(/\s+/g, ' ').trim();
+  const roomInventory = /\b(room(?:s)?|quad(?:ruple)?(?: sharing)?|double(?: sharing)?|private(?: room)?|short[- ]term|long[- ]term)\b/i;
+  const pricing = /\b(price|pricing|rate(?:s)?|cost|rent(?:al)?|how much|magkano)\b/i;
+
+  return roomInventory.test(normalized) && pricing.test(normalized);
+}
+
 // Safe structured log — never logs tokens, credentials, or full message content
 function logChatEvent(type, data) {
   try {
@@ -537,9 +545,10 @@ async function sendMessage(req, res) {
       } else {
         // Normal message — AI-first, check if message is related to leasing/pricing/rooms
         let systemPromptOverride = null;
-        const isLeasingInquiry =
-          meta.intent === 'reservation' ||
-          /(price|rate|cost|rent|how much|quad|double|private|room rate|deposit|advance|short-term|long-term|move-in)/i.test(userMessage);
+        // A tenant asking "What is my room?" is requesting their canonical
+        // assignment, not public inventory pricing. Only hydrate live room
+        // rates when both room inventory and a pricing term are explicit.
+        const isLeasingInquiry = isLeasingPricingInquiry(userMessage);
 
         if (isLeasingInquiry) {
           const branch = tenantContext?.branchRaw;
@@ -846,6 +855,7 @@ module.exports = {
   __test: {
     getOwnedLiveChat,
     buildTenantContextLines,
+    isLeasingPricingInquiry,
     liveChatQueue,
   },
 };

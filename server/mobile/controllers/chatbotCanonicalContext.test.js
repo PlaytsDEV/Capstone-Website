@@ -116,6 +116,46 @@ describe('vendored mobile Lily canonical context', () => {
     expect(db.collection).not.toHaveBeenCalled();
   });
 
+  test('a tenant asking for my room receives assignment context without loading public room rates', async () => {
+    mockSendGeminiMessage.mockResolvedValueOnce({ text: 'Your current assignment is the room in your tenant context.' });
+    const tenantId = new ObjectId();
+    const db = { collection: jest.fn() };
+    mockGetDb.mockReturnValue(db);
+    const req = {
+      user: {
+        _id: tenantId,
+        user_id: 'tenant-firebase-id',
+        role: 'tenant',
+        name: 'Ava Guest',
+        email: 'ava@example.com',
+      },
+      body: { message: 'What is my room?', session_id: 'tenant-room-session' },
+    };
+    const res = response();
+
+    await sendMessage(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(mockResolveTenantAIContext).toHaveBeenCalledWith(
+      tenantId,
+      req.user,
+      { db, domains: [] },
+    );
+    expect(mockSendGeminiMessage).toHaveBeenCalledWith(
+      'tenant-firebase-id:tenant-room-session',
+      expect.stringMatching(/Current assignment: room GP-202, A-L/i),
+    );
+    expect(mockSendGeminiMessage.mock.calls[0][1]).not.toMatch(/AUTHORIZED CURRENT ROOM RATES/i);
+    expect(db.collection).not.toHaveBeenCalled();
+  });
+
+  test('leasing-rate hydration requires explicit room inventory and pricing terms', () => {
+    expect(__test.isLeasingPricingInquiry('What is my room?')).toBe(false);
+    expect(__test.isLeasingPricingInquiry('Magkano ang babayaran ko this month?')).toBe(false);
+    expect(__test.isLeasingPricingInquiry('What are the current room rates?')).toBe(true);
+    expect(__test.isLeasingPricingInquiry('How much is a private room?')).toBe(true);
+  });
+
   test('rejects unrelated requests before resolving tenant context or calling Gemini', async () => {
     const req = {
       user: {
