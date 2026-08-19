@@ -16,6 +16,7 @@ import {
   FileText,
   Filter,
   Image as ImageIcon,
+  ImageOff,
   Inbox,
   LoaderCircle,
   Lock,
@@ -125,23 +126,66 @@ const fmtDateTime = (value) => {
 
 function ProtectedChatImage({ attachment, className, onOpen, onLoad }) {
   const [source, setSource] = useState("");
+  // "loading" | "ready" | "error". A failed protected read must settle on a
+  // definite, readable state — an unresolved read used to leave the skeleton
+  // pulsing forever, which is indistinguishable from a slow network.
+  const [status, setStatus] = useState("loading");
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
     let active = true;
     let objectUrl = "";
+    setStatus("loading");
+    setSource("");
     chatApi.getAttachmentBlob(attachment)
       .then((blob) => {
         objectUrl = URL.createObjectURL(blob);
-        if (active) setSource(objectUrl);
+        if (!active) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        setSource(objectUrl);
+        setStatus("ready");
       })
-      .catch(() => setSource(""));
+      .catch(() => {
+        if (active) setStatus("error");
+      });
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [attachment]);
+  }, [attachment, attempt]);
 
-  if (!source) {
-    return <div className={`${className} bg-muted animate-pulse`} aria-label="Loading protected attachment" />;
+  if (status === "error") {
+    return (
+      <div
+        className={`${className} bg-muted border border-border/60 rounded-lg flex flex-col items-center justify-center gap-1 text-center p-2`}
+        role="alert"
+        data-attachment-state="error"
+      >
+        <ImageOff size={18} className="text-muted-foreground" aria-hidden="true" />
+        <span className="text-[11px] leading-tight text-muted-foreground">
+          Attachment unavailable
+        </span>
+        <button
+          type="button"
+          onClick={() => setAttempt((value) => value + 1)}
+          className="text-[11px] underline text-muted-foreground hover:text-foreground"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (status === "loading" || !source) {
+    return (
+      <div
+        className={`${className} bg-muted animate-pulse`}
+        aria-label="Loading protected attachment"
+        data-attachment-state="loading"
+      />
+    );
   }
   return (
     <button
@@ -149,6 +193,7 @@ function ProtectedChatImage({ attachment, className, onOpen, onLoad }) {
       onClick={() => onOpen?.({ ...attachment, objectUrl: source })}
       className="relative group rounded-lg overflow-hidden border border-border/40 focus:outline-none cursor-pointer block"
       title="Click to enlarge"
+      data-attachment-state="ready"
     >
       <img
         src={source}
