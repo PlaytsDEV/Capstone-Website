@@ -15,6 +15,7 @@
  */
 
 import { getVisibleBillSnapshot, getUtilityDispatchEntry } from "../utils/billingPolicy.js";
+import { formatManilaDate } from "../utils/dateUtils.js";
 import { PAYMENT_METHOD_LABELS } from "../utils/paymongoPaymentMethod.js";
 import { BILL_STATEMENT_TEMPLATE_VERSION } from "./billingStatementTemplate.js";
 import { BILL_RECEIPT_TEMPLATE_VERSION } from "./billingReceiptTemplate.js";
@@ -167,6 +168,11 @@ function toIsoOrNull(value) {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
+function toManilaDateKeyOrLabel(value, fallback = "") {
+  if (!value) return fallback;
+  return formatManilaDate(value) || fallback;
+}
+
 /**
  * Explicit mobile schedule state derived only from canonical persisted data.
  * A utility card therefore always has dates or an honest pending/unavailable
@@ -232,12 +238,8 @@ export function formatMobileElectricityBreakdown(breakdown) {
     const shareKwh = Number(seg.sharePerTenantKwh ?? 0);
     const segmentTotal = Number(seg.segmentTotalCost ?? (shareCost * occupants) ?? (consumption * rate));
 
-    const startDateStr = seg.startDate
-      ? (typeof seg.startDate === "string" ? seg.startDate.slice(0, 10) : new Date(seg.startDate).toISOString().slice(0, 10))
-      : (seg.periodLabel || "");
-    const endDateStr = seg.endDate
-      ? (typeof seg.endDate === "string" ? seg.endDate.slice(0, 10) : new Date(seg.endDate).toISOString().slice(0, 10))
-      : (seg.periodLabel || "");
+    const startDateStr = toManilaDateKeyOrLabel(seg.startDate, seg.periodLabel || "");
+    const endDateStr = toManilaDateKeyOrLabel(seg.endDate, seg.periodLabel || "");
 
     return {
       segment_index: idx + 1,
@@ -278,6 +280,9 @@ export function formatMobileWaterBreakdown(breakdown) {
   const tenantsSharing = Number(rec.tenantsSharing || 1);
 
   return {
+    period_start: toIsoOrNull(breakdown?.period?.startDate),
+    period_end: toIsoOrNull(breakdown?.period?.endDate),
+    reading_date: toIsoOrNull(breakdown?.period?.endDate),
     reading_from: readingFrom,
     reading_to: readingTo,
     consumption: +consumption.toFixed(1),

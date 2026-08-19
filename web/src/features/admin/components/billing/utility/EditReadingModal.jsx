@@ -193,10 +193,10 @@ export default function EditReadingModal({
               }
             }}
             disabled={isSaving}
-            title={isSaving ? "Saving in progress..." : "Delete this meter reading"}
+            title={isSaving ? "Saving in progress..." : "Archive this meter reading"}
           >
             <Trash2 size={13} className="shrink-0" />
-            <span>Delete</span>
+            <span>Archive</span>
           </button>
 
           <div className="flex items-center gap-2">

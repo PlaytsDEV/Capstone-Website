@@ -54,11 +54,21 @@ function normalizePushEntry(entry, fallback = {}) {
 function extractUserPushTokens(user) {
   if (!user) return [];
 
+  const explicitlyDisabled = new Set(
+    Array.isArray(user.push_tokens)
+      ? user.push_tokens
+        .filter((entry) => entry && typeof entry === 'object' && entry.enabled === false)
+        .map((entry) => normalizeString(entry.token || entry.push_token || entry.value))
+        .filter(Boolean)
+      : []
+  );
   const candidates = [];
   if (Array.isArray(user.push_tokens)) {
-    candidates.push(...user.push_tokens.map((entry) => normalizePushEntry(entry)));
+    candidates.push(...user.push_tokens
+      .filter((entry) => !(entry && typeof entry === 'object' && entry.enabled === false))
+      .map((entry) => normalizePushEntry(entry)));
   }
-  if (user.push_token) {
+  if (user.push_token && !explicitlyDisabled.has(normalizeString(user.push_token))) {
     candidates.push(normalizePushEntry(
       {
         token: user.push_token,

@@ -757,14 +757,24 @@ const UtilityBillingTab = ({
     }
   };
 
-  const handleDeleteReading = async (readingId) => {
-    try {
-      await deleteReading.mutateAsync(readingId);
-      notify.success("Meter reading deleted successfully.");
-      await queryClient.invalidateQueries({ queryKey: utilityKeys.all(utilityType) });
-    } catch (err) {
-      notify.error(err, "Unable to delete meter reading. Please try again.");
-    }
+  const handleDeleteReading = (readingId) => {
+    setConfirmModal({
+      open: true,
+      title: "Archive Meter Reading",
+      message: "Archive this meter reading? It will leave active billing views but remain preserved in system history. This cannot be changed after a bill has been sent.",
+      variant: "danger",
+      confirmText: "Archive",
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, open: false }));
+        try {
+          await deleteReading.mutateAsync(readingId);
+          notify.success("Meter reading archived.");
+          await queryClient.invalidateQueries({ queryKey: utilityKeys.all(utilityType) });
+        } catch (err) {
+          notify.error(err, "Failed to archive meter reading.");
+        }
+      },
+    });
   };
 
   // Edit period flow
@@ -804,12 +814,12 @@ const UtilityBillingTab = ({
 
     setConfirmModal({
       open: true,
-      title: isOpen ? "Cancel Open Period" : "Delete Billing Period",
+      title: isOpen ? "Archive Open Period" : "Archive Billing Period",
       message: isOpen
-        ? "Cancel this open cycle? Any mid-cycle meter readings will be retained."
-        : "Delete this closed period? Calculated utility charges for this period will be deleted.",
+        ? "Archive this open cycle? It will leave active billing views while its readings remain preserved in history."
+        : "Archive this unsent period? Its draft utility charges will leave active billing, while the period and readings remain preserved in history.",
       variant: "danger",
-      confirmText: "Delete",
+      confirmText: "Archive",
       onConfirm: async () => {
         setConfirmModal((prev) => ({ ...prev, open: false }));
         try {
@@ -817,10 +827,10 @@ const UtilityBillingTab = ({
             setSelectedPeriodId(null);
           }
           await deletePeriod.mutateAsync(periodId);
-          notify.success("Billing period deleted successfully.");
+          notify.success("Billing period archived.");
           await queryClient.invalidateQueries({ queryKey: utilityKeys.all(utilityType) });
         } catch (err) {
-          notify.error(err, "Unable to delete billing period. Please try again.");
+          notify.error(err, "Failed to archive period.");
         }
       },
     });

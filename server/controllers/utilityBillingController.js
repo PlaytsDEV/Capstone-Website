@@ -69,6 +69,12 @@ import {
 import logger from "../middleware/logger.js";
 import { resolveAdminAccessContext } from "../utils/adminAccess.js";
 import { branchSupportsSeparateUtilityBilling } from "../config/branches.js";
+import {
+  assertUtilityClosingDate,
+  assertUtilityPeriodSendable,
+  assertUtilityReadingDate,
+  assertUtilityStartDate,
+} from "../utils/utilityDateIntegrity.js";
 
 const getAdminInfo = resolveAdminAccessContext;
 
@@ -324,6 +330,8 @@ async function closePeriodAndGenerateDrafts({
     .startOf("day")
     .toDate();
 
+  assertUtilityClosingDate(period.startDate, closingDate);
+
   if (utilityType === "electricity") {
     assertBoundaryReadings({ startReading: period.startReading, endReading });
   }
@@ -570,9 +578,6 @@ export const openUtilityPeriod = async (req, res, next) => {
 
     assertUtilityRoomEligibility(room, utilityType);
 
-    // Temp: Clean up old soft-deleted periods to avoid legacy unique index conflicts
-    await UtilityPeriod.deleteMany({ isArchived: true });
-
     const openExists = await UtilityPeriod.findOne({
       utilityType,
       roomId: room._id,
@@ -585,6 +590,7 @@ export const openUtilityPeriod = async (req, res, next) => {
         .json({ error: "Room already has an open period." });
 
     const parsedStartDate = dayjs(startDate).startOf("day").toDate();
+    assertUtilityStartDate(parsedStartDate);
     const overlappingPeriod = await UtilityPeriod.findOne({
       utilityType,
       roomId: room._id,
@@ -667,12 +673,16 @@ export const recordUtilityReading = async (req, res, next) => {
       isArchived: false,
     });
 
+    const normalizedReadingDate = assertUtilityReadingDate(date, {
+      periodStart: openPeriod?.startDate || null,
+    });
+
     const newReading = new UtilityReading({
       utilityType,
       roomId: room._id,
       branch: room.branch,
       reading: Number(reading),
-      date: new Date(date),
+      date: normalizedReadingDate,
       eventType,
       tenantId: tenantId || null,
       recordedBy: admin._id,
@@ -788,8 +798,12 @@ export const deleteUtilityPeriod = async (req, res, next) => {
     const { utilityType, id } = req.params;
 
     const period = await UtilityPeriod.findById(id);
-    if (!period)
+    if (!period || period.isArchived)
       return res.status(404).json({ error: "Period not found" });
+
+    if (!admin.isOwner && period.branch !== admin.branch) {
+      return res.status(403).json({ error: "Access denied" });
+    }
 
     if (!branchSupportsSeparateUtilityBilling(period.branch, utilityType)) {
       return res.status(422).json({
@@ -799,7 +813,11 @@ export const deleteUtilityPeriod = async (req, res, next) => {
       });
     }
 
-    // Reset charges for associated bills and hard delete if empty
+    await assertUtilityPeriodNotSent(period, utilityType);
+
+    // Archive is intentionally non-destructive: unsent draft charges are
+    // detached from active billing, while the original period, readings,
+    // and any empty draft bill remain available for audit/history.
     if (period.tenantSummaries && period.tenantSummaries.length > 0) {
       const chargeField = utilityType === "water" ? "water" : "electricity";
       for (const summary of period.tenantSummaries) {
@@ -821,7 +839,9 @@ export const deleteUtilityPeriod = async (req, res, next) => {
               bill.charges.water === 0 &&
               bill.charges.rent === 0
             ) {
-              await Bill.findByIdAndDelete(bill._id);
+              bill.isArchived = true;
+              bill.status = "draft";
+              await bill.save();
             } else {
               syncBillAmounts(bill, { preserveStatus: bill.status === "draft" });
               await bill.save();
@@ -841,8 +861,8 @@ export const deleteUtilityPeriod = async (req, res, next) => {
       { $set: { utilityPeriodId: null } },
     );
 
-    // Hard delete boundary/checkpoint readings that belong to this period.
-    await UtilityReading.deleteMany(
+    // Boundary/checkpoint readings are archived, not erased.
+    await UtilityReading.updateMany(
       {
         utilityPeriodId: period._id,
         eventType: {
@@ -852,12 +872,17 @@ export const deleteUtilityPeriod = async (req, res, next) => {
             "regularBilling",
           ),
         },
-      }
+      },
+      { $set: { isArchived: true } },
     );
 
-    await period.deleteOne();
+    period.isArchived = true;
+    period.revised = true;
+    period.revisedAt = new Date();
+    period.revisionNote = "Archived by an administrator; related draft charges were removed from active billing.";
+    await period.save();
 
-    res.json({ success: true, message: "Billing period and related records deleted successfully" });
+    res.json({ success: true, message: "Billing period archived" });
   } catch (err) {
     next(err);
   }
@@ -925,6 +950,8 @@ export const updateUtilityPeriod = async (req, res, next) => {
       period.ratePerUnit = Number(ratePerUnit);
     }
 
+    assertUtilityStartDate(period.startDate);
+
     if (
       period.endDate &&
       dayjs(period.endDate).startOf("day").isBefore(dayjs(period.startDate))
@@ -940,6 +967,7 @@ export const updateUtilityPeriod = async (req, res, next) => {
     }
 
     if (period.startDate && period.endDate) {
+      assertUtilityClosingDate(period.startDate, period.endDate);
       const collidingPeriod = await UtilityPeriod.findOne({
         _id: { $ne: period._id },
         roomId: room._id,
@@ -1103,6 +1131,10 @@ export const deleteUtilityReading = async (req, res, next) => {
     if (!reading || reading.isArchived)
       return res.status(404).json({ error: "Reading not found" });
 
+    if (!admin.isOwner && reading.branch !== admin.branch) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     if (!branchSupportsSeparateUtilityBilling(reading.branch, utilityType)) {
       return res.status(422).json({
         error:
@@ -1111,10 +1143,15 @@ export const deleteUtilityReading = async (req, res, next) => {
       });
     }
 
+    if (reading.utilityPeriodId) {
+      const period = await UtilityPeriod.findById(reading.utilityPeriodId);
+      if (period) await assertUtilityPeriodNotSent(period, utilityType);
+    }
+
     reading.isArchived = true;
     await reading.save();
 
-    res.json({ success: true, message: "Meter reading deleted successfully" });
+    res.json({ success: true, message: "Reading archived" });
   } catch (err) {
     next(err);
   }
@@ -1146,8 +1183,18 @@ export const updateUtilityReading = async (req, res, next) => {
       });
     }
 
+    let linkedPeriod = null;
+    if (readingDoc.utilityPeriodId) {
+      linkedPeriod = await UtilityPeriod.findById(readingDoc.utilityPeriodId);
+      if (linkedPeriod) await assertUtilityPeriodNotSent(linkedPeriod, utilityType);
+    }
+
     if (reading !== undefined) readingDoc.reading = Number(reading);
-    if (date !== undefined) readingDoc.date = new Date(date);
+    if (date !== undefined) {
+      readingDoc.date = assertUtilityReadingDate(date, {
+        periodStart: linkedPeriod?.startDate || null,
+      });
+    }
     if (eventType !== undefined) readingDoc.eventType = eventType;
 
     await readingDoc.save();
@@ -1305,6 +1352,7 @@ export const sendUtilityPeriod = async (req, res, next) => {
       });
     }
     assertUtilityRoomEligibility(room, utilityType);
+    assertUtilityPeriodSendable(period);
 
     const billIds = getUtilitySummaryBillIds(period);
     if (billIds.length === 0) {

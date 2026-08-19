@@ -136,6 +136,18 @@ function resolveAuthorName(doc = {}, authorNameMap = new Map(), defaultFallback 
   return defaultFallback;
 }
 
+function resolveChatMessageId(doc = {}, conversationId = "") {
+  const direct = normalizeString(doc.message_id || doc.messageId || doc.data?.message_id || doc.data?.messageId);
+  if (direct) return direct;
+
+  const dedupeKey = normalizeString(doc.dedupeKey || doc.event_key || doc.eventKey);
+  if (!dedupeKey.startsWith("chat_reply:")) return "";
+  const [, dedupeConversationId, ...messageParts] = dedupeKey.split(":");
+  if (!dedupeConversationId || !messageParts.length) return "";
+  if (conversationId && dedupeConversationId !== conversationId) return "";
+  return normalizeString(messageParts.join(":"));
+}
+
 function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
   const authorName = resolveAuthorName(doc, authorNameMap, "LilyCrest System");
   const type = normalizeString(doc.type || "notification") || "notification";
@@ -150,6 +162,10 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
   const isCanonicalChatEntity = entityType === "chat" && entityId;
   const isCanonicalMaintenanceEntity = entityType === "maintenance" && entityId;
   const data = sanitizePayload(doc.data);
+  const chatConversationId = normalizeString(
+    doc.conversation_id || doc.data?.conversation_id || (isCanonicalChatEntity ? entityId : ""),
+  );
+  const chatMessageId = resolveChatMessageId(doc, chatConversationId);
   if (isCanonicalBillEntity) {
     data.type ||= type;
     data.billing_id ||= entityId;
@@ -171,6 +187,7 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
   if (isCanonicalChatEntity) {
     data.type ||= "chat_reply";
     data.conversation_id ||= entityId;
+    if (chatMessageId) data.message_id ||= chatMessageId;
     data.screen ||= "chat";
   }
   if (isCanonicalMaintenanceEntity) {
@@ -217,9 +234,8 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
     request_id: normalizeString(
       doc.request_id || doc.data?.request_id || (isCanonicalMaintenanceEntity ? entityId : ""),
     ),
-    conversation_id: normalizeString(
-      doc.conversation_id || doc.data?.conversation_id || (isCanonicalChatEntity ? entityId : ""),
-    ),
+    conversation_id: chatConversationId,
+    message_id: chatMessageId,
     session_id: normalizeString(doc.session_id || doc.data?.session_id || ""),
     reservation_id: normalizeString(doc.reservation_id || doc.data?.reservation_id || ""),
     // Canonical Notification documents use `dedupeKey` (models/Notification.js).

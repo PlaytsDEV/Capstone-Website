@@ -38,13 +38,25 @@ function chunkArray(items, size) {
 
 function extractPushTokens(user) {
   const seen = new Set();
+  const explicitlyDisabled = new Set(
+    Array.isArray(user.push_tokens)
+      ? user.push_tokens
+        .filter((entry) => entry && typeof entry === "object" && entry.enabled === false)
+        .map((entry) => String(entry.token || entry.push_token || entry.value || "").trim())
+        .filter(Boolean)
+      : [],
+  );
   const entries = [];
 
-  const add = (token, provider = null) => {
+  const add = (token, provider = null, platform = null) => {
     const t = String(token || "").trim();
     if (!t || seen.has(t)) return;
     seen.add(t);
-    entries.push({ token: t, provider: String(provider || "").trim() || null });
+    entries.push({
+      token: t,
+      provider: String(provider || "").trim() || null,
+      platform: String(platform || "").trim().toLowerCase() || null,
+    });
   };
 
   if (Array.isArray(user.push_tokens)) {
@@ -52,13 +64,14 @@ function extractPushTokens(user) {
       if (typeof entry === "string") {
         add(entry);
       } else if (entry && typeof entry === "object") {
-        add(entry.token || entry.push_token || entry.value, entry.provider);
+        if (entry.enabled === false) continue;
+        add(entry.token || entry.push_token || entry.value, entry.provider, entry.platform || entry.device_platform);
       }
     }
   }
 
-  if (user.push_token) {
-    add(user.push_token, user.push_provider);
+  if (user.push_token && !explicitlyDisabled.has(String(user.push_token).trim())) {
+    add(user.push_token, user.push_provider, user.push_platform);
   }
 
   return entries;
@@ -127,6 +140,7 @@ async function sendToExpo(entries, { title, body, data }) {
   await Promise.all(
     chunkArray(entries, EXPO_CHUNK_SIZE).map(async (batch) => {
       try {
+        const collapseId = String(data?.event_key || data?.notification_id || "").trim().slice(0, 64);
         const messages = batch.map((e) => ({
           to: e.token,
           title,
@@ -135,6 +149,8 @@ async function sendToExpo(entries, { title, body, data }) {
           sound: "default",
           channelId: DEFAULT_CHANNEL_ID,
           priority: "high",
+          ...(collapseId ? { collapseId } : {}),
+          ...(collapseId && e.platform === "android" ? { tag: collapseId } : {}),
         }));
 
         const resp = await axios.post(EXPO_PUSH_ENDPOINT, messages, {
@@ -182,13 +198,20 @@ async function sendToFCM(tokens, { title, body, data }) {
   await Promise.all(
     chunkArray(tokens, FCM_CHUNK_SIZE).map(async (batch) => {
       try {
+        const eventKey = String(data?.event_key || data?.notification_id || "").trim();
+        const notificationTag = eventKey.replace(/[^A-Za-z0-9._:-]/g, "_").slice(0, 64);
         const resp = await admin.messaging().sendEachForMulticast({
           tokens: batch,
           notification: { title, body },
           data: stringifyData(data),
           android: {
             priority: "high",
-            notification: { channelId: DEFAULT_CHANNEL_ID, sound: "default" },
+            ...(notificationTag ? { collapseKey: notificationTag } : {}),
+            notification: {
+              channelId: DEFAULT_CHANNEL_ID,
+              sound: "default",
+              ...(notificationTag ? { tag: notificationTag } : {}),
+            },
           },
         });
         successCount += resp.successCount;
@@ -243,11 +266,21 @@ export async function sendMobilePushToRecipients(recipientIds, { title, body, da
             { "push_tokens.0": { $exists: true } },
           ],
         },
-        { projection: { push_token: 1, push_provider: 1, push_tokens: 1 } },
+        { projection: { push_token: 1, push_provider: 1, push_platform: 1, push_tokens: 1 } },
       )
       .toArray();
 
-    const allEntries = users.flatMap(extractPushTokens);
+    // A token may temporarily appear in both the legacy scalar field and the
+    // installation array, or even on two accounts after account switching.
+    // Dispatch it once per logical event while registration cleanup converges.
+    const entriesByToken = new Map();
+    for (const entry of users.flatMap(extractPushTokens)) {
+      const current = entriesByToken.get(entry.token);
+      if (!current || (!current.platform && entry.platform)) {
+        entriesByToken.set(entry.token, entry);
+      }
+    }
+    const allEntries = [...entriesByToken.values()];
     if (!allEntries.length) return 0;
 
     const expoEntries = allEntries.filter((e) => isExpoPushToken(e.token));
@@ -288,6 +321,7 @@ export async function sendMobilePushAnnouncement(announcement, recipientIds) {
     title,
     body,
     data: {
+      event_key: `announcement:${String(announcement._id)}`,
       type: "announcement",
       announcement_id: String(announcement._id),
       screen: "announcements",
@@ -312,6 +346,8 @@ export async function sendMobilePushBill(userId, bill, options = {}) {
     title,
     body,
     data: {
+      ...(options.data || {}),
+      event_key: options.data?.event_key || (billId ? `billing:${String(billId)}` : "billing"),
       type: "billing_new",
       billing_id: String(billId),
       screen: "billing",

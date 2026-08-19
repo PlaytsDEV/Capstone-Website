@@ -9,7 +9,6 @@ const MOBILE_CONTROLLERS_USING_OBJECTID = [
   "paymongo.controller.js",
   "maintenance.controller.js",
   "dashboard.controller.js",
-  "chat.controller.js",
   "billing.controller.js",
   "chatbot.controller.js",
 ];
@@ -35,6 +34,16 @@ describe("mobile BSON compatibility", () => {
 
     expect(source).not.toMatch(/import\(['"]mongodb['"]\)/);
     expect(source).toMatch(/mongoose\.Types/);
+  });
+
+  test("the canonical chat controller uses Mongoose ObjectIds after the mobile adapter cutover", () => {
+    const source = fs.readFileSync(
+      path.resolve(CONTROLLERS_DIR, "../../controllers/chatController.js"),
+      "utf8",
+    );
+
+    expect(source).not.toMatch(/from ["']mongodb["']/);
+    expect(source).toMatch(/import mongoose from ["']mongoose["']/);
   });
 
   test("a Mongoose ObjectId round-trips through the same native driver behind getDb", async () => {

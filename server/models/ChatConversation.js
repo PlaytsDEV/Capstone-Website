@@ -137,6 +137,26 @@ const chatConversationSchema = new mongoose.Schema(
     satisfactionFeedback: { type: String, trim: true, default: "", maxlength: 1000 },
     reopenedAt: { type: Date, default: null },
     reopenCount: { type: Number, default: 0, min: 0 },
+    // Optional reference to the business record this conversation concerns
+    // (e.g. a specific lease Contract). Deliberately a reference, not a
+    // duplicate of the entity's fields — resolve the entity's current state
+    // by entityId when needed rather than trusting a stale copy here.
+    context: {
+      entityType: {
+        type: String,
+        enum: ["", "contract"],
+        default: "",
+      },
+      entityId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null,
+      },
+      sourceModule: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+    },
     statusHistory: [
       {
         status: {
@@ -180,6 +200,14 @@ chatConversationSchema.virtual("id").get(function getId() {
 
 chatConversationSchema.index({ tenantId: 1, status: 1 });
 chatConversationSchema.index({ ticketId: 1 }, { unique: true, sparse: true });
+// Supports the "reuse/reopen the existing contextual conversation instead of
+// creating a new one" lookup in chatController.js's startConversation().
+chatConversationSchema.index({
+  tenantId: 1,
+  "context.entityType": 1,
+  "context.entityId": 1,
+  status: 1,
+});
 chatConversationSchema.index({ branch: 1, status: 1, lastMessageAt: -1 });
 chatConversationSchema.index({ branch: 1, priority: 1, lastMessageAt: -1 });
 chatConversationSchema.index({ updatedAt: -1 });
