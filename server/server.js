@@ -181,6 +181,34 @@ const runBackupSchedulerStartup = async () => {
   }
 };
 
+// Heap cap from --max-old-space-size (384 MB). Warn at 78% (~300 MB) so
+// there is time to investigate before an OOM crash terminates the process.
+const HEAP_CAP_MB = Number(process.env.HEAP_CAP_MB ?? 384);
+const HEAP_WARN_THRESHOLD = Math.round(HEAP_CAP_MB * 0.78);
+const HEAP_CRIT_THRESHOLD = Math.round(HEAP_CAP_MB * 0.92);
+
+const startMemoryMonitor = () => {
+  setInterval(() => {
+    const { heapUsed, heapTotal, rss, external } = process.memoryUsage();
+    const usedMB = Math.round(heapUsed / 1024 / 1024);
+    const totalMB = Math.round(heapTotal / 1024 / 1024);
+    const rssMB = Math.round(rss / 1024 / 1024);
+    const extMB = Math.round(external / 1024 / 1024);
+
+    if (usedMB >= HEAP_CRIT_THRESHOLD) {
+      logger.error(
+        { heapUsedMB: usedMB, heapTotalMB: totalMB, rssMB, externalMB: extMB, capMB: HEAP_CAP_MB },
+        "CRITICAL: Heap usage near OOM limit — consider restarting or scaling",
+      );
+    } else if (usedMB >= HEAP_WARN_THRESHOLD) {
+      logger.warn(
+        { heapUsedMB: usedMB, heapTotalMB: totalMB, rssMB, externalMB: extMB, capMB: HEAP_CAP_MB },
+        "Memory warning: heap usage approaching limit",
+      );
+    }
+  }, 30_000); // check every 30 seconds
+};
+
 const startBackgroundServices = (mongoConnected) => {
   if (!mongoConnected) {
     logger.warn(
@@ -188,6 +216,8 @@ const startBackgroundServices = (mongoConnected) => {
     );
     return;
   }
+
+  startMemoryMonitor();
 
   setImmediate(() => {
     void Promise.allSettled([runPermissionBackfill(), runSchedulerStartup(), runBackupSchedulerStartup()]);
@@ -364,9 +394,11 @@ app.get("/api/health", async (req, res) => {
   const heapUsedMB = Math.round(mem.heapUsed / 1024 / 1024);
   const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
   checks.memory = {
-    status: heapUsedMB < 512 ? "ok" : "warning",
+    status: heapUsedMB < HEAP_WARN_THRESHOLD ? "ok" : heapUsedMB < HEAP_CRIT_THRESHOLD ? "warning" : "critical",
     heapUsed: `${heapUsedMB}MB`,
     heapTotal: `${heapTotalMB}MB`,
+    capMB: HEAP_CAP_MB,
+    thresholdWarnMB: HEAP_WARN_THRESHOLD,
   };
 
   checks.uptime = `${Math.round(process.uptime())}s`;
