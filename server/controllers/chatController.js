@@ -982,6 +982,48 @@ async function markAdminMessagesRead(conversationId) {
   }
 }
 
+async function appendInitialTenantMessage({ conversation, tenantUser, rawMessage }) {
+  if (typeof rawMessage !== "string" || !rawMessage.trim()) return null;
+
+  const message = normalizeMessage(rawMessage);
+  const latest = await ChatMessage.findOne({ conversationId: conversation._id })
+    .sort({ createdAt: -1 })
+    .lean();
+  const latestCreatedAt = latest?.createdAt ? new Date(latest.createdAt).getTime() : 0;
+  const isRecentRetry = latest?.senderRole === "tenant"
+    && latest?.message === message
+    && latestCreatedAt > 0
+    && Date.now() - latestCreatedAt < 30_000;
+  if (isRecentRetry) return null;
+
+  const result = await createMessageAndUpdateConversation({
+    conversation,
+    sender: tenantUser,
+    senderRole: "tenant",
+    message,
+    unreadTarget: "admin",
+    nextStatus: "open",
+    statusNote: "Tenant shared a support concern.",
+  });
+  await notifyAdminsOfTenantMessage(result.conversation);
+
+  const serializedMessage = serializeMessage(result.chatMessage);
+  const serializedConversation = serializeConversation(result.conversation);
+  emitToChatAdmins(result.conversation.branch, "chat:message-new", {
+    message: serializedMessage,
+    conversationId: String(result.conversation._id),
+  });
+  emitToChatAdmins(
+    result.conversation.branch,
+    "chat:conversation-updated",
+    serializedConversation,
+  );
+  return {
+    message: serializedMessage,
+    conversation: result.conversation,
+  };
+}
+
 /**
  * POST /chat/:conversationId/typing
  *
@@ -1071,6 +1113,7 @@ export async function startConversation(req, res) {
         };
 
     let conversation = await ChatConversation.findOne(reuseFilter).sort({ updatedAt: -1 });
+    const reusedExisting = Boolean(conversation);
 
     if (conversation) {
       conversation.tenantName = tenantName;
@@ -1117,7 +1160,18 @@ export async function startConversation(req, res) {
       await autoAssignConversation(conversation);
     }
 
-    return res.json({ conversation: serializeConversation(conversation) });
+    const initial = await appendInitialTenantMessage({
+      conversation,
+      tenantUser: tenantContext.user,
+      rawMessage: req.body?.initialMessage,
+    });
+    if (initial?.conversation) conversation = initial.conversation;
+
+    return res.json({
+      conversation: serializeConversation(conversation),
+      message: initial?.message || null,
+      reusedExisting,
+    });
   } catch (error) {
     return sendError(res, error, "Failed to start chat.");
   }
@@ -1289,6 +1343,45 @@ export async function reopenTenantConversation(req, res) {
     return res.json({ message: serializedMessage, conversation: serializedConversation });
   } catch (error) {
     return sendError(res, error, "Failed to reopen conversation.");
+  }
+}
+
+export async function closeTenantConversation(req, res) {
+  try {
+    const tenantContext = await resolveTenantContext(req);
+    const conversation = await findConversationForTenant(
+      req.params.conversationId,
+      tenantContext.user,
+    );
+
+    if (conversation.status === "closed") {
+      return res.json({ conversation: serializeConversation(conversation) });
+    }
+
+    const note = normalizeOptionalNote(req.body?.note) || "Tenant closed the conversation.";
+    const now = new Date();
+    conversation.status = "closed";
+    conversation.closedAt = now;
+    conversation.closedBy = tenantContext.user._id;
+    conversation.closingNote = note;
+    conversation.statusHistory.push({
+      status: "closed",
+      note,
+      actorId: tenantContext.user._id,
+      actorName: displayName(tenantContext.user, "Tenant"),
+      createdAt: now,
+    });
+    await conversation.save();
+
+    const serializedConversation = serializeConversation(conversation);
+    emitToChatAdmins(
+      conversation.branch,
+      "chat:conversation-updated",
+      serializedConversation,
+    );
+    return res.json({ conversation: serializedConversation });
+  } catch (error) {
+    return sendError(res, error, "Failed to close conversation.");
   }
 }
 

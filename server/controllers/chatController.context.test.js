@@ -8,6 +8,9 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const conversationFindOne = jest.fn();
 const conversationCreate = jest.fn();
+const conversationFindByIdAndUpdate = jest.fn();
+const messageFindOne = jest.fn();
+const messageCreate = jest.fn();
 const userFind = jest.fn();
 const userFindById = jest.fn();
 const reservationFindOne = jest.fn();
@@ -17,9 +20,10 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   ChatConversation: {
     findOne: conversationFindOne,
     create: conversationCreate,
+    findByIdAndUpdate: conversationFindByIdAndUpdate,
     aggregate: jest.fn(async () => []),
   },
-  ChatMessage: {},
+  ChatMessage: { findOne: messageFindOne, create: messageCreate },
   Contract: { exists: contractExists },
   Reservation: { findOne: reservationFindOne },
   User: {
@@ -84,6 +88,7 @@ describe("startConversation — contract context", () => {
       }),
     });
     userFind.mockReturnValue({ select: () => ({ lean: async () => [] }) });
+    messageFindOne.mockReturnValue({ sort: () => ({ lean: async () => null }) });
   });
 
   test("a client-supplied contractId the tenant does not own is silently dropped, not trusted", async () => {
@@ -151,5 +156,37 @@ describe("startConversation — contract context", () => {
         { "context.entityType": { $exists: false } },
       ]),
     );
+  });
+
+  test("mobile initialMessage is persisted by the canonical message operation", async () => {
+    const existing = {
+      _id: "conv-existing",
+      tenantId: TENANT_ID,
+      branch: "gil-puyat",
+      status: "open",
+      save: jest.fn(async () => {}),
+      toObject() { return this; },
+    };
+    const storedMessage = {
+      _id: "message-1",
+      conversationId: existing._id,
+      senderRole: "tenant",
+      message: "Please explain this clause.",
+      toObject() { return this; },
+    };
+    conversationFindOne.mockReturnValue({ sort: () => Promise.resolve(existing) });
+    conversationFindByIdAndUpdate.mockResolvedValue(existing);
+    messageCreate.mockResolvedValue(storedMessage);
+
+    const res = response();
+    await startConversation(tenantRequest({ initialMessage: "Please explain this clause." }), res);
+
+    expect(messageCreate).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: existing._id,
+      senderRole: "tenant",
+      message: "Please explain this clause.",
+    }));
+    expect(res.body).toMatchObject({ reusedExisting: true });
+    expect(res.body.message).toMatchObject({ id: "message-1", message: "Please explain this clause." });
   });
 });

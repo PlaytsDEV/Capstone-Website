@@ -57,6 +57,7 @@ await jest.unstable_mockModule("../controllers/chatController.js", () => ({
   downloadChatAttachment: controller,
   confirmTenantResolution: controller,
   reopenTenantConversation: controller,
+  closeTenantConversation: controller,
 }));
 
 const chatRoutes = (await import("./chatRoutes.js")).default;
@@ -168,6 +169,17 @@ describe("web admin chat database authority", () => {
     expect(controllerCalls).toHaveBeenCalledWith(
       "PATCH",
       "/507f1f77bcf86cd799439011/reopen",
+      expect.objectContaining({ role: "tenant" }),
+      undefined,
+    );
+  });
+
+  test("an authenticated tenant can reach the canonical close lifecycle route", async () => {
+    const result = await call("PATCH", "/chat/507f1f77bcf86cd799439011/close");
+    expect(result.status).toBe(200);
+    expect(controllerCalls).toHaveBeenCalledWith(
+      "PATCH",
+      "/507f1f77bcf86cd799439011/close",
       expect.objectContaining({ role: "tenant" }),
       undefined,
     );

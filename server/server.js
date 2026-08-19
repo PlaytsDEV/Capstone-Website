@@ -71,6 +71,7 @@ import mobileDocumentRoutes from "./routes/mobileDocumentRoutes.js";
 import mobileAuthRoutes from "./routes/mobileAuthRoutes.js";
 import mobileNotificationRoutes from "./routes/mobileNotificationRoutes.js";
 import mobileUploadRoutes from "./routes/mobileUploadRoutes.js";
+import mobileChatRoutes from "./routes/mobileChatRoutes.js";
 import chatbotRoutes from "./routes/chatbotRoutes.js";
 import { initSocket } from "./utils/socket.js";
 import mobileRoutes from "./mobile/mobileRoutes.mjs";
@@ -325,6 +326,10 @@ app.use("/api/m", mobileAuthRoutes);
 // above.
 app.use("/api/m", mobileNotificationRoutes);
 app.use("/api/m", mobileUploadRoutes);
+// Mobile chat is a transport-only adapter over controllers/chatController.js.
+// Keep it before the vendored router so the raw-Mongo chat copy can no longer
+// become a second lifecycle/authorization/notification authority.
+app.use("/api/m", mobileChatRoutes);
 app.use("/api/m", mobileRoutes);
 app.use("/api/m/maintenance", maintenanceRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
