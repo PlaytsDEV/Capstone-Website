@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   ShieldAlert,
@@ -137,7 +138,9 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
     }
   };
 
-  return (
+  if (!isOpen || !reviewCase || typeof document === "undefined") return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl text-card-foreground">
         {/* Header */}
@@ -500,6 +503,7 @@ export default function TerminationReviewModal({ isOpen, reviewCase, onClose, on
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

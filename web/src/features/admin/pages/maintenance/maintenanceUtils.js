@@ -298,7 +298,7 @@ export const MANAGEMENT_SUMMARY_CARDS = [
     key: "in_progress",
     label: "In Progress",
     icon: RefreshCcw,
-    color: "purple",
+    color: "amber",
     description: "Scheduled & servicing",
   },
   {

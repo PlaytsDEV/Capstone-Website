@@ -299,7 +299,7 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
                   </>
                 ) : schedule.viewingType === "urgent_movein" ? (
                   <>
-                    <CalendarDays size={14} className="text-purple-600 dark:text-purple-400 shrink-0" />
+                    <CalendarDays size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
                     <span>Urgent Move-in Review</span>
                   </>
                 ) : (

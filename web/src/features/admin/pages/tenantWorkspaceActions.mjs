@@ -34,3 +34,38 @@ export function shouldCloseTenantActionMenu({
   }
   return true;
 }
+
+export function resolveTenantNextAction(tenant) {
+  if (!tenant) return { type: "none" };
+
+  switch (tenant.nextAction) {
+    case "review_overdue_account":
+      return {
+        type: "detail",
+        reservationId: tenant.reservationId || null,
+        initialTab: "financials",
+      };
+    case "verify_payment":
+      return {
+        type: "navigate",
+        path: "/admin/billing?tab=reservation-payments",
+      };
+    case "renew_lease":
+      return {
+        type: "modal",
+        actionKey: "renew",
+        actionType: "renew",
+      };
+    case "process_move_out":
+      return {
+        type: "modal",
+        actionKey: "moveOut",
+        actionType: "moveOut",
+      };
+    default:
+      return {
+        type: "detail",
+        reservationId: tenant.reservationId || null,
+      };
+  }
+}

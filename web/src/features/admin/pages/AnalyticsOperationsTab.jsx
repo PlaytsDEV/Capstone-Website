@@ -323,7 +323,7 @@ export default function AnalyticsOperationsTab({
     },
     {
       icon: Wrench,
-      tone: "purple",
+      tone: "amber",
       label: "Maintenance Requests",
       value: maintCount,
       trend: maintenanceDelta.text || `${maintenanceDelta.label || "+0"} vs prev period`,

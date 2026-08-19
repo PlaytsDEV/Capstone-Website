@@ -7,7 +7,7 @@
  * and proof of payment submission.
  */
 
-import { Reservation, Room } from "../../models/index.js";
+import { Reservation, Room, User } from "../../models/index.js";
 import logger from "../../middleware/logger.js";
 import auditLogger from "../../utils/auditLogger.js";
 import {
@@ -51,6 +51,114 @@ import {
   serializeReservation,
   BED_UNAVAILABLE_MESSAGE,
 } from "./_helpers.js";
+
+const formatAddressFromApplication = (body = {}) => {
+  const addressObj = body.address && typeof body.address === "object" ? body.address : {};
+  const parts = [
+    body["address.unitHouseNo"] ?? body.addressUnitHouseNo ?? addressObj.unitHouseNo,
+    body["address.street"] ?? body.addressStreet ?? addressObj.street,
+    body["address.barangay"] ?? body.addressBarangay ?? addressObj.barangay,
+    body["address.city"] ?? body.addressCity ?? addressObj.city,
+    body["address.province"] ?? body.addressProvince ?? addressObj.province,
+  ].filter((v) => v !== undefined && v !== null && String(v).trim() !== "");
+
+  if (parts.length > 0) {
+    return parts.map((v) => String(v).trim()).join(", ");
+  }
+  return typeof body.address === "string" ? body.address.trim() : null;
+};
+
+export const buildUserProfileUpdatesFromApplication = (body = {}, existingReservation = {}) => {
+  const userUpdates = {};
+  const hasText = (v) => v !== undefined && v !== null && String(v).trim().length > 0;
+
+  const rawFirst = body.firstName ?? existingReservation.firstName;
+  if (hasText(rawFirst)) userUpdates.firstName = String(rawFirst).trim();
+
+  const rawMiddle = body.middleName ?? existingReservation.middleName;
+  if (hasText(rawMiddle)) userUpdates.middleName = String(rawMiddle).trim();
+
+  const rawLast = body.lastName ?? existingReservation.lastName;
+  if (hasText(rawLast)) userUpdates.lastName = String(rawLast).trim();
+
+  const rawPhone = body.mobileNumber ?? body.phone ?? existingReservation.mobileNumber;
+  if (hasText(rawPhone)) userUpdates.phone = String(rawPhone).trim();
+
+  const rawPhoto = body.selfiePhotoUrl ?? body.profileImage ?? existingReservation.selfiePhotoUrl;
+  if (hasText(rawPhoto)) userUpdates.profileImage = String(rawPhoto).trim();
+
+  const rawGender = body.gender ?? existingReservation.gender;
+  if (hasText(rawGender)) userUpdates.gender = String(rawGender).trim();
+
+  const rawCivilStatus = body.maritalStatus ?? body.civilStatus ?? existingReservation.maritalStatus;
+  if (hasText(rawCivilStatus)) userUpdates.civilStatus = String(rawCivilStatus).trim();
+
+  const rawNationality = body.nationality ?? existingReservation.nationality;
+  if (hasText(rawNationality)) userUpdates.nationality = String(rawNationality).trim();
+
+  const rawOccupation =
+    body["employment.occupation"] ??
+    body.occupation ??
+    body.employment?.occupation ??
+    existingReservation.employment?.occupation;
+  if (hasText(rawOccupation)) userUpdates.occupation = String(rawOccupation).trim();
+
+  const rawEducation = body.educationLevel ?? existingReservation.educationLevel;
+  if (hasText(rawEducation)) userUpdates.educationLevel = String(rawEducation).trim();
+
+  const rawSchool =
+    body["employment.employerSchool"] ??
+    body.employerSchool ??
+    body.employment?.employerSchool ??
+    existingReservation.employment?.employerSchool;
+  if (hasText(rawSchool)) userUpdates.school = String(rawSchool).trim();
+
+  const formattedAddress = formatAddressFromApplication(body) || formatAddressFromApplication(existingReservation);
+  if (hasText(formattedAddress)) userUpdates.address = formattedAddress;
+
+  const rawCity =
+    body["address.city"] ??
+    body.addressCity ??
+    body.address?.city ??
+    existingReservation.address?.city;
+  if (hasText(rawCity)) userUpdates.city = String(rawCity).trim();
+
+  const rawProvince =
+    body["address.province"] ??
+    body.addressProvince ??
+    body.address?.province ??
+    existingReservation.address?.province;
+  if (hasText(rawProvince)) userUpdates.province = String(rawProvince).trim();
+
+  const rawDob = body.birthday ?? body.dateOfBirth ?? existingReservation.birthday;
+  if (rawDob) {
+    const d = new Date(rawDob);
+    if (!isNaN(d.getTime())) userUpdates.dateOfBirth = d;
+  }
+
+  const rawEmergencyName =
+    body["emergencyContact.name"] ??
+    body.emergencyContactName ??
+    body.emergencyContact?.name ??
+    existingReservation.emergencyContact?.name;
+  if (hasText(rawEmergencyName)) userUpdates.emergencyContact = String(rawEmergencyName).trim();
+
+  const rawEmergencyRel =
+    body["emergencyContact.relationship"] ??
+    body.emergencyRelationship ??
+    body.emergencyContact?.relationship ??
+    existingReservation.emergencyContact?.relationship;
+  if (hasText(rawEmergencyRel)) userUpdates.emergencyRelationship = String(rawEmergencyRel).trim();
+
+  const rawEmergencyPhone =
+    body["emergencyContact.contactNumber"] ??
+    body.emergencyContactNumber ??
+    body.emergencyContact?.contactNumber ??
+    existingReservation.emergencyContact?.contactNumber;
+  if (hasText(rawEmergencyPhone)) userUpdates.emergencyPhone = String(rawEmergencyPhone).trim();
+
+  return userUpdates;
+};
 
 /** Helper: Timeout wrapper for async document precheck (8s cap) */
 const runPrecheckWithTimeout = async (target, timeoutMs = 8000) => {
@@ -173,6 +281,14 @@ export const saveApplicationDraft = async (req, res, next) => {
     )
       .populate(...POPULATE_USER)
       .populate(...POPULATE_ROOM);
+
+    // Sync draft updates to User profile record
+    const userDraftUpdates = buildUserProfileUpdatesFromApplication(req.body, updatedReservation);
+    if (Object.keys(userDraftUpdates).length > 0) {
+      await User.findByIdAndUpdate(dbUser._id, { $set: userDraftUpdates }).catch((err) => {
+        logger.warn({ err, userId: dbUser._id }, "Non-fatal user draft profile sync warning");
+      });
+    }
 
     // Refresh active bed hold lock on draft saves (prevents silent expiration during form entry)
     if (reservation.roomId && reservation.selectedBed?.id) {
@@ -545,6 +661,14 @@ export const submitApplication = async (req, res, next) => {
       return res.status(409).json({
         error: "Application has already been submitted and is currently under review.",
         code: "APPLICATION_ALREADY_SUBMITTED",
+      });
+    }
+
+    // Atomically sync submitted application info to User profile
+    const userUpdates = buildUserProfileUpdatesFromApplication(req.body, updatedReservation);
+    if (Object.keys(userUpdates).length > 0) {
+      await User.findByIdAndUpdate(dbUser._id, { $set: userUpdates }).catch((err) => {
+        logger.warn({ err, userId: dbUser._id }, "Non-fatal user profile submission sync warning");
       });
     }
 

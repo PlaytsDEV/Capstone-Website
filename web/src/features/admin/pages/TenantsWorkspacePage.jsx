@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -40,6 +40,7 @@ import {
   getTenantActionMeta,
   hasEnabledTenantAction,
   openTenantAction,
+  resolveTenantNextAction,
 } from "./tenantWorkspaceActions.mjs";
 import {
   handleExportTenantsCSV,
@@ -141,6 +142,7 @@ function matchesDateRange(value, from, to) {
 
 
 export default function TenantsWorkspacePage() {
+  const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -161,6 +163,7 @@ export default function TenantsWorkspacePage() {
   const [selectedReservationId, setSelectedReservationId] = useState(
     () => searchParams.get("reservationId") || null,
   );
+  const [modalInitialTab, setModalInitialTab] = useState("overview");
   const [actionState, setActionState] = useState({ type: null, tenant: null });
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -455,41 +458,35 @@ export default function TenantsWorkspacePage() {
         }
     };
 
-    const notifyBlockedAction = (actionMeta) => {
-        showNotification(
+    const notifyBlockedAction = useCallback((actionMeta) => {
+      showNotification(
         actionMeta?.reason || "This action is not available for this tenant.",
         "error",
         3500,
-        );
-    };
+      );
+    }, []);
 
-    const openActionForTenant = (tenant, actionKey, actionType) =>
-        openTenantAction({
+    const openActionForTenant = useCallback((tenant, actionKey, actionType) =>
+      openTenantAction({
         tenant,
         actionKey,
         actionType,
         notifyBlocked: notifyBlockedAction,
         onAction: setActionState,
-        });
+      }), [notifyBlockedAction]);
 
-    const handleNextActionClick = (tenant) => {
+    const handleNextActionClick = useCallback((tenant) => {
       if (!tenant) return;
-      switch (tenant.nextAction) {
-        case "verify_payment":
-        case "review_overdue_account":
-          setSelectedReservationId(tenant.reservationId);
-          break;
-        case "renew_lease":
-          openActionForTenant(tenant, "renew", "renew");
-          break;
-        case "process_move_out":
-          openActionForTenant(tenant, "moveOut", "moveOut");
-          break;
-        default:
-          setSelectedReservationId(tenant.reservationId);
-          break;
+      const target = resolveTenantNextAction(tenant);
+      if (target.type === "navigate") {
+        navigate(target.path);
+      } else if (target.type === "modal") {
+        openActionForTenant(tenant, target.actionKey, target.actionType);
+      } else if (target.type === "detail" && target.reservationId) {
+        setModalInitialTab(target.initialTab || "overview");
+        setSelectedReservationId(target.reservationId);
       }
-    };
+    }, [navigate, openActionForTenant]);
 
     const [isExporting, setIsExporting] = useState(false);
 
@@ -1014,6 +1011,7 @@ export default function TenantsWorkspacePage() {
                           onFocus={() => prefetchTenantWorkspaceDetail(queryClient, tenant.reservationId)}
                           onClick={(e) => {
                             e.stopPropagation();
+                            setModalInitialTab("overview");
                             setSelectedReservationId(tenant.reservationId);
                           }}
                         >
@@ -1060,7 +1058,11 @@ export default function TenantsWorkspacePage() {
 
         <TenantDetailModal
           tenant={selectedTenantForModal}
-          onClose={() => setSelectedReservationId(null)}
+          initialTab={modalInitialTab}
+          onClose={() => {
+            setSelectedReservationId(null);
+            setModalInitialTab("overview");
+          }}
         />
 
         {actionState.type === "renew" ? (

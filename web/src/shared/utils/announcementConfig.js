@@ -15,7 +15,7 @@ export const ANNOUNCEMENT_CATEGORY_META = Object.freeze({
   maintenance: { label: "Maintenance", tone: "orange", icon: "Wrench"       },
   emergency:   { label: "Emergency",   tone: "red",    icon: "Siren"        },
   policy:      { label: "Policy",      tone: "blue",   icon: "ScrollText"   },
-  event:       { label: "Event",       tone: "purple", icon: "CalendarDays" },
+  event:       { label: "Event",       tone: "amber",  icon: "CalendarDays" },
   billing:     { label: "Billing",     tone: "green",  icon: "Receipt"      },
   alert:       { label: "Alert",       tone: "red",    icon: "TriangleAlert" },
 });

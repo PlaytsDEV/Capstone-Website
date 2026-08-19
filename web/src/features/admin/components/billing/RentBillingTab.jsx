@@ -705,6 +705,8 @@ export default function RentBillingTab({ isActive }) {
             {timeframeMode === "month" && (
               <input
                 type="month"
+                min="2020-01"
+                max="2099-12"
                 value={month}
                 onChange={(e) => setMonth(e.target.value)}
                 className="h-9 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
@@ -840,6 +842,7 @@ export default function RentBillingTab({ isActive }) {
             <Search size={14} className="absolute left-2.5 text-muted-foreground pointer-events-none" />
             <input
               type="text"
+              maxLength={50}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search tenant or room..."

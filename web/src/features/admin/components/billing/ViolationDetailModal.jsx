@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   AlertTriangle,
@@ -59,7 +60,7 @@ const getStatusBadgeConfig = (status) => {
     case "awaiting_response":
       return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
     case "penalty_issued":
-      return { text: "text-purple-700 dark:text-purple-400", dot: "bg-purple-500" };
+      return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
     case "escalated":
       return { text: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" };
     case "dismissed":
@@ -127,9 +128,9 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
       })
     : "N/A";
 
-  const primaryPhoto = violation.evidenceUrls?.[0] || violation.evidenceUrl;
+  if (!isOpen || !violation || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl text-card-foreground">
         {/* Header */}
@@ -423,6 +424,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -5,6 +5,7 @@ import {
   hasEnabledTenantAction,
   openTenantAction,
   shouldCloseTenantActionMenu,
+  resolveTenantNextAction,
 } from "./tenantWorkspaceActions.mjs";
 
 test("getTenantActionMeta returns fallback metadata when the action is missing", () => {
@@ -91,5 +92,60 @@ test("shouldCloseTenantActionMenu stays open for clicks inside the trigger or me
   assert.equal(
     shouldCloseTenantActionMenu({ target: outsideTarget, triggerElement, menuElement }),
     true,
+  );
+});
+
+test("resolveTenantNextAction correctly resolves overdue accounts to tenant detail modal on financials tab", () => {
+  const target = resolveTenantNextAction({
+    reservationId: "res-123",
+    nextAction: "review_overdue_account",
+  });
+  assert.deepEqual(target, {
+    type: "detail",
+    reservationId: "res-123",
+    initialTab: "financials",
+  });
+});
+
+test("resolveTenantNextAction correctly resolves verify payment to billing reservation-payments tab", () => {
+  const target = resolveTenantNextAction({
+    reservationId: "res-456",
+    nextAction: "verify_payment",
+  });
+  assert.deepEqual(target, {
+    type: "navigate",
+    path: "/admin/billing?tab=reservation-payments",
+  });
+});
+
+test("resolveTenantNextAction correctly routes lease renewal to modal action", () => {
+  const target = resolveTenantNextAction({
+    reservationId: "res-789",
+    nextAction: "renew_lease",
+  });
+  assert.deepEqual(target, {
+    type: "modal",
+    actionKey: "renew",
+    actionType: "renew",
+  });
+});
+
+test("resolveTenantNextAction correctly routes move out to modal action", () => {
+  const target = resolveTenantNextAction({
+    reservationId: "res-101",
+    nextAction: "process_move_out",
+  });
+  assert.deepEqual(target, {
+    type: "modal",
+    actionKey: "moveOut",
+    actionType: "moveOut",
+  });
+});
+
+test("resolveTenantNextAction falls back to tenant detail modal for unhandled or null actions", () => {
+  assert.deepEqual(resolveTenantNextAction(null), { type: "none" });
+  assert.deepEqual(
+    resolveTenantNextAction({ reservationId: "res-999", nextAction: "none" }),
+    { type: "detail", reservationId: "res-999" },
   );
 });

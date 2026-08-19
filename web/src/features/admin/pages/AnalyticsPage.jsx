@@ -376,7 +376,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
       { id: "billing", label: "Billing & Revenue", icon: Receipt, iconClassName: "text-emerald-600 dark:text-emerald-400" },
       { id: "operations", label: "Operations", icon: Wrench, iconClassName: "text-amber-500 dark:text-amber-400" },
       { id: "support", label: "Support & Chat", icon: MessageSquare, iconClassName: "text-sky-500 dark:text-sky-400" },
-      { id: "demographics", label: "Demographics", icon: Users, iconClassName: "text-purple-500 dark:text-purple-400" },
+      { id: "demographics", label: "Demographics", icon: Users, iconClassName: "text-sky-600 dark:text-sky-400" },
       { id: "acquisition", label: "Lead Acquisition", icon: Target, iconClassName: "text-teal-500 dark:text-teal-400" },
       ...(isOwner
         ? [
@@ -384,7 +384,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
               id: "consolidated",
               label: "Consolidated",
               icon: PanelsTopLeft,
-              iconClassName: "text-indigo-500 dark:text-indigo-400",
+              iconClassName: "text-blue-600 dark:text-blue-400",
             },
             {
               id: "financials",
@@ -619,12 +619,12 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                   title="Click to view Operations details"
                 >
                   <div className="analytics-kpi-card-header">
-                    <div className="analytics-kpi-icon purple">
+                    <div className="analytics-kpi-icon amber">
                       <Wrench size={15} strokeWidth={1.5} />
                     </div>
                     <MiniSparkline
                       data={(operationsData?.series?.maintenanceByType || []).map((item) => item.count)}
-                      stroke="#7c3aed"
+                      stroke="#d97706"
                     />
                   </div>
                   <div className="analytics-kpi-label">Maintenance</div>

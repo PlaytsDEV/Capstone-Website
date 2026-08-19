@@ -19,6 +19,7 @@ server/config/google-vision-key.json
 web/dist/
 web/build/
 web/build-admin/
+web/*.pdf
 
 # Runtime logs
 .codex-run-logs/

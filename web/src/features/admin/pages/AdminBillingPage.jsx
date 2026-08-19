@@ -6,8 +6,7 @@ import RentBillingTab from "../components/billing/RentBillingTab";
 import ReservationPaymentReviewTab from "../components/billing/ReservationPaymentReviewTab";
 
 import BillingToolbar from "../components/billing/shared/BillingToolbar";
-import OverdueNoticeTracker from "../components/OverdueNoticeTracker";
-import TerminationReviewBoard from "../components/TerminationReviewBoard";
+import OverdueEscalationTab from "../components/billing/OverdueEscalationTab";
 import TenantViolationManager from "../components/TenantViolationManager";
 import { billingApi } from "../../../shared/api/billingApi";
 import { utilityApi } from "../../../shared/api/utilityApi";
@@ -565,10 +564,9 @@ const AdminBillingPage = () => {
           role="tabpanel"
           id="billing-panel-overdue-notices"
           aria-labelledby="billing-tab-overdue-notices"
-          className={activeTab === "overdue-notices" ? "block space-y-6" : "hidden"}
+          className={activeTab === "overdue-notices" ? "block" : "hidden"}
         >
-          <OverdueNoticeTracker branch={effectiveBranch} />
-          <TerminationReviewBoard branch={effectiveBranch} />
+          <OverdueEscalationTab branch={effectiveBranch} />
         </section>
 
 

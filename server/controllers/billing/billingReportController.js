@@ -194,6 +194,116 @@ export const sendBillReminder = async (req, res, next) => {
   }
 };
 
+export const batchSendBillReminders = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const branch = req.branchFilter || (admin.isOwner ? null : admin.branch);
+    const { billIds, noticeType = "reminder" } = req.body || {};
+
+    if (!Array.isArray(billIds) || billIds.length === 0) {
+      return res.status(400).json({
+        error: "billIds array is required.",
+        code: "BILL_IDS_REQUIRED",
+      });
+    }
+
+    if (!branch && !admin.isOwner) {
+      return res.status(400).json({ error: "Branch is required." });
+    }
+
+    const requestedNoticeType = String(noticeType || "reminder")
+      .trim()
+      .toLowerCase();
+
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const billId of billIds) {
+      try {
+        const bill = await loadBillForAdmin({ billId, branch });
+        if (!canSendBillReminder(bill)) {
+          results.push({
+            billId,
+            success: false,
+            reason:
+              "Bill is not eligible for reminder (must be unpaid with due date).",
+          });
+          failureCount++;
+          continue;
+        }
+
+        const [tenant, room] = await Promise.all([
+          User.findById(bill.userId).select("firstName lastName email"),
+          bill.roomId
+            ? Room.findById(bill.roomId).select("name roomNumber branch type")
+            : null,
+        ]);
+
+        if (!tenant) {
+          results.push({
+            billId,
+            success: false,
+            reason: "Tenant not found",
+          });
+          failureCount++;
+          continue;
+        }
+
+        const delivery = await deliverBillReminder({
+          bill,
+          tenant,
+          room,
+          noticeType: requestedNoticeType,
+        });
+
+        await logBillingAudit(req, {
+          admin,
+          action: "Batch billing notice sent",
+          details: `Sent ${delivery.noticeType} notice for ${formatBillReference(bill)} in batch`,
+          entityId: bill._id,
+          branch: bill.branch,
+          metadata: {
+            billId: String(bill._id),
+            tenantId: String(bill.userId),
+            emailStatus: delivery.email?.status,
+            notificationStatus: delivery.notification?.status,
+            daysOverdue: delivery.daysOverdue || 0,
+            noticeType: delivery.noticeType,
+          },
+        });
+
+        results.push({
+          billId: String(bill._id),
+          tenantName: `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim(),
+          success: true,
+          noticeType: delivery.noticeType,
+          emailStatus: delivery.email?.status,
+          notificationStatus: delivery.notification?.status,
+        });
+        successCount++;
+      } catch (err) {
+        results.push({
+          billId,
+          success: false,
+          reason: err.message || "Failed to deliver reminder",
+        });
+        failureCount++;
+      }
+    }
+
+    res.json({
+      success: successCount > 0,
+      totalRequested: billIds.length,
+      successCount,
+      failureCount,
+      results,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const downloadBillPdf = async (req, res, next) => {
   try {
     const { billId } = req.params;

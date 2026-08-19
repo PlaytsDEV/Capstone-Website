@@ -174,7 +174,7 @@ export default function AnalyticsDemographicsTab({
     },
     {
       icon: Calendar,
-      tone: "purple",
+      tone: "amber",
       label: "Peak Move-in Month",
       value: kpis.peakMonth || "N/A",
       trend: "High reservation volume",
@@ -350,7 +350,7 @@ export default function AnalyticsDemographicsTab({
         <ReportChartPanel title="Booking time of day" subtitle="When applicants create their reservations (2-hour windows)">
           <AnalyticsBarChart
             data={bookingByHour}
-            bars={[{ key: "count", label: "Bookings", color: "#6366f1" }]}
+            bars={[{ key: "count", label: "Bookings", color: "#0284c7" }]}
             emptyTitle="No timing data"
             emptyDescription="Booking time patterns require reservation history."
           />

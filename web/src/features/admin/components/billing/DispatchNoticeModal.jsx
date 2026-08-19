@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   BellRing,
@@ -103,7 +104,9 @@ export default function DispatchNoticeModal({ isOpen, item, targetStage = 1, onC
     }
   };
 
-  return (
+  if (!isOpen || typeof document === "undefined") return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="relative w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl text-card-foreground">
         {/* Header */}
@@ -272,6 +275,7 @@ export default function DispatchNoticeModal({ isOpen, item, targetStage = 1, onC
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

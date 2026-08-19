@@ -437,8 +437,8 @@ function UserManagementPage() {
     "#d97706", // amber
     "#16a34a", // green
     "#2563eb", // blue
-    "#7c3aed", // violet
-    "#db2777", // pink
+    "#0a1628", // navy
+    "#475569", // slate
     "#0891b2", // cyan
     "#ea580c", // orange
   ];

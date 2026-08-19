@@ -4,7 +4,7 @@ export const ANALYTICS_CHART_COLORS = [
  "#2563eb",
  "#0f766e",
  "#f97316",
- "#7c3aed",
+ "#d4af37",
  "#dc2626",
  "#0891b2",
 ];

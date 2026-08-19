@@ -218,7 +218,10 @@ export function useDeleteUtilityPeriod(utilityType) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (periodId) => utilityApi.deletePeriod(utilityType, periodId),
-    onSuccess: () => {
+    onSuccess: (_, periodId) => {
+      if (periodId) {
+        qc.removeQueries({ queryKey: utilityKeys.result(utilityType, periodId) });
+      }
       qc.invalidateQueries({ queryKey: utilityKeys.all(utilityType) });
     },
   });

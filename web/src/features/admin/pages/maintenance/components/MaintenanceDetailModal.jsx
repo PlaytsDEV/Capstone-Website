@@ -767,9 +767,9 @@ export function MaintenanceDetailModal({
       case "scheduled":
         return "bg-sky-50 text-sky-800 border-sky-300 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-700/60";
       case "provider_assigned":
-        return "bg-indigo-50 text-indigo-800 border-indigo-300 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-700/60";
+        return "bg-sky-50 text-sky-800 border-sky-300 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-700/60";
       case "reviewed":
-        return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300";
+        return "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300";
       case "resolved":
         return "bg-yellow-50 text-yellow-800 border-yellow-300 dark:bg-yellow-950/40 dark:text-yellow-300 dark:border-yellow-700/60";
       case "reopened":
@@ -1368,7 +1368,7 @@ export function MaintenanceDetailModal({
                                 <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 dark:border-slate-700/80 text-xs">
                                   <a
                                     href={`tel:${assignedProviderContact}`}
-                                    className="text-slate-700 dark:text-slate-300 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1.5"
+                                    className="text-slate-700 dark:text-slate-300 font-semibold hover:text-sky-600 dark:hover:text-sky-400 flex items-center gap-1.5"
                                   >
                                     <PhoneCall size={12} className="text-slate-500" />
                                     <span>{assignedProviderContact}</span>

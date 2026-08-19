@@ -526,7 +526,7 @@ export function MaintenanceAnalyticsCharts({ data, isOwner }) {
       {isOwner ? (
         <>
           <ReportChartPanel title="Requests per Branch">
-            <AnalyticsBarChart data={charts.requestsPerBranch || []} bars={[{ key: "value", label: "Requests", color: "#6366f1" }]} emptyTitle={emptyTitle} emptyDescription={emptyDescription} />
+            <AnalyticsBarChart data={charts.requestsPerBranch || []} bars={[{ key: "value", label: "Requests", color: "#0284c7" }]} emptyTitle={emptyTitle} emptyDescription={emptyDescription} />
           </ReportChartPanel>
           <ReportChartPanel title="Average Resolution Time per Branch">
             <AnalyticsBarChart data={charts.averageResolutionTimePerBranch || []} bars={[{ key: "value", label: "Hours", color: "#10b981" }]} emptyTitle={emptyTitle} emptyDescription={emptyDescription} />

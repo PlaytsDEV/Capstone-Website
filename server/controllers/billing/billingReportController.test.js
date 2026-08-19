@@ -6,7 +6,10 @@ const billFindOne = jest.fn();
 const roomFindById = jest.fn();
 const getAdminInfo = jest.fn();
 const loadRentBillForAdmin = jest.fn();
+const loadBillForAdmin = jest.fn();
 const deliverBillNotification = jest.fn();
+const deliverBillReminder = jest.fn();
+const canSendBillReminder = jest.fn();
 const logBillingAudit = jest.fn();
 const generateCanonicalBillReceiptPdf = jest.fn();
 const isAdminRole = jest.fn();
@@ -53,10 +56,10 @@ await jest.unstable_mockModule("../../services/mobileBillingBridge.js", () => ({
 await jest.unstable_mockModule("./_helpers.js", () => ({
   getAdminInfo,
   loadRentBillForAdmin,
-  loadBillForAdmin: jest.fn(),
+  loadBillForAdmin,
   deliverBillNotification,
-  deliverBillReminder: jest.fn(),
-  canSendBillReminder: jest.fn(),
+  deliverBillReminder,
+  canSendBillReminder,
   formatBillReference: jest.fn(() => "BILL-001"),
   formatBill: jest.fn((bill) => ({ id: bill._id })),
   generateRentBillPdf: jest.fn(),
@@ -66,7 +69,7 @@ await jest.unstable_mockModule("./_helpers.js", () => ({
   isPathInsideBillingPdfRoot: jest.fn(() => true),
 }));
 
-const { downloadBillReceipt, sendRentBill } = await import("./billingReportController.js");
+const { downloadBillReceipt, sendRentBill, batchSendBillReminders } = await import("./billingReportController.js");
 
 function queryResult(value) {
   return { select: jest.fn().mockResolvedValue(value) };
@@ -189,5 +192,79 @@ describe("billingReportController canonical release notification ordering", () =
 
     expect(next).toHaveBeenCalledWith(failure);
     expect(deliverBillNotification).not.toHaveBeenCalled();
+  });
+});
+
+describe("batchSendBillReminders", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getAdminInfo.mockResolvedValue({
+      id: "admin-1",
+      email: "admin@lilycrest.test",
+      role: "branch_admin",
+      branch: "gil-puyat",
+      isOwner: false,
+    });
+  });
+
+  test("rejects request when billIds array is missing or empty", async () => {
+    const res = response();
+    const next = jest.fn();
+
+    await batchSendBillReminders(
+      {
+        body: { billIds: [] },
+        branchFilter: "gil-puyat",
+      },
+      res,
+      next,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "BILL_IDS_REQUIRED" }),
+    );
+  });
+
+  test("successfully delivers reminders in batch to eligible tenant bills", async () => {
+    const mockBill1 = { _id: "bill-101", userId: "user-101", branch: "gil-puyat", status: "pending" };
+    const mockBill2 = { _id: "bill-102", userId: "user-102", branch: "gil-puyat", status: "pending" };
+
+    loadBillForAdmin
+      .mockResolvedValueOnce(mockBill1)
+      .mockResolvedValueOnce(mockBill2);
+
+    canSendBillReminder.mockReturnValue(true);
+
+    userFindById
+      .mockReturnValueOnce(queryResult({ firstName: "Juan", lastName: "Dela Cruz", email: "juan@test.com" }))
+      .mockReturnValueOnce(queryResult({ firstName: "Maria", lastName: "Santos", email: "maria@test.com" }));
+
+    deliverBillReminder
+      .mockResolvedValueOnce({ noticeType: "reminder", email: { status: "sent" }, notification: { status: "sent" } })
+      .mockResolvedValueOnce({ noticeType: "reminder", email: { status: "sent" }, notification: { status: "sent" } });
+
+    logBillingAudit.mockResolvedValue(undefined);
+
+    const res = response();
+    const next = jest.fn();
+
+    await batchSendBillReminders(
+      {
+        body: { billIds: ["bill-101", "bill-102"] },
+        branchFilter: "gil-puyat",
+      },
+      res,
+      next,
+    );
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        totalRequested: 2,
+        successCount: 2,
+        failureCount: 0,
+      }),
+    );
   });
 });

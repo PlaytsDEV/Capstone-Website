@@ -15,6 +15,8 @@ export default function BillsToolbar({
  <Search size={16} />
  </span>
  <input
+ type="text"
+ maxLength={50}
  placeholder="Search by tenant name..."
  value={search}
  onChange={(e) => onSearchChange(e.target.value)}
@@ -32,6 +34,8 @@ export default function BillsToolbar({
  </select>
  <input
  type="month"
+ min="2020-01"
+ max="2099-12"
  className="month-filter"
  value={monthFilter}
  onChange={(e) => onMonthChange(e.target.value)}

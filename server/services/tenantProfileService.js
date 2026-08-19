@@ -38,19 +38,14 @@ export function resolveTenantPersonalDetails({ user = {}, reservation = {} } = {
   const reservationAddress = reservation.address || {};
   const emergency = reservation.emergencyContact || {};
   const employment = reservation.employment || {};
-  const approvedApplication = Boolean(
-    reservation.applicationReviewedAt &&
-    reservation.applicationReviewedBy &&
-    !["needs_revision", "rejected"].includes(reservation.applicationStatus),
-  );
   const preferred = (applicationValue, profileValue) =>
-    approvedApplication
-      ? firstValue(applicationValue, profileValue)
-      : firstValue(profileValue, applicationValue);
+    firstValue(profileValue, applicationValue);
   const firstName = collapseWhitespace(preferred(reservation.firstName, user.firstName)) || null;
-  const middleName = collapseWhitespace(firstValue(reservation.middleName)) || null;
+  const middleName = collapseWhitespace(firstValue(user.middleName, reservation.middleName)) || null;
   const lastName = collapseWhitespace(preferred(reservation.lastName, user.lastName)) || null;
   const fullName = [firstName, middleName, lastName].filter(hasValue).join(" ");
+  const profileImage = user.profileImage || null;
+  const educationLevel = firstValue(user.educationLevel, reservation.educationLevel) || null;
 
   return {
     fullName: fullName || firstValue(user.email, reservation.email),
@@ -64,10 +59,11 @@ export function resolveTenantPersonalDetails({ user = {}, reservation = {} } = {
     civilStatus: preferred(reservation.maritalStatus, user.civilStatus),
     nationality: preferred(reservation.nationality, user.nationality),
     occupation: preferred(employment.occupation, user.occupation),
+    educationLevel,
     currentAddress: collapseWhitespace(preferred(joinAddress(reservationAddress), user.address)) || null,
     city: preferred(reservationAddress.city, user.city),
     province: preferred(reservationAddress.province, user.province),
-    profileImage: user.profileImage || null,
+    profileImage,
     emergencyContact: {
       name: firstValue(user.emergencyContact, emergency.name),
       relationship: firstValue(
@@ -84,6 +80,7 @@ export function buildTenantProfileSyncUpdates({ user = {}, reservation = {} } = 
   const resolved = resolveTenantPersonalDetails({ user, reservation });
   const candidates = {
     firstName: resolved.firstName,
+    middleName: resolved.middleName,
     lastName: resolved.lastName,
     phone: resolved.phone,
     profileImage: resolved.profileImage,
@@ -91,6 +88,7 @@ export function buildTenantProfileSyncUpdates({ user = {}, reservation = {} } = 
     civilStatus: resolved.civilStatus,
     nationality: resolved.nationality,
     occupation: resolved.occupation,
+    educationLevel: resolved.educationLevel,
     address: resolved.currentAddress,
     city: resolved.city,
     province: resolved.province,

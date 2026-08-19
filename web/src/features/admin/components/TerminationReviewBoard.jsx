@@ -21,7 +21,12 @@ const getInitials = (name) => {
   return name.slice(0, 2).toUpperCase();
 };
 
-export default function TerminationReviewBoard({ branch }) {
+export default function TerminationReviewBoard({
+  branch,
+  prefilledCaseData = null,
+  onClearPrefilledCase,
+  onCasesUpdated,
+}) {
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -30,6 +35,13 @@ export default function TerminationReviewBoard({ branch }) {
   const [selectedCase, setSelectedCase] = useState(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isOpenCaseModalOpen, setIsOpenCaseModalOpen] = useState(false);
+
+  // If prefilled data arrives from Notice 3 escalation, auto-open the modal
+  useEffect(() => {
+    if (prefilledCaseData) {
+      setIsOpenCaseModalOpen(true);
+    }
+  }, [prefilledCaseData]);
 
   const fetchCases = async () => {
     try {
@@ -40,7 +52,7 @@ export default function TerminationReviewBoard({ branch }) {
       const res = await billingApi.getTerminationCases(params);
       setCases(res.data || []);
     } catch (err) {
-      console.error("Termination cases fetch error:", err);
+      console.error("[TerminationReviewBoard] Cases fetch error:", err);
     } finally {
       setLoading(false);
     }
@@ -53,6 +65,23 @@ export default function TerminationReviewBoard({ branch }) {
   const handleOpenReview = (caseItem) => {
     setSelectedCase(caseItem);
     setIsReviewModalOpen(true);
+  };
+
+  const handleRefresh = () => {
+    fetchCases();
+    onCasesUpdated?.();
+  };
+
+  const handleCaseCreated = () => {
+    fetchCases();
+    onCasesUpdated?.();
+    onClearPrefilledCase?.();
+    setIsOpenCaseModalOpen(false);
+  };
+
+  const handleCloseOpenCaseModal = () => {
+    onClearPrefilledCase?.();
+    setIsOpenCaseModalOpen(false);
   };
 
   const filteredCases = useMemo(() => {
@@ -108,7 +137,7 @@ export default function TerminationReviewBoard({ branch }) {
           </button>
           <button
             type="button"
-            onClick={fetchCases}
+            onClick={handleRefresh}
             disabled={loading}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50"
             title="Refresh termination review cases"
@@ -128,8 +157,8 @@ export default function TerminationReviewBoard({ branch }) {
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Tenant</th>
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Trigger Reason</th>
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Frozen Debt</th>
-                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Board Status</th>
-                <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Adjudication</th>
+                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Review Status</th>
+                <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50 bg-card">
@@ -183,7 +212,7 @@ export default function TerminationReviewBoard({ branch }) {
                       <button
                         type="button"
                         onClick={() => handleOpenReview(c)}
-                        className="inline-flex h-7 px-3 items-center justify-center gap-1 rounded-md border border-border bg-card text-[11px] font-semibold text-card-foreground hover:bg-muted active:scale-[0.98] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                        className="inline-flex h-7 px-3 items-center justify-center gap-1 rounded-md border border-border bg-card text-[11px] font-semibold text-card-foreground hover:bg-muted active:scale-[0.98]"
                       >
                         Review Case <ArrowUpRight size={11} />
                       </button>
@@ -205,7 +234,10 @@ export default function TerminationReviewBoard({ branch }) {
             setIsReviewModalOpen(false);
             setSelectedCase(null);
           }}
-          onRefresh={fetchCases}
+          onRefresh={() => {
+            fetchCases();
+            onCasesUpdated?.();
+          }}
         />
       )}
 
@@ -214,8 +246,11 @@ export default function TerminationReviewBoard({ branch }) {
         <OpenTerminationCaseModal
           isOpen={isOpenCaseModalOpen}
           branch={branch}
-          onClose={() => setIsOpenCaseModalOpen(false)}
-          onCreated={fetchCases}
+          initialTenantId={prefilledCaseData?.tenantId || ""}
+          initialReason={prefilledCaseData?.triggerReason || ""}
+          initialTenantName={prefilledCaseData?.tenantName || ""}
+          onClose={handleCloseOpenCaseModal}
+          onCreated={handleCaseCreated}
         />
       )}
     </div>

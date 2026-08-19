@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { X, Check, Trash2, AlertTriangle, LoaderCircle } from "lucide-react";
 import useEscapeClose from "../../../../../shared/hooks/useEscapeClose";
 import {
@@ -35,7 +36,9 @@ export default function EditReadingModal({
 
   const unit = utilityType === "electricity" ? "kWh" : "cu.m.";
 
-  return (
+  if (!isOpen || !reading || typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
       style={{
@@ -114,6 +117,7 @@ export default function EditReadingModal({
               <input
                 type="text"
                 inputMode="decimal"
+                maxLength={9}
                 className={`h-9 w-full rounded-lg border px-3 text-xs font-mono text-card-foreground bg-card focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 focus:border-[#0A1628] dark:focus:ring-slate-400/20 dark:focus:border-slate-400 ${
                   isBelowBaseline || isExceedsMax ? "border-rose-500 text-rose-600" : "border-border"
                 }`}
@@ -128,7 +132,7 @@ export default function EditReadingModal({
               />
               {isExceedsMax && (
                 <p className="text-[10px] font-medium text-rose-600">
-                  Max: 999,999.99
+                  Reading exceeds maximum allowable limit
                 </p>
               )}
             </div>
@@ -140,6 +144,8 @@ export default function EditReadingModal({
               </label>
               <input
                 type="date"
+                min="2020-01-01"
+                max="2099-12-31"
                 className="h-9 w-full rounded-lg border border-border bg-card px-2.5 text-xs text-card-foreground focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 focus:border-[#0A1628] dark:focus:ring-slate-400/20 dark:focus:border-slate-400"
                 value={editForm.date}
                 onChange={(e) =>
@@ -223,6 +229,7 @@ export default function EditReadingModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

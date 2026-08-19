@@ -10,15 +10,14 @@ const tenantRoot = resolve(__dirname, "../../..");
 const readTenantSource = (relativePath) =>
   readFileSync(resolve(tenantRoot, relativePath), "utf8");
 
-test("PhotoEmailSection provides unlocked editable email with account datalist suggestions and autocomplete", () => {
+test("PhotoEmailSection provides locked verified account email with badge and icon", () => {
   const source = readTenantSource("pages/reservation-steps/components/PhotoEmailSection.jsx");
 
-  // Verify email input is NOT disabled
-  assert.ok(!source.includes('disabled'), "Email input in PhotoEmailSection should not be disabled");
-  assert.match(source, /autoComplete="email"/, "Email input should have autoComplete='email'");
-  assert.match(source, /inputMode="email"/, "Email input should have inputMode='email'");
-  assert.match(source, /setBillingEmail/, "Email input should connect to setBillingEmail");
-  assert.match(source, /datalist id="billingEmail-suggestions"/, "Datalist suggestion dropdown should be rendered for account email");
+  // Verify email input is locked/readOnly/disabled
+  assert.match(source, /readOnly/, "Email input in PhotoEmailSection should be readOnly");
+  assert.match(source, /disabled/, "Email input in PhotoEmailSection should be disabled");
+  assert.match(source, /Lock/, "Lock icon should be rendered");
+  assert.match(source, /Verified Account/, "Verified Account badge should be rendered");
   assert.match(source, /accountEmail/, "Component should accept and use accountEmail");
 });
 

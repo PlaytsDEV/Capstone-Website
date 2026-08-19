@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { X, Save, AlertCircle, LoaderCircle } from "lucide-react";
 import useEscapeClose from "../../../../../shared/hooks/useEscapeClose";
 import {
@@ -66,7 +67,9 @@ export default function EditPeriodModal({
 
   const unit = utilityType === "electricity" ? "kWh" : "cu.m.";
 
-  return (
+  if (!isOpen || !periodId || typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
       style={{
@@ -114,6 +117,8 @@ export default function EditPeriodModal({
               </label>
               <input
                 type="date"
+                min="2020-01-01"
+                max="2099-12-31"
                 className="h-9 w-full rounded-lg border border-border bg-card px-2.5 text-xs text-card-foreground focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 focus:border-[#0A1628] dark:focus:ring-slate-400/20 dark:focus:border-slate-400"
                 value={editForm.startDate}
                 onChange={(e) =>
@@ -129,6 +134,8 @@ export default function EditPeriodModal({
               </label>
               <input
                 type="date"
+                min="2020-01-01"
+                max="2099-12-31"
                 className="h-9 w-full rounded-lg border border-border bg-card px-2.5 text-xs text-card-foreground focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 focus:border-[#0A1628] dark:focus:ring-slate-400/20 dark:focus:border-slate-400"
                 value={editForm.endDate}
                 onChange={(e) =>
@@ -149,6 +156,7 @@ export default function EditPeriodModal({
                   <input
                     type="text"
                     inputMode="decimal"
+                    maxLength={9}
                     className={`h-9 w-full rounded-lg border px-3 text-xs font-mono text-card-foreground bg-card focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 focus:border-[#0A1628] dark:focus:ring-slate-400/20 dark:focus:border-slate-400 ${
                       isStartReadingExceedsMax ? "border-rose-500 text-rose-600" : "border-border"
                     }`}
@@ -176,6 +184,7 @@ export default function EditPeriodModal({
                   <input
                     type="text"
                     inputMode="decimal"
+                    maxLength={9}
                     className={`h-9 w-full rounded-lg border px-3 text-xs font-mono text-card-foreground bg-card focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 focus:border-[#0A1628] dark:focus:ring-slate-400/20 dark:focus:border-slate-400 ${
                       isEndReadingExceedsMax || isReadingLower ? "border-rose-500 text-rose-600" : "border-border"
                     }`}
@@ -206,13 +215,11 @@ export default function EditPeriodModal({
                 <label className="text-xs font-semibold text-muted-foreground">
                   Rate (PHP / {unit})
                 </label>
-                <span className="text-[10px] text-muted-foreground">
-                  Max: ₱{maxRate.toLocaleString()}
-                </span>
               </div>
               <input
                 type="text"
                 inputMode="decimal"
+                maxLength={10}
                 className={`h-9 w-full rounded-lg border px-3 text-xs font-mono text-card-foreground bg-card focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 focus:border-[#0A1628] dark:focus:ring-slate-400/20 dark:focus:border-slate-400 ${
                   isRateInvalid ? "border-rose-500 text-rose-600" : "border-border"
                 }`}
@@ -263,6 +270,7 @@ export default function EditPeriodModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

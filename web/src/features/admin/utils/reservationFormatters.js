@@ -123,9 +123,9 @@ export function getPaymentStatusBadgeConfig(status) {
       return {
         label,
         bg: "transparent",
-        color: "#6D28D9",
+        color: "#475569",
         border: "transparent",
-        dot: "#8B5CF6",
+        dot: "#94A3B8",
       };
 
     case "cancelled":

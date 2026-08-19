@@ -295,7 +295,7 @@ export const sanitizeToastMessage = (rawMessage, type = "info") => {
   }
 
   if (notFoundRegex.test(message)) {
-    return "The requested record could not be found. It may have been updated or removed.";
+    return "The requested record could not be found. It may have been updated or deleted.";
   }
 
   if (genericErrorRegex.test(message)) {

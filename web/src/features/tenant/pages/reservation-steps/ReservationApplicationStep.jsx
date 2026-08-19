@@ -265,7 +265,10 @@ const ReservationApplicationStep = ({
 
   // Section completion checks
   const isEmailValid = (val) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(val || "").trim());
-  const section1Complete = Boolean(billingEmail && isEmailValid(billingEmail) && selfiePhoto);
+  const effectiveBillingEmail = String(accountEmail || billingEmail || "").trim();
+  const section1Complete = Boolean(
+    effectiveBillingEmail && isEmailValid(effectiveBillingEmail) && selfiePhoto
+  );
   const section2Complete = Boolean(
     lastName?.trim() &&
       firstName?.trim() &&

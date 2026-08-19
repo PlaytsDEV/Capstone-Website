@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Check, XCircle, Eye, Clock, AlertTriangle } from "lucide-react";
 import { fmtCurrency, fmtDate, fmtMonth } from "../../utils/formatters";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
@@ -29,7 +30,9 @@ export default function BillDetailModal({
  paymentFlow?.adminMessage ||
  "Manual settlement should only be used for branch-assisted offline payments.";
 
- return (
+ if (!bill || typeof document === "undefined") return null;
+
+ return createPortal(
  <div className="modal-overlay" onClick={onClose}>
  <div
  className="modal-content modal-lg"
@@ -430,6 +433,7 @@ export default function BillDetailModal({
  )}
  </div>
  </div>
- </div>
+ </div>,
+ document.body
  );
 }

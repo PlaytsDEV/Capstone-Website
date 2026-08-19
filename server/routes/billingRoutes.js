@@ -237,6 +237,18 @@ router.post(
   billingController.sendBillReminder,
 );
 
+/**
+ * POST /api/billing/batch-remind
+ * Send reminders in batch for multiple unpaid bills (Admin only)
+ */
+router.post(
+  "/batch-remind",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.batchSendBillReminders,
+);
+
 // POST /:billId/verify — REMOVED: manual billing proof review decommissioned.
 
 /**

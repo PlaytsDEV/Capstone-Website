@@ -119,13 +119,19 @@ const TYPE_CONFIG = {
 	reservation_cancelled: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Cancelled" },
 	reservation_expired: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Expired" },
 	reservation_noshow: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "No-Show" },
-	visit_approved: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Approved" },
+	reservation_cancellation_requested: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Under Review" },
+	reservation_cancellation_rejected: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Rejected" },
+	visit_requested: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Scheduled" },
+	visit_approved: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Confirmed" },
 	visit_rejected: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Rejected" },
 	payment_approved: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Approved" },
 	payment_rejected: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Rejected" },
 	bill_generated: { icon: CreditCard, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Bill Issued" },
 	bill_due_reminder: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Due Soon" },
 	grace_period_warning: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Grace Period" },
+	penalty_applied: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Penalty Applied" },
+	contract_expiring: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Expiring Soon" },
+	contract_document_ready: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Ready for Signing" },
 	move_in_reminder: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Move-In Notice" },
 	account_suspended: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Suspended" },
 	account_reactivated: { icon: Check, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Reactivated" },
@@ -145,34 +151,71 @@ function getNotificationConfig(notification = {}) {
 	let label = baseConfig.label;
 	let colors = baseConfig.colors;
 
-	const content = `${notification.title || ""} ${notification.message || ""}`.toLowerCase();
+	const title = (notification.title || "").toLowerCase();
+	const message = (notification.message || "").toLowerCase();
 
-	if (content.includes("completed") || content.includes("resolved")) {
+	// Priority 1: Specific Under Review / In-Progress states (Amber)
+	if (
+		title.includes("pending review") ||
+		title.includes("under review") ||
+		title.includes("application pending") ||
+		title.includes("in progress") ||
+		title.includes("awaiting")
+	) {
+		label = "Under Review";
+		colors = NOTIFICATION_COLOR_SCHEMES.warning;
+	} else if (
+		title.includes("revision") ||
+		title.includes("needs revision") ||
+		message.includes("does not meet the requirements") ||
+		message.includes("please upload a clear") ||
+		message.includes("re-upload")
+	) {
+		label = "Needs Revision";
+		colors = NOTIFICATION_COLOR_SCHEMES.warning;
+	} else if (
+		title.includes("visit complete") ||
+		title.includes("physical visit complete") ||
+		title.includes("move-in complete") ||
+		title.includes("move-out complete") ||
+		title.includes("resolved") ||
+		title.includes("completed")
+	) {
 		label = "Completed";
 		colors = NOTIFICATION_COLOR_SCHEMES.success;
-	} else if (content.includes("cancelled") || content.includes("canceled")) {
-		label = "Cancelled";
-		colors = NOTIFICATION_COLOR_SCHEMES.danger;
-	} else if (content.includes("rejected")) {
-		label = "Rejected";
-		colors = NOTIFICATION_COLOR_SCHEMES.danger;
-	} else if (content.includes("approved") || content.includes("confirmed")) {
-		label = "Approved";
+	} else if (
+		title.includes("approved") ||
+		title.includes("confirmed")
+	) {
+		label = title.includes("confirmed") ? "Confirmed" : "Approved";
 		colors = NOTIFICATION_COLOR_SCHEMES.success;
-	} else if (content.includes("reviewed")) {
-		label = "Reviewed";
-		colors = NOTIFICATION_COLOR_SCHEMES.info;
-	} else if (content.includes("viewed")) {
-		label = "Viewed";
-		colors = NOTIFICATION_COLOR_SCHEMES.info;
-	} else if (content.includes("scheduled")) {
+	} else if (
+		title.includes("rejected") ||
+		title.includes("declined") ||
+		title.includes("cancelled") ||
+		title.includes("canceled") ||
+		title.includes("suspended")
+	) {
+		label = title.includes("cancelled") || title.includes("canceled") ? "Cancelled" : "Rejected";
+		colors = NOTIFICATION_COLOR_SCHEMES.danger;
+	} else if (
+		title.includes("scheduled")
+	) {
 		label = "Scheduled";
+		colors = NOTIFICATION_COLOR_SCHEMES.warning;
+	} else if (
+		type === "announcement" ||
+		title.includes("announcement") ||
+		title.includes("broadcast")
+	) {
+		label = "Announcement";
 		colors = NOTIFICATION_COLOR_SCHEMES.info;
-	} else if (content.includes("in progress")) {
-		label = "In Progress";
-		colors = NOTIFICATION_COLOR_SCHEMES.info;
-	} else if (content.includes("assigned")) {
-		label = "Assigned";
+	} else if (
+		type === "chat_reply" ||
+		title.includes("admin reply") ||
+		title.includes("inquiry")
+	) {
+		label = "Inquiry";
 		colors = NOTIFICATION_COLOR_SCHEMES.info;
 	}
 
@@ -506,7 +549,7 @@ const NotificationsTab = () => {
 													idx < items.length - 1 ? "1px solid var(--color-border-subtle)" : "none",
 												backgroundColor: notification.isRead
 													? "var(--card)"
-													: "color-mix(in srgb, var(--info) 4%, var(--card))",
+													: "color-mix(in srgb, var(--foreground) 3%, var(--card))",
 												cursor: "pointer",
 												transition: "background-color 0.15s",
 												outlineOffset: "-2px",
@@ -607,10 +650,10 @@ const NotificationsTab = () => {
 											{!notification.isRead && (
 												<div
 													style={{
-														width: "8px",
-														height: "8px",
+														width: "7px",
+														height: "7px",
 														borderRadius: "50%",
-														backgroundColor: "var(--info)",
+														backgroundColor: "var(--foreground, #0A1628)",
 														flexShrink: 0,
 														marginTop: "6px",
 													}}

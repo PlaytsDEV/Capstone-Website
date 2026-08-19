@@ -61,6 +61,17 @@ export default function AdminContractsPage() {
   }, [filters.archive, filters.branch, isOwner]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      load({ silent: true });
+    };
+    window.addEventListener("lilycrest:contract-updated", handleUpdate);
+    return () => {
+      window.removeEventListener("lilycrest:contract-updated", handleUpdate);
+    };
+  }, [load]);
+
   useEffect(() => { setPage(1); }, [filters]);
 
   const filtered = useMemo(

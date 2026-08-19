@@ -51,6 +51,7 @@ const ProfilePage = () => {
 
  const [profileData, setProfileData] = useState({
  firstName: "",
+ middleName: "",
  lastName: "",
  email: "",
  username: "",
@@ -76,6 +77,7 @@ const ProfilePage = () => {
 
  const [editData, setEditData] = useState({
  firstName: "",
+ middleName: "",
  lastName: "",
  profileImage: "",
  dateOfBirth: "",
@@ -99,6 +101,7 @@ const ProfilePage = () => {
  setProfileData(profile);
  setEditData({
  firstName: profile.firstName || "",
+ middleName: profile.middleName || "",
  lastName: profile.lastName || "",
  profileImage: profile.profileImage || "",
  dateOfBirth: profile.dateOfBirth || "",
@@ -341,73 +344,75 @@ const ProfilePage = () => {
     }
   };
 
- const handleCancelEdit = () => {
- setEditData({
- firstName: profileData.firstName || "",
- lastName: profileData.lastName || "",
- profileImage: profileData.profileImage || "",
- dateOfBirth: profileData.dateOfBirth || "",
- gender: profileData.gender || "",
- civilStatus: profileData.civilStatus || "",
- nationality: profileData.nationality || "",
- occupation: profileData.occupation || "",
- });
- setIsEditingProfile(false);
- };
+  const handleCancelEdit = () => {
+    setEditData({
+      firstName: profileData.firstName || "",
+      middleName: profileData.middleName || "",
+      lastName: profileData.lastName || "",
+      profileImage: profileData.profileImage || "",
+      dateOfBirth: profileData.dateOfBirth || "",
+      gender: profileData.gender || "",
+      civilStatus: profileData.civilStatus || "",
+      nationality: profileData.nationality || "",
+      occupation: profileData.occupation || "",
+    });
+    setIsEditingProfile(false);
+  };
 
- const hasUnsavedChanges =
- isEditingProfile &&
- (editData.firstName !== (profileData.firstName || "") ||
- editData.lastName !== (profileData.lastName || "") ||
- editData.profileImage !== (profileData.profileImage || "") ||
- editData.dateOfBirth !== (profileData.dateOfBirth || "") ||
- editData.gender !== (profileData.gender || "") ||
- editData.civilStatus !== (profileData.civilStatus || "") ||
- editData.nationality !== (profileData.nationality || "") ||
- editData.occupation !== (profileData.occupation || ""));
+  const hasUnsavedChanges =
+    isEditingProfile &&
+    (editData.firstName !== (profileData.firstName || "") ||
+      editData.middleName !== (profileData.middleName || "") ||
+      editData.lastName !== (profileData.lastName || "") ||
+      editData.profileImage !== (profileData.profileImage || "") ||
+      editData.dateOfBirth !== (profileData.dateOfBirth || "") ||
+      editData.gender !== (profileData.gender || "") ||
+      editData.civilStatus !== (profileData.civilStatus || "") ||
+      editData.nationality !== (profileData.nationality || "") ||
+      editData.occupation !== (profileData.occupation || ""));
 
- const handleTabChange = (nextTab) => {
- if (hasUnsavedChanges) {
- setPendingTab(nextTab);
- setShowUnsavedWarning(true);
- return;
- }
+  const handleTabChange = (nextTab) => {
+    if (hasUnsavedChanges) {
+      setPendingTab(nextTab);
+      setShowUnsavedWarning(true);
+      return;
+    }
 
- setActiveTab(nextTab);
- setIsEditingProfile(false);
- navigate("/applicant/profile", {
- replace: true,
- state: { tab: nextTab },
- });
- };
+    setActiveTab(nextTab);
+    setIsEditingProfile(false);
+    navigate("/applicant/profile", {
+      replace: true,
+      state: { tab: nextTab },
+    });
+  };
 
- const confirmDiscardChanges = () => {
- setShowUnsavedWarning(false);
- handleCancelEdit();
+  const confirmDiscardChanges = () => {
+    setShowUnsavedWarning(false);
+    handleCancelEdit();
 
- if (pendingTab) {
- setActiveTab(pendingTab);
- navigate("/applicant/profile", {
- replace: true,
- state: { tab: pendingTab },
- });
- setPendingTab(null);
- }
- };
+    if (pendingTab) {
+      setActiveTab(pendingTab);
+      navigate("/applicant/profile", {
+        replace: true,
+        state: { tab: pendingTab },
+      });
+      setPendingTab(null);
+    }
+  };
 
- const selectedReservation = selectedReservationId
- ? activeReservations.find((reservation) => reservation._id === selectedReservationId) ||
- activeReservations[0]
- : activeReservations[0];
+  const selectedReservation = selectedReservationId
+    ? activeReservations.find((reservation) => reservation._id === selectedReservationId) ||
+      activeReservations[0]
+    : activeReservations[0];
 
- // The reservations LIST endpoint never attaches authoritative
- // moveInReadiness (it would fan out into Bill/Room/Stay/Reservation
- // queries per row — see attachMoveInReadiness in
- // reservationCrudController.js). Only the single-reservation DETAIL
- // endpoint carries it, so fetch it here — scoped to just the selected
- // reservation, and only when it's on the structured workflow — so the
- // dashboard's "Move-in ready!" label can make an authoritative claim
- // instead of falling back to non-final wording indefinitely.
+  // The reservations LIST endpoint never attaches authoritative
+  // moveInReadiness (it would fan out into Bill/Room/Stay/Reservation
+  // queries per row — see attachMoveInReadiness in
+  // reservationCrudController.js). Only the single-reservation DETAIL
+  // endpoint carries it, so fetch it here — scoped to just the selected
+  // reservation, and only when it's on the structured workflow — so the
+  // dashboard's "Move-in ready!" label can make an authoritative claim
+  // instead of falling back to non-final wording indefinitely.
   const authoritativeReadinessQuery = useReservation(selectedReservation?._id, {
     // Always fetch the detail for confirmed (reserved/moveIn/moveOut) reservations so
     // that initialPaymentStatus and paymentStatus are sourced from the DB-authoritative
@@ -466,7 +471,9 @@ const ProfilePage = () => {
  }, [isReservationConfirmed]);
 
   const fullName = formatDisplayName(
-    `${profileData.firstName || ""} ${profileData.lastName || ""}`.trim() ||
+    [profileData.firstName, profileData.middleName, profileData.lastName]
+      .filter(Boolean)
+      .join(" ") ||
       profileData.name ||
       profileData.username ||
       "User"

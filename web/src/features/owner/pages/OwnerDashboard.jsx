@@ -30,10 +30,10 @@ import "../styles/owner-dashboard.css";
 
 const STAT_ACCENTS = [
  { color: "#2563eb", bg: "#eff6ff" },
- { color: "#7c3aed", bg: "#f5f3ff" },
+ { color: "#0a1628", bg: "#f8f9fa" },
  { color: "#0284c7", bg: "#f0f9ff" },
  { color: "#d97706", bg: "#fffbeb" },
- { color: "#db2777", bg: "#fdf2f8" },
+ { color: "#d4af37", bg: "#fbf7ea" },
  { color: "#059669", bg: "#ecfdf5" },
  { color: "#e11d48", bg: "#fff1f2" },
  { color: "#14b8a6", bg: "#f0fdfa" },

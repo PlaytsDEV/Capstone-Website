@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   Info,
@@ -526,13 +527,13 @@ export default function NewBillingPeriodModal({
 
       if (newPeriodId) {
         newlyOpenedPeriodId = newPeriodId;
-        onSuccess(newPeriodId);
         await closePeriod.mutateAsync({
           periodId: newPeriodId,
           endReading:
             utilityType === "water" ? 0 : Number(periodForm.endReading),
           endDate: periodForm.endDate,
         });
+        onSuccess(newPeriodId);
         notify.success(
           "Draft billing cycle created successfully. Ready for review."
         );
@@ -548,9 +549,7 @@ export default function NewBillingPeriodModal({
       if (newlyOpenedPeriodId) {
         try {
           await deletePeriod.mutateAsync(newlyOpenedPeriodId);
-          if (selectedPeriodId === newlyOpenedPeriodId) {
-            onSuccess(null);
-          }
+          onSuccess(null);
           notify.warn(
             "Cycle finalize failed, so the temporary open period was rolled back."
           );
@@ -559,7 +558,7 @@ export default function NewBillingPeriodModal({
         }
       }
       setGenerationBlocker(buildGenerationBlocker(err));
-      notify.error(err, "Failed to generate billing cycle.");
+      notify.error(err, "Unable to generate billing period. Please check the entered readings and try again.");
     }
   };
 
@@ -586,7 +585,9 @@ export default function NewBillingPeriodModal({
     }
   };
 
-  return (
+  if (!isOpen || typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
       style={{
@@ -735,7 +736,7 @@ export default function NewBillingPeriodModal({
           </p>
 
           {/* Dates & Rate Configuration Grid */}
-          <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2">
             {/* Cycle Start */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
@@ -743,13 +744,23 @@ export default function NewBillingPeriodModal({
               </label>
               <input
                 type="date"
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors"
+                min="2020-01-01"
+                max="2099-12-31"
+                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors cursor-pointer"
                 {...ringFocus}
                 value={periodForm.startDate}
                 onChange={handleStartDateChange}
+                onClick={(e) => {
+                  try {
+                    e.currentTarget.showPicker?.();
+                  } catch {}
+                }}
                 onKeyDown={handleKeyDown}
                 disabled={isPending || isFixedRateBranch}
               />
+              <p className="text-[11px] text-muted-foreground">
+                Start of billing period
+              </p>
             </div>
 
             {/* Duration Preset Dropdown */}
@@ -762,15 +773,15 @@ export default function NewBillingPeriodModal({
                   value={durationPreset}
                   onChange={(e) => handlePresetChange(e.target.value)}
                   disabled={isPending || isFixedRateBranch}
-                  className="w-full appearance-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors cursor-pointer pr-8"
+                  className="w-full appearance-none rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground focus:outline-none disabled:opacity-60 transition-colors cursor-pointer pr-8 hover:border-slate-300 dark:hover:border-slate-600"
                   {...ringFocus}
                   aria-label="Select billing cycle duration preset"
                 >
-                  <option value="1mo">1 Month (Monthly)</option>
-                  <option value="30d">30 Days (Standard)</option>
-                  <option value="monthEnd">End of Month (Month End)</option>
-                  <option value="15d">15 Days (Semi-Monthly)</option>
-                  <option value="custom">Custom Date Range</option>
+                  <option value="1mo">1 Month</option>
+                  <option value="30d">30 Days</option>
+                  <option value="monthEnd">End of Month</option>
+                  <option value="15d">15 Days</option>
+                  <option value="custom">Custom Range</option>
                 </select>
                 <ChevronDown
                   size={14}
@@ -778,7 +789,11 @@ export default function NewBillingPeriodModal({
                 />
               </div>
               <p className="text-[11px] text-muted-foreground">
-                {cycleDays > 0 ? `${cycleDays} days duration` : "Select cycle preset"}
+                {durationPreset === "custom"
+                  ? `${cycleDays > 0 ? `${cycleDays} days duration` : "Custom dates"}`
+                  : cycleDays > 0
+                    ? `${cycleDays} days duration`
+                    : "Select cycle duration"}
               </p>
             </div>
 
@@ -789,10 +804,17 @@ export default function NewBillingPeriodModal({
               </label>
               <input
                 type="date"
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors"
+                min="2020-01-01"
+                max="2099-12-31"
+                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors cursor-pointer"
                 {...ringFocus}
                 value={periodForm.endDate}
                 onChange={handleEndDateChange}
+                onClick={(e) => {
+                  try {
+                    e.currentTarget.showPicker?.();
+                  } catch {}
+                }}
                 onKeyDown={handleKeyDown}
                 disabled={isPending || isFixedRateBranch}
               />
@@ -804,7 +826,11 @@ export default function NewBillingPeriodModal({
                 <p className="text-[11px] text-amber-600 dark:text-amber-400">
                   Unusual duration ({cycleDays} days)
                 </p>
-              ) : null}
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  End of billing period
+                </p>
+              )}
             </div>
 
             {/* Rate Input */}
@@ -815,13 +841,11 @@ export default function NewBillingPeriodModal({
                     ? "Total Water (PHP)"
                     : `Rate (PHP/${isElectricity ? "kWh" : "cu.m."})`}
                 </label>
-                <span className="text-[10px] text-muted-foreground">
-                  Max: ₱{maxRate.toLocaleString()}
-                </span>
               </div>
               <input
                 type="text"
                 inputMode="decimal"
+                maxLength={10}
                 className={`w-full rounded-lg border px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors ${
                   isRateInvalid && !isFixedRateBranch
                     ? "border-rose-500"
@@ -843,9 +867,15 @@ export default function NewBillingPeriodModal({
                 placeholder="e.g. 16.00"
                 disabled={isPending || isFixedRateBranch}
               />
-              {isRateInvalid && !isFixedRateBranch && (
+              {isRateInvalid && !isFixedRateBranch ? (
                 <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400">
                   Rate cannot exceed ₱{maxRate.toLocaleString()}
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  {utilityType === "water"
+                    ? "Total amount to divide"
+                    : "Applicable unit rate"}
                 </p>
               )}
             </div>
@@ -861,13 +891,11 @@ export default function NewBillingPeriodModal({
                     <label className="text-xs font-semibold text-foreground">
                       Opening Meter Reading (kWh)
                     </label>
-                    <span className="text-[10px] text-muted-foreground">
-                      Max: 999,999.99
-                    </span>
                   </div>
                   <input
                     type="text"
                     inputMode="decimal"
+                    maxLength={9}
                     className={`w-full rounded-lg border px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors ${
                       isStartReadingExceedsMax && !isFixedRateBranch
                         ? "border-rose-500"
@@ -907,14 +935,12 @@ export default function NewBillingPeriodModal({
                     <label className="text-xs font-semibold text-foreground">
                       Final Reading (kWh)
                     </label>
-                    <span className="text-[10px] text-muted-foreground">
-                      Max: 999,999.99
-                    </span>
                   </div>
                   <input
                     ref={finalReadingInputRef}
                     type="text"
                     inputMode="decimal"
+                    maxLength={9}
                     className={`w-full rounded-lg border px-3 py-2 text-sm text-foreground focus:outline-none disabled:opacity-60 transition-colors ${
                       (isReadingLower ||
                         isEndReadingExceedsMax ||
@@ -1111,7 +1137,7 @@ export default function NewBillingPeriodModal({
 
         {/* Unsaved Changes Confirmation Banner */}
         {showCloseConfirm && (
-          <div className="flex items-center justify-between border-t border-border bg-amber-500/10 px-6 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+          <div className="flex items-center justify-between border-t border-border bg-background px-6 py-2.5 text-xs text-foreground">
             <span className="font-medium">
               You have unsaved changes. Discard and close?
             </span>
@@ -1119,7 +1145,7 @@ export default function NewBillingPeriodModal({
               <button
                 type="button"
                 onClick={() => setShowCloseConfirm(false)}
-                className="px-2 py-1 rounded text-xs font-semibold hover:bg-amber-500/20 text-foreground"
+                className="px-2.5 py-1 rounded-md border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors"
               >
                 Keep Editing
               </button>
@@ -1129,7 +1155,7 @@ export default function NewBillingPeriodModal({
                   setShowCloseConfirm(false);
                   onClose();
                 }}
-                className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white font-semibold shadow-sm"
+                className="px-2.5 py-1 rounded-md bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs shadow-sm transition-colors"
               >
                 Discard
               </button>
@@ -1197,6 +1223,7 @@ export default function NewBillingPeriodModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

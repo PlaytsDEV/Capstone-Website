@@ -144,10 +144,14 @@ export default function useSocketClient() {
 
         if (
           entityType === "reservation" ||
+          entityType === "contract" ||
           /^(reservation_|visit_|grace_period_|contract_|move_out)/i.test(notificationType)
         ) {
           qc.invalidateQueries({ queryKey: ["reservations"] });
           qc.refetchQueries({ queryKey: ["reservations"], type: "active" });
+          qc.invalidateQueries({ queryKey: ["contracts"] });
+          qc.invalidateQueries({ queryKey: ["contracts", "myCurrentContract"] });
+          qc.refetchQueries({ queryKey: ["contracts", "myCurrentContract"], type: "active" });
           qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
           qc.invalidateQueries({ queryKey: ["rooms"] });
           qc.invalidateQueries({ queryKey: ["users"] });
@@ -163,6 +167,8 @@ export default function useSocketClient() {
           qc.invalidateQueries({ queryKey: ["electricity"] });
           qc.invalidateQueries({ queryKey: ["water"] });
           qc.invalidateQueries({ queryKey: ["reservations"] });
+          qc.invalidateQueries({ queryKey: ["contracts"] });
+          qc.invalidateQueries({ queryKey: ["contracts", "myCurrentContract"] });
           qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
         }
 
@@ -197,11 +203,29 @@ export default function useSocketClient() {
         qc.invalidateQueries({ queryKey: ["dashboard"] });
       });
 
+      socket.on("contract:updated", (data) => {
+        if (data?.contractId) {
+          qc.invalidateQueries({ queryKey: ["contracts", data.contractId] });
+        }
+        qc.invalidateQueries({ queryKey: ["contracts"] });
+        qc.invalidateQueries({ queryKey: ["contracts", "myCurrentContract"] });
+        qc.refetchQueries({ queryKey: ["contracts", "myCurrentContract"], type: "active" });
+        qc.invalidateQueries({ queryKey: ["reservations"] });
+        qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("lilycrest:contract-updated", { detail: data }));
+        }
+      });
+
       socket.on("payment:updated", (data) => {
         if (data?.reservationId) {
           qc.invalidateQueries({ queryKey: ["reservations", data.reservationId] });
         }
         qc.invalidateQueries({ queryKey: ["reservations"] });
+        qc.invalidateQueries({ queryKey: ["contracts"] });
+        qc.invalidateQueries({ queryKey: ["contracts", "myCurrentContract"] });
+        qc.refetchQueries({ queryKey: ["contracts", "myCurrentContract"], type: "active" });
         qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
         qc.invalidateQueries({ queryKey: ["reservation-payments"] });
         qc.invalidateQueries({ queryKey: ["billing"] });
@@ -216,6 +240,9 @@ export default function useSocketClient() {
         }
         qc.invalidateQueries({ queryKey: ["reservations"] });
         qc.refetchQueries({ queryKey: ["reservations"], type: "active" });
+        qc.invalidateQueries({ queryKey: ["contracts"] });
+        qc.invalidateQueries({ queryKey: ["contracts", "myCurrentContract"] });
+        qc.refetchQueries({ queryKey: ["contracts", "myCurrentContract"], type: "active" });
         qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
         qc.invalidateQueries({ queryKey: ["dashboard"] });
         qc.invalidateQueries({ queryKey: ["reservation-payments"] });

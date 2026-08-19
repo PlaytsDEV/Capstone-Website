@@ -86,7 +86,7 @@ const getStatusBadgeConfig = (status) => {
     case "awaiting_response":
       return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
     case "penalty_issued":
-      return { text: "text-purple-700 dark:text-purple-400", dot: "bg-purple-500" };
+      return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
     case "escalated":
       return { text: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" };
     case "dismissed":

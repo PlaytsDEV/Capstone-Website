@@ -1,9 +1,8 @@
+import { createPortal } from "react-dom";
 import {
   X,
   Check,
   AlertTriangle,
-  LoaderCircle,
-  Send,
   Droplets,
   Zap,
   Home,
@@ -11,10 +10,7 @@ import {
   Layers,
   User,
   Calendar,
-  AlertCircle,
 } from "lucide-react";
-
-import { formatAdminPaymentMode } from "./paymentDisplay";
 
 const BillingCycleDetailModal = ({
   isOpen,
@@ -26,33 +22,40 @@ const BillingCycleDetailModal = ({
   isReadOnly,
   formatters,
   eventTypeLabels,
-  onSendReminder,
-  activeNoticeKey,
 }) => {
   if (!isOpen || !period) return null;
 
-  const { fmtCurrency, fmtNumber, fmtShortDate, getSegmentPeriodLabel } =
-    formatters;
-  const formatPaymentMethodLabel = (value) => {
-    if (!value) return "-";
-    return formatAdminPaymentMode({ paymentMethod: value });
-  };
-  const formatDateTime = (value) => {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
-    return date.toLocaleString("en-PH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
+  const fmtCurrency =
+    formatters?.fmtCurrency ||
+    ((v) =>
+      v != null && !Number.isNaN(Number(v))
+        ? `₱${Number(v).toLocaleString("en-PH", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}`
+        : "-");
+  const fmtNumber =
+    formatters?.fmtNumber ||
+    ((v, d = 2) =>
+      v != null && !Number.isNaN(Number(v)) ? Number(v).toFixed(d) : "-");
+  const fmtShortDate =
+    formatters?.fmtShortDate ||
+    ((d) => {
+      if (!d) return "-";
+      const date = new Date(d);
+      return Number.isNaN(date.getTime())
+        ? "-"
+        : date.toLocaleDateString("en-PH", { month: "short", day: "numeric" });
     });
-  };
-  const getPrimaryNoticeLabel = (tenant) =>
-    tenant?.daysOverdue > 0 || tenant?.billStatus === "overdue"
-      ? "Overdue Notice"
-      : "Remind";
+  const getSegmentPeriodLabel =
+    formatters?.getSegmentPeriodLabel ||
+    ((seg) =>
+      seg?.periodLabel ||
+      (seg?.startDate && seg?.endDate
+        ? `${new Date(seg.startDate).toLocaleDateString()} - ${new Date(
+            seg.endDate,
+          ).toLocaleDateString()}`
+        : "-"));
 
   const unitLabel = utilityType === "electricity" ? "kWh" : "cu.m.";
   const UtilityIcon = utilityType === "electricity" ? Zap : Droplets;
@@ -63,16 +66,44 @@ const BillingCycleDetailModal = ({
   const summaryTotalLabel =
     utilityType === "electricity" ? "TOTAL KWH" : "TOTAL CU.M.";
 
-  return (
+  const computedTotalUsage =
+    result?.computedTotalUsage ??
+    period?.computedTotalUsage ??
+    (period?.endReading != null && period?.startReading != null
+      ? Math.max(0, Number(period.endReading) - Number(period.startReading))
+      : null);
+
+  const totalRoomCost =
+    result?.totalRoomCost ??
+    result?.computedTotalCost ??
+    period?.computedTotalCost ??
+    period?.totalAmount ??
+    (computedTotalUsage != null &&
+    (result?.ratePerUnit ?? period?.ratePerUnit) != null
+      ? computedTotalUsage * Number(result?.ratePerUnit ?? period?.ratePerUnit)
+      : null);
+
+  const ratePerUnit = result?.ratePerUnit ?? period?.ratePerUnit;
+  const segments =
+    result?.segments && result.segments.length > 0
+      ? result.segments
+      : period?.segments || [];
+  const isVerified = result?.verified ?? period?.verified ?? false;
+
+  if (!isOpen || !period || typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity"
-      style={{ background: "color-mix(in srgb, var(--background) 70%, transparent)" }}
+      style={{
+        background: "color-mix(in srgb, var(--background) 70%, transparent)",
+      }}
       role="dialog"
       aria-modal="true"
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border bg-card shadow-xl transition-all"
+        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-border bg-card shadow-xl transition-all"
         style={{ boxShadow: "var(--shadow-xl)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -84,19 +115,21 @@ const BillingCycleDetailModal = ({
                 Billing Cycle History
               </h2>
               {statusLabel && (
-                <span className="rounded-md bg-info-light px-2.5 py-0.5 text-[11px] font-semibold text-info-dark border border-info-dark/20 uppercase tracking-wide">
+                <span className="inline-flex items-center gap-1.5 rounded border border-border bg-transparent px-2.5 py-0.5 text-xs font-semibold text-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
                   {statusLabel}
                 </span>
               )}
               {isReadOnly && (
-                <span className="rounded-md bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground border border-border">
+                <span className="rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                   Read-only
                 </span>
               )}
             </div>
             <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
               <Calendar size={13} className="text-muted-foreground" />
-              Period Range: <span className="font-semibold text-foreground">{rangeLabel}</span>
+              Period Range:{" "}
+              <span className="font-semibold text-foreground">{rangeLabel}</span>
             </p>
           </div>
 
@@ -116,30 +149,32 @@ const BillingCycleDetailModal = ({
             {[
               {
                 label: summaryTotalLabel,
-                value: result ? fmtNumber(result.computedTotalUsage, 2) : "-",
+                value:
+                  computedTotalUsage != null
+                    ? fmtNumber(computedTotalUsage, 2)
+                    : "-",
                 sub: unitLabel,
                 icon: UtilityIcon,
                 colorClass: "text-sky-600 dark:text-sky-400",
               },
               {
                 label: "ROOM COST",
-                value: result
-                  ? fmtCurrency(result.totalRoomCost || result.computedTotalCost)
-                  : "-",
+                value:
+                  totalRoomCost != null ? fmtCurrency(totalRoomCost) : "-",
                 sub: "total for cycle",
                 icon: Home,
                 colorClass: "text-sky-600 dark:text-sky-400",
               },
               {
                 label: "CURRENT RATE",
-                value: result ? fmtCurrency(result.ratePerUnit) : "-",
+                value: ratePerUnit != null ? fmtCurrency(ratePerUnit) : "-",
                 sub: `per ${unitLabel}`,
                 icon: Tag,
                 colorClass: "text-amber-600 dark:text-amber-400",
               },
               {
                 label: "SEGMENTS",
-                value: result?.segments?.length ?? 0,
+                value: segments.length,
                 sub: "active segments",
                 icon: Layers,
                 colorClass: "text-emerald-600 dark:text-emerald-400",
@@ -153,7 +188,9 @@ const BillingCycleDetailModal = ({
                   <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
                     {label}
                   </span>
-                  <div className={`flex shrink-0 items-center justify-center ${colorClass}`}>
+                  <div
+                    className={`flex shrink-0 items-center justify-center ${colorClass}`}
+                  >
                     <Icon size={18} />
                   </div>
                 </div>
@@ -162,7 +199,9 @@ const BillingCycleDetailModal = ({
                     {value}
                   </p>
                   {sub && (
-                    <p className="mt-1 text-[11px] font-medium text-muted-foreground">{sub}</p>
+                    <p className="mt-1 text-[11px] font-medium text-muted-foreground">
+                      {sub}
+                    </p>
                   )}
                 </div>
               </div>
@@ -175,20 +214,22 @@ const BillingCycleDetailModal = ({
               <div className="flex items-center gap-2 text-sm font-bold text-foreground">
                 <Layers size={15} className="text-muted-foreground" />
                 <span>Segment Breakdown</span>
-                {result?.verified ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-success-light px-2.5 py-0.5 text-[11px] font-semibold text-success-dark border border-success-dark/20">
-                    <Check size={12} /> Verified
+                {isVerified ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-transparent px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                    <Check size={12} className="text-emerald-500" />
+                    Verified
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-warning-light px-2.5 py-0.5 text-[11px] font-semibold text-warning-dark border border-warning-dark/20">
-                    <AlertTriangle size={12} /> Unverified
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-transparent px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                    <AlertTriangle size={12} className="text-amber-500" />
+                    Unverified
                   </span>
                 )}
               </div>
             </div>
 
             <div className="space-y-4 p-4">
-              {(result?.segments || []).length === 0 ? (
+              {segments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center">
                   <Layers size={18} className="text-muted-foreground mb-2" />
                   <p className="text-sm font-medium text-muted-foreground">
@@ -196,9 +237,9 @@ const BillingCycleDetailModal = ({
                   </p>
                 </div>
               ) : (
-                (result?.segments || []).map((seg, index) => (
+                segments.map((seg, index) => (
                   <div
-                    key={`${period.id}-segment-${index}`}
+                    key={`${period.id || period._id}-segment-${index}`}
                     className="overflow-hidden rounded-lg border border-border bg-card"
                   >
                     {/* Segment header */}
@@ -208,7 +249,8 @@ const BillingCycleDetailModal = ({
                         <span>Room Occupants:</span>
                       </div>
                       <span className="rounded-full bg-card px-2.5 py-0.5 font-bold text-foreground border border-border">
-                        {seg.activeTenantCount ?? 0} {seg.activeTenantCount === 1 ? "tenant" : "tenants"}
+                        {seg.activeTenantCount ?? 0}{" "}
+                        {seg.activeTenantCount === 1 ? "occupant" : "occupants"}
                       </span>
                     </div>
 
@@ -240,14 +282,16 @@ const BillingCycleDetailModal = ({
                               label: "1st reading",
                               date: seg.startDate
                                 ? new Date(seg.startDate).toLocaleDateString()
-                                : (seg.periodLabel || "").split(/\s*[-–]\s*/)[0] || "-",
+                                : (seg.periodLabel || "").split(/\s*[-–]\s*/)[0] ||
+                                  "-",
                               value: fmtNumber(seg.readingFrom, 2),
                             },
                             {
                               label: "2nd reading",
                               date: seg.endDate
                                 ? new Date(seg.endDate).toLocaleDateString()
-                                : (seg.periodLabel || "").split(/\s*[-–]\s*/)[1] || "-",
+                                : (seg.periodLabel || "").split(/\s*[-–]\s*/)[1] ||
+                                  "-",
                               value: fmtNumber(seg.readingTo, 2),
                             },
                           ].map((row) => (
@@ -310,7 +354,7 @@ const BillingCycleDetailModal = ({
                               value: fmtCurrency(seg.totalCost),
                             },
                             {
-                              label: `Amount due (${fmtCurrency(result?.ratePerUnit)} / ${unitLabel}) per person`,
+                              label: `Amount due per person (${fmtCurrency(ratePerUnit)} per ${unitLabel})`,
                               value: fmtCurrency(seg.sharePerTenantCost),
                             },
                           ].map((row) => (
@@ -329,7 +373,7 @@ const BillingCycleDetailModal = ({
 
                           <tr className="hover:bg-muted/30">
                             <td className="px-4 py-2.5 font-medium text-muted-foreground">
-                              Covered tenants
+                              Covered occupants
                             </td>
                             <td
                               className="px-4 py-2.5 text-center font-medium text-foreground"
@@ -337,7 +381,7 @@ const BillingCycleDetailModal = ({
                             >
                               {seg.coveredTenantNames?.length
                                 ? seg.coveredTenantNames.join(", ")
-                                : "No active tenant"}
+                                : "No active occupant"}
                             </td>
                           </tr>
                         </tbody>
@@ -346,173 +390,6 @@ const BillingCycleDetailModal = ({
                   </div>
                 ))
               )}
-            </div>
-          </div>
-
-          {/* Covered Tenants */}
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-5 py-3">
-              <p className="text-sm font-bold text-foreground flex items-center gap-2">
-                <User size={15} className="text-muted-foreground" />
-                <span>Covered Tenants</span>
-              </p>
-              <span className="text-xs font-medium text-muted-foreground">
-                {(result?.tenantSummaries || []).length} tenant{(result?.tenantSummaries || []).length === 1 ? "" : "s"}
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/50">
-                    {[
-                      { label: "Tenant Name", align: "left" },
-                      { label: "Duration Range", align: "left" },
-                      { label: `Total ${unitLabel}`, align: "right" },
-                      { label: "Bill Amount", align: "right" },
-                      { label: "Balance", align: "right" },
-                      { label: "Status", align: "left" },
-                      { label: "Due Date", align: "left" },
-                      { label: "Payment Info", align: "left" },
-                      { label: "Action", align: "right" },
-                    ].map(({ label, align }) => (
-                      <th
-                        key={label}
-                        className="px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground whitespace-nowrap"
-                        style={{ textAlign: align }}
-                      >
-                        {label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border text-sm text-foreground">
-                  {(result?.tenantSummaries || []).length === 0 ? (
-                    <tr>
-                      <td
-                        className="px-4 py-8 text-center text-sm font-medium text-muted-foreground"
-                        colSpan={9}
-                      >
-                        No covered tenants for this billing cycle.
-                      </td>
-                    </tr>
-                  ) : (
-                    (result?.tenantSummaries || []).map((tenant, index) => (
-                      <tr
-                        key={`${period.id}-tenant-${index}`}
-                        className="transition-colors hover:bg-muted/30"
-                      >
-                        {/* Tenant Name & Email */}
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <p className="font-semibold text-foreground">
-                            {tenant.tenantName || "Unknown Tenant"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {tenant.tenantEmail || "-"}
-                          </p>
-                        </td>
-
-                        {/* Duration Range */}
-                        <td className="px-4 py-3 text-muted-foreground font-medium whitespace-nowrap">
-                          {tenant.durationRange || "Ongoing"}
-                        </td>
-
-                        {/* Total Usage */}
-                        <td className="px-4 py-3 text-right font-medium text-foreground whitespace-nowrap">
-                          {fmtNumber(tenant.totalUsage, 2)}
-                        </td>
-
-                        {/* Bill Amount */}
-                        <td className="px-4 py-3 text-right font-bold text-foreground whitespace-nowrap">
-                          {fmtCurrency(tenant.billAmount)}
-                        </td>
-
-                        {/* Balance */}
-                        <td className="px-4 py-3 text-right font-medium text-muted-foreground whitespace-nowrap">
-                          {fmtCurrency(tenant.remainingAmount)}
-                        </td>
-
-                        {/* Status Badge */}
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {tenant.billStatus ? (
-                            <div className="space-y-0.5">
-                              <span
-                                className={`inline-block rounded-md px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                                  tenant.billStatus === "paid"
-                                    ? "bg-success-light text-success-dark border border-success-dark/20"
-                                    : tenant.daysOverdue > 0 || tenant.billStatus === "overdue"
-                                      ? "bg-danger-light text-danger-dark border border-danger-dark/20"
-                                      : tenant.billStatus === "partially-paid"
-                                        ? "bg-warning-light text-warning-dark border border-warning-dark/20"
-                                        : "bg-info-light text-info-dark border border-info-dark/20"
-                                }`}
-                              >
-                                {String(tenant.billStatus).replace(/-/g, " ")}
-                              </span>
-                              {tenant.daysOverdue > 0 && (
-                                <div className="text-[11px] font-semibold text-danger-dark flex items-center gap-1">
-                                  <AlertCircle size={10} />
-                                  {tenant.daysOverdue} day{tenant.daysOverdue === 1 ? "" : "s"} overdue
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
-                        </td>
-
-                        {/* Due Date */}
-                        <td className="px-4 py-3 text-muted-foreground font-medium whitespace-nowrap">
-                          {tenant.dueDate ? fmtShortDate(tenant.dueDate) : "-"}
-                        </td>
-
-                        {/* Payment Info */}
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <p className="text-xs font-medium text-foreground">
-                            {tenant.paymentFallbackLabel || formatPaymentMethodLabel(tenant.paymentMethod)}
-                          </p>
-                          {tenant.paymentReference && (
-                            <p className="text-[11px] text-muted-foreground truncate max-w-[120px]" title={tenant.paymentReference}>
-                              Ref: {tenant.paymentReference}
-                            </p>
-                          )}
-                        </td>
-
-                        {/* Action Button - Compact with short text */}
-                        <td className="px-4 py-3 text-right whitespace-nowrap">
-                          {tenant.billId && (tenant.canSendPenaltyNotice || tenant.canSendReminder) && onSendReminder ? (
-                            <button
-                              type="button"
-                              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shrink-0 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                                tenant.canSendPenaltyNotice
-                                  ? "border border-danger-dark/30 bg-danger-light text-danger-dark hover:bg-danger-light/80"
-                                  : "border border-info-dark/30 bg-info-light text-info-dark hover:bg-info-light/80"
-                              }`}
-                              onClick={() => onSendReminder(tenant.billId, tenant.canSendPenaltyNotice ? "penalty" : tenant.daysOverdue > 0 ? "overdue" : "reminder")}
-                              disabled={activeNoticeKey?.startsWith(`${tenant.billId}:`)}
-                              title={tenant.canSendPenaltyNotice ? (tenant.penaltyReason || "Send penalty notice") : undefined}
-                            >
-                              {activeNoticeKey?.startsWith(`${tenant.billId}:`) ? (
-                                <LoaderCircle size={11} className="animate-spin" />
-                              ) : (
-                                <Send size={11} />
-                              )}
-                              <span>
-                                {tenant.canSendPenaltyNotice
-                                  ? "Penalty Notice"
-                                  : getPrimaryNoticeLabel(tenant)}
-                              </span>
-                            </button>
-                          ) : (
-                            <span className="text-xs font-semibold text-muted-foreground">
-                              {tenant.billStatus === "paid" ? "Paid" : "-"}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
             </div>
           </div>
         </div>
@@ -528,10 +405,9 @@ const BillingCycleDetailModal = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
 export default BillingCycleDetailModal;
-
-

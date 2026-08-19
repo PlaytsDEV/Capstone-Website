@@ -857,7 +857,7 @@ export const deleteUtilityPeriod = async (req, res, next) => {
 
     await period.deleteOne();
 
-    res.json({ success: true, message: "Billing period and related items permanently deleted" });
+    res.json({ success: true, message: "Billing period and related records deleted successfully" });
   } catch (err) {
     next(err);
   }
@@ -1114,7 +1114,7 @@ export const deleteUtilityReading = async (req, res, next) => {
     reading.isArchived = true;
     await reading.save();
 
-    res.json({ success: true, message: "Reading deleted" });
+    res.json({ success: true, message: "Meter reading deleted successfully" });
   } catch (err) {
     next(err);
   }

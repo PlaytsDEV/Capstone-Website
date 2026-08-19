@@ -66,6 +66,7 @@ import {
   EVENT_TYPE_LABELS,
   buildPaymentLedgerByBillId,
   resolvePaymentDetails,
+  getSegmentPeriodLabel,
   EMPTY_VALUE,
 } from "./utility/utilityConstants";
 
@@ -142,6 +143,8 @@ const UtilityBillingTab = ({
   const [isExporting, setIsExporting] = useState(false);
   const [sendingByPeriodId, setSendingByPeriodId] = useState({});
   const [activeNoticeKey, setActiveNoticeKey] = useState(null);
+  const [lastRemindedByBillId, setLastRemindedByBillId] = useState({});
+  const [isBatchReminding, setIsBatchReminding] = useState(false);
 
   // Edit Reading Form & Modal
   const [editReadingModal, setEditReadingModal] = useState({ open: false, reading: null });
@@ -163,7 +166,26 @@ const UtilityBillingTab = ({
   const { data: readingsData } = useUtilityReadings(utilityType, selectedRoomId);
   const { data: latestData } = useUtilityLatestReading(utilityType, selectedRoomId);
   const { data: periodsData } = useUtilityPeriods(utilityType, selectedRoomId);
-  const { data: resultData } = useUtilityResult(utilityType, selectedPeriodId);
+
+  // Periods list for selected room
+  const periodList = useMemo(() => {
+    if (!periodsData) return [];
+    if (Array.isArray(periodsData)) return periodsData;
+    if (Array.isArray(periodsData?.periods)) return periodsData.periods;
+    if (Array.isArray(periodsData?.data)) return periodsData.data;
+    return [];
+  }, [periodsData]);
+
+  const isPeriodValid = useMemo(() => {
+    return Boolean(
+      selectedPeriodId &&
+        periodList.some((p) => (p.id || p._id) === selectedPeriodId),
+    );
+  }, [selectedPeriodId, periodList]);
+
+  const { data: resultData } = useUtilityResult(utilityType, selectedPeriodId, {
+    enabled: isPeriodValid,
+  });
   const { data: billsData } = useBillsByBranch(branchFilter);
   const { data: adminPaymentsData } = useAdminPayments({ branch: branchFilter });
 
@@ -251,15 +273,6 @@ const UtilityBillingTab = ({
     return rooms.find((r) => r.id === selectedRoomId) || null;
   }, [rooms, selectedRoomId]);
 
-  // Periods list for selected room
-  const periodList = useMemo(() => {
-    if (!periodsData) return [];
-    if (Array.isArray(periodsData)) return periodsData;
-    if (Array.isArray(periodsData?.periods)) return periodsData.periods;
-    if (Array.isArray(periodsData?.data)) return periodsData.data;
-    return [];
-  }, [periodsData]);
-
   // Active / current and last closed periods
   const currentPeriod = periodList[0] || null;
   const openPeriodForRoom = periodList.find((p) => p.status === "open");
@@ -344,18 +357,40 @@ const UtilityBillingTab = ({
     return buildPaymentLedgerByBillId(payments);
   }, [adminPaymentsData]);
 
+  const activeModalPeriodId = historyModalPeriod?.id || historyModalPeriod?._id;
+  const { data: modalResultData } = useUtilityResult(
+    utilityType,
+    activeModalPeriodId,
+    {
+      enabled: Boolean(isHistoryModalOpen && activeModalPeriodId),
+    },
+  );
+
   const resultWithBilling = useMemo(() => {
-    if (!resultData) return null;
-    const baseResult = resultData?.data || resultData;
-    const summaries = baseResult?.tenantSummaries || [];
+    const baseResult =
+      resultData?.result ||
+      resultData?.data ||
+      resultData ||
+      selectedPeriodFromList;
+    if (!baseResult) return null;
+
+    const summaries =
+      baseResult?.tenantSummaries ||
+      selectedPeriodFromList?.tenantSummaries ||
+      [];
     const branchBills = billsData?.bills || billsData?.data || [];
 
     const enhancedSummaries = summaries.map((tenant) => {
       const bill = branchBills.find(
         (b) =>
-          b.tenantId === tenant.tenantId ||
-          b.tenant?._id === tenant.tenantId ||
-          b.tenant?.id === tenant.tenantId,
+          (tenant.billId &&
+            (String(b._id) === String(tenant.billId) ||
+              String(b.id) === String(tenant.billId))) ||
+          String(b.tenantId) === String(tenant.tenantId) ||
+          String(b.tenant?._id) === String(tenant.tenantId) ||
+          String(b.tenant?.id) === String(tenant.tenantId) ||
+          String(b.userId?._id) === String(tenant.tenantId) ||
+          String(b.userId) === String(tenant.tenantId),
       );
       const latestPayment = bill?._id ? paymentLedger[bill._id] : null;
 
@@ -364,10 +399,15 @@ const UtilityBillingTab = ({
         bill,
         latestPayment,
         billStatus: bill?.status || tenant.billStatus || "draft",
-        remainingAmount: bill?.balance ?? tenant.remainingAmount ?? tenant.billAmount,
+        remainingAmount:
+          bill?.balance ?? tenant.remainingAmount ?? tenant.billAmount,
         dueDate: bill?.dueDate || tenant.dueDate,
-        canSendReminder: Boolean(bill && ["pending", "partially-paid", "overdue"].includes(bill.status)),
-        canSendPenaltyNotice: Boolean(bill && Number(bill?.charges?.penalty || 0) > 0),
+        canSendReminder: Boolean(
+          bill && ["pending", "partially-paid", "overdue"].includes(bill.status),
+        ),
+        canSendPenaltyNotice: Boolean(
+          bill && Number(bill?.charges?.penalty || 0) > 0,
+        ),
         daysOverdue: Number(tenant.daysOverdue || 0),
       };
     });
@@ -376,7 +416,70 @@ const UtilityBillingTab = ({
       ...baseResult,
       tenantSummaries: enhancedSummaries,
     };
-  }, [resultData, billsData, paymentLedger]);
+  }, [resultData, selectedPeriodFromList, billsData, paymentLedger]);
+
+  const modalResultWithBilling = useMemo(() => {
+    const activeData =
+      modalResultData ||
+      (activeModalPeriodId === selectedPeriodId ? resultData : null);
+    const baseResult =
+      activeData?.result ||
+      activeData?.data ||
+      activeData ||
+      historyModalPeriod;
+    if (!baseResult) return null;
+
+    const summaries =
+      baseResult?.tenantSummaries ||
+      historyModalPeriod?.tenantSummaries ||
+      [];
+    const branchBills = billsData?.bills || billsData?.data || [];
+
+    const enhancedSummaries = summaries.map((tenant) => {
+      const bill = branchBills.find(
+        (b) =>
+          (tenant.billId &&
+            (String(b._id) === String(tenant.billId) ||
+              String(b.id) === String(tenant.billId))) ||
+          String(b.tenantId) === String(tenant.tenantId) ||
+          String(b.tenant?._id) === String(tenant.tenantId) ||
+          String(b.tenant?.id) === String(tenant.tenantId) ||
+          String(b.userId?._id) === String(tenant.tenantId) ||
+          String(b.userId) === String(tenant.tenantId),
+      );
+      const latestPayment = bill?._id ? paymentLedger[bill._id] : null;
+
+      return {
+        ...tenant,
+        bill,
+        latestPayment,
+        billStatus: bill?.status || tenant.billStatus || "draft",
+        remainingAmount:
+          bill?.balance ?? tenant.remainingAmount ?? tenant.billAmount,
+        dueDate: bill?.dueDate || tenant.dueDate,
+        canSendReminder: Boolean(
+          bill && ["pending", "partially-paid", "overdue"].includes(bill.status),
+        ),
+        canSendPenaltyNotice: Boolean(
+          bill && Number(bill?.charges?.penalty || 0) > 0,
+        ),
+        daysOverdue: Number(tenant.daysOverdue || 0),
+      };
+    });
+
+    return {
+      ...baseResult,
+      tenantSummaries: enhancedSummaries,
+    };
+  }, [
+    modalResultData,
+    activeModalPeriodId,
+    selectedPeriodId,
+    resultData,
+    historyModalPeriod,
+    billsData,
+    paymentLedger,
+  ]);
 
   // Timeline events computation
   const billingTimelineRows = useMemo(() => {
@@ -567,6 +670,8 @@ const UtilityBillingTab = ({
           ? "Penalty notice sent successfully."
           : "Reminder sent successfully.",
       );
+      const nowIso = new Date().toISOString();
+      setLastRemindedByBillId((prev) => ({ ...prev, [billId]: nowIso }));
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: utilityKeys.all(utilityType) }),
         queryClient.invalidateQueries({ queryKey: ["billing", "branch"] }),
@@ -576,6 +681,53 @@ const UtilityBillingTab = ({
     } finally {
       setActiveNoticeKey(null);
     }
+  };
+
+  const handleBatchSendReminders = async (tenantsToRemind) => {
+    if (!tenantsToRemind || tenantsToRemind.length === 0) return;
+    const billIds = tenantsToRemind.map((t) => t.billId).filter(Boolean);
+    if (billIds.length === 0) return;
+
+    const count = billIds.length;
+    const roomName = getRoomLabel(selectedRoom || {}, "Room");
+
+    setConfirmModal({
+      open: true,
+      title: "Remind All Unpaid Tenants",
+      message: `Send payment reminder notices to ${count} unpaid tenant${count === 1 ? "" : "s"} in ${roomName}? Each tenant will receive an email and system notification with their current balance and due date.`,
+      variant: "primary",
+      confirmText: `Remind ${count} Tenant${count === 1 ? "" : "s"}`,
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, open: false }));
+        setIsBatchReminding(true);
+        try {
+          const res = await billingApi.batchSendBillReminders(billIds);
+          if (res?.success) {
+            notify.success(
+              `Sent reminders to ${res.successCount} tenant${res.successCount === 1 ? "" : "s"}.`,
+            );
+            const nowIso = new Date().toISOString();
+            setLastRemindedByBillId((prev) => {
+              const next = { ...prev };
+              billIds.forEach((id) => {
+                next[id] = nowIso;
+              });
+              return next;
+            });
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: utilityKeys.all(utilityType) }),
+              queryClient.invalidateQueries({ queryKey: ["billing", "branch"] }),
+            ]);
+          } else {
+            notify.error("Could not send reminders for the selected tenants.");
+          }
+        } catch (err) {
+          notify.error(err, "Failed to send batch reminders.");
+        } finally {
+          setIsBatchReminding(false);
+        }
+      },
+    });
   };
 
   // Edit reading flow
@@ -608,10 +760,10 @@ const UtilityBillingTab = ({
   const handleDeleteReading = async (readingId) => {
     try {
       await deleteReading.mutateAsync(readingId);
-      notify.success("Meter reading deleted.");
+      notify.success("Meter reading deleted successfully.");
       await queryClient.invalidateQueries({ queryKey: utilityKeys.all(utilityType) });
     } catch (err) {
-      notify.error(err, "Failed to delete meter reading.");
+      notify.error(err, "Unable to delete meter reading. Please try again.");
     }
   };
 
@@ -638,11 +790,11 @@ const UtilityBillingTab = ({
         endReading: editPeriodForm.endReading ? Number(editPeriodForm.endReading) : undefined,
         ratePerUnit: Number(editPeriodForm.ratePerUnit),
       });
-      notify.success("Billing period updated.");
+      notify.success("Billing period updated successfully.");
       setEditPeriodModal({ open: false, periodId: null });
       await queryClient.invalidateQueries({ queryKey: utilityKeys.all(utilityType) });
     } catch (err) {
-      notify.error(err, "Failed to update billing period.");
+      notify.error(err, "Unable to update billing period. Please try again.");
     }
   };
 
@@ -655,17 +807,20 @@ const UtilityBillingTab = ({
       title: isOpen ? "Cancel Open Period" : "Delete Billing Period",
       message: isOpen
         ? "Cancel this open cycle? Any mid-cycle meter readings will be retained."
-        : "Delete this closed period? Calculated utility charges for this period will be removed.",
+        : "Delete this closed period? Calculated utility charges for this period will be deleted.",
       variant: "danger",
       confirmText: "Delete",
       onConfirm: async () => {
         setConfirmModal((prev) => ({ ...prev, open: false }));
         try {
+          if (selectedPeriodId === periodId) {
+            setSelectedPeriodId(null);
+          }
           await deletePeriod.mutateAsync(periodId);
-          notify.success("Billing period removed.");
+          notify.success("Billing period deleted successfully.");
           await queryClient.invalidateQueries({ queryKey: utilityKeys.all(utilityType) });
         } catch (err) {
-          notify.error(err, "Failed to delete period.");
+          notify.error(err, "Unable to delete billing period. Please try again.");
         }
       },
     });
@@ -828,14 +983,18 @@ const UtilityBillingTab = ({
           />
 
           {/* Segmented Sub-View Navigation Tabs */}
-          <div className="flex border-b border-border gap-2">
+          <div className="flex border-b border-border gap-2" role="tablist" aria-label="Utility billing workspace views">
             <button
               type="button"
+              role="tab"
+              aria-selected={activeWorkspaceTab === "history"}
+              aria-controls="utility-subpanel-history"
+              id="utility-subtab-history"
               onClick={() => setActiveWorkspaceTab("history")}
-              className={`flex items-center gap-2 border-b-2 px-3.5 py-2 text-xs font-bold transition-all ${
+              className={`-mb-px flex items-center gap-2 border-b-2 px-3.5 py-2 text-xs font-bold transition-colors ${
                 activeWorkspaceTab === "history"
                   ? "border-slate-900 text-slate-900 dark:border-slate-100 dark:text-white"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-slate-300 dark:hover:border-slate-700"
               }`}
             >
               <History size={14} className={activeWorkspaceTab === "history" ? "text-slate-900 dark:text-white" : "text-slate-500"} />
@@ -844,11 +1003,15 @@ const UtilityBillingTab = ({
 
             <button
               type="button"
+              role="tab"
+              aria-selected={activeWorkspaceTab === "payments"}
+              aria-controls="utility-subpanel-payments"
+              id="utility-subtab-payments"
               onClick={() => setActiveWorkspaceTab("payments")}
-              className={`flex items-center gap-2 border-b-2 px-3.5 py-2 text-xs font-bold transition-all ${
+              className={`-mb-px flex items-center gap-2 border-b-2 px-3.5 py-2 text-xs font-bold transition-colors ${
                 activeWorkspaceTab === "payments"
                   ? "border-slate-900 text-slate-900 dark:border-slate-100 dark:text-white"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-slate-300 dark:hover:border-slate-700"
               }`}
             >
               <Users size={14} className={activeWorkspaceTab === "payments" ? "text-sky-600 dark:text-sky-400" : "text-sky-600/80 dark:text-sky-400/80"} />
@@ -857,11 +1020,15 @@ const UtilityBillingTab = ({
 
             <button
               type="button"
+              role="tab"
+              aria-selected={activeWorkspaceTab === "timeline"}
+              aria-controls="utility-subpanel-timeline"
+              id="utility-subtab-timeline"
               onClick={() => setActiveWorkspaceTab("timeline")}
-              className={`flex items-center gap-2 border-b-2 px-3.5 py-2 text-xs font-bold transition-all ${
+              className={`-mb-px flex items-center gap-2 border-b-2 px-3.5 py-2 text-xs font-bold transition-colors ${
                 activeWorkspaceTab === "timeline"
                   ? "border-slate-900 text-slate-900 dark:border-slate-100 dark:text-white"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-slate-300 dark:hover:border-slate-700"
               }`}
             >
               <Clock3 size={14} className={activeWorkspaceTab === "timeline" ? "text-amber-600 dark:text-amber-400" : "text-amber-600/80 dark:text-amber-400/80"} />
@@ -869,92 +1036,119 @@ const UtilityBillingTab = ({
             </button>
           </div>
 
-          {/* Sub-Panel 1: Billing Cycle History */}
-          {activeWorkspaceTab === "history" && (
-            <UtilityCycleHistoryPanel
-              periods={periodList}
-              filteredPeriods={filteredPeriods}
-              pagedPeriods={pagedPeriods}
-              selectedPeriodId={selectedPeriodId}
-              onSelectPeriod={setSelectedPeriodId}
-              periodStatusFilter={periodStatusFilter}
-              onStatusFilterChange={(st) => {
-                setPeriodStatusFilter(st);
-                setPeriodsPage(1);
-              }}
-              periodStartDate={periodStartDate}
-              onStartDateChange={(dt) => {
-                setPeriodStartDate(dt);
-                setPeriodsPage(1);
-              }}
-              periodEndDate={periodEndDate}
-              onEndDateChange={(dt) => {
-                setPeriodEndDate(dt);
-                setPeriodsPage(1);
-              }}
-              periodSearch={periodSearch}
-              onSearchChange={(q) => {
-                setPeriodSearch(q);
-                setPeriodsPage(1);
-              }}
-              onClearFilters={() => {
-                setPeriodStatusFilter("");
-                setPeriodStartDate("");
-                setPeriodEndDate("");
-                setPeriodSearch("");
-                setPeriodsPage(1);
-              }}
-              periodsPage={periodsPage}
-              totalPeriodPages={totalPeriodPages}
-              onPageChange={setPeriodsPage}
-              onSendPeriod={handleSendSinglePeriod}
-              onEditPeriod={handleOpenEditPeriod}
-              onDeletePeriod={handleDeletePeriod}
-              onOpenHistoryModal={(periodId) => {
-                const target = periodList.find((p) => p.id === periodId);
-                setHistoryModalPeriod(target || null);
-                setIsHistoryModalOpen(true);
-              }}
-              sendingByPeriodId={sendingByPeriodId}
-              isSendingPeriod={sendPeriod.isPending}
-              isDeletingPeriod={deletePeriod.isPending}
-              utilityType={utilityType}
-              selectedRoom={selectedRoom}
-            />
-          )}
+          {/* Sub-Panel Content Area with Stable Min-Height */}
+          <div className="min-h-[460px]">
+            {/* Sub-Panel 1: Billing Cycle History */}
+            {activeWorkspaceTab === "history" && (
+              <div
+                role="tabpanel"
+                id="utility-subpanel-history"
+                aria-labelledby="utility-subtab-history"
+              >
+                <UtilityCycleHistoryPanel
+                  periods={periodList}
+                  filteredPeriods={filteredPeriods}
+                  pagedPeriods={pagedPeriods}
+                  selectedPeriodId={selectedPeriodId}
+                  onSelectPeriod={setSelectedPeriodId}
+                  periodStatusFilter={periodStatusFilter}
+                  onStatusFilterChange={(st) => {
+                    setPeriodStatusFilter(st);
+                    setPeriodsPage(1);
+                  }}
+                  periodStartDate={periodStartDate}
+                  onStartDateChange={(dt) => {
+                    setPeriodStartDate(dt);
+                    setPeriodsPage(1);
+                  }}
+                  periodEndDate={periodEndDate}
+                  onEndDateChange={(dt) => {
+                    setPeriodEndDate(dt);
+                    setPeriodsPage(1);
+                  }}
+                  periodSearch={periodSearch}
+                  onSearchChange={(q) => {
+                    setPeriodSearch(q);
+                    setPeriodsPage(1);
+                  }}
+                  onClearFilters={() => {
+                    setPeriodStatusFilter("");
+                    setPeriodStartDate("");
+                    setPeriodEndDate("");
+                    setPeriodSearch("");
+                    setPeriodsPage(1);
+                  }}
+                  periodsPage={periodsPage}
+                  totalPeriodPages={totalPeriodPages}
+                  onPageChange={setPeriodsPage}
+                  onSendPeriod={handleSendSinglePeriod}
+                  onEditPeriod={handleOpenEditPeriod}
+                  onDeletePeriod={handleDeletePeriod}
+                  onOpenHistoryModal={(periodId) => {
+                    const target = periodList.find(
+                      (p) => (p.id || p._id) === periodId,
+                    );
+                    setHistoryModalPeriod(target || null);
+                    setSelectedPeriodId(periodId);
+                    setIsHistoryModalOpen(true);
+                  }}
+                  sendingByPeriodId={sendingByPeriodId}
+                  isSendingPeriod={sendPeriod.isPending}
+                  isDeletingPeriod={deletePeriod.isPending}
+                  utilityType={utilityType}
+                  selectedRoom={selectedRoom}
+                />
+              </div>
+            )}
 
-          {/* Sub-Panel 2: Tenant Allocation & Payments */}
-          {activeWorkspaceTab === "payments" && (
-            <UtilityTenantPaymentPanel
-              selectedPeriod={selectedPeriodFromList}
-              monitoringResult={resultWithBilling}
-              utilityType={utilityType}
-              onSendReminder={handleSendReminder}
-              activeNoticeKey={activeNoticeKey}
-              onExportCsv={handleExportRows}
-              onExportPdf={handleExportPdf}
-              isExporting={isExporting}
-            />
-          )}
+            {/* Sub-Panel 2: Tenant Allocation & Payments */}
+            {activeWorkspaceTab === "payments" && (
+              <div
+                role="tabpanel"
+                id="utility-subpanel-payments"
+                aria-labelledby="utility-subtab-payments"
+              >
+                <UtilityTenantPaymentPanel
+                  selectedPeriod={selectedPeriodFromList}
+                  monitoringResult={resultWithBilling}
+                  utilityType={utilityType}
+                  onSendReminder={handleSendReminder}
+                  onBatchSendReminder={handleBatchSendReminders}
+                  activeNoticeKey={activeNoticeKey}
+                  onExportCsv={handleExportRows}
+                  onExportPdf={handleExportPdf}
+                  isExporting={isExporting}
+                  isBatchReminding={isBatchReminding}
+                  lastRemindedByBillId={lastRemindedByBillId}
+                />
+              </div>
+            )}
 
-          {/* Sub-Panel 3: Audit & Meter Timeline */}
-          {activeWorkspaceTab === "timeline" && (
-            <UtilityTimelinePanel
-              timelineRows={billingTimelineRows}
-              pagedTimelineRows={pagedTimelineRows}
-              timelinePage={timelinePage}
-              totalTimelinePages={totalTimelinePages}
-              onPageChange={setTimelinePage}
-              unmaskedRows={unmaskedRows}
-              onToggleUnmaskRow={handleToggleUnmaskRow}
-              onEditReading={handleOpenEditReading}
-              isCurrentCycleLocked={Boolean(currentPeriod?.status === "closed" || currentPeriod?.billingState === "sent")}
-              utilityType={utilityType}
-              onExportCsv={handleExportRows}
-              onExportPdf={handleExportPdf}
-              isExporting={isExporting}
-            />
-          )}
+            {/* Sub-Panel 3: Audit & Meter Timeline */}
+            {activeWorkspaceTab === "timeline" && (
+              <div
+                role="tabpanel"
+                id="utility-subpanel-timeline"
+                aria-labelledby="utility-subtab-timeline"
+              >
+                <UtilityTimelinePanel
+                  timelineRows={billingTimelineRows}
+                  pagedTimelineRows={pagedTimelineRows}
+                  timelinePage={timelinePage}
+                  totalTimelinePages={totalTimelinePages}
+                  onPageChange={setTimelinePage}
+                  unmaskedRows={unmaskedRows}
+                  onToggleUnmaskRow={handleToggleUnmaskRow}
+                  onEditReading={handleOpenEditReading}
+                  isCurrentCycleLocked={Boolean(currentPeriod?.status === "closed" || currentPeriod?.billingState === "sent")}
+                  utilityType={utilityType}
+                  onExportCsv={handleExportRows}
+                  onExportPdf={handleExportPdf}
+                  isExporting={isExporting}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1012,7 +1206,7 @@ const UtilityBillingTab = ({
           setHistoryModalPeriod(null);
         }}
         period={historyModalPeriod}
-        result={resultWithBilling}
+        result={modalResultWithBilling}
         utilityType={utilityType}
         statusLabel={historyModalPeriod ? getDisplayStatusLabel(historyModalPeriod) : ""}
         isReadOnly={historyModalPeriod ? historyModalPeriod.status === "sent" : true}
@@ -1020,10 +1214,14 @@ const UtilityBillingTab = ({
           fmtCurrency,
           fmtNumber,
           fmtShortDate,
+          getSegmentPeriodLabel,
         }}
         eventTypeLabels={EVENT_TYPE_LABELS}
         onSendReminder={handleSendReminder}
+        onBatchSendReminder={handleBatchSendReminders}
         activeNoticeKey={activeNoticeKey}
+        lastRemindedByBillId={lastRemindedByBillId}
+        isBatchReminding={isBatchReminding}
       />
 
       <ConfirmModal

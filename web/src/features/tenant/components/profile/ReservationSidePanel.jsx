@@ -357,24 +357,6 @@ export default function ReservationSidePanel({ reservation, onClick, profileData
             <Download size={13.5} />
             Download Receipt
           </button>
-          {isMoveInSettled && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate("/applicant/contracts");
-              }}
-              style={{
-                ...S.downloadBtn,
-                background: "transparent",
-                color: isDark ? "#93C5FD" : "#1D4ED8",
-                border: isDark ? "1px solid rgba(147, 197, 253, 0.3)" : "1px solid #BFDBFE",
-                marginTop: 6,
-              }}
-            >
-              <FileText size={13.5} />
-              View Lease Contract
-            </button>
-          )}
           <button
             onClick={(e) => {
               e.stopPropagation();

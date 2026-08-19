@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   AlertTriangle,
@@ -308,11 +309,11 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
   const currentWarning = selectedTenant ? (selectedTenant.warningCount || 0) + 1 : 1;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl text-card-foreground">
         {/* Modal Header */}
@@ -767,6 +768,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

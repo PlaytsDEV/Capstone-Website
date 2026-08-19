@@ -158,15 +158,13 @@
   cursor: pointer;
   transition: background 0.12s ease;
   position: relative;
-  border-left: 2px solid transparent;
 }
 .nb-item:hover {
   background: var(--surface-hover, #f8fafc);
 }
 
-/* Unread: subtle left accent + bold title */
+/* Unread: subtle background + bold title */
 .nb-item.unread {
-  border-left-color: #3b82f6;
   background: var(--surface-muted, #f8fafc);
 }
 .nb-item.unread:hover {
@@ -238,7 +236,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #3b82f6;
+  background: var(--foreground, #0A1628);
   margin-top: 8px;
 }
 
@@ -326,7 +324,10 @@ html[data-theme="dark"] .nb-item:hover,
 html[data-theme="dark"] .nb-item.unread,
 .dark .nb-item.unread {
   background: #172338;
-  border-left-color: #3B82F6;
+}
+html[data-theme="dark"] .nb-item-dot,
+.dark .nb-item-dot {
+  background: #F8FAFC;
 }
 html[data-theme="dark"] .nb-item.unread:hover,
 .dark .nb-item.unread:hover {

@@ -132,6 +132,12 @@ export const billingApi = {
       body: JSON.stringify(payload),
     }),
 
+  batchSendBillReminders: (billIds, payload = {}) =>
+    authFetch("/billing/batch-remind", {
+      method: "POST",
+      body: JSON.stringify({ billIds, ...payload }),
+    }),
+
   downloadBillPdf: async (billId, fallbackFilename = "billing-statement.pdf") => {
     const response = await protectedFetch(`/billing/${billId}/pdf`, {
       method: "GET",

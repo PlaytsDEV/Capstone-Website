@@ -20,6 +20,7 @@ export default function InlineRateEditor({
  <input
  type="number"
  min="0"
+ max="100000"
  step="0.01"
  className="billing-inline-rate__input"
  value={value}

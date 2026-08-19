@@ -269,7 +269,7 @@ export default function AnalyticsOccupancyTab({
     },
     {
       icon: Building,
-      tone: "purple",
+      tone: "blue",
       label: "Total Beds",
       value: kpis.totalCapacity || 0,
       trend: "Total room inventory",

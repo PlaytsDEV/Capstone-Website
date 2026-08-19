@@ -42,7 +42,7 @@ export default function TenantDetailModalSkeleton({ onClose }) {
         </div>
 
         {/* BODY - SPLIT PANEL LAYOUT (col-12) */}
-        <div className="p-6 flex-1 min-h-0 overflow-y-auto bg-card grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="p-6 flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable] bg-card grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* LEFT SIDEBAR (lg:col-span-4) */}
           <div className="lg:col-span-4 space-y-4">
             {/* Financial Standing Hero Card Skeleton */}

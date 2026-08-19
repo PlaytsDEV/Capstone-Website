@@ -17,11 +17,11 @@ export const MAINTENANCE_REQUEST_TYPE_META = Object.freeze({
   plumbing: { label: "Plumbing", icon: Droplets, color: "#3B82F6" },
   electrical: { label: "Electrical", icon: Zap, color: "#EF4444" },
   aircon: { label: "Air Conditioning", icon: Snowflake, color: "#06B6D4" },
-  elevator: { label: "Elevator", icon: ArrowUpDown, color: "#8B5CF6" },
-  furniture: { label: "Furniture / Fixture", icon: BedDouble, color: "#EC4899" },
+  elevator: { label: "Elevator", icon: ArrowUpDown, color: "#0284C7" },
+  furniture: { label: "Furniture / Fixture", icon: BedDouble, color: "#64748B" },
   internet: { label: "Internet / Network", icon: Wifi, color: "#0284C7" },
   cleaning: { label: "Cleaning", icon: Sparkles, color: "#22C55E" },
-  pest: { label: "Pest Control", icon: Bug, color: "#7C3AED" },
+  pest: { label: "Pest Control", icon: Bug, color: "#D97706" },
   other: { label: "Other", icon: MoreHorizontal, color: "#6B7280" },
 });
 

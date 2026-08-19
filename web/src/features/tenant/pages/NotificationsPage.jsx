@@ -53,18 +53,22 @@ function NotificationIcon({ type }) {
       return <CheckCircle2 {...iconProps} style={{ color: "#059669" }} />;
     case "reservation_cancelled":
     case "reservation_noshow":
+    case "reservation_cancellation_rejected":
     case "visit_rejected":
     case "payment_rejected":
       return <XCircle {...iconProps} style={{ color: "#DC2626" }} />;
     case "account_suspended":
       return <Lock {...iconProps} style={{ color: "#DC2626" }} />;
     case "reservation_expired":
+    case "reservation_cancellation_requested":
+    case "visit_requested":
     case "bill_due_reminder":
     case "penalty_applied":
     case "grace_period_warning":
     case "contract_expiring":
       return <Clock {...iconProps} style={{ color: "#D97706" }} />;
     case "bill_generated":
+    case "contract_document_ready":
       return <FileText {...iconProps} style={{ color: "#2563EB" }} />;
     case "move_in_reminder":
       return <Home {...iconProps} style={{ color: "#2563EB" }} />;
@@ -272,8 +276,8 @@ export default function NotificationsPage() {
               {!n.isRead && (
                 <span
                   style={{
-                    width: 8, height: 8, borderRadius: "50%",
-                    backgroundColor: "#2563EB", flexShrink: 0, marginTop: 6,
+                    width: 7, height: 7, borderRadius: "50%",
+                    backgroundColor: "#0A1628", flexShrink: 0, marginTop: 6,
                   }}
                 />
               )}

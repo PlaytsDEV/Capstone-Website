@@ -680,7 +680,7 @@ export default function ReservationDashboard({
                       feedback.viewingPreference === "physical_visit"
                         ? "#F59E0B"
                         : feedback.viewingPreference === "urgent_move_in_review"
-                          ? "#6366F1"
+                          ? "#D97706"
                           : "#3B82F6",
                   }}
                 />
