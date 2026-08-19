@@ -8,8 +8,9 @@ const transitionContract = jest.fn(async (contract, status, actorId) => {
   contract.updatedBy = actorId;
   await contract.save();
 });
+const assertValidContractTransition = jest.fn(() => true);
 await jest.unstable_mockModule("fs/promises", () => ({ default: { mkdir, writeFile, rm } }));
-await jest.unstable_mockModule("./contractService.js", () => ({ transitionContract }));
+await jest.unstable_mockModule("./contractService.js", () => ({ transitionContract, assertValidContractTransition }));
 const {
   NOTARIZATION_CHECKLIST_KEYS,
   resolveNotarizedContractPath,

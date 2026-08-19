@@ -2,8 +2,9 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
+import { PDFDocument } from "pdf-lib";
 import { Contract } from "../models/index.js";
-import { transitionContract } from "./contractService.js";
+import { assertValidContractTransition, transitionContract } from "./contractService.js";
 
 export const SIGNED_CONTRACT_MAX_BYTES = 10 * 1024 * 1024;
 export const SIGNED_CONTRACT_ROOT = path.resolve(
@@ -192,6 +193,59 @@ export const rejectSignedContract = async ({ contract, actorId, reason }) => {
   contract.signedFileSize = null;
   contract.signedMimeType = null;
   await applyDerivedStatus(contract, actorId, `Signed Contract copy rejected: ${reason}`);
+  return contract;
+};
+
+// Statuses a signedDocuments[]-only Contract (predating the
+// auto-finalize-on-upload fix) can safely be promoted to canonical
+// `finalDocument` from — mirrors contractNotarizationService.js's
+// DIRECT_NOTARIZED_UPLOAD_STATUSES plus the notarization/publication
+// statuses a contract may already be sitting in, kept as a separate literal
+// here (not imported) to avoid a circular dependency: contractNotarizationService.js
+// already imports from this module.
+const AUTO_FINALIZE_PENDING_STATUSES = Object.freeze([
+  "generated", "awaiting_signatures", "partially_signed", "signed", "awaiting_notarization",
+  "notarized", "ready_for_publication",
+]);
+const AUTO_FINALIZE_ALREADY_PUBLISHED_STATUSES = Object.freeze([
+  "published", "active", "expiring_soon", "expired",
+]);
+
+// Whether an existing signedDocuments[]-only Contract is safe for
+// scripts/reconcileFinalContractUploads.mjs to promote straight to the
+// canonical finalDocument. Never used by an interactive admin upload —
+// those go through uploadNotarizedContract / uploadAndFinalizeNotarizedContract,
+// which enforce the full checklist-gated process instead.
+export const canAutoFinalize = (contract) => {
+  if (contract.finalDocument) return false;
+  return AUTO_FINALIZE_PENDING_STATUSES.includes(contract.status) ||
+    AUTO_FINALIZE_ALREADY_PUBLISHED_STATUSES.includes(contract.status);
+};
+
+export const pdfPageCount = async (absolutePath) => {
+  const bytes = await fs.readFile(absolutePath);
+  return (await PDFDocument.load(bytes, { updateMetadata: false })).getPageCount();
+};
+
+// Advances contract.status/statusHistory in memory from its current
+// pending status to "published" via the same canonical chain
+// uploadAndFinalizeNotarizedContract uses (current -> notarized ->
+// ready_for_publication -> published), without that function's
+// intermediate transitionContract saves — the caller persists once with a
+// single contract.save() alongside the finalDocument fields it also sets,
+// so a historical backfill costs one write per contract. A no-op if the
+// Contract is already at or past "published" in the lifecycle.
+export const advanceStatusToPublished = (contract, actorId, reason) => {
+  if (AUTO_FINALIZE_ALREADY_PUBLISHED_STATUSES.includes(contract.status)) return contract;
+  const fullChain = ["notarized", "ready_for_publication", "published"];
+  const startIndex = fullChain.indexOf(contract.status);
+  const chain = startIndex === -1 ? fullChain : fullChain.slice(startIndex + 1);
+  for (const next of chain) {
+    assertValidContractTransition(contract.status, next);
+    contract.status = next;
+    contract.statusHistory.push({ status: next, changedBy: actorId, reason });
+  }
+  contract.updatedBy = actorId;
   return contract;
 };
 

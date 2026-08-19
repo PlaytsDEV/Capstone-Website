@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import { PDFDocument } from "pdf-lib";
 import { resolveNotarizedContractPath } from "./contractNotarizationService.js";
+import { resolveSignedContractPath } from "./contractSigningService.js";
 import { transitionContract } from "./contractService.js";
 
 export const PUBLICATION_CHECKLIST_KEYS = Object.freeze([
@@ -153,10 +154,47 @@ export const publishFinalContract = async ({ contract, actorId, checklist = {}, 
   return { contract, finalDocument: contract.finalDocument };
 };
 
+// Serves a "admin_scan" finalDocument — a wet-signed scan backfilled by
+// scripts/reconcileFinalContractUploads.mjs from a pre-existing
+// signedDocuments[] entry that predates formal notarization verification —
+// from that array directly, in place of resolveVerifiedCurrentNotarizedDocument's
+// notarizedDocuments[]/notarizationVerifiedAt checks, which an admin_scan
+// document never has and is never expected to have.
+const resolveVerifiedAdminScanDocument = async (contract) => {
+  const current = (contract.signedDocuments || []).find(
+    (item) => Number(item.version) === Number(contract.finalDocument.sourceVersion),
+  );
+  if (!current || current.superseded || current.rejectedAt) {
+    throw publicationError("The archived signed Contract scan is unavailable.",
+      "CURRENT_SIGNED_DOCUMENT_UNAVAILABLE", 409);
+  }
+  if (current.fileHash !== contract.finalDocument.fileHash) {
+    throw publicationError("The verified signed-scan metadata is inconsistent.",
+      "CURRENT_SIGNED_DOCUMENT_UNAVAILABLE", 409);
+  }
+  const absolutePath = resolveSignedContractPath(current.storageKey);
+  const stat = await fs.stat(absolutePath).catch(() => null);
+  if (!stat?.isFile() || Number(stat.size) !== Number(current.fileSize)) {
+    throw publicationError("The archived signed Contract scan file is unavailable.",
+      "CURRENT_SIGNED_DOCUMENT_UNAVAILABLE", 409);
+  }
+  return { document: current, absolutePath, pageCount: await pageCountFor(absolutePath, current.mimeType) };
+};
+
 export const resolvePublishedFinalDocument = async (contract) => {
   if (!["published", "active", "expiring_soon", "expired"].includes(contract.status) ||
-      contract.tenantVisible !== true || !contract.finalDocument ||
-      !contract.notarizationVerifiedAt) {
+      contract.tenantVisible !== true || !contract.finalDocument) {
+    throw publicationError("Final Contract is unavailable.", "FINAL_DOCUMENT_UNAVAILABLE", 404);
+  }
+  if (contract.finalDocument.sourceType === "admin_scan") {
+    const source = await resolveVerifiedAdminScanDocument(contract);
+    if (Number(contract.finalDocument.sourceVersion) !== Number(source.document.version)) {
+      throw publicationError("Final Contract publication metadata is inconsistent.",
+        "FINAL_DOCUMENT_UNAVAILABLE", 409);
+    }
+    return { ...source, finalDocument: contract.finalDocument };
+  }
+  if (!contract.notarizationVerifiedAt) {
     throw publicationError("Final Contract is unavailable.", "FINAL_DOCUMENT_UNAVAILABLE", 404);
   }
   const source = await resolveVerifiedCurrentNotarizedDocument(contract);

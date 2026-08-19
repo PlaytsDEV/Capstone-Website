@@ -94,11 +94,16 @@ const finalDocumentSchema = new mongoose.Schema(
     fileSize: { type: Number, required: true, min: 1 },
     mimeType: { type: String, required: true },
     pageCount: { type: Number, required: true, min: 1 },
-    sourceType: { type: String, enum: ["notarized"], required: true },
+    // "admin_scan" is written only by scripts/reconcileFinalContractUploads.mjs,
+    // backfilling a Contract whose wet-signed scan was uploaded through the
+    // legacy signedDocuments[]-only flow before formal notarization
+    // verification existed for it — so sourceVerifiedAt/By below are
+    // legitimately absent for that source type, not required.
+    sourceType: { type: String, enum: ["notarized", "admin_scan"], required: true },
     sourceVersion: { type: Number, required: true, min: 1 },
     sourceUploadedAt: { type: Date, required: true },
-    sourceVerifiedAt: { type: Date, required: true },
-    sourceVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    sourceVerifiedAt: { type: Date, default: null },
+    sourceVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     publishedAt: { type: Date, required: true },
     publishedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     tenantVisible: { type: Boolean, default: true, required: true },
