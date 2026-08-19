@@ -326,7 +326,35 @@ export const uploadAndFinalizeNotarizedContract = async ({
   contract.readyForPublicationAt = now;
   contract.readyForPublicationBy = actorId;
 
-  // 5. Transition to active status
+  // 5. Advance through the canonical lifecycle chain to active status.
+  // CONTRACT_TRANSITIONS (contractService.js) never permits a direct jump
+  // to "active" from any of DIRECT_NOTARIZED_UPLOAD_STATUSES — only from
+  // "published" (or "transfer_review_required"). This single-action upload
+  // is a UI/UX simplification (no separate verify/ready/publish button
+  // clicks required of the admin), not a license to skip the state
+  // machine: `assertDirectUploadAllowed` above guarantees contract.status
+  // is one of DIRECT_NOTARIZED_UPLOAD_STATUSES on entry, and every status
+  // in that set has "notarized" as a valid next step, so this chain is
+  // always valid: current -> notarized -> ready_for_publication ->
+  // published -> active.
+  await transitionContract(
+    contract,
+    "notarized",
+    actorId,
+    "Notarized Contract copy uploaded (single-action final upload)",
+  );
+  await transitionContract(
+    contract,
+    "ready_for_publication",
+    actorId,
+    "Auto-advanced to ready-for-publication as part of the single-action final upload",
+  );
+  await transitionContract(
+    contract,
+    "published",
+    actorId,
+    "Final signed and notarized Contract published for secure tenant access",
+  );
   await transitionContract(
     contract,
     "active",
