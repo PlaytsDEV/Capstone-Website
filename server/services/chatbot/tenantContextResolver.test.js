@@ -71,6 +71,7 @@ describe("canonical Lily tenant context", () => {
 
   test("active occupancy overrides stale move-in/profile state and all domain snapshots use canonical owners", async () => {
     const tenantId = new mongoose.Types.ObjectId();
+    const attackerSuppliedTenantId = new mongoose.Types.ObjectId();
     const now = new Date("2026-08-17T08:00:00Z");
     const user = {
       _id: tenantId,
@@ -190,7 +191,7 @@ describe("canonical Lily tenant context", () => {
       }),
     };
 
-    const context = await resolveTenantAIContext(tenantId, user, { db, now });
+    const context = await resolveTenantAIContext(attackerSuppliedTenantId, user, { db, now });
 
     expect(context).toMatchObject({
       branch: "Gil Puyat",
@@ -229,9 +230,48 @@ describe("canonical Lily tenant context", () => {
       isArchived: false,
     }));
     expect(resolveTenantCanonicalContract).toHaveBeenCalledWith(
-      expect.any(mongoose.Types.ObjectId),
+      tenantId,
       { includeEarlyStages: true },
     );
+    const userQuery = userFindOne.mock.calls[0][0];
+    expect(userQuery.$or).toEqual(expect.arrayContaining([
+      expect.objectContaining({ user_id: user.user_id }),
+    ]));
+    expect(String(userQuery.$or.find((clause) => clause._id)?._id)).toBe(String(tenantId));
+    expect(stayFindOne).toHaveBeenCalledWith(expect.objectContaining({ tenantId }));
+    expect(reservationFindOne).toHaveBeenCalledWith(expect.objectContaining({ userId: tenantId }));
+    expect(billFind).toHaveBeenCalledWith(expect.objectContaining({ userId: tenantId }));
+    expect(maintenanceFind).toHaveBeenCalledWith(expect.objectContaining({
+      $or: expect.arrayContaining([expect.objectContaining({ userId: tenantId })]),
+    }));
+    expect(conversationFind).toHaveBeenCalledWith({ tenantId });
+    for (const mock of [userFindOne, stayFindOne, reservationFindOne, billFind, maintenanceFind, conversationFind]) {
+      expect(JSON.stringify(mock.mock.calls)).not.toContain(String(attackerSuppliedTenantId));
+    }
+  });
+
+  test("loads only the canonical domains needed for the request", async () => {
+    const tenantId = new mongoose.Types.ObjectId();
+    const user = {
+      _id: tenantId,
+      user_id: "tenant-domain-test",
+      firstName: "Domain",
+      lastName: "Test",
+    };
+    userFindOne.mockReturnValue(queryResult(user));
+    stayFindOne.mockReturnValue(queryResult(null));
+    reservationFindOne.mockReturnValue(queryResult(null));
+    billFind.mockReturnValue(queryResult([]));
+    buildAnnouncementTenantContext.mockResolvedValue({ authenticated: true, mongoId: tenantId });
+
+    const db = { collection: jest.fn() };
+    await resolveTenantAIContext(tenantId, user, { db, domains: ["billing"] });
+
+    expect(billFind).toHaveBeenCalled();
+    expect(resolveTenantCanonicalContract).not.toHaveBeenCalled();
+    expect(maintenanceFind).not.toHaveBeenCalled();
+    expect(conversationFind).not.toHaveBeenCalled();
+    expect(db.collection).not.toHaveBeenCalledWith("announcements");
   });
 
   test("neutral fallback never fabricates a branch, room, bed, bill, or move-in date", () => {

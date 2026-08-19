@@ -145,7 +145,11 @@ describe("tenantChatbotController", () => {
 
       await handleTenantQuery(req, res, next);
 
-      expect(resolveTenantAIContext).toHaveBeenCalledWith("mock-user-id-123", req.authUser);
+      expect(resolveTenantAIContext).toHaveBeenCalledWith(
+        "mock-user-id-123",
+        req.authUser,
+        { domains: ["billing"] },
+      );
       expect(queryTenantGeminiChatbot).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(
@@ -172,6 +176,42 @@ describe("tenantChatbotController", () => {
           code: "VALIDATION_ERROR",
         }),
       );
+    });
+
+    it("rejects unrelated requests before loading tenant data or calling the model", async () => {
+      req.body = { message: "Write a sorting algorithm in Python." };
+
+      await handleTenantQuery(req, res, next);
+
+      expect(resolveTenantAIContext).not.toHaveBeenCalled();
+      expect(queryTenantGeminiChatbot).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          reply: expect.stringMatching(/Lilycrest-related concerns/i),
+          canEscalate: false,
+          suggestedActions: expect.any(Array),
+        }),
+      }));
+    });
+
+    it("ignores a malformed or foreign client tenant id and uses authenticated scope", async () => {
+      req.body = {
+        message: "Show my current bill.",
+        tenantId: "tenant-b-or-malformed",
+        userId: "tenant-b",
+      };
+
+      await handleTenantQuery(req, res, next);
+
+      expect(resolveTenantAIContext).toHaveBeenCalledWith(
+        "mock-user-id-123",
+        req.authUser,
+        { domains: ["billing"] },
+      );
+      expect(queryTenantGeminiChatbot).toHaveBeenCalledWith(expect.objectContaining({
+        contextSnapshot: mockContextSnapshot,
+      }));
     });
   });
 

@@ -107,13 +107,86 @@ describe('vendored mobile Lily canonical context', () => {
     expect(mockResolveTenantAIContext).toHaveBeenCalledWith(
       expect.any(ObjectId),
       req.user,
-      { db },
+      { db, domains: ['billing'] },
     );
     expect(mockSendGeminiMessage).toHaveBeenCalledWith(
-      'canonical-session',
+      'tenant-firebase-id:canonical-session',
       expect.stringMatching(/Canonical current bill.*utilities released/is),
     );
     expect(db.collection).not.toHaveBeenCalled();
+  });
+
+  test('rejects unrelated requests before resolving tenant context or calling Gemini', async () => {
+    const req = {
+      user: {
+        _id: new ObjectId(),
+        user_id: 'tenant-firebase-id',
+        role: 'tenant',
+      },
+      body: { message: 'Write a Python web scraper.', session_id: 'unrelated-session' },
+    };
+    const res = response();
+
+    await sendMessage(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.response).toMatch(/Lilycrest-related concerns/i);
+    expect(res.body.needs_admin).toBe(false);
+    expect(mockResolveTenantAIContext).not.toHaveBeenCalled();
+    expect(mockSendGeminiMessage).not.toHaveBeenCalled();
+  });
+
+  test('client tenant identifiers cannot override the authenticated mobile tenant', async () => {
+    const authenticatedId = new ObjectId();
+    const db = { collection: jest.fn() };
+    mockGetDb.mockReturnValue(db);
+    const req = {
+      user: {
+        _id: authenticatedId,
+        user_id: 'tenant-a-firebase-id',
+        role: 'tenant',
+        name: 'Tenant A',
+      },
+      body: {
+        message: 'What is my contract status?',
+        session_id: 'auth-scope-session',
+        tenantId: new ObjectId().toString(),
+        userId: 'tenant-b-firebase-id',
+      },
+    };
+    const res = response();
+
+    await sendMessage(req, res);
+
+    expect(mockResolveTenantAIContext).toHaveBeenCalledWith(
+      authenticatedId,
+      req.user,
+      { db, domains: ['contract'] },
+    );
+    expect(mockSendGeminiMessage).toHaveBeenCalledWith(
+      'tenant-a-firebase-id:auth-scope-session',
+      expect.any(String),
+    );
+  });
+
+  test('context failure returns temporary unavailability without invented tenant facts', async () => {
+    mockResolveTenantAIContext.mockRejectedValueOnce(new Error('context database unavailable'));
+    const req = {
+      user: {
+        _id: new ObjectId(),
+        user_id: 'tenant-firebase-id',
+        role: 'tenant',
+      },
+      body: { message: 'Show my current bill.', session_id: 'failure-session' },
+    };
+    const res = response();
+
+    await sendMessage(req, res);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body.response).toMatch(/temporarily unavailable/i);
+    expect(res.body.response).not.toMatch(/PHP|₱|due date|room \d|active contract/i);
+    expect(mockSendGeminiMessage).not.toHaveBeenCalled();
   });
 
   test('source contains no legacy billing/ticket/reservation context query or shadow chat collection', () => {

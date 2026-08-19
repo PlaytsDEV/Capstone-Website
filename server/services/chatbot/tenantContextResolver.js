@@ -196,11 +196,18 @@ function buildNeutralContext(fallbackAuthUser = null) {
 export async function resolveTenantAIContext(
   userId,
   fallbackAuthUser = null,
-  { db = mongoose.connection?.db || null, now = new Date() } = {},
+  {
+    db = mongoose.connection?.db || null,
+    now = new Date(),
+    domains = null,
+  } = {},
 ) {
   if (!userId && !fallbackAuthUser) return null;
 
-  const candidateId = userId || fallbackAuthUser?._id;
+  // Once an authenticated user object exists it is the only identity
+  // authority. `userId` is retained for internal callers that do not yet have
+  // a hydrated auth user, but it can never override an authenticated tenant.
+  const candidateId = fallbackAuthUser?._id || userId;
   const validObjectId = mongoose.Types.ObjectId.isValid(candidateId)
     ? new mongoose.Types.ObjectId(candidateId)
     : null;
@@ -222,6 +229,9 @@ export async function resolveTenantAIContext(
     return buildNeutralContext(user);
   }
   const tenantId = new mongoose.Types.ObjectId(tenantIdValue);
+  const requestedDomains = domains == null
+    ? new Set(["billing", "contract", "maintenance", "support", "announcements"])
+    : new Set(Array.isArray(domains) ? domains : []);
 
   const audienceContextPromise = db
     ? buildAnnouncementTenantContext(db, {
@@ -264,28 +274,36 @@ export async function resolveTenantAIContext(
       .populate("roomId", "name roomNumber branch type")
       .lean()
       .catch(() => null),
-    resolveTenantCanonicalContract(tenantId, { includeEarlyStages: true }).catch(() => null),
-    Bill.find({ userId: tenantId, ...NON_DRAFT_BILL_FILTER })
-      .sort(CURRENT_BILL_SORT)
-      .limit(10)
-      .lean()
-      .then((bills) => ({ currentBill: selectCurrentBillFromList(bills, now), bills }))
-      .catch(() => ({ currentBill: null, bills: [] })),
-    MaintenanceRequest.find({
-      $or: [
-        { userId: tenantId },
-        { user_id: String(user.user_id || fallbackAuthUser?.user_id || "") },
-      ],
-    })
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .lean()
-      .catch(() => []),
-    ChatConversation.find({ tenantId })
-      .sort({ lastMessageAt: -1, updatedAt: -1 })
-      .limit(3)
-      .lean()
-      .catch(() => []),
+    requestedDomains.has("contract")
+      ? resolveTenantCanonicalContract(tenantId, { includeEarlyStages: true }).catch(() => null)
+      : Promise.resolve(null),
+    requestedDomains.has("billing")
+      ? Bill.find({ userId: tenantId, ...NON_DRAFT_BILL_FILTER })
+        .sort(CURRENT_BILL_SORT)
+        .limit(10)
+        .lean()
+        .then((bills) => ({ currentBill: selectCurrentBillFromList(bills, now), bills }))
+        .catch(() => ({ currentBill: null, bills: [] }))
+      : Promise.resolve({ currentBill: null, bills: [] }),
+    requestedDomains.has("maintenance")
+      ? MaintenanceRequest.find({
+        $or: [
+          { userId: tenantId },
+          { user_id: String(user.user_id || fallbackAuthUser?.user_id || "") },
+        ],
+      })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .lean()
+        .catch(() => [])
+      : Promise.resolve([]),
+    requestedDomains.has("support")
+      ? ChatConversation.find({ tenantId })
+        .sort({ lastMessageAt: -1, updatedAt: -1 })
+        .limit(3)
+        .lean()
+        .catch(() => [])
+      : Promise.resolve([]),
   ]);
 
   const room = resolveRoom(activeStay, currentReservation);
@@ -305,8 +323,9 @@ export async function resolveTenantAIContext(
 
   const currentBill = toCurrentBillContext(billingResolution.currentBill);
   const contract = toContractContext(canonicalContract, now);
-  const recentAnnouncements = await loadVisibleAnnouncements(db, audienceContext, now)
-    .catch(() => []);
+  const recentAnnouncements = requestedDomains.has("announcements")
+    ? await loadVisibleAnnouncements(db, audienceContext, now).catch(() => [])
+    : [];
 
   const isApplicant = !currentResident && Boolean(currentReservation || user?.role === "applicant");
 
