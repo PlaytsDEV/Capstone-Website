@@ -1,5 +1,4 @@
 import express from "express";
-import fs from "fs";
 import mongoose from "mongoose";
 import { toTenantContractView } from "../services/tenantContractViewService.js";
 import { resolvePublishedFinalDocument } from "../services/contractPublicationService.js";
@@ -97,7 +96,7 @@ router.get("/contracts/:contractId/documents/final", mobileTenant, asyncRoute(as
     `${download ? "attachment" : "inline"}; filename="${resolved.finalDocument.fileName.replaceAll('"', "")}"`);
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("Pragma", "no-cache");
-  return fs.createReadStream(resolved.absolutePath).pipe(res);
+  return resolved.createReadStream().pipe(res);
 }));
 
 // Backward-compatible replacement for the former hard-coded mobile lease PDF.
@@ -115,7 +114,7 @@ router.get("/documents/contract", mobileTenant, asyncRoute(async (req, res) => {
       res.setHeader("Content-Disposition", `${download ? "attachment" : "inline"}; filename="${resolved.finalDocument.fileName.replaceAll('"', "")}"`);
       res.setHeader("Cache-Control", "private, no-store");
       res.setHeader("Pragma", "no-cache");
-      return fs.createReadStream(resolved.absolutePath).pipe(res);
+      return resolved.createReadStream().pipe(res);
     } catch (_) {
       // Fall through to prepared document if final fails to resolve
     }

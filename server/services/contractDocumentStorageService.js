@@ -4,6 +4,9 @@ import {
   removePrivateContractFile,
   resolvePrivateContractStorageKey,
   writePrivateContractAtomically,
+  removeContractArtifactFile,
+  resolveContractArtifactStorageKey,
+  writeContractArtifactAtomically,
 } from "./contractPrivateStorageService.js";
 
 const storageError = (message, code, statusCode = 500, details) =>
@@ -195,3 +198,177 @@ export const removePreparedContractDocument = async (document) => {
     resolvePrivateContractStorageKey(document.storageKey),
   );
 };
+
+// ============================================================================
+// Generic "signed" / "notarized" contract-artifact storage.
+//
+// Same durable-vs-local behavior as the Prepared functions above
+// (useLocalStorage() decides production-Firebase vs local disk), same
+// storageProvider-tagged legacy-read fallback shape (inspectContractArtifact
+// mirrors inspectPreparedContractDocument's dual-check), parameterized by
+// `kind` ("signed" | "notarized") instead of being hardcoded to Prepared's
+// paths/naming. Kept separate from storePreparedContractDocument /
+// inspectPreparedContractDocument / removePreparedContractDocument (which
+// still exist above, unchanged) so the already-covered Draft/Prepared path
+// is never touched by this migration.
+// ============================================================================
+
+export const storeContractArtifact = async ({ kind, target, bytes, contentType, metadata = {} }) => {
+  if (useLocalStorage()) {
+    await writeContractArtifactAtomically(target, bytes);
+    return { provider: "local", storageKey: target.storageKey };
+  }
+
+  const destination = await findFirebaseFile(target.storageKey);
+  if (!destination) {
+    throw storageError(
+      "Persistent Contract document storage is not configured.",
+      "CONTRACT_STORAGE_NOT_CONFIGURED",
+      503,
+    );
+  }
+  await destination.file.save(bytes, {
+    resumable: false,
+    preconditionOpts: { ifGenerationMatch: 0 },
+    metadata: {
+      contentType,
+      cacheControl: "private, no-store",
+      metadata: Object.fromEntries(
+        Object.entries(metadata)
+          .filter(([, value]) => value !== undefined && value !== null)
+          .map(([key, value]) => [key, String(value)]),
+      ),
+    },
+  });
+  return {
+    provider: "firebase-storage",
+    storageKey: target.storageKey,
+    bucket: destination.bucket.name,
+  };
+};
+
+export const inspectContractArtifact = async ({ kind, document }) => {
+  const provider = document?.storageProvider || "local";
+  const storageKey = String(document?.storageKey || "");
+  if (!storageKey) {
+    throw storageError(
+      "Contract document metadata has no storage key.",
+      "CONTRACT_ARTIFACT_METADATA_INVALID",
+      410,
+    );
+  }
+
+  if (provider === "firebase-storage") {
+    try {
+      const destination = await findFirebaseFile(storageKey, true);
+      if (destination) {
+        const [meta] = await destination.file.getMetadata();
+        return {
+          provider: "firebase-storage",
+          storageKey,
+          size: Number(meta.size || 0),
+          createReadStream: () => destination.file.createReadStream(),
+        };
+      }
+    } catch (firebaseErr) {
+      if (firebaseErr.code !== "CONTRACT_STORAGE_NOT_CONFIGURED" && firebaseErr.statusCode !== 503) {
+        // Fall through to local fallback
+      }
+    }
+
+    let localPath;
+    try {
+      localPath = resolveContractArtifactStorageKey(kind, storageKey);
+      const stat = await fs.promises.stat(localPath).catch(() => null);
+      if (stat?.isFile()) {
+        return {
+          provider: "local",
+          storageKey,
+          size: stat.size,
+          absolutePath: localPath,
+          createReadStream: () => fs.createReadStream(localPath),
+        };
+      }
+    } catch {
+      // Ignore local resolution failure
+    }
+
+    throw storageError(
+      "The Contract document file is missing from persistent storage.",
+      "CONTRACT_ARTIFACT_STORAGE_MISSING",
+      410,
+    );
+  }
+
+  // provider === "local" — this is also every pre-migration legacy record,
+  // since signedDocumentSchema's storageProvider defaults to "local" and no
+  // historical write ever set it to anything else.
+  let absolutePath;
+  try {
+    absolutePath = resolveContractArtifactStorageKey(kind, storageKey);
+  } catch {
+    throw storageError(
+      "Contract document metadata contains an invalid storage key.",
+      "CONTRACT_ARTIFACT_METADATA_INVALID",
+      410,
+    );
+  }
+  const stat = await fs.promises.stat(absolutePath).catch(() => null);
+  if (stat?.isFile()) {
+    return {
+      provider: "local",
+      storageKey,
+      size: stat.size,
+      absolutePath,
+      createReadStream: () => fs.createReadStream(absolutePath),
+    };
+  }
+
+  // Fallback: a "local" record whose file was actually migrated/re-uploaded
+  // into Firebase under the same storageKey without the Mongo field being
+  // updated (defensive only — normal writes always set storageProvider
+  // correctly themselves).
+  if (admin.apps.length) {
+    try {
+      const destination = await findFirebaseFile(storageKey, true);
+      if (destination) {
+        const [meta] = await destination.file.getMetadata();
+        return {
+          provider: "firebase-storage",
+          storageKey,
+          size: Number(meta.size || 0),
+          createReadStream: () => destination.file.createReadStream(),
+        };
+      }
+    } catch {
+      // Ignore Firebase fallback error
+    }
+  }
+
+  throw storageError(
+    "The Contract document file is missing from storage.",
+    "CONTRACT_ARTIFACT_STORAGE_MISSING",
+    410,
+  );
+};
+
+export const removeContractArtifact = async ({ kind, document }) => {
+  if (!document?.storageKey) return;
+  if (document.storageProvider === "firebase-storage") {
+    const destination = await findFirebaseFile(document.storageKey);
+    if (destination) await destination.file.delete({ ignoreNotFound: true });
+    return;
+  }
+  await removeContractArtifactFile(
+    kind,
+    resolveContractArtifactStorageKey(kind, document.storageKey),
+  );
+};
+
+export const storeSignedContractDocument = (args) => storeContractArtifact({ kind: "signed", ...args });
+export const inspectSignedContractDocument = (document) => inspectContractArtifact({ kind: "signed", document });
+export const removeSignedContractDocument = (document) => removeContractArtifact({ kind: "signed", document });
+
+export const storeNotarizedContractDocument = (args) => storeContractArtifact({ kind: "notarized", ...args });
+export const inspectNotarizedContractDocument = (document) => inspectContractArtifact({ kind: "notarized", document });
+export const removeNotarizedContractDocument = (document) => removeContractArtifact({ kind: "notarized", document });

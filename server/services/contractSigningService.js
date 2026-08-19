@@ -5,6 +5,8 @@ import { fileURLToPath } from "url";
 import { PDFDocument } from "pdf-lib";
 import { Contract } from "../models/index.js";
 import { assertValidContractTransition, transitionContract } from "./contractService.js";
+import { buildContractArtifactStorage } from "./contractPrivateStorageService.js";
+import { storeSignedContractDocument, removeSignedContractDocument } from "./contractDocumentStorageService.js";
 
 export const SIGNED_CONTRACT_MAX_BYTES = 10 * 1024 * 1024;
 export const SIGNED_CONTRACT_ROOT = path.resolve(
@@ -122,21 +124,25 @@ export const uploadSignedContract = async ({ contract, file, actorId, replacemen
   const resolvedReason = String(replacementReason || "").trim() || "Uploaded signed contract copy";
   const version = Math.max(0, ...(contract.signedDocuments || []).map((item) => Number(item.version) || 0)) + 1;
   const storedName = `${safePart(contract.contractNumber)}_signed_v${version}${type.extension}`;
-  const storageKey = [safePart(contract.branch), String(contract.contractYear), safePart(contract.contractNumber), storedName].join("/");
-  const absolute = resolveSignedContractPath(storageKey);
-  await fs.mkdir(path.dirname(absolute), { recursive: true });
-  await fs.writeFile(absolute, file.buffer, { flag: "wx" });
+  const target = buildContractArtifactStorage({ kind: "signed", contractId: contract._id, fileName: storedName });
   const uploadedAt = new Date();
   const fileHash = crypto.createHash("sha256").update(file.buffer).digest("hex");
+  const stored = await storeSignedContractDocument({
+    target,
+    bytes: file.buffer,
+    contentType: type.mimeType,
+    metadata: { contractId: contract._id, contractNumber: contract.contractNumber, documentType: "signed", version, fileHash },
+  });
   for (const document of contract.signedDocuments || []) document.superseded = true;
   contract.signedDocuments.push({
-    version, storageKey, fileName: storedName, fileHash, fileSize: type.fileSize,
+    version, storageProvider: stored.provider, storageKey: stored.storageKey, fileName: storedName,
+    fileHash, fileSize: type.fileSize,
     mimeType: type.mimeType, uploadedAt, uploadedBy: actorId,
     preparedDocumentVersion: contract.generatedVersion || 1, superseded: false,
     replacementReason: resolvedReason,
   });
   Object.assign(contract, {
-    signedStorageKey: storageKey, signedFileName: storedName, signedFileHash: fileHash,
+    signedStorageKey: stored.storageKey, signedFileName: storedName, signedFileHash: fileHash,
     signedFileSize: type.fileSize, signedMimeType: type.mimeType, signedUploadedAt: uploadedAt,
     signedUploadedBy: actorId, signedDocumentVersion: version,
     signingVerifiedAt: null, signingVerifiedBy: null, signingVerificationNotes: "",
@@ -149,7 +155,7 @@ export const uploadSignedContract = async ({ contract, file, actorId, replacemen
       await applyDerivedStatus(contract, actorId, version === 1 ? "Signed Contract copy uploaded" : `Signed Contract copy replaced: ${resolvedReason}`);
     }
   } catch (saveError) {
-    await fs.rm(absolute, { force: true }).catch(() => {});
+    await removeSignedContractDocument({ storageProvider: stored.provider, storageKey: stored.storageKey }).catch(() => {});
     throw saveError;
   }
   return contract.signedDocuments.at(-1);
@@ -272,12 +278,9 @@ export const deleteSignedContract = async ({ contract, version = null, actorId, 
   contract.markModified("signedDocuments");
 
   if (deletedDoc?.storageKey) {
-    try {
-      const absolute = resolveSignedContractPath(deletedDoc.storageKey);
-      await fs.rm(absolute, { force: true }).catch(() => {});
-    } catch {
+    await removeSignedContractDocument(deletedDoc).catch(() => {
       // non-fatal if storage file already absent
-    }
+    });
   }
 
   const remaining = [...(contract.signedDocuments || [])].sort((a, b) => Number(b.version) - Number(a.version));
