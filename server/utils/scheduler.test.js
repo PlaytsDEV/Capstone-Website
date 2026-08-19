@@ -73,6 +73,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     find: jest.fn(() => Promise.resolve([])),
     create: jest.fn(() => Promise.resolve({})),
   },
+  Contract: {},
 }));
 
 await jest.unstable_mockModule("../utils/reservationHelpers.js", () => ({

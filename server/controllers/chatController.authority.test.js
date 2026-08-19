@@ -24,6 +24,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     find: messageFind,
     updateMany: messageUpdateMany,
   },
+  Contract: { exists: jest.fn() },
   Reservation: { findOne: reservationFindOne },
   User: { findById: userFindById, find: userFind },
 }));
