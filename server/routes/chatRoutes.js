@@ -89,5 +89,6 @@ router.get(
 router.post("/:conversationId/messages", chatController.sendTenantMessage);
 router.patch("/:conversationId/resolution", chatController.confirmTenantResolution);
 router.patch("/:conversationId/reopen", chatController.reopenTenantConversation);
+router.patch("/:conversationId/close", chatController.closeTenantConversation);
 
 export default router;

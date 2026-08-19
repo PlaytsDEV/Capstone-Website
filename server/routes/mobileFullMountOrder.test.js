@@ -77,6 +77,16 @@ jest.unstable_mockModule("../services/mobileNotificationBridge.js", () => ({
   listUserNotifications: jest.fn(), markNotificationRead: jest.fn(), markAllNotificationsRead: jest.fn(),
   dismissNotification: jest.fn(), clearNotifications: jest.fn(),
 }));
+jest.unstable_mockModule("../controllers/chatController.js", () => ({
+  startConversation: jest.fn(), getMyConversations: jest.fn(), getConversationMessages: jest.fn(),
+  uploadChatAttachment: jest.fn(), downloadChatAttachment: jest.fn(), sendTenantMessage: jest.fn(),
+  confirmTenantResolution: jest.fn(), reopenTenantConversation: jest.fn(), closeTenantConversation: jest.fn(),
+  broadcastTyping: jest.fn(),
+}));
+jest.unstable_mockModule("../services/attachmentUploadService.js", () => ({
+  ATTACHMENT_TYPE_ERROR_MESSAGE: "Unsupported attachment type.",
+  isAllowedAttachmentFile: jest.fn(() => true),
+}));
 jest.unstable_mockModule("../config/firebase.js", () => ({
   default: { apps: [{}], storage: () => ({ bucket: jest.fn() }) },
   resolveFirebaseStorageBucket: () => "test-bucket",
@@ -89,6 +99,7 @@ const { default: mobileDocumentRoutes } = await import("./mobileDocumentRoutes.j
 const { default: mobileAuthRoutes } = await import("./mobileAuthRoutes.js");
 const { default: mobileNotificationRoutes } = await import("./mobileNotificationRoutes.js");
 const { default: mobileUploadRoutes } = await import("./mobileUploadRoutes.js");
+const { default: mobileChatRoutes } = await import("./mobileChatRoutes.js");
 
 let server;
 let baseUrl;
@@ -104,6 +115,7 @@ async function startApp() {
   app.use("/api/m", mobileAuthRoutes);
   app.use("/api/m", mobileNotificationRoutes);
   app.use("/api/m", mobileUploadRoutes);
+  app.use("/api/m", mobileChatRoutes);
 
   // Stand-in for the vendored router's OTHER domains (server/mobile), which
   // this test does not load for real (that requires a live Mongo/Firebase
@@ -115,7 +127,6 @@ async function startApp() {
   vendoredStandIn.get("/dashboard/me", (req, res) => res.status(200).json({ ok: true, route: "vendored-dashboard-me" }));
   vendoredStandIn.get("/announcements", (req, res) => res.status(200).json({ ok: true, route: "vendored-announcements" }));
   vendoredStandIn.post("/chatbot/message", (req, res) => res.status(200).json({ ok: true, route: "vendored-chatbot-message" }));
-  vendoredStandIn.get("/chat/me", (req, res) => res.status(200).json({ ok: true, route: "vendored-chat-me" }));
   vendoredStandIn.get("/faqs", (req, res) => res.status(200).json({ ok: true, route: "vendored-faqs" }));
   vendoredStandIn.get("/tickets/me", (req, res) => res.status(200).json({ ok: true, route: "vendored-tickets-me" }));
   vendoredStandIn.get("/users/me", (req, res) => res.status(200).json({ ok: true, route: "vendored-users-me" }));
@@ -137,7 +148,6 @@ describe("full /api/m mount order — no bridge shadows a vendored-only domain",
     ["GET", "/api/m/dashboard/me", "vendored-dashboard-me"],
     ["GET", "/api/m/announcements", "vendored-announcements"],
     ["POST", "/api/m/chatbot/message", "vendored-chatbot-message"],
-    ["GET", "/api/m/chat/me", "vendored-chat-me"],
     ["GET", "/api/m/faqs", "vendored-faqs"],
     ["GET", "/api/m/tickets/me", "vendored-tickets-me"],
     ["GET", "/api/m/users/me", "vendored-users-me"],
@@ -156,6 +166,7 @@ describe("full /api/m mount order — no bridge shadows a vendored-only domain",
     ["POST", "/api/m/auth/session-teardown"],
     ["GET", "/api/m/notifications"],
     ["POST", "/api/m/upload/firebase-storage"],
+    ["GET", "/api/m/chat/me"],
   ])("unauthenticated %s %s is correctly rejected by its own bridge's session auth (sanity check)", async (method, path) => {
     await startApp();
     const res = await fetch(`${baseUrl}${path}`, { method, headers: { "Content-Type": "application/json" }, body: method === "POST" ? "{}" : undefined });

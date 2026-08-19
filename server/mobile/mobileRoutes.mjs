@@ -106,7 +106,8 @@ mobileRequire.cache[authMiddlewarePath] = {
 };
 
 // ─── Shim: mobile utils/socket → delegate to the Capstone socket module ─────
-// Lets mobile chat.controller.js emit real-time events to the web admin panel.
+// Lets remaining vendored mobile domains emit real-time events through the
+// canonical Socket.IO server.
 const socketShimPath = path.join(MOBILE_ROOT, "utils", "socket.js");
 mobileRequire.cache[socketShimPath] = {
   id: socketShimPath,

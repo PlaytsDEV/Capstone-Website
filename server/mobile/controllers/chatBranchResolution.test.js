@@ -1,169 +1,29 @@
-// Regression coverage for chat.controller.js's resolveTenantContext(): it
-// previously only checked bedhistories then a narrow reservation status
-// list, missing the roomoccupancyhistories and contracts tiers that
-// resolveRequesterBranchCode() (announcement.controller.js, already trusted
-// by user.controller.js) covers. A tenant whose branch was only resolvable
-// via their Contract got "No active tenant." starting a support chat even
-// though the rest of the app (e.g. the Contract screen) already knew their
-// branch. Mirrors the jest.mock pattern already used for this exact class of
-// bug in branchConsistency.test.js.
+const fs = require('fs');
+const path = require('path');
 
-const mockGetDb = jest.fn();
-jest.mock('../config/database.js', () => ({ getDb: (...args) => mockGetDb(...args) }));
-jest.mock('uuid', () => ({ v4: () => 'test-uuid-0000-0000-0000-000000000000' }));
-// chat.controller.js -> announcement.controller.js -> pushService.js -> firebase-admin (ESM).
-jest.mock('../services/pushService.js', () => ({ notifyNewAnnouncement: jest.fn() }));
+const SERVER_ROOT = path.resolve(__dirname, '../..');
+const adapter = fs.readFileSync(path.join(SERVER_ROOT, 'routes/mobileChatRoutes.js'), 'utf8');
+const canonical = fs.readFileSync(path.join(SERVER_ROOT, 'controllers/chatController.js'), 'utf8');
 
-const { ObjectId } = require('mongodb');
-const { startConversation } = require('./chat.controller.js');
-
-function response() {
-  return {
-    statusCode: 200,
-    body: null,
-    status(code) { this.statusCode = code; return this; },
-    json(body) { this.body = body; return this; },
-  };
-}
-
-function makeDb({
-  occupancyDoc = null,
-  bedHistoryDoc = null,
-  reservationDoc = null,
-  contractDoc = null,
-  room = null,
-  conversations = [],
-} = {}) {
-  const conversationStore = [...conversations];
-  let ticketSequence = 0;
-  return {
-    collection(name) {
-      if (name === 'roomoccupancyhistories') return { findOne: async () => occupancyDoc };
-      if (name === 'bedhistories') return { findOne: async () => bedHistoryDoc };
-      if (name === 'reservations') return { findOne: async () => reservationDoc };
-      if (name === 'contracts') return { findOne: async () => contractDoc };
-      if (name === 'rooms') return { findOne: async () => room };
-      if (name === 'chatTicketCounters') {
-        return {
-          findOneAndUpdate: async () => ({
-            _id: 'inquiry:2026',
-            year: 2026,
-            sequence: ++ticketSequence,
-          }),
-        };
-      }
-      if (name === 'chat_conversations') {
-        return {
-          findOne: async () => conversationStore.find((c) => c.status !== 'closed') || null,
-          insertOne: async (doc) => {
-            const record = { ...doc, _id: new ObjectId() };
-            conversationStore.push(record);
-            return { insertedId: record._id };
-          },
-          updateOne: async () => ({ matchedCount: 1 }),
-        };
-      }
-      throw new Error(`unexpected collection: ${name}`);
-    },
-  };
-}
-
-describe('chat.controller.js resolveTenantContext — shared branch resolver', () => {
-  beforeEach(() => { mockGetDb.mockReset(); });
-
-  test('A. resolves via the contracts tier — a case the old bedhistory/reservation-only lookup could not reach', async () => {
-    const tenantId = new ObjectId();
-    const db = makeDb({
-      contractDoc: { tenantId, isCurrent: true, branch: 'gil-puyat' },
-    });
-    mockGetDb.mockReturnValue(db);
-
-    const req = { user: { user_id: 't1', _id: tenantId, role: 'tenant' }, body: { category: 'general_inquiry' } };
-    const res = response();
-    await startConversation(req, res);
-
-    expect(res.statusCode).toBe(200);
-    expect(res.body.conversation.branch).toBe('gil-puyat');
+describe('mobile chat context and branch authority remain canonical', () => {
+  test('adapter accepts no client branch and delegates authenticated database identity', () => {
+    expect(adapter).toContain('mobileTenantAuth');
+    expect(adapter).toContain('req.authUser = req.mobileTenant');
+    expect(adapter).not.toMatch(/req\.body\??\.branch|req\.query\??\.branch|resolveRequesterBranch/);
   });
 
-  test('a differently-cased raw bedhistory branch does not clobber an already-resolved authoritative branch', async () => {
-    // Regression guard: resolveTenantContext used to overwrite the
-    // authoritative (normalized) branch from resolveRequesterBranchCode()
-    // with a *raw* bedhistories.branch value ("branch = bedHistory.branch ||
-    // branch"), bypassing normalizedBranchReference(). A raw value cased
-    // differently from the canonical 'guadalupe'/'gil-puyat' codes (e.g.
-    // "Guadalupe") then failed the VALID_BRANCHES.has(branch) check below,
-    // incorrectly rejecting a perfectly resolvable tenant with "No active
-    // tenant." even though resolveRequesterBranchCode() already found it.
-    const tenantId = new ObjectId();
-    const db = makeDb({
-      contractDoc: { tenantId, isCurrent: true, branch: 'guadalupe' },
-      bedHistoryDoc: { tenantId, status: 'active', branch: 'Guadalupe' },
-    });
-    mockGetDb.mockReturnValue(db);
-
-    const req = { user: { user_id: 't1', _id: tenantId, role: 'tenant' }, body: { category: 'general_inquiry' } };
-    const res = response();
-    await startConversation(req, res);
-
-    expect(res.statusCode).toBe(200);
-    expect(res.body.conversation.branch).toBe('guadalupe');
+  test('canonical start validates contract ownership and isolates context reuse', () => {
+    expect(canonical).toContain('resolveConversationContext');
+    expect(canonical).toContain('entityType === "contract"');
+    expect(canonical).toContain('Contract.exists({ _id: entityId, tenantId: tenantUser._id })');
+    expect(canonical).toContain('"context.entityType": context.entityType');
+    expect(canonical).toContain('"context.entityId": context.entityId');
+    expect(canonical).toContain('{ "context.entityType": { $exists: false } }');
   });
 
-  test('resolves via roomoccupancyhistories (a tier the old lookup skipped entirely)', async () => {
-    const tenantId = new ObjectId();
-    const db = makeDb({
-      occupancyDoc: { tenantId, stayStatus: 'active', branch: 'guadalupe' },
-    });
-    mockGetDb.mockReturnValue(db);
-
-    const req = { user: { user_id: 't1', _id: tenantId, role: 'tenant' }, body: { category: 'general_inquiry' } };
-    const res = response();
-    await startConversation(req, res);
-
-    expect(res.statusCode).toBe(200);
-    expect(res.body.conversation.branch).toBe('guadalupe');
-  });
-
-  test('still resolves the previously-supported path: active bedhistory + room', async () => {
-    const tenantId = new ObjectId();
-    const roomId = new ObjectId();
-    const db = makeDb({
-      bedHistoryDoc: { tenantId, status: 'active', roomId, bedId: 'b1' },
-      room: { _id: roomId, roomNumber: '101', branch: 'guadalupe' },
-    });
-    mockGetDb.mockReturnValue(db);
-
-    const req = { user: { user_id: 't1', _id: tenantId, role: 'tenant' }, body: { category: 'general_inquiry' } };
-    const res = response();
-    await startConversation(req, res);
-
-    expect(res.statusCode).toBe(200);
-    expect(res.body.conversation.branch).toBe('guadalupe');
-    expect(res.body.conversation.roomNumber).toBe('101');
-  });
-
-  test('E. tenant with no resolvable branch anywhere gets a 400, never a guessed branch', async () => {
-    const tenantId = new ObjectId();
-    const db = makeDb({});
-    mockGetDb.mockReturnValue(db);
-
-    const req = { user: { user_id: 't1', _id: tenantId, role: 'tenant' }, body: { category: 'general_inquiry' } };
-    const res = response();
-    await startConversation(req, res);
-
-    expect(res.statusCode).toBe(400);
-    expect(res.body.detail).toMatch(/no active tenant/i);
-  });
-
-  test('an admin/owner role is rejected as "No active tenant" (403), unaffected by the resolver change', async () => {
-    const db = makeDb({});
-    mockGetDb.mockReturnValue(db);
-
-    const req = { user: { user_id: 'a1', _id: new ObjectId(), role: 'owner' }, body: { category: 'general_inquiry' } };
-    const res = response();
-    await startConversation(req, res);
-
-    expect(res.statusCode).toBe(403);
+  test('canonical tenant lookup and admin room emissions retain branch authority', () => {
+    expect(canonical).toContain('resolveTenantContext');
+    expect(canonical).toContain('emitToChatAdmins');
+    expect(canonical).toContain('conversation.branch');
   });
 });

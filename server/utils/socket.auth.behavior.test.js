@@ -77,6 +77,25 @@ describe('Socket.IO authentication behavior', () => {
     expect(result.error?.message).toBe('Authentication required'); expect(result.verifyIdToken).not.toHaveBeenCalled(); expect(result.findUser).not.toHaveBeenCalled();
   });
 
+  test('mobile session-token transport uses the shared tenant session resolver', async () => {
+    const resolveMobileSession = jest.fn(async () => ({
+      ok: true,
+      user: {
+        _id: 'mobile-tenant-1', role: 'tenant', permissions: [], branch: 'gil-puyat', accountStatus: 'active',
+      },
+    }));
+    const middleware = createSocketAuthenticator({ resolveMobileSession });
+    const client = socket('', { auth: { sessionToken: 'mobile-session-token' } });
+    let error;
+    await middleware(client, (value) => { error = value; });
+
+    expect(error).toBeUndefined();
+    expect(resolveMobileSession).toHaveBeenCalledWith('mobile-session-token');
+    expect(client.data.authUser).toEqual({
+      userId: 'mobile-tenant-1', role: 'tenant', permissions: [], branch: 'gil-puyat', accountStatus: 'active',
+    });
+  });
+
   test('missing database identity with stale owner claims is rejected without trusted context', async () => {
     const result = await authenticate({
       verify: async () => ({ uid: 'deleted-owner', role: 'owner', owner: true, permissions: ['manageUsers'] }),

@@ -25,6 +25,7 @@ import { isAdminRole, isOwnerRole } from "../config/roles.js";
 import { isSessionAuthorizedForRole } from "../config/sessionAssurance.js";
 import { normalizePermissions } from "../config/accessControl.js";
 import { getWebSessionId } from "./webSessionCookie.js";
+import { resolveMobileTenantSession } from "../middleware/mobileTenantAuth.js";
 
 let io = null;
 
@@ -42,6 +43,7 @@ export function createSocketAuthenticator({
   getFirebaseAuth = getAuth,
   findUser,
   findSession = (...args) => Models.UserSession.findValidSession(...args),
+  resolveMobileSession = resolveMobileTenantSession,
 } = {}) {
   const loadUser = findUser || (async (uid) => Models.User.findOne({ firebaseUid: uid })
     .select("_id role permissions branch accountStatus isActive isArchived securityVersion")
@@ -50,6 +52,28 @@ export function createSocketAuthenticator({
     const origin = getSocketOrigin(socket);
     const transport = getSocketTransport(socket);
     try {
+      const mobileSessionToken = String(socket.handshake.auth?.sessionToken || "").trim();
+      if (mobileSessionToken) {
+        const mobileSession = await resolveMobileSession(mobileSessionToken);
+        if (!mobileSession.ok) {
+          logger.warn(
+            { socketId: socket.id, origin, transport, reason: mobileSession.code || mobileSession.status },
+            "Mobile socket authentication rejected",
+          );
+          return next(new Error("Authentication failed"));
+        }
+
+        const dbUser = mobileSession.user;
+        socket.data.authUser = {
+          userId: dbUser._id ? String(dbUser._id) : "",
+          role: String(dbUser.role || "").toLowerCase(),
+          permissions: normalizePermissions(dbUser.permissions),
+          branch: isValidRoomBranch(dbUser.branch) ? dbUser.branch : null,
+          accountStatus: dbUser.accountStatus,
+        };
+        return next();
+      }
+
       const token = socket.handshake.auth?.token;
       if (!token) return next(new Error("Authentication required"));
       const auth = getFirebaseAuth();

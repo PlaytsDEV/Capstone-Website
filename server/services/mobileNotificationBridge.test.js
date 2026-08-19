@@ -509,6 +509,33 @@ describe("mobileNotificationBridge — canonical Notification model compatibilit
     });
   });
 
+  test("chat_reply projects conversation_id and message_id from the canonical dedupe key", () => {
+    const conversationId = new ObjectId().toHexString();
+    const messageId = new ObjectId().toHexString();
+    const result = sanitizeStoredNotification({
+      _id: new ObjectId(),
+      userId: tenantMongoId,
+      type: "chat_reply",
+      title: "New support reply",
+      message: "An administrator replied.",
+      entityType: "chat",
+      entityId: conversationId,
+      dedupeKey: `chat_reply:${conversationId}:${messageId}`,
+      createdAt: new Date("2026-08-18T06:00:00.000Z"),
+    });
+
+    expect(result).toMatchObject({
+      type: "chat_reply",
+      conversation_id: conversationId,
+      message_id: messageId,
+      data: {
+        type: "chat_reply",
+        conversation_id: conversationId,
+        message_id: messageId,
+      },
+    });
+  });
+
   test("a legacy-shaped notification document (user_id: string, body, read) is still found — the fix is additive, not a breaking rename", async () => {
     const db = filteringFakeDb({
       notifications: [{
