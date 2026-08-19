@@ -34,6 +34,7 @@ export default function DataTable({
   serverPagination = false,
   disableRowInteraction = false,
   density = "comfortable",
+  rowClassName,
 }) {
   // Ensure data is always an array
   const safeData = Array.isArray(data) ? data : [];
@@ -158,12 +159,17 @@ export default function DataTable({
                     ))}
                   </tr>
                 ))
-              : pagedData.map((row, i) => (
-                  <tr
-                    key={row.id || row._id || i}
-                    className={`transition-colors hover:bg-muted/50 ${onRowClick ? "cursor-pointer" : ""} ${disableRowInteraction ? "cursor-default" : ""}`}
-                    onMouseEnter={() => onRowHover?.(row)}
-                    onFocus={() => onRowFocus?.(row)}
+              : pagedData.map((row, i) => {
+                  const customRowClass =
+                    typeof rowClassName === "function"
+                      ? rowClassName(row, i)
+                      : rowClassName || "";
+                  return (
+                    <tr
+                      key={row.id || row._id || i}
+                      className={`transition-colors hover:bg-muted/50 ${onRowClick ? "cursor-pointer" : ""} ${disableRowInteraction ? "cursor-default" : ""} ${customRowClass}`}
+                      onMouseEnter={() => onRowHover?.(row)}
+                      onFocus={() => onRowFocus?.(row)}
                     onClickCapture={(e) => {
                       if (!disableRowInteraction) return;
                       const target = e.target;
@@ -198,7 +204,8 @@ export default function DataTable({
                       </td>
                     ))}
                   </tr>
-                ))}
+                );
+              })}
           </tbody>
         </table>
       </div>

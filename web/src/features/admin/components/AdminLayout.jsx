@@ -7,6 +7,7 @@ import { useRouteFlash } from "../../../shared/hooks/useRouteFlash";
 import { getPageMeta } from "./adminShellMeta.mjs";
 import { useTheme } from "../../public/context/ThemeContext";
 import TopBar from "./TopBar";
+import AdminCommandPalette from "./AdminCommandPalette";
 import "../styles/admin-layout.css";
 import "../styles/admin-common.css";
 
@@ -18,6 +19,7 @@ export default function AdminLayout() {
  useRouteFlash();
  const { theme, toggleTheme } = useTheme();
  const [sidebarOpen, setSidebarOpen] = useState(false);
+ const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
  const contentRef = useRef(null);
  const [collapsed, setCollapsed] = useState(() => {
  try {
@@ -43,6 +45,20 @@ export default function AdminLayout() {
  contentRef.current?.scrollTo({ top: 0, behavior: "auto" });
  }, [location.pathname]);
 
+ // Global Ctrl+K / Cmd+K keyboard shortcut listener
+ useEffect(() => {
+ const handleGlobalKeyDown = (e) => {
+ // Don't trigger if user is typing in an input/textarea unless it's Ctrl+K
+ if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+ e.preventDefault();
+ setCommandPaletteOpen((prev) => !prev);
+ }
+ };
+
+ window.addEventListener("keydown", handleGlobalKeyDown);
+ return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+ }, []);
+
  const breadcrumbs = pageMeta.breadcrumbs || ["Admin", pageMeta.title];
 
  return (
@@ -60,6 +76,7 @@ export default function AdminLayout() {
  onToggleDarkMode={toggleTheme}
  breadcrumbs={breadcrumbs}
  onOpenSidebar={() => setSidebarOpen(true)}
+ onOpenCommandPalette={() => setCommandPaletteOpen(true)}
  />
 
  {/* Page Content */}
@@ -74,6 +91,12 @@ export default function AdminLayout() {
  </RouteTransitionBoundary>
  </main>
  </div>
+
+ {/* Global Command Palette */}
+ <AdminCommandPalette
+ isOpen={commandPaletteOpen}
+ onClose={() => setCommandPaletteOpen(false)}
+ />
 
  {/* Mobile overlay */}
  {sidebarOpen && (

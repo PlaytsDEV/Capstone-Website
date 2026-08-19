@@ -34,8 +34,17 @@ import {
   handleExportVisitSchedulesCSV,
   handleExportVisitSchedulesPDF,
 } from "../utils/visitExportUtils";
+import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
 import "../styles/design-tokens.css";
 import "../styles/admin-reservations.css";
+
+const isMatchingBranch = (schedule, filter) => {
+  if (!filter || filter === "all") return true;
+  const target = String(filter).toLowerCase().replace(/[\s-_]+/g, "");
+  const schedBranchCode = String(schedule?.branchCode || "").toLowerCase().replace(/[\s-_]+/g, "");
+  const schedBranch = String(schedule?.branch || "").toLowerCase().replace(/[\s-_]+/g, "");
+  return schedBranchCode === target || schedBranch === target;
+};
 
 const getAvatarColor = (initials = "") => {
   const colors = [
@@ -252,6 +261,13 @@ function VisitSchedulesTab() {
   const [searchTerm, setSearchTerm] = useState("");
   // Branch admins see only their branch — owners can filter across all branches
   const [branchFilter, setBranchFilter] = useState(isOwner ? "all" : (user?.branch || "all"));
+
+  useEffect(() => {
+    if (!isOwner && user?.branch) {
+      setBranchFilter(user.branch);
+    }
+  }, [isOwner, user?.branch]);
+
   const [sortBy, setSortBy] = useState("recent");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -266,10 +282,15 @@ function VisitSchedulesTab() {
     [rawReservations],
   );
 
+  const branchScopedSchedules = useMemo(
+    () => schedules.filter((s) => isMatchingBranch(s, branchFilter)),
+    [schedules, branchFilter],
+  );
+
   // All active visits awaiting the applicant to show up (schedules auto-approved)
   const awaitingVisit = useMemo(
     () =>
-      schedules.filter(
+      branchScopedSchedules.filter(
         (s) =>
           !s.isHistorical &&
           !s.visitApproved &&
@@ -278,48 +299,48 @@ function VisitSchedulesTab() {
           s.visitStatus !== "visit_completed" &&
           s.visitStatus !== "visit_cancelled",
       ),
-    [schedules],
+    [branchScopedSchedules],
   );
   // Visit completed (marked as visited)
   const completed = useMemo(
     () =>
-      schedules.filter(
+      branchScopedSchedules.filter(
         (s) =>
           (!s.isHistorical && s.visitApproved) ||
           (s.isHistorical &&
             (s.historyStatus === "approved" || s.historyStatus === "completed")),
       ),
-    [schedules],
+    [branchScopedSchedules],
   );
   // No-shows (explicitly recorded by admin)
   const noShows = useMemo(
     () =>
-      schedules.filter(
+      branchScopedSchedules.filter(
         (s) =>
           (!s.isHistorical && s.visitStatus === "no_show") ||
           (s.isHistorical && s.historyStatus === "no_show"),
       ),
-    [schedules],
+    [branchScopedSchedules],
   );
   const rejected = useMemo(
     () =>
-      schedules.filter(
+      branchScopedSchedules.filter(
         (s) =>
           s.scheduleRejected ||
           (s.isHistorical && s.historyStatus === "rejected"),
       ),
-    [schedules],
+    [branchScopedSchedules],
   );
   const cancelled = useMemo(
     () =>
-      schedules.filter(
+      branchScopedSchedules.filter(
         (s) =>
           (s.isHistorical &&
             (s.historyStatus === "cancelled" ||
               s.historyStatus === "visit_cancelled")) ||
           (!s.isHistorical && s.status === "cancelled"),
       ),
-    [schedules],
+    [branchScopedSchedules],
   );
 
   const refetchAll = () =>
@@ -453,7 +474,7 @@ function VisitSchedulesTab() {
 
   const summaryItems = useMemo(
     () => [
-      { label: "All", value: schedules.length, icon: Calendar, color: "blue" },
+      { label: "All", value: branchScopedSchedules.length, icon: Calendar, color: "blue" },
       {
         label: "Awaiting Visit",
         value: awaitingVisit.length,
@@ -482,17 +503,17 @@ function VisitSchedulesTab() {
     ],
     [
       awaitingVisit.length,
+      branchScopedSchedules.length,
       cancelled.length,
       completed.length,
       noShows.length,
       rejected.length,
-      schedules.length,
     ],
   );
 
   const counts = useMemo(
     () => ({
-      total: schedules.length,
+      total: branchScopedSchedules.length,
       awaitingVisit: awaitingVisit.length,
       completed: completed.length,
       noShows: noShows.length,
@@ -501,11 +522,11 @@ function VisitSchedulesTab() {
     }),
     [
       awaitingVisit.length,
+      branchScopedSchedules.length,
       cancelled.length,
       completed.length,
       noShows.length,
       rejected.length,
-      schedules.length,
     ],
   );
 
@@ -516,20 +537,17 @@ function VisitSchedulesTab() {
     else if (statusFilter === "no_show") base = noShows;
     else if (statusFilter === "rejected") base = rejected;
     else if (statusFilter === "cancelled") base = cancelled;
-    else base = schedules;
+    else base = branchScopedSchedules;
 
     const query = searchTerm.trim().toLowerCase();
     let result = base.filter((schedule) => {
-      const matchSearch =
-        !query ||
+      if (!query) return true;
+      return (
         schedule.customer.toLowerCase().includes(query) ||
         schedule.email.toLowerCase().includes(query) ||
         schedule.reservationCode.toLowerCase().includes(query) ||
-        schedule.room.toLowerCase().includes(query);
-      const matchBranch =
-        branchFilter === "all" ||
-        schedule.branch.toLowerCase() === branchFilter.toLowerCase();
-      return matchSearch && matchBranch;
+        schedule.room.toLowerCase().includes(query)
+      );
     });
 
     if (sortBy === "oldest") {
@@ -551,12 +569,11 @@ function VisitSchedulesTab() {
     return result;
   }, [
     awaitingVisit,
-    branchFilter,
+    branchScopedSchedules,
     cancelled,
     completed,
     noShows,
     rejected,
-    schedules,
     searchTerm,
     sortBy,
     statusFilter,
@@ -709,10 +726,13 @@ function VisitSchedulesTab() {
                   borderColor: "var(--border-light)",
                 }}
                 className="h-9 px-3 border rounded-lg text-xs font-medium focus:outline-none focus:border-[var(--primary)] focus:ring-0 cursor-pointer hover:bg-muted transition-colors"
+                title="Filter by dormitory branch"
               >
-                <option value="all">All Branches</option>
-                <option value="Gil Puyat">Gil Puyat</option>
-                <option value="Guadalupe">Guadalupe</option>
+                {OWNER_BRANCH_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             )}
 

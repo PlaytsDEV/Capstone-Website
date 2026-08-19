@@ -545,7 +545,11 @@ const AdminBillingPage = () => {
           aria-labelledby="billing-tab-rent"
           className={activeTab === "rent" ? "block" : "hidden"}
         >
-          <RentBillingTab isActive={activeTab === "rent"} />
+          <RentBillingTab
+            isActive={activeTab === "rent"}
+            ownerBranchFilter={isOwner ? branchFilter : undefined}
+            onOwnerBranchChange={isOwner ? setBranchFilter : undefined}
+          />
         </section>
 
         <section

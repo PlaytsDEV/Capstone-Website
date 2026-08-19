@@ -102,6 +102,15 @@ const UtilityBillingTab = ({
     }
   }, [ownerBranchFilter]);
 
+  const isBranchAssigned = isOwner || Boolean(user?.branch);
+  const hasManageBillingPermission = isOwner || (
+    user?.role === "branch_admin" && (
+      !Array.isArray(user.permissions) ||
+      user.permissions.length === 0 ||
+      user.permissions.includes("manageBilling")
+    )
+  );
+
   // Active sub-tab workspace navigation (history, payments, timeline)
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("history");
 
@@ -935,6 +944,31 @@ const UtilityBillingTab = ({
 
   return (
     <section className="space-y-6" aria-label={`${utilityType} billing workspace`}>
+      {/* ── Branch / Permission Diagnostic Alerts ────────────────────────────── */}
+      {!isBranchAssigned && (
+        <div className="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-card p-4 text-xs shadow-xs">
+          <AlertCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <p className="font-bold text-card-foreground">No Branch Assigned</p>
+            <p className="text-muted-foreground">
+              Your Branch Admin account is not currently assigned to a branch. Please contact the Dorm Owner to assign your account to Gil-Puyat to manage utility billing.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {isBranchAssigned && !hasManageBillingPermission && (
+        <div className="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-card p-4 text-xs shadow-xs">
+          <AlertCircle size={16} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <p className="font-bold text-card-foreground">Billing Permissions Restricted</p>
+            <p className="text-muted-foreground">
+              Your account does not currently have permission to generate or manage bills. Please contact the Dorm Owner to enable "Manage Billing" for your account.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Top-Level KPI Metric Cards ────────────────────────────────────────────── */}
       <UtilityKpiCards utilityType={utilityType} kpiMetrics={kpiMetrics} />
 

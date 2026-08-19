@@ -107,9 +107,21 @@ export const maintenanceApi = {
     authFetch(`/maintenance/admin/reports/providers${buildQueryString(filters)}`),
 
   /**
+   * Mark a maintenance request as read by tenant
+   */
+  markTenantAsRead: (requestId) =>
+    authFetch(`/maintenance/${requestId}/read`, {
+      method: "PATCH",
+    }),
+
+  /**
    * Mark a maintenance request as read by admin
    */
   markAsRead: (requestId) =>
+    authFetch(`/maintenance/admin/${requestId}/read`, {
+      method: "PATCH",
+    }),
+  markAdminAsRead: (requestId) =>
     authFetch(`/maintenance/admin/${requestId}/read`, {
       method: "PATCH",
     }),
@@ -124,12 +136,39 @@ export const maintenanceApi = {
     }),
 
   /**
+   * Reopen a resolved/completed maintenance request (admin only)
+   */
+  reopenAdminRequest: (requestId, payload) => {
+    const note =
+      typeof payload === "string"
+        ? payload
+        : payload?.note || payload?.reopen_note || "";
+    const nextStatus = payload?.nextStatus || "in_progress";
+    return authFetch(`/maintenance/admin/${requestId}/reopen`, {
+      method: "PATCH",
+      body: JSON.stringify({ note, reopen_note: note, nextStatus }),
+    });
+  },
+
+  /**
    * Send a tenant-facing admin reply with optional attachments.
    */
   sendAdminReply: (requestId, payload) =>
     authFetch(`/maintenance/admin/${requestId}/reply`, {
       method: "POST",
       body: JSON.stringify(payload),
+    }),
+
+  sendTenantTyping: (requestId, isTyping = true) =>
+    authFetch(`/maintenance/${requestId}/typing`, {
+      method: "POST",
+      body: JSON.stringify({ isTyping }),
+    }),
+
+  sendAdminTyping: (requestId, isTyping = true) =>
+    authFetch(`/maintenance/admin/${requestId}/typing`, {
+      method: "POST",
+      body: JSON.stringify({ isTyping }),
     }),
 
   /**

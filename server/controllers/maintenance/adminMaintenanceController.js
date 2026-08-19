@@ -12,6 +12,7 @@ import {
   ADMIN_MAINTENANCE_STATUSES,
   MAINTENANCE_REQUEST_TYPES,
   MAINTENANCE_URGENCY_LEVELS,
+  REOPENABLE_MAINTENANCE_STATUSES,
   canAdminTransitionMaintenanceStatus,
   formatMaintenanceStatusLabel,
   isAdminMutableMaintenanceStatus,
@@ -54,6 +55,7 @@ import {
 } from "./_helpers.js";
 import { notify } from "../../utils/notificationService.js";
 import auditLogger from "../../utils/auditLogger.js";
+import logger from "../../middleware/logger.js";
 
 const resolveArchiveFilter = (value) => {
   const archive = String(value || "active").trim().toLowerCase();
@@ -85,14 +87,35 @@ const normalizeAdminUpdatePayload = (payload = {}, attachmentMetadata = {}) => {
   };
 };
 
-const emitMaintenanceUpdated = async (request) => {
+const emitMaintenanceUpdated = async (request, extra = {}) => {
   try {
-    const { emitToAdmins } = await import("../../utils/socket.js");
-    emitToAdmins("ticket:updated", {
+    const { emitToAdmins, emitToUser } = await import("../../utils/socket.js");
+    const payload = {
       requestId: String(request._id),
+      request_id: request.request_id,
+      ticketId: request.request_id,
       status: request.status,
+      branch: request.branch,
       isArchived: Boolean(request.isArchived),
-    });
+      ...extra,
+    };
+    let tenantUser = null;
+    if (request.user_id) {
+      tenantUser = await User.findOne({ user_id: request.user_id })
+        .select("_id")
+        .lean()
+        .catch(() => null);
+    }
+    if (!tenantUser && request.userId) {
+      tenantUser = await User.findOne({ _id: request.userId })
+        .select("_id")
+        .lean()
+        .catch(() => null);
+    }
+    const tenantId = tenantUser?._id ? String(tenantUser._id) : (request.userId ? String(request.userId) : null);
+    if (tenantId) {
+      emitToUser(tenantId, "ticket:updated", payload);
+    }
   } catch {
     // non-fatal; HTTP update already succeeded
   }
@@ -179,6 +202,23 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     ["resolved", "completed"].includes(nextStatus) &&
     request.status !== "resolved" &&
     request.status !== "completed";
+
+  if (
+    ["resolved", "completed"].includes(nextStatus) &&
+    request.rescheduleRequest?.status === "pending"
+  ) {
+    throw new AppError(
+      "Cannot mark work as resolved while a tenant reschedule request is pending. Please accept, adjust, or decline the reschedule request first.",
+      400,
+      "PENDING_RESCHEDULE_EXISTS",
+      [
+        {
+          field: "status",
+          message: "Please accept, adjust, or decline the pending reschedule request before marking this work order as resolved.",
+        },
+      ],
+    );
+  }
 
   if (
     requiresResolutionNote &&
@@ -333,6 +373,18 @@ export const getAdminAll = async (req, res, next) => {
     const userId = toOptionalText(req.query.user_id);
     const dateFrom = toOptionalText(req.query.date_from);
     const dateTo = toOptionalText(req.query.date_to);
+    const rawDateType = req.query.date_type || req.query.dateType || "created_at";
+    const normalizedDateType = String(rawDateType).trim().toLowerCase();
+    let targetDateField = "created_at";
+    if (["scheduled_date", "schedule", "scheduled", "scheduleddate"].includes(normalizedDateType)) {
+      targetDateField = "schedule.scheduledDate";
+    } else if (["resolved_at", "resolved", "resolution", "resolution_date"].includes(normalizedDateType)) {
+      targetDateField = "resolved_at";
+    } else if (["updated_at", "updated", "last_updated"].includes(normalizedDateType)) {
+      targetDateField = "updated_at";
+    } else {
+      targetDateField = "created_at";
+    }
 
     if (archiveFilter === "active") query.isArchived = false;
     if (archiveFilter === "archived") query.isArchived = true;
@@ -346,6 +398,13 @@ export const getAdminAll = async (req, res, next) => {
         query.status = { $in: ["completed", "closed"] };
       } else if (rawStatus === "cancelled_rejected") {
         query.status = { $in: ["cancelled", "rejected"] };
+      } else if (rawStatus === "unread") {
+        query.$or = [
+          { status: "pending" },
+          { isNewForAdmin: true },
+          { hasUnreadAdmin: true },
+          { "conversation.sender_side": "tenant" },
+        ];
       } else {
         const normalized = normalizeMaintenanceStatus(rawStatus);
         if (!isValidMaintenanceStatus(normalized)) {
@@ -378,13 +437,14 @@ export const getAdminAll = async (req, res, next) => {
     }
     if (userId) query.user_id = userId;
     if (dateFrom || dateTo) {
-      query.created_at = {};
+      query[targetDateField] = {};
       if (dateFrom) {
         const parsedFrom = new Date(dateFrom);
         if (Number.isNaN(parsedFrom.getTime())) {
           throw new AppError("Invalid date_from value", 400, "INVALID_DATE_RANGE");
         }
-        query.created_at.$gte = parsedFrom;
+        parsedFrom.setHours(0, 0, 0, 0);
+        query[targetDateField].$gte = parsedFrom;
       }
       if (dateTo) {
         const parsedTo = new Date(dateTo);
@@ -392,7 +452,7 @@ export const getAdminAll = async (req, res, next) => {
           throw new AppError("Invalid date_to value", 400, "INVALID_DATE_RANGE");
         }
         parsedTo.setHours(23, 59, 59, 999);
-        query.created_at.$lte = parsedTo;
+        query[targetDateField].$lte = parsedTo;
       }
     }
 
@@ -791,12 +851,11 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
             scheduledBy: actor.actor_id || null,
             scheduledByName: actor.actor_name || null,
           };
-          request.status = "in_progress";
-          request.in_progress_at = eventTimestamp;
+          request.scheduledDate = scheduledDate;
+          request.status = "scheduled";
         }
       } else if (["pending", "pending_review", "viewed", "reviewed", "submitted"].includes(request.status)) {
-        request.status = "in_progress";
-        request.in_progress_at = eventTimestamp;
+        request.status = "provider_assigned";
       }
     }
 
@@ -837,6 +896,17 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
         request.request_id,
         { eventId: `${event}:${eventTimestamp.toISOString()}` },
       );
+
+      if (req.body?.scheduledDate && request.schedule?.scheduledDate) {
+        await notify.maintenanceScheduled(
+          tenantUser._id,
+          request.request_type,
+          request.schedule.scheduledDate,
+          request.schedule.notes,
+          request.request_id,
+          { eventId: `schedule:${eventTimestamp.toISOString()}` },
+        ).catch(() => {});
+      }
     }
 
     sendSuccess(res, {
@@ -978,22 +1048,6 @@ export const sendAdminTenantSummary = async (req, res, next) => {
 
     await request.save();
 
-    if (tenantUser?._id) {
-      await notify.maintenanceUpdated(
-        tenantUser._id,
-        request.request_type,
-        request.status,
-        request.request_id,
-        {
-          statusChanged: false,
-          hasAdminNote: true,
-          hasProgressEntry: false,
-          hasProgressAttachments: false,
-          eventId: `reply:${tenantSummaryEntry.update_id}`,
-        },
-      );
-    }
-
     sendSuccess(res, {
       report,
       request: serializeMaintenanceRequest(
@@ -1095,48 +1149,114 @@ export const sendAdminReply = async (req, res, next) => {
 
     await request.save();
 
-    const tenantUser = await User.findOne({ user_id: request.user_id })
-      .select("_id user_id firstName lastName email phone branch role")
-      .lean();
-
-    if (tenantUser?._id) {
-      await notify.maintenanceUpdated(
-        tenantUser._id,
-        request.request_type,
-        request.status,
-        request.request_id,
-        {
-          statusChanged: false,
-          hasAdminNote: true,
-          hasProgressEntry: false,
-          hasProgressAttachments: false,
-          eventId: `reply:${replyEntry.update_id}`,
-        },
-      );
+    let tenantUser = null;
+    if (request.user_id) {
+      tenantUser = await User.findOne({ user_id: request.user_id })
+        .select("_id user_id firstName lastName email phone branch role")
+        .lean()
+        .catch(() => null);
     }
+    if (!tenantUser && request.userId) {
+      tenantUser = await User.findOne({ _id: request.userId })
+        .select("_id user_id firstName lastName email phone branch role")
+        .lean()
+        .catch(() => null);
+    }
+
+    const tenantId = tenantUser?._id
+      ? String(tenantUser._id)
+      : (request.userId ? String(request.userId) : null);
+
+    const serializedRequest = serializeMaintenanceRequest(
+      request.toObject(),
+      serializeTenantSummary(tenantUser, request),
+    );
+
+    const socketPayload = {
+      requestId: String(request._id),
+      request_id: request.request_id,
+      ticketId: request.request_id,
+      ticketNumber: request.ticketNumber || request.request_id,
+      status: request.status,
+      branch: request.branch,
+      senderSide: "admin",
+      senderRole: adminUser?.role || "admin",
+      senderName: replyEntry.sender_name,
+      message: replyEntry,
+      conversation: serializedRequest.conversation || request.conversation,
+      request: serializedRequest,
+      updated_at: request.updated_at,
+    };
 
     try {
       const { emitToAdmins, emitToUser } = await import("../../utils/socket.js");
-      emitToAdmins("ticket:updated", {
-        requestId: String(request._id),
-        status: request.status,
-      });
-      if (tenantUser?._id) {
-        emitToUser(String(tenantUser._id), "ticket:updated", {
-          requestId: String(request._id),
-          status: request.status,
-        });
+      emitToAdmins("ticket:updated", socketPayload);
+      emitToAdmins("ticket:message", socketPayload);
+      if (tenantId) {
+        emitToUser(tenantId, "ticket:updated", socketPayload);
+        emitToUser(tenantId, "ticket:message", socketPayload);
       }
     } catch {
       // non-fatal
     }
 
     sendSuccess(res, {
-      request: serializeMaintenanceRequest(
-        request.toObject(),
-        serializeTenantSummary(tenantUser, request),
-      ),
+      request: serializedRequest,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/typing
+ * Broadcasts admin typing status to the tenant in real time.
+ */
+export const broadcastAdminMaintenanceTyping = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+    const adminUser = await getDbUser(req.user.uid);
+    const isTyping = req.body?.isTyping !== false;
+    const senderName =
+      `${adminUser?.firstName || ""} ${adminUser?.lastName || ""}`.trim() ||
+      adminUser?.email ||
+      "Dormitory Admin";
+
+    let tenantUser = null;
+    if (request.user_id) {
+      tenantUser = await User.findOne({ user_id: request.user_id })
+        .select("_id")
+        .lean()
+        .catch(() => null);
+    }
+    if (!tenantUser && request.userId) {
+      tenantUser = await User.findOne({ _id: request.userId })
+        .select("_id")
+        .lean()
+        .catch(() => null);
+    }
+
+    const tenantId = tenantUser?._id ? String(tenantUser._id) : (request.userId ? String(request.userId) : null);
+
+    const payload = {
+      requestId: String(request._id),
+      request_id: request.request_id,
+      ticketId: request.request_id,
+      ticketNumber: request.ticketNumber || request.request_id,
+      branch: request.branch,
+      senderSide: "admin",
+      senderRole: adminUser?.role || "admin",
+      senderName,
+      isTyping,
+    };
+
+    if (tenantId) {
+      const { emitToUser } = await import("../../utils/socket.js");
+      emitToUser(tenantId, "ticket:typing", payload);
+    }
+
+    sendSuccess(res, { success: true });
   } catch (error) {
     next(error);
   }
@@ -1469,33 +1589,42 @@ export const scheduleAdminMaintenance = async (req, res, next) => {
   try {
     const request = await findAccessibleRequest(req.params.requestId);
     ensureAdminAccess(request, req);
-
     const adminUser = await getDbUser(req.user.uid);
-    const scheduledDate = req.body?.scheduledDate ? new Date(req.body.scheduledDate) : null;
+    const isClear =
+      req.body?.scheduledDate === null ||
+      req.body?.clearSchedule === true ||
+      req.body?.action === "clear" ||
+      req.body?.action === "reject_schedule" ||
+      req.body?.action === "unschedule";
+    const scheduledDate = !isClear && req.body?.scheduledDate ? new Date(req.body.scheduledDate) : null;
     const notes = toOptionalText(req.body?.notes || req.body?.scheduleNotes);
 
-    if (!scheduledDate || Number.isNaN(scheduledDate.getTime())) {
+    if (!isClear && (!scheduledDate || Number.isNaN(scheduledDate.getTime()))) {
       throw new AppError("A valid scheduled date/time is required.", 400, "INVALID_SCHEDULE_DATE");
     }
 
     const actor = buildActorSnapshot(adminUser);
     request.schedule = {
-      scheduledDate,
-      notes,
+      ...request.schedule,
+      scheduledDate: isClear ? null : scheduledDate,
+      notes: notes || request.schedule?.notes || null,
       scheduledBy: actor.actor_id || null,
       scheduledByName: actor.actor_name || null,
     };
+    request.scheduledDate = isClear ? null : scheduledDate;
 
-    if (["pending", "pending_review", "provider_assigned", "viewed", "reviewed"].includes(request.status)) {
+    if (!isClear && ["pending", "pending_review", "provider_assigned", "viewed", "reviewed"].includes(request.status)) {
       request.status = "scheduled";
     }
 
     const scheduleEventTimestamp = new Date();
     appendStatusHistory(request, {
-      event: "work_scheduled",
+      event: isClear ? "schedule_cleared" : "work_scheduled",
       status: request.status,
       ...buildActorSnapshot(adminUser),
-      note: notes || `Work scheduled for ${scheduledDate.toISOString()}`,
+      note: isClear
+        ? (notes || "Scheduled visit cleared by staff.")
+        : (notes || `Work scheduled for ${scheduledDate.toISOString()}`),
       timestamp: scheduleEventTimestamp,
     });
 
@@ -1506,7 +1635,7 @@ export const scheduleAdminMaintenance = async (req, res, next) => {
       .select(USER_SELECT_FIELDS)
       .lean();
 
-    if (tenantUser?._id) {
+    if (tenantUser?._id && !isClear) {
       await notify.maintenanceScheduled(
         tenantUser._id,
         request.request_type,
@@ -1540,8 +1669,13 @@ export const respondToMaintenanceReschedule = async (req, res, next) => {
 
     const adminUser = await getDbUser(req.user.uid);
     const actor = buildActorSnapshot(adminUser);
-    const action = String(req.body?.action || "accept").trim().toLowerCase();
-    const notes = toOptionalText(req.body?.notes || req.body?.scheduleNotes);
+    const rawAction = String(req.body?.action || "accept").trim().toLowerCase();
+    const action = ["decline", "reject", "declined", "rejected"].includes(rawAction)
+      ? "decline"
+      : ["adjust", "alternate", "adjusted"].includes(rawAction)
+        ? "adjust"
+        : "accept";
+    const notes = toOptionalText(req.body?.notes || req.body?.scheduleNotes || req.body?.reason);
     const adjustedDate = req.body?.scheduledDate ? new Date(req.body.scheduledDate) : null;
 
     if (!request.rescheduleRequest?.proposedDate && !adjustedDate) {
@@ -1551,6 +1685,26 @@ export const respondToMaintenanceReschedule = async (req, res, next) => {
     const nextDate = action === "accept"
       ? (request.rescheduleRequest?.proposedDate || adjustedDate)
       : adjustedDate;
+
+    if (action === "adjust" && (!notes || notes.length < 5)) {
+      throw new AppError(
+        "Please provide a brief note (at least 5 characters) explaining why an alternate schedule was set.",
+        400,
+        "RESPONSE_NOTE_REQUIRED",
+        [{ field: "notes", message: "Please provide a brief explanation for setting an alternate schedule." }],
+      );
+    }
+
+    if (action === "decline" && (!notes || notes.length < 5)) {
+      throw new AppError(
+        "Please provide a brief reason (at least 5 characters) for declining the reschedule request.",
+        400,
+        "RESPONSE_NOTE_REQUIRED",
+        [{ field: "notes", message: "Please provide a reason for declining the reschedule request." }],
+      );
+    }
+
+    const eventTimestamp = new Date();
 
     if (action === "accept" || action === "adjust") {
       request.schedule = {
@@ -1562,24 +1716,26 @@ export const respondToMaintenanceReschedule = async (req, res, next) => {
       };
       request.rescheduleRequest = {
         ...request.rescheduleRequest,
-        status: "accepted",
-        respondedAt: new Date(),
+        status: action === "accept" ? "accepted" : "adjusted",
+        respondedAt: eventTimestamp,
         respondedBy: actor.actor_name,
-        responseNote: notes || "Reschedule accepted by dormitory staff.",
+        responseNote: notes || (action === "accept" ? "Reschedule accepted by dormitory staff." : "Alternate schedule set by staff."),
       };
 
       appendStatusHistory(request, {
-        event: "reschedule_accepted",
+        event: action === "accept" ? "reschedule_accepted" : "reschedule_adjusted",
         status: request.status,
         ...actor,
-        note: `Staff accepted reschedule to ${nextDate ? nextDate.toLocaleString() : "new date"}${notes ? `. Notes: ${notes}` : ""}`,
-        timestamp: new Date(),
+        note: action === "accept"
+          ? `Staff accepted reschedule to ${nextDate ? nextDate.toLocaleString() : "new date"}${notes ? `. Notes: ${notes}` : ""}`
+          : `Staff set alternate schedule to ${nextDate ? nextDate.toLocaleString() : "new date"}. Reason: "${notes}"`,
+        timestamp: eventTimestamp,
       });
     } else if (action === "decline") {
       request.rescheduleRequest = {
         ...request.rescheduleRequest,
         status: "declined",
-        respondedAt: new Date(),
+        respondedAt: eventTimestamp,
         respondedBy: actor.actor_name,
         responseNote: notes || "Reschedule request could not be accommodated.",
       };
@@ -1588,8 +1744,8 @@ export const respondToMaintenanceReschedule = async (req, res, next) => {
         event: "reschedule_declined",
         status: request.status,
         ...actor,
-        note: notes ? `Staff declined reschedule request: "${notes}"` : "Staff declined reschedule request.",
-        timestamp: new Date(),
+        note: `Staff declined reschedule request: "${notes}"`,
+        timestamp: eventTimestamp,
       });
     }
 
@@ -1599,6 +1755,33 @@ export const respondToMaintenanceReschedule = async (req, res, next) => {
     const tenantUser = await User.findOne({ user_id: request.user_id })
       .select(USER_SELECT_FIELDS)
       .lean();
+
+    if (tenantUser?._id) {
+      if (action === "accept" || action === "adjust") {
+        await notify.maintenanceScheduled(
+          tenantUser._id,
+          request.request_type,
+          nextDate,
+          notes || (action === "accept" ? "Reschedule confirmed by staff." : "Alternate schedule set by staff."),
+          request.request_id,
+          { eventId: `reschedule:${action}:${eventTimestamp.toISOString()}` },
+        ).catch(() => {});
+      } else {
+        await notify.maintenanceUpdated(
+          tenantUser._id,
+          request.request_type,
+          request.status,
+          request.request_id,
+          {
+            statusChanged: false,
+            hasAdminNote: true,
+            hasProgressEntry: false,
+            hasProgressAttachments: false,
+            eventId: `reschedule:declined:${eventTimestamp.toISOString()}`,
+          },
+        ).catch(() => {});
+      }
+    }
 
     sendSuccess(res, {
       message: action === "decline" ? "Reschedule request declined." : "Schedule updated successfully.",
@@ -1705,14 +1888,17 @@ export const rateAdminMaintenanceProvider = async (req, res, next) => {
       );
     }
 
-    const providerName = request.assignedProviderName || request.assigned_to;
-    if (!providerName && !request.assignedProviderId) {
-      throw new AppError(
-        "Cannot rate provider because no contractor is assigned to this request.",
-        400,
-        "NO_ASSIGNED_PROVIDER",
-        [{ field: "rating", message: "Assign a service provider before submitting a rating." }],
-      );
+    const providerName =
+      request.assignedProviderName ||
+      request.assigned_to ||
+      request.providerDetails?.tenantVisibleLabel ||
+      "Lilycrest Facilities Team";
+
+    if (!request.assignedProviderName) {
+      request.assignedProviderName = providerName;
+    }
+    if (!request.assigned_to) {
+      request.assigned_to = providerName;
     }
 
     const rawRating = Number(req.body?.rating);
@@ -1800,20 +1986,26 @@ export const updateRequest = updateAdminRequestStatusCompat;
 /**
  * POST /api/m/maintenance/admin/:requestId/resolution-proof
  */
-/**
- * PATCH /api/m/maintenance/admin/:requestId/read
- */
 export const markAdminMaintenanceRead = async (req, res, next) => {
   try {
     const request = await findAccessibleRequest(req.params.requestId);
     ensureAdminAccess(request, req);
     
+    const readAt = new Date();
     await MaintenanceRequest.updateOne(
       { _id: request._id },
-      { $set: { lastAdminReadAt: new Date() } }
+      { $set: { lastAdminReadAt: readAt } }
     );
 
-    sendSuccess(res, { read: true });
+    sendSuccess(res, {
+      read: true,
+      lastAdminReadAt: readAt,
+      isNewForAdmin: false,
+      hasUnreadTenantReply: false,
+      hasUnreadReschedule: false,
+      hasUnreadReopen: false,
+      requestId: request.request_id,
+    });
   } catch (error) {
     next(error);
   }
@@ -1914,3 +2106,137 @@ export const saveResolutionProof = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * PATCH /api/m/maintenance/admin/:requestId/reopen
+ */
+export const reopenAdminMaintenanceRequest = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+    const adminUser = await getDbUser(req.user.uid);
+
+    const isReopenable =
+      REOPENABLE_MAINTENANCE_STATUSES.includes(request.status) ||
+      ["resolved", "completed", "closed", "waiting_tenant"].includes(request.status);
+
+    if (!isReopenable) {
+      throw new AppError(
+        "Only resolved, completed, or closed maintenance requests can be reopened",
+        409,
+        "REQUEST_NOT_REOPENABLE",
+      );
+    }
+
+    const note = toOptionalText(req.body?.note || req.body?.reopen_note);
+    if (!note) {
+      throw new AppError(
+        "A reason note is required when reopening a maintenance request.",
+        400,
+        "REOPEN_NOTE_REQUIRED",
+        [
+          {
+            field: "note",
+            message: "Please enter a brief note explaining why this maintenance request is being reopened.",
+          },
+        ],
+      );
+    }
+
+    const targetStatus = req.body?.nextStatus === "pending" ? "pending" : "in_progress";
+    const previousStatus = request.status;
+    const reopenedAt = new Date();
+    const adminActor = buildActorSnapshot(adminUser);
+
+    request.isReopened = true;
+    request.reopen_note = note;
+    request.reopened_at = reopenedAt;
+    request.reopenCount = (request.reopenCount || 0) + 1;
+    request.reopen_history = [
+      ...(Array.isArray(request.reopen_history) ? request.reopen_history : []),
+      {
+        reopened_at: reopenedAt,
+        previous_status: previousStatus,
+        note,
+        actor_id: adminActor.actor_id,
+        actor_name: adminActor.actor_name,
+        actor_role: adminActor.actor_role,
+      },
+    ];
+
+    request.status = targetStatus;
+    request.resolved_at = null;
+    request.closed_at = null;
+    request.resolution_note = null;
+    if (targetStatus === "in_progress" && !request.work_started_at) {
+      request.work_started_at = reopenedAt;
+    }
+
+    appendStatusHistory(request, {
+      event: "reopened",
+      status: targetStatus,
+      ...adminActor,
+      note,
+      timestamp: reopenedAt,
+    });
+
+    await request.save();
+
+    await auditLogger.logModification(
+      req,
+      "maintenance",
+      request._id,
+      null,
+      null,
+      "Reopened Maintenance Request",
+      `Staff reopened maintenance request #${request.request_id || request._id} (Iteration #${request.reopenCount}). Reason: ${note}`,
+    );
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    if (tenantUser?._id) {
+      try {
+        await notify.maintenanceUpdated(
+          tenantUser._id,
+          request.request_type,
+          request.status,
+          request.request_id,
+          {
+            statusChanged: true,
+            hasAdminNote: true,
+            hasProgressEntry: false,
+            hasProgressAttachments: false,
+            eventId: `reopened:${reopenedAt.toISOString()}`,
+          },
+        );
+      } catch (notifErr) {
+        logger.warn({ err: notifErr }, "Maintenance reopen tenant notification failed (non-fatal)");
+      }
+    }
+
+    try {
+      const { emitToAdmins } = await import("../../utils/socket.js");
+      emitToAdmins("ticket:updated", {
+        requestId: String(request._id),
+        status: request.status,
+        reopenCount: request.reopenCount,
+        isReopened: true,
+      });
+    } catch {
+      // non-fatal
+    }
+
+    sendSuccess(res, {
+      message: `Maintenance request #${request.request_id || request._id} has been reopened.`,
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        tenantUser ? serializeTenantSummary(tenantUser, request) : null,
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

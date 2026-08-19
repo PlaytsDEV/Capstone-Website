@@ -38,6 +38,8 @@ import MoveOutClearanceCalculator from "../components/MoveOutClearanceCalculator
 import { formatBranch, fmtCurrency } from "../utils/formatters";
 import {
   getTenantActionMeta,
+  getTenantIndicator,
+  markTenantViewedInStorage,
   hasEnabledTenantAction,
   openTenantAction,
   resolveTenantNextAction,
@@ -168,6 +170,15 @@ export default function TenantsWorkspacePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [actionLoading, setActionLoading] = useState(null);
+  const [viewedTick, setViewedTick] = useState(0);
+
+  const handleOpenTenantDetail = useCallback((reservationId, initialTab = "overview") => {
+    if (!reservationId) return;
+    markTenantViewedInStorage(reservationId);
+    setViewedTick((v) => v + 1);
+    setModalInitialTab(initialTab);
+    setSelectedReservationId(reservationId);
+  }, []);
 
   useEffect(() => {
     const urlSearch = searchParams.get("search");
@@ -176,9 +187,9 @@ export default function TenantsWorkspacePage() {
     }
     const urlResId = searchParams.get("reservationId");
     if (urlResId !== null && urlResId !== selectedReservationId) {
-      setSelectedReservationId(urlResId);
+      handleOpenTenantDetail(urlResId, "overview");
     }
-  }, [searchParams]);
+  }, [searchParams, selectedReservationId, handleOpenTenantDetail]);
 
   const hasActiveFilters =
     Boolean(searchTerm.trim()) ||
@@ -483,10 +494,9 @@ export default function TenantsWorkspacePage() {
       } else if (target.type === "modal") {
         openActionForTenant(tenant, target.actionKey, target.actionType);
       } else if (target.type === "detail" && target.reservationId) {
-        setModalInitialTab(target.initialTab || "overview");
-        setSelectedReservationId(target.reservationId);
+        handleOpenTenantDetail(target.reservationId, target.initialTab || "overview");
       }
-    }, [navigate, openActionForTenant]);
+    }, [navigate, openActionForTenant, handleOpenTenantDetail]);
 
     const [isExporting, setIsExporting] = useState(false);
 
@@ -543,25 +553,38 @@ export default function TenantsWorkspacePage() {
             key: "tenantName",
             label: "Tenant",
             sortable: true,
-            render: (row) => (
-            <div className="tenant-cell">
-                <ProfileAvatar
-                  className="shrink-0"
-                  user={{ name: row.tenantName, email: row.contact?.email }}
-                  size={36}
-                  defaultOnly
-                />
-                <div className="tenant-cell__info">
-                <span className="tenant-cell__name">{row.tenantName}</span>
-                <span className="tenant-cell__email">
-                    {row.contact?.email || "No email"}
-                </span>
-                <span className="tenant-cell__meta">
-                    {row.contact?.phone || "No phone"}
-                </span>
+            render: (row) => {
+              const indicator = getTenantIndicator(row);
+              return (
+                <div className="tenant-cell">
+                  <div className="relative shrink-0">
+                    <ProfileAvatar
+                      user={{ name: row.tenantName, email: row.contact?.email }}
+                      size={36}
+                      defaultOnly
+                    />
+                    {indicator && (
+                      <span
+                        className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center pointer-events-none"
+                        title={indicator.tooltip}
+                      >
+                        <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${indicator.pingClass} opacity-75`} />
+                        <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${indicator.dotClass}`} />
+                      </span>
+                    )}
+                  </div>
+                  <div className="tenant-cell__info">
+                    <span className="tenant-cell__name">{row.tenantName}</span>
+                    <span className="tenant-cell__email">
+                      {row.contact?.email || "No email"}
+                    </span>
+                    <span className="tenant-cell__meta">
+                      {row.contact?.phone || "No phone"}
+                    </span>
+                  </div>
                 </div>
-            </div>
-            ),
+              );
+            },
         },
         ...(isOwner
             ? [
@@ -698,13 +721,13 @@ export default function TenantsWorkspacePage() {
             render: (row) => (
             <RowActionsMenu
                 row={row}
-                onSelect={setSelectedReservationId}
+                onSelect={(id) => handleOpenTenantDetail(id, "overview")}
                 onAction={setActionState}
             />
             ),
         },
         ],
-        [isOwner],
+        [isOwner, viewedTick, handleNextActionClick, handleOpenTenantDetail],
     );
 
     const expiredStays = useMemo(() => {
@@ -890,23 +913,38 @@ export default function TenantsWorkspacePage() {
                     >
                       {/* 1. Tenant */}
                       <td className="py-3 px-4">
-                        <div className="tenant-cell">
-                          <ProfileAvatar
-                            className="shrink-0"
-                            user={{ name: tenant.tenantName, email: tenant.contact?.email }}
-                            size={36}
-                            defaultOnly
-                          />
-                          <div className="tenant-cell__info">
-                            <span className="tenant-cell__name">{tenant.tenantName}</span>
-                            <span className="tenant-cell__email">
-                              {tenant.contact?.email || "No email"}
-                            </span>
-                            <span className="tenant-cell__meta">
-                              {tenant.contact?.phone || "No phone"}
-                            </span>
-                          </div>
-                        </div>
+                        {(() => {
+                          const indicator = getTenantIndicator(tenant);
+                          return (
+                            <div className="tenant-cell">
+                              <div className="relative shrink-0">
+                                <ProfileAvatar
+                                  user={{ name: tenant.tenantName, email: tenant.contact?.email }}
+                                  size={36}
+                                  defaultOnly
+                                />
+                                {indicator && (
+                                  <span
+                                    className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center pointer-events-none"
+                                    title={indicator.tooltip}
+                                  >
+                                    <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${indicator.pingClass} opacity-75`} />
+                                    <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${indicator.dotClass}`} />
+                                  </span>
+                                )}
+                              </div>
+                              <div className="tenant-cell__info">
+                                <span className="tenant-cell__name">{tenant.tenantName}</span>
+                                <span className="tenant-cell__email">
+                                  {tenant.contact?.email || "No email"}
+                                </span>
+                                <span className="tenant-cell__meta">
+                                  {tenant.contact?.phone || "No phone"}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* 2. Branch (Owner only) */}
@@ -1011,8 +1049,7 @@ export default function TenantsWorkspacePage() {
                           onFocus={() => prefetchTenantWorkspaceDetail(queryClient, tenant.reservationId)}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setModalInitialTab("overview");
-                            setSelectedReservationId(tenant.reservationId);
+                            handleOpenTenantDetail(tenant.reservationId, "overview");
                           }}
                         >
                           <Eye size={14} />

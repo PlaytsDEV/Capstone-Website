@@ -129,14 +129,14 @@ describe('maintenance.controller sendTenantReply — status guard', () => {
 describe('maintenance.controller confirmMaintenanceResolved', () => {
   beforeEach(() => { mockGetDb.mockReset(); });
 
-  test('a resolved request can be confirmed, remains resolved with tenant_confirmed_resolved=true', async () => {
+  test('a resolved request can be confirmed and completed with tenant_confirmed_resolved=true', async () => {
     const requests = { r1: { request_id: 'r1', user_id: 't1', status: 'resolved', __collection: 'maintenance_requests' } };
     mockGetDb.mockReturnValue(makeDb({ requests }));
     const req = { user: { user_id: 't1', _id: 'mongo1' }, params: { requestId: 'r1' } };
     const res = response();
     await confirmMaintenanceResolved(req, res);
     expect(res.statusCode).toBe(200);
-    expect(res.body.status).toBe('resolved');
+    expect(res.body.status).toBe('completed');
     expect(res.body.tenant_confirmed_resolved).toBe(true);
   });
 

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { UserCheck, X, AlertCircle, CheckCircle2, LoaderCircle } from "lucide-react";
 import { escalateTenantAssistant } from "../../../api/tenantAssistantApi";
 
@@ -28,7 +27,6 @@ export default function TenantHumanEscalateModal({
   lastBotMessage = "",
   onEscalationSuccess,
 }) {
-  const navigate = useNavigate();
   const [category, setCategory] = useState("billing_dispute");
   const [priority, setPriority] = useState("normal");
   const [summary, setSummary] = useState("");
@@ -46,6 +44,18 @@ export default function TenantHumanEscalateModal({
       setIsSubmitting(false);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    let timer;
+    if (successData) {
+      timer = setTimeout(() => {
+        onClose();
+      }, 3000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [successData, onClose]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -83,13 +93,6 @@ export default function TenantHumanEscalateModal({
 
       setSuccessData(res);
       onEscalationSuccess?.(res);
-
-      setTimeout(() => {
-        onClose();
-        if (res?.data?.redirectUrl || res?.redirectUrl) {
-          navigate(res.data?.redirectUrl || res.redirectUrl);
-        }
-      }, 1500);
     } catch (err) {
       console.error("Escalation failed:", err);
       setErrorMsg(err?.message || "Failed to submit escalation. Please try again.");
@@ -139,8 +142,17 @@ export default function TenantHumanEscalateModal({
               Escalation Submitted
             </h3>
             <p className="text-sm text-slate-600 dark:text-slate-300 max-w-sm">
-              Your inquiry has been transferred to our branch admin staff. You will be redirected to the conversation view.
+              Your concern has been forwarded directly to our Branch Admin team. Our staff will review your message and reach out promptly.
             </p>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-5 py-2 text-sm font-semibold text-white bg-slate-900 dark:bg-slate-100 dark:text-slate-900 rounded-xl hover:bg-slate-800 dark:hover:bg-white transition-colors cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-6 space-y-4">

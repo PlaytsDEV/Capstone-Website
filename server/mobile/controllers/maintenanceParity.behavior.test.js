@@ -94,7 +94,7 @@ describe('Mobile API Parity & Lifecycle Audits (sk-mobile-api-parity-checker)', 
       await confirmMaintenanceResolved(req, res);
 
       expect(res.statusCode).toBe(200);
-      expect(res.body.status).toBe('resolved');
+      expect(res.body.status).toBe('completed');
       expect(res.body.tenant_confirmed_resolved).toBe(true);
       expect(res.body.resolutionConfirmation).toEqual(
         expect.objectContaining({

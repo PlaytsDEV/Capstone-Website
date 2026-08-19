@@ -952,10 +952,27 @@ export const serializeMaintenanceRequest = (
         tenantVisibleLabel,
       };
 
+  const scheduledDate =
+    request.scheduledDate ||
+    request.schedule?.scheduledDate ||
+    null;
+
   const schedule = {
-    scheduledDate: request.schedule?.scheduledDate || request.scheduledDate || null,
+    scheduledDate,
     notes: request.schedule?.notes || null,
   };
+
+  const rescheduleRequest = request.rescheduleRequest?.status
+    ? {
+        requestedAt: request.rescheduleRequest.requestedAt || null,
+        proposedDate: request.rescheduleRequest.proposedDate || null,
+        reason: request.rescheduleRequest.reason || null,
+        status: request.rescheduleRequest.status || "pending",
+        respondedAt: request.rescheduleRequest.respondedAt || null,
+        respondedBy: request.rescheduleRequest.respondedBy || null,
+        responseNote: request.rescheduleRequest.responseNote || null,
+      }
+    : null;
 
   const completionReport = includeInternal
     ? (request.completionReport?.summary || request.completionReport?.reportId
@@ -969,6 +986,8 @@ export const serializeMaintenanceRequest = (
             finalizedBy: request.completionReport?.finalizedBy || null,
             finalizedByName: request.completionReport?.finalizedByName || null,
             finalizedAt: request.completionReport?.finalizedAt || null,
+            generatedAt: request.completionReport?.generatedAt || request.completionReport?.finalizedAt || null,
+            reportType: request.completionReport?.reportType || "admin",
             reportUrl: request.completionReport?.reportUrl || null,
           }
         : null)
@@ -980,8 +999,10 @@ export const serializeMaintenanceRequest = (
             workDone: request.completionReport?.workDone || null,
             partsReplaced: request.completionReport?.partsReplaced || null,
             preventiveAdvice: request.completionReport?.preventiveAdvice || null,
-            finalizedByName: request.completionReport?.finalizedByName || "LilyCrest Management",
+            finalizedByName: request.completionReport?.finalizedByName || "Lilycrest Management",
             finalizedAt: request.completionReport?.finalizedAt || null,
+            generatedAt: request.completionReport?.generatedAt || request.completionReport?.finalizedAt || null,
+            reportType: request.completionReport?.reportType || "tenant",
             reportUrl: request.completionReport?.reportUrl || null,
           }
         : null);
@@ -1001,6 +1022,50 @@ export const serializeMaintenanceRequest = (
         action: request.resolutionConfirmation.action || null,
       }
     : null;
+  const lastAdminReadTime = request.lastAdminReadAt ? new Date(request.lastAdminReadAt).getTime() : 0;
+  const isNewForAdmin = !request.lastAdminReadAt && ["pending", "pending_review", "viewed"].includes(request.status);
+  
+  const conversationList = Array.isArray(request.conversation) ? request.conversation : [];
+  const hasUnreadTenantReply = conversationList.some((msg) => {
+    if (msg.sender_side !== "tenant" && msg.sender_role !== "tenant") return false;
+    const msgTime = new Date(msg.created_at).getTime();
+    return msgTime > lastAdminReadTime;
+  });
+
+  const reschedObj = rescheduleRequest || request.rescheduleRequest || request.reschedule_request;
+  const hasUnreadReschedule = Boolean(
+    reschedObj?.status === "pending" &&
+    (!lastAdminReadTime || (reschedObj.requestedAt && new Date(reschedObj.requestedAt).getTime() > lastAdminReadTime))
+  );
+
+  const hasUnreadReopen = Boolean(
+    (request.isReopened || request.status === "reopened") &&
+    (!lastAdminReadTime || (request.reopened_at && new Date(request.reopened_at).getTime() > lastAdminReadTime))
+  );
+
+  // Compute composite lastActivityAt
+  const createdTime = request.created_at ? new Date(request.created_at).getTime() : 0;
+  const updatedTime = request.updated_at ? new Date(request.updated_at).getTime() : 0;
+  const reopenedTime = request.reopened_at ? new Date(request.reopened_at).getTime() : 0;
+  const reschedTime = reschedObj?.requestedAt ? new Date(reschedObj.requestedAt).getTime() : 0;
+  let lastMsgTime = 0;
+  if (conversationList.length > 0) {
+    const lastMsg = conversationList[conversationList.length - 1];
+    if (lastMsg?.created_at) {
+      lastMsgTime = new Date(lastMsg.created_at).getTime();
+    }
+  }
+  const lastActivityTimestamp = Math.max(createdTime, updatedTime, reopenedTime, reschedTime, lastMsgTime);
+  const lastActivityAt = lastActivityTimestamp > 0 ? new Date(lastActivityTimestamp).toISOString() : (request.created_at || new Date().toISOString());
+
+  const lastTenantReadTime = request.lastTenantReadAt
+    ? new Date(request.lastTenantReadAt).getTime()
+    : new Date(request.created_at || Date.now()).getTime();
+  const isUpdatedForTenant = Boolean(
+    request.updated_at &&
+    new Date(request.updated_at).getTime() > lastTenantReadTime &&
+    request.status !== "pending"
+  );
 
   return {
     id: request.request_id,
@@ -1021,10 +1086,21 @@ export const serializeMaintenanceRequest = (
     reviewedAt: request.reviewedAt || null,
     completedAt: request.completedAt || null,
     lastAdminReadAt: includeInternal ? (request.lastAdminReadAt || null) : undefined,
+    lastTenantReadAt: request.lastTenantReadAt || null,
+    isNewForAdmin: includeInternal ? isNewForAdmin : undefined,
+    hasUnreadTenantReply: includeInternal ? hasUnreadTenantReply : undefined,
+    hasUnreadReschedule: includeInternal ? hasUnreadReschedule : undefined,
+    hasUnreadReopen: includeInternal ? hasUnreadReopen : undefined,
+    lastActivityAt,
+    isUpdatedForTenant,
     reviewedBy: includeInternal ? (request.reviewedBy || null) : undefined,
     resolvedBy: includeInternal ? (request.resolvedBy || null) : undefined,
     tenantVisibleProviderLabel: tenantVisibleLabel,
+    scheduledDate,
+    scheduled_date: scheduledDate,
     schedule,
+    rescheduleRequest,
+    reschedule_request: rescheduleRequest,
     completionReport,
     completion_report: completionReport,
     reopenCount,

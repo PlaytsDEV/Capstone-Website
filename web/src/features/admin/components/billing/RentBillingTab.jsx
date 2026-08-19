@@ -309,10 +309,45 @@ function PreviewModal({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function RentBillingTab({ isActive }) {
+export default function RentBillingTab({
+  isActive,
+  ownerBranchFilter = "",
+  onOwnerBranchChange,
+}) {
   const { user } = useAuth();
   const isOwner = OWNER_ROLES.has(user?.role);
-  const [branch, setBranch] = useState(isOwner ? "" : user?.branch || "");
+  const [internalBranch, setInternalBranch] = useState(
+    ownerBranchFilter || (user?.branch || "")
+  );
+
+  const branch = isOwner
+    ? ownerBranchFilter !== undefined
+      ? ownerBranchFilter
+      : internalBranch
+    : user?.branch || "";
+
+  useEffect(() => {
+    if (ownerBranchFilter !== undefined) {
+      setInternalBranch(ownerBranchFilter);
+    }
+  }, [ownerBranchFilter]);
+
+  const handleBranchSelectChange = (newBranch) => {
+    setInternalBranch(newBranch);
+    if (onOwnerBranchChange) {
+      onOwnerBranchChange(newBranch);
+    }
+  };
+
+  const isBranchAssigned = isOwner || Boolean(user?.branch);
+  const hasManageBillingPermission = isOwner || (
+    user?.role === "branch_admin" && (
+      !Array.isArray(user.permissions) ||
+      user.permissions.length === 0 ||
+      user.permissions.includes("manageBilling")
+    )
+  );
+
   const [timeframeMode, setTimeframeMode] = useState("month"); // "month" | "all"
   const [month, setMonth] = useState(getCurrentMonthInput());
   
@@ -565,7 +600,7 @@ export default function RentBillingTab({ isActive }) {
       const targetMonth = timeframeMode === "all" ? getCurrentMonthInput() : month;
       const payload = {
         reservationId,
-        branch: tenant.branch || branch,
+        branch: tenant.branch || branch || user?.branch,
         billingMonth: targetMonth,
         rentAmount: tenant.contractRate || tenant.monthlyRent,
       };
@@ -583,7 +618,7 @@ export default function RentBillingTab({ isActive }) {
     const targetMonth = timeframeMode === "all" ? getCurrentMonthInput() : month;
     const payload = {
       reservationId: getId(tenant.reservationId),
-      branch: tenant.branch || branch,
+      branch: tenant.branch || branch || user?.branch,
       billingMonth: targetMonth,
       rentAmount: tenant.contractRate || tenant.monthlyRent,
     };
@@ -664,6 +699,31 @@ export default function RentBillingTab({ isActive }) {
 
   return (
     <section className="space-y-6" aria-label="Rent Billing Observability">
+      {/* ── Branch / Permission Diagnostic Alerts ────────────────────────────── */}
+      {!isBranchAssigned && (
+        <div className="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-card p-4 text-xs shadow-xs">
+          <ShieldAlert size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <p className="font-bold text-card-foreground">No Branch Assigned</p>
+            <p className="text-muted-foreground">
+              Your Branch Admin account is not currently assigned to a branch. Please contact the Dorm Owner to assign your account to Gil-Puyat or Guadalupe to manage rent billing.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {isBranchAssigned && !hasManageBillingPermission && (
+        <div className="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-card p-4 text-xs shadow-xs">
+          <ShieldAlert size={16} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <p className="font-bold text-card-foreground">Billing Permissions Restricted</p>
+            <p className="text-muted-foreground">
+              Your account does not currently have permission to generate or manage bills. Please contact the Dorm Owner to enable "Manage Billing" for your account.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Dashboard Header & KPIs ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -679,7 +739,7 @@ export default function RentBillingTab({ isActive }) {
           {isOwner && (
             <select
               value={branch}
-              onChange={(e) => setBranch(e.target.value)}
+              onChange={(e) => handleBranchSelectChange(e.target.value)}
               className="h-9 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200 cursor-pointer"
               title="Filter by branch"
               aria-label="Filter by branch"

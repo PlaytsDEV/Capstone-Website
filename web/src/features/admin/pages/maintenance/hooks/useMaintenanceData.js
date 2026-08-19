@@ -22,6 +22,7 @@ import {
   useSuggestMaintenanceProvider,
   useRateMaintenanceProvider,
   useUpdateMaintenanceRequest,
+  useMarkAdminMaintenanceRead,
 } from "../../../../../shared/hooks/queries/useMaintenance";
 import { maintenanceApi } from "../../../../../shared/api/maintenanceApi";
 import {
@@ -42,6 +43,12 @@ import {
   getRequestBranch,
   isBlockingWorkLogAttachment,
   isUploadedWorkLogAttachment,
+  hasUnreadTenantReplies,
+  isRequestNewForAdmin,
+  hasTenantConcern,
+  getTenantConcernIndicator,
+  getRequestLastActivityTime,
+  isDeletedAccountRequest,
   MANAGEMENT_SUMMARY_CARDS,
   mapMaintenanceApiErrors,
   matchesSlaFilter,
@@ -100,6 +107,7 @@ export function useMaintenanceData() {
   const [requestTypeFilter, setRequestTypeFilter] = useState("all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
   const [slaFilter, setSlaFilter] = useState("all");
+  const [dateType, setDateType] = useState("created_at");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const requestedBranch = searchParams.get("branch");
@@ -112,6 +120,9 @@ export function useMaintenanceData() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
+  const requestedRequestId = searchParams.get("requestId");
+  const [selectedRequestId, setSelectedRequestId] = useState(requestedRequestId || null);
+
   useEffect(() => {
     const urlSearch = searchParams.get("search") || searchParams.get("room");
     if (urlSearch !== null && urlSearch !== undefined) {
@@ -121,7 +132,11 @@ export function useMaintenanceData() {
     if (urlBranch) {
       setBranchFilter(isOwner ? urlBranch : (userBranch || "all"));
     }
-  }, [searchParams, isOwner, userBranch]);
+    const urlRequestId = searchParams.get("requestId");
+    if (urlRequestId && urlRequestId !== selectedRequestId) {
+      setSelectedRequestId(urlRequestId);
+    }
+  }, [searchParams, isOwner, userBranch, selectedRequestId]);
 
   const [analyticsFilters, setAnalyticsFilters] = useState({
     branch: isOwner ? "all" : (userBranch || "all"),
@@ -152,7 +167,6 @@ export function useMaintenanceData() {
   const [analyticsRequestPage, setAnalyticsRequestPage] = useState(1);
   const [branchReportRequestPage, setBranchReportRequestPage] = useState(1);
 
-  const [selectedRequestId, setSelectedRequestId] = useState(null);
   const [draftStatus, setDraftStatus] = useState("viewed");
   const [draftNotes, setDraftNotes] = useState("");
 
@@ -218,6 +232,7 @@ export function useMaintenanceData() {
         status: statusFilter,
         requestType: requestTypeFilter,
         urgency: urgencyFilter,
+        dateType,
         dateFrom,
         dateTo,
         branch: effectiveBranchFilter,
@@ -226,6 +241,7 @@ export function useMaintenanceData() {
     [
       archiveView,
       effectiveBranchFilter,
+      dateType,
       dateFrom,
       dateTo,
       requestTypeFilter,
@@ -240,12 +256,13 @@ export function useMaintenanceData() {
       createFilterPayload({
         requestType: requestTypeFilter,
         urgency: urgencyFilter,
+        dateType,
         dateFrom,
         dateTo,
         branch: effectiveBranchFilter,
         archiveView,
       }),
-    [archiveView, effectiveBranchFilter, dateFrom, dateTo, requestTypeFilter, urgencyFilter],
+    [archiveView, effectiveBranchFilter, dateType, dateFrom, dateTo, requestTypeFilter, urgencyFilter],
   );
 
   const analyticsQueryFilters = useMemo(
@@ -306,6 +323,13 @@ export function useMaintenanceData() {
   const sendTenantSummaryMutation = useSendMaintenanceTenantSummary();
   const suggestProviderMutation = useSuggestMaintenanceProvider();
   const rateProviderMutation = useRateMaintenanceProvider();
+  const markAdminReadMutation = useMarkAdminMaintenanceRead();
+
+  useEffect(() => {
+    if (selectedRequestId) {
+      markAdminReadMutation.mutate(selectedRequestId);
+    }
+  }, [selectedRequestId]);
 
   const requests = requestsData?.requests || [];
   const summaryRequests = summaryData?.requests || requests;
@@ -354,22 +378,33 @@ export function useMaintenanceData() {
 
   const serviceProviders = providerData?.providers || [];
 
-  const summaryItems = useMemo(
-    () =>
-      MANAGEMENT_SUMMARY_CARDS.map((item) => ({
+  const summaryItems = useMemo(() => {
+    const unreadCount = summaryRequests.filter(
+      (r) => hasTenantConcern(r),
+    ).length;
+
+    return MANAGEMENT_SUMMARY_CARDS.map((item) => {
+      const val = summaryRequests.filter((request) =>
+        matchesSummaryCard({
+          request,
+          cardKey: item.key,
+          dateFrom,
+          dateTo,
+        }),
+      ).length;
+
+      let trend = item.description;
+      if (item.key === "open_queue" && unreadCount > 0) {
+        trend = `${item.description} • ${unreadCount} new`;
+      }
+
+      return {
         ...item,
-        value: summaryRequests.filter((request) =>
-          matchesSummaryCard({
-            request,
-            cardKey: item.key,
-            dateFrom,
-            dateTo,
-          }),
-        ).length,
-        trend: item.description,
-      })),
-    [dateFrom, dateTo, summaryRequests],
-  );
+        value: val,
+        trend,
+      };
+    });
+  }, [dateFrom, dateTo, summaryRequests]);
 
   const stageCounts = useMemo(() => {
     const counts = { all: summaryRequests.length };
@@ -446,12 +481,31 @@ export function useMaintenanceData() {
   const sortedRequests = useMemo(() => {
     const nextRequests = [...requests];
     nextRequests.sort((left, right) => {
+      // 0. Deleted account requests ALWAYS sink to the bottom of the table
+      const leftDeleted = isDeletedAccountRequest(left);
+      const rightDeleted = isDeletedAccountRequest(right);
+      if (leftDeleted && !rightDeleted) return 1;
+      if (!leftDeleted && rightDeleted) return -1;
+      if (leftDeleted && rightDeleted) {
+        return new Date(right.created_at || 0).getTime() - new Date(left.created_at || 0).getTime();
+      }
+
       if (sortMode === "urgency") {
         const urgencyDelta =
           (urgencyRank[left.urgency] ?? 99) - (urgencyRank[right.urgency] ?? 99);
         if (urgencyDelta !== 0) return urgencyDelta;
       }
-      return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
+
+      // Default (All statuses / Newest First): Sort by latest activity time
+      const leftActivity = getRequestLastActivityTime(left);
+      const rightActivity = getRequestLastActivityTime(right);
+      if (rightActivity !== leftActivity) {
+        return rightActivity - leftActivity;
+      }
+
+      const leftCreated = new Date(left.created_at || left.createdAt || 0).getTime();
+      const rightCreated = new Date(right.created_at || right.createdAt || 0).getTime();
+      return rightCreated - leftCreated;
     });
     return nextRequests;
   }, [requests, sortMode]);
@@ -511,6 +565,7 @@ export function useMaintenanceData() {
     setRequestTypeFilter("all");
     setUrgencyFilter("all");
     setSlaFilter("all");
+    setDateType("created_at");
     setDateFrom("");
     setDateTo("");
     setBranchFilter(isOwner ? "all" : userBranch);
@@ -555,6 +610,8 @@ export function useMaintenanceData() {
     setUrgencyFilter,
     slaFilter,
     setSlaFilter,
+    dateType,
+    setDateType,
     dateFrom,
     setDateFrom,
     dateTo,
@@ -646,5 +703,6 @@ export function useMaintenanceData() {
     sendTenantSummaryMutation,
     suggestProviderMutation,
     rateProviderMutation,
+    markAdminReadMutation,
   };
 }

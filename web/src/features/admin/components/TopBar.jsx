@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Moon, Sun, Clock, Menu, Sparkles } from "lucide-react";
+import { Moon, Sun, Clock, Menu, Sparkles, Search } from "lucide-react";
 import NotificationBell from "../../../shared/components/NotificationBell";
 import AdminCopilotDrawer from "./copilot/AdminCopilotDrawer";
 import ProfileAvatar, { getProfileInitials } from "../../../shared/components/ProfileAvatar";
@@ -13,6 +13,7 @@ export default function TopBar({
   onToggleDarkMode,
   breadcrumbs,
   onOpenSidebar,
+  onOpenCommandPalette,
 }) {
   const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
@@ -137,6 +138,25 @@ export default function TopBar({
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Quick Command Palette Launcher */}
+        <button
+          type="button"
+          onClick={onOpenCommandPalette}
+          className="hidden sm:inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          style={{
+            backgroundColor: "var(--bg-hover)",
+            borderColor: "var(--border-light)",
+          }}
+          title="Open Command Palette (Ctrl+K)"
+          aria-label="Open Command Palette"
+        >
+          <Search className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+          <span className="hidden md:inline">Quick Search...</span>
+          <kbd className="inline-flex items-center justify-center rounded border border-[var(--border-light)] bg-[var(--bg-card)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-muted)] leading-none shadow-xs">
+            Ctrl K
+          </kbd>
+        </button>
+
         <div
           className="flex items-center gap-2 rounded-xl border px-2 py-1.5 text-[11px] sm:px-3 sm:py-2 sm:text-xs"
           style={{

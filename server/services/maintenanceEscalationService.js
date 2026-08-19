@@ -175,7 +175,7 @@ export function validateMaintenanceStateTransition(
   const VALID_TRANSITIONS = {
     submitted: ["in_progress", "cancelled", "resolved"],
     in_progress: ["resolved", "submitted", "cancelled"],
-    resolved: ["tenant_verified", "reopened"],
+    resolved: ["tenant_verified", "reopened", "in_progress"],
     reopened: ["in_progress", "resolved"],
     tenant_verified: [],
     cancelled: [],
@@ -186,7 +186,7 @@ export function validateMaintenanceStateTransition(
   if (!allowed.includes(target)) {
     return {
       valid: false,
-      error: `Cannot transition maintenance ticket status from '${rawCurrent}' to '${rawTarget}'. Allowed target statuses: [${allowed.map((s) => (s === "tenant_verified" ? "completed / tenant_verified" : s)).join(", ")}]`,
+      error: `Cannot transition maintenance request status from '${rawCurrent}' to '${rawTarget}'. Allowed target statuses: [${allowed.map((s) => (s === "tenant_verified" ? "completed / tenant_verified" : s)).join(", ")}]`,
     };
   }
 

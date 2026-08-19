@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   Calendar,
@@ -39,6 +40,7 @@ import {
   useRequestMaintenanceReschedule,
   useSendTenantMaintenanceReply,
   useUpdateMyMaintenanceRequest,
+  useMarkTenantMaintenanceRead,
 } from "../../../../shared/hooks/queries/useMaintenance";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import Pagination from "../../../../shared/components/Pagination";
@@ -56,6 +58,9 @@ import {
   getMaintenanceStepIndex,
   getMaintenanceTypeMeta,
   getMaintenanceUrgencyMeta,
+  validateMaintenanceSlot,
+  MAINTENANCE_TIME_SLOTS,
+  MAINTENANCE_OPERATING_HOURS,
 } from "../../../../shared/utils/maintenanceConfig";
 import {
   getMaintenanceAttachmentKind,
@@ -65,11 +70,9 @@ import {
   isViewableMaintenanceAttachmentUri,
   normalizeMaintenanceAttachments,
 } from "../../../../shared/utils/maintenanceAttachments";
-import {
-  uploadMaintenanceAttachment,
-  validateFile,
-} from "../../../../shared/utils/firebaseStorageUpload";
+import { uploadMaintenanceAttachment, validateFile } from "../../../../shared/utils/firebaseStorageUpload";
 import { MaintenanceConversationSection } from "../../../../shared/components/MaintenanceConversationSection";
+import { maintenanceApi } from "../../../../shared/api/maintenanceApi";
 import "../../styles/tenant-common.css";
 import "../../../admin/styles/design-tokens.css";
 
@@ -86,7 +89,7 @@ const REJECTED_STATUS_SET = new Set(["rejected", "cancelled", "canceled"]);
 const STATUS_FILTERS = [
   { key: "active", label: "Active Requests" },
   { key: "resolved", label: "Completed / History" },
-  { key: "all", label: "All Tickets" },
+  { key: "all", label: "All Requests" },
 ];
 
 const DETAIL_TABS = [
@@ -99,7 +102,7 @@ const CANONICAL_STEPS = [
   { key: "pending_review", label: "Pending Review" },
   { key: "reviewed",       label: "Under Review"   },
   { key: "in_progress",    label: "In Progress"    },
-  { key: "resolved",       label: "Resolved"       },
+  { key: "resolved",       label: "Work Done"      },
   { key: "completed",      label: "Completed"      },
 ];
 
@@ -129,16 +132,71 @@ function getStepIndex(s) {
   return idx >= 0 ? idx : 0;
 }
 
-function MaintenanceStepTracker({ status, isReopened = false, reopenCount }) {
-  const isReopenedTicket = isReopened === true;
-  const currentIndex = isReopenedTicket ? 0 : getStepIndex(status);
+const fmtDate = (value) => {
+  if (!value) return "Unknown date";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown date";
+  return date.toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const fmtDateTime = (value) => {
+  if (!value) return "Unknown date";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown date";
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const getLocalDateString = (daysOffset = 0) => {
+  const d = new Date();
+  d.setDate(d.getDate() + daysOffset);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatSlaLabel = (slaState) => {
+  if (!slaState) return "No Target Timeline";
+  if (slaState.label === "delayed") return "Delayed";
+  if (slaState.label === "priority") return "Priority";
+  if (slaState.label === "closed") return "Closed";
+  return "On Track";
+};
+
+const getStatusIcon = (status) => {
+  if (RESOLVED_STATUS_SET.has(status)) return CheckCircle2;
+  if (REJECTED_STATUS_SET.has(status)) return X;
+  if (["pending", "pending_review", "viewed", "reviewed"].includes(status)) return Clock;
+  return RefreshCcw;
+};
+
+function MaintenanceStepTracker({
+  status,
+  isReopened = false,
+  reopenCount,
+  inspectedStageIndex,
+  onSelectStage,
+}) {
+  const isReopenedRequest = isReopened === true;
+  const currentIndex = isReopenedRequest ? 0 : getStepIndex(status);
+  const selectedIdx = typeof inspectedStageIndex === "number" ? inspectedStageIndex : currentIndex;
 
   return (
-    <div className="maintenance-step-tracker">
-      {isReopenedTicket ? (
+    <div className="maintenance-step-tracker" role="tablist" aria-label="Maintenance progress steps">
+      {isReopenedRequest ? (
         <div className="step-tracker-reopened-badge">
           <AlertTriangle size={14} />
-          <span>Reopened Ticket (Iteration #{reopenCount || 1}) - Under Active Review</span>
+          <span>Reopened Request (Iteration #{reopenCount || 1}) - Under Active Review</span>
         </div>
       ) : null}
       <div className="step-tracker-track">
@@ -147,21 +205,593 @@ function MaintenanceStepTracker({ status, isReopened = false, reopenCount }) {
             idx < currentIndex ||
             (idx === CANONICAL_STEPS.length - 1 && currentIndex === CANONICAL_STEPS.length - 1);
           const isCurrent =
-            idx === currentIndex && currentIndex !== CANONICAL_STEPS.length - 1 && !isReopenedTicket;
+            idx === currentIndex && currentIndex !== CANONICAL_STEPS.length - 1 && !isReopenedRequest;
+          const isClickable = isCompleted || isCurrent;
+          const isInspected = idx === selectedIdx;
+
           return (
-            <div
+            <button
+              type="button"
               key={step.key}
-              className={`step-item ${isCompleted ? "completed" : ""} ${isCurrent ? "active" : ""}`}
+              role="tab"
+              disabled={!isClickable}
+              aria-disabled={!isClickable}
+              aria-selected={isInspected}
+              aria-label={`Step ${idx + 1}: ${step.label} (${isCurrent ? "Active" : isCompleted ? "Completed" : "Upcoming (Not yet reached)"})`}
+              className={`step-item ${isClickable ? "is-clickable" : "is-disabled"} ${isCompleted ? "completed" : ""} ${isCurrent ? "active" : ""} ${isInspected ? "is-inspected" : ""}`}
+              onClick={isClickable ? () => onSelectStage?.(idx) : undefined}
             >
               <div className="step-dot">
                 {isCompleted ? <Check size={12} strokeWidth={3} /> : <span>{idx + 1}</span>}
               </div>
               <span className="step-label">{step.label}</span>
               {idx < CANONICAL_STEPS.length - 1 && <div className="step-line" />}
-            </div>
+            </button>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function MaintenanceStageCardWindow({
+  request,
+  inspectedStageIndex,
+  onResetActiveStage,
+  onReschedule,
+  onConfirmResolution,
+  onRejectResolution,
+  onViewReport,
+  hideActions = false,
+}) {
+  const isReopenedRequest = request.isReopened === true;
+  const currentIndex = isReopenedRequest ? 0 : getStepIndex(request.status);
+  const selectedIdx = typeof inspectedStageIndex === "number" ? inspectedStageIndex : currentIndex;
+  const inspectedStep = CANONICAL_STEPS[selectedIdx] || CANONICAL_STEPS[currentIndex] || CANONICAL_STEPS[0];
+  const inspectedKey = inspectedStep.key;
+
+  const isInspectingCurrent = selectedIdx === currentIndex && !isReopenedRequest;
+  const isInspectingCompleted =
+    selectedIdx < currentIndex ||
+    (selectedIdx === CANONICAL_STEPS.length - 1 && currentIndex === CANONICAL_STEPS.length - 1);
+  const isInspectingUpcoming = !isInspectingCurrent && !isInspectingCompleted;
+
+  const statusHistory = Array.isArray(request.statusHistory) ? request.statusHistory : [];
+  const urgencyMeta = getMaintenanceUrgencyMeta(request.urgency || "normal");
+  const providerLabel =
+    request.tenantVisibleProviderLabel ||
+    request.providerDetails?.tenantVisibleLabel ||
+    request.providerDetails?.providerName ||
+    "";
+  const scheduledDate = request.schedule?.scheduledDate;
+  const hasReport = Boolean(request.completionReport && !request.completionReport.isDraft);
+  const isConfirmed = Boolean(request.resolutionConfirmation?.confirmedAt);
+
+  let milestoneTime = "";
+  let milestoneActor = "";
+  let milestoneSummary = "";
+  let milestoneNext = "";
+  let milestoneFact = "";
+
+  if (inspectedKey === "pending_review") {
+    milestoneTime = request.created_at ? fmtDateTime(request.created_at) : "Date pending";
+    milestoneActor = "Submitted by Tenant";
+    milestoneFact = `${urgencyMeta.label} Priority (Turnaround: ${urgencyMeta.estimate || "24–48 hrs"})`;
+    milestoneSummary = "Ticket received and placed into the facilities triage queue.";
+    milestoneNext = "Facilities team will review ticket details and assess service requirements.";
+  } else if (inspectedKey === "reviewed") {
+    const reviewedEntry = statusHistory.find((h) => h.status === "reviewed" || h.status === "under_review");
+    milestoneTime = reviewedEntry?.timestamp
+      ? fmtDateTime(reviewedEntry.timestamp)
+      : currentIndex >= 1
+        ? fmtDateTime(request.updated_at)
+        : "Awaiting triage";
+    milestoneActor = reviewedEntry?.actor_name || "Facilities Management Team";
+    milestoneFact = `Category: ${formatMaintenanceType(request.request_type)}`;
+    milestoneSummary = request.notes
+      ? `Admin Note: "${request.notes}"`
+      : `Assessed for ${formatMaintenanceType(request.request_type)} with ${urgencyMeta.label}.`;
+    milestoneNext = "Coordinating technician schedule and assigning service specialist.";
+  } else if (inspectedKey === "in_progress") {
+    const inProgressEntry = statusHistory.find((h) => h.status === "in_progress");
+    milestoneTime = scheduledDate
+      ? fmtDateTime(scheduledDate)
+      : inProgressEntry?.timestamp
+        ? fmtDateTime(inProgressEntry.timestamp)
+        : currentIndex >= 2
+          ? fmtDateTime(request.updated_at)
+          : "Awaiting assignment";
+    milestoneActor = providerLabel || "Authorized Service Specialist";
+    milestoneFact = scheduledDate
+      ? `${urgencyMeta.label} Priority • On-site Service`
+      : providerLabel
+        ? `${urgencyMeta.label} Priority • Specialist Assigned`
+        : "Technician Assignment In Progress";
+    milestoneSummary = request.schedule?.notes
+      ? `Schedule Notes: ${request.schedule.notes}`
+      : providerLabel
+        ? `${providerLabel} has been assigned to handle this repair.`
+        : "Facilities staff is assigning an authorized service technician.";
+    milestoneNext = "Technician will conduct on-site inspection and perform required repairs.";
+  } else if (inspectedKey === "resolved") {
+    const resolvedEntry = statusHistory.find((h) => h.status === "resolved");
+    milestoneTime = request.resolved_at
+      ? fmtDateTime(request.resolved_at)
+      : resolvedEntry?.timestamp
+        ? fmtDateTime(resolvedEntry.timestamp)
+        : currentIndex >= 3
+          ? fmtDateTime(request.updated_at)
+          : "Pending work completion";
+    milestoneActor = request.completionReport?.finalizedByName || providerLabel || "Service Specialist";
+    milestoneFact = hasReport
+      ? "Official Report Filed"
+      : currentIndex >= 3
+        ? "Repairs Finished On-Site"
+        : "Pending Inspection";
+    milestoneSummary =
+      request.completionReport?.workDone ||
+      request.completionReport?.summary ||
+      "Technician has concluded maintenance work on-site.";
+    milestoneNext = isConfirmed
+      ? "Work inspected and approved by tenant."
+      : "Please inspect your room and confirm resolution or report remaining issues.";
+  } else if (inspectedKey === "completed") {
+    milestoneTime = request.resolutionConfirmation?.confirmedAt
+      ? fmtDateTime(request.resolutionConfirmation.confirmedAt)
+      : request.resolved_at
+        ? fmtDateTime(request.resolved_at)
+        : currentIndex >= 4
+          ? fmtDateTime(request.updated_at)
+          : "Pending ticket closure";
+    milestoneActor = isConfirmed
+      ? "Confirmed by Tenant"
+      : currentIndex >= 4
+        ? "Facilities Management"
+        : "Pending Closure";
+    milestoneFact = request.resolutionConfirmation?.rating
+      ? `Rating: ${request.resolutionConfirmation.rating} / 5 Stars`
+      : currentIndex >= 4
+        ? "Ticket Closed"
+        : "Archived After Confirmation";
+    milestoneSummary = request.resolutionConfirmation?.tenantFeedback
+      ? `Tenant Feedback: "${request.resolutionConfirmation.tenantFeedback}"`
+      : "Maintenance ticket completed and verified in dormitory records.";
+    milestoneNext = "Ticket archived in history. You can reopen this request if any issues reoccur.";
+  }
+
+  let statusBadgeClass = "status-upcoming";
+  let statusBadgeLabel = "Upcoming Stage";
+  if (isInspectingCurrent) {
+    statusBadgeClass = "status-current";
+    statusBadgeLabel = "Current Active Stage";
+  } else if (isInspectingCompleted) {
+    statusBadgeClass = "status-completed";
+    statusBadgeLabel = "Completed";
+  }
+
+  return (
+    <div className="maintenance-stage-window" role="region" aria-label={`Stage ${selectedIdx + 1} details`}>
+      <div className="stage-window-header">
+        <div className="stage-window-header__title">
+          <h4>
+            <Wrench size={14} style={{ color: "var(--color-primary, #2563EB)" }} />
+            <span>Step {selectedIdx + 1}: {inspectedStep.label}</span>
+          </h4>
+          <span className={`stage-status-badge ${statusBadgeClass}`}>
+            <span className="badge-dot" />
+            <span>{statusBadgeLabel}</span>
+          </span>
+        </div>
+
+        {!isInspectingCurrent ? (
+          <button
+            type="button"
+            className="stage-reset-btn"
+            onClick={onResetActiveStage}
+            title="Return to the active stage"
+          >
+            <RefreshCcw size={12} />
+            <span>Back to Active Stage (Step {currentIndex + 1})</span>
+          </button>
+        ) : null}
+      </div>
+
+      <div className="stage-milestone-grid">
+        <div className="stage-milestone-card">
+          <span className="stage-milestone-card__label">
+            <Clock size={12} />
+            <span>{inspectedKey === "in_progress" && scheduledDate ? "Scheduled For" : "Milestone Time"}</span>
+          </span>
+          <span className="stage-milestone-card__value">{milestoneTime}</span>
+        </div>
+
+        <div className="stage-milestone-card">
+          <span className="stage-milestone-card__label">
+            <User size={12} />
+            <span>Key Contact / Actor</span>
+          </span>
+          <span className="stage-milestone-card__value">{milestoneActor}</span>
+        </div>
+
+        <div className="stage-milestone-card">
+          <span className="stage-milestone-card__label">
+            <Zap size={12} />
+            <span>Key Details</span>
+          </span>
+          <span className="stage-milestone-card__value">{milestoneFact}</span>
+        </div>
+      </div>
+
+      <div className="stage-summary-box">
+        <div className="stage-summary-box__header">
+          <ClipboardList size={12} />
+          <span>Stage Overview &amp; Next Expected Action</span>
+        </div>
+        <p className="stage-summary-box__text">{milestoneSummary}</p>
+        <div style={{ fontSize: "0.78rem", color: "var(--muted-foreground, #64748B)", borderTop: "1px solid var(--border, #E2E8F0)", paddingTop: 6, marginTop: 2 }}>
+          <strong>Next:</strong> {milestoneNext}
+        </div>
+      </div>
+
+      {/* Stage Actions - Rendered when no active reschedule status banner is shown */}
+      {inspectedKey === "in_progress" &&
+      isInspectingCurrent &&
+      !request.rescheduleRequest?.status &&
+      !["resolved", "completed", "closed", "cancelled"].includes(request.status) &&
+      !hideActions ? (
+        <div className="stage-actions-bar">
+          <button
+            type="button"
+            onClick={onReschedule}
+            className="btn btn-secondary maintenance-reschedule-btn"
+            style={{ fontSize: "0.8rem", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            <Calendar size={13} /> {scheduledDate ? "Request Reschedule" : "Request Preferred Schedule"}
+          </button>
+        </div>
+      ) : null}
+
+      {/* Standby Reschedule Details (Pending Staff Approval) */}
+      {inspectedKey === "in_progress" && request.rescheduleRequest?.status === "pending" ? (
+        <div
+          style={{
+            fontSize: "0.8rem",
+            color: "var(--foreground)",
+            background: "var(--surface-input)",
+            border: "1px solid var(--border)",
+            padding: "10px 12px",
+            borderRadius: 8,
+            marginTop: 4,
+          }}
+          className="space-y-1.5"
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontWeight: 700, flexWrap: "wrap", gap: 6 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.82rem", color: "var(--foreground)" }}>
+              <Clock size={14} style={{ color: "#D97706" }} /> Reschedule Request: Pending Approval
+            </span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                fontSize: "0.72rem",
+                fontWeight: 600,
+                color: "#D97706",
+                border: "1px solid var(--border)",
+                background: "transparent",
+                padding: "2px 8px",
+                borderRadius: 9999,
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#D97706", display: "inline-block" }} />
+              <span>Awaiting Staff Review</span>
+            </span>
+          </div>
+          <div style={{ fontSize: "0.78rem", color: "var(--muted-foreground)", marginTop: 4 }}>
+            <strong style={{ color: "var(--foreground)" }}>Your Requested Time:</strong> {fmtDateTime(request.rescheduleRequest.proposedDate)}
+            {request.rescheduleRequest.reason ? ` — "${request.rescheduleRequest.reason}"` : ""}
+          </div>
+          <p style={{ fontSize: "0.74rem", color: "var(--muted-foreground)", margin: "4px 0" }}>
+            Dormitory facilities staff is currently reviewing technician availability for this request.
+          </p>
+          <div style={{ fontSize: "0.75rem", color: "var(--muted-foreground)", borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 6 }}>
+            <strong style={{ color: "var(--foreground)" }}>Current Active Appointment:</strong> {scheduledDate ? fmtDateTime(scheduledDate) : "Pending"}{" "}
+            <em>(Remains in place until approved or updated)</em>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Accepted Reschedule Notice */}
+      {inspectedKey === "in_progress" && request.rescheduleRequest?.status === "accepted" ? (
+        <div
+          style={{
+            fontSize: "0.8rem",
+            color: "var(--foreground)",
+            background: "var(--surface-input)",
+            border: "1px solid var(--border)",
+            padding: "10px 12px",
+            borderRadius: 8,
+            marginTop: 4,
+          }}
+        >
+          <div style={{ fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.82rem", color: "var(--foreground)" }}>
+              <Check size={14} style={{ color: "#059669" }} /> Reschedule Request: Approved
+            </span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                fontSize: "0.72rem",
+                fontWeight: 600,
+                color: "#059669",
+                border: "1px solid var(--border)",
+                background: "transparent",
+                padding: "2px 8px",
+                borderRadius: 9999,
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#059669", display: "inline-block" }} />
+              <span>Confirmed</span>
+            </span>
+          </div>
+          <div style={{ fontSize: "0.78rem", color: "var(--muted-foreground)", marginTop: 4 }}>
+            Your requested schedule was approved by dormitory facilities staff.
+          </div>
+          <div
+            style={{
+              fontSize: "0.76rem",
+              fontWeight: 600,
+              color: "var(--foreground)",
+              marginTop: 6,
+              borderTop: "1px solid var(--border)",
+              paddingTop: 6,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 6,
+            }}
+          >
+            <span>
+              Confirmed Visit Date: <strong>{scheduledDate ? fmtDateTime(scheduledDate) : "Confirmed"}</strong>
+            </span>
+            {isInspectingCurrent && !["resolved", "completed", "closed", "cancelled"].includes(request.status) && !hideActions ? (
+              <button
+                type="button"
+                onClick={onReschedule}
+                className="btn btn-secondary"
+                style={{ fontSize: "0.74rem", padding: "4px 8px", display: "inline-flex", alignItems: "center", gap: 4 }}
+              >
+                <Calendar size={12} /> {scheduledDate ? "Request Reschedule" : "Request Preferred Schedule"}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Declined Reschedule Notice (Original Schedule Maintained) */}
+      {inspectedKey === "in_progress" && request.rescheduleRequest?.status === "declined" ? (
+        <div
+          style={{
+            fontSize: "0.8rem",
+            color: "var(--foreground)",
+            background: "var(--surface-input)",
+            border: "1px solid var(--border)",
+            padding: "10px 12px",
+            borderRadius: 8,
+            marginTop: 4,
+          }}
+        >
+          <div style={{ fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.82rem", color: "var(--foreground)" }}>
+              <AlertTriangle size={14} style={{ color: "#E11D48" }} /> Reschedule Request: Not Approved / Declined
+            </span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                fontSize: "0.72rem",
+                fontWeight: 600,
+                color: "#E11D48",
+                border: "1px solid var(--border)",
+                background: "transparent",
+                padding: "2px 8px",
+                borderRadius: 9999,
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#E11D48", display: "inline-block" }} />
+              <span>Original Schedule Maintained</span>
+            </span>
+          </div>
+          <div style={{ fontSize: "0.78rem", color: "var(--muted-foreground)", marginTop: 4 }}>
+            <strong style={{ color: "var(--foreground)" }}>Staff Reason:</strong>{" "}
+            {request.rescheduleRequest.responseNote
+              ? `"${request.rescheduleRequest.responseNote}"`
+              : "The requested time could not be accommodated at this time."}
+          </div>
+          <div
+            style={{
+              fontSize: "0.76rem",
+              fontWeight: 600,
+              color: "var(--foreground)",
+              marginTop: 6,
+              borderTop: "1px solid var(--border)",
+              paddingTop: 6,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 6,
+            }}
+          >
+            <span>
+              Original Visit Schedule: <strong>{scheduledDate ? fmtDateTime(scheduledDate) : "the original date"}</strong>
+            </span>
+            {isInspectingCurrent && !["resolved", "completed", "closed", "cancelled"].includes(request.status) && !hideActions ? (
+              <button
+                type="button"
+                onClick={onReschedule}
+                className="btn btn-secondary"
+                style={{ fontSize: "0.74rem", padding: "4px 8px", display: "inline-flex", alignItems: "center", gap: 4 }}
+              >
+                <Calendar size={12} /> {scheduledDate ? "Request Reschedule" : "Request Preferred Schedule"}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Adjusted Alternate Schedule Proposed by Staff */}
+      {inspectedKey === "in_progress" && request.rescheduleRequest?.status === "adjusted" ? (
+        <div
+          style={{
+            fontSize: "0.8rem",
+            color: "var(--foreground)",
+            background: "var(--surface-input)",
+            border: "1px solid var(--border)",
+            padding: "10px 12px",
+            borderRadius: 8,
+            marginTop: 4,
+          }}
+        >
+          <div style={{ fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.82rem", color: "var(--foreground)" }}>
+              <Check size={14} style={{ color: "#059669" }} /> Alternate Schedule Set by Staff
+            </span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                fontSize: "0.72rem",
+                fontWeight: 600,
+                color: "#059669",
+                border: "1px solid var(--border)",
+                background: "transparent",
+                padding: "2px 8px",
+                borderRadius: 9999,
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#059669", display: "inline-block" }} />
+              <span>Adjusted</span>
+            </span>
+          </div>
+          <div style={{ fontSize: "0.78rem", color: "var(--muted-foreground)", marginTop: 4 }}>
+            {request.rescheduleRequest.responseNote
+              ? `Staff Note: "${request.rescheduleRequest.responseNote}"`
+              : "Dormitory staff has set an alternate repair visit time."}
+          </div>
+          <div
+            style={{
+              fontSize: "0.76rem",
+              fontWeight: 600,
+              color: "var(--foreground)",
+              marginTop: 6,
+              borderTop: "1px solid var(--border)",
+              paddingTop: 6,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 6,
+            }}
+          >
+            <span>
+              New Appointment: <strong>{scheduledDate ? fmtDateTime(scheduledDate) : "Confirmed"}</strong>
+            </span>
+            {isInspectingCurrent && !["resolved", "completed", "closed", "cancelled"].includes(request.status) && !hideActions ? (
+              <button
+                type="button"
+                onClick={onReschedule}
+                className="btn btn-secondary"
+                style={{ fontSize: "0.74rem", padding: "4px 8px", display: "inline-flex", alignItems: "center", gap: 4 }}
+              >
+                <Calendar size={12} /> {scheduledDate ? "Request Reschedule" : "Request Preferred Schedule"}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {inspectedKey === "resolved" && request.status === "resolved" && !isConfirmed && !hideActions ? (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div
+            style={{
+              fontSize: "0.8rem",
+              color: "var(--foreground)",
+              background: "var(--surface-input)",
+              border: "1px solid var(--border)",
+              padding: "10px 12px",
+              borderRadius: 8,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontWeight: 700, flexWrap: "wrap", gap: 6 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.82rem", color: "var(--foreground)" }}>
+                <Clock size={14} style={{ color: "#D97706" }} /> 7-Day Inspection &amp; Verification Window
+              </span>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontSize: "0.72rem",
+                  fontWeight: 600,
+                  color: "#D97706",
+                  border: "1px solid var(--border)",
+                  background: "transparent",
+                  padding: "2px 8px",
+                  borderRadius: 9999,
+                }}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#D97706", display: "inline-block" }} />
+                <span>Action Required</span>
+              </span>
+            </div>
+            <p style={{ fontSize: "0.76rem", color: "var(--muted-foreground)", margin: "6px 0 0 0", lineHeight: 1.4 }}>
+              Please inspect the completed repair in your room and submit your feedback/rating. This request will automatically finalize in <strong>7 days</strong> if no issues are reported.
+            </p>
+          </div>
+
+          <div className="stage-actions-bar" style={{ marginTop: 0 }}>
+            <button
+              type="button"
+              className="btn-success"
+              style={{ fontSize: "0.8rem", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 5 }}
+              onClick={onConfirmResolution}
+            >
+              <Check size={13} /> Confirm Resolution &amp; Rate
+            </button>
+            <button
+              type="button"
+              className="btn-outline-danger"
+              style={{ fontSize: "0.8rem", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 5 }}
+              onClick={onRejectResolution}
+            >
+              <AlertTriangle size={13} /> Report Issue Not Fixed
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {(inspectedKey === "completed" || inspectedKey === "resolved") && hasReport && !hideActions ? (
+        <div className="stage-actions-bar" style={{ justifyContent: "space-between", marginTop: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#166534", fontSize: "0.8rem", fontWeight: 600 }}>
+            <FileCheck size={14} color="#16A34A" />
+            <span>Official Completion Report Available</span>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ fontSize: "0.78rem", padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 5 }}
+            onClick={onViewReport}
+          >
+            <FileText size={12} /> View Official Report
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -330,43 +960,6 @@ const filterValidFiles = (files) => {
   return validFiles;
 };
 
-const fmtDate = (value) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown date";
-  return date.toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-};
-
-const fmtDateTime = (value) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown date";
-  return date.toLocaleString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-};
-
-const formatSlaLabel = (slaState) => {
-  if (!slaState) return "No Target Timeline";
-  if (slaState.label === "delayed") return "Delayed";
-  if (slaState.label === "priority") return "Priority";
-  if (slaState.label === "closed") return "Closed";
-  return "On Track";
-};
-
-const getStatusIcon = (status) => {
-  if (RESOLVED_STATUS_SET.has(status)) return CheckCircle2;
-  if (REJECTED_STATUS_SET.has(status)) return X;
-  if (["pending", "pending_review", "viewed", "reviewed"].includes(status)) return Clock;
-  return RefreshCcw;
-};
-
 const getTenantVisibleAttachments = (attachments = []) =>
   Array.isArray(attachments)
     ? attachments.filter((attachment) => !attachment?.isRemoved)
@@ -481,6 +1074,8 @@ function ConfirmDialog({
   isProcessing = false,
   onConfirm,
   onCancel,
+  maxWidth = 380,
+  children,
 }) {
   const getConfirmButtonClass = () => {
     if (danger || confirmVariant === "danger") return "btn btn-danger";
@@ -500,17 +1095,20 @@ function ConfirmDialog({
           background: "var(--card)",
           borderRadius: 12,
           padding: "18px 20px",
-          maxWidth: 380,
+          maxWidth,
           width: "90%",
           boxShadow: "0 20px 48px rgba(0, 0, 0, 0.16)",
           border: "1px solid var(--border)",
         }}
       >
         <h3 style={{ margin: "0 0 6px", fontSize: 15.5, color: "var(--foreground)", fontWeight: 700, letterSpacing: "-0.01em" }}>{title}</h3>
-        <p style={{ margin: "0 0 16px", color: "var(--muted-foreground)", fontSize: 13.5, lineHeight: 1.5 }}>
-          {message}
-        </p>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        {message ? (
+          <p style={{ margin: "0 0 14px", color: "var(--muted-foreground)", fontSize: 13.5, lineHeight: 1.5 }}>
+            {message}
+          </p>
+        ) : null}
+        {children}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: children ? 16 : 0 }}>
           <button
             type="button"
             className="btn btn-secondary"
@@ -538,11 +1136,14 @@ function ConfirmDialog({
 
 export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const requestedRequestId = searchParams.get("requestId");
   const [showModal, setShowModal] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [editingRequestId, setEditingRequestId] = useState(null);
-  const [selectedRequestId, setSelectedRequestId] = useState(null);
+  const [selectedRequestId, setSelectedRequestId] = useState(requestedRequestId || null);
   const [detailTab, setDetailTab] = useState("details");
+  const [viewedTabs, setViewedTabs] = useState(() => new Set(["details"]));
   const [previewAttachment, setPreviewAttachment] = useState(null);
   const [viewingReportRequest, setViewingReportRequest] = useState(null);
   const [reopenNote, setReopenNote] = useState("");
@@ -553,9 +1154,13 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [pendingCancelRequest, setPendingCancelRequest] = useState(null);
   const [pendingDiscardModal, setPendingDiscardModal] = useState(false);
-  const [pendingSubmitModal, setPendingSubmitModal] = useState(false);
+  const [pendingSubmitConfirmation, setPendingSubmitConfirmation] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [expandedCardIds, setExpandedCardIds] = useState(() => new Set());
+  const [expandedCardIds, setExpandedCardIds] = useState(() => {
+    const initial = new Set();
+    if (requestedRequestId) initial.add(requestedRequestId);
+    return initial;
+  });
   const [collapsedCardIds, setCollapsedCardIds] = useState(() => new Set());
   const [rescheduleModalRequest, setRescheduleModalRequest] = useState(null);
   const [rescheduleDate, setRescheduleDate] = useState("");
@@ -578,12 +1183,45 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const confirmResolutionMutation = useConfirmMaintenanceResolution();
   const requestRescheduleMutation = useRequestMaintenanceReschedule();
   const sendReplyMutation = useSendTenantMaintenanceReply();
+  const markTenantReadMutation = useMarkTenantMaintenanceRead();
+
+  useEffect(() => {
+    if (requestedRequestId) {
+      setExpandedCardIds((prev) => new Set(prev).add(requestedRequestId));
+      setSelectedRequestId(requestedRequestId);
+    }
+  }, [requestedRequestId]);
 
   const requests = data?.requests || [];
-  const selectedRequest = useMemo(
-    () => requests.find((request) => request.request_id === selectedRequestId) || null,
+  const [localRequestOverride, setLocalRequestOverride] = useState(null);
+
+  useEffect(() => {
+    setLocalRequestOverride(null);
+  }, [selectedRequestId]);
+
+  const baseSelectedRequest = useMemo(
+    () =>
+      requests.find(
+        (request) =>
+          request.request_id === selectedRequestId ||
+          String(request._id) === String(selectedRequestId) ||
+          (request.ticketNumber && String(request.ticketNumber) === String(selectedRequestId)),
+      ) || null,
     [requests, selectedRequestId],
   );
+
+  const selectedRequest = useMemo(() => {
+    if (!baseSelectedRequest && !localRequestOverride) return null;
+    const baseId = String(baseSelectedRequest?.request_id || baseSelectedRequest?._id || "");
+    const overrideId = String(localRequestOverride?.request_id || localRequestOverride?._id || "");
+    if (localRequestOverride && (!overrideId || !baseId || overrideId === baseId)) {
+      return {
+        ...(baseSelectedRequest || {}),
+        ...localRequestOverride,
+      };
+    }
+    return baseSelectedRequest;
+  }, [baseSelectedRequest, localRequestOverride]);
 
   const [seenConvMap, setSeenConvMap] = useState(() => {
     try {
@@ -621,7 +1259,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     return unread.length;
   };
 
-  const markConversationSeen = (requestId) => {
+  const markConversationSeen = useCallback((requestId) => {
     if (!requestId) return;
     const key = `lilycrest_seen_conv_${requestId}_tenant`;
     const nowIso = new Date().toISOString();
@@ -629,6 +1267,121 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       localStorage.setItem(key, nowIso);
     } catch {}
     setSeenConvMap((prev) => ({ ...prev, [key]: nowIso }));
+  }, []);
+
+  const handleDetailTabChange = useCallback((nextTab) => {
+    setDetailTab(nextTab);
+    setViewedTabs((prev) => {
+      const next = new Set(prev);
+      next.add(nextTab);
+      return next;
+    });
+    if (nextTab === "conversation" && selectedRequest?.request_id) {
+      markConversationSeen(selectedRequest.request_id);
+    }
+  }, [selectedRequest?.request_id, markConversationSeen]);
+
+  useEffect(() => {
+    setViewedTabs(new Set(["details"]));
+  }, [selectedRequestId]);
+
+  useEffect(() => {
+    if (detailTab) {
+      setViewedTabs((prev) => {
+        if (prev.has(detailTab)) return prev;
+        const next = new Set(prev);
+        next.add(detailTab);
+        return next;
+      });
+    }
+  }, [detailTab]);
+
+  const [adminIsTyping, setAdminIsTyping] = useState(false);
+  const [adminTypingName, setAdminTypingName] = useState("");
+  const adminTypingTimerRef = useRef(null);
+
+  useEffect(() => {
+    const handleMaintenanceEvent = (e) => {
+      const detail = e.detail || {};
+      const targetIds = [
+        detail.requestId,
+        detail.request_id,
+        detail.ticketId,
+        detail.ticketNumber,
+        detail.request?._id,
+        detail.request?.request_id,
+        detail.request?.ticketNumber,
+      ].filter(Boolean);
+
+      const match = targetIds.some(
+        (id) =>
+          String(id) === String(selectedRequestId) ||
+          String(id) === String(selectedRequest?._id) ||
+          String(id) === String(selectedRequest?.request_id) ||
+          String(id) === String(selectedRequest?.ticketNumber),
+      );
+
+      if (match) {
+        if (detail.conversation || detail.request) {
+          setLocalRequestOverride((prev) => ({
+            ...(prev || {}),
+            ...(detail.request || {}),
+            conversation: detail.conversation || detail.request?.conversation || prev?.conversation,
+            status: detail.status || detail.request?.status || prev?.status,
+            updated_at: detail.updated_at || detail.request?.updated_at || new Date().toISOString(),
+          }));
+        }
+        if (detailTab === "conversation") {
+          markConversationSeen(selectedRequestId);
+        }
+      }
+    };
+
+    const handleTypingEvent = (e) => {
+      const detail = e.detail || {};
+      const targetIds = [
+        detail.requestId,
+        detail.request_id,
+        detail.ticketId,
+        detail.ticketNumber,
+      ].filter(Boolean);
+
+      const match = targetIds.some(
+        (id) =>
+          String(id) === String(selectedRequestId) ||
+          String(id) === String(selectedRequest?._id) ||
+          String(id) === String(selectedRequest?.request_id) ||
+          String(id) === String(selectedRequest?.ticketNumber),
+      );
+
+      if (match && (detail.senderSide === "admin" || detail.senderSide === "staff")) {
+        setAdminIsTyping(Boolean(detail.isTyping));
+        setAdminTypingName(detail.senderName || "Dormitory Admin");
+
+        if (adminTypingTimerRef.current) clearTimeout(adminTypingTimerRef.current);
+        if (detail.isTyping) {
+          adminTypingTimerRef.current = setTimeout(() => {
+            setAdminIsTyping(false);
+          }, 3500);
+        }
+      }
+    };
+
+    window.addEventListener("lilycrest:maintenance-updated", handleMaintenanceEvent);
+    window.addEventListener("lilycrest:maintenance-message", handleMaintenanceEvent);
+    window.addEventListener("lilycrest:maintenance-typing", handleTypingEvent);
+
+    return () => {
+      window.removeEventListener("lilycrest:maintenance-updated", handleMaintenanceEvent);
+      window.removeEventListener("lilycrest:maintenance-message", handleMaintenanceEvent);
+      window.removeEventListener("lilycrest:maintenance-typing", handleTypingEvent);
+      if (adminTypingTimerRef.current) clearTimeout(adminTypingTimerRef.current);
+    };
+  }, [selectedRequestId, selectedRequest?._id, selectedRequest?.request_id, selectedRequest?.ticketNumber, detailTab, markConversationSeen]);
+
+  const handleTenantTypingChange = (isTyping) => {
+    if (!selectedRequestId) return;
+    maintenanceApi.sendTenantTyping(selectedRequestId, isTyping).catch(() => {});
   };
 
   useEffect(() => {
@@ -690,6 +1443,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         next.delete(id);
         return next;
       });
+      if (request.isUpdatedForTenant) {
+        markTenantReadMutation.mutate(id);
+      }
     }
   };
 
@@ -710,10 +1466,39 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     setExpandedCardIds(new Set());
   };
 
+  const [inspectedStageMap, setInspectedStageMap] = useState({});
+  const [modalInspectedStageIndex, setModalInspectedStageIndex] = useState(null);
+
+  const getInspectedStageIndex = (request) => {
+    const id = request.request_id || request._id;
+    const activeIdx = request.isReopened === true ? 0 : getStepIndex(request.status);
+    if (typeof inspectedStageMap[id] === "number") {
+      const savedIdx = inspectedStageMap[id];
+      if (savedIdx <= activeIdx) {
+        return savedIdx;
+      }
+    }
+    return activeIdx;
+  };
+
+  const handleSelectStage = (request, stageIdx) => {
+    const activeIdx = request.isReopened === true ? 0 : getStepIndex(request.status);
+    if (stageIdx > activeIdx) return;
+    const id = request.request_id || request._id;
+    setInspectedStageMap((prev) => ({ ...prev, [id]: stageIdx }));
+  };
+
+  const handleResetActiveStage = (request) => {
+    const id = request.request_id || request._id;
+    const activeIdx = request.isReopened === true ? 0 : getStepIndex(request.status);
+    setInspectedStageMap((prev) => ({ ...prev, [id]: activeIdx }));
+  };
+
   useEffect(() => {
     setReplyMessage("");
     setReplyAttachments([]);
     setDetailTab("details");
+    setModalInspectedStageIndex(null);
   }, [selectedRequestId]);
 
   const isEditing = Boolean(editingRequestId);
@@ -756,7 +1541,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     setEditingRequestId(null);
     setFormData({ ...EMPTY_FORM_DATA });
     setPendingDiscardModal(false);
-    setPendingSubmitModal(false);
+    setPendingSubmitConfirmation(false);
   };
 
   const handleRequestModalClose = () => {
@@ -922,8 +1707,8 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     }
   };
 
-  const handleSubmitRequest = (event) => {
-    event.preventDefault();
+  const handleSubmitRequest = async (event) => {
+    event?.preventDefault();
 
     if (descriptionLength === 0) {
       showNotification("Please provide a description of the maintenance issue.", "error");
@@ -946,7 +1731,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       return;
     }
 
-    setPendingSubmitModal(true);
+    setPendingSubmitConfirmation(true);
   };
 
   const confirmSubmitRequest = async () => {
@@ -970,13 +1755,13 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         showNotification("Maintenance request submitted successfully.", "success");
       }
 
+      setPendingSubmitConfirmation(false);
       resetComposer();
     } catch (error) {
       showNotification(
         error.message || `Failed to ${isEditing ? "update" : "submit"} maintenance request.`,
         "error",
       );
-      setPendingSubmitModal(false);
     }
   };
 
@@ -1056,18 +1841,31 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const handleRequestReschedule = async () => {
     if (!rescheduleModalRequest) return;
     if (!rescheduleDate || !rescheduleTime) {
-      showNotification("Please select a preferred new date and time.", "error");
+      showNotification("Please select both a preferred date and time.", "error");
       return;
     }
+
+    const isEmergency = rescheduleModalRequest.urgency === "emergency";
+    const slotValidation = validateMaintenanceSlot(rescheduleDate, rescheduleTime, { isEmergency });
+    if (!slotValidation.valid) {
+      showNotification(slotValidation.reason, "error");
+      return;
+    }
+
     try {
       await requestRescheduleMutation.mutateAsync({
         requestId: rescheduleModalRequest.request_id,
         payload: {
-          proposedDate: `${rescheduleDate}T${rescheduleTime}:00`,
+          proposedDate: slotValidation.isoString,
           reason: rescheduleReason.trim() || undefined,
         },
       });
-      showNotification("Reschedule request submitted to facilities management.", "success");
+        showNotification(
+          rescheduleModalRequest.schedule?.scheduledDate || rescheduleModalRequest.scheduledDate
+            ? "Reschedule request submitted to facilities management."
+            : "Preferred visit schedule submitted to facilities management.",
+          "success",
+        );
       setRescheduleModalRequest(null);
       setRescheduleDate("");
       setRescheduleTime("");
@@ -1356,6 +2154,28 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                       </div>
 
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+                        {request.isUpdatedForTenant && (
+                          <span
+                            id={`updated-request-badge-${requestId}`}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                              padding: "4px 9px",
+                              borderRadius: 6,
+                              background: "transparent",
+                              color: "#2563EB",
+                              border: "1px solid var(--border)",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              whiteSpace: "nowrap",
+                            }}
+                            title="Recent update from facilities team"
+                          >
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563EB" }} />
+                            Updated
+                          </span>
+                        )}
                         <span
                           style={{
                             display: "inline-flex",
@@ -1389,7 +2209,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            Awaiting Verification
+                            Work Done • Pending Confirmation
                           </span>
                         )}
 
@@ -1443,118 +2263,42 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                           status={request.status}
                           isReopened={request.isReopened === true}
                           reopenCount={request.reopenCount}
+                          inspectedStageIndex={getInspectedStageIndex(request)}
+                          onSelectStage={(idx) => handleSelectStage(request, idx)}
                         />
 
-                        {/* Provider & Schedule Badges + Reschedule Request */}
-                        {(providerLabel || scheduledDate || request.rescheduleRequest?.status === "pending") ? (
-                          <div className="maintenance-logistics-strip">
-                            <div className="maintenance-logistics-strip__items">
-                              {providerLabel ? (
-                                <div className="maintenance-logistics-chip maintenance-logistics-chip--assigned">
-                                  <User size={13} />
-                                  <span>Assigned: {providerLabel}</span>
-                                </div>
-                              ) : null}
-                              {scheduledDate ? (
-                                <div className="maintenance-logistics-chip maintenance-logistics-chip--scheduled">
-                                  <Calendar size={13} />
-                                  <span>Scheduled: {fmtDateTime(scheduledDate)}</span>
-                                </div>
-                              ) : null}
-                              {request.rescheduleRequest?.status === "pending" ? (
-                                <div className="maintenance-logistics-chip maintenance-logistics-chip--reschedule-pending">
-                                  <Clock size={13} />
-                                  <span>Reschedule Requested for {fmtDateTime(request.rescheduleRequest.proposedDate)} (Awaiting Staff Confirmation)</span>
-                                </div>
-                              ) : null}
-                            </div>
+                        {/* Hybrid Stage Card Window */}
+                        <MaintenanceStageCardWindow
+                          request={request}
+                          inspectedStageIndex={getInspectedStageIndex(request)}
+                          onResetActiveStage={() => handleResetActiveStage(request)}
+                          onReschedule={() => {
+                            setRescheduleModalRequest(request);
+                            setRescheduleDate("");
+                            setRescheduleTime("");
+                            setRescheduleReason("");
+                          }}
+                          onConfirmResolution={() => {
+                            setVerifyModalRequest(request);
+                            setVerifyRating(5);
+                            setVerifyHoverRating(0);
+                            setVerifyFeedback("");
+                          }}
+                          onRejectResolution={() => {
+                            setRejectResolutionModalRequest(request);
+                            setRejectionFeedback("");
+                          }}
+                          onViewReport={() => setViewingReportRequest(request)}
+                          hideActions={Boolean(
+                            selectedRequestId ||
+                            verifyModalRequest ||
+                            rejectResolutionModalRequest ||
+                            rescheduleModalRequest ||
+                            viewingReportRequest
+                          )}
+                        />
 
-                            {scheduledDate && request.rescheduleRequest?.status !== "pending" && !["resolved", "completed", "closed", "cancelled"].includes(request.status) ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setRescheduleModalRequest(request);
-                                  setRescheduleDate("");
-                                  setRescheduleTime("");
-                                  setRescheduleReason("");
-                                }}
-                                className="btn btn-secondary maintenance-reschedule-btn"
-                              >
-                                <Calendar size={13} /> Request Reschedule
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
-
-                        {/* Official Completion Report CTA */}
-                        {hasReport ? (
-                          <div
-                            style={{
-                              marginTop: 14,
-                              borderRadius: 12,
-                              padding: "12px 14px",
-                              background: "#F0FDF4",
-                              border: "1px solid #BBF7D0",
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              flexWrap: "wrap",
-                              gap: 10,
-                            }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <FileCheck size={16} color="#16A34A" />
-                              <div>
-                                <strong style={{ color: "#166534", fontSize: 13, display: "block" }}>Official Completion Report Available</strong>
-                                <span style={{ color: "#15803D", fontSize: 12 }}>Signed & verified by Facilities Supervisor</span>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              style={{ fontSize: 12, padding: "6px 12px" }}
-                              onClick={() => setViewingReportRequest(request)}
-                            >
-                              View Official Report
-                            </button>
-                          </div>
-                        ) : null}
-
-                        {/* Resolution Prompt */}
-                        {request.status === "resolved" && !isConfirmed ? (
-                          <div className="resolution-confirmation-banner">
-                            <div>
-                              <h4>Was your maintenance issue resolved?</h4>
-                              <p>Our team has completed this repair. Please check the work and share your feedback.</p>
-                            </div>
-                            <div className="resolution-banner-actions">
-                              <button
-                                type="button"
-                                className="btn-success"
-                                disabled={confirmResolutionMutation.isPending}
-                                onClick={() => {
-                                  setVerifyModalRequest(request);
-                                  setVerifyRating(5);
-                                  setVerifyHoverRating(0);
-                                  setVerifyFeedback("");
-                                }}
-                              >
-                                <Check size={14} /> Confirm &amp; Rate Repair
-                              </button>
-                              <button
-                                type="button"
-                                className="btn-outline-danger"
-                                disabled={confirmResolutionMutation.isPending}
-                                onClick={() => {
-                                  setRejectResolutionModalRequest(request);
-                                  setRejectionFeedback("");
-                                }}
-                              >
-                                <X size={14} /> No, Still an Issue
-                              </button>
-                            </div>
-                          </div>
-                        ) : isConfirmed ? (
+                        {isConfirmed ? (
                           <div
                             style={{
                               marginTop: 12,
@@ -1570,7 +2314,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--success-dark, #15803D)", fontWeight: 600, fontSize: 13 }}>
                                 <CheckCircle2 size={15} />
-                                <span>Resolution verified by tenant on {fmtDate(request.resolutionConfirmation?.confirmedAt)}</span>
+                                <span>Resolution confirmed by tenant on {fmtDate(request.resolutionConfirmation?.confirmedAt)}</span>
                               </div>
                               {request.resolutionConfirmation?.rating ? (
                                 <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, color: "var(--foreground)" }}>
@@ -1772,8 +2516,17 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     return (
                       <div
                         key={urgency.key}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={isSelected}
                         className={`urgency-card ${isSelected ? "selected" : ""} ${urgency.key === "emergency" ? "urgency-card--emergency" : ""}`}
                         onClick={() => setFormData((c) => ({ ...c, urgency: urgency.key }))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setFormData((c) => ({ ...c, urgency: urgency.key }));
+                          }
+                        }}
                       >
                         <div className="urgency-card__header">
                           <span className="urgency-card__title">{urgency.label}</span>
@@ -1944,27 +2697,6 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                   disabled={uploadingAttachment || isSavingForm}
                 />
 
-                {uploadingAttachment ? (
-                  <div
-                    className="maintenance-attachment-row"
-                    style={{
-                      marginTop: 10,
-                      border: "1px dashed #2563EB",
-                      background: "transparent",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                    }}
-                  >
-                    <LoaderCircle size={15} className="admin-announcements-spin" style={{ color: "#2563EB" }} />
-                    <span style={{ color: "#2563EB", fontSize: 13, fontWeight: 600 }}>
-                      Uploading attachment, please wait...
-                    </span>
-                  </div>
-                ) : null}
-
                 {formData.attachments?.length ? (
                   <div className="maintenance-attachment-list" style={{ marginTop: 10 }}>
                     {formData.attachments.map((attachment, index) => {
@@ -2052,12 +2784,14 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 selectedRequest.assigned_to ||
                 "Pending Assignment";
               const urgencyMeta = getMaintenanceUrgencyMeta(selectedRequest.urgency);
+              const statusMeta = getMaintenanceStatusMeta(selectedRequest.status);
+              const StatusIcon = getStatusIcon(selectedRequest.status);
 
               return (
                 <>
                   <div className="maintenance-modal__header">
-                    <div className="maintenance-info">
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <div className="maintenance-info" style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <div className="maintenance-type-badge-lg">
                           <TypeIcon size={18} strokeWidth={2.2} style={{ color: typeMeta.color || "var(--foreground)" }} />
                           <span>{typeMeta.label}</span>
@@ -2065,10 +2799,25 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         <span className="maintenance-ticket-badge">
                           {selectedRequest.ticketNumber || `#${selectedRequest.request_id?.slice(0, 8)}`}
                         </span>
+                        <span className={`maintenance-urgency-chip urgency-${selectedRequest.urgency || "normal"}`}>
+                          <span>{urgencyMeta.label}</span>
+                        </span>
+                        <span
+                          className={`maintenance-status-chip status-${selectedRequest.status}`}
+                          style={{ fontSize: 12, padding: "2px 8px" }}
+                        >
+                          <span className="status-dot" />
+                          <span>{formatMaintenanceStatus(selectedRequest.status)}</span>
+                        </span>
                       </div>
-                      <p className="maintenance-submitted-meta">
-                        <Clock size={13} style={{ display: "inline", verticalAlign: "middle" }} />
+                      <p className="maintenance-submitted-meta" style={{ marginTop: 4 }}>
+                        <Clock size={13} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
                         <span>Submitted on {fmtDateTime(selectedRequest.created_at)}</span>
+                        {selectedRequest.roomName || selectedRequest.occupancyContext?.unitNumber ? (
+                          <span style={{ marginLeft: 8, opacity: 0.85 }}>
+                            • Room: {selectedRequest.occupancyContext?.unitNumber ? `Unit ${selectedRequest.occupancyContext.unitNumber}${selectedRequest.occupancyContext.bedNumber ? ` - Bed ${selectedRequest.occupancyContext.bedNumber}` : ""}` : selectedRequest.roomName}
+                          </span>
+                        ) : null}
                       </p>
                     </div>
                     <button
@@ -2089,7 +2838,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                       display: "flex",
                       gap: 6,
                       borderBottom: "1px solid var(--border)",
-                      marginBottom: 18,
+                      marginBottom: 16,
                     }}
                   >
                     {DETAIL_TABS.filter(
@@ -2105,12 +2854,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         <button
                           key={tab.key}
                           type="button"
-                          onClick={() => {
-                            setDetailTab(tab.key);
-                            if (tab.key === "conversation") {
-                              markConversationSeen(selectedRequest.request_id);
-                            }
-                          }}
+                          onClick={() => handleDetailTabChange(tab.key)}
                           style={{
                             padding: "10px 16px",
                             border: "none",
@@ -2126,7 +2870,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                           }}
                         >
                           <span>{tab.label}</span>
-                          {isConversation && unreadCount > 0 ? (
+                          {isConversation && unreadCount > 0 && detailTab !== "conversation" && !viewedTabs.has("conversation") ? (
                             <span
                               style={{
                                 fontSize: 11,
@@ -2148,180 +2892,101 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
 
                   {detailTab === "details" ? (
                     <>
+                      {/* 1. Live Progress Stepper & Stage Card */}
                       <MaintenanceStepTracker
                         status={selectedRequest.status}
                         isReopened={selectedRequest.isReopened === true}
                         reopenCount={selectedRequest.reopenCount}
+                        inspectedStageIndex={
+                          typeof modalInspectedStageIndex === "number"
+                            ? modalInspectedStageIndex
+                            : selectedRequest.isReopened === true
+                              ? 0
+                              : getStepIndex(selectedRequest.status)
+                        }
+                        onSelectStage={(idx) => {
+                          const activeIdx = selectedRequest.isReopened === true ? 0 : getStepIndex(selectedRequest.status);
+                          if (idx <= activeIdx) setModalInspectedStageIndex(idx);
+                        }}
                       />
 
-                      <div className="maintenance-detail-grid">
-                        <div className="maintenance-grid-card">
-                          <span className="grid-card-label">Status</span>
-                          <div className="grid-card-content" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
-                            <span className={`maintenance-status-chip status-${selectedRequest.status}`}>
-                              <span className="status-dot" />
-                              <span>{formatMaintenanceStatus(selectedRequest.status)}</span>
-                            </span>
-                            {selectedRequest.status === "resolved" && !selectedRequest.resolutionConfirmation?.confirmedAt && (
-                              <span
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  padding: "3px 8px",
-                                  borderRadius: 6,
-                                  background: "#FEF3C7",
-                                  color: "#92400E",
-                                  border: "1px solid #FDE68A",
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                Awaiting Verification
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                      <MaintenanceStageCardWindow
+                        request={selectedRequest}
+                        inspectedStageIndex={
+                          typeof modalInspectedStageIndex === "number"
+                            ? modalInspectedStageIndex
+                            : selectedRequest.isReopened === true
+                              ? 0
+                              : getStepIndex(selectedRequest.status)
+                        }
+                        onResetActiveStage={() => {
+                          const activeIdx =
+                            selectedRequest.isReopened === true ? 0 : getStepIndex(selectedRequest.status);
+                          setModalInspectedStageIndex(activeIdx);
+                        }}
+                        onReschedule={() => {
+                          setRescheduleModalRequest(selectedRequest);
+                          setRescheduleDate("");
+                          setRescheduleTime("");
+                          setRescheduleReason("");
+                        }}
+                        onConfirmResolution={() => {
+                          setVerifyModalRequest(selectedRequest);
+                          setVerifyRating(5);
+                          setVerifyHoverRating(0);
+                          setVerifyFeedback("");
+                        }}
+                        onRejectResolution={() => {
+                          setRejectResolutionModalRequest(selectedRequest);
+                          setRejectionFeedback("");
+                        }}
+                        onViewReport={() => setViewingReportRequest(selectedRequest)}
+                      />
 
-                        <div className="maintenance-grid-card">
-                          <span className="grid-card-label">Urgency</span>
-                          <div className="grid-card-content">
-                            <span className={`maintenance-urgency-chip urgency-${selectedRequest.urgency || "normal"}`}>
-                              <span>{urgencyMeta.label}</span>
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="maintenance-grid-card">
-                          <span className="grid-card-label">Target Timeline</span>
-                          <div className="grid-card-content">
-                            <span className={`maintenance-sla-chip sla-${selectedRequest.slaState?.label || "on_track"}`}>
-                              <span>{formatSlaLabel(selectedRequest.slaState)}</span>
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="maintenance-grid-card">
-                          <span className="grid-card-label">Target ETA</span>
-                          <div className="grid-card-content">
-                            <strong className="grid-card-value">
-                              <Clock size={13} style={{ marginRight: 5, color: "var(--muted-foreground)" }} />
-                              <span>{urgencyMeta.estimate}</span>
-                            </strong>
-                          </div>
-                        </div>
-
-                        <div className="maintenance-grid-card">
-                          <span className="grid-card-label">Assigned Provider</span>
-                          <div className="grid-card-content">
-                            <strong className="grid-card-value" title={providerLabel}>
-                              <User size={13} style={{ marginRight: 5, color: "var(--muted-foreground)" }} />
-                              <span>{providerLabel}</span>
-                            </strong>
-                          </div>
-                        </div>
-
-                        <div className="maintenance-grid-card">
-                          <span className="grid-card-label">Last Updated</span>
-                          <div className="grid-card-content">
-                            <strong className="grid-card-value">
-                              <Calendar size={13} style={{ marginRight: 5, color: "var(--muted-foreground)" }} />
-                              <span>{fmtDateTime(selectedRequest.updated_at)}</span>
-                            </strong>
-                          </div>
-                        </div>
-                      </div>
-
-                      {selectedRequest.schedule?.scheduledDate ? (
-                        <div
-                          style={{
-                            borderRadius: 12,
-                            padding: "12px 14px",
-                            background: "#CFFAFE",
-                            border: "1px solid #A5F3FC",
-                            color: "#0E7490",
-                            marginBottom: 16,
-                            display: "flex",
-                            gap: 10,
-                            alignItems: "center",
-                          }}
-                        >
-                          <Calendar size={18} />
-                          <div>
-                            <strong style={{ display: "block", fontSize: 13 }}>
-                              Scheduled Service Appointment
-                            </strong>
-                            <span style={{ fontSize: 12 }}>
-                              {fmtDateTime(selectedRequest.schedule.scheduledDate)}
-                              {selectedRequest.schedule.notes ? ` • Note: ${selectedRequest.schedule.notes}` : ""}
-                            </span>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {selectedRequest.completionReport && !selectedRequest.completionReport.isDraft ? (
-                        <div
-                          style={{
-                            borderRadius: 12,
-                            padding: "12px 14px",
-                            background: "#F0FDF4",
-                            border: "1px solid #BBF7D0",
-                            marginBottom: 16,
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                          }}
-                        >
-                          <div>
-                            <strong style={{ display: "block", color: "#166534", fontSize: 13 }}>
-                              Official Completion Report Ready
-                            </strong>
-                            <span style={{ color: "#15803D", fontSize: 12 }}>
-                              Verified by {selectedRequest.completionReport.finalizedByName || "Facilities Team"}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            style={{ fontSize: 12, padding: "6px 12px" }}
-                            onClick={() => setViewingReportRequest(selectedRequest)}
-                          >
-                            View Report
-                          </button>
-                        </div>
-                      ) : null}
-
-                      <section className="maintenance-detail-section">
+                      {/* 2. Reported Issue & Evidence */}
+                      <section className="maintenance-detail-section" style={{ marginTop: 16 }}>
                         <div className="detail-section-header">
                           <ClipboardList size={16} />
-                          <h3>Description</h3>
+                          <h3>Reported Issue &amp; Evidence</h3>
                         </div>
                         <div className="maintenance-description-card">
                           <p>{selectedRequest.description || "No description provided."}</p>
                         </div>
+                        {getTenantVisibleAttachments(selectedRequest.attachments).length ? (
+                          <div style={{ marginTop: 12 }}>
+                            <span
+                              style={{
+                                fontSize: "0.78rem",
+                                fontWeight: 700,
+                                color: "var(--muted-foreground)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.03em",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 5,
+                                marginBottom: 8,
+                              }}
+                            >
+                              <Paperclip size={13} />
+                              <span>Attached Photos &amp; Files ({getTenantVisibleAttachments(selectedRequest.attachments).length})</span>
+                            </span>
+                            <div className="maintenance-attachments-grid">
+                              {getTenantVisibleAttachments(selectedRequest.attachments).map((attachment, index) => (
+                                <AttachmentLink
+                                  key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
+                                  attachment={attachment}
+                                  index={index}
+                                  onPreview={setPreviewAttachment}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
                       </section>
 
-                      {getTenantVisibleAttachments(selectedRequest.attachments).length ? (
-                        <section className="maintenance-detail-section">
-                          <div className="detail-section-header">
-                            <Paperclip size={16} />
-                            <h3>Attachments ({getTenantVisibleAttachments(selectedRequest.attachments).length})</h3>
-                          </div>
-                          <div className="maintenance-attachments-grid">
-                            {getTenantVisibleAttachments(selectedRequest.attachments).map((attachment, index) => (
-                              <AttachmentLink
-                                key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
-                                attachment={attachment}
-                                index={index}
-                                onPreview={setPreviewAttachment}
-                              />
-                            ))}
-                          </div>
-                        </section>
-                      ) : null}
-
+                      {/* 3. Staff Updates & Resolution Notes */}
                       {selectedRequest.notes ? (
-                        <div className="maintenance-detail-callout">
+                        <div className="maintenance-detail-callout" style={{ marginTop: 14 }}>
                           <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
                           <div>
                             <h3>Admin Response</h3>
@@ -2330,7 +2995,52 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         </div>
                       ) : null}
 
-                      <div className="form-actions maintenance-detail-actions">
+                      {selectedRequest.resolutionConfirmation?.confirmedAt ? (
+                        <div
+                          style={{
+                            marginTop: 14,
+                            borderRadius: 10,
+                            padding: "12px 16px",
+                            background: "var(--card)",
+                            border: "1px solid var(--border)",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 6,
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--success-dark, #15803D)", fontWeight: 600, fontSize: 13 }}>
+                              <CheckCircle2 size={15} />
+                              <span>Resolution confirmed by tenant on {fmtDate(selectedRequest.resolutionConfirmation.confirmedAt)}</span>
+                            </div>
+                            {selectedRequest.resolutionConfirmation?.rating ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, color: "var(--foreground)" }}>
+                                <div style={{ display: "flex", gap: 2 }}>
+                                  {[1, 2, 3, 4, 5].map((s) => (
+                                    <Star
+                                      key={s}
+                                      size={13}
+                                      style={{
+                                        fill: s <= selectedRequest.resolutionConfirmation.rating ? "#F59E0B" : "none",
+                                        stroke: s <= selectedRequest.resolutionConfirmation.rating ? "#F59E0B" : "#CBD5E1",
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+                                <span>{selectedRequest.resolutionConfirmation.rating} / 5</span>
+                              </div>
+                            ) : null}
+                          </div>
+                          {selectedRequest.resolutionConfirmation?.tenantFeedback ? (
+                            <p style={{ margin: "2px 0 0", color: "var(--muted-foreground)", fontSize: 12, fontStyle: "italic" }}>
+                              "{selectedRequest.resolutionConfirmation.tenantFeedback}"
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {/* 4. Action Buttons Footer */}
+                      <div className="form-actions maintenance-detail-actions" style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
                         {["pending", "pending_review", "reviewed"].includes(selectedRequest.status) ? (
                           <button
                             type="button"
@@ -2377,6 +3087,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 isSending={sendReplyMutation.isPending}
                 onPreviewAttachment={setPreviewAttachment}
                 requestId={selectedRequest.request_id}
+                isOtherTyping={adminIsTyping}
+                otherTypingName={adminTypingName}
+                onTypingChange={handleTenantTypingChange}
               />
             ) : null}
 
@@ -2474,35 +3187,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         </div>
       ) : null}
 
-      {/* Submit Confirmation Dialog */}
-      {pendingSubmitModal ? (
-        <ConfirmDialog
-          title={isEditing ? "Save Changes to Request?" : "Submit Maintenance Request?"}
-          message={
-            isEditing
-              ? "Are you sure you want to save the updated details for this maintenance request?"
-              : "Are you sure you want to submit this maintenance request to the dormitory management team? Please confirm all details and attachments are accurate before proceeding."
-          }
-          cancelLabel="Keep Editing"
-          confirmLabel={
-            createMutation.isPending || updateMutation.isPending
-              ? isEditing
-                ? "Saving..."
-                : "Submitting..."
-              : isEditing
-              ? "Save Changes"
-              : "Confirm & Submit"
-          }
-          confirmVariant="success"
-          isProcessing={createMutation.isPending || updateMutation.isPending}
-          onConfirm={confirmSubmitRequest}
-          onCancel={() =>
-            !createMutation.isPending &&
-            !updateMutation.isPending &&
-            setPendingSubmitModal(false)
-          }
-        />
-      ) : null}
+
 
       {/* Cancel Confirmation Dialog */}
       {pendingCancelRequest ? (
@@ -2528,6 +3213,134 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
           onConfirm={resetComposer}
           onCancel={() => setPendingDiscardModal(false)}
         />
+      ) : null}
+
+      {/* Submit / Edit Confirmation Dialog */}
+      {pendingSubmitConfirmation ? (
+        <ConfirmDialog
+          title={isEditing ? "Save Changes to Request?" : "Submit Maintenance Request?"}
+          message={
+            isEditing
+              ? "Are you sure you want to update this maintenance request with the changes below?"
+              : "Our facilities management team will be notified immediately to review the issue and schedule a technician. Please confirm your request details:"
+          }
+          cancelLabel="Back to Edit"
+          confirmLabel={
+            isEditing
+              ? updateMutation.isPending
+                ? "Saving Changes..."
+                : "Yes, Save Changes"
+              : createMutation.isPending
+              ? "Submitting..."
+              : "Yes, Submit Request"
+          }
+          confirmVariant="success"
+          isProcessing={createMutation.isPending || updateMutation.isPending}
+          maxWidth={440}
+          onConfirm={confirmSubmitRequest}
+          onCancel={() => {
+            if (!createMutation.isPending && !updateMutation.isPending) {
+              setPendingSubmitConfirmation(false);
+            }
+          }}
+        >
+          <div
+            style={{
+              background: "var(--muted)",
+              borderRadius: 8,
+              padding: "12px 14px",
+              border: "1px solid var(--border)",
+              fontSize: 13,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "var(--muted-foreground)", fontSize: 12 }}>Category:</span>
+              <span style={{ fontWeight: 600, color: "var(--foreground)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                {(() => {
+                  const meta = getMaintenanceTypeMeta(formData.request_type);
+                  const Icon = meta.icon;
+                  return (
+                    <>
+                      <Icon size={14} color={meta.color} />
+                      <span>{meta.label}</span>
+                    </>
+                  );
+                })()}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "var(--muted-foreground)", fontSize: 12 }}>Urgency:</span>
+              <span
+                style={{
+                  fontWeight: 600,
+                  fontSize: 12,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  textTransform: "capitalize",
+                  color: "var(--foreground)",
+                }}
+              >
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: "50%",
+                    background:
+                      formData.urgency === "emergency"
+                        ? "#DC2626"
+                        : formData.urgency === "high"
+                        ? "#EA580C"
+                        : formData.urgency === "normal"
+                        ? "#2563EB"
+                        : "#64748B",
+                  }}
+                />
+                {formData.urgency}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "var(--muted-foreground)", fontSize: 12 }}>Unit / Tenancy:</span>
+              <span style={{ fontWeight: 500, color: "var(--foreground)" }}>
+                {roomContextLabel}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "var(--muted-foreground)", fontSize: 12 }}>Attachments:</span>
+              <span style={{ fontWeight: 500, color: "var(--foreground)" }}>
+                {formData.attachments?.length || 0} file(s) attached
+              </span>
+            </div>
+
+            {formData.description ? (
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 2 }}>
+                <span style={{ color: "var(--muted-foreground)", fontSize: 11.5, display: "block", marginBottom: 3 }}>
+                  Description Preview:
+                </span>
+                <p
+                  style={{
+                    margin: 0,
+                    color: "var(--foreground)",
+                    fontSize: 12.5,
+                    lineHeight: 1.4,
+                    maxHeight: 60,
+                    overflowY: "auto",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {formData.description}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </ConfirmDialog>
       ) : null}
 
       {/* Reschedule Request Modal */}
@@ -2557,9 +3370,11 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Calendar size={16} color="#0284C7" />
+                <Calendar size={16} color="#059669" />
                 <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--foreground)" }}>
-                  Request Schedule Adjustment
+                  {rescheduleModalRequest?.schedule?.scheduledDate || rescheduleModalRequest?.scheduledDate
+                    ? "Request Schedule Adjustment"
+                    : "Request Preferred Visit Schedule"}
                 </h3>
               </div>
               <button
@@ -2572,47 +3387,187 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             </div>
 
             <p style={{ margin: "0 0 14px", color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.5 }}>
-              If you will not be available in your room during the scheduled repair, specify your preferred date and time for our facilities team.
+              {rescheduleModalRequest?.schedule?.scheduledDate || rescheduleModalRequest?.scheduledDate
+                ? "If you will not be available in your room during the scheduled repair, specify your preferred date and time (Mon–Sat, 8:00 AM – 6:00 PM) for our facilities team."
+                : "Specify your preferred repair visit date and time (Mon–Sat, 8:00 AM – 6:00 PM) so our facilities team can coordinate technician arrival with your schedule."}
             </p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+            {rescheduleModalRequest?.rescheduleRequest?.responseNote && (
+              <div
+                style={{
+                  marginBottom: 14,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: "var(--background)",
+                  border: "1px solid var(--border)",
+                  fontSize: 12,
+                  color: "var(--muted-foreground)",
+                  lineHeight: 1.4,
+                }}
+              >
+                <strong style={{ color: "var(--foreground)" }}>Previous Staff Note:</strong>{" "}
+                {rescheduleModalRequest.rescheduleRequest.responseNote}
+              </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: "var(--foreground)" }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 5, color: "var(--foreground)" }}>
                   Preferred Date *
                 </label>
                 <input
                   type="date"
                   className="form-control"
-                  min={new Date().toISOString().slice(0, 10)}
+                  style={{ cursor: "pointer" }}
+                  min={getLocalDateString(0)}
                   value={rescheduleDate}
+                  onClick={(e) => {
+                    try {
+                      e.target.showPicker?.();
+                    } catch (err) {}
+                  }}
+                  onFocus={(e) => {
+                    try {
+                      e.target.showPicker?.();
+                    } catch (err) {}
+                  }}
                   onChange={(e) => setRescheduleDate(e.target.value)}
                 />
+                <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+                  {[
+                    { label: "Tomorrow", offset: 1 },
+                    { label: "+2 Days", offset: 2 },
+                    { label: "+3 Days", offset: 3 },
+                  ].map((p) => {
+                    const val = getLocalDateString(p.offset);
+                    const isSelected = rescheduleDate === val;
+                    return (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => setRescheduleDate(val)}
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: "2px 7px",
+                          borderRadius: 6,
+                          border: isSelected ? "1px solid #059669" : "1px solid var(--border)",
+                          background: isSelected ? "#059669" : "var(--muted)",
+                          color: isSelected ? "#FFFFFF" : "var(--foreground)",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: "var(--foreground)" }}>
-                  Preferred Time *
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 5, color: "var(--foreground)" }}>
+                  Preferred Time * <span style={{ fontSize: 10, fontWeight: 400, color: "var(--muted-foreground)" }}>(8 AM – 6 PM)</span>
                 </label>
                 <input
                   type="time"
                   className="form-control"
+                  style={{ cursor: "pointer" }}
+                  min="08:00"
+                  max="18:00"
                   value={rescheduleTime}
+                  onClick={(e) => {
+                    try {
+                      e.target.showPicker?.();
+                    } catch (err) {}
+                  }}
+                  onFocus={(e) => {
+                    try {
+                      e.target.showPicker?.();
+                    } catch (err) {}
+                  }}
                   onChange={(e) => setRescheduleTime(e.target.value)}
                 />
+                <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+                  {[
+                    { label: "9:00 AM", val: "09:00" },
+                    { label: "11:00 AM", val: "11:00" },
+                    { label: "2:00 PM", val: "14:00" },
+                    { label: "4:00 PM", val: "16:00" },
+                  ].map((t) => {
+                    const isSelected = rescheduleTime === t.val;
+                    return (
+                      <button
+                        key={t.label}
+                        type="button"
+                        onClick={() => setRescheduleTime(t.val)}
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: "2px 7px",
+                          borderRadius: 6,
+                          border: isSelected ? "1px solid #059669" : "1px solid var(--border)",
+                          background: isSelected ? "#059669" : "var(--muted)",
+                          color: isSelected ? "#FFFFFF" : "var(--foreground)",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: "var(--foreground)" }}>
-                Reason for Reschedule
-              </label>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--foreground)" }}>
+                  {rescheduleModalRequest?.schedule?.scheduledDate || rescheduleModalRequest?.scheduledDate
+                    ? "Reason for Reschedule"
+                    : "Notes / Availability Details"}{" "}
+                  <span style={{ fontWeight: 400, color: "var(--muted-foreground)" }}>(Optional)</span>
+                </label>
+                <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>
+                  {rescheduleReason.length} / 250
+                </span>
+              </div>
               <input
                 type="text"
                 className="form-control"
+                maxLength={250}
                 placeholder="e.g. In class until 3 PM, roommate studying"
                 value={rescheduleReason}
                 onChange={(e) => setRescheduleReason(e.target.value)}
               />
             </div>
+
+            {rescheduleDate && rescheduleTime ? (
+              <div
+                style={{
+                  marginBottom: 14,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: "var(--muted)",
+                  border: "1px solid var(--border)",
+                  fontSize: 12,
+                  color: "var(--foreground)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <CheckCircle2 size={14} color="#059669" />
+                <span>
+                  New proposed slot: <strong>{fmtDate(rescheduleDate)} at {rescheduleTime}</strong>
+                </span>
+              </div>
+            ) : (
+              <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--muted-foreground)" }}>
+                💡 Select both a preferred date and time (Mon–Sat, 8:00 AM – 6:00 PM) to enable submission.
+              </p>
+            )}
 
             <div className="maintenance-modal-actions">
               <button
@@ -2625,13 +3580,26 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-success"
                 onClick={handleRequestReschedule}
                 disabled={!rescheduleDate || !rescheduleTime || requestRescheduleMutation.isPending}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "#059669",
+                  borderColor: "#059669",
+                  color: "#FFFFFF",
+                }}
               >
                 {requestRescheduleMutation.isPending ? <LoaderCircle size={14} className="admin-announcements-spin" /> : <Check size={14} />}
-                <span>{requestRescheduleMutation.isPending ? "Submitting..." : "Submit Reschedule"}</span>
+                <span>
+                  {requestRescheduleMutation.isPending
+                    ? "Submitting..."
+                    : rescheduleModalRequest?.schedule?.scheduledDate || rescheduleModalRequest?.scheduledDate
+                    ? "Submit Reschedule"
+                    : "Submit Preferred Schedule"}
+                </span>
               </button>
             </div>
           </div>
@@ -2667,7 +3635,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <AlertTriangle size={16} color="#DC2626" />
                 <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--foreground)" }}>
-                  Report Unresolved Issue
+                  Report Issue Not Fixed
                 </h3>
               </div>
               <button
@@ -2680,17 +3648,17 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             </div>
 
             <p style={{ margin: "0 0 14px", color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.5 }}>
-              Please let our facilities team know what still needs attention so the technician can perform the necessary follow-up work.
+              Please describe what still needs attention so facilities staff can perform the necessary follow-up repair work.
             </p>
 
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: "var(--foreground)" }}>
-                Feedback Note *
+                Defect Details *
               </label>
               <textarea
                 className="form-control"
                 rows="3"
-                placeholder="Describe why the issue is not fixed (e.g. pipe still dripping, fixture still loose)..."
+                placeholder="Describe what is still not working properly..."
                 value={rejectionFeedback}
                 onChange={(e) => setRejectionFeedback(e.target.value)}
               />
@@ -2713,7 +3681,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
               >
                 {confirmResolutionMutation.isPending ? <LoaderCircle size={14} className="admin-announcements-spin" /> : <RefreshCcw size={14} />}
-                <span>{confirmResolutionMutation.isPending ? "Sending..." : "Return to In Progress"}</span>
+                <span>{confirmResolutionMutation.isPending ? "Sending..." : "Send Back for Rework"}</span>
               </button>
             </div>
           </div>
@@ -2776,7 +3744,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400" />
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--foreground)" }}>
-                  Rate &amp; Confirm Repair
+                  Confirm Maintenance Resolution
                 </h3>
               </div>
               <button
@@ -2811,7 +3779,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
             {/* Star Rating Selector */}
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 6, color: "var(--foreground)" }}>
-                How satisfied are you with the repair? <span className="text-red-500">*</span>
+                How satisfied are you with the repair? <span style={{ fontWeight: 400, color: "var(--muted-foreground)" }}>(Optional)</span>
               </label>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", gap: 4 }}>
@@ -2875,7 +3843,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               />
             </div>
 
-            {/* 7-Day Auto-Completion Policy Notice */}
+            {/* Confirmation Notice */}
             <div
               style={{
                 background: "var(--background)",
@@ -2888,7 +3856,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 lineHeight: 1.45,
               }}
             >
-              <strong style={{ color: "var(--foreground)" }}>7-Day Review Period:</strong> Submitting will confirm the repair as resolved. If everything stays in working order, this request will automatically close after 7 days.
+              <strong style={{ color: "var(--foreground)" }}>Resolution Confirmation:</strong> Submitting will confirm that the repair in your room is complete and officially close this maintenance request.
             </div>
 
             <div className="maintenance-modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -2909,11 +3877,11 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     feedback: verifyFeedback,
                   })
                 }
-                disabled={confirmResolutionMutation.isPending || verifyRating === 0}
+                disabled={confirmResolutionMutation.isPending}
                 style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
               >
                 {confirmResolutionMutation.isPending ? <LoaderCircle size={14} className="admin-announcements-spin" /> : <Check size={14} />}
-                <span>{confirmResolutionMutation.isPending ? "Submitting..." : "Submit Review"}</span>
+                <span>{confirmResolutionMutation.isPending ? "Confirming..." : "Confirm Resolution"}</span>
               </button>
             </div>
           </div>
