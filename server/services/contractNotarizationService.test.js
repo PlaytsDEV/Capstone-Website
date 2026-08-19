@@ -3,13 +3,15 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 const mkdir = jest.fn();
 const writeFile = jest.fn();
 const rm = jest.fn();
+const rename = jest.fn();
+const access = jest.fn(async () => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
 const transitionContract = jest.fn(async (contract, status, actorId) => {
   contract.status = status;
   contract.updatedBy = actorId;
   await contract.save();
 });
 const assertValidContractTransition = jest.fn(() => true);
-await jest.unstable_mockModule("fs/promises", () => ({ default: { mkdir, writeFile, rm } }));
+await jest.unstable_mockModule("fs/promises", () => ({ default: { mkdir, writeFile, rm, rename, access } }));
 await jest.unstable_mockModule("./contractService.js", () => ({ transitionContract, assertValidContractTransition }));
 const {
   NOTARIZATION_CHECKLIST_KEYS,

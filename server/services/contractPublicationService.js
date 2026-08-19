@@ -1,8 +1,6 @@
-import fs from "fs/promises";
 import { PDFDocument } from "pdf-lib";
-import { resolveNotarizedContractPath } from "./contractNotarizationService.js";
-import { resolveSignedContractPath } from "./contractSigningService.js";
 import { transitionContract } from "./contractService.js";
+import { inspectNotarizedContractDocument, inspectSignedContractDocument } from "./contractDocumentStorageService.js";
 
 export const PUBLICATION_CHECKLIST_KEYS = Object.freeze([
   "contractNumberMatches", "tenantLegalNameMatches", "branchMatches",
@@ -21,9 +19,21 @@ const publicationError = (message, code, statusCode = 400, details) =>
   Object.assign(new Error(message), { code, statusCode, details });
 const clean = (value, max = 2000) => String(value || "").trim().slice(0, max);
 
-const pageCountFor = async (absolutePath, mimeType) => {
+const streamToBuffer = (stream) => new Promise((resolve, reject) => {
+  const chunks = [];
+  stream.on("data", (chunk) => chunks.push(chunk));
+  stream.on("end", () => resolve(Buffer.concat(chunks)));
+  stream.on("error", reject);
+});
+
+// Reads through `inspected.createReadStream()` — provider-agnostic (local
+// disk or Firebase Storage both expose the same interface via
+// contractDocumentStorageService.js) — instead of assuming a local
+// `absolutePath`, so this works identically for a locally-stored file and a
+// durably-stored one.
+const pageCountForInspected = async (inspected, mimeType) => {
   if (mimeType !== "application/pdf") return 1;
-  const bytes = await fs.readFile(absolutePath);
+  const bytes = await streamToBuffer(inspected.createReadStream());
   return (await PDFDocument.load(bytes, { updateMetadata: false })).getPageCount();
 };
 
@@ -63,16 +73,21 @@ export const resolveVerifiedCurrentNotarizedDocument = async (contract) => {
     throw publicationError("The verified notarized metadata is inconsistent.",
       "CURRENT_NOTARIZED_DOCUMENT_UNAVAILABLE", 409);
   }
-  const absolutePath = resolveNotarizedContractPath(current.storageKey);
-  const stat = await fs.stat(absolutePath).catch(() => null);
-  if (!stat?.isFile() || Number(stat.size) !== Number(current.fileSize)) {
+  let inspected;
+  try {
+    inspected = await inspectNotarizedContractDocument(current);
+  } catch {
+    inspected = null;
+  }
+  if (!inspected || Number(inspected.size) !== Number(current.fileSize)) {
     throw publicationError("The verified notarized Contract file is unavailable.",
       "CURRENT_NOTARIZED_DOCUMENT_UNAVAILABLE", 409);
   }
   return {
     document: current,
-    absolutePath,
-    pageCount: await pageCountFor(absolutePath, current.mimeType),
+    size: inspected.size,
+    createReadStream: inspected.createReadStream,
+    pageCount: await pageCountForInspected(inspected, current.mimeType),
   };
 };
 
@@ -172,13 +187,22 @@ const resolveVerifiedAdminScanDocument = async (contract) => {
     throw publicationError("The verified signed-scan metadata is inconsistent.",
       "CURRENT_SIGNED_DOCUMENT_UNAVAILABLE", 409);
   }
-  const absolutePath = resolveSignedContractPath(current.storageKey);
-  const stat = await fs.stat(absolutePath).catch(() => null);
-  if (!stat?.isFile() || Number(stat.size) !== Number(current.fileSize)) {
+  let inspected;
+  try {
+    inspected = await inspectSignedContractDocument(current);
+  } catch {
+    inspected = null;
+  }
+  if (!inspected || Number(inspected.size) !== Number(current.fileSize)) {
     throw publicationError("The archived signed Contract scan file is unavailable.",
       "CURRENT_SIGNED_DOCUMENT_UNAVAILABLE", 409);
   }
-  return { document: current, absolutePath, pageCount: await pageCountFor(absolutePath, current.mimeType) };
+  return {
+    document: current,
+    size: inspected.size,
+    createReadStream: inspected.createReadStream,
+    pageCount: await pageCountForInspected(inspected, current.mimeType),
+  };
 };
 
 export const resolvePublishedFinalDocument = async (contract) => {

@@ -50,6 +50,13 @@ const preparedDocumentSchema = new mongoose.Schema(
 const signedDocumentSchema = new mongoose.Schema(
   {
     version: { type: Number, required: true, min: 1 },
+    // Shared by signedDocuments[] and notarizedDocuments[] (this schema is
+    // reused for both). Defaults to "local" so every pre-migration record —
+    // written before this field existed — is correctly read as local-disk,
+    // matching how it was actually stored. New uploads set this explicitly
+    // via contractDocumentStorageService.js's storeSignedContractDocument /
+    // storeNotarizedContractDocument.
+    storageProvider: { type: String, enum: ["local", "firebase-storage"], default: "local" },
     storageKey: { type: String, required: true },
     fileName: { type: String, required: true },
     fileHash: { type: String, required: true },
