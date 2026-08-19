@@ -2,7 +2,6 @@ const { Types: { ObjectId } } = require('mongoose');
 const { getDb } = require('../config/database');
 const {
   CHATBOT_SYSTEM_PROMPT,
-  buildLeasingSystemPrompt,
   KNOWLEDGE_BASE,
   ESCALATION_KEYWORDS,
   DEFAULT_FOLLOWUPS,
@@ -20,6 +19,7 @@ const {
   notifyChatbotReply,
 } = require('../services/pushService');
 const { resolveTenantAIContext } = require('../services/tenantContextResolver');
+const { classifyLilyRequest, lilyDomainReply } = require('../services/tenantDomainGuard');
 
 function sanitizeResponse(text = '') {
   const withoutFences = text.replace(/```[\s\S]*?```/g, (block) => block.replace(/```/g, ''));
@@ -54,6 +54,10 @@ function normalizeSessionId(rawSessionId, userId) {
     return { ok: false, error: 'Invalid session id format' };
   }
   return { ok: true, value: candidate };
+}
+
+function tenantSessionKey(userId, sessionId) {
+  return `${String(userId || 'tenant')}:${sessionId}`;
 }
 
 // A sessionId is a client-supplied, guessable/enumerable string — it must
@@ -111,6 +115,14 @@ function classifyIntentLocal(message) {
   return { intent: bestIntent, confidence };
 }
 
+function isLeasingPricingInquiry(message = '') {
+  const normalized = String(message).toLowerCase().replace(/\s+/g, ' ').trim();
+  const roomInventory = /\b(room(?:s)?|quad(?:ruple)?(?: sharing)?|double(?: sharing)?|private(?: room)?|short[- ]term|long[- ]term)\b/i;
+  const pricing = /\b(price|pricing|rate(?:s)?|cost|rent(?:al)?|how much|magkano)\b/i;
+
+  return roomInventory.test(normalized) && pricing.test(normalized);
+}
+
 // Safe structured log — never logs tokens, credentials, or full message content
 function logChatEvent(type, data) {
   try {
@@ -146,49 +158,25 @@ function pickFollowups(knowledgeEntries, intent) {
  */
 async function fetchHydratedLeasingPrompt(db, branch) {
   try {
-    if (!['gil-puyat', 'guadalupe'].includes(branch)) return buildLeasingSystemPrompt();
+    if (!['gil-puyat', 'guadalupe'].includes(branch)) return null;
     const rooms = await db.collection('rooms').find(
       { branch, isArchived: { $ne: true } },
       { projection: { type: 1, price: 1, monthlyPrice: 1 } }
     ).toArray();
 
-    if (!rooms || rooms.length === 0) {
-      return buildLeasingSystemPrompt();
-    }
-
-    const quad = rooms.find((r) => r.type === 'quadruple-sharing') || {};
-    const double = rooms.find((r) => r.type === 'double-sharing') || {};
-    const privateRoom = rooms.find((r) => r.type === 'private') || {};
-
-    const formatNum = (num, fallback) =>
-      typeof num === 'number' && !isNaN(num) && num > 0 ? num.toLocaleString('en-PH') : fallback;
-
-    const quadShort = formatNum(quad.price, '6,300');
-    const quadLong = formatNum(quad.monthlyPrice, '5,400');
-    const quadSav = formatNum((quad.price || 6300) - (quad.monthlyPrice || 5400), '900');
-
-    const doubleShort = formatNum(double.price, '8,000');
-    const doubleLong = formatNum(double.monthlyPrice, '7,200');
-    const doubleSav = formatNum((double.price || 8000) - (double.monthlyPrice || 7200), '800');
-
-    const privateShort = formatNum(privateRoom.price, '14,400');
-    const privateLong = formatNum(privateRoom.monthlyPrice, '13,500');
-    const privateSav = formatNum((privateRoom.price || 14400) - (privateRoom.monthlyPrice || 13500), '900');
-
-    return buildLeasingSystemPrompt({
-      quadShort,
-      quadLong,
-      quadSavings: quadSav,
-      doubleShort,
-      doubleLong,
-      doubleSavings: doubleSav,
-      privateShort,
-      privateLong,
-      privateSavings: privateSav,
+    const priceLines = (rooms || []).flatMap((room) => {
+      const shortTerm = Number(room.price);
+      const longTerm = Number(room.monthlyPrice);
+      if (!Number.isFinite(shortTerm) && !Number.isFinite(longTerm)) return [];
+      const label = String(room.type || 'room').replace(/[-_]/g, ' ');
+      return [`- ${label}: ${Number.isFinite(shortTerm) ? `short-term PHP ${shortTerm.toLocaleString('en-PH')}` : 'short-term rate unavailable'}; ${Number.isFinite(longTerm) ? `long-term PHP ${longTerm.toLocaleString('en-PH')}` : 'long-term rate unavailable'}`];
     });
+
+    if (!priceLines.length) return null;
+    return `${CHATBOT_SYSTEM_PROMPT}\n\nAUTHORIZED CURRENT ROOM RATES FOR ${branch}:\n${priceLines.join('\n')}\nDo not quote a room type or term whose rate is unavailable.`;
   } catch (err) {
     console.error('[Chatbot] Error fetching room rates for leasing prompt:', err);
-    return buildLeasingSystemPrompt();
+    return null;
   }
 }
 
@@ -283,11 +271,27 @@ function buildTenantContextLines(context = {}, fallbackUser = {}) {
   return lines;
 }
 
-async function ensureLiveChatRequest(db, sessionId, userId, userName, userEmail, reason, tenantContext = null) {
+async function ensureLiveChatRequest(
+  db,
+  sessionId,
+  userId,
+  userName,
+  userEmail,
+  reason,
+  tenantContext = null,
+  internalSessionId = sessionId,
+) {
   const existing = liveChatQueue.get(sessionId);
-  if (existing) return existing;
+  if (existing) {
+    if (existing.user_id !== userId) {
+      const collision = new Error('Chat session is already in use');
+      collision.code = 'CHAT_SESSION_COLLISION';
+      throw collision;
+    }
+    return existing;
+  }
 
-  const session = chatSessions.get(sessionId);
+  const session = chatSessions.get(internalSessionId);
   const chatHistory = session ? session.history : [];
   const liveChatRequest = {
     session_id: sessionId,
@@ -437,8 +441,38 @@ async function sendMessage(req, res) {
     }
     const sessionId = normalizedSession.value;
     const userMessage = normalizedMessage.value;
+    const internalSessionId = tenantSessionKey(userId, sessionId);
 
     logChatEvent('message', { sessionId, messageLength: userMessage.length, userId });
+
+    // A live admin conversation stays authoritative and bypasses Lily's AI
+    // scope gate. Ownership is still checked against the authenticated tenant.
+    const liveChat = getOwnedLiveChat(sessionId, userId);
+    if (liveChat && liveChat.status === 'active') {
+      liveChat.messages.push({ sender: 'tenant', content: userMessage, timestamp: new Date() });
+      return res.json({ response: null, session_id: sessionId, live_chat_active: true, admin_name: liveChat.admin_name, message: 'Message sent to admin' });
+    }
+
+    const session = chatSessions.get(internalSessionId) || { history: [] };
+    const domainDecision = await classifyLilyRequest(userMessage, session.history || []);
+    if (!domainDecision.allowed) {
+      const restricted = await lilyDomainReply();
+      session.history = [
+        ...(session.history || []),
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: restricted.reply },
+      ].slice(-30);
+      chatSessions.set(internalSessionId, session);
+      return res.json({
+        response: restricted.reply,
+        session_id: sessionId,
+        needs_admin: false,
+        live_chat_active: false,
+        fallback: false,
+        suggestions: restricted.suggestions,
+        meta: { intent: 'general', confidence: 1 },
+      });
+    }
 
     // Resolve MongoDB ObjectId from the authenticated server-owned identity.
     const rawId = req.user?._id;
@@ -446,14 +480,10 @@ async function sendMessage(req, res) {
 
     // Pull the shared canonical tenant context used by both web and mobile Lily.
     const db = getDb();
-    const tenantContext = await resolveTenantAIContext(mongoId, req.user, { db });
-
-    // Check if this is an active live chat (admin is responding)
-    const liveChat = getOwnedLiveChat(sessionId, userId);
-    if (liveChat && liveChat.status === 'active') {
-      liveChat.messages.push({ sender: 'tenant', content: userMessage, timestamp: new Date() });
-      return res.json({ response: null, session_id: sessionId, live_chat_active: true, admin_name: liveChat.admin_name, message: 'Message sent to admin' });
-    }
+    const tenantContext = await resolveTenantAIContext(mongoId, req.user, {
+      db,
+      domains: domainDecision.domains,
+    });
 
     const contextLines = buildTenantContextLines(tenantContext, req.user);
 
@@ -483,7 +513,6 @@ async function sendMessage(req, res) {
     const escalate = shouldEscalate(knowledgeHints, userMessage);
 
     // Get conversation history for continuity
-    const session = chatSessions.get(sessionId) || { history: [] };
     const conversationHistory = session.history || [];
 
     logChatEvent('intent', { sessionId, intent: meta.intent, confidence: meta.confidence, escalate, isEmotional });
@@ -497,27 +526,29 @@ async function sendMessage(req, res) {
           db, sessionId, userId, userName, userEmail,
           `Escalated: ${userMessage.slice(0, 120)}`,
           tenantContext,
+          internalSessionId,
         );
         const escalationPrompt = buildAIPrompt(
           userMessage, contextLines, knowledgeHints, conversationHistory, isEmotional
         ) + "\n\nIMPORTANT: This message has been flagged for admin attention. Acknowledge the tenant's concern empathetically, let them know an admin will follow up shortly, and reassure them. Keep it to 2-3 warm sentences.";
-        const { text } = await sendGeminiMessage(sessionId, escalationPrompt);
-        aiResponse = text || "I completely understand your concern, and I want to make sure it gets properly handled. I've flagged this for our admin team and they'll reach out to you shortly. If it's urgent, you can also call us directly at +63 912 345 6789.";
+        const { text } = await sendGeminiMessage(internalSessionId, escalationPrompt);
+        aiResponse = text || "I understand your concern. I've opened the existing Lilycrest admin-support workflow so the appropriate team can follow up.";
       } else if (isGreeting(userMessage) && userMessage.trim().split(/\s+/).length <= 4) {
         // Pure greeting — warm, personalized, mentions context if useful
         const greetingPrompt = buildAIPrompt(
           userMessage, contextLines, [], conversationHistory, false
         ) + '\n\nThis is a greeting. Respond warmly, introduce yourself briefly as Lily, and ask how you can help. Mention the time of day naturally. Keep it to 1-2 sentences.';
-        const { text } = await sendGeminiMessage(sessionId, greetingPrompt);
+        const { text } = await sendGeminiMessage(internalSessionId, greetingPrompt);
         aiResponse = text || `${getTimeOfDayGreeting()} I'm Lily, your LilyCrest dorm assistant. How can I help you today?`;
         meta.intent = 'greeting';
         meta.confidence = 1;
       } else {
         // Normal message — AI-first, check if message is related to leasing/pricing/rooms
         let systemPromptOverride = null;
-        const isLeasingInquiry =
-          meta.intent === 'reservation' ||
-          /(price|rate|cost|rent|how much|quad|double|private|room rate|deposit|advance|short-term|long-term|move-in)/i.test(userMessage);
+        // A tenant asking "What is my room?" is requesting their canonical
+        // assignment, not public inventory pricing. Only hydrate live room
+        // rates when both room inventory and a pricing term are explicit.
+        const isLeasingInquiry = isLeasingPricingInquiry(userMessage);
 
         if (isLeasingInquiry) {
           const branch = tenantContext?.branchRaw;
@@ -527,7 +558,7 @@ async function sendMessage(req, res) {
         const prompt = buildAIPrompt(
           userMessage, contextLines, knowledgeHints, conversationHistory, isEmotional, systemPromptOverride
         );
-        const { text } = await sendGeminiMessage(sessionId, prompt);
+        const { text } = await sendGeminiMessage(internalSessionId, prompt);
 
         if (text && !looksLikeCode(text)) {
           aiResponse = text;
@@ -537,18 +568,19 @@ async function sendMessage(req, res) {
               db, sessionId, userId, userName, userEmail,
               `AI escalation: ${userMessage.slice(0, 120)}`,
               tenantContext,
+              internalSessionId,
             );
           }
         } else {
           // AI returned code or empty — retry with a plain prompt
           const retryPrompt = `${CHATBOT_SYSTEM_PROMPT}\n\nThe tenant asked: "${userMessage}"\n\nRespond naturally and helpfully in plain conversational text. Do NOT include any code, formatting symbols, or technical syntax.`;
-          const retry = await sendGeminiMessage(sessionId, retryPrompt);
+          const retry = await sendGeminiMessage(internalSessionId, retryPrompt);
           aiResponse = retry.text || "I'm here to help! Could you rephrase your question? Feel free to ask me anything about billing, maintenance, house rules, or your stay at LilyCrest.";
         }
       }
     } catch (modelError) {
       logChatEvent('ai_error', { sessionId, error: modelError?.message });
-      aiResponse = "I'm having a bit of trouble connecting right now. Please try again in a moment — or if it's urgent, you can reach the admin office directly at +63 912 345 6789.";
+      aiResponse = "Lily is temporarily unavailable. Please try again in a moment, or open Lilycrest support from the app if you need an admin.";
     }
 
     // Clean the response
@@ -568,7 +600,7 @@ async function sendMessage(req, res) {
     if (session.history.length > 30) {
       session.history = session.history.slice(-30);
     }
-    chatSessions.set(sessionId, session);
+    chatSessions.set(internalSessionId, session);
 
     logChatEvent('response', { sessionId, responseLength: cleanResponse.length, needsAdmin, intent: meta.intent });
 
@@ -584,7 +616,7 @@ async function sendMessage(req, res) {
   } catch (error) {
     console.error('Chatbot error:', error);
     res.status(500).json({
-      response: "I am having trouble connecting right now. Please try again, or contact the admin office at +63 912 345 6789.",
+      response: "Lily is temporarily unavailable. Please try again, or open Lilycrest support from the app if you need an admin.",
       error: {
         code: 'LILY_TEMPORARILY_UNAVAILABLE',
         message: 'Lily is temporarily unavailable. Please try again.',
@@ -617,7 +649,11 @@ async function requestAdmin(req, res) {
     const mongoId = user?._id && ObjectId.isValid(String(user._id))
       ? new ObjectId(String(user._id))
       : null;
-    const tenantContext = await resolveTenantAIContext(mongoId, req.user, { db });
+    const tenantContext = await resolveTenantAIContext(mongoId, req.user, {
+      db,
+      domains: ['support'],
+    });
+    const internalSessionId = tenantSessionKey(userId, sessionId);
     const liveChatRequest = await ensureLiveChatRequest(
       db,
       sessionId,
@@ -626,6 +662,7 @@ async function requestAdmin(req, res) {
       tenantContext?.tenantEmail || user?.email,
       normalizedReason || 'Requested admin assistance',
       tenantContext,
+      internalSessionId,
     );
 
     res.json({
@@ -686,9 +723,13 @@ async function getLiveChats(req, res) {
 async function resetSession(req, res) {
   try {
     const { session_id } = req.body;
-    const sessionId = session_id || `${req.user?.user_id || 'guest'}_${Date.now()}`;
+    const normalizedSession = normalizeSessionId(session_id, req.user?.user_id || 'guest');
+    if (!normalizedSession.ok) {
+      return res.status(400).json({ detail: normalizedSession.error });
+    }
+    const sessionId = normalizedSession.value;
 
-    chatSessions.delete(sessionId);
+    chatSessions.delete(tenantSessionKey(req.user?.user_id, sessionId));
 
     const liveChat = liveChatQueue.get(sessionId);
     if (liveChat && liveChat.status !== 'active') {
@@ -814,6 +855,7 @@ module.exports = {
   __test: {
     getOwnedLiveChat,
     buildTenantContextLines,
+    isLeasingPricingInquiry,
     liveChatQueue,
   },
 };

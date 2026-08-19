@@ -48,6 +48,27 @@ describe("tenant chatbot canonical fallback responses", () => {
     expect(contract).toMatch(/No tenant-visible canonical Contract/i);
     expect(`${billing}\n${contract}`).not.toMatch(/Room 304|Bed 1|15th of the month|active resident status/i);
   });
+
+  test("known active occupancy answers branch and room without asking for stale move-in facts", () => {
+    const response = getTenantRuleBasedFallback("What is my room and move-in status?", {
+      branch: "Gil Puyat",
+      roomNumber: "GP-202",
+      bedPosition: "A-L",
+      tenancy: {
+        status: "active",
+        isCurrentResident: true,
+        occupancyStartedAt: new Date("2026-08-13T00:00:00Z"),
+        scheduledMoveInDate: new Date("2026-09-01T00:00:00Z"),
+      },
+    });
+
+    expect(response).toMatch(/Gil Puyat/i);
+    expect(response).toMatch(/GP-202/i);
+    expect(response).toMatch(/A-L/i);
+    expect(response).toMatch(/already moved in|active resident|occupancy.*active/i);
+    expect(response).not.toMatch(/when is your move-in|what branch|what room|waiting to move in/i);
+    expect(response).not.toMatch(/September 1, 2026/i);
+  });
 });
 
 describe("tenant chatbot widget intent detection and gating", () => {

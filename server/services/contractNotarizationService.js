@@ -1,10 +1,11 @@
 import crypto from "crypto";
 import path from "path";
-import fs from "fs/promises";
 import { fileURLToPath } from "url";
 import { PDFDocument } from "pdf-lib";
 import { transitionContract } from "./contractService.js";
 import { validateSignedDocumentUpload } from "./contractSigningService.js";
+import { buildContractArtifactStorage } from "./contractPrivateStorageService.js";
+import { storeNotarizedContractDocument, removeNotarizedContractDocument } from "./contractDocumentStorageService.js";
 
 export const NOTARIZED_CONTRACT_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -123,14 +124,15 @@ export const uploadNotarizedContract = async ({
     0, ...(contract.notarizedDocuments || []).map((item) => Number(item.version) || 0),
   ) + 1;
   const fileName = `${safe(contract.contractNumber)}_signed_notarized_v${version}${type.extension}`;
-  const storageKey = [
-    safe(contract.branch), String(contract.contractYear), safe(contract.contractNumber), fileName,
-  ].join("/");
-  const absolute = resolveNotarizedContractPath(storageKey);
-  await fs.mkdir(path.dirname(absolute), { recursive: true, mode: 0o700 });
-  await fs.writeFile(absolute, file.buffer, { flag: "wx", mode: 0o600 });
+  const target = buildContractArtifactStorage({ kind: "notarized", contractId: contract._id, fileName });
   const uploadedAt = new Date();
   const fileHash = crypto.createHash("sha256").update(file.buffer).digest("hex");
+  const stored = await storeNotarizedContractDocument({
+    target,
+    bytes: file.buffer,
+    contentType: type.mimeType,
+    metadata: { contractId: contract._id, contractNumber: contract.contractNumber, documentType: "notarized", version, fileHash },
+  });
   const details = normalizeNotarialDetails(notarialDetails);
   if (previous) {
     previous.superseded = true;
@@ -139,13 +141,13 @@ export const uploadNotarizedContract = async ({
     contract.notarizedDocuments.at(-1).replacementReason = clean(replacementReason, 500);
   }
   contract.notarizedDocuments.push({
-    version, storageKey, fileName, fileHash, fileSize: type.fileSize,
+    version, storageProvider: stored.provider, storageKey: stored.storageKey, fileName, fileHash, fileSize: type.fileSize,
     mimeType: type.mimeType, uploadedAt, uploadedBy: actorId,
     preparedDocumentVersion: contract.generatedVersion, superseded: false,
     replacementReason: clean(replacementReason, 500), notarialDetails: details,
   });
   Object.assign(contract, {
-    notarizedStorageKey: storageKey,
+    notarizedStorageKey: stored.storageKey,
     notarizedFileName: fileName,
     notarizedFileHash: fileHash,
     notarizedFileSize: type.fileSize,
@@ -163,7 +165,7 @@ export const uploadNotarizedContract = async ({
   try {
     await contract.save();
   } catch (saveError) {
-    await fs.rm(absolute, { force: true }).catch(() => {});
+    await removeNotarizedContractDocument({ storageProvider: stored.provider, storageKey: stored.storageKey }).catch(() => {});
     throw saveError;
   }
   return contract.notarizedDocuments.at(-1);
@@ -326,7 +328,35 @@ export const uploadAndFinalizeNotarizedContract = async ({
   contract.readyForPublicationAt = now;
   contract.readyForPublicationBy = actorId;
 
-  // 5. Transition to active status
+  // 5. Advance through the canonical lifecycle chain to active status.
+  // CONTRACT_TRANSITIONS (contractService.js) never permits a direct jump
+  // to "active" from any of DIRECT_NOTARIZED_UPLOAD_STATUSES — only from
+  // "published" (or "transfer_review_required"). This single-action upload
+  // is a UI/UX simplification (no separate verify/ready/publish button
+  // clicks required of the admin), not a license to skip the state
+  // machine: `assertDirectUploadAllowed` above guarantees contract.status
+  // is one of DIRECT_NOTARIZED_UPLOAD_STATUSES on entry, and every status
+  // in that set has "notarized" as a valid next step, so this chain is
+  // always valid: current -> notarized -> ready_for_publication ->
+  // published -> active.
+  await transitionContract(
+    contract,
+    "notarized",
+    actorId,
+    "Notarized Contract copy uploaded (single-action final upload)",
+  );
+  await transitionContract(
+    contract,
+    "ready_for_publication",
+    actorId,
+    "Auto-advanced to ready-for-publication as part of the single-action final upload",
+  );
+  await transitionContract(
+    contract,
+    "published",
+    actorId,
+    "Final signed and notarized Contract published for secure tenant access",
+  );
   await transitionContract(
     contract,
     "active",

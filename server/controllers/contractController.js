@@ -1,6 +1,4 @@
 import mongoose from "mongoose";
-import fs from "fs";
-import fsPromises from "fs/promises";
 import { Contract, Reservation, Stay, User } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
 import logger from "../middleware/logger.js";
@@ -14,7 +12,11 @@ import {
 } from "../services/contractService.js";
 import { buildContractGenerationData } from "../services/contractGenerationDataService.js";
 import { generatePreparedContractPdf } from "../services/contractPdfService.js";
-import { inspectPreparedContractDocument } from "../services/contractDocumentStorageService.js";
+import {
+  inspectPreparedContractDocument,
+  inspectSignedContractDocument,
+  inspectNotarizedContractDocument,
+} from "../services/contractDocumentStorageService.js";
 import { toTenantContractView } from "../services/tenantContractViewService.js";
 import {
   resolveCurrentPreparedDocument,
@@ -26,13 +28,11 @@ import {
   deleteSignedContract,
   markContractPrinted,
   rejectSignedContract,
-  resolveSignedContractPath,
   updatePhysicalSignature,
   uploadSignedContract,
   verifySignedContract,
 } from "../services/contractSigningService.js";
 import {
-  resolveNotarizedContractPath,
   rejectNotarizedContract,
   uploadNotarizedContract,
   uploadAndFinalizeNotarizedContract,
@@ -502,15 +502,14 @@ export const streamSignedDocument = async (req, res) => {
       : [...(contract.signedDocuments || [])].filter((item) => !item.superseded)
         .sort((a, b) => Number(b.version) - Number(a.version))[0];
     if (!document) return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
-    const absolute = resolveSignedContractPath(document.storageKey);
-    const stat = await fsPromises.stat(absolute).catch(() => null);
-    if (!stat?.isFile()) return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
+    const inspected = await inspectSignedContractDocument(document).catch(() => null);
+    if (!inspected) return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
     res.setHeader("Content-Type", document.mimeType);
-    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Content-Length", inspected.size);
     res.setHeader("Content-Disposition", `${req.query?.download === "true" ? "attachment" : "inline"}; filename="${document.fileName.replaceAll('"', "")}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Pragma", "no-cache");
-    fs.createReadStream(absolute).on("error", (streamError) => res.destroy(streamError)).pipe(res);
+    inspected.createReadStream().on("error", (streamError) => res.destroy(streamError)).pipe(res);
   } catch (error) { fail(res, error); }
 };
 
@@ -658,15 +657,14 @@ export const streamNotarizedDocument = async (req, res) => {
       : [...(contract.notarizedDocuments || [])].filter((item) => !item.superseded)
         .sort((a, b) => Number(b.version) - Number(a.version))[0];
     if (!document) return res.status(404).json({ error: "Notarized Contract file not found.", code: "NOTARIZED_DOCUMENT_NOT_FOUND" });
-    const absolute = resolveNotarizedContractPath(document.storageKey);
-    const stat = await fsPromises.stat(absolute).catch(() => null);
-    if (!stat?.isFile()) return res.status(404).json({ error: "Notarized Contract file not found.", code: "NOTARIZED_DOCUMENT_NOT_FOUND" });
+    const inspected = await inspectNotarizedContractDocument(document).catch(() => null);
+    if (!inspected) return res.status(404).json({ error: "Notarized Contract file not found.", code: "NOTARIZED_DOCUMENT_NOT_FOUND" });
     res.setHeader("Content-Type", document.mimeType);
-    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Content-Length", inspected.size);
     res.setHeader("Content-Disposition", `${req.query?.download === "true" ? "attachment" : "inline"}; filename="${document.fileName.replaceAll('"', "")}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Pragma", "no-cache");
-    fs.createReadStream(absolute).on("error", (streamError) => res.destroy(streamError)).pipe(res);
+    inspected.createReadStream().on("error", (streamError) => res.destroy(streamError)).pipe(res);
   } catch (error) { fail(res, error); }
 };
 
@@ -806,7 +804,7 @@ const streamFinal = async ({ req, res, contract, channel }) => {
     `${download ? "attachment" : "inline"}; filename="${resolved.finalDocument.fileName.replaceAll('"', "")}"`);
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("Pragma", "no-cache");
-  fs.createReadStream(resolved.absolutePath)
+  resolved.createReadStream()
     .on("error", (streamError) => res.destroy(streamError)).pipe(res);
 };
 
@@ -1490,18 +1488,17 @@ export const streamMySignedContract = async (req, res) => {
     if (!document) {
       return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
     }
-    const absolute = resolveSignedContractPath(document.storageKey);
-    const stat = await fsPromises.stat(absolute).catch(() => null);
-    if (!stat?.isFile()) {
+    const inspected = await inspectSignedContractDocument(document).catch(() => null);
+    if (!inspected) {
       return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
     }
     res.setHeader("Content-Type", document.mimeType || "application/pdf");
-    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Content-Length", inspected.size);
     const isDownload = req.query?.download === "true" || req.query?.download === "1";
     res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="${document.fileName ? document.fileName.replaceAll('"', '') : `signed-contract-v${document.version}.pdf`}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Pragma", "no-cache");
-    fs.createReadStream(absolute).on("error", (streamError) => res.destroy(streamError)).pipe(res);
+    inspected.createReadStream().on("error", (streamError) => res.destroy(streamError)).pipe(res);
   } catch (error) { fail(res, error); }
 };
 

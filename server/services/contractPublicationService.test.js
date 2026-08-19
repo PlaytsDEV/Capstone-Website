@@ -125,7 +125,15 @@ describe("final Contract publication", () => {
       publishedBy: actorId,
     });
     const resolved = await resolvePublishedFinalDocument(item);
-    expect(resolved.absolutePath).toBe(absolutePath);
+    expect(resolved.size).toBe(bytes.length);
+    const streamed = await new Promise((resolve, reject) => {
+      const chunks = [];
+      resolved.createReadStream()
+        .on("data", (chunk) => chunks.push(chunk))
+        .on("end", () => resolve(Buffer.concat(chunks)))
+        .on("error", reject);
+    });
+    expect(streamed.equals(bytes)).toBe(true);
     await expect(publishFinalContract({ contract: item, actorId, checklist }))
       .rejects.toMatchObject({ code: "CONTRACT_NOT_READY_FOR_PUBLICATION" });
   });

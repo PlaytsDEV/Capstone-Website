@@ -56,29 +56,18 @@ ${JSON.stringify(contextSnapshot, null, 2)}
 You assist tenants at the ${branchName} branch (${assignment}) with a warm, polite, empathetic, and friendly tone in simple, conversational English.
 Current server time in Asia/Manila: ${currentTime}.
 
-FRIENDLY POLICIES & STEP-BY-STEP EXPLANATIONS:
-1. Pro-Rata Electricity Sharing:
-   - Your room has its own submeter measuring actual electricity consumed.
-   - Total electricity cost is divided equally among active roommates for the billing period.
-   - Water consumption and high-speed Wi-Fi are completely free and included in monthly base rent.
-2. Monthly Rent & Due Dates:
-   - Monthly rent due dates follow each tenant's individual move-in / lease start cycle (NOT fixed to the 15th for all tenants).
-   - Submetered electricity is measured and recorded on the 15th of each month, then divided pro-rata among room occupants.
-   - Payments can easily be settled online via bank transfer or GCash in the Billing tab.
-3. Contract Expiration & Lease Renewal:
-   - Tenants can request a lease renewal 30 days before contract expiration under the Contracts tab.
-4. Move-Out Clearance & Security Deposit:
-   - Security deposit is fully refundable upon completing a simple move-out clearance room check.
-5. Maintenance & Repair Tickets:
-   - Submit repair tickets via the Maintenance Portal; our accredited on-site technicians attend to repairs promptly within 24-48 hours.
-6. Building Access:
-   - Main doors lock from 11:00 PM to 5:00 AM for security; 24/7 late entry is always accommodated for night-shift workers and students with a valid ID.
+AUTHORIZED KNOWLEDGE:
+- Tenant-specific facts come only from TENANT CONTEXT below.
+- Recent announcements in that context have already passed tenant and branch audience authorization.
+- Do not state a rate, due date, payment method, utility rule, gate schedule, response time, refund rule, or other policy unless the context explicitly provides it.
+- If the requested fact is absent, say it cannot currently be confirmed and point to the relevant Lilycrest module or admin-support workflow.
 
 STRICT OPERATIONAL GUIDELINES:
 1. Language & Professional Tone: Answer in warm, polite, empathetic, and friendly English only. Avoid heavy corporate jargon. Do NOT insert filler words or Tagalog honorifics like "po" or "opo". Respond strictly in English.
 2. Grounded Facts: Answer strictly using the TENANT CONTEXT JSON below. NEVER invent unlisted bills, contracts, room assignments, dates, reminders, announcements, or repair records. If a fact is absent, say it is not available in the canonical record.
-3. Read-Only Safety: You are an informational assistant. You cannot alter invoice totals, approve fee waivers, or cancel contracts. Direct disputes or special requests kindly to Branch Admin.
-4. Strictly No Icons or Emojis: Do NOT use icons, emojis, or graphical symbols in your answers or responses. Format responses using clean, plain text and standard markdown bold or lists only.
+3. Known Facts: Never ask the tenant for branch, room, move-in, contract, or billing details already present in TENANT CONTEXT.
+4. Read-Only Safety: You are an informational assistant. You cannot alter invoice totals, approve fee waivers, or cancel contracts. Direct disputes or special requests kindly to Branch Admin.
+5. Strictly No Icons or Emojis: Do NOT use icons, emojis, or graphical symbols in your answers or responses. Format responses using clean, plain text and standard markdown bold or lists only.
 
 TENANT CONTEXT:
 ${JSON.stringify(contextSnapshot, null, 2)}
@@ -192,6 +181,39 @@ export function getTenantRuleBasedFallback(message = "", contextSnapshot = null)
   const roomNumber = contextSnapshot?.roomNumber || "your assigned room";
   const branch = contextSnapshot?.branch || "Lilycrest Residence";
 
+  // Canonical occupancy wins over any older scheduled reservation state.
+  if (
+    lower.includes("branch")
+    || lower.includes("room")
+    || lower.includes("bed")
+    || lower.includes("move in")
+    || lower.includes("move-in")
+    || lower.includes("moved in")
+    || lower.includes("nakamove in")
+    || lower.includes("occupancy")
+  ) {
+    const tenancy = contextSnapshot?.tenancy || {};
+    if (tenancy.isCurrentResident) {
+      const started = tenancy.occupancyStartedAt
+        ? new Date(tenancy.occupancyStartedAt).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })
+        : null;
+      const assignment = contextSnapshot?.roomNumber
+        ? `Room ${contextSnapshot.roomNumber}${contextSnapshot?.bedPosition ? ` (${contextSnapshot.bedPosition})` : ""}`
+        : "a room assignment that is not currently available in Lily";
+      return `Your canonical occupancy record confirms that you are already moved in at **${branch}**, assigned to **${assignment}**${started ? ` since **${started}**` : ""}.`;
+    }
+
+    if (tenancy.scheduledMoveInDate) {
+      const scheduled = new Date(tenancy.scheduledMoveInDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" });
+      const assignment = contextSnapshot?.roomNumber
+        ? ` Your current assignment is Room ${contextSnapshot.roomNumber}${contextSnapshot?.bedPosition ? ` (${contextSnapshot.bedPosition})` : ""} at ${branch}.`
+        : "";
+      return `Your canonical record shows a scheduled move-in date of **${scheduled}**.${assignment}`;
+    }
+
+    return "Your current move-in date or room assignment cannot be confirmed from the canonical Lilycrest record right now. Please check your tenancy profile or contact admin support.";
+  }
+
   // 1. Maintenance & Repair Status
   if (
     lower.includes("maintenance") ||
@@ -260,7 +282,7 @@ export function getTenantRuleBasedFallback(message = "", contextSnapshot = null)
       const days = contract.daysRemaining !== null ? `${contract.daysRemaining} days remaining` : "Active term";
       const formatNum = (n) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
 
-      return `Your lease agreement for **Room ${roomNumber}${contract.bedPosition ? ` (${contract.bedPosition})` : ""}** at ${branch} is **${contract.status.toUpperCase()}**.\n\n• **Expiration Date**: ${endStr} (${days})\n• **Monthly Base Rate**: ${formatNum(contract.monthlyRate)}\n• **Security Deposit Held**: ${formatNum(contract.depositAmount)}\n• **Document**: ${contract.tenantDocument?.available ? `${contract.tenantDocument.label || "Available"} (version ${contract.tenantDocument.version || "unknown"})` : "Not available yet"}\n\nOpen the Contracts & Agreements tab for the canonical document and available actions.`;
+      return `Your lease agreement for **Room ${roomNumber}${contract.bedPosition ? ` (${contract.bedPosition})` : ""}** at ${branch} is **${contract.status.toUpperCase()}**.\n\n• **Contract Number**: ${contract.contractNumber || "Not currently available"}\n• **Expiration Date**: ${endStr} (${days})\n• **Monthly Base Rate**: ${formatNum(contract.monthlyRate)}\n• **Security Deposit Held**: ${formatNum(contract.depositAmount)}\n• **Document**: ${contract.tenantDocument?.available ? `${contract.tenantDocument.label || "Available"} (version ${contract.tenantDocument.version || "unknown"})` : "Not available yet"}\n\nOpen the Contracts & Agreements tab for the canonical document and available actions.`;
     }
 
     if (contextSnapshot?.tenancy?.isCurrentResident) {
@@ -269,12 +291,43 @@ export function getTenantRuleBasedFallback(message = "", contextSnapshot = null)
     return "No tenant-visible canonical Contract is available in your current records. Please check the Contracts tab or contact your branch admin.";
   }
 
-  // 4. Curfew & Gate Policy
-  if (lower.includes("curfew") || lower.includes("oras") || lower.includes("gate") || lower.includes("late")) {
-    return `I do not have a current, tenant-specific gate schedule in the canonical record for **${branch}**. Please confirm the latest access policy with your branch admin.`;
+  // 4. Announcements and policies are limited to audience-authorized records.
+  if (
+    lower.includes("announcement")
+    || lower.includes("news")
+    || lower.includes("notice")
+    || lower.includes("reminder")
+    || lower.includes("policy")
+    || lower.includes("house rule")
+    || lower.includes("curfew")
+    || lower.includes("gate")
+    || lower.includes("visitor")
+    || lower.includes("bisita")
+  ) {
+    const announcements = contextSnapshot?.recentAnnouncements || [];
+    if (announcements.length) {
+      const items = announcements
+        .map((announcement) => `- **${announcement.title}**: ${announcement.content}`)
+        .join("\n");
+      return `These are your latest audience-authorized Lilycrest updates for **${branch}**:\n\n${items}\n\nIf the policy you need is not listed, it cannot currently be confirmed in Lily.`;
+    }
+    return `I cannot currently confirm that Lilycrest policy from an audience-authorized record for **${branch}**. Please check Announcements or contact your branch admin.`;
   }
 
-  // 5. Default Greeting & Assistance
+  // 5. Existing support state comes from canonical conversations. Lily does
+  // not claim that an administrative action has already been completed.
+  if (lower.includes("inquiry") || lower.includes("support") || lower.includes("complaint") || lower.includes("admin") || lower.includes("nagreply")) {
+    const inquiries = contextSnapshot?.inquiries || [];
+    if (inquiries.length) {
+      const items = inquiries
+        .map((inquiry) => `- **${inquiry.category || "General inquiry"}**: ${inquiry.status}`)
+        .join("\n");
+      return `Your recent canonical support conversations are:\n\n${items}\n\nOpen My Inquiries to continue an existing concern without creating a duplicate.`;
+    }
+    return "You do not currently have a support conversation available in Lily. Use Contact Support if your concern requires an admin.";
+  }
+
+  // 6. Default Greeting & Assistance
   return `Hello, ${tenantName}! I am your **Lilycrest Tenant Assistant** for ${roomNumber} at ${branch}.\n\nI can help explain the canonical billing, maintenance, contract, announcement, and support records available to you. How may I assist you today?`;
 }
 

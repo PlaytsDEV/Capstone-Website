@@ -50,6 +50,13 @@ const preparedDocumentSchema = new mongoose.Schema(
 const signedDocumentSchema = new mongoose.Schema(
   {
     version: { type: Number, required: true, min: 1 },
+    // Shared by signedDocuments[] and notarizedDocuments[] (this schema is
+    // reused for both). Defaults to "local" so every pre-migration record —
+    // written before this field existed — is correctly read as local-disk,
+    // matching how it was actually stored. New uploads set this explicitly
+    // via contractDocumentStorageService.js's storeSignedContractDocument /
+    // storeNotarizedContractDocument.
+    storageProvider: { type: String, enum: ["local", "firebase-storage"], default: "local" },
     storageKey: { type: String, required: true },
     fileName: { type: String, required: true },
     fileHash: { type: String, required: true },
@@ -72,22 +79,41 @@ const signedDocumentSchema = new mongoose.Schema(
   { _id: false },
 );
 
+// NOTE: intentionally NOT `immutable: true` on these fields. Mongoose only
+// permits writes to an immutable path when the *parent* document is new
+// (doc.isNew) — but a Contract is, by definition, never new by the time its
+// finalDocument is legitimately set (it was already created and saved
+// earlier in its lifecycle). With `immutable: true` here, the very first
+// authorized finalization write would silently fail schema validation
+// (`finalDocument.<field>: Path '<field>' is required.`) on every real
+// Contract, making final-document publication impossible. Business-level
+// immutability (no finalDocument -> first upload allowed; existing
+// finalDocument -> replacement requires the formal process) is enforced at
+// the service layer instead — see contractNotarizationService.js's
+// `assertDirectUploadAllowed` and contractPublicationService.js's
+// `assertNotPublished`, which are the only two authorized writers of this
+// field and already reject unauthorized replacement attempts.
 const finalDocumentSchema = new mongoose.Schema(
   {
-    storageKey: { type: String, required: true, immutable: true },
-    fileName: { type: String, required: true, immutable: true },
-    fileHash: { type: String, required: true, immutable: true },
-    fileSize: { type: Number, required: true, min: 1, immutable: true },
-    mimeType: { type: String, required: true, immutable: true },
-    pageCount: { type: Number, required: true, min: 1, immutable: true },
-    sourceType: { type: String, enum: ["notarized"], required: true, immutable: true },
-    sourceVersion: { type: Number, required: true, min: 1, immutable: true },
-    sourceUploadedAt: { type: Date, required: true, immutable: true },
-    sourceVerifiedAt: { type: Date, required: true, immutable: true },
-    sourceVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, immutable: true },
-    publishedAt: { type: Date, required: true, immutable: true },
-    publishedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, immutable: true },
-    tenantVisible: { type: Boolean, default: true, required: true, immutable: true },
+    storageKey: { type: String, required: true },
+    fileName: { type: String, required: true },
+    fileHash: { type: String, required: true },
+    fileSize: { type: Number, required: true, min: 1 },
+    mimeType: { type: String, required: true },
+    pageCount: { type: Number, required: true, min: 1 },
+    // "admin_scan" is written only by scripts/reconcileFinalContractUploads.mjs,
+    // backfilling a Contract whose wet-signed scan was uploaded through the
+    // legacy signedDocuments[]-only flow before formal notarization
+    // verification existed for it — so sourceVerifiedAt/By below are
+    // legitimately absent for that source type, not required.
+    sourceType: { type: String, enum: ["notarized", "admin_scan"], required: true },
+    sourceVersion: { type: Number, required: true, min: 1 },
+    sourceUploadedAt: { type: Date, required: true },
+    sourceVerifiedAt: { type: Date, default: null },
+    sourceVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    publishedAt: { type: Date, required: true },
+    publishedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    tenantVisible: { type: Boolean, default: true, required: true },
   },
   { _id: false },
 );

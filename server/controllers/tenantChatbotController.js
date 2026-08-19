@@ -4,6 +4,10 @@ import {
   resolveTenantAIContext,
 } from "../services/chatbot/tenantContextResolver.js";
 import { queryTenantGeminiChatbot, streamTenantGeminiChatbot } from "../services/chatbot/tenantChatbotService.js";
+import {
+  classifyLilyRequest,
+  lilyDomainReply,
+} from "../services/chatbot/tenantDomainGuard.js";
 import ChatConversation from "../models/ChatConversation.js";
 import ChatMessage from "../models/ChatMessage.js";
 
@@ -56,8 +60,8 @@ function canonicalBranch(contextSnapshot) {
   return null;
 }
 
-async function tenantContext(req, userId) {
-  return (await resolveTenantAIContext(userId, req.authUser))
+async function tenantContext(req, userId, domains = null) {
+  return (await resolveTenantAIContext(userId, req.authUser, { domains }))
     || buildNeutralContext(req.authUser);
 }
 
@@ -66,8 +70,24 @@ export const handleTenantQuery = async (req, res, next) => {
     const validatedData = querySchema.parse(req.body);
     const { message, conversationHistory } = validatedData;
     const userId = req.authUser?._id || req.user?.uid;
+    // conversationHistory is client supplied, so it is intentionally not
+    // trusted to widen Lily's server-side scope decision.
+    const domainDecision = classifyLilyRequest(message);
+    if (!domainDecision.allowed) {
+      const restricted = lilyDomainReply();
+      return res.status(200).json({
+        success: true,
+        data: {
+          reply: restricted.reply,
+          widget: null,
+          suggestedActions: restricted.suggestions,
+          canEscalate: false,
+        },
+        message: "Operation completed successfully.",
+      });
+    }
 
-    const contextSnapshot = await tenantContext(req, userId);
+    const contextSnapshot = await tenantContext(req, userId, domainDecision.domains);
 
     const { reply, widget, suggestedActions } = await queryTenantGeminiChatbot({
       message,
@@ -105,8 +125,22 @@ export const handleTenantStream = async (req, res, next) => {
     const validatedData = querySchema.parse(req.body);
     const { message, conversationHistory } = validatedData;
     const userId = req.authUser?._id || req.user?.uid;
+    const domainDecision = classifyLilyRequest(message);
 
-    const contextSnapshot = await tenantContext(req, userId);
+    if (!domainDecision.allowed) {
+      const restricted = lilyDomainReply();
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+      res.write(`data: ${JSON.stringify({ type: "token", text: restricted.reply })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "actions", actions: restricted.suggestions })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "done", canEscalate: false })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const contextSnapshot = await tenantContext(req, userId, domainDecision.domains);
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
