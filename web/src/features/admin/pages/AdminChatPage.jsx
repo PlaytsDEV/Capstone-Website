@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   Check,
@@ -8,6 +9,7 @@ import {
   CircleAlert,
   Clock,
   FileDown,
+  FileText,
   Filter,
   Inbox,
   LoaderCircle,
@@ -203,6 +205,7 @@ export default function AdminChatPage() {
   const isOwner = user?.role === "owner";
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("all"); // "all" | "unread" | "urgent" | "me"
+  const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -1076,6 +1079,19 @@ export default function AdminChatPage() {
                     <span className="rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 px-2.5 py-0.5 font-medium border border-border">
                       {getCategoryLabel(selectedConversation.category)}
                     </span>
+
+                    {/* Contract context — this conversation was started from a specific lease Contract */}
+                    {selectedConversation.context?.entityType === "contract" && (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/admin/contracts/${selectedConversation.context.entityId}`)}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800 px-2.5 py-0.5 text-xs font-semibold transition-colors cursor-pointer"
+                        title="Open the related Contract"
+                      >
+                        <FileText size={12} />
+                        <span>View Contract</span>
+                      </button>
+                    )}
 
                     {/* Interactive Status Badge Button */}
                     <button

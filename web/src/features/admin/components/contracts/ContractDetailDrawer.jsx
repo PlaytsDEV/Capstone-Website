@@ -401,7 +401,8 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
       checks: [{ key: "confirmed", label: "I confirm that this document is physically signed and officially notarized." }],
       submitLabel: replacing ? "Replace Final Contract" : "Upload Final Contract",
       onSubmit: (values) => {
-        const { replacementReason, confirmed: _confirmed, ...notarialDetails } = values;
+        const { replacementReason, confirmed, ...notarialDetails } = values;
+        if (confirmed !== true) return Promise.reject(new Error("Confirmation is required."));
         return runAction("notarized-upload", () => contractApi.uploadFinalNotarizedContract(
           contractId, file, currentVersion, replacementReason?.trim(), notarialDetails,
         ), "Final signed and notarized Contract uploaded and activated.");

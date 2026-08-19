@@ -133,6 +133,7 @@ export const contractApi = {
   ) => {
     const body = new FormData();
     body.append("file", file);
+    body.append("confirmed", "true");
     if (preparedDocumentVersion) body.append("preparedDocumentVersion", String(preparedDocumentVersion));
     if (replacementReason) body.append("replacementReason", replacementReason);
     if (notes) body.append("notes", notes);

@@ -555,6 +555,15 @@ export const uploadNotarizedDocument = async (req, res) => {
 
 export const uploadFinalNotarizedContract = async (req, res) => {
   try {
+    // FormData sends "confirmed" as the string "true", not a JSON boolean —
+    // this endpoint is multipart (file upload), unlike the JSON-bodied
+    // publish/ready-for-publication endpoints this check mirrors.
+    if (req.body?.confirmed !== true && req.body?.confirmed !== "true") {
+      return res.status(400).json({
+        error: "Final publication confirmation is required.",
+        code: "PUBLICATION_CONFIRMATION_REQUIRED",
+      });
+    }
     const admin = await actor(req);
     const contract = await loadSigningContract(req);
     const before = contract.toObject();
@@ -575,6 +584,19 @@ export const uploadFinalNotarizedContract = async (req, res) => {
       contract,
       "Final signed-and-notarized Contract uploaded and activated for tenant access",
     );
+    // The one-step finalize path did not fire the tenant "document ready"
+    // notification that the older multi-step publishContract() path already
+    // sends (see publishContract below) — a real gap, since this is now the
+    // primary/canonical finalize path. Non-fatal: a failed notification must
+    // never unpublish or roll back the already-committed contract state.
+    notify
+      .contractDocumentReady(
+        contract.tenantId,
+        "final",
+        contract._id,
+        result.finalDocument?.sourceVersion,
+      )
+      .catch((e) => logger.warn({ err: e }, "Contract-finalized tenant notification failed (non-fatal)"));
     res.status(201).json({
       success: true,
       status: contract.status,

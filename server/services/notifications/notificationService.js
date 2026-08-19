@@ -662,6 +662,49 @@ const notify = {
       { actionUrl: "/admin/chat", entityType: "chat" },
     ),
 
+  // Fired when an admin replies to a tenant's support conversation. Until
+  // this existed, chatController.js used the plain notify.general() helper
+  // (createNotification only — DB row + realtime socket, no push), so a
+  // tenant who wasn't actively looking at the app had no way to learn an
+  // admin had responded. Mirrors contractDocumentReady's
+  // createNotificationWithPush + dedupeKey pattern: the dedupe key is tied
+  // to the specific persisted ChatMessage id, so a retried/duplicated send
+  // request that somehow re-invoked this for the same message can never
+  // produce a second push — a genuinely new admin reply always has a new
+  // messageId and is therefore always a distinct, real event.
+  supportReply: (tenantUserId, conversationId, messageId) => {
+    const normalizedConversationId = String(conversationId);
+    const title = "New Admin Reply";
+    const message = "You received a reply from LilyCrest Admin.";
+    const dedupeKey = messageId
+      ? `support_reply:${normalizedConversationId}:${String(messageId)}`
+      : undefined;
+
+    return createNotificationWithPush(
+      tenantUserId,
+      "support_reply",
+      title,
+      message,
+      {
+        entityType: "chat",
+        entityId: normalizedConversationId,
+        actionUrl: "/(tabs)/chatbot",
+        dedupeKey,
+      },
+      () =>
+        sendMobilePushToRecipients([tenantUserId], {
+          title,
+          body: message,
+          data: {
+            type: "support_reply",
+            conversation_id: normalizedConversationId,
+            screen: "chat",
+            url: "/(tabs)/chatbot",
+          },
+        }),
+    );
+  },
+
   moveOutComplete: (userId, roomName) =>
     createNotificationWithPush(
       userId,

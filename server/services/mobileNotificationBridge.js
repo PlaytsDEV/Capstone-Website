@@ -139,12 +139,24 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
   const entityId = normalizeString(String(doc.entityId || ""));
   const isCanonicalBillEntity = entityType === "bill" && entityId;
   const isCanonicalContractEntity = entityType === "contract" && entityId;
+  // A future mobile client reconciled onto the canonical /api/chat support
+  // service (see chatController.js's notify.supportReply) will receive
+  // entityType: "chat" / entityId: conversationId — same additive mapping
+  // as the contract case above, so that reconciliation is a pure client
+  // change with no further backend work required.
+  const isCanonicalChatEntity = entityType === "chat" && entityId;
   const data = sanitizePayload(doc.data);
   if (isCanonicalContractEntity) {
     data.type ||= type;
     data.contract_id ||= entityId;
     data.screen ||= "contract";
     data.url ||= "/contract-viewer";
+  }
+  if (isCanonicalChatEntity) {
+    data.type ||= type;
+    data.conversation_id ||= entityId;
+    data.screen ||= "chat";
+    data.url ||= "/(tabs)/chatbot";
   }
   return {
     notification_id: doc.notification_id || doc._id?.toString?.() || "",
@@ -161,10 +173,13 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
     type,
     source: normalizeString(doc.source || "system") || "system",
     data,
-    // Canonical actionUrl is a web route. Contract notifications need the
-    // Expo route when projected through the mobile bridge.
+    // Canonical actionUrl is a web route. Contract/chat notifications need
+    // the Expo route when projected through the mobile bridge.
     url: normalizeString(
-      doc.url || doc.data?.url || (isCanonicalContractEntity ? "/contract-viewer" : doc.actionUrl) || "",
+      doc.url || doc.data?.url
+        || (isCanonicalContractEntity ? "/contract-viewer" : "")
+        || (isCanonicalChatEntity ? "/(tabs)/chatbot" : "")
+        || doc.actionUrl || "",
     ),
     read: doc.read === true || doc.isRead === true,
     announcement_id: normalizeString(doc.announcement_id || doc.data?.announcement_id || ""),
@@ -174,6 +189,9 @@ function sanitizeStoredNotification(doc = {}, authorNameMap = new Map()) {
     ),
     contract_id: normalizeString(
       doc.contract_id || doc.data?.contract_id || (isCanonicalContractEntity ? entityId : ""),
+    ),
+    conversation_id: normalizeString(
+      doc.conversation_id || doc.data?.conversation_id || (isCanonicalChatEntity ? entityId : ""),
     ),
     request_id: normalizeString(doc.request_id || doc.data?.request_id || ""),
     session_id: normalizeString(doc.session_id || doc.data?.session_id || ""),

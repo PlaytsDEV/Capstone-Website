@@ -15,6 +15,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     find: messageFind,
     updateMany: messageUpdateMany,
   },
+  Contract: {},
   Reservation: {},
   User: {},
 }));

@@ -64,6 +64,7 @@ const notificationSchema = new mongoose.Schema(
         "announcement",
         "sla_breach",
         "chat_unresponded",
+        "support_reply",
         "general",
       ],
       index: true,
