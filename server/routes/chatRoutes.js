@@ -4,16 +4,17 @@ import { verifyAdmin, verifyToken } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/permissions.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
 import * as chatController from "../controllers/chatController.js";
+import {
+  SUPPORT_ATTACHMENT_MAX_BYTES,
+  SUPPORT_ATTACHMENT_MIME_TYPES,
+} from "../config/supportAttachments.js";
 
 const router = express.Router();
-const CHAT_ATTACHMENT_MIME_TYPES = new Set([
-  "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/pdf",
-]);
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  limits: { fileSize: SUPPORT_ATTACHMENT_MAX_BYTES, files: 1 },
   fileFilter: (_req, file, cb) => {
-    if (CHAT_ATTACHMENT_MIME_TYPES.has(String(file.mimetype || "").toLowerCase())) return cb(null, true);
+    if (SUPPORT_ATTACHMENT_MIME_TYPES.has(String(file.mimetype || "").toLowerCase())) return cb(null, true);
     const error = new Error("This file type is not supported. Please upload a JPEG, PNG, WebP, HEIC, HEIF, or PDF file.");
     error.statusCode = 400;
     error.code = "UNSUPPORTED_FILE_TYPE";

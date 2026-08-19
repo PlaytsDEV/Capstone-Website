@@ -110,6 +110,11 @@ const QUICK_REPLIES = [
   "Please confirm whether this resolved your concern.",
 ];
 
+// Mirrors MAX_SUPPORT_ATTACHMENTS in server/config/supportAttachments.js and
+// the mobile client's own copy of the same number. The server enforces it
+// independently — this only stops the admin staging a set it would refuse.
+const MAX_SUPPORT_ATTACHMENTS = 5;
+
 const PRIORITY_RANK = { urgent: 0, high: 1, normal: 2 };
 
 const fmtDateTime = (value) => {
@@ -716,7 +721,7 @@ export default function AdminChatPage() {
     }
 
     if (newAttachments.length > 0) {
-      setStagedAttachments((prev) => [...prev, ...newAttachments].slice(0, 5));
+      setStagedAttachments((prev) => [...prev, ...newAttachments].slice(0, MAX_SUPPORT_ATTACHMENTS));
     }
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -783,7 +788,7 @@ export default function AdminChatPage() {
     }
 
     if (pastedImages.length > 0) {
-      setStagedAttachments((prev) => [...prev, ...pastedImages].slice(0, 5));
+      setStagedAttachments((prev) => [...prev, ...pastedImages].slice(0, MAX_SUPPORT_ATTACHMENTS));
       const hasText = e.clipboardData.getData("text/plain");
       if (!hasText) {
         e.preventDefault();

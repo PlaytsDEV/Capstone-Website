@@ -1,8 +1,14 @@
 import { describe, expect, test } from "@jest/globals";
+import { readFileSync } from "node:fs";
 import mongoose from "mongoose";
 
 import ChatAttachment from "./ChatAttachment.js";
 import ChatMessage from "./ChatMessage.js";
+import {
+  MAX_SUPPORT_ATTACHMENTS,
+  SUPPORT_ATTACHMENT_MAX_BYTES,
+  SUPPORT_ATTACHMENT_MIME_TYPES,
+} from "../config/supportAttachments.js";
 
 // Cross-repository attachment contract.
 //
@@ -159,5 +165,63 @@ describe("mobile message embeds satisfy the canonical ChatMessage shape", () => 
       expect(value).not.toMatch(/^https?:/);
       expect(value).not.toMatch(/firebasestorage|googleapis|storage\.cloud/);
     }
+  });
+});
+
+// The limits are the other half of the cross-repo contract. Mobile enforced 3
+// attachments per message while this server enforced 5, so the two apps
+// advertised different rules for the same conversation. 5 is canonical; these
+// pin it, the size ceiling and the MIME set in one place on this side.
+describe("support-chat attachment limits — cross-repository contract", () => {
+  test("the per-message cap is 5 and is a named constant, not a literal", () => {
+    expect(MAX_SUPPORT_ATTACHMENTS).toBe(5);
+    const controller = readFileSync(
+      new URL("../controllers/chatController.js", import.meta.url),
+      "utf8",
+    );
+    expect(controller).toContain("rawAttachments.length > MAX_SUPPORT_ATTACHMENTS");
+    expect(controller).not.toContain("rawAttachments.length > 5");
+  });
+
+  test("the size ceiling agrees with the schema and the upload middleware", () => {
+    expect(SUPPORT_ATTACHMENT_MAX_BYTES).toBe(5 * 1024 * 1024);
+    // The schema is what actually rejects an oversized record from either app.
+    expect(ChatAttachment.schema.path("size").options.max).toBe(SUPPORT_ATTACHMENT_MAX_BYTES);
+
+    const routes = readFileSync(new URL("../routes/chatRoutes.js", import.meta.url), "utf8");
+    expect(routes).toContain("fileSize: SUPPORT_ATTACHMENT_MAX_BYTES");
+    expect(routes).toContain("SUPPORT_ATTACHMENT_MIME_TYPES.has(");
+  });
+
+  test("the MIME allow-list is the narrow, inline-renderable set both apps share", () => {
+    expect([...SUPPORT_ATTACHMENT_MIME_TYPES].sort()).toEqual([
+      "application/pdf",
+      "image/heic",
+      "image/heif",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ]);
+  });
+
+  test("a mobile-written record at exactly the limits still validates here", () => {
+    const atLimit = new ChatAttachment(
+      mobileAttachmentRecord({ size: SUPPORT_ATTACHMENT_MAX_BYTES, mimeType: "application/pdf" }),
+    );
+    expect(atLimit.validateSync()).toBeUndefined();
+
+    const overLimit = new ChatAttachment(
+      mobileAttachmentRecord({ size: SUPPORT_ATTACHMENT_MAX_BYTES + 1 }),
+    );
+    expect(overLimit.validateSync()?.errors?.size).toBeDefined();
+  });
+
+  test("the admin compose UI stages against the same named cap", () => {
+    const page = readFileSync(
+      new URL("../../web/src/features/admin/pages/AdminChatPage.jsx", import.meta.url),
+      "utf8",
+    );
+    expect(page).toContain("const MAX_SUPPORT_ATTACHMENTS = 5;");
+    expect(page).not.toMatch(/stagedAttachments[\s\S]{0,120}\.slice\(0, 5\)/);
   });
 });
