@@ -20,6 +20,9 @@ import {
   buildProviderDirectoryFilter,
   buildGenericProviderDirectoryFilter,
   buildMaintenanceReportPayload,
+  appendStatusHistory,
+  buildActorSnapshot,
+  serializeMaintenanceRequest,
 } from "./_helpers.js";
 import {
   generateMaintenanceUpdateDraft,
@@ -100,7 +103,49 @@ export const generateAdminMaintenanceReport = async (req, res, next) => {
       reportType,
     });
 
-    sendSuccess(res, report);
+    const now = new Date();
+    const reportId = request.completionReport?.reportId || `rep_${Date.now()}`;
+    const finalizedByName =
+      `${adminUser.firstName || ""} ${adminUser.lastName || ""}`.trim() || adminUser.email;
+
+    request.completionReport = {
+      reportId,
+      isDraft: false,
+      summary: report.summary,
+      workDone: request.resolution_note || request.notes || "Maintenance work completed.",
+      partsReplaced: request.completionReport?.partsReplaced || null,
+      preventiveAdvice:
+        request.completionReport?.preventiveAdvice || "Regular maintenance inspection recommended.",
+      finalizedBy: adminUser.user_id || String(adminUser._id || ""),
+      finalizedByName,
+      finalizedAt: now,
+      generatedAt: now,
+      reportType,
+      reportUrl: request.completionReport?.reportUrl || null,
+    };
+
+    appendStatusHistory(request, {
+      event: "completion_report_recorded",
+      status: request.status,
+      ...buildActorSnapshot(adminUser),
+      note: `Official maintenance ${reportType === "tenant" ? "tenant summary" : "admin report"} generated and recorded in system.`,
+      timestamp: now,
+    });
+
+    await request.save();
+
+    sendSuccess(res, {
+      ...report,
+      reportId,
+      finalizedByName,
+      finalizedAt: now.toISOString(),
+      isRecorded: true,
+      completionReport: request.completionReport,
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        requestSnapshot.tenant,
+      ),
+    });
   } catch (error) {
     next(error);
   }

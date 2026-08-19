@@ -1,5 +1,6 @@
 import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
 import ProfileAvatar from "../../../../shared/components/ProfileAvatar";
+import { getTenantIndicator } from "../../pages/tenantWorkspaceActions.mjs";
 
 const BuildingIcon = () => (
  <svg
@@ -209,19 +210,32 @@ export default function TenantTable({
  <div style={{ fontSize: "13px", color: "#9CA3AF" }}>Tenants will appear here once applicants complete move-in.</div>
  </div>
  ) : (
- tenants.map((tenant) => (
- <div key={tenant.id} className="admin-tenants-row">
- <div className="admin-tenants-cell">
-  <div className="admin-tenants-profile">
-  <ProfileAvatar
-    user={{ name: tenant.name, email: tenant.email }}
-    initials={tenant.initials}
-    size={34}
-    defaultOnly
-  />
-  <span className="admin-tenants-name">{tenant.name}</span>
-  </div>
- </div>
+ tenants.map((tenant) => {
+    const indicator = getTenantIndicator(tenant);
+    return (
+      <div key={tenant.id} className="admin-tenants-row">
+        <div className="admin-tenants-cell">
+          <div className="admin-tenants-profile">
+            <div className="relative shrink-0">
+              <ProfileAvatar
+                user={{ name: tenant.name, email: tenant.email }}
+                initials={tenant.initials}
+                size={34}
+                defaultOnly
+              />
+              {indicator && (
+                <span
+                  className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center pointer-events-none"
+                  title={indicator.tooltip}
+                >
+                  <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${indicator.pingClass} opacity-75`} />
+                  <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${indicator.dotClass}`} />
+                </span>
+              )}
+            </div>
+            <span className="admin-tenants-name">{tenant.name}</span>
+          </div>
+        </div>
  <div className="admin-tenants-cell">
  <span
  className={`admin-tenants-status admin-tenants-status-${tenant.status.toLowerCase().replace(/\s+/g, "-")}`}
@@ -263,9 +277,10 @@ export default function TenantTable({
  <span>View</span>
  </button>
  </div>
- </div>
- ))
- )}
+  </div>
+    );
+  })
+)}
  </div>
  );
 }

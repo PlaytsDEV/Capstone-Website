@@ -11,6 +11,7 @@ export {
   getCurrentResidents,
   getTenantWorkspace,
   getTenantWorkspaceById,
+  markTenantWorkspaceAsViewed,
   getTenantActionContext,
   getRoomMeterBaseline,
 } from "./tenantWorkspaceController.js";

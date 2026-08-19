@@ -108,6 +108,45 @@ test("CSS enforces Navy Blue in light mode and Golden Yellow in dark mode for la
   assert.match(stylesSource, /\.dark \.tenant-lease-progress-fill[^{]*\{[^}]*background-color:\s*#D4AF37;/);
 });
 
+const paymentCardSource = fs.readFileSync(path.join(here, "cards/TenantPaymentGuideCard.jsx"), "utf8");
+const houseRulesCardSource = fs.readFileSync(path.join(here, "cards/TenantHouseRulesCard.jsx"), "utf8");
+const announcementCardSource = fs.readFileSync(path.join(here, "cards/TenantAnnouncementCard.jsx"), "utf8");
+
+test("TenantPaymentGuideCard renders balance due, payment channels (GCash, Bank Transfer), and link to /applicant/billing", () => {
+  assert.match(paymentCardSource, /tenant-snapshot-card/);
+  assert.match(paymentCardSource, /Payment Channels Guide/);
+  assert.match(paymentCardSource, /GCash \/ Maya/);
+  assert.match(paymentCardSource, /Online Bank Transfer/);
+  assert.match(paymentCardSource, /\/applicant\/billing/);
+});
+
+test("TenantHouseRulesCard renders gate hours, quiet hours, visitor policy, and link to /applicant/contracts", () => {
+  assert.match(houseRulesCardSource, /tenant-snapshot-card/);
+  assert.match(houseRulesCardSource, /Building Access & Rules/);
+  assert.match(houseRulesCardSource, /11:00 PM – 5:00 AM/);
+  assert.match(houseRulesCardSource, /Quiet Hours/);
+  assert.match(houseRulesCardSource, /Day Visitors/);
+  assert.match(houseRulesCardSource, /\/applicant\/contracts/);
+});
+
+test("TenantAnnouncementCard renders branch advisory notice, and link to /applicant/announcements", () => {
+  assert.match(announcementCardSource, /tenant-snapshot-card/);
+  assert.match(announcementCardSource, /Branch Advisory/);
+  assert.match(announcementCardSource, /\/applicant\/announcements/);
+});
+
+test("TenantAssistantDrawer includes action chip routing, stop button, copy transcript, and refresh stay data", () => {
+  assert.match(drawerSource, /handleStopGeneration/);
+  assert.match(drawerSource, /tenant-assistant-stop-btn/);
+  assert.match(drawerSource, /handleCopyTranscript/);
+  assert.match(drawerSource, /handleRefreshStayData/);
+  assert.match(drawerSource, /tenant-assistant-refresh-btn/);
+  assert.match(drawerSource, /act\.url/);
+  assert.match(drawerSource, /TenantPaymentGuideCard/);
+  assert.match(drawerSource, /TenantHouseRulesCard/);
+  assert.match(drawerSource, /TenantAnnouncementCard/);
+});
+
 test("TenantBillingBreakdownCard and TenantLeaseTimelineCard enforce strict data validity checks", () => {
   assert.match(billingCardSource, /hasValidBillData/);
   assert.match(billingCardSource, /if \(!data \|\| !hasValidBillData\) return null;/);

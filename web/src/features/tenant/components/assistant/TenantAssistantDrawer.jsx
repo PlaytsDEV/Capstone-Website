@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Bot,
   Headphones,
   RotateCcw,
+  RotateCw,
   X,
   Sparkles,
   Send,
@@ -18,12 +19,21 @@ import {
   Wrench,
   Calendar,
   UserCheck,
+  Copy,
+  Check,
+  Square,
+  CreditCard,
+  Clock,
+  Megaphone,
 } from "lucide-react";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { streamTenantAssistant } from "../../api/tenantAssistantApi";
 import TenantBillingBreakdownCard from "./cards/TenantBillingBreakdownCard";
 import TenantLeaseTimelineCard from "./cards/TenantLeaseTimelineCard";
 import TenantMaintenanceCard from "./cards/TenantMaintenanceCard";
+import TenantPaymentGuideCard from "./cards/TenantPaymentGuideCard";
+import TenantHouseRulesCard from "./cards/TenantHouseRulesCard";
+import TenantAnnouncementCard from "./cards/TenantAnnouncementCard";
 import TenantHumanEscalateModal from "./modals/TenantHumanEscalateModal";
 import "../../styles/tenant-assistant.css";
 
@@ -72,6 +82,7 @@ function formatBranch(raw) {
 export default function TenantAssistantDrawer({ isOpen, onClose }) {
   const { user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [messages, setMessages] = useState(() => {
     try {
@@ -90,6 +101,8 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
   const [activeActions, setActiveActions] = useState([]);
   const [isEscalateOpen, setIsEscalateOpen] = useState(false);
   const [contextSnapshot, setContextSnapshot] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasCopied, setHasCopied] = useState(false);
 
   const bodyRef = useRef(null);
   const textareaRef = useRef(null);
@@ -180,6 +193,62 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
     setActiveWidget(null);
     setActiveActions([]);
     sessionStorage.removeItem(STORAGE_KEY);
+  };
+
+  const handleCopyTranscript = async () => {
+    if (!messages || messages.length === 0) return;
+    const transcript = messages
+      .map((m) => `${m.role === "user" ? "Tenant" : "Lilycrest Assistant"}: ${m.content}`)
+      .join("\n\n");
+    try {
+      await navigator.clipboard.writeText(transcript);
+      setHasCopied(true);
+      setTimeout(() => setHasCopied(false), 2000);
+    } catch {
+      // Ignore clipboard errors
+    }
+  };
+
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsStreaming(false);
+      if (streamingText.trim()) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: streamingText.trim(),
+            widget: activeWidget,
+            actions: activeActions,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        setStreamingText("");
+      }
+    }
+  };
+
+  const handleRefreshStayData = async () => {
+    if (isRefreshing || isStreaming) return;
+    try {
+      setIsRefreshing(true);
+      await streamTenantAssistant(
+        { message: "Refresh stay data" },
+        {
+          onDone: (result) => {
+            if (result?.contextSnapshot) {
+              setContextSnapshot(result.contextSnapshot);
+            }
+          },
+        }
+      );
+    } catch (err) {
+      console.error("Failed to refresh stay data:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleSendMessage = async (textToSend) => {
@@ -293,6 +362,12 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
       return;
     }
 
+    if (act.url) {
+      onClose?.();
+      navigate(act.url);
+      return;
+    }
+
     if (act.action === "open_escalate_modal") {
       setIsEscalateOpen(true);
     } else if (act.prompt) {
@@ -338,6 +413,33 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
 
     const type = typeof widgetPayload === "string" ? widgetPayload : widgetPayload.type;
     const widgetData = typeof widgetPayload === "object" ? widgetPayload.data || widgetPayload : contextSnapshot;
+
+    if (type === "payment_guide" || type === "payment_options" || type === "payment_methods") {
+      return (
+        <TenantPaymentGuideCard
+          data={widgetData}
+          onCloseDrawer={onClose}
+        />
+      );
+    }
+
+    if (type === "house_rules" || type === "building_rules" || type === "curfew_policy") {
+      return (
+        <TenantHouseRulesCard
+          data={widgetData}
+          onCloseDrawer={onClose}
+        />
+      );
+    }
+
+    if (type === "recent_announcements" || type === "announcement_card" || type === "branch_advisory") {
+      return (
+        <TenantAnnouncementCard
+          data={widgetData?.recentAnnouncements || widgetData}
+          onCloseDrawer={onClose}
+        />
+      );
+    }
 
     if (type === "billing_breakdown") {
       const billData = widgetData?.currentBill || (widgetData?.billId || widgetData?.billing_id ? widgetData : null);
@@ -416,6 +518,22 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
               {messages.length > 0 && (
                 <button
                   type="button"
+                  onClick={handleCopyTranscript}
+                  className="tenant-assistant-icon-btn"
+                  aria-label="Copy conversation transcript"
+                  title={hasCopied ? "Copied to clipboard!" : "Copy conversation"}
+                >
+                  {hasCopied ? (
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                  ) : (
+                    <Copy className="w-4 h-4" aria-hidden="true" />
+                  )}
+                </button>
+              )}
+
+              {messages.length > 0 && (
+                <button
+                  type="button"
                   onClick={handleClearHistory}
                   className="tenant-assistant-icon-btn"
                   aria-label="Clear chat history"
@@ -448,8 +566,17 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
               )}
             </div>
             <div className="tenant-assistant-banner-right">
-              <span className="tenant-assistant-grounded-dot" />
-              <span>{isApplicant ? "Grounded on Reservation" : "Grounded on Stay Data"}</span>
+              <button
+                type="button"
+                onClick={handleRefreshStayData}
+                disabled={isRefreshing || isStreaming}
+                className="tenant-assistant-refresh-btn"
+                title="Click to refresh live stay data"
+                aria-label="Refresh live stay data"
+              >
+                <RotateCw className={`w-3 h-3 ${isRefreshing ? "animate-spin text-amber-500" : "text-slate-400"}`} aria-hidden="true" />
+                <span>{isRefreshing ? "Refreshing..." : (isApplicant ? "Grounded on Reservation" : "Grounded on Stay Data")}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -633,20 +760,29 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
               aria-label="Ask Lilycrest Tenant Assistant"
             />
 
-            <button
-              type="button"
-              onClick={() => handleSendMessage()}
-              disabled={!inputMessage.trim() || isStreaming}
-              className="tenant-assistant-send-btn"
-              aria-label="Send message"
-              title="Send (Enter)"
-            >
-              {isStreaming ? (
-                <LoaderCircle className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </button>
+            {isStreaming ? (
+              <button
+                type="button"
+                onClick={handleStopGeneration}
+                className="tenant-assistant-stop-btn"
+                aria-label="Stop generating response"
+                title="Stop generating"
+              >
+                <Square className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
+                <span>Stop</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleSendMessage()}
+                disabled={!inputMessage.trim()}
+                className="tenant-assistant-send-btn"
+                aria-label="Send message"
+                title="Send (Enter)"
+              >
+                <Send className="w-4 h-4" aria-hidden="true" />
+              </button>
+            )}
           </div>
 
           <div className="tenant-assistant-footer-meta">
@@ -666,7 +802,14 @@ export default function TenantAssistantDrawer({ isOpen, onClose }) {
             : ""
         }
         onEscalationSuccess={() => {
-          onClose();
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: "Your inquiry has been escalated directly to our Branch Admin team. Our staff will review your message and reach out promptly.",
+              timestamp: new Date().toISOString(),
+            },
+          ]);
         }}
       />
     </>

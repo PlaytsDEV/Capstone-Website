@@ -42,10 +42,19 @@ import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 import DeadlineBadge from "../../../shared/components/DeadlineBadge";
 import StatusBadge from "./shared/StatusBadge";
 import { formatBedPosition, formatCodedRoomAndBed } from "../../../shared/utils/bedIdentifier";
+import ProfileAvatar from "../../../shared/components/ProfileAvatar";
 import {
   useTenantWorkspaceDetail,
   useTenantActionContext,
+  useMarkTenantAsViewed,
 } from "../../../shared/hooks/queries/useReservations";
+import {
+  getTenantIndicator,
+  getTenantTabIndicators,
+  markTenantViewedInStorage,
+  getViewedTabsForTenant,
+  markTenantTabViewedInStorage,
+} from "../pages/tenantWorkspaceActions.mjs";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { contractApi } from "../../../shared/api/contractApi";
 import { formatContractStatus, getContractNextAction } from "../utils/contractUi.mjs";
@@ -584,7 +593,33 @@ export default function TenantDetailModal({
   const toggleBillCard = (id) => {
     setExpandedBillCards((prev) => ({ ...prev, [id]: !prev[id] }));
   };
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const [activeTab, setActiveTab] = useState(initialTab || "overview");
+  
+  const reservationId =
+    initialTenant?.reservationId ||
+    initialTenant?._id ||
+    initialTenant?.id ||
+    null;
+
+  const [viewedTabs, setViewedTabs] = useState(() => {
+    const saved = getViewedTabsForTenant(reservationId);
+    if (initialTab) saved.add(initialTab);
+    saved.add("overview");
+    return saved;
+  });
+
+  const handleTabChange = useCallback((nextTab) => {
+    setActiveTab(nextTab);
+    if (reservationId && nextTab) {
+      markTenantTabViewedInStorage(reservationId, nextTab);
+    }
+    setViewedTabs((prev) => {
+      const next = new Set(prev);
+      next.add(nextTab);
+      return next;
+    });
+  }, [reservationId]);
+
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [previewDoc, setPreviewDoc] = useState(null);
   const [isDocsPanelOpen, setIsDocsPanelOpen] = useState(false);
@@ -596,17 +631,31 @@ export default function TenantDetailModal({
   const [activeDigitalContract, setActiveDigitalContract] = useState(null);
   const [loadingDigitalContract, setLoadingDigitalContract] = useState(false);
 
-  const reservationId =
-    initialTenant?.reservationId ||
-    initialTenant?._id ||
-    initialTenant?.id ||
-    null;
-
   useEffect(() => {
     if (initialTab) {
       setActiveTab(initialTab);
+      if (reservationId) {
+        markTenantTabViewedInStorage(reservationId, initialTab);
+      }
+      setViewedTabs((prev) => {
+        const next = new Set(prev);
+        next.add(initialTab);
+        return next;
+      });
     }
   }, [initialTab, reservationId]);
+
+  useEffect(() => {
+    if (activeTab && reservationId) {
+      markTenantTabViewedInStorage(reservationId, activeTab);
+      setViewedTabs((prev) => {
+        if (prev.has(activeTab)) return prev;
+        const next = new Set(prev);
+        next.add(activeTab);
+        return next;
+      });
+    }
+  }, [activeTab, reservationId]);
 
   // Reset scroll container position when switching tabs to prevent jarring jumps
   useEffect(() => {
@@ -620,6 +669,15 @@ export default function TenantDetailModal({
     isLoading: isDetailLoading,
   } = useTenantWorkspaceDetail(reservationId);
   const { data: actionContext } = useTenantActionContext(reservationId);
+  const markTenantViewedMutation = useMarkTenantAsViewed();
+
+  // Mark tenant workspace record as viewed by admin upon modal inspection
+  useEffect(() => {
+    if (reservationId) {
+      markTenantViewedInStorage(reservationId);
+      markTenantViewedMutation.mutate(reservationId);
+    }
+  }, [reservationId]);
 
   // Sync dedicatedContract and all contracts from fetched detail or contractApi
   useEffect(() => {
@@ -992,6 +1050,20 @@ export default function TenantDetailModal({
     };
   }, [fetchedDetail, initialTenant, reservationId]);
 
+  const rawTabIndicators = useMemo(() => getTenantTabIndicators(tenant), [tenant]);
+  const tabIndicators = useMemo(() => {
+    return {
+      overview: viewedTabs.has("overview") ? null : rawTabIndicators.overview,
+      financials: viewedTabs.has("financials") ? null : rawTabIndicators.financials,
+      warnings: viewedTabs.has("warnings") ? null : rawTabIndicators.warnings,
+    };
+  }, [rawTabIndicators, viewedTabs]);
+
+  const headerIndicator = useMemo(
+    () => getTenantIndicator(tenant, { ignoreViewed: true }),
+    [tenant],
+  );
+
   const closeDialog = () => {
     setDialogState({ type: null, loading: false, error: null });
   };
@@ -1004,15 +1076,6 @@ export default function TenantDetailModal({
         docsPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     }, 100);
-  }, []);
-
-  const handleOpenFinancialsPanel = useCallback(() => {
-    setActiveTab("financials");
-    setTimeout(() => {
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
-      }
-    }, 50);
   }, []);
 
   const invalidateTenantQueries = () =>
@@ -1279,8 +1342,22 @@ export default function TenantDetailModal({
           {/* HEADER */}
           <div className="px-6 py-4 border-b border-border bg-card flex-shrink-0 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-11 h-11 rounded-full flex items-center justify-center text-white bg-[#0A1628] dark:text-[#0A1628] dark:bg-[#D4AF37] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 font-bold text-base flex-shrink-0 shadow-sm">
-                {tenant.initials || getInitials(tenant.name)}
+              <div className="relative shrink-0">
+                <ProfileAvatar
+                  user={{ name: tenant.name, email: tenant.email }}
+                  initials={tenant.initials || getInitials(tenant.name)}
+                  size={42}
+                  defaultOnly
+                />
+                {headerIndicator && (
+                  <span
+                    className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center pointer-events-none"
+                    title={headerIndicator.tooltip}
+                  >
+                    <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${headerIndicator.pingClass} opacity-75`} />
+                    <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${headerIndicator.dotClass}`} />
+                  </span>
+                )}
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1387,19 +1464,6 @@ export default function TenantDetailModal({
                   </div>
                 )}
 
-                {/* Quick Link to Itemized Statement Tab */}
-                <button
-                  type="button"
-                  onClick={handleOpenFinancialsPanel}
-                  className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg border border-border bg-card text-foreground hover:bg-muted hover:border-border-strong text-xs font-medium transition-colors cursor-pointer shadow-2xs"
-                  title="Navigate to and view complete itemized Statement of Account"
-                >
-                  <span className="flex items-center gap-1.5 font-medium text-foreground">
-                    <Receipt className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                    <span>View Itemized Statement</span>
-                  </span>
-                  <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
-                </button>
               </div>
 
               {/* Basic Tenant & Room Assignment Card */}
@@ -1547,7 +1611,7 @@ export default function TenantDetailModal({
               <div className="flex items-center gap-1 border-b border-border pb-1 overflow-x-auto whitespace-nowrap">
                 <button
                   type="button"
-                  onClick={() => setActiveTab("overview")}
+                  onClick={() => handleTabChange("overview")}
                   className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-t-lg transition-colors border-b-2 whitespace-nowrap flex-shrink-0 cursor-pointer ${
                     activeTab === "overview"
                       ? "border-foreground text-foreground bg-muted/50"
@@ -1555,11 +1619,17 @@ export default function TenantDetailModal({
                   }`}
                 >
                   <FileText className="w-3.5 h-3.5" />
-                  Overview & Contract
+                  <span>Overview & Contract</span>
+                  {tabIndicators.overview && activeTab !== "overview" && !viewedTabs.has("overview") && (
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full ${tabIndicators.overview.dotClass}`}
+                      title={tabIndicators.overview.tooltip}
+                    />
+                  )}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab("financials")}
+                  onClick={() => handleTabChange("financials")}
                   className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-t-lg transition-colors border-b-2 whitespace-nowrap flex-shrink-0 cursor-pointer ${
                     activeTab === "financials"
                       ? "border-foreground text-foreground bg-muted/50"
@@ -1567,11 +1637,17 @@ export default function TenantDetailModal({
                   }`}
                 >
                   <DollarSign className="w-3.5 h-3.5" />
-                  Financials & Billing
+                  <span>Financials & Billing</span>
+                  {tabIndicators.financials && activeTab !== "financials" && !viewedTabs.has("financials") && (
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full ${tabIndicators.financials.dotClass}`}
+                      title={tabIndicators.financials.tooltip}
+                    />
+                  )}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab("history")}
+                  onClick={() => handleTabChange("history")}
                   className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-t-lg transition-colors border-b-2 whitespace-nowrap flex-shrink-0 cursor-pointer ${
                     activeTab === "history"
                       ? "border-foreground text-foreground bg-muted/50"
@@ -1579,8 +1655,8 @@ export default function TenantDetailModal({
                   }`}
                 >
                   <MapPin className="w-3.5 h-3.5" />
-                  Room & History
-                  {roomHistory.length > 0 && (
+                  <span>Room & History</span>
+                  {roomHistory.length > 0 && activeTab !== "history" && !viewedTabs.has("history") && (
                     <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-muted text-muted-foreground font-semibold inline-block">
                       {roomHistory.length}
                     </span>
@@ -1588,7 +1664,7 @@ export default function TenantDetailModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab("warnings")}
+                  onClick={() => handleTabChange("warnings")}
                   className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-t-lg transition-colors border-b-2 whitespace-nowrap flex-shrink-0 cursor-pointer ${
                     activeTab === "warnings"
                       ? "border-foreground text-foreground bg-muted/50"
@@ -1596,8 +1672,8 @@ export default function TenantDetailModal({
                   }`}
                 >
                   <AlertTriangle className={`w-3.5 h-3.5 ${activeTab === "warnings" ? "text-amber-600 dark:text-amber-400" : "text-amber-500/80"}`} />
-                  System Warnings
-                  {warnings.length > 0 && (
+                  <span>System Warnings</span>
+                  {warnings.length > 0 && activeTab !== "warnings" && !viewedTabs.has("warnings") && (
                     <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 inline-block border border-slate-200 dark:border-slate-700">
                       {warnings.length}
                     </span>

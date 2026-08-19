@@ -242,7 +242,7 @@ export const streamTenantAssistant = async ({
  * @param {string} [payload.priority="medium"] - Priority tier ("low" | "medium" | "high" | "urgent")
  * @param {string} payload.summary - Tenant explanation / concern summary
  * @param {string} [payload.lastBotMessage] - Last assistant reply
- * @returns {Promise<{conversationId?: string, redirectUrl?: string, message: string}>}
+ * @returns {Promise<{conversationId?: string, status?: string, assignedAdminName?: string, message: string}>}
  */
 export const escalateTenantAssistant = async ({
   category,

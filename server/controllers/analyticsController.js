@@ -2668,6 +2668,10 @@ export const getDashboardAnalytics = async (req, res, next) => {
 
     const roomIds = scopedRooms.map((room) => room._id);
 
+    const todayStart = dayjs().startOf("day").toDate();
+    const todayEnd = dayjs().endOf("day").toDate();
+    const next14Days = dayjs().add(14, "day").endOf("day").toDate();
+
     const [
       revenueCollected,
       approvedReservations,
@@ -2678,6 +2682,12 @@ export const getDashboardAnalytics = async (req, res, next) => {
       recentInquiries,
       branchComparison,
       billingTrendBills,
+      unverifiedPaymentsCount,
+      expiringLeasesCount,
+      todayMoveInsCount,
+      todayMoveOutsCount,
+      unrespondedInquiriesCount,
+      urgentMaintenanceCount,
     ] = await Promise.all([
       fetchRevenueCollected(scope.branchesIncluded, sinceDate),
       roomIds.length
@@ -2705,6 +2715,57 @@ export const getDashboardAnalytics = async (req, res, next) => {
       buildBranchComparison(scope, sinceDate),
       fetchScopedBills(scope.branchesIncluded, {
         billingMonth: { $gte: billingSinceMonth },
+      }),
+      roomIds.length
+        ? Reservation.countDocuments({
+            roomId: { $in: roomIds },
+            isArchived: false,
+            status: { $in: ["approved_for_payment", "payment_pending", "under_review", "pending_approval"] },
+          })
+        : 0,
+      roomIds.length
+        ? Reservation.countDocuments({
+            roomId: { $in: roomIds },
+            isArchived: false,
+            status: { $in: APPROVED_RESERVATION_STATUSES },
+            $or: [
+              { checkOutDate: { $gte: todayStart, $lte: next14Days } },
+              { moveOutDate: { $gte: todayStart, $lte: next14Days } },
+            ],
+          })
+        : 0,
+      roomIds.length
+        ? Reservation.countDocuments({
+            roomId: { $in: roomIds },
+            isArchived: false,
+            status: { $in: ["approved", "confirmed", "reserved", "approved_for_payment"] },
+            $or: [
+              { moveInDate: { $gte: todayStart, $lte: todayEnd } },
+              { targetMoveInDate: { $gte: todayStart, $lte: todayEnd } },
+            ],
+          })
+        : 0,
+      roomIds.length
+        ? Reservation.countDocuments({
+            roomId: { $in: roomIds },
+            isArchived: false,
+            status: { $in: ["moveOut", "active", "checked_in", "movein", "moved_in"] },
+            $or: [
+              { checkOutDate: { $gte: todayStart, $lte: todayEnd } },
+              { moveOutDate: { $gte: todayStart, $lte: todayEnd } },
+            ],
+          })
+        : 0,
+      Inquiry.countDocuments({
+        branch: { $in: getInquiryBranches(scope.branchesIncluded) },
+        isArchived: { $ne: true },
+        status: { $nin: ["resolved", "closed"] },
+      }),
+      MaintenanceRequest.countDocuments({
+        branch: { $in: scope.branchesIncluded },
+        isArchived: false,
+        status: { $in: OPEN_MAINTENANCE_STATUSES },
+        urgency: "high",
       }),
     ]);
 
@@ -2749,6 +2810,21 @@ export const getDashboardAnalytics = async (req, res, next) => {
       filters: {
         range: rangeKey,
         since: sinceDate.toISOString(),
+      },
+      triage: {
+        unverifiedPayments: unverifiedPaymentsCount,
+        expiringLeases: expiringLeasesCount,
+        todayMoveIns: todayMoveInsCount,
+        todayMoveOuts: todayMoveOutsCount,
+        unrespondedInquiries: unrespondedInquiriesCount,
+        urgentMaintenance: urgentMaintenanceCount,
+        totalActionable:
+          unverifiedPaymentsCount +
+          expiringLeasesCount +
+          todayMoveInsCount +
+          todayMoveOutsCount +
+          unrespondedInquiriesCount +
+          urgentMaintenanceCount,
       },
       kpis: {
         occupancyRate,

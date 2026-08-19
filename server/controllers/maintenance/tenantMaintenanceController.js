@@ -17,6 +17,7 @@ import {
   normalizeMaintenanceStatus,
   normalizeMaintenanceType,
   normalizeMaintenanceUrgency,
+  validateMaintenanceSlot,
 } from "../../config/maintenance.js";
 import { AppError, sendSuccess } from "../../middleware/errorHandler.js";
 import { MaintenanceRequest, Reservation, Room, User } from "../../models/index.js";
@@ -40,6 +41,21 @@ import { buildLegacyDescription } from "../../utils/maintenanceMigration.js";
 import { notify } from "../../utils/notificationService.js";
 import { resolveUploadBranch } from "../../services/attachmentUploadService.js";
 import auditLogger from "../../utils/auditLogger.js";
+import logger from "../../middleware/logger.js";
+
+const emitMaintenanceUpdated = async (request, extra = {}) => {
+  try {
+    const { emitToAdmins } = await import("../../utils/socket.js");
+    emitToAdmins("ticket:updated", {
+      requestId: String(request._id),
+      status: request.status,
+      isArchived: Boolean(request.isArchived),
+      ...extra,
+    });
+  } catch {
+    // non-fatal; HTTP update already succeeded
+  }
+};
 
 const DUPLICATE_REQUEST_WINDOW_HOURS = 12;
 
@@ -275,6 +291,8 @@ export const createRequest = async (req, res, next) => {
       // non-fatal
     }
 
+    emitMaintenanceUpdated(request, { isNew: true });
+
     sendSuccess(
       res,
       {
@@ -365,6 +383,8 @@ export const updateMyRequest = async (req, res, next) => {
 
     await request.save();
 
+    emitMaintenanceUpdated(request);
+
     sendSuccess(res, {
       request: serializeMaintenanceRequest(
         request.toObject(),
@@ -415,6 +435,8 @@ export const cancelMyRequest = async (req, res, next) => {
       `Tenant cancelled maintenance request #${request.request_id || request._id}`,
     );
 
+    emitMaintenanceUpdated(request);
+
     sendSuccess(res, {
       request: serializeMaintenanceRequest(
         request.toObject(),
@@ -447,15 +469,21 @@ export const reopenMyRequest = async (req, res, next) => {
     const note = toOptionalText(req.body.note || req.body.reopen_note);
     const reopenedAt = new Date();
 
+    request.isReopened = true;
     request.reopen_note = note;
     request.reopened_at = reopenedAt;
+    request.updated_at = reopenedAt;
     request.reopenCount = (request.reopenCount || 0) + 1;
+    const tenantActor = buildActorSnapshot(dbUser);
     request.reopen_history = [
-      ...(request.reopen_history || []),
+      ...(Array.isArray(request.reopen_history) ? request.reopen_history : []),
       {
         reopened_at: reopenedAt,
         previous_status: request.status,
         note,
+        actor_id: tenantActor.actor_id,
+        actor_name: tenantActor.actor_name,
+        actor_role: tenantActor.actor_role,
       },
     ];
     request.status = "pending";
@@ -465,7 +493,7 @@ export const reopenMyRequest = async (req, res, next) => {
     appendStatusHistory(request, {
       event: "reopened",
       status: "pending",
-      ...buildActorSnapshot(dbUser),
+      ...tenantActor,
       note,
       timestamp: reopenedAt,
     });
@@ -537,8 +565,9 @@ export const confirmResolution = async (req, res, next) => {
       const rawRating = Number(req.body?.rating);
       const rating = Number.isFinite(rawRating) && rawRating >= 1 && rawRating <= 5 ? Math.round(rawRating * 10) / 10 : null;
       
-      request.status = "resolved";
+      request.status = "completed";
       request.resolved_at = request.resolved_at || confirmedAt;
+      request.closed_at = confirmedAt;
       
       request.resolutionConfirmation = {
         confirmedAt,
@@ -550,11 +579,11 @@ export const confirmResolution = async (req, res, next) => {
       const ratingNote = rating ? ` (${rating} / 5 stars)` : "";
       appendStatusHistory(request, {
         event: "tenant_confirmed_resolved",
-        status: "resolved",
+        status: "completed",
         ...buildActorSnapshot(dbUser),
         note: feedback
-          ? `Tenant verified issue resolution${ratingNote}. Feedback: "${feedback}"`
-          : `Tenant verified issue resolution${ratingNote}.`,
+          ? `Tenant confirmed resolution of maintenance request${ratingNote}. Feedback: "${feedback}"`
+          : `Tenant confirmed resolution of maintenance request${ratingNote}.`,
         timestamp: confirmedAt,
       });
 
@@ -564,7 +593,7 @@ export const confirmResolution = async (req, res, next) => {
         const { emitToAdmins } = await import("../../utils/socket.js");
         emitToAdmins("ticket:updated", {
           requestId: String(request._id),
-          status: request.status,
+          status: "completed",
           resolutionConfirmed: true,
         });
       } catch {
@@ -572,7 +601,7 @@ export const confirmResolution = async (req, res, next) => {
       }
 
       sendSuccess(res, {
-        message: "Thank you! Your rating and resolution confirmation have been submitted.",
+        message: "Thank you! Your resolution confirmation and rating have been recorded.",
         request: serializeMaintenanceRequest(
           request.toObject(),
           serializeTenantSummary(dbUser, request),
@@ -596,7 +625,9 @@ export const confirmResolution = async (req, res, next) => {
         event: "tenant_rejected_resolution",
         status: "in_progress",
         ...buildActorSnapshot(dbUser),
-        note: feedback ? `Tenant reported issue still unresolved: "${feedback}"` : "Tenant indicated issue is still unresolved. Ticket returned to In Progress.",
+        note: feedback
+          ? `Tenant reported maintenance request still unresolved: "${feedback}"`
+          : "Tenant indicated maintenance request is still unresolved. Request returned to In Progress.",
         timestamp: rejectedAt,
       });
 
@@ -647,17 +678,20 @@ export const requestMaintenanceReschedule = async (req, res, next) => {
       );
     }
 
-    const proposedDate = req.body?.proposedDate ? new Date(req.body.proposedDate) : null;
-    const reason = toOptionalText(req.body?.reason || req.body?.notes);
+    const isEmergency = request.urgency === "emergency";
+    const slotValidation = validateMaintenanceSlot(req.body?.proposedDate, { isEmergency });
 
-    if (!proposedDate || Number.isNaN(proposedDate.getTime())) {
+    if (!slotValidation.valid) {
       throw new AppError(
-        "A valid preferred reschedule date and time is required.",
+        slotValidation.reason,
         400,
         "INVALID_PROPOSED_DATE",
+        [{ field: "proposedDate", message: slotValidation.reason }],
       );
     }
 
+    const proposedDate = slotValidation.date;
+    const reason = toOptionalText(req.body?.reason || req.body?.notes);
     const requestedAt = new Date();
     request.rescheduleRequest = {
       requestedAt,
@@ -668,6 +702,7 @@ export const requestMaintenanceReschedule = async (req, res, next) => {
       respondedBy: null,
       responseNote: null,
     };
+    request.updated_at = requestedAt;
 
     appendStatusHistory(request, {
       event: "tenant_reschedule_requested",
@@ -791,6 +826,7 @@ export const sendTenantReply = async (req, res, next) => {
       });
     }
 
+    request.updated_at = replyEntry.created_at;
     await request.save();
 
     try {
@@ -806,24 +842,106 @@ export const sendTenantReply = async (req, res, next) => {
       // non-fatal
     }
 
-    sendSuccess(res, {
-      message: "Reply sent successfully.",
-      request: serializeMaintenanceRequest(
-        request.toObject(),
-        serializeTenantSummary(dbUser, request),
-        { includeInternal: false },
-      ),
-    });
+    const serializedRequest = serializeMaintenanceRequest(
+      request.toObject(),
+      serializeTenantSummary(dbUser, request),
+      { includeInternal: false },
+    );
+
+    const socketPayload = {
+      requestId: String(request._id),
+      request_id: request.request_id,
+      ticketId: request.request_id,
+      ticketNumber: request.ticketNumber || request.request_id,
+      status: request.status,
+      branch: request.branch,
+      senderSide: "tenant",
+      senderRole: dbUser?.role || "tenant",
+      senderName: replyEntry.sender_name,
+      message: replyEntry,
+      conversation: serializedRequest.conversation || request.conversation,
+      request: serializedRequest,
+      updated_at: request.updated_at,
+    };
 
     try {
-      const { emitToAdmins } = await import("../../utils/socket.js");
-      emitToAdmins("ticket:updated", {
-        requestId: String(request._id),
-        status: request.status,
-      });
+      const { emitToAdmins, emitToUser } = await import("../../utils/socket.js");
+      emitToAdmins("ticket:updated", socketPayload);
+      emitToAdmins("ticket:message", socketPayload);
+      if (dbUser?._id) {
+        emitToUser(String(dbUser._id), "ticket:updated", socketPayload);
+        emitToUser(String(dbUser._id), "ticket:message", socketPayload);
+      }
     } catch {
       // non-fatal
     }
+
+    sendSuccess(res, {
+      message: "Reply sent successfully.",
+      request: serializedRequest,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/:requestId/typing
+ * Broadcasts tenant typing status to branch admins in real time.
+ */
+export const broadcastTenantMaintenanceTyping = async (req, res, next) => {
+  try {
+    const dbUser = await getDbUser(req.user.uid);
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureTenantAccess(request, dbUser);
+    const isTyping = req.body?.isTyping !== false;
+    const senderName =
+      `${dbUser?.firstName || ""} ${dbUser?.lastName || ""}`.trim() ||
+      dbUser?.email ||
+      "Tenant";
+
+    const payload = {
+      requestId: String(request._id),
+      request_id: request.request_id,
+      ticketId: request.request_id,
+      ticketNumber: request.ticketNumber || request.request_id,
+      branch: request.branch,
+      senderSide: "tenant",
+      senderRole: dbUser?.role || "tenant",
+      senderName,
+      isTyping,
+    };
+
+    const { emitToAdmins } = await import("../../utils/socket.js");
+    emitToAdmins("ticket:typing", payload);
+
+    sendSuccess(res, { success: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/m/maintenance/:requestId/read
+ * PATCH /api/maintenance/:requestId/read
+ */
+export const markTenantMaintenanceRead = async (req, res, next) => {
+  try {
+    const dbUser = await getDbUser(req.user.uid);
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureTenantAccess(request, dbUser);
+
+    const readAt = new Date();
+    await MaintenanceRequest.updateOne(
+      { _id: request._id },
+      { $set: { lastTenantReadAt: readAt } }
+    );
+
+    sendSuccess(res, {
+      read: true,
+      lastTenantReadAt: readAt,
+      requestId: request.request_id,
+    });
   } catch (error) {
     next(error);
   }

@@ -620,6 +620,10 @@ const reservationSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    lastAdminViewedAt: {
+      type: Date,
+      default: null,
+    },
 
     // -------------------------------------------------------------------------
     // CONDITIONAL DOCUMENT REQUIREMENTS (Spec §7.4)

@@ -130,16 +130,16 @@ export const MAINTENANCE_STATUS_META = Object.freeze({
   provider_assigned: {
     label: "Provider Assigned",
     shortLabel: "Assigned",
-    bg: "#DBEAFE",
-    color: "#1D4ED8",
-    variant: "info",
+    bg: "#DCFCE7",
+    color: "#15803D",
+    variant: "success",
   },
   scheduled: {
     label: "Scheduled",
     shortLabel: "Scheduled",
-    bg: "#E0F2FE",
-    color: "#0369A1",
-    variant: "info",
+    bg: "#DCFCE7",
+    color: "#15803D",
+    variant: "success",
   },
   viewed: {
     label: "Under Review",
@@ -158,16 +158,16 @@ export const MAINTENANCE_STATUS_META = Object.freeze({
   in_progress: {
     label: "In Progress",
     shortLabel: "In Progress",
-    bg: "#DBEAFE",
-    color: "#1D4ED8",
-    variant: "info",
+    bg: "#DCFCE7",
+    color: "#15803D",
+    variant: "success",
   },
   waiting_tenant: {
     label: "In Progress",
     shortLabel: "In Progress",
-    bg: "#DBEAFE",
-    color: "#1D4ED8",
-    variant: "info",
+    bg: "#DCFCE7",
+    color: "#15803D",
+    variant: "success",
   },
   reopened: {
     label: "Reopened",
@@ -340,12 +340,16 @@ export function getNextRecommendedStageAction(request) {
       requiresSchedule: true,
     };
   }
-  if (
-    status === "provider_assigned" ||
-    status === "scheduled" ||
-    status === "in_progress" ||
-    status === "waiting_tenant"
-  ) {
+  if (status === "provider_assigned" || status === "scheduled") {
+    return {
+      actionLabel: "Start Repair Work",
+      actionKey: "start_work",
+      actionColor: "primary",
+      contextNote: "Repair visit scheduled. Click when technician arrives on site to begin work.",
+      requiresSchedule: false,
+    };
+  }
+  if (status === "in_progress" || status === "waiting_tenant") {
     return {
       actionLabel: "Upload Proof & Mark Resolved",
       actionKey: "upload_proof",
@@ -383,4 +387,61 @@ export function getNextRecommendedStageAction(request) {
   }
   return null;
 }
+
+export const MAINTENANCE_OPERATING_HOURS = Object.freeze({
+  startHour: 8,
+  endHour: 18,
+  allowSunday: false,
+  minAdvanceMinutes: 120, // 2 hours
+});
+
+export const MAINTENANCE_TIME_SLOTS = Object.freeze([
+  "08:00", "08:30", "09:00", "09:30", "10:00", "10:30",
+  "11:00", "11:30", "12:00", "12:30", "13:00", "13:30",
+  "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
+  "17:00", "17:30", "18:00",
+]);
+
+export function validateMaintenanceSlot(dateStr, timeStr, { isEmergency = false, now = new Date() } = {}) {
+  if (!dateStr || !timeStr) {
+    return { valid: false, reason: "Please select both a date and time slot." };
+  }
+
+  const date = new Date(`${dateStr}T${timeStr}:00`);
+  if (Number.isNaN(date.getTime())) {
+    return { valid: false, reason: "Invalid date or time format." };
+  }
+
+  const diffMs = date.getTime() - now.getTime();
+  const minAdvanceMs = MAINTENANCE_OPERATING_HOURS.minAdvanceMinutes * 60 * 1000;
+  if (diffMs < minAdvanceMs) {
+    return {
+      valid: false,
+      reason: "Please select a visit time at least 2 hours in advance.",
+    };
+  }
+
+  const [hStr, mStr] = timeStr.split(":");
+  const hours = parseInt(hStr, 10);
+  const minutes = parseInt(mStr || "0", 10);
+  const timeInHours = hours + minutes / 60;
+
+  if (timeInHours < MAINTENANCE_OPERATING_HOURS.startHour || timeInHours > MAINTENANCE_OPERATING_HOURS.endHour) {
+    return {
+      valid: false,
+      reason: "Maintenance visits must be scheduled between 8:00 AM and 6:00 PM.",
+    };
+  }
+
+  const dayOfWeek = date.getDay(); // 0 = Sunday
+  if (dayOfWeek === 0 && !MAINTENANCE_OPERATING_HOURS.allowSunday && !isEmergency) {
+    return {
+      valid: false,
+      reason: "Standard maintenance visits are scheduled Monday through Saturday.",
+    };
+  }
+
+  return { valid: true, date, isoString: `${dateStr}T${timeStr}:00` };
+}
+
 

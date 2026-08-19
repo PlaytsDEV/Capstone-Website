@@ -177,6 +177,7 @@ export default function useSocketClient() {
           /^(maintenance_|sla_)/i.test(notificationType)
         ) {
           qc.invalidateQueries({ queryKey: ["maintenance"] });
+          qc.refetchQueries({ queryKey: ["maintenance"], type: "active" });
         }
 
         if (
@@ -267,9 +268,115 @@ export default function useSocketClient() {
         }
       });
 
-      socket.on("ticket:updated", () => {
+      const handleTicketSync = (data) => {
+        if (!data) return;
+        const targetIds = Array.from(
+          new Set(
+            [
+              data.requestId,
+              data.request_id,
+              data.ticketId,
+              data.ticketNumber,
+              data.request?._id,
+              data.request?.request_id,
+              data.request?.ticketNumber,
+            ].filter(Boolean),
+          ),
+        );
+
+        targetIds.forEach((tId) => {
+          qc.invalidateQueries({ queryKey: ["maintenance", "detail", tId] });
+        });
+
+        // Direct optimistic query cache sync if request/conversation is provided
+        if (data.request || data.conversation || data.message) {
+          targetIds.forEach((tId) => {
+            qc.setQueriesData({ queryKey: ["maintenance", "detail", tId] }, (old) => {
+              if (!old) return old;
+              const existingReq = old.data?.request || old.request || old;
+              const updatedReq = {
+                ...existingReq,
+                ...(data.request || {}),
+                conversation: data.conversation || data.request?.conversation || existingReq.conversation,
+                status: data.status || data.request?.status || existingReq.status,
+                updated_at: data.updated_at || data.request?.updated_at || existingReq.updated_at,
+              };
+              if (old.data?.request) {
+                return { ...old, data: { ...old.data, request: updatedReq } };
+              }
+              if (old.request) {
+                return { ...old, request: updatedReq };
+              }
+              return updatedReq;
+            });
+          });
+
+          // Sync in list queries (both tenant and admin)
+          qc.setQueriesData({ queryKey: ["maintenance"] }, (old) => {
+            if (!old || !Array.isArray(old.requests)) return old;
+            return {
+              ...old,
+              requests: old.requests.map((r) => {
+                const match = targetIds.some(
+                  (id) => String(r.request_id || r.id || r._id || r.ticketNumber) === String(id),
+                );
+                if (!match) return r;
+                return {
+                  ...r,
+                  ...(data.request || {}),
+                  conversation: data.conversation || data.request?.conversation || r.conversation,
+                  status: data.status || data.request?.status || r.status,
+                  updated_at: data.updated_at || data.request?.updated_at || r.updated_at,
+                };
+              }),
+            };
+          });
+        }
+
         qc.invalidateQueries({ queryKey: ["maintenance"] });
+        qc.refetchQueries({ queryKey: ["maintenance"], type: "active" });
         qc.invalidateQueries({ queryKey: ["dashboard"] });
+
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("lilycrest:maintenance-updated", { detail: data }));
+          window.dispatchEvent(new CustomEvent("lilycrest:maintenance-message", { detail: data }));
+        }
+      };
+
+      socket.on("ticket:updated", (data) => {
+        handleTicketSync(data);
+      });
+
+      socket.on("ticket:message", (data) => {
+        handleTicketSync(data);
+
+        // Toast notification if received from opposite party
+        const userRole = String(user?.role || "").toLowerCase();
+        const isAdminUser = ["branch_admin", "owner", "super_admin", "admin"].includes(userRole);
+        const isFromOpposite =
+          (isAdminUser && data?.senderSide === "tenant") ||
+          (!isAdminUser && (data?.senderSide === "admin" || data?.senderSide === "staff"));
+
+        if (isFromOpposite) {
+          const senderLabel = data?.senderName || (data?.senderSide === "admin" ? "Dormitory Admin" : "Tenant");
+          const ticketLabel = data?.request_id || data?.ticketId || (data?.requestId ? `#${data.requestId.slice(-6)}` : "Maintenance Ticket");
+          const rawMsg = data?.message?.message || "";
+          const hasAtt = Array.isArray(data?.message?.attachments) && data.message.attachments.length > 0;
+          const previewText = rawMsg || (hasAtt ? "Sent an attachment" : "Sent a reply");
+          const truncated = previewText.length > 75 ? `${previewText.slice(0, 75)}...` : previewText;
+
+          showNotification(
+            `New message on #${ticketLabel} from ${senderLabel}: "${truncated}"`,
+            "info",
+            4500,
+          );
+        }
+      });
+
+      socket.on("ticket:typing", (data) => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("lilycrest:maintenance-typing", { detail: data }));
+        }
       });
 
       socket.on("inquiry:updated", () => {

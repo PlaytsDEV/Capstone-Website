@@ -25,10 +25,12 @@ import {
 import {
   ARCHIVE_FILTER_OPTIONS,
   CONSOLIDATED_STATUS_OPTIONS,
+  DATE_FIELD_OPTIONS,
   OPERATIONAL_STAGES,
   SLA_FILTER_OPTIONS,
   SPECIFIC_STATUS_OPTIONS,
   SUMMARY_STATUSES,
+  getDateFieldLabel,
   getStageLabel,
   getStatusLabel,
   getStageStatusLabel,
@@ -42,6 +44,17 @@ export const QUEUE_FILTER_OPTIONS = [
   { key: "needs_attention", label: "Needs Attention", alertBadge: true },
   { key: "resolved", label: "Resolved" },
   { key: "completed", label: "Completed" },
+];
+
+export const DATE_PRESET_OPTIONS = [
+  { key: "all", label: "All Time" },
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "7d", label: "Last 7 Days" },
+  { key: "30d", label: "Last 30 Days" },
+  { key: "month", label: "This Month" },
+  { key: "last_month", label: "Last Month" },
+  { key: "year", label: "This Year" },
 ];
 
 /**
@@ -59,6 +72,7 @@ export function MaintenanceFilters({
   urgencyFilter = "all",
   slaFilter = "all",
   requestTypeFilter = "all",
+  dateType = "created_at",
   dateFrom = "",
   dateTo = "",
   sortMode = "newest",
@@ -83,6 +97,7 @@ export function MaintenanceFilters({
   onUrgencyFilterChange,
   onSlaFilterChange,
   onRequestTypeFilterChange,
+  onDateTypeChange,
   onDateFromChange,
   onDateToChange,
   onSortModeChange,
@@ -108,6 +123,7 @@ export function MaintenanceFilters({
   const advancedFiltersActiveCount =
     (slaFilter !== "all" ? 1 : 0) +
     (requestTypeFilter !== "all" ? 1 : 0) +
+    (dateType !== "created_at" ? 1 : 0) +
     (dateFrom ? 1 : 0) +
     (dateTo ? 1 : 0) +
     (sortMode !== "newest" ? 1 : 0) +
@@ -123,6 +139,7 @@ export function MaintenanceFilters({
   const handleClearAdvancedFilters = () => {
     onSlaFilterChange?.("all");
     onRequestTypeFilterChange?.("all");
+    onDateTypeChange?.("created_at");
     onDateFromChange?.("");
     onDateToChange?.("");
     onSortModeChange?.("newest");
@@ -136,10 +153,23 @@ export function MaintenanceFilters({
     const todayStr = formatYmd(now);
 
     switch (preset) {
+      case "all":
+      case "clear":
+        onDateFromChange?.("");
+        onDateToChange?.("");
+        break;
       case "today":
         onDateFromChange?.(todayStr);
         onDateToChange?.(todayStr);
         break;
+      case "yesterday": {
+        const y = new Date();
+        y.setDate(y.getDate() - 1);
+        const yStr = formatYmd(y);
+        onDateFromChange?.(yStr);
+        onDateToChange?.(yStr);
+        break;
+      }
       case "7d": {
         const d = new Date();
         d.setDate(d.getDate() - 7);
@@ -160,23 +190,37 @@ export function MaintenanceFilters({
         onDateToChange?.(todayStr);
         break;
       }
-      case "clear":
-        onDateFromChange?.("");
-        onDateToChange?.("");
+      case "last_month": {
+        const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+        onDateFromChange?.(formatYmd(firstDayLastMonth));
+        onDateToChange?.(formatYmd(lastDayLastMonth));
         break;
+      }
+      case "year": {
+        const firstDayYear = new Date(now.getFullYear(), 0, 1);
+        onDateFromChange?.(formatYmd(firstDayYear));
+        onDateToChange?.(todayStr);
+        break;
+      }
       default:
         break;
     }
   };
 
   const getActiveDatePreset = () => {
-    if (!dateFrom && !dateTo) return null;
+    if (!dateFrom && !dateTo) return "all";
     const now = new Date();
     const pad = (n) => String(n).padStart(2, "0");
     const formatYmd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const todayStr = formatYmd(now);
 
     if (dateFrom === todayStr && dateTo === todayStr) return "today";
+
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    const yStr = formatYmd(y);
+    if (dateFrom === yStr && dateTo === yStr) return "yesterday";
 
     const d7 = new Date();
     d7.setDate(d7.getDate() - 7);
@@ -188,6 +232,13 @@ export function MaintenanceFilters({
 
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     if (dateFrom === formatYmd(firstDay) && dateTo === todayStr) return "month";
+
+    const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    if (dateFrom === formatYmd(firstDayLastMonth) && dateTo === formatYmd(lastDayLastMonth)) return "last_month";
+
+    const firstDayYear = new Date(now.getFullYear(), 0, 1);
+    if (dateFrom === formatYmd(firstDayYear) && dateTo === todayStr) return "year";
 
     return "custom";
   };
@@ -227,6 +278,23 @@ export function MaintenanceFilters({
 
           {/* Core Dropdowns Group */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* 1. Quick Action Needed / Unread Filter Button */}
+            {effectiveStatusCounts.unread > 0 && (
+              <button
+                type="button"
+                onClick={() => handleStatusChange(effectiveStatus === "unread" ? "all" : "unread")}
+                className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition cursor-pointer ${
+                  effectiveStatus === "unread"
+                    ? "border-slate-800 bg-[#0A1628] text-white dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                    : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                }`}
+                title={effectiveStatus === "unread" ? "Showing requests with pending concerns only. Click to show all." : "Filter by unread requests, new replies, and pending schedule requests"}
+              >
+                <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                <span>Action Needed ({effectiveStatusCounts.unread})</span>
+              </button>
+            )}
+
             {/* 2. Consolidated Status Dropdown */}
             <select
               value={effectiveStatus}
@@ -449,7 +517,7 @@ export function MaintenanceFilters({
                   onChange={(e) => onSortModeChange(e.target.value)}
                   className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 cursor-pointer transition"
                 >
-                  <option value="newest">Newest First</option>
+                  <option value="newest">Date Created (Newest First)</option>
                   <option value="urgency">Urgency Priority</option>
                 </select>
               </div>
@@ -481,54 +549,73 @@ export function MaintenanceFilters({
           </div>
 
           {/* Date Range Section with Quick Presets */}
-          <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/80 space-y-2.5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <Calendar size={13} className="text-slate-700 dark:text-slate-300" />
-                <span>Logged Date Range</span>
-              </label>
-
-              {/* Quick Date Presets */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1 hidden sm:inline">
-                  Presets:
-                </span>
-                {[
-                  { key: "today", label: "Today" },
-                  { key: "7d", label: "Last 7 Days" },
-                  { key: "30d", label: "Last 30 Days" },
-                  { key: "month", label: "This Month" },
-                ].map((preset) => {
-                  const isActive = activeDatePreset === preset.key;
-                  return (
-                    <button
-                      key={preset.key}
-                      type="button"
-                      onClick={() => handleApplyDatePreset(preset.key)}
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition cursor-pointer ${
-                        isActive
-                          ? "bg-[#0A1628] text-white border-[#0A1628] font-bold dark:bg-slate-700 dark:border-slate-600 shadow-xs"
-                          : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 font-semibold"
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
-                {(dateFrom || dateTo) && (
-                  <button
-                    type="button"
-                    onClick={() => handleApplyDatePreset("clear")}
-                    className="px-2 py-1 rounded-md text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition ml-1 cursor-pointer"
-                    title="Clear date filter"
+          <div className="pt-3 border-t border-slate-200/60 dark:border-slate-800/80 space-y-3">
+            {/* Header & Date Type Selector */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2">
+                <Calendar size={14} className="text-slate-700 dark:text-slate-300 shrink-0" />
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Date Range Filter
+                </label>
+                <div className="relative">
+                  <select
+                    value={dateType}
+                    onChange={(e) => onDateTypeChange?.(e.target.value)}
+                    className="h-8 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-[#0A1628]/20 cursor-pointer transition"
+                    aria-label="Filter target date field"
+                    title="Choose which date field to filter by"
                   >
-                    Clear Dates
-                  </button>
-                )}
+                    {DATE_FIELD_OPTIONS.map((opt) => (
+                      <option key={opt.key} value={opt.key}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
+              {/* Clear Dates Action */}
+              {(dateFrom || dateTo || dateType !== "created_at") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleApplyDatePreset("clear");
+                    onDateTypeChange?.("created_at");
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition cursor-pointer self-start sm:self-auto"
+                  title="Reset date filter"
+                >
+                  <RotateCcw size={11} />
+                  <span>Reset Date Filter</span>
+                </button>
+              )}
             </div>
 
-            {/* Date Pickers */}
+            {/* Quick Date Presets Row */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1">
+                Presets:
+              </span>
+              {DATE_PRESET_OPTIONS.map((preset) => {
+                const isActive = activeDatePreset === preset.key;
+                return (
+                  <button
+                    key={preset.key}
+                    type="button"
+                    onClick={() => handleApplyDatePreset(preset.key)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition cursor-pointer ${
+                      isActive
+                        ? "bg-[#0A1628] text-white border-[#0A1628] font-bold dark:bg-slate-700 dark:border-slate-600 shadow-xs"
+                        : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 font-medium"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Date Pickers Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 pointer-events-none">
@@ -538,7 +625,11 @@ export function MaintenanceFilters({
                   type="date"
                   value={dateFrom}
                   onChange={(e) => onDateFromChange(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-14 pr-8 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 transition"
+                  className={`h-9 w-full rounded-lg border bg-white dark:bg-slate-800 pl-14 pr-8 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 transition ${
+                    dateFrom && dateTo && dateFrom > dateTo
+                      ? "border-rose-400 dark:border-rose-600 focus:border-rose-500"
+                      : "border-slate-200 dark:border-slate-700 focus:border-[#0A1628] dark:focus:border-slate-400"
+                  }`}
                   aria-label="Start date"
                 />
                 {dateFrom && (
@@ -561,7 +652,11 @@ export function MaintenanceFilters({
                   type="date"
                   value={dateTo}
                   onChange={(e) => onDateToChange(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-10 pr-8 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-[#0A1628] dark:focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 transition"
+                  className={`h-9 w-full rounded-lg border bg-white dark:bg-slate-800 pl-10 pr-8 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#0A1628]/10 transition ${
+                    dateFrom && dateTo && dateFrom > dateTo
+                      ? "border-rose-400 dark:border-rose-600 focus:border-rose-500"
+                      : "border-slate-200 dark:border-slate-700 focus:border-[#0A1628] dark:focus:border-slate-400"
+                  }`}
                   aria-label="End date"
                 />
                 {dateTo && (
@@ -576,6 +671,13 @@ export function MaintenanceFilters({
                 )}
               </div>
             </div>
+
+            {/* Validation Notice if End Date is before Start Date */}
+            {dateFrom && dateTo && dateFrom > dateTo && (
+              <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400">
+                End date cannot be earlier than start date.
+              </p>
+            )}
           </div>
         </div>
       )}

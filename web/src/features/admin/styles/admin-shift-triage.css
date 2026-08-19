@@ -1,0 +1,207 @@
+/* Admin Shift Triage Center Styling */
+
+.shift-triage-container {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  background-color: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-light, #e2e8f0);
+  border-radius: 14px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+}
+
+:root[class~="dark"] .shift-triage-container {
+  background-color: #0f172a;
+  border-color: #334155;
+}
+
+.shift-triage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 1rem;
+}
+
+.shift-triage-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.shift-triage-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--primary, #1e3a8a);
+  flex-shrink: 0;
+}
+
+:root[class~="dark"] .shift-triage-icon {
+  color: #60a5fa;
+}
+
+.shift-triage-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  letter-spacing: -0.01em;
+}
+
+:root[class~="dark"] .shift-triage-title {
+  color: #f8fafc;
+}
+
+.shift-triage-subtitle {
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+  margin-top: 1px;
+}
+
+:root[class~="dark"] .shift-triage-subtitle {
+  color: #94a3b8;
+}
+
+.shift-triage-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+  background-color: var(--bg-hover, #f1f5f9);
+  border: 1px solid var(--border-light, #e2e8f0);
+  border-radius: 9999px;
+}
+
+:root[class~="dark"] .shift-triage-badge-pill {
+  color: #f8fafc;
+  background-color: #1e293b;
+  border-color: #334155;
+}
+
+.shift-triage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+@media (min-width: 1024px) {
+  .shift-triage-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+.shift-triage-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background-color: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-light, #e2e8f0);
+  border-radius: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+:root[class~="dark"] .shift-triage-card {
+  background-color: #1e293b;
+  border-color: #334155;
+}
+
+.shift-triage-card:hover {
+  border-color: #cbd5e1;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+:root[class~="dark"] .shift-triage-card:hover {
+  border-color: #475569;
+}
+
+.shift-triage-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.shift-triage-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #64748b);
+  line-height: 1.3;
+}
+
+:root[class~="dark"] .shift-triage-card-label {
+  color: #94a3b8;
+}
+
+.shift-triage-card-icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.shift-triage-card-body {
+  margin-bottom: 10px;
+}
+
+.shift-triage-card-count {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  color: var(--text-primary, #0f172a);
+}
+
+:root[class~="dark"] .shift-triage-card-count {
+  color: #f8fafc;
+}
+
+.shift-triage-card-desc {
+  font-size: 11px;
+  color: var(--text-muted, #64748b);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root[class~="dark"] .shift-triage-card-desc {
+  color: #94a3b8;
+}
+
+.shift-triage-card-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+  background-color: var(--bg-hover, #f1f5f9);
+  border: 1px solid var(--border-light, #e2e8f0);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+:root[class~="dark"] .shift-triage-card-btn {
+  color: #f8fafc;
+  background-color: #0f172a;
+  border-color: #334155;
+}
+
+.shift-triage-card-btn:hover {
+  background-color: var(--border-light, #e2e8f0);
+  border-color: #cbd5e1;
+}
+
+:root[class~="dark"] .shift-triage-card-btn:hover {
+  background-color: #334155;
+  border-color: #475569;
+}

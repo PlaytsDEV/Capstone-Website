@@ -276,8 +276,14 @@ export const getTenantWorkspaceById = async (req, res) => {
       );
     });
 
+    const readAt = new Date();
+    await Reservation.updateOne(
+      { _id: reservation._id },
+      { $set: { lastAdminViewedAt: readAt, isViewedByAdmin: true } },
+    );
+
     const tenant = buildTenantWorkspaceEntry({
-      reservation,
+      reservation: { ...reservation, lastAdminViewedAt: readAt, isViewedByAdmin: true },
       currentStay,
       stayHistory,
       bills,
@@ -305,6 +311,45 @@ export const getTenantWorkspaceById = async (req, res) => {
       "Fetch tenant workspace detail error",
     );
     return handleReservationError(res, error, "fetch tenant details");
+  }
+};
+
+export const markTenantWorkspaceAsViewed = async (req, res) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser) {
+      return res
+        .status(404)
+        .json({ error: "User not found in database", code: "USER_NOT_FOUND" });
+    }
+
+    if (dbUser.role !== "owner" && dbUser.role !== "branch_admin") {
+      return res.status(403).json({
+        error: "Access denied. Admin privileges required.",
+        code: "ADMIN_REQUIRED",
+      });
+    }
+
+    const readAt = new Date();
+    await Reservation.updateOne(
+      { _id: reservationId },
+      { $set: { lastAdminViewedAt: readAt, isViewedByAdmin: true } },
+    );
+
+    return sendSuccess(res, {
+      reservationId,
+      lastAdminViewedAt: readAt.toISOString(),
+      isViewedByAdmin: true,
+    });
+  } catch (error) {
+    logger.error(
+      { err: error, requestId: req.id },
+      "Mark tenant workspace as viewed error",
+    );
+    return handleReservationError(res, error, "mark tenant as viewed");
   }
 };
 

@@ -794,6 +794,30 @@ export function buildTenantWorkspaceEntry({
       hasOutstandingBalance: billingSummary.hasOutstanding,
       hasOverdueBalance: billingSummary.hasOverdue,
     },
+    lastAdminViewedAt: reservation.lastAdminViewedAt
+      ? new Date(reservation.lastAdminViewedAt).toISOString()
+      : null,
+    isViewedByAdmin: Boolean(reservation.isViewedByAdmin),
+    attentionUpdatedAt: (() => {
+      const timestamps = [];
+      if (billingSummary.hasOverdue || billingSummary.hasPendingVerification) {
+        for (const b of bills) {
+          if (b.updatedAt) timestamps.push(new Date(b.updatedAt).getTime());
+          else if (b.createdAt) timestamps.push(new Date(b.createdAt).getTime());
+        }
+      }
+      if (Array.isArray(violations) && violations.length > 0) {
+        for (const v of violations) {
+          if (v.dateOfIncident) timestamps.push(new Date(v.dateOfIncident).getTime());
+          else if (v.createdAt) timestamps.push(new Date(v.createdAt).getTime());
+        }
+      }
+      if (timestamps.length > 0) {
+        const valid = timestamps.filter((t) => !Number.isNaN(t) && t > 0);
+        if (valid.length > 0) return new Date(Math.max(...valid)).toISOString();
+      }
+      return null;
+    })(),
     basicInfo: {
       name: fullName,
       email: personalInformation.email || "",

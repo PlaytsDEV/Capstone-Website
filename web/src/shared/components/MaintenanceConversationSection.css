@@ -86,30 +86,61 @@
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+  border: 1px solid #E2E8F0;
+}
+
+.dark .chat-role-badge {
+  border-color: hsl(217, 33%, 20%);
+}
+
+.chat-role-badge--branch-admin {
+  background: #F0F9FF;
+  color: #0369A1;
+}
+
+.dark .chat-role-badge--branch-admin {
+  background: hsl(204, 94%, 12%);
+  color: #7DD3FC;
+}
+
+.chat-role-badge--owner {
+  background: #F5F3FF;
+  color: #6D28D9;
+}
+
+.dark .chat-role-badge--owner {
+  background: hsl(270, 91%, 14%);
+  color: #D8B4FE;
+}
+
+.chat-role-badge--staff {
+  background: #ECFDF5;
+  color: #047857;
+}
+
+.dark .chat-role-badge--staff {
+  background: hsl(160, 84%, 12%);
+  color: #6EE7B7;
 }
 
 .chat-role-badge--admin {
   background: #FEF3C7;
   color: #92400E;
-  border: 1px solid #FDE68A;
 }
 
 .dark .chat-role-badge--admin {
-  background: hsl(38, 92%, 18%);
+  background: hsl(38, 92%, 14%);
   color: #FDE68A;
-  border-color: hsl(38, 92%, 28%);
 }
 
 .chat-role-badge--tenant {
-  background: #E0E7FF;
-  color: #3730A3;
-  border: 1px solid #C7D2FE;
+  background: #EEF2FF;
+  color: #4338CA;
 }
 
 .dark .chat-role-badge--tenant {
-  background: hsl(239, 84%, 18%);
+  background: hsl(239, 84%, 14%);
   color: #C7D2FE;
-  border-color: hsl(239, 84%, 28%);
 }
 
 /* Message Bubble */
@@ -420,3 +451,63 @@
   border-color: hsl(217, 33%, 20%);
   color: #94A3B8;
 }
+
+/* Typing Indicator Bubble */
+.chat-typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #F1F5F9;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  font-size: 0.78rem;
+  color: #64748B;
+  animation: fadeInChatBubble 0.15s ease-out;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.dark .chat-typing-indicator {
+  background: hsl(222, 47%, 13%);
+  border-color: hsl(217, 33%, 22%);
+  color: #94A3B8;
+}
+
+.chat-typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.chat-typing-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #64748B;
+  animation: typingBounce 1.4s infinite ease-in-out both;
+}
+
+.dark .chat-typing-dot {
+  background: #94A3B8;
+}
+
+.chat-typing-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.chat-typing-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes typingBounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+

@@ -191,7 +191,8 @@ describe("tenantChatbotController", () => {
         expect.objectContaining({
           success: true,
           data: expect.objectContaining({
-            redirectUrl: "/applicant/chat",
+            conversationId: "mock-convo-id",
+            status: "open",
           }),
         }),
       );

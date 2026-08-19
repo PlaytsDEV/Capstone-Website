@@ -24,6 +24,44 @@ import "./MaintenanceConversationSection.css";
 const MAX_MESSAGE_LENGTH = 1000;
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
+export function getSenderRoleMeta(entry) {
+  const role = String(entry?.sender_role || entry?.senderRole || "").toLowerCase();
+  const side = String(entry?.sender_side || entry?.senderSide || "").toLowerCase();
+
+  if (side === "tenant" || role === "tenant" || role === "resident" || role === "applicant") {
+    return {
+      label: "Tenant",
+      badgeClass: "chat-role-badge--tenant",
+    };
+  }
+
+  if (role === "branch_admin") {
+    return {
+      label: "Branch Admin",
+      badgeClass: "chat-role-badge--branch-admin",
+    };
+  }
+
+  if (role === "owner" || role === "super_admin") {
+    return {
+      label: "Dorm Owner",
+      badgeClass: "chat-role-badge--owner",
+    };
+  }
+
+  if (role === "staff" || role === "technician" || side === "staff") {
+    return {
+      label: "Facilities Staff",
+      badgeClass: "chat-role-badge--staff",
+    };
+  }
+
+  return {
+    label: "Dormitory Admin",
+    badgeClass: "chat-role-badge--admin",
+  };
+}
+
 export function MaintenanceConversationSection({
   conversation = [],
   currentSide = "tenant", // "tenant" | "admin"
@@ -33,17 +71,48 @@ export function MaintenanceConversationSection({
   isSending = false,
   onPreviewAttachment,
   requestId,
+  isOtherTyping = false,
+  otherTypingName = "",
+  onTypingChange = null,
 }) {
   const [message, setMessage] = useState("");
   const [stagedAttachments, setStagedAttachments] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const threadEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const onTypingChangeRef = useRef(onTypingChange);
 
-  // Auto-scroll to latest message on load or new entry
+  useEffect(() => {
+    onTypingChangeRef.current = onTypingChange;
+  }, [onTypingChange]);
+
+  // Auto-scroll to latest message on load or new entry or typing state change
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [conversation?.length]);
+  }, [conversation?.length, isOtherTyping]);
+
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      onTypingChangeRef.current?.(false);
+    };
+  }, []);
+
+  const handleMessageChange = (e) => {
+    const nextVal = e.target.value;
+    setMessage(nextVal);
+
+    if (onTypingChange) {
+      onTypingChange(true);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        onTypingChange(false);
+      }, 2500);
+    }
+  };
 
   const handleFileChange = async (event) => {
     const files = Array.from(event.target.files || []);
@@ -121,6 +190,8 @@ export function MaintenanceConversationSection({
     }
 
     try {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      onTypingChange?.(false);
       await onSendReply({
         message: trimmed,
         attachments: normalizeMaintenanceAttachments(stagedAttachments),
@@ -154,9 +225,9 @@ export function MaintenanceConversationSection({
                 ? entry.sender_side === "tenant"
                 : entry.sender_side === "admin" || entry.sender_side === "staff";
 
+            const senderMeta = getSenderRoleMeta(entry);
             const isAdminSender = entry.sender_side === "admin" || entry.sender_side === "staff";
-            const senderRoleLabel = isAdminSender ? "Dormitory Admin" : "Tenant";
-            const senderName = entry.sender_name || (isAdminSender ? "Facilities Staff" : "Tenant");
+            const senderName = entry.sender_name || (isAdminSender ? senderMeta.label : "Tenant");
             const entryAttachments = Array.isArray(entry.attachments)
               ? entry.attachments.filter((a) => !a.isRemoved)
               : [];
@@ -167,10 +238,8 @@ export function MaintenanceConversationSection({
                 className={`maintenance-chat-bubble-wrapper ${isMe ? "is-me" : "is-other"}`}
               >
                 <div className="maintenance-chat-meta">
-                  <span
-                    className={`chat-role-badge ${isAdminSender ? "chat-role-badge--admin" : "chat-role-badge--tenant"}`}
-                  >
-                    {senderRoleLabel}
+                  <span className={`chat-role-badge ${senderMeta.badgeClass}`}>
+                    {senderMeta.label}
                   </span>
                   <span style={{ fontWeight: 600 }}>{senderName}</span>
                   <span>•</span>
@@ -233,6 +302,22 @@ export function MaintenanceConversationSection({
               </div>
             );
           })}
+          {isOtherTyping ? (
+            <div className="chat-typing-indicator" role="status" aria-live="polite">
+              <span className="chat-typing-dots">
+                <span className="chat-typing-dot" />
+                <span className="chat-typing-dot" />
+                <span className="chat-typing-dot" />
+              </span>
+              <span>
+                {otherTypingName
+                  ? `${otherTypingName} is typing...`
+                  : currentSide === "tenant"
+                  ? "Branch Admin is typing..."
+                  : "Tenant is typing..."}
+              </span>
+            </div>
+          ) : null}
           <div ref={threadEndRef} />
         </div>
       ) : (
@@ -257,7 +342,7 @@ export function MaintenanceConversationSection({
                 : "Type an official reply or instruction for the tenant... (Press Ctrl+Enter to send)"
             }
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            onChange={handleMessageChange}
             onKeyDown={handleKeyDown}
             disabled={isSending || isUploading}
           />

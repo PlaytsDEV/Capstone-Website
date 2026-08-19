@@ -101,6 +101,7 @@ describe("tenant chatbot widget intent detection and gating", () => {
     expect(actions).toEqual([
       { label: "Reservation Status", prompt: "What is my current reservation status?" },
       { label: "Deposit Payment Steps", prompt: "How do I settle the advance rent and security deposit?" },
+      { label: "Browse Rooms", url: "/applicant/check-availability" },
       { label: "Chat with Admin", action: "open_escalate_modal" },
     ]);
   });

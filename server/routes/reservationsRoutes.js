@@ -33,6 +33,7 @@ import {
   getCurrentResidents,
   getTenantWorkspace,
   getTenantWorkspaceById,
+  markTenantWorkspaceAsViewed,
   getTenantActionContext,
   getRoomMeterBaseline,
   getVisitAvailability,
@@ -245,6 +246,15 @@ router.get(
   filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   getTenantWorkspaceById,
+);
+
+router.post(
+  "/tenant-workspace/:reservationId/viewed",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  markTenantWorkspaceAsViewed,
 );
 
 router.get(

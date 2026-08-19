@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Check, ChevronDown, Clock3, FileText, Image as ImageIcon, Loader2, Paperclip } from "lucide-react";
+import { Check, ChevronDown, Clock3, FileText, Image as ImageIcon, Loader2, Paperclip, RotateCcw } from "lucide-react";
 import {
   buildTimelineActor,
   fmtDateTime,
@@ -224,9 +224,14 @@ export function MaintenanceTimeline({
               className="w-full text-left flex items-center justify-between gap-2.5 group cursor-pointer select-none"
             >
               <div className="min-w-0 flex-1">
-                <strong className="block text-xs font-bold text-slate-900 dark:text-slate-100 group-hover:text-primary dark:group-hover:text-sky-400 transition-colors">
-                  {item.title}
-                </strong>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {(item.type === "reopened" || item.isReopenedEvent) && (
+                    <RotateCcw size={13} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                  )}
+                  <strong className="block text-xs font-bold text-slate-900 dark:text-slate-100 group-hover:text-primary dark:group-hover:text-sky-400 transition-colors">
+                    {item.title}
+                  </strong>
+                </div>
                 <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">
                   {fmtDateTime(item.timestamp)}
                   {item.meta ? ` - ${item.meta}` : ""}

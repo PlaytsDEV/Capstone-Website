@@ -97,6 +97,35 @@ export function useTenantActionContext(reservationId, options = {}) {
   });
 }
 
+/** Mark a tenant workspace record as viewed by admin */
+export function useMarkTenantAsViewed() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (reservationId) => reservationApi.markTenantAsViewed(reservationId),
+    onSuccess: (data, reservationId) => {
+      const readAt =
+        data?.data?.lastAdminViewedAt ||
+        data?.lastAdminViewedAt ||
+        new Date().toISOString();
+      qc.setQueriesData({ queryKey: ["reservations", "tenantWorkspace"] }, (old) => {
+        if (!old || !Array.isArray(old.tenants)) return old;
+        return {
+          ...old,
+          tenants: old.tenants.map((t) => {
+            if (String(t.id || t.reservationId) === String(reservationId)) {
+              return { ...t, lastAdminViewedAt: readAt, isViewedByAdmin: true };
+            }
+            return t;
+          }),
+        };
+      });
+      qc.invalidateQueries({
+        queryKey: queryKeys.reservations.tenantWorkspaceDetail(reservationId),
+      });
+    },
+  });
+}
+
 /** Fetch a single reservation by ID */
 export function useReservation(reservationId, options = {}) {
   return useQuery({

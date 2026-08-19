@@ -35,15 +35,15 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
 
   const [laborCost, setLaborCost] = useState(
     request?.costBreakdown?.laborCost !== undefined &&
-      Number(request.costBreakdown.laborCost) !== 0
+      request?.costBreakdown?.laborCost !== null
       ? String(request.costBreakdown.laborCost)
-      : "",
+      : "0",
   );
   const [materialsCost, setMaterialsCost] = useState(
     request?.costBreakdown?.materialsCost !== undefined &&
-      Number(request.costBreakdown.materialsCost) !== 0
+      request?.costBreakdown?.materialsCost !== null
       ? String(request.costBreakdown.materialsCost)
-      : "",
+      : "0",
   );
   const [isTenantChargeable, setIsTenantChargeable] = useState(
     Boolean(request?.costBreakdown?.isTenantChargeable),
@@ -61,15 +61,15 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
     if (request) {
       setLaborCost(
         request?.costBreakdown?.laborCost !== undefined &&
-          Number(request.costBreakdown.laborCost) !== 0
+          request?.costBreakdown?.laborCost !== null
           ? String(request.costBreakdown.laborCost)
-          : "",
+          : "0",
       );
       setMaterialsCost(
         request?.costBreakdown?.materialsCost !== undefined &&
-          Number(request.costBreakdown.materialsCost) !== 0
+          request?.costBreakdown?.materialsCost !== null
           ? String(request.costBreakdown.materialsCost)
-          : "",
+          : "0",
       );
       setIsTenantChargeable(Boolean(request?.costBreakdown?.isTenantChargeable));
       setChargeReason(request?.costBreakdown?.chargeReason || "");
@@ -83,26 +83,36 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
     }
   }, [defaultSummaryMode, request?.request_id, request?._id]);
 
-  const rawNumLabor = Number(laborCost) || 0;
-  const rawNumMaterials = Number(materialsCost) || 0;
+  const rawNumLabor = Number(laborCost);
+  const rawNumMaterials = Number(materialsCost);
 
   const laborError = useMemo(() => {
-    if (isNaN(rawNumLabor) || rawNumLabor < 0)
+    if (laborCost === undefined || laborCost === null || String(laborCost).trim() === "") {
+      return "Labor cost is required (enter 0 if no cost).";
+    }
+    const val = Number(laborCost);
+    if (isNaN(val) || val < 0) {
       return "Labor cost cannot be negative.";
-    if (rawNumLabor > MAX_MAINTENANCE_ITEM_COST) {
+    }
+    if (val > MAX_MAINTENANCE_ITEM_COST) {
       return `Labor cost cannot exceed ₱${MAX_MAINTENANCE_ITEM_COST.toLocaleString("en-PH")}.`;
     }
     return null;
-  }, [rawNumLabor]);
+  }, [laborCost]);
 
   const materialsError = useMemo(() => {
-    if (isNaN(rawNumMaterials) || rawNumMaterials < 0)
+    if (materialsCost === undefined || materialsCost === null || String(materialsCost).trim() === "") {
+      return "Materials cost is required (enter 0 if no cost).";
+    }
+    const val = Number(materialsCost);
+    if (isNaN(val) || val < 0) {
       return "Materials cost cannot be negative.";
-    if (rawNumMaterials > MAX_MAINTENANCE_ITEM_COST) {
+    }
+    if (val > MAX_MAINTENANCE_ITEM_COST) {
       return `Materials cost cannot exceed ₱${MAX_MAINTENANCE_ITEM_COST.toLocaleString("en-PH")}.`;
     }
     return null;
-  }, [rawNumMaterials]);
+  }, [materialsCost]);
 
   const reasonError = useMemo(() => {
     if (!isTenantChargeable) return null;
@@ -120,11 +130,11 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
 
   const numLabor = Math.min(
     MAX_MAINTENANCE_ITEM_COST,
-    Math.max(0, rawNumLabor),
+    Math.max(0, isNaN(rawNumLabor) ? 0 : rawNumLabor),
   );
   const numMaterials = Math.min(
     MAX_MAINTENANCE_ITEM_COST,
-    Math.max(0, rawNumMaterials),
+    Math.max(0, isNaN(rawNumMaterials) ? 0 : rawNumMaterials),
   );
   const totalCost = numLabor + numMaterials;
 
@@ -140,15 +150,15 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
     if (request) {
       setLaborCost(
         request?.costBreakdown?.laborCost !== undefined &&
-          Number(request.costBreakdown.laborCost) !== 0
+          request?.costBreakdown?.laborCost !== null
           ? String(request.costBreakdown.laborCost)
-          : "",
+          : "0",
       );
       setMaterialsCost(
         request?.costBreakdown?.materialsCost !== undefined &&
-          Number(request.costBreakdown.materialsCost) !== 0
+          request?.costBreakdown?.materialsCost !== null
           ? String(request.costBreakdown.materialsCost)
-          : "",
+          : "0",
       );
       setIsTenantChargeable(Boolean(request?.costBreakdown?.isTenantChargeable));
       setChargeReason(request?.costBreakdown?.chargeReason || "");
@@ -433,7 +443,7 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
         <div className="space-y-1">
           <div className="flex items-center justify-between">
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-              Labor Cost
+              Labor Cost <span className="text-rose-500 font-bold">*</span>
             </label>
             <span className="text-[10px] text-slate-400 font-medium">
               Max ₱500,000
@@ -483,7 +493,7 @@ export const CostAttributionCard = forwardRef(function CostAttributionCard(
         <div className="space-y-1">
           <div className="flex items-center justify-between">
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-              Materials Cost
+              Materials Cost <span className="text-rose-500 font-bold">*</span>
             </label>
             <span className="text-[10px] text-slate-400 font-medium">
               Max ₱500,000

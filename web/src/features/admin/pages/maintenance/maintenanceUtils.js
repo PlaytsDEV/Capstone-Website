@@ -12,13 +12,13 @@ import {
 import {
   BRANCH_OPTIONS,
   BRANCH_DISPLAY_NAMES,
-} from "../../../../shared/utils/constants";
-import { exportReportPdf } from "../../../../shared/utils/reportPdf";
+} from "../../../../shared/utils/constants.js";
+import { exportReportPdf } from "../../../../shared/utils/reportPdf.js";
 import {
   formatMaintenanceStatus,
   getMaintenanceTypeMeta,
   getMaintenanceUrgencyMeta,
-} from "../../../../shared/utils/maintenanceConfig";
+} from "../../../../shared/utils/maintenanceConfig.js";
 
 export {
   formatMaintenanceStatus,
@@ -34,7 +34,7 @@ import {
   isMaintenancePdfAttachment,
   isViewableMaintenanceAttachmentUri,
   normalizeMaintenanceAttachments,
-} from "../../../../shared/utils/maintenanceAttachments";
+} from "../../../../shared/utils/maintenanceAttachments.js";
 
 export {
   getMaintenanceAttachmentKind,
@@ -156,6 +156,7 @@ export const sanitizeAmountInput = (value, maxAmount = MAX_MAINTENANCE_ITEM_COST
 
 export const formatPeso = (min, max = null) => {
   const format = (value) => {
+    if (value === null || value === undefined || value === "") return "";
     const amount = Number(value);
     if (!Number.isFinite(amount)) return "";
     return `PHP ${amount.toLocaleString("en-PH", {
@@ -164,7 +165,7 @@ export const formatPeso = (min, max = null) => {
     })}`;
   };
   const minLabel = format(min);
-  const maxLabel = format(max);
+  const maxLabel = max !== null && max !== undefined && max !== "" ? format(max) : "";
   if (minLabel && maxLabel && Number(min) !== Number(max)) return `${minLabel} - ${maxLabel}`;
   return minLabel || maxLabel || "Rate not recorded";
 };
@@ -209,6 +210,92 @@ export const fmtDateTime = (value) => {
     hour: "numeric",
     minute: "2-digit",
   });
+};
+
+export const getRemainingObservationDays = (resolvedAt, windowDays = 7) => {
+  if (!resolvedAt) return { elapsedDays: 0, remainingDays: windowDays, isExpired: false, percent: 0, targetDate: null };
+  const date = new Date(resolvedAt);
+  if (Number.isNaN(date.getTime())) {
+    return { elapsedDays: 0, remainingDays: windowDays, isExpired: false, percent: 0, targetDate: null };
+  }
+  const targetDate = new Date(date.getTime() + windowDays * 24 * 60 * 60 * 1000);
+  const now = Date.now();
+  const diffMs = targetDate.getTime() - now;
+  const elapsedMs = Math.max(0, now - date.getTime());
+  const elapsedDays = Math.max(0, Math.floor(elapsedMs / (24 * 60 * 60 * 1000)));
+  const remainingDays = Math.max(0, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
+  const remainingHours = Math.max(0, Math.ceil(diffMs / (60 * 60 * 1000)));
+  const isExpired = diffMs <= 0;
+  const percent = Math.min(100, Math.max(0, Math.round((elapsedMs / (windowDays * 24 * 60 * 60 * 1000)) * 100)));
+  return {
+    elapsedDays,
+    remainingDays,
+    remainingHours,
+    isExpired,
+    percent,
+    targetDate,
+  };
+};
+
+export const formatTurnaroundDuration = (startDate, endDate) => {
+  if (!startDate) return "Not recorded";
+  const start = new Date(startDate);
+  const end = endDate ? new Date(endDate) : new Date();
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "Not recorded";
+  const diffMs = Math.max(0, end.getTime() - start.getTime());
+  const totalMinutes = Math.floor(diffMs / (60 * 1000));
+  const totalHours = Math.floor(diffMs / (60 * 60 * 1000));
+  const days = Math.floor(totalHours / 24);
+  const remHours = totalHours % 24;
+  const remMinutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return `${days}d ${remHours}h`;
+  }
+  if (totalHours > 0) {
+    return `${totalHours}h ${remMinutes}m`;
+  }
+  return `${Math.max(1, totalMinutes)}m`;
+};
+
+export const getClosureMethodMeta = (request) => {
+  const confirmation = request?.resolutionConfirmation;
+  if (confirmation?.confirmedAt) {
+    if (confirmation.action === "confirm" || confirmation.action === "tenant_confirmed" || confirmation.rating) {
+      return {
+        key: "tenant_mobile",
+        label: "Tenant Confirmed via Mobile / Web",
+        badge: "bg-transparent text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700",
+        dot: "bg-emerald-500",
+        description: "Tenant verified the repair and submitted resolution feedback.",
+      };
+    }
+    if (confirmation.action === "in_person" || confirmation.action === "staff_override") {
+      return {
+        key: "staff_in_person",
+        label: "Staff In-Person Verification & Sign-off",
+        badge: "bg-transparent text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700",
+        dot: "bg-emerald-500",
+        description: "Staff verified resolution with tenant in person.",
+      };
+    }
+  }
+  if (request?.autoClosedAt || request?.statusHistory?.some((h) => h.event === "auto_completed_7_days")) {
+    return {
+      key: "auto_closed",
+      label: "7-Day Inactivity Auto-Closure",
+      badge: "bg-transparent text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700",
+      dot: "bg-slate-400",
+      description: "Completed automatically after 7 days without tenant objection.",
+    };
+  }
+  return {
+    key: "administrative_closure",
+    label: "Official Administrative Closure",
+    badge: "bg-transparent text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700",
+    dot: "bg-emerald-500",
+    description: "Officially finalized and archived in maintenance history.",
+  };
 };
 
 export const getReportFilenameBase = (report, selectedRequest) => {
@@ -348,6 +435,202 @@ export const isWithinDateWindow = ({ value, dateFrom, dateTo }) => {
   return true;
 };
 
+export const isRequestNewForAdmin = (request) => {
+  if (!request) return false;
+  if (typeof request.isNewForAdmin === "boolean") {
+    return request.isNewForAdmin;
+  }
+  return (
+    !request.lastAdminReadAt &&
+    ["pending", "pending_review", "viewed"].includes(request.status)
+  );
+};
+
+export const hasUnreadTenantReplies = (request) => {
+  if (!request) return false;
+  if (typeof request.hasUnreadTenantReply === "boolean") {
+    return request.hasUnreadTenantReply;
+  }
+  const lastAdminRead = request.lastAdminReadAt
+    ? new Date(request.lastAdminReadAt).getTime()
+    : 0;
+  const conversation = Array.isArray(request.conversation)
+    ? request.conversation
+    : [];
+  return conversation.some((entry) => {
+    if (entry.sender_side !== "tenant" && entry.sender_role !== "tenant") return false;
+    const msgTime = new Date(entry.created_at).getTime();
+    return msgTime > lastAdminRead;
+  });
+};
+
+export const hasPendingRescheduleRequest = (request) => {
+  if (!request) return false;
+  const resched = request.rescheduleRequest || request.reschedule_request;
+  return resched?.status === "pending";
+};
+
+export const hasUnreadRescheduleRequest = (request) => {
+  if (!request) return false;
+  if (typeof request.hasUnreadReschedule === "boolean") {
+    return request.hasUnreadReschedule;
+  }
+  const resched = request.rescheduleRequest || request.reschedule_request;
+  if (resched?.status !== "pending") return false;
+  const lastAdminRead = request.lastAdminReadAt
+    ? new Date(request.lastAdminReadAt).getTime()
+    : 0;
+  const requestedAt = resched.requestedAt
+    ? new Date(resched.requestedAt).getTime()
+    : 0;
+  return requestedAt > lastAdminRead;
+};
+
+export const hasUnreadReopen = (request) => {
+  if (!request) return false;
+  if (typeof request.hasUnreadReopen === "boolean") {
+    return request.hasUnreadReopen;
+  }
+  if (!request.isReopened && request.status !== "reopened") return false;
+  const lastAdminRead = request.lastAdminReadAt
+    ? new Date(request.lastAdminReadAt).getTime()
+    : 0;
+  const reopenedAt = request.reopened_at
+    ? new Date(request.reopened_at).getTime()
+    : 0;
+  return reopenedAt > lastAdminRead;
+};
+
+export const getTenantConcernIndicator = (request) => {
+  if (!request) return null;
+
+  // 1. Unread Pending Schedule Request from Tenant (Highest Action Priority)
+  if (hasUnreadRescheduleRequest(request)) {
+    const resched = request.rescheduleRequest || request.reschedule_request;
+    const proposed = resched?.proposedDate ? fmtDateTime(resched.proposedDate) : "Date pending";
+    return {
+      hasConcern: true,
+      type: "schedule_requested",
+      label: "Schedule Requested",
+      shortLabel: "Schedule",
+      dotClass: "bg-amber-500",
+      pingClass: "bg-amber-400",
+      textClass: "text-amber-700 dark:text-amber-400",
+      tooltip: `Tenant requested repair schedule: ${proposed}${resched?.reason ? ` ("${resched.reason}")` : ""}`,
+      proposedDate: resched?.proposedDate || null,
+    };
+  }
+
+  // 2. Newly submitted request awaiting review
+  if (isRequestNewForAdmin(request)) {
+    return {
+      hasConcern: true,
+      type: "new_request",
+      label: "New Request",
+      shortLabel: "New",
+      dotClass: "bg-emerald-500",
+      pingClass: "bg-emerald-400",
+      textClass: "text-emerald-700 dark:text-emerald-400",
+      tooltip: "New maintenance request awaiting admin review",
+    };
+  }
+
+  // 3. New reply from tenant
+  if (hasUnreadTenantReplies(request)) {
+    return {
+      hasConcern: true,
+      type: "unread_reply",
+      label: "New Reply",
+      shortLabel: "Reply",
+      dotClass: "bg-sky-500",
+      pingClass: "bg-sky-400",
+      textClass: "text-sky-700 dark:text-sky-400",
+      tooltip: "New tenant message or reply received",
+    };
+  }
+
+  // 4. Reopened ticket awaiting admin review
+  if (hasUnreadReopen(request)) {
+    return {
+      hasConcern: true,
+      type: "reopened",
+      label: "Reopened",
+      shortLabel: "Reopened",
+      dotClass: "bg-rose-500",
+      pingClass: "bg-rose-400",
+      textClass: "text-rose-700 dark:text-rose-400",
+      tooltip: `Request reopened by tenant (Iteration #${request.reopenCount || 1})`,
+    };
+  }
+
+  return null;
+};
+
+export const hasTenantConcern = (request) => Boolean(getTenantConcernIndicator(request));
+
+export const isRequestUpdatedForTenant = (request) => {
+  if (!request) return false;
+  if (typeof request.isUpdatedForTenant === "boolean") {
+    return request.isUpdatedForTenant;
+  }
+  const lastTenantRead = request.lastTenantReadAt
+    ? new Date(request.lastTenantReadAt).getTime()
+    : new Date(request.created_at || 0).getTime();
+  return Boolean(
+    request.updated_at &&
+    new Date(request.updated_at).getTime() > lastTenantRead &&
+    request.status !== "pending"
+  );
+};
+
+export const getRequestLastActivityTime = (request) => {
+  if (!request) return 0;
+  if (request.lastActivityAt) {
+    const parsed = new Date(request.lastActivityAt).getTime();
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+  const createdTime = request.created_at ? new Date(request.created_at).getTime() : (request.createdAt ? new Date(request.createdAt).getTime() : 0);
+  const updatedTime = request.updated_at ? new Date(request.updated_at).getTime() : (request.updatedAt ? new Date(request.updatedAt).getTime() : 0);
+  const reopenedTime = request.reopened_at ? new Date(request.reopened_at).getTime() : 0;
+  const resched = request.rescheduleRequest || request.reschedule_request;
+  const reschedTime = resched?.requestedAt ? new Date(resched.requestedAt).getTime() : 0;
+  let lastMsgTime = 0;
+  if (Array.isArray(request.conversation) && request.conversation.length > 0) {
+    const lastMsg = request.conversation[request.conversation.length - 1];
+    if (lastMsg?.created_at) {
+      lastMsgTime = new Date(lastMsg.created_at).getTime();
+    }
+  }
+  return Math.max(createdTime, updatedTime, reopenedTime, reschedTime, lastMsgTime);
+};
+
+export const isDeletedAccountRequest = (request) => {
+  if (!request) return false;
+  const fullName = String(
+    request.tenant?.full_name ||
+    request.tenant?.fullName ||
+    request.tenant?.name ||
+    request.tenant_name ||
+    "",
+  ).trim().toLowerCase();
+
+  if (
+    fullName === "deleted account" ||
+    fullName === "unknown tenant" ||
+    fullName === "deleted user" ||
+    fullName === "deleted"
+  ) {
+    return true;
+  }
+  if (request.tenant?.isDeleted || request.isDeletedAccount) {
+    return true;
+  }
+  if (!request.user_id && !request.tenant?.user_id) {
+    return true;
+  }
+  return false;
+};
+
 export const isCompletedInWindow = ({ request, dateFrom, dateTo }) => {
   if (!(request.status === "resolved" || request.status === "completed")) {
     return false;
@@ -376,7 +659,7 @@ export const matchesSummaryCard = ({ request, cardKey, dateFrom, dateTo }) => {
 
   switch (cardKey) {
     case "open_queue":
-      return ["pending", "pending_review", "viewed", "reviewed", "provider_assigned"].includes(request.status);
+      return ["pending", "pending_review", "viewed", "reviewed", "provider_assigned"].includes(request.status) || hasPendingRescheduleRequest(request);
     case "in_progress":
       return ["in_progress", "scheduled", "approved", "service_provider_assigned", "waiting_tenant"].includes(request.status);
     case "needs_attention": {
@@ -384,7 +667,8 @@ export const matchesSummaryCard = ({ request, cardKey, dateFrom, dateTo }) => {
       const isOverdue = rawSla.includes("delay") || rawSla.includes("overdue") || rawSla.includes("breach") || rawSla.includes("priority");
       const isUrgentUnassigned = (request.urgency === "high" || request.urgency === "emergency") && !getAssignedProviderName(request);
       const isReopened = request.status === "reopened" || Boolean(request.reopenCount && request.status !== "completed");
-      return (isOverdue || isUrgentUnassigned || isReopened) && isNonTerminal(request.status);
+      const hasReschedule = hasPendingRescheduleRequest(request);
+      return (isOverdue || isUrgentUnassigned || isReopened || hasReschedule) && isNonTerminal(request.status);
     }
     case "resolved":
       return request.status === "resolved";
@@ -408,10 +692,16 @@ export const OPERATIONAL_STAGES = [
 
 export const CONSOLIDATED_STATUS_OPTIONS = Object.freeze([
   {
+    key: "unread",
+    label: "Unread / New",
+    rawStatuses: ["pending", "pending_review", "viewed"],
+    description: "New unviewed requests and unread replies",
+  },
+  {
     key: "under_review",
     label: "Under Review",
     rawStatuses: ["pending", "pending_review", "viewed", "reviewed"],
-    description: "New and unassigned tickets under review",
+    description: "New and unassigned requests under review",
   },
   {
     key: "in_progress",
@@ -423,19 +713,19 @@ export const CONSOLIDATED_STATUS_OPTIONS = Object.freeze([
     key: "resolved",
     label: "Resolved",
     rawStatuses: ["resolved"],
-    description: "Repair finished, awaiting tenant verification",
+    description: "Work done, awaiting tenant confirmation",
   },
   {
     key: "completed",
     label: "Completed",
     rawStatuses: ["completed"],
-    description: "Verified and closed tickets",
+    description: "Verified and closed requests",
   },
   {
     key: "needs_attention",
     label: "Needs Attention",
     rawStatuses: ["reopened"],
-    description: "Tickets requiring urgent re-evaluation",
+    description: "Requests requiring urgent re-evaluation",
   },
   {
     key: "cancelled_rejected",
@@ -487,6 +777,15 @@ export const matchesStatus = ({ request, status }) => {
   if (!status || status === "all") return true;
   const rawKey = String(status).replace(/^status:/, "").toLowerCase();
   const reqStatus = String(request?.status || "").toLowerCase();
+
+  if (rawKey === "unread" || rawKey === "new" || rawKey === "action_needed") {
+    return (
+      isRequestNewForAdmin(request) ||
+      hasUnreadTenantReplies(request) ||
+      hasPendingRescheduleRequest(request) ||
+      Boolean(request.isReopened && request.status !== "completed")
+    );
+  }
 
   const consolidated = CONSOLIDATED_STATUS_OPTIONS.find((c) => c.key === rawKey);
   if (consolidated) {
@@ -543,11 +842,6 @@ export const getStatusBadgeMeta = (status) => {
     case "scheduled":
     case "in_progress":
     case "waiting_tenant":
-      return {
-        badge:
-          "bg-transparent text-sky-700 dark:text-sky-400 border border-slate-200 dark:border-slate-700",
-        dot: "bg-sky-500",
-      };
     case "resolved":
     case "completed":
       return {
@@ -584,7 +878,6 @@ export const getStatusDotClass = (status) => {
     case "scheduled":
     case "in_progress":
     case "waiting_tenant":
-      return "bg-sky-500";
     case "resolved":
     case "completed":
       return "bg-emerald-500";
@@ -593,7 +886,6 @@ export const getStatusDotClass = (status) => {
       return "bg-rose-500";
     case "cancelled":
     case "closed":
-      return "bg-slate-400";
     default:
       return "bg-slate-400";
   }
@@ -610,7 +902,6 @@ export const getStatusTextClass = (status) => {
     case "scheduled":
     case "in_progress":
     case "waiting_tenant":
-      return "text-sky-700 dark:text-sky-400";
     case "resolved":
     case "completed":
       return "text-emerald-700 dark:text-emerald-400";
@@ -619,7 +910,6 @@ export const getStatusTextClass = (status) => {
       return "text-rose-700 dark:text-rose-400";
     case "cancelled":
     case "closed":
-      return "text-slate-600 dark:text-slate-400";
     default:
       return "text-slate-600 dark:text-slate-400";
   }
@@ -686,12 +976,25 @@ export const formatSenderLabel = ({ role, name, fallback = "Staff update" } = {}
   return `${roleLabel} - ${displayName}`;
 };
 
+export const DATE_FIELD_OPTIONS = [
+  { key: "created_at", label: "Date Logged" },
+  { key: "scheduled_date", label: "Scheduled Visit" },
+  { key: "resolved_at", label: "Resolution Date" },
+  { key: "updated_at", label: "Last Updated" },
+];
+
+export const getDateFieldLabel = (dateType) => {
+  const match = DATE_FIELD_OPTIONS.find((opt) => opt.key === dateType);
+  return match ? match.label : "Date Logged";
+};
+
 export const createFilterPayload = ({
   stage,
   status,
   stageOrStatus,
   requestType,
   urgency,
+  dateType,
   dateFrom,
   dateTo,
   branch,
@@ -715,6 +1018,7 @@ export const createFilterPayload = ({
 
   if (requestType && requestType !== "all") filters.request_type = requestType;
   if (urgency && urgency !== "all") filters.urgency = urgency;
+  if (dateType && dateType !== "created_at") filters.date_type = dateType;
   if (dateFrom) filters.date_from = dateFrom;
   if (dateTo) filters.date_to = dateTo;
   if (branch && branch !== "all") filters.branch = branch;
@@ -1065,6 +1369,16 @@ export const getStatusTimelineTitle = (entry = {}) => {
       return "Service provider changed";
     case "service_provider_unassigned":
       return "Service provider unassigned";
+    case "work_scheduled":
+      return "Repair visit scheduled";
+    case "schedule_cleared":
+      return "Planned schedule rejected & removed";
+    case "reschedule_accepted":
+      return "Reschedule request accepted";
+    case "reschedule_adjusted":
+      return "Alternate schedule proposed";
+    case "reschedule_declined":
+      return "Reschedule request declined";
     default:
       return entry.event ? entry.event.replace(/_/g, " ") : "Maintenance updated";
   }
@@ -1136,9 +1450,12 @@ export const buildMaintenanceTimeline = (request) => {
           ? "Removed by"
           : entry.event === "branch_assigned_manually"
           ? "Assigned by"
+          : entry.event === "reopened"
+          ? "Reopened by"
           : ["archived", "restored"].includes(entry.event)
           ? "Updated by"
           : "Updated by",
+      isReopenedEvent: entry.event === "reopened",
       timestamp: entry.timestamp,
       visibility:
         ["archived", "restored", "branch_assigned_manually", "admin_proof_uploaded", "attachment_removed_tenant", "attachment_removed_request", "note_updated", "service_provider_assigned", "service_provider_changed", "service_provider_unassigned"].includes(entry.event)

@@ -257,7 +257,6 @@ Support Inquiries: ${contextSnapshot.inquiries?.length || 0}`;
         conversationId: conversation._id,
         status: conversation.status,
         assignedAdminName,
-        redirectUrl: "/applicant/chat"
       },
       message: "Operation completed successfully."
     });

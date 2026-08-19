@@ -39,6 +39,10 @@ export default function StatusBadge({
       "new",
       "new_inquiry",
       "reserved",
+      "in_progress",
+      "scheduled",
+      "provider_assigned",
+      "waiting_tenant",
     ];
     const warningStatuses = [
       "pending",
@@ -56,8 +60,6 @@ export default function StatusBadge({
       "notice_2",
       "pending_clearance",
       "needs_revision",
-      "in_progress",
-      "scheduled",
       "expiring_soon",
       "review_required",
       "under_review",

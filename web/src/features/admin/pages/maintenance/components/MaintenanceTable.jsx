@@ -24,6 +24,9 @@ import {
   getAvatarPalette,
   getRequestBranch,
   getStatusBadgeMeta,
+  getTenantConcernIndicator,
+  hasUnreadTenantReplies,
+  isRequestNewForAdmin,
   ITEMS_PER_PAGE,
 } from "../maintenanceUtils";
 
@@ -111,6 +114,7 @@ export function MaintenanceTable({
           const rawRoom = row.room_number || row.room?.name || row.roomId?.name || "";
           const roomInfo = formatCleanRoomName(rawRoom);
           const bedSlot = row.bedIdentifier || row.bed?.bedNumber || row.bedNumber || null;
+          const concern = getTenantConcernIndicator(row);
 
           if (isDeleted) {
             return (
@@ -139,18 +143,31 @@ export function MaintenanceTable({
 
           return (
             <div className="flex items-center gap-3">
-              <ProfileAvatar
-                user={{ name: rawName }}
-                initials={initials}
-                size={36}
-                defaultOnly
-              />
+              <div className="relative shrink-0">
+                <ProfileAvatar
+                  user={{ name: rawName }}
+                  initials={initials}
+                  size={36}
+                  defaultOnly
+                />
+                {concern && (
+                  <span
+                    className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center pointer-events-none"
+                    title={concern.tooltip}
+                  >
+                    <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${concern.pingClass} opacity-75`} />
+                    <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${concern.dotClass}`} />
+                  </span>
+                )}
+              </div>
               <div className="min-w-0">
-                <div
-                  className="text-sm font-semibold text-slate-900 dark:text-slate-100 line-clamp-1 break-words"
-                  title={rawName}
-                >
-                  {rawName}
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`text-sm font-semibold ${concern ? "text-slate-950 dark:text-white font-bold" : "text-slate-900 dark:text-slate-100"} line-clamp-1 break-words`}
+                    title={rawName}
+                  >
+                    {rawName}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
                   <span>{branchName}</span>
@@ -223,6 +240,7 @@ export function MaintenanceTable({
 
           const isTerminal = ["completed", "rejected", "cancelled", "closed", "resolved"].includes(row.status);
           const rawSla = String(row.slaState?.label || row.slaState || "").toLowerCase();
+          const concern = getTenantConcernIndicator(row);
 
           let slaElement = null;
           if (!isTerminal) {
@@ -260,7 +278,17 @@ export function MaintenanceTable({
                   {urgencyLabel}
                 </span>
               )}
-              {slaElement}
+              {concern?.type === "schedule_requested" && concern.proposedDate ? (
+                <div
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400"
+                  title={concern.tooltip}
+                >
+                  <Clock size={11} className="shrink-0 text-amber-500" />
+                  <span className="truncate">Req: {fmtDate(concern.proposedDate)}</span>
+                </div>
+              ) : (
+                slaElement
+              )}
             </div>
           );
         },
@@ -433,6 +461,13 @@ export function MaintenanceTable({
           data={requests}
           loading={isLoading}
           onRowClick={(row) => onRowClick?.(row)}
+          rowClassName={(row) => {
+            const concern = getTenantConcernIndicator(row);
+            if (concern) {
+              return "bg-slate-50/75 dark:bg-slate-800/40";
+            }
+            return "";
+          }}
           pagination={{
             pageSize: ITEMS_PER_PAGE,
             currentPage,

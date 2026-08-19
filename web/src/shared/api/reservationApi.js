@@ -50,6 +50,14 @@ export const reservationApi = {
   getTenantWorkspaceById: (reservationId) =>
     authFetch(`/reservations/tenant-workspace/${reservationId}`),
 
+  /**
+   * Mark a tenant workspace record as viewed by admin.
+   */
+  markTenantAsViewed: (reservationId) =>
+    authFetch(`/reservations/tenant-workspace/${reservationId}/viewed`, {
+      method: "POST",
+    }),
+
   getTenantActionContext: (reservationId) =>
     authFetch(`/reservations/${reservationId}/tenant-actions/context`),
 

@@ -25,12 +25,12 @@ export function useAdminMaintenanceRequests(filters) {
     queryKey: queryKeys.maintenance.admin(filters),
     queryFn: () => maintenanceApi.getAdminAll(filters),
     placeholderData: keepPreviousData,
-    refetchInterval: 60_000,       // reduced from 15 s — less network churn
-    refetchOnWindowFocus: false,   // tab-switching no longer triggers a fetch
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   const refresh = () =>
-    qc.invalidateQueries({ queryKey: queryKeys.maintenance.admin(filters) });
+    qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
 
   return { ...query, refresh };
 }
@@ -137,7 +137,8 @@ export function useSendTenantMaintenanceReply() {
   return useMutation({
     mutationFn: ({ requestId, payload }) =>
       maintenanceApi.sendTenantReply(requestId, payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId);
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       if (variables?.requestId) {
         qc.invalidateQueries({
@@ -149,28 +150,40 @@ export function useSendTenantMaintenanceReply() {
 }
 
 const syncMaintenanceCache = (qc, data, requestId, defaultPatch = null) => {
-  const updatedReq = data?.request || data?.data?.request || (data?.status ? data : null) || defaultPatch;
-  const targetId = requestId || updatedReq?.request_id || updatedReq?.id || updatedReq?._id;
-  if (!targetId) return;
+  const dataObj = data?.request || data?.data?.request || data?.data || (typeof data === "object" ? data : null) || {};
+  const patchObj = defaultPatch && typeof defaultPatch === "object" ? defaultPatch : {};
+  const updatedReq = { ...dataObj, ...patchObj };
+  const targetIds = [
+    requestId,
+    updatedReq?.request_id,
+    updatedReq?.id,
+    updatedReq?._id,
+    updatedReq?.ticketNumber,
+    updatedReq?.ticketId,
+  ].filter(Boolean);
 
-  if (updatedReq) {
-    qc.setQueryData(queryKeys.maintenance.detail(targetId), (old) => {
-      if (old?.request) {
+  if (targetIds.length === 0) return;
+
+  targetIds.forEach((tId) => {
+    qc.setQueryData(queryKeys.maintenance.detail(tId), (old) => {
+      if (!old) return old;
+      if (old.request) {
         return { ...old, request: { ...old.request, ...updatedReq } };
       }
-      return { request: updatedReq };
+      return { ...old, ...updatedReq };
     });
-  }
+  });
 
-  qc.setQueriesData({ queryKey: ["maintenance", "admin"] }, (old) => {
+  qc.setQueriesData({ queryKey: ["maintenance"] }, (old) => {
     if (!old || !Array.isArray(old.requests)) return old;
     return {
       ...old,
-      requests: old.requests.map((r) =>
-        String(r.request_id || r.id || r._id) === String(targetId)
-          ? { ...r, ...(updatedReq || {}) }
-          : r,
-      ),
+      requests: old.requests.map((r) => {
+        const isMatch = targetIds.some(
+          (tId) => String(r.request_id || r.id || r._id || r.ticketNumber) === String(tId),
+        );
+        return isMatch ? { ...r, ...updatedReq } : r;
+      }),
     };
   });
 };
@@ -231,8 +244,8 @@ export function useSaveMaintenanceProof() {
 export function useRemoveMaintenanceAttachment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ requestId, payload }) =>
-      maintenanceApi.removeAdminAttachment(requestId, payload),
+    mutationFn: ({ requestId, attachmentId, payload }) =>
+      maintenanceApi.removeAdminAttachment(requestId, attachmentId, payload),
     onSuccess: (data, variables) => {
       syncMaintenanceCache(qc, data, variables?.requestId);
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
@@ -241,6 +254,75 @@ export function useRemoveMaintenanceAttachment() {
           queryKey: queryKeys.maintenance.detail(variables.requestId),
         });
       }
+    },
+  });
+}
+
+/** Reopen a resolved/completed maintenance request (admin) */
+export function useReopenAdminMaintenanceRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.reopenAdminRequest(requestId, payload),
+    onSuccess: (data, variables) => {
+      syncMaintenanceCache(qc, data, variables?.requestId, {
+        status: variables?.payload?.nextStatus || "in_progress",
+        isReopened: true,
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+/** Mark a maintenance request as read (admin) */
+export function useMarkAdminMaintenanceRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (requestId) => maintenanceApi.markAdminAsRead(requestId),
+    onSuccess: (data, requestId) => {
+      const readAt =
+        data?.data?.lastAdminReadAt ||
+        data?.lastAdminReadAt ||
+        new Date().toISOString();
+      syncMaintenanceCache(qc, data, requestId, {
+        lastAdminReadAt: readAt,
+        isNewForAdmin: false,
+        hasUnreadTenantReply: false,
+        hasUnreadReschedule: false,
+        hasUnreadReopen: false,
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+    },
+  });
+}
+
+/** Mark a maintenance request as read (tenant) */
+export function useMarkTenantMaintenanceRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (requestId) => maintenanceApi.markTenantAsRead(requestId),
+    onSuccess: (data, requestId) => {
+      const readAt =
+        data?.data?.lastTenantReadAt ||
+        data?.lastTenantReadAt ||
+        new Date().toISOString();
+      qc.setQueriesData({ queryKey: ["maintenance", "mine"] }, (old) => {
+        if (!old || !Array.isArray(old.requests)) return old;
+        return {
+          ...old,
+          requests: old.requests.map((r) =>
+            String(r.request_id || r.id || r._id) === String(requestId)
+              ? { ...r, lastTenantReadAt: readAt, isUpdatedForTenant: false }
+              : r,
+          ),
+        };
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
     },
   });
 }
@@ -475,9 +557,14 @@ export function useScheduleAdminMaintenance() {
     mutationFn: ({ requestId, payload }) =>
       maintenanceApi.scheduleAdminMaintenance(requestId, payload),
     onSuccess: (data, variables) => {
+      const isClear =
+        variables?.payload?.scheduledDate === null ||
+        variables?.payload?.clearSchedule === true ||
+        variables?.payload?.action === "reject_schedule" ||
+        variables?.payload?.action === "clear";
       syncMaintenanceCache(qc, data, variables?.requestId, {
-        status: "scheduled",
-        scheduledDate: variables?.payload?.scheduledDate,
+        ...(isClear ? {} : { status: "scheduled" }),
+        scheduledDate: isClear ? null : variables?.payload?.scheduledDate,
       });
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       if (variables?.requestId) {

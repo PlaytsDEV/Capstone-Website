@@ -100,7 +100,39 @@ export function detectTenantWidgetIntent(message = "", contextSnapshot = null) {
   const lower = String(message || "").toLowerCase().trim();
   if (!lower) return null;
 
-  // Maintenance Status Widget: Require explicit maintenance query from active tenant
+  // 1. Payment Guide Widget
+  if (
+    lower.match(/\b(how to pay|how do i pay|payment options|payment methods|payment channels|pay via gcash|gcash payment|maya payment|bank transfer|where to pay|settle bill|payment instructions|pay rent|how can i pay)\b/) ||
+    lower.includes("how to pay") ||
+    lower.includes("payment options") ||
+    lower.includes("payment methods") ||
+    lower.includes("pay via gcash")
+  ) {
+    return "payment_guide";
+  }
+
+  // 2. House Rules & Curfew Widget
+  if (
+    lower.match(/\b(curfew|gate hours|gate lock|visitor policy|visitors|guests|quiet hours|house rules|building access|building hours|late entry|overnight guest)\b/) ||
+    lower.includes("curfew") ||
+    lower.includes("visitor policy") ||
+    lower.includes("gate lock") ||
+    lower.includes("house rules")
+  ) {
+    return "house_rules";
+  }
+
+  // 3. Announcements & Notices Widget
+  if (
+    lower.match(/\b(announcements|announcement|advisory|advisories|notices|branch news|water interruption|power interruption|maintenance notice)\b/) ||
+    lower.includes("announcements") ||
+    lower.includes("latest advisory") ||
+    lower.includes("water interruption")
+  ) {
+    return "recent_announcements";
+  }
+
+  // 4. Maintenance Status Widget
   if (
     lower.match(/\b(maintenance ticket|repair ticket|active tickets|my tickets|maintenance status|repair status|technician status|plumbing repair|aircon repair|electrician visit)\b/) ||
     lower.includes("active tickets") ||
@@ -110,7 +142,7 @@ export function detectTenantWidgetIntent(message = "", contextSnapshot = null) {
     return "maintenance_status";
   }
 
-  // Billing Breakdown Widget: Trigger on explicit billing queries from active tenants
+  // 5. Billing Breakdown Widget
   if (
     lower.match(/\b(my bill|monthly bill|billing breakdown|electric bill|view bill|bill statement|statement of account|unpaid bill|pay bill|billing summary|my balance|current balance|rent balance|due balance|electricity share|electricity math)\b/) ||
     lower.includes("electricity math") ||
@@ -122,7 +154,7 @@ export function detectTenantWidgetIntent(message = "", contextSnapshot = null) {
     return "billing_breakdown";
   }
 
-  // Lease / Contract Timeline Widget: Trigger on explicit lease/contract queries
+  // 6. Lease / Contract Timeline Widget
   if (
     lower.match(/\b(my contract|lease contract|lease expiration|lease renewal|renew lease|renew contract|deposit refund|move-out clearance|contract status|how many days left on my lease|lease timeline)\b/) ||
     lower.includes("lease timeline") ||
@@ -146,6 +178,7 @@ export function determineTenantSuggestedActions(message = "", botReply = "", con
     return [
       { label: "Reservation Status", prompt: "What is my current reservation status?" },
       { label: "Deposit Payment Steps", prompt: "How do I settle the advance rent and security deposit?" },
+      { label: "Browse Rooms", url: "/applicant/check-availability" },
       { label: "Chat with Admin", action: "open_escalate_modal" },
     ];
   }
@@ -154,29 +187,50 @@ export function determineTenantSuggestedActions(message = "", botReply = "", con
   const widget = detectTenantWidgetIntent(message, contextSnapshot);
   const actions = [];
 
-  if (widget === "maintenance_status" || combined.includes("maintenance") || combined.includes("repair")) {
+  if (widget === "payment_guide" || combined.includes("gcash") || combined.includes("how to pay")) {
+    actions.push(
+      { label: "View Statement & Pay", url: "/applicant/billing" },
+      { label: "Electricity Math", prompt: "How was my submetered electricity share computed this month?" },
+      { label: "Dispute / Admin Help", action: "open_escalate_modal" },
+    );
+  } else if (widget === "house_rules" || combined.includes("curfew") || combined.includes("rules")) {
+    actions.push(
+      { label: "View My Contract", url: "/applicant/contracts" },
+      { label: "Visitor Policy Details", prompt: "What is the policy for day visitors and study sessions?" },
+      { label: "Chat with Admin", action: "open_escalate_modal" },
+    );
+  } else if (widget === "recent_announcements" || combined.includes("announcement")) {
+    actions.push(
+      { label: "All Announcements", url: "/applicant/announcements" },
+      { label: "Check Maintenance", prompt: "Do I have any active maintenance tickets scheduled?" },
+      { label: "Chat with Admin", action: "open_escalate_modal" },
+    );
+  } else if (widget === "maintenance_status" || combined.includes("maintenance") || combined.includes("repair")) {
     actions.push(
       { label: "Report New Repair", prompt: "How do I submit an urgent plumbing or air-conditioning issue?" },
-      { label: "Technician Hours", prompt: "What are the available hours for on-site technician repairs?" },
+      { label: "Open Maintenance Portal", url: "/applicant/maintenance" },
       { label: "Chat with Admin", action: "open_escalate_modal" },
     );
   } else if (widget === "billing_breakdown" || combined.includes("bill") || combined.includes("kuryente")) {
     actions.push(
+      { label: "View Full Statement", url: "/applicant/billing" },
+      { label: "Payment Options", prompt: "What are the accepted payment channels and instructions?" },
       { label: "Electricity Math", prompt: "How was my submetered electricity share computed this month?" },
-      { label: "Payment Due Date", prompt: "When is my current bill due and how do I settle it?" },
       { label: "Dispute / Admin Help", action: "open_escalate_modal" },
     );
   } else if (widget === "lease_timeline" || combined.includes("lease") || combined.includes("contract")) {
     actions.push(
-      { label: "Renew Lease", prompt: "What are the steps to request a lease renewal?" },
-      { label: "Deposit Refund", prompt: "How does the security deposit refund and move-out clearance work?" },
+      { label: "View My Contract", url: "/applicant/contracts" },
+      { label: "Renew Lease Steps", prompt: "What are the steps to request a lease renewal?" },
+      { label: "Deposit Refund Guide", prompt: "How does the security deposit refund and move-out clearance work?" },
       { label: "Chat with Admin", action: "open_escalate_modal" },
     );
   } else {
     actions.push(
-      { label: "Check Maintenance", prompt: "Do I have any active maintenance tickets scheduled?" },
-      { label: "Monthly Bill", prompt: "Can you show my current monthly bill breakdown?" },
-      { label: "Lease Timeline", prompt: "How many days are left on my lease agreement?" },
+      { label: "My Bills", url: "/applicant/billing" },
+      { label: "My Contract", url: "/applicant/contracts" },
+      { label: "Maintenance Portal", url: "/applicant/maintenance" },
+      { label: "House Rules", prompt: "What are the building curfew hours and visitor policies?" },
     );
   }
 
@@ -192,7 +246,61 @@ export function getTenantRuleBasedFallback(message = "", contextSnapshot = null)
   const roomNumber = contextSnapshot?.roomNumber || "your assigned room";
   const branch = contextSnapshot?.branch || "Lilycrest Residence";
 
-  // 1. Maintenance & Repair Status
+  // 1. Payment Channels & Instructions
+  if (
+    lower.includes("how to pay") ||
+    lower.includes("payment option") ||
+    lower.includes("payment channel") ||
+    lower.includes("gcash") ||
+    lower.includes("maya") ||
+    lower.includes("bank transfer") ||
+    lower.includes("where to pay")
+  ) {
+    const bill = contextSnapshot?.currentBill;
+    const remainingStr = bill?.remainingAmount !== undefined
+      ? `₱${Number(bill.remainingAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
+      : "₱0.00";
+    const dueStr = bill?.dueDate
+      ? new Date(bill.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : "your regular due date";
+
+    return `You can settle your outstanding balance of **${remainingStr}** (Due on **${dueStr}**) online through your Billing tab.\n\nAccepted Payment Channels:\n1. **GCash**: Scan QR code or pay via PayMongo gateway directly on the Billing page.\n2. **Maya**: Instant e-wallet transfer with automated receipt.\n3. **Online Bank Transfer**: Direct transfer to our official Lilycrest BDO / BPI bank accounts.\n\nOnce settled, payment verification is recorded automatically in real-time.`;
+  }
+
+  // 2. House Rules & Curfew
+  if (
+    lower.includes("curfew") ||
+    lower.includes("gate") ||
+    lower.includes("visitor") ||
+    lower.includes("guest") ||
+    lower.includes("oras") ||
+    lower.includes("quiet") ||
+    lower.includes("rules")
+  ) {
+    return `Here are the building access policies and house rules for **${branch}**:\n\n• **Main Gate Lock**: 11:00 PM to 5:00 AM daily for building security.\n• **24/7 Late Access**: Tenants with night shifts or late study hours are always welcomed anytime by presenting their valid tenant ID at the security counter.\n• **Quiet Hours**: 10:00 PM to 7:00 AM in all corridors and common study lounges.\n• **Day Visitors**: Permitted in common lounge areas from 8:00 AM to 8:00 PM.\n• **Water & High-Speed Wi-Fi**: Free and included in your base monthly rent.`;
+  }
+
+  // 3. Announcements & Notices
+  if (
+    lower.includes("announcement") ||
+    lower.includes("advisory") ||
+    lower.includes("news") ||
+    lower.includes("water interruption")
+  ) {
+    const announcements = contextSnapshot?.recentAnnouncements || [];
+    if (announcements.length > 0) {
+      const list = announcements
+        .map(
+          (a, i) =>
+            `${i + 1}. **${a.title}** (${a.createdAt ? new Date(a.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Recent"})\n   ${a.content}`,
+        )
+        .join("\n\n");
+      return `Here are the latest branch announcements for **${branch}**:\n\n${list}\n\nYou can review all building advisories on the Announcements tab.`;
+    }
+    return `There are currently **no urgent service advisories or maintenance interruptions** posted for **${branch}**. All facility operations and utilities are operating normally.`;
+  }
+
+  // 4. Maintenance & Repair Status
   if (
     lower.includes("maintenance") ||
     lower.includes("ticket") ||
@@ -218,7 +326,7 @@ export function getTenantRuleBasedFallback(message = "", contextSnapshot = null)
     return `You currently have **no active or scheduled maintenance requests** for **Room ${roomNumber}**.\n\nIf you are experiencing any facility issues (such as plumbing leaks, aircon maintenance, or electrical concerns), you can submit a repair request anytime from your Maintenance Portal.`;
   }
 
-  // 2. Billing & Utilities Breakdown
+  // 5. Billing & Utilities Breakdown
   if (
     lower.includes("bill") ||
     lower.includes("rent") ||
@@ -243,7 +351,7 @@ export function getTenantRuleBasedFallback(message = "", contextSnapshot = null)
     return `No canonical current-cycle statement is available for **Room ${roomNumber}** right now. Please check the Billing tab or contact your branch admin if you expected one.`;
   }
 
-  // 3. Lease & Contract Timeline
+  // 6. Lease & Contract Timeline
   if (
     lower.includes("contract") ||
     lower.includes("lease") ||
@@ -269,12 +377,7 @@ export function getTenantRuleBasedFallback(message = "", contextSnapshot = null)
     return "No tenant-visible canonical Contract is available in your current records. Please check the Contracts tab or contact your branch admin.";
   }
 
-  // 4. Curfew & Gate Policy
-  if (lower.includes("curfew") || lower.includes("oras") || lower.includes("gate") || lower.includes("late")) {
-    return `I do not have a current, tenant-specific gate schedule in the canonical record for **${branch}**. Please confirm the latest access policy with your branch admin.`;
-  }
-
-  // 5. Default Greeting & Assistance
+  // 7. Default Greeting & Assistance
   return `Hello, ${tenantName}! I am your **Lilycrest Tenant Assistant** for ${roomNumber} at ${branch}.\n\nI can help explain the canonical billing, maintenance, contract, announcement, and support records available to you. How may I assist you today?`;
 }
 

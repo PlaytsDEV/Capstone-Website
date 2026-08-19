@@ -70,8 +70,8 @@ describe("bill release -> mobile push smoke test", () => {
     const firstId = new mongoose.Types.ObjectId();
     const secondId = new mongoose.Types.ObjectId();
     await mongoose.connection.db.collection("users").insertMany([
-      { _id: firstId, user_id: "first", push_tokens: [{ token: sharedToken, platform: "android", enabled: true }] },
-      { _id: secondId, user_id: "second", push_token: sharedToken },
+      { _id: firstId, firebaseUid: `smoke-fb-${firstId}`, user_id: "first", push_tokens: [{ token: sharedToken, platform: "android", enabled: true }] },
+      { _id: secondId, firebaseUid: `smoke-fb-${secondId}`, user_id: "second", push_token: sharedToken },
     ]);
 
     await sendMobilePushToRecipients([firstId, secondId], {
