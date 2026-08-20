@@ -341,12 +341,12 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
     contract?.lessorSignatureStatus === "completed" &&
     ["completed", "not_required"].includes(contract?.witnessSignatureStatus);
   const signingNextAction = contract?.status === "generated"
-    ? "Print, complete wet signing and in-person notarization, then upload the scanned notarized copy"
+    ? "Print and complete wet signing, then upload the signed scan to finalize the Contract"
     : contract?.status === "notarized" ? "Ready for final publication"
       : currentNotarized ? "Verify signed and notarized copy"
         : ["awaiting_signatures", "partially_signed"].includes(contract?.status)
-          ? "Complete wet signing and in-person notarization"
-          : "Upload the signed-and-notarized scanned copy";
+          ? "Complete wet signing, then upload the signed scan to finalize the Contract"
+          : "Upload the wet-signed scanned copy to finalize the Contract";
 
   const changeSignature = (signer, status) => runAction(
     `${signer}-${status}`,
@@ -372,14 +372,14 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
     if (!file) return;
     const replacing = (contract?.signedDocuments?.length || 0) > 0;
     showWorkflow({
-      title: replacing ? "Replace Signed-Only Copy" : "Upload Signed-Only Copy",
-      message: "This legacy action stores a signed-only scan separately from the official signed-and-notarized workflow.",
+      title: replacing ? "Replace Wet-Signed Contract" : "Upload Wet-Signed Contract",
+      message: "Upload the contract copy physically signed by all parties. This will immediately establish it as the tenant's Final Contract — no separate notarization step is required.",
       fields: replacing ? [{ key: "reason", label: "Replacement reason", type: "textarea", required: true }] : [],
-      checks: [{ key: "confirmed", label: "I selected the correct Contract scan." }],
-      submitLabel: replacing ? "Replace Copy" : "Upload Copy",
+      checks: [{ key: "confirmed", label: "I selected the correct, complete wet-signed Contract scan." }],
+      submitLabel: replacing ? "Replace Final Contract" : "Upload Final Contract",
       onSubmit: (values) => runAction("signed-upload",
         () => contractApi.uploadSignedContract(contractId, file, values.reason?.trim()),
-        "Signed Contract copy uploaded."),
+        "Wet-signed Contract uploaded and finalized for the tenant."),
     });
   };
   const uploadNotarized = async (event) => {
@@ -607,7 +607,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
               <button className="contract-button contract-button--secondary" disabled={busy || !preparedAvailable} onClick={() => {
                 showWorkflow({
                   title: "Mark Prepared Contract as Printed",
-                  message: "Confirm that the prepared Contract has been physically printed for wet signing and in-person notarization.",
+                  message: "Confirm that the prepared Contract has been physically printed for wet signing.",
                   checks: [{ key: "confirmed", label: "The current prepared Contract has been physically printed." }],
                   submitLabel: "Mark as Printed",
                   onSubmit: () => runAction("mark-printed", () => contractApi.markPrinted(contractId), "Contract marked as printed."),
@@ -615,8 +615,8 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
               }}><Printer size={16}/>Mark as Printed</button>
             </div>
             <p className="contract-action-helper">Print or download the document using the controls in the PDF viewer.</p>
-            <h4>After Wet Signing and Notarization</h4>
-            <p className="contract-action-helper">Print the prepared Contract from the PDF viewer. After all parties wet-sign it and the document is notarized in person, upload the scanned notarized copy.</p>
+            <h4>After Wet Signing</h4>
+            <p className="contract-action-helper">Print the prepared Contract from the PDF viewer. After all parties wet-sign it, upload the signed scan below to immediately finalize it as the tenant's Final Contract. In-person notarization remains available separately and is optional.</p>
           </div>}
           <div className="contract-action-row">
             {["awaiting_signatures", "partially_signed"].includes(contract.status) && <>
@@ -631,12 +631,13 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
                 <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => changeSignature("witnesses", "completed")}>Mark Witness Signatures Complete</button>
                 <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => changeSignature("witnesses", "not_required")}>Mark Witnesses Not Required</button>
               </> : <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => changeSignature("witnesses", "pending")}>Revert Witnesses to Pending</button>}
-              <details><summary>Legacy signed-only tracking</summary>
               <input ref={signedInput} hidden type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={uploadSigned}/>
-              <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => signedInput.current?.click()}><Upload size={16}/>{currentSigned ? "Replace Signed-Only Copy" : "Upload Signed-Only Copy"}</button>
+              <button className="contract-button" disabled={busy} onClick={() => signedInput.current?.click()}><Upload size={16}/>{currentSigned ? "Replace Wet-Signed Contract" : "Upload Wet-Signed Contract"}</button>
               {currentSigned && <>
                 <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => openSigned(false)}><Eye size={16}/>Preview Signed Copy</button>
                 <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => openSigned(true)}><Download size={16}/>Download Signed Copy</button>
+              </>}
+              {currentSigned && !contract.finalDocument && <details><summary>Advanced signed-copy tools</summary>
                 <button className="contract-button" disabled={busy || !signaturesComplete} onClick={() => {
                   showWorkflow({
                     title: "Verify Signed-Only Copy",
@@ -671,8 +672,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
                       "Signed contract copy deleted."),
                   });
                 }}>Delete Signed Copy</button>
-              </>}
-              </details>
+              </details>}
             </>}
             {["generated", "awaiting_signatures", "partially_signed", "signed", "awaiting_notarization"]
               .includes(contract.status) && <>
@@ -705,12 +705,13 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
         {["published", "active", "expiring_soon", "expired"].includes(contract.status) &&
           contract.finalDocument && <section className="contract-panel"><h3>Final Contract Published</h3>
             <dl>
+              <dt>Source</dt><dd>{contract.finalDocument.sourceType === "notarized" ? "Signed and notarized copy" : "Wet-signed scan (final on upload)"}</dd>
               <dt>Published date</dt><dd>{date(contract.finalDocument.publishedAt || contract.publishedAt)}</dd>
               <dt>Published by</dt><dd>{actorName(contract.publishedBy)}</dd>
               <dt>File name</dt><dd>{contract.finalDocument.fileName}</dd>
               <dt>File size</dt><dd>{size(contract.finalDocument.fileSize)}</dd>
               <dt>Page count</dt><dd>{contract.finalDocument.pageCount}</dd>
-              <dt>Source notarized version</dt><dd>{contract.finalDocument.sourceVersion}</dd>
+              <dt>Source document version</dt><dd>{contract.finalDocument.sourceVersion}</dd>
             </dl>
             <div className="contract-action-row">
               <button className="contract-button" disabled={busy} onClick={() => openFinal(false)}><Eye size={16}/>View Final Contract</button>

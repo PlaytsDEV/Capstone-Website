@@ -123,4 +123,25 @@ describe("tenantContractDocumentResolver", () => {
     expect(result.fileSize).toBe(1048576);
     expect(result.pageCount).toBe(5);
   });
+
+  test("labels an admin_scan final document as 'Final Contract', distinct from a notarized final", () => {
+    const contract = {
+      status: "published",
+      preparedDocuments: [],
+      finalDocument: {
+        storageKey: "guadalupe/2026/LC-2026-002/final_signed_v1.pdf",
+        fileName: "LC-2026-002_signed_v1.pdf",
+        fileSize: 512000,
+        pageCount: 4,
+        sourceType: "admin_scan",
+        sourceVersion: 1,
+        publishedAt: new Date("2026-08-20T12:00:00Z"),
+      },
+    };
+    const result = resolveTenantContractDocument(contract);
+    expect(result.available).toBe(true);
+    expect(result.type).toBe("final_notarized");
+    expect(result.isFinal).toBe(true);
+    expect(result.label).toBe("Final Contract");
+  });
 });

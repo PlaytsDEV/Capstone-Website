@@ -484,11 +484,27 @@ export const uploadSignedDocument = async (req, res) => {
       }
     }
 
+    // This upload just auto-finalized the Contract (contractSigningService's
+    // canAutoFinalize/advanceStatusToPublished ran inline) — notify the
+    // tenant their final contract is ready, matching the "prepared" tenant
+    // notification already sent at generation time.
+    const justFinalized = contract.finalDocument?.sourceType === "admin_scan" &&
+      Number(contract.finalDocument?.sourceVersion) === Number(document.version);
+    if (justFinalized && contract.tenantId) {
+      notify
+        .contractDocumentReady(contract.tenantId, "final", contract._id, document.version)
+        .catch((e) => logger.warn({ err: e }, "Tenant final-contract-ready notification failed (non-fatal)"));
+    }
+
     res.status(201).json({ success: true, document: {
       version: document.version, fileName: document.fileName, fileHash: document.fileHash,
       fileSize: document.fileSize, mimeType: document.mimeType, uploadedAt: document.uploadedAt,
       preparedDocumentVersion: document.preparedDocumentVersion,
-    }, status: contract.status });
+    }, status: contract.status, finalDocument: contract.finalDocument ? {
+      sourceType: contract.finalDocument.sourceType,
+      publishedAt: contract.finalDocument.publishedAt,
+      fileName: contract.finalDocument.fileName,
+    } : null });
   } catch (error) { fail(res, error); }
 };
 

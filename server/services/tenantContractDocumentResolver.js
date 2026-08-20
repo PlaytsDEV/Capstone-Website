@@ -5,12 +5,20 @@ import { selectCurrentPreparedDocument } from "./preparedContractDocumentService
  * CANONICAL TENANT CONTRACT DOCUMENT RESOLVER
  * ============================================================================
  *
- * Implements the authoritative 2-tier document visibility rule defined in
- * LILYCREST_CONTRACT_WEB_FLOW_LOGIC_IMPROVEMENT1.md:
+ * Implements the authoritative document visibility rule:
  *
- * 1. Final Notarized Contract (`finalDocument`)
- *    - Highest priority.
- *    - Signed, notarized, and finalized.
+ * 1. Final Contract (`finalDocument`)
+ *    - Highest priority, always the single source of truth once set.
+ *    - Two ways to get here, both fully tenant-visible immediately, with no
+ *      further notarization/verification/publication step required:
+ *        a. `sourceType: "admin_scan"` — an authorized admin uploaded a
+ *           wet-signed scan (PDF/JPG/JPEG/PNG); that upload IS the
+ *           finalization event (see contractSigningService.js
+ *           uploadSignedContract's "CORE BUSINESS RULE" comment).
+ *        b. `sourceType: "notarized"` — the optional, internal
+ *           upload -> verify -> notarize -> publish pipeline was used
+ *           instead. Functionally equivalent for tenant visibility; kept
+ *           distinct only for admin-facing labeling/audit history.
  *    - Automatically replaces any generated draft.
  *
  * 2. Generated Draft (`preparedDocuments[]`)
@@ -22,6 +30,11 @@ import { selectCurrentPreparedDocument } from "./preparedContractDocumentService
  * 3. Unavailable / Preparing
  *    - When no valid PDF exists yet.
  *    - Labeled "Contract is being prepared."
+ *
+ * `signedDocuments[]` (wet-signed scan upload/version history) is
+ * intentionally NOT a resolver tier: it's audit/version history, not a
+ * tenant-visibility source, once its current entry has been promoted into
+ * `finalDocument`.
  *
  * Both Web (/api/contracts/my/*) and Mobile (/api/m/contracts/*) consume this
  * single source of truth for document selection.
@@ -63,7 +76,8 @@ export function resolveTenantContractDocument(contract) {
     };
   }
 
-  // 1. Final Notarized Contract takes top priority
+  // 1. Final Contract takes top priority — admin_scan (wet-signed upload,
+  // final on upload) or notarized (optional formal pipeline), both final.
   if (
     contract.finalDocument &&
     Boolean(contract.finalDocument.fileName) &&
@@ -73,7 +87,7 @@ export function resolveTenantContractDocument(contract) {
     return {
       available: true,
       type: "final_notarized",
-      label: "Final Notarized Contract",
+      label: finalDoc.sourceType === "notarized" ? "Final Notarized Contract" : "Final Contract",
       isFinal: true,
       document: finalDoc,
       version: Number(finalDoc.sourceVersion) || Number(contract.notarizedDocumentVersion) || Number(contract.version) || 1,

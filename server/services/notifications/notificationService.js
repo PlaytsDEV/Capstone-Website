@@ -538,7 +538,7 @@ const notify = {
     const isFinal = normalizedVariant === "final";
     const title = isFinal ? "Final Contract Ready" : "Contract Ready for Signing";
     const message = isFinal
-      ? "Your final notarized lease contract is now available to view and download."
+      ? "Your final lease contract is now available to view and download."
       : "Your lease contract has been prepared and is ready for your review and in-person signing.";
     const normalizedContractId = String(contractId);
     // The unique index is { userId, dedupeKey }, so an identical contract

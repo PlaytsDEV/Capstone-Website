@@ -34,6 +34,7 @@ const mockContract = (changes = {}) => {
     witnessSignatureStatus: "completed",
     signedStorageKey: null,
     signedDocumentVersion: 0,
+    statusHistory: [],
     save: jest.fn().mockResolvedValue(undefined),
     markModified: jest.fn(),
     ...changes,
@@ -143,5 +144,70 @@ describe("contractSigningService - deleteSignedContract", () => {
 
     await expect(deleteSignedContract({ contract: item, version: 1, actorId: "admin-1" }))
       .rejects.toMatchObject({ code: "SIGNED_DOCUMENT_DELETION_NOT_ALLOWED" });
+  });
+
+  test("rejects deleting the signed-document version an admin_scan final document depends on", async () => {
+    const item = mockContract({
+      status: "published",
+      finalDocument: { sourceType: "admin_scan", sourceVersion: 1 },
+      signedDocuments: [
+        {
+          version: 1,
+          storageKey: "gil-puyat/2026/TEST-CONTRACT-0001/TEST-CONTRACT-0001_signed_v1.pdf",
+          fileName: "TEST-CONTRACT-0001_signed_v1.pdf",
+          superseded: false,
+        },
+      ],
+    });
+
+    await expect(deleteSignedContract({ contract: item, version: 1, actorId: "admin-1" }))
+      .rejects.toMatchObject({ code: "FINAL_DOCUMENT_REPLACEMENT_REQUIRES_FORMAL_PROCESS" });
+  });
+});
+
+describe("contractSigningService - uploadSignedContract auto-finalizes wet-signed uploads", () => {
+  const pdfFile = (name = "signed.pdf") => {
+    const buffer = Buffer.from(`%PDF-1.4\n${"x".repeat(64)}`);
+    return { buffer, size: buffer.length, mimetype: "application/pdf", originalname: name };
+  };
+
+  test("an eligible contract's first wet-signed upload becomes the final document immediately", async () => {
+    const item = mockContract({ status: "partially_signed" });
+
+    const document = await uploadSignedContract({ contract: item, file: pdfFile(), actorId: "admin-1" });
+
+    expect(document.version).toBe(1);
+    expect(item.finalDocument).toMatchObject({
+      sourceType: "admin_scan",
+      sourceVersion: 1,
+      tenantVisible: true,
+    });
+    expect(item.finalStorageKey).toBeTruthy();
+    expect(item.tenantVisible).toBe(true);
+    expect(item.publicationStatus).toBe("published");
+    // Finalization stops at "published" — it never forces "active" on its
+    // own; resolveContractDisplayLifecycle() derives the display state from
+    // leaseStartDate instead.
+    expect(item.status).toBe("published");
+  });
+
+  test("does not finalize a contract in a lifecycle stage auto-finalize does not cover", async () => {
+    const item = mockContract({ status: "renewed" });
+
+    await uploadSignedContract({ contract: item, file: pdfFile(), actorId: "admin-1" });
+
+    expect(item.finalDocument).toBeUndefined();
+  });
+
+  test("rejects a replacement upload once the contract already has a final document", async () => {
+    const item = mockContract({
+      status: "published",
+      finalDocument: { sourceType: "admin_scan", sourceVersion: 1 },
+      signedDocuments: [{ version: 1, storageKey: "k", fileName: "f.pdf", superseded: false }],
+    });
+
+    await expect(uploadSignedContract({
+      contract: item, file: pdfFile(), actorId: "admin-1", replacementReason: "Corrected scan quality",
+    })).rejects.toMatchObject({ code: "FINAL_DOCUMENT_REPLACEMENT_REQUIRES_FORMAL_PROCESS" });
   });
 });
