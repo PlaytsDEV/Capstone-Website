@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   AlertTriangle,
@@ -18,6 +19,7 @@ import {
   Send,
 } from "lucide-react";
 import { billingApi } from "../../../../shared/api/billingApi.js";
+import { showNotification } from "../../../../shared/utils/notification.js";
 
 const getInitials = (name) => {
   if (!name) return "TN";
@@ -59,7 +61,7 @@ const getStatusBadgeConfig = (status) => {
     case "awaiting_response":
       return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
     case "penalty_issued":
-      return { text: "text-purple-700 dark:text-purple-400", dot: "bg-purple-500" };
+      return { text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
     case "escalated":
       return { text: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" };
     case "dismissed":
@@ -91,33 +93,40 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
     setSuccessMsg("");
 
     if (!decisionReason.trim()) {
-      setError("Please provide a clear administrative rationale for this decision.");
+      const errText = "Please provide a clear administrative rationale for this decision.";
+      setError(errText);
+      showNotification(errText, "warning");
       return;
     }
 
     try {
       setAdjudicating(true);
-      const res = await billingApi.adjudicateViolation(violation._id, {
+      await billingApi.adjudicateViolation(violation._id, {
         decision,
         targetStatus: decision === "confirmed" ? targetStatus : "dismissed",
         decisionReason: decisionReason.trim(),
         chargeToBill: decision === "confirmed" && Number(violation.penaltyApplied) > 0 ? chargeToBill : false,
       });
 
-      setSuccessMsg("Adjudication decision recorded and tenant notified successfully.");
+      const msg = "Adjudication decision recorded and tenant notified successfully.";
+      setSuccessMsg(msg);
+      showNotification(msg, "success");
       onRefresh?.();
       setTimeout(() => {
         onClose();
       }, 1500);
     } catch (err) {
       console.error("Decision recording error:", err);
-      setError(err.message || "Failed to record decision.");
+      const errText = err.message || "Failed to record decision.";
+      setError(errText);
+      showNotification(errText, "error");
     } finally {
       setAdjudicating(false);
     }
   };
 
   const badgeCfg = getStatusBadgeConfig(violation.status);
+  const primaryPhoto = violation.evidenceUrls?.[0] || violation.evidenceUrl;
 
   const formattedDate = violation.dateOfIncident
     ? new Date(violation.dateOfIncident).toLocaleDateString("en-PH", {
@@ -127,9 +136,9 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
       })
     : "N/A";
 
-  const primaryPhoto = violation.evidenceUrls?.[0] || violation.evidenceUrl;
+  if (!isOpen || !violation || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl text-card-foreground">
         {/* Header */}
@@ -423,6 +432,7 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -46,6 +46,7 @@ const fmtDate = (d) =>
 
 const MaintenanceTab = () => {
  const [showForm, setShowForm] = useState(false);
+ const [pendingConfirm, setPendingConfirm] = useState(false);
  const [formData, setFormData] = useState({
  category: "other",
  title: "",
@@ -56,15 +57,20 @@ const MaintenanceTab = () => {
  const requests = requestsData?.requests || [];
  const createMutation = useCreateMaintenanceRequest();
 
- const handleSubmit = async (e) => {
- e.preventDefault();
- try {
- await createMutation.mutateAsync(formData);
- setFormData({ category: "other", title: "", description: "" });
- setShowForm(false);
- } catch (error) {
- console.error("Failed to submit maintenance request:", error);
- }
+ const handleInitiateSubmit = (e) => {
+   e.preventDefault();
+   setPendingConfirm(true);
+ };
+
+ const handleConfirmSubmit = async () => {
+   try {
+     await createMutation.mutateAsync(formData);
+     setFormData({ category: "other", title: "", description: "" });
+     setShowForm(false);
+     setPendingConfirm(false);
+   } catch (error) {
+     console.error("Failed to submit maintenance request:", error);
+   }
  };
 
  /* ── Loading ── */
@@ -123,7 +129,7 @@ const MaintenanceTab = () => {
  >
  Submit a Request
  </h3>
- <form onSubmit={handleSubmit}>
+ <form onSubmit={handleInitiateSubmit}>
  <div style={{ marginBottom: 14 }}>
  <label style={s.label}>Category</label>
  <div style={{ position: "relative" }}>
@@ -200,6 +206,79 @@ const MaintenanceTab = () => {
  </button>
  </div>
  </form>
+ </div>
+ )}
+
+ {pendingConfirm && (
+ <div
+ style={{
+ position: "fixed",
+ inset: 0,
+ zIndex: 9999,
+ background: "rgba(0, 0, 0, 0.5)",
+ display: "grid",
+ placeItems: "center",
+ padding: 16,
+ }}
+ onClick={() => !createMutation.isPending && setPendingConfirm(false)}
+ >
+ <div
+ style={{
+ background: "var(--card, #ffffff)",
+ borderRadius: 12,
+ padding: "18px 20px",
+ maxWidth: 400,
+ width: "100%",
+ border: "1px solid var(--border, #E2E8F0)",
+ boxShadow: "0 20px 48px rgba(0, 0, 0, 0.16)",
+ }}
+ onClick={(e) => e.stopPropagation()}
+ >
+ <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 700, color: "var(--foreground, #0F172A)" }}>
+ Submit Maintenance Request?
+ </h3>
+ <p style={{ margin: "0 0 12px", color: "var(--muted-foreground, #64748B)", fontSize: 13, lineHeight: 1.5 }}>
+ Our facilities management team will be notified immediately to review your issue and schedule a technician. Please confirm:
+ </p>
+ <div
+ style={{
+ background: "var(--muted, #F8FAFC)",
+ borderRadius: 8,
+ padding: "10px 12px",
+ border: "1px solid var(--border, #E2E8F0)",
+ fontSize: 12.5,
+ display: "flex",
+ flexDirection: "column",
+ gap: 6,
+ marginBottom: 16,
+ }}
+ >
+ <div><strong>Category:</strong> <span style={{ textTransform: "capitalize" }}>{formData.category}</span></div>
+ <div><strong>Title:</strong> {formData.title}</div>
+ <div><strong>Description:</strong> <span style={{ color: "var(--muted-foreground, #64748B)" }}>{formData.description?.slice(0, 80)}{formData.description?.length > 80 ? "..." : ""}</span></div>
+ </div>
+ <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+ <button
+ type="button"
+ style={s.ghostBtn}
+ onClick={() => setPendingConfirm(false)}
+ disabled={createMutation.isPending}
+ >
+ Back to Edit
+ </button>
+ <button
+ type="button"
+ style={{
+ ...s.primaryBtn,
+ opacity: createMutation.isPending ? 0.6 : 1,
+ }}
+ onClick={handleConfirmSubmit}
+ disabled={createMutation.isPending}
+ >
+ {createMutation.isPending ? "Submitting..." : "Yes, Submit Request"}
+ </button>
+ </div>
+ </div>
  </div>
  )}
 

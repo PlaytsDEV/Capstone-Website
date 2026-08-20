@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   AlertTriangle,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import { billingApi } from "../../../../shared/api/billingApi.js";
 import { authFetch } from "../../../../shared/api/httpClient.js";
+import { showNotification } from "../../../../shared/utils/notification.js";
 import ModernTimePicker from "./ModernTimePicker.jsx";
 
 const VIOLATION_CATEGORIES = [
@@ -76,7 +78,14 @@ function TenantAvatar({ avatarUrl, name, className = "h-7 w-7 text-[10px]" }) {
   );
 }
 
-export default function RecordViolationModal({ isOpen, onClose, onSuccess, branch }) {
+export default function RecordViolationModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  branch,
+  preselectedTenantId,
+  preselectedTenant,
+}) {
   const [tenants, setTenants] = useState([]);
   const [loadingTenants, setLoadingTenants] = useState(true);
   const [tenantSearch, setTenantSearch] = useState("");
@@ -107,6 +116,54 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
 
   const dropdownRef = useRef(null);
   const fileInputRef = useRef(null);
+  const formBodyRef = useRef(null);
+
+  // Auto-set preselected tenant if provided
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedTenant(null);
+      setEvidenceFile(null);
+      setEvidencePreview(null);
+      setEvidenceUrl("");
+      setFormError("");
+      return;
+    }
+
+    if (preselectedTenant) {
+      const tId =
+        preselectedTenant.tenantId ||
+        preselectedTenant.userId?._id ||
+        preselectedTenant.userId ||
+        preselectedTenant._id ||
+        preselectedTenant.id;
+      const resvId =
+        preselectedTenant.reservationId?._id ||
+        preselectedTenant.reservationId ||
+        preselectedTenant._id;
+      const tName =
+        preselectedTenant.fullName ||
+        preselectedTenant.tenantName ||
+        `${preselectedTenant.firstName || ""} ${preselectedTenant.lastName || ""}`.trim() ||
+        preselectedTenant.name ||
+        "Tenant";
+      const room =
+        preselectedTenant.roomName ||
+        preselectedTenant.roomNumber ||
+        preselectedTenant.room?.roomNumber ||
+        "Assigned Room";
+
+      setSelectedTenant({
+        tenantId: tId,
+        reservationId: resvId,
+        fullName: tName,
+        email: preselectedTenant.email || "",
+        roomName: room,
+        branch: preselectedTenant.branch || branch,
+        avatar: preselectedTenant.profileImage || preselectedTenant.avatar || "",
+        warningCount: preselectedTenant.warningCount || 0,
+      });
+    }
+  }, [isOpen, preselectedTenant, branch]);
 
   // Fetch active tenants
   useEffect(() => {
@@ -120,6 +177,18 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
         const res = await billingApi.getActiveTenantsForViolations(params);
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
         setTenants(list);
+
+        if (preselectedTenantId && !preselectedTenant) {
+          const match = list.find(
+            (t) =>
+              String(t.tenantId) === String(preselectedTenantId) ||
+              String(t.userId) === String(preselectedTenantId) ||
+              String(t._id) === String(preselectedTenantId),
+          );
+          if (match) {
+            setSelectedTenant(match);
+          }
+        }
       } catch (err) {
         console.error("Failed to load active tenants:", err);
       } finally {
@@ -128,7 +197,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
     };
 
     fetchTenants();
-  }, [isOpen, branch]);
+  }, [isOpen, branch, preselectedTenantId, preselectedTenant]);
 
   // Click outside to close tenant dropdown
   useEffect(() => {
@@ -260,22 +329,44 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
     setFormError("");
 
     if (!selectedTenant) {
-      setFormError("Please select a tenant for this violation record.");
+      const err = "Please select a tenant for this violation record.";
+      setFormError(err);
+      showNotification(err, "warning");
+      formBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
     if (formData.violationType === "custom" && !formData.customViolationDescription.trim()) {
-      setFormError("Please specify a reason/basis for the monetary penalty.");
+      const err = "Please specify a description for the custom infraction.";
+      setFormError(err);
+      showNotification(err, "warning");
+      formBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
     if (!formData.evidenceNotes.trim()) {
-      setFormError("Please enter detailed incident notes describing the infraction.");
+      const err = "Please enter detailed incident notes describing the infraction.";
+      setFormError(err);
+      showNotification(err, "warning");
+      return;
+    }
+
+    if (Number(formData.penaltyApplied) > 0 && !formData.penaltyReason.trim()) {
+      const err = "Please enter a reason/basis for the monetary penalty fee.";
+      setFormError(err);
+      showNotification(err, "warning");
+      return;
+    }
+
+    if (uploadingImage) {
+      showNotification("Please wait for photo evidence to finish uploading.", "info");
       return;
     }
 
     try {
       setSubmitting(true);
+
+      const finalEvidenceUrl = evidenceUrl || (evidencePreview && !evidencePreview.startsWith("blob:") ? evidencePreview : null);
 
       const payload = {
         tenantId: selectedTenant.tenantId,
@@ -292,27 +383,31 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
         penaltyApplied: Number(formData.penaltyApplied) || 0,
         penaltyReason: formData.penaltyReason.trim(),
         chargeToBill: formData.chargeToBill,
-        evidenceUrl: evidencePreview || null,
-        evidenceUrls: evidencePreview ? [evidencePreview] : [],
+        evidenceUrl: finalEvidenceUrl,
+        evidenceUrls: finalEvidenceUrl ? [finalEvidenceUrl] : [],
       };
 
       await billingApi.recordViolation(payload);
 
+      showNotification("Violation record logged successfully.", "success");
       onSuccess?.();
       onClose();
     } catch (err) {
       console.error("Failed to record violation:", err);
-      setFormError(err.message || "Unable to save violation record. Please try again.");
+      const errMsg = err.message || "Unable to save violation record. Please try again.";
+      setFormError(errMsg);
+      showNotification(errMsg, "error");
+      formBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
   const currentWarning = selectedTenant ? (selectedTenant.warningCount || 0) + 1 : 1;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl text-card-foreground">
         {/* Modal Header */}
@@ -340,7 +435,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
         </div>
 
         {/* Modal Form Body */}
-        <form onSubmit={handleSubmit} className="max-h-[75vh] overflow-y-auto p-6 space-y-5">
+        <form ref={formBodyRef} onSubmit={handleSubmit} className="max-h-[75vh] overflow-y-auto p-6 space-y-5">
           {formError && (
             <div className="flex items-start gap-2.5 rounded-xl border border-border bg-card p-3.5 text-xs text-rose-600 dark:text-rose-400">
               <AlertTriangle size={15} className="mt-0.5 shrink-0 text-rose-600" />
@@ -767,6 +862,7 @@ export default function RecordViolationModal({ isOpen, onClose, onSuccess, branc
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

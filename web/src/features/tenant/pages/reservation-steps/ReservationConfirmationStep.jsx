@@ -123,9 +123,9 @@ const ReservationConfirmationStep = ({
 
   return (
     <div ref={receiptRef} className="w-full max-w-6xl mx-auto space-y-6 rf-confirmation-wrapper">
-      {/* Header Badge */}
-      <div className="space-y-2.5 border-b border-slate-200 dark:border-slate-800 pb-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* Header Badge & Title */}
+      <div className="space-y-3 border-b border-slate-200 dark:border-slate-800 pb-5">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="inline-flex items-center px-3 py-1 bg-transparent border border-slate-200 dark:border-slate-700 rounded-full">
             <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
               Step 5 · Confirmation
@@ -155,9 +155,9 @@ const ReservationConfirmationStep = ({
       </div>
 
       {/* Main 2-Column Responsive Bento Layout (12 Columns) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Left Column: Status Hero, Official Code Card & Summary Cards */}
-        <div className="lg:col-span-7 flex flex-col gap-5">
+        <div className="lg:col-span-7 flex flex-col gap-5 justify-between">
           {/* Celebration Banner */}
           <div className="rf-celebration-banner m-0">
             <div className="rf-check-circle">
@@ -251,13 +251,13 @@ const ReservationConfirmationStep = ({
         </div>
 
         {/* Right Column: What Happens Next & Actions Card */}
-        <div className="lg:col-span-5 flex flex-col gap-5">
+        <div className="lg:col-span-5 flex flex-col gap-5 justify-between">
           {/* What happens next */}
-          <div className="rf-next-steps-card m-0 flex-1">
+          <div className="rf-next-steps-card m-0 flex-1 flex flex-col">
             <div className="rf-next-steps-title">
               <span>What happens next</span>
             </div>
-            <div className="rf-steps-list">
+            <div className="rf-steps-list flex-1 justify-around">
               {confirmationState.nextSteps.map(({ step, detail }, idx) => (
                 <div key={idx} className="rf-next-step">
                   <div className="rf-step-number">{idx + 1}</div>
@@ -271,7 +271,7 @@ const ReservationConfirmationStep = ({
           </div>
 
           {/* Quick Actions & Official Receipt Card */}
-          <div className="content-card m-0 p-5 space-y-4 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-2xl shadow-sm">
+          <div className="content-card m-0 p-5 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-2xl shadow-sm">
             <div className="card-section-title pb-3 mb-1 border-b border-slate-100 dark:border-slate-800 text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center justify-between">
               <span>Reservation Navigation</span>
             </div>
@@ -300,11 +300,11 @@ const ReservationConfirmationStep = ({
             </div>
 
             {confirmationState.showReceiptAction && (
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row gap-2">
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={handleViewReceipt}
-                  className="flex-1 h-9 px-3 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  className="w-full h-9 px-3 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                 >
                   <Printer size={13} className="text-slate-500 dark:text-slate-400" />
                   <span>View / Print Receipt</span>
@@ -312,7 +312,7 @@ const ReservationConfirmationStep = ({
                 <button
                   type="button"
                   onClick={handleDownloadReceipt}
-                  className="flex-1 h-9 px-3 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  className="w-full h-9 px-3 text-xs font-semibold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                 >
                   <Download size={13} className="text-slate-500 dark:text-slate-400" />
                   <span>Download PDF</span>

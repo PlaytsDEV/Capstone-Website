@@ -191,6 +191,7 @@ export const getReservationById = async (req, res) => {
     if (isAdminRole(dbUser.role) && !reservation.isViewedByAdmin) {
       reservation.isViewedByAdmin = true;
       reservation.adminViewedAt = new Date();
+      reservation.lastAdminViewedAt = new Date();
       await reservation.save().catch((err) => {
         logger.warn({ err, reservationId }, "Failed to update isViewedByAdmin on reservation view");
       });

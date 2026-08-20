@@ -248,7 +248,7 @@ export default function AnalyticsConsolidatedTab({
     },
     {
       icon: Wrench,
-      tone: "purple",
+      tone: "amber",
       label: "Active Work Orders",
       value: dashboardData?.kpis?.activeTickets ?? operationsData?.kpis?.maintenanceRequests ?? 0,
       trend: "All branches",

@@ -1,11 +1,9 @@
 import React from "react";
+import { Lock } from "lucide-react";
 import FileUploadField from "./FileUploadField";
 
-const isEmailValid = (val) =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(val || "").trim());
-
 /**
- * Section 1: Email & Photo — Editable Billing Email with Account Suggestion + Selfie upload.
+ * Section 1: Email & Photo — Locked Verified Account Email + Selfie upload.
  */
 const PhotoEmailSection = ({
   billingEmail,
@@ -14,94 +12,49 @@ const PhotoEmailSection = ({
   selfiePhoto,
   setSelfiePhoto,
   showValidationErrors,
-  fieldErrors = {},
-  validateField,
 }) => {
-  const normalizedBillingEmail = String(billingEmail || "").trim();
-  const normalizedAccountEmail = String(accountEmail || "").trim();
+  const effectiveEmail = String(accountEmail || billingEmail || "").trim().toLowerCase();
 
-  const handleEmailChange = (e) => {
-    const nextVal = e.target.value;
-    setBillingEmail?.(nextVal);
-    if (validateField) {
-      validateField("billingEmail", nextVal, (v) => {
-        const trimmed = String(v || "").trim();
-        if (!trimmed) {
-          return { valid: false, error: "Billing email address is required" };
-        }
-        const valid = isEmailValid(trimmed);
-        return {
-          valid,
-          error: valid ? null : "Please enter a valid email address (e.g. name@example.com)",
-        };
-      });
+  // Ensure parent billingEmail state matches the verified account email if not set
+  React.useEffect(() => {
+    if (effectiveEmail && billingEmail !== effectiveEmail) {
+      setBillingEmail?.(effectiveEmail);
     }
-  };
-
-  const handleEmailBlur = () => {
-    const cleaned = String(billingEmail || "").trim().toLowerCase();
-    if (cleaned !== billingEmail) {
-      setBillingEmail?.(cleaned);
-    }
-    if (validateField) {
-      validateField("billingEmail", cleaned, (v) => {
-        const trimmed = String(v || "").trim();
-        if (!trimmed) {
-          return { valid: false, error: "Billing email address is required" };
-        }
-        const valid = isEmailValid(trimmed);
-        return {
-          valid,
-          error: valid ? null : "Please enter a valid email address (e.g. name@example.com)",
-        };
-      });
-    }
-  };
-
-  const hasEmailError =
-    (showValidationErrors && (!normalizedBillingEmail || !isEmailValid(normalizedBillingEmail))) ||
-    Boolean(fieldErrors?.billingEmail);
+  }, [effectiveEmail, billingEmail, setBillingEmail]);
 
   return (
     <>
       <div className="form-group" data-field="billingEmail">
-        <label className="form-label" htmlFor="billingEmailInput">
-          Billing & Notification Email Address <span className="rf-required">*</span>
-        </label>
-        <input
-          id="billingEmailInput"
-          type="email"
-          name="email"
-          autoComplete="email"
-          inputMode="email"
-          className="form-input"
-          list={normalizedAccountEmail ? "billingEmail-suggestions" : undefined}
-          value={billingEmail || ""}
-          placeholder="e.g. name@example.com"
-          onChange={handleEmailChange}
-          onBlur={handleEmailBlur}
-          style={{
-            border: hasEmailError ? "1px solid var(--danger)" : undefined,
-          }}
-          aria-invalid={hasEmailError}
-          aria-describedby="billingEmailHelper billingEmailError"
-        />
-
-        {normalizedAccountEmail && (
-          <datalist id="billingEmail-suggestions">
-            <option value={normalizedAccountEmail} />
-          </datalist>
-        )}
-
-        <div id="billingEmailHelper" className="form-helper">
-          Official receipts and monthly billing statements will be sent to this email address. You may update this freely.
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <label className="form-label mb-0" htmlFor="billingEmailInput">
+            Billing &amp; Notification Email Address
+          </label>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 bg-transparent flex-shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+            <span>Verified Account</span>
+          </span>
         </div>
 
-        {hasEmailError && (
-          <div id="billingEmailError" className="rf-field-error">
-            {fieldErrors?.billingEmail || "Billing email address is required"}
+        <div className="relative flex items-center">
+          <div className="absolute left-3 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
+            <Lock size={15} />
           </div>
-        )}
+          <input
+            id="billingEmailInput"
+            type="email"
+            name="email"
+            readOnly
+            disabled
+            className="form-input pl-9 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 cursor-not-allowed border-slate-200 dark:border-slate-700"
+            value={effectiveEmail}
+            aria-readonly="true"
+            aria-describedby="billingEmailHelper"
+          />
+        </div>
+
+        <div id="billingEmailHelper" className="form-helper mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+          Official receipts, reservation updates, and monthly rent billing statements will be sent to your verified account email address.
+        </div>
       </div>
 
       <div data-field="selfiePhoto">
@@ -121,3 +74,4 @@ const PhotoEmailSection = ({
 };
 
 export default PhotoEmailSection;
+

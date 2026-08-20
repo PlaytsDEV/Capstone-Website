@@ -137,6 +137,7 @@ await jest.unstable_mockModule("../../models/index.js", () => ({
       sort: jest.fn().mockReturnThis(),
       lean: jest.fn().mockResolvedValue(mockReservation),
     })),
+    updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
   },
   User: {
     findOne: jest.fn(({ firebaseUid } = {}) => {
@@ -257,7 +258,7 @@ await jest.unstable_mockModule("../../config/firebase.js", () => ({
 }));
 
 const { buildWorkspaceEntries } = await import("./_helpers.js");
-const { getTenantWorkspace, getTenantWorkspaceById } = await import(
+const { getTenantWorkspace, getTenantWorkspaceById, markTenantWorkspaceAsViewed } = await import(
   "./tenantWorkspaceController.js"
 );
 
@@ -315,5 +316,24 @@ describe("Tenant Workspace Controller & Helpers", () => {
     const responsePayload = res.json.mock.calls[0][0];
     expect(responsePayload.success).toBe(true);
     expect(responsePayload.data.tenantName).toBe("Juan Dela Cruz");
+  });
+
+  it("markTenantWorkspaceAsViewed should return 200 and stamp viewed timestamp", async () => {
+    const req = {
+      user: { uid: "admin-uid-123" },
+      params: { reservationId: String(mockReservationId) },
+      id: "req-3",
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    await markTenantWorkspaceAsViewed(req, res);
+
+    expect(res.json).toHaveBeenCalled();
+    const responsePayload = res.json.mock.calls[0][0];
+    expect(responsePayload.success).toBe(true);
+    expect(responsePayload.data.lastAdminViewedAt).toBeDefined();
   });
 });

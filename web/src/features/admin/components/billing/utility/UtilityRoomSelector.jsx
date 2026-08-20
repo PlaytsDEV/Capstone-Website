@@ -86,6 +86,7 @@ export default function UtilityRoomSelector({
         />
         <input
           type="text"
+          maxLength={50}
           className="w-full rounded-lg border border-border bg-card pl-8 pr-8 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 dark:focus:ring-slate-700 transition-all"
           placeholder="Search room number or name..."
           value={sidebarSearch}

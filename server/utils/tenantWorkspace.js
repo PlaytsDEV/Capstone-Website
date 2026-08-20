@@ -794,6 +794,30 @@ export function buildTenantWorkspaceEntry({
       hasOutstandingBalance: billingSummary.hasOutstanding,
       hasOverdueBalance: billingSummary.hasOverdue,
     },
+    lastAdminViewedAt: reservation.lastAdminViewedAt
+      ? new Date(reservation.lastAdminViewedAt).toISOString()
+      : null,
+    isViewedByAdmin: Boolean(reservation.isViewedByAdmin),
+    attentionUpdatedAt: (() => {
+      const timestamps = [];
+      if (billingSummary.hasOverdue || billingSummary.hasPendingVerification) {
+        for (const b of bills) {
+          if (b.updatedAt) timestamps.push(new Date(b.updatedAt).getTime());
+          else if (b.createdAt) timestamps.push(new Date(b.createdAt).getTime());
+        }
+      }
+      if (Array.isArray(violations) && violations.length > 0) {
+        for (const v of violations) {
+          if (v.dateOfIncident) timestamps.push(new Date(v.dateOfIncident).getTime());
+          else if (v.createdAt) timestamps.push(new Date(v.createdAt).getTime());
+        }
+      }
+      if (timestamps.length > 0) {
+        const valid = timestamps.filter((t) => !Number.isNaN(t) && t > 0);
+        if (valid.length > 0) return new Date(Math.max(...valid)).toISOString();
+      }
+      return null;
+    })(),
     basicInfo: {
       name: fullName,
       email: personalInformation.email || "",
@@ -844,6 +868,20 @@ export function buildTenantWorkspaceEntry({
       advanceRent: financialSummary.advanceRent,
       securityDeposit: financialSummary.securityDeposit,
       reservationFee: financialSummary.reservationFee,
+      visibleBills: billingSummary.visibleBills.map(({ bill, snapshot }) => ({
+        _id: String(bill._id || bill.id || ""),
+        id: String(bill._id || bill.id || ""),
+        status: snapshot?.status || bill.status,
+        totalAmount: Number(snapshot?.totalAmount ?? bill.totalAmount ?? 0),
+        grossAmount: Number(snapshot?.grossAmount ?? bill.grossAmount ?? bill.totalAmount ?? 0),
+        paidAmount: Number(snapshot?.paidAmount ?? bill.paidAmount ?? 0),
+        remainingAmount: Number(snapshot?.remainingAmount ?? bill.remainingAmount ?? 0),
+        dueDate: bill.dueDate || null,
+        billingMonth: bill.billingMonth || null,
+        billingCycleStart: bill.billingCycleStart || bill.utilityCycleStart || null,
+        billingCycleEnd: bill.billingCycleEnd || bill.utilityCycleEnd || null,
+        charges: bill.charges || {},
+      })),
     },
     financialSummary,
     roomHistory,

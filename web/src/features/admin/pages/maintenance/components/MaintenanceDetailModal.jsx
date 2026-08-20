@@ -1,16 +1,22 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertCircle,
   AlertTriangle,
+  ArrowRight,
+  Award,
   Calendar,
+  CalendarCheck,
   Check,
+  CheckCheck,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   ClipboardCheck,
   Clock,
+  Coins,
   Copy,
+  DollarSign,
   Download,
   Droplets,
   ExternalLink,
@@ -18,6 +24,7 @@ import {
   File,
   FileCheck,
   FileImage,
+  FileSpreadsheet,
   FileText,
   Flame,
   Hammer,
@@ -29,12 +36,16 @@ import {
   PhoneCall,
   PlayCircle,
   Plus,
+  Receipt,
   RefreshCw,
   RotateCcw,
+  Send,
   ShieldCheck,
   Sparkles,
   Star,
+  Timer,
   Trash2,
+  TrendingUp,
   Upload,
   User,
   UserCheck,
@@ -50,10 +61,14 @@ import {
   formatBranchLabel,
   formatCleanRoomName,
   formatMaintenanceStatus,
+  formatPeso,
+  formatTurnaroundDuration,
+  getClosureMethodMeta,
   getMaintenanceAttachmentName,
   getMaintenanceAttachmentUri,
   getMaintenanceTypeMeta,
   getMaintenanceUrgencyMeta,
+  getRemainingObservationDays,
   getRequestBranch,
   getStatusBadgeMeta,
   isMaintenanceImageAttachment,
@@ -73,6 +88,7 @@ import {
   useScheduleAdminMaintenance,
   useSaveMaintenanceProof,
   useSendMaintenanceReply,
+  useReopenAdminMaintenanceRequest,
 } from "../../../../../shared/hooks/queries/useMaintenance";
 import { MaintenanceConversationSection } from "../../../../../shared/components/MaintenanceConversationSection";
 import { ServiceProviderAssignmentPanel } from "./ServiceProviderAssignmentPanel";
@@ -167,13 +183,296 @@ function AttachmentThumbnail({
   );
 }
 
+function ReopenRequestModal({
+  open,
+  onClose,
+  request,
+  onSubmit,
+  isSubmitting,
+}) {
+  const [reasonNote, setReasonNote] = useState("");
+  const [nextStatus, setNextStatus] = useState("in_progress");
+  const [error, setError] = useState("");
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    if (open) {
+      setReasonNote("");
+      setNextStatus("in_progress");
+      setError("");
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const handleSubmit = async (e) => {
+    e?.preventDefault?.();
+    const cleanNote = reasonNote.trim();
+    if (!cleanNote) {
+      setError("Please enter a brief reason note explaining why this maintenance request is being reopened.");
+      return;
+    }
+    setError("");
+    await onSubmit({ note: cleanNote, nextStatus });
+  };
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-xs animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-lg rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-5 py-4 bg-slate-50/70 dark:bg-slate-900/90">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-xs">
+              <RefreshCw size={15} />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                Reopen Maintenance Request
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                #{request?.ticketNumber || request?.request_id?.slice(-8)?.toUpperCase() || "—"} • Next Cycle: Iteration #{((request?.reopenCount || 0) + 1)}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
+          <div>
+            <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
+              Reason for Reopening <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              ref={textareaRef}
+              rows={3}
+              value={reasonNote}
+              onChange={(e) => {
+                setReasonNote(e.target.value);
+                if (error) setError("");
+              }}
+              placeholder="e.g., Tenant reported in person that the faucet is still leaking after technician visit."
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-3 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-primary dark:focus:border-sky-500 focus:outline-hidden focus:ring-1 focus:ring-primary dark:focus:ring-sky-500 transition resize-none"
+            />
+            <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400">
+              <span>Reason will be permanently recorded in the audit history.</span>
+              <span>{reasonNote.length} characters</span>
+            </div>
+            {error && (
+              <p className="mt-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                <AlertCircle size={12} />
+                <span>{error}</span>
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
+              Target Status
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setNextStatus("in_progress")}
+                className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                  nextStatus === "in_progress"
+                    ? "border-primary bg-primary/5 dark:bg-sky-500/10 text-slate-900 dark:text-slate-100 font-bold"
+                    : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                }`}
+              >
+                <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-amber-500" />
+                  <span>In Progress</span>
+                </div>
+                <p className="mt-0.5 text-[11px] text-slate-500 font-normal">
+                  Continue work with the assigned technician.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setNextStatus("pending")}
+                className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                  nextStatus === "pending"
+                    ? "border-primary bg-primary/5 dark:bg-sky-500/10 text-slate-900 dark:text-slate-100 font-bold"
+                    : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                }`}
+              >
+                <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-yellow-500" />
+                  <span>Pending Triage</span>
+                </div>
+                <p className="mt-0.5 text-[11px] text-slate-500 font-normal">
+                  Return to intake queue for reassessment.
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || !reasonNote.trim()}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-xs font-bold shadow-xs transition cursor-pointer disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>Reopening...</span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={13} />
+                  <span>Reopen Request</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function ForceFinalizeModal({
+  open,
+  onClose,
+  request,
+  onConfirm,
+  isSubmitting,
+}) {
+  const [confirmedCheck, setConfirmedCheck] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setConfirmedCheck(false);
+    }
+  }, [open]);
+
+  if (!open || !request) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-xs animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-md rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-5 py-4 bg-slate-50/70 dark:bg-slate-900/90">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-xs">
+              <CheckCircle2 size={16} />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                Direct Staff Sign-Off (Manual Override)
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                #{request?.ticketNumber || request?.request_id?.slice(-8)?.toUpperCase() || "—"} • Advance to Stage 5
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:text-slate-200 transition cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-5 space-y-4 text-xs">
+          <div className="text-xs text-slate-600 dark:text-slate-400 space-y-2 leading-relaxed">
+            <p>
+              This action will <strong>bypass the remaining 7-day tenant observation window</strong> and immediately advance this maintenance ticket to <strong>Stage 5 (Completed)</strong>.
+            </p>
+            <p>
+              Please only use this direct override if the tenant has verbally confirmed repair satisfaction, verified in person at the front desk, or has checked out.
+            </p>
+          </div>
+
+          <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={confirmedCheck}
+              onChange={(e) => setConfirmedCheck(e.target.checked)}
+              disabled={isSubmitting}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+            />
+            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+              I confirm on-site staff inspection and authorize immediate completion of this ticket.
+            </span>
+          </label>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={!confirmedCheck || isSubmitting}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-2xs"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>Completing...</span>
+                </>
+              ) : (
+                <>
+                  <Check size={13} />
+                  <span>Confirm Direct Sign-Off</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function MaintenanceDetailModal({
   open,
   onClose,
   request: incomingRequest,
   onSchedule,
   onRespondToReschedule,
-  isRespondingToReschedule = false,
+  isRespondingToReschedule: isRespondingProp = false,
   isLoading = false,
   duplicateData = null,
   timelineItems = [],
@@ -201,10 +500,16 @@ export function MaintenanceDetailModal({
   onGenerateReport,
 }) {
   const [localRequestOverride, setLocalRequestOverride] = useState(null);
+  const [forceShowActiveWork, setForceShowActiveWork] = useState(false);
+  const [isStartingWork, setIsStartingWork] = useState(false);
 
   // Clear override when modal closes or switches to a different request
   useEffect(() => {
     setLocalRequestOverride(null);
+    setForceShowActiveWork(false);
+    setIsStartingWork(false);
+    setStaffSignOffConfirmed(false);
+    setIsSubmittingStage4(false);
   }, [open, incomingRequest?.request_id, incomingRequest?._id]);
 
   const request = useMemo(() => {
@@ -228,6 +533,35 @@ export function MaintenanceDetailModal({
   }, [incomingRequest, localRequestOverride]);
 
   const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'conversation' | 'timeline'
+  const [viewedTabs, setViewedTabs] = useState(() => new Set(["overview"]));
+
+  useEffect(() => {
+    setViewedTabs(new Set(["overview"]));
+  }, [incomingRequest?.request_id, incomingRequest?._id, open]);
+
+  const handleTabChange = useCallback((nextTab) => {
+    setActiveTab(nextTab);
+    setViewedTabs((prev) => {
+      const next = new Set(prev);
+      next.add(nextTab);
+      return next;
+    });
+    if (nextTab === "conversation" && (request?.request_id || request?._id)) {
+      markConversationSeen(request.request_id || request._id);
+    }
+  }, [request?.request_id, request?._id]);
+
+  useEffect(() => {
+    if (activeTab) {
+      setViewedTabs((prev) => {
+        if (prev.has(activeTab)) return prev;
+        const next = new Set(prev);
+        next.add(activeTab);
+        return next;
+      });
+    }
+  }, [activeTab]);
+
   const [isCopiedId, setIsCopiedId] = useState(false);
   const [lightboxImage, setLightboxImage] = useState(null);
   const [lightboxZoom, setLightboxZoom] = useState(1);
@@ -279,6 +613,101 @@ export function MaintenanceDetailModal({
     setSeenConvMap((prev) => ({ ...prev, [key]: nowIso }));
   };
 
+  const [tenantIsTyping, setTenantIsTyping] = useState(false);
+  const [tenantTypingName, setTenantTypingName] = useState("");
+  const tenantTypingTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const currentTicketId = String(
+      incomingRequest?.request_id || incomingRequest?._id || "",
+    );
+    if (!currentTicketId) return;
+
+    const handleMaintenanceEvent = (e) => {
+      const detail = e.detail || {};
+      const targetIds = [
+        detail.requestId,
+        detail.request_id,
+        detail.ticketId,
+        detail.ticketNumber,
+        detail.request?._id,
+        detail.request?.request_id,
+        detail.request?.ticketNumber,
+      ].filter(Boolean);
+
+      const match = targetIds.some(
+        (id) =>
+          String(id) === String(incomingRequest?._id) ||
+          String(id) === String(incomingRequest?.id) ||
+          String(id) === String(incomingRequest?.request_id) ||
+          String(id) === String(incomingRequest?.ticketNumber) ||
+          String(id) === String(request?._id) ||
+          String(id) === String(request?.request_id) ||
+          String(id) === String(request?.ticketNumber),
+      );
+
+      if (match) {
+        if (detail.conversation || detail.request) {
+          setLocalRequestOverride((prev) => ({
+            ...(prev || {}),
+            ...(detail.request || {}),
+            conversation: detail.conversation || detail.request?.conversation || prev?.conversation,
+            status: detail.status || detail.request?.status || prev?.status,
+            updated_at: detail.updated_at || detail.request?.updated_at || new Date().toISOString(),
+          }));
+        }
+        if (activeTab === "conversation") {
+          markConversationSeen(incomingRequest?.request_id || incomingRequest?._id);
+        }
+      }
+    };
+
+    const handleTypingEvent = (e) => {
+      const detail = e.detail || {};
+      const targetIds = [
+        detail.requestId,
+        detail.request_id,
+        detail.ticketId,
+        detail.ticketNumber,
+      ].filter(Boolean);
+
+      const match = targetIds.some(
+        (id) =>
+          String(id) === String(incomingRequest?._id) ||
+          String(id) === String(incomingRequest?.id) ||
+          String(id) === String(incomingRequest?.request_id) ||
+          String(id) === String(incomingRequest?.ticketNumber) ||
+          String(id) === String(request?._id) ||
+          String(id) === String(request?.request_id) ||
+          String(id) === String(request?.ticketNumber),
+      );
+
+      if (match && detail.senderSide === "tenant") {
+        setTenantIsTyping(Boolean(detail.isTyping));
+        setTenantTypingName(detail.senderName || "Tenant");
+
+        if (tenantTypingTimerRef.current) clearTimeout(tenantTypingTimerRef.current);
+        if (detail.isTyping) {
+          tenantTypingTimerRef.current = setTimeout(() => {
+            setTenantIsTyping(false);
+          }, 3500);
+        }
+      }
+    };
+
+    window.addEventListener("lilycrest:maintenance-updated", handleMaintenanceEvent);
+    window.addEventListener("lilycrest:maintenance-message", handleMaintenanceEvent);
+    window.addEventListener("lilycrest:maintenance-typing", handleTypingEvent);
+
+    return () => {
+      window.removeEventListener("lilycrest:maintenance-updated", handleMaintenanceEvent);
+      window.removeEventListener("lilycrest:maintenance-message", handleMaintenanceEvent);
+      window.removeEventListener("lilycrest:maintenance-typing", handleTypingEvent);
+      if (tenantTypingTimerRef.current) clearTimeout(tenantTypingTimerRef.current);
+    };
+  }, [open, incomingRequest?._id, incomingRequest?.id, incomingRequest?.request_id, activeTab]);
+
   useEffect(() => {
     if (request?._id || request?.request_id) {
       if (activeTab === "conversation") {
@@ -289,6 +718,7 @@ export function MaintenanceDetailModal({
 
   // Proof Upload & Unified Stage 3 Resolution State
   const costCardRef = useRef(null);
+  const providerRatingRef = useRef(null);
   const saveProofMutation = useSaveMaintenanceProof();
   const sendReplyMutation = useSendMaintenanceReply();
   const [proofFile, setProofFile] = useState(null);
@@ -298,7 +728,157 @@ export function MaintenanceDetailModal({
   const [isDraggingProof, setIsDraggingProof] = useState(false);
   const [isSubmittingUnified, setIsSubmittingUnified] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
+  const [staffSignOffConfirmed, setStaffSignOffConfirmed] = useState(false);
+  const [isSubmittingStage4, setIsSubmittingStage4] = useState(false);
   const proofFileInputRef = useRef(null);
+
+  // Reopen modal state
+  const reopenAdminMutation = useReopenAdminMaintenanceRequest();
+  const [showReopenDialog, setShowReopenDialog] = useState(false);
+
+  // Force Finalize (Manual Override) modal state
+  const [showForceFinalizeModal, setShowForceFinalizeModal] = useState(false);
+  const [isForceFinalizing, setIsForceFinalizing] = useState(false);
+
+  const handleConfirmReopen = async ({ note, nextStatus }) => {
+    const targetRequestId = request?.request_id || request?.id || request?._id;
+    if (!targetRequestId) return;
+    try {
+      const res = await reopenAdminMutation.mutateAsync({
+        requestId: targetRequestId,
+        payload: {
+          note,
+          nextStatus,
+        },
+      });
+      const updatedReq = res?.request || res?.data?.request || (res?.status ? res : null);
+      if (updatedReq) {
+        setLocalRequestOverride(updatedReq);
+      } else {
+        setLocalRequestOverride((prev) => ({
+          ...(prev || request),
+          status: nextStatus,
+          isReopened: true,
+          reopenCount: ((prev || request)?.reopenCount || 0) + 1,
+          reopen_note: note,
+          resolved_at: null,
+          closed_at: null,
+          resolution_note: null,
+        }));
+      }
+      setShowReopenDialog(false);
+      showNotification({
+        title: "Request Reopened",
+        message: `Request #${request?.ticketNumber || (targetRequestId ? String(targetRequestId).slice(-8).toUpperCase() : "—")} reopened and returned to ${nextStatus === "pending" ? "Pending Triage" : "In Progress"}.`,
+        type: "success",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Reopen Failed",
+        message: err?.response?.data?.message || err?.message || "Failed to reopen maintenance request.",
+        type: "error",
+      });
+      throw err;
+    }
+  };
+
+  const handleRatingSubmit = async (ratingPayload) => {
+    const targetRequestId =
+      request?.request_id ||
+      request?.id ||
+      request?._id ||
+      incomingRequest?.request_id ||
+      incomingRequest?.id ||
+      incomingRequest?._id;
+
+    const res = await onRateProvider?.({
+      requestId: targetRequestId,
+      ...ratingPayload,
+    });
+
+    const savedRating =
+      res?.providerRating ||
+      res?.data?.providerRating ||
+      res?.request?.providerRating ||
+      res?.data?.request?.providerRating || {
+        rating: ratingPayload.rating,
+        tags: ratingPayload.tags,
+        feedback: ratingPayload.feedback,
+        ratedAt: new Date().toISOString(),
+        ratedByName: "Admin",
+      };
+
+    if (savedRating) {
+      setLocalRequestOverride((prev) => ({
+        ...(prev || request || {}),
+        providerRating: savedRating,
+      }));
+    }
+
+    return res;
+  };
+
+  const handleConfirmForceFinalize = async () => {
+    const rawReqId = request?.request_id || request?.id || request?._id;
+    if (!rawReqId) return;
+
+    const isLocked =
+      request?.status === "completed" ||
+      request?.status === "closed" ||
+      request?.status === "cancelled" ||
+      request?.status === "rejected";
+
+    if (isLocked) {
+      showNotification({
+        title: "Ticket Locked",
+        message: "This maintenance request is locked and its status cannot be modified.",
+        type: "warning",
+      });
+      return;
+    }
+
+    try {
+      setIsForceFinalizing(true);
+
+      // 1. Save Cost Attribution if changes exist
+      if (costCardRef.current?.saveCost) {
+        await costCardRef.current.saveCost();
+      }
+
+      // 2. Save Contractor Rating if provided and uncommitted
+      if (providerRatingRef.current?.saveRating) {
+        await providerRatingRef.current.saveRating();
+      }
+
+      // 3. Advance status to Completed (Stage 5) via direct admin override
+      const res = await onQuickStatusChange?.(rawReqId, "completed");
+      const updatedReq = res?.request || res?.data?.request || (res?.status ? res : null);
+      if (updatedReq) {
+        setLocalRequestOverride(updatedReq);
+      } else {
+        setLocalRequestOverride((prev) => ({
+          ...(prev || request),
+          status: "completed",
+          closed_at: new Date().toISOString(),
+        }));
+      }
+
+      setShowForceFinalizeModal(false);
+      showNotification({
+        title: "Maintenance Ticket Completed",
+        message: `Ticket #${request?.ticketNumber || String(rawReqId).slice(-8).toUpperCase()} has been confirmed fixed and finalized via staff direct sign-off.`,
+        type: "success",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Finalization Failed",
+        message: err?.response?.data?.message || err?.message || "Failed to finalize maintenance sign-off.",
+        type: "error",
+      });
+    } finally {
+      setIsForceFinalizing(false);
+    }
+  };
 
   // Scheduling panel state
   const scheduleMutation = useScheduleAdminMaintenance();
@@ -307,6 +887,18 @@ export function MaintenanceDetailModal({
   const [scheduleTime, setScheduleTime] = useState("");
   const [scheduleNote, setScheduleNote] = useState("");
   const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false);
+  const currentScheduledDate =
+    request?.scheduledDate ||
+    request?.scheduled_date ||
+    request?.schedule?.scheduledDate ||
+    localRequestOverride?.scheduledDate ||
+    null;
+
+  const rescheduleRequestData =
+    request?.rescheduleRequest ||
+    request?.reschedule_request ||
+    localRequestOverride?.rescheduleRequest ||
+    null;
 
   const handleConfirmProviderAndSchedule = async () => {
     if (!scheduleDate || !scheduleTime) {
@@ -325,14 +917,14 @@ export function MaintenanceDetailModal({
         scheduleNotes: scheduleNote.trim() || undefined,
       });
 
-      // 1. Immediately advance to next stage (Stage 3: In Progress) FIRST!
+      // 1. Advance to Stage 3 (Scheduled & Awaiting Visit)
       const updatedReq = res?.request || res?.data?.request || (res?.status ? res : null);
       if (updatedReq) {
         setLocalRequestOverride(updatedReq);
       } else {
         setLocalRequestOverride((prev) => ({
           ...(prev || request),
-          status: "in_progress",
+          status: "scheduled",
           scheduledDate: scheduledIso,
           schedule: {
             scheduledDate: scheduledIso,
@@ -341,7 +933,7 @@ export function MaintenanceDetailModal({
         }));
       }
 
-      // 2. NOW safely reset schedule form data
+      // 2. Safely reset schedule form data
       setScheduleDate("");
       setScheduleTime("");
       setScheduleNote("");
@@ -350,12 +942,217 @@ export function MaintenanceDetailModal({
     }
   };
 
+  const handleStartRepairWork = async () => {
+    if (rescheduleRequestData?.status === "pending") {
+      showNotification({
+        title: "Pending Reschedule Request",
+        message: "Please accept, propose an alternate date, or decline the tenant's reschedule request before starting repair work.",
+        type: "warning",
+      });
+      return;
+    }
+    const rawReqId = request?.request_id || request?.id || request?._id;
+    try {
+      setIsStartingWork(true);
+      const res = await onQuickStatusChange?.(rawReqId, "in_progress");
+      const updatedReq = res?.request || res?.data?.request || (res?.status ? res : null);
+      if (updatedReq) {
+        setLocalRequestOverride(updatedReq);
+      } else {
+        setLocalRequestOverride((prev) => ({
+          ...(prev || request),
+          status: "in_progress",
+          in_progress_at: new Date().toISOString(),
+        }));
+      }
+      setForceShowActiveWork(true);
+      showNotification({
+        title: "Repair Work Started",
+        message: "Status updated to In Progress. Technician is now actively working on site.",
+        type: "success",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Failed to Start Work",
+        message: err?.response?.data?.message || err?.message || "Failed to start repair work.",
+        type: "error",
+      });
+    } finally {
+      setIsStartingWork(false);
+    }
+  };
+
+  const [showAlternatePanel, setShowAlternatePanel] = useState(false);
+  const [alternateDate, setAlternateDate] = useState("");
+  const [alternateTime, setAlternateTime] = useState("");
+  const [alternateNote, setAlternateNote] = useState("");
+  const [isSubmittingAlternate, setIsSubmittingAlternate] = useState(false);
+  const [isAcceptingReschedule, setIsAcceptingReschedule] = useState(false);
+
+  const isRespondingToReschedule = Boolean(isRespondingProp || isAcceptingReschedule);
+
   const handleAcceptReschedule = async (proposedDate) => {
     if (!proposedDate) return;
-    await onRespondToReschedule?.({
-      action: "accept",
-      scheduledDate: proposedDate,
-    });
+    try {
+      setIsAcceptingReschedule(true);
+      const res = await onRespondToReschedule?.({
+        action: "accept",
+        scheduledDate: proposedDate,
+      });
+
+      const updatedReq = res?.request || res?.data?.request || (res?.status ? res : null);
+      if (updatedReq) {
+        setLocalRequestOverride(updatedReq);
+      } else {
+        setLocalRequestOverride((prev) => ({
+          ...(prev || request),
+          scheduledDate: proposedDate,
+          schedule: {
+            ...(prev || request)?.schedule,
+            scheduledDate: proposedDate,
+          },
+          rescheduleRequest: {
+            ...(prev || request)?.rescheduleRequest,
+            status: "accepted",
+          },
+        }));
+      }
+
+      showNotification({
+        title: "Reschedule Accepted",
+        message: `Visit schedule updated to ${fmtDateTime(proposedDate)}.`,
+        type: "success",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Failed to Accept Reschedule",
+        message: err?.response?.data?.message || err?.message || "Failed to accept reschedule.",
+        type: "error",
+      });
+    } finally {
+      setIsAcceptingReschedule(false);
+    }
+  };
+
+  const handleSetAlternateSchedule = async () => {
+    if (!alternateDate || !alternateTime) {
+      showNotification({
+        title: "Date & Time Required",
+        message: "Please select both an alternate visit date and time.",
+        type: "warning",
+      });
+      return;
+    }
+    if (!alternateNote.trim() || alternateNote.trim().length < 5) {
+      showNotification({
+        title: "Explanation Note Required",
+        message: "Please provide a brief note (at least 5 characters) explaining why an alternate schedule was set.",
+        type: "warning",
+      });
+      return;
+    }
+
+    try {
+      setIsSubmittingAlternate(true);
+      const scheduledIso = `${alternateDate}T${alternateTime}:00`;
+      const res = await onRespondToReschedule?.({
+        action: "adjust",
+        scheduledDate: scheduledIso,
+        notes: alternateNote.trim(),
+      });
+
+      const updatedReq = res?.request || res?.data?.request || (res?.status ? res : null);
+      if (updatedReq) {
+        setLocalRequestOverride(updatedReq);
+      } else {
+        setLocalRequestOverride((prev) => ({
+          ...(prev || request),
+          scheduledDate: scheduledIso,
+          schedule: {
+            ...(prev || request)?.schedule,
+            scheduledDate: scheduledIso,
+            notes: alternateNote.trim(),
+          },
+          rescheduleRequest: {
+            ...(prev || request)?.rescheduleRequest,
+            status: "adjusted",
+            responseNote: alternateNote.trim(),
+          },
+        }));
+      }
+
+      setShowAlternatePanel(false);
+      setAlternateDate("");
+      setAlternateTime("");
+      setAlternateNote("");
+
+      showNotification({
+        title: "Alternate Schedule Sent",
+        message: `Alternate visit set for ${alternateDate} at ${alternateTime}.`,
+        type: "success",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Failed to Send Alternate Schedule",
+        message: err?.response?.data?.message || err?.message || "Failed to set alternate schedule.",
+        type: "error",
+      });
+    } finally {
+      setIsSubmittingAlternate(false);
+    }
+  };
+
+  const [showDeclinePanel, setShowDeclinePanel] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
+  const [isSubmittingDecline, setIsSubmittingDecline] = useState(false);
+
+  const handleDeclineReschedule = async () => {
+    if (!declineReason || declineReason.trim().length < 5) {
+      showNotification({
+        title: "Reason Required",
+        message: "Please provide a brief reason (at least 5 characters) for declining the reschedule request.",
+        type: "warning",
+      });
+      return;
+    }
+
+    try {
+      setIsSubmittingDecline(true);
+      const res = await onRespondToReschedule?.({
+        action: "decline",
+        notes: declineReason.trim(),
+      });
+
+      const updatedReq = res?.request || res?.data?.request || (res?.status ? res : null);
+      if (updatedReq) {
+        setLocalRequestOverride(updatedReq);
+      } else {
+        setLocalRequestOverride((prev) => ({
+          ...(prev || request),
+          rescheduleRequest: {
+            ...(prev || request)?.rescheduleRequest,
+            status: "declined",
+            responseNote: declineReason.trim(),
+          },
+        }));
+      }
+
+      setShowDeclinePanel(false);
+      setDeclineReason("");
+      showNotification({
+        title: "Reschedule Request Declined",
+        message: "The tenant's reschedule request has been declined. Original visit schedule maintained.",
+        type: "success",
+      });
+    } catch (err) {
+      showNotification({
+        title: "Error Declining Request",
+        message: err?.response?.data?.message || err?.message || "Failed to decline reschedule request.",
+        type: "error",
+      });
+    } finally {
+      setIsSubmittingDecline(false);
+    }
   };
 
   const handleScheduleVisit = async () => {
@@ -370,7 +1167,15 @@ export function MaintenanceDetailModal({
     try {
       setIsSubmittingSchedule(true);
       const reqId = request?.request_id || request?.id || request?._id;
-      const scheduledIso = `${scheduleDate}T${scheduleTime}:00`;
+      let rawDate = scheduleDate;
+      if (typeof rawDate === "string" && rawDate.includes("T")) {
+        rawDate = rawDate.split("T")[0];
+      }
+      let rawTime = scheduleTime;
+      if (typeof rawTime === "string" && rawTime.length === 5) {
+        rawTime = `${rawTime}:00`;
+      }
+      const scheduledIso = `${rawDate}T${rawTime}`;
       const result = await scheduleMutation.mutateAsync({
         requestId: reqId,
         payload: {
@@ -388,6 +1193,7 @@ export function MaintenanceDetailModal({
           ...(prev || request),
           scheduledDate: scheduledIso,
           schedule: {
+            ...(prev || request)?.schedule,
             scheduledDate: scheduledIso,
             notes: scheduleNote.trim() || undefined,
           },
@@ -407,7 +1213,55 @@ export function MaintenanceDetailModal({
     } catch (err) {
       showNotification({
         title: "Scheduling Failed",
-        message: err?.message || "Failed to schedule repair visit.",
+        message: err?.response?.data?.message || err?.message || "Failed to schedule repair visit.",
+        type: "error",
+      });
+    } finally {
+      setIsSubmittingSchedule(false);
+    }
+  };
+
+  const handleClearSchedule = async () => {
+    try {
+      setIsSubmittingSchedule(true);
+      const reqId = request?.request_id || request?.id || request?._id;
+      const result = await scheduleMutation.mutateAsync({
+        requestId: reqId,
+        payload: {
+          clearSchedule: true,
+          action: "reject_schedule",
+          scheduledDate: null,
+        },
+      });
+
+      const updatedReq =
+        result?.request || result?.data?.request || (result?.status ? result : null);
+      if (updatedReq) {
+        setLocalRequestOverride(updatedReq);
+      } else {
+        setLocalRequestOverride((prev) => ({
+          ...(prev || request),
+          scheduledDate: null,
+          schedule: {
+            ...(prev || request)?.schedule,
+            scheduledDate: null,
+          },
+        }));
+      }
+
+      showNotification({
+        title: "Planned Schedule Rejected",
+        message: "The planned schedule date has been rejected and removed. You can set a new schedule anytime.",
+        type: "success",
+      });
+      setShowScheduler(false);
+      setScheduleDate("");
+      setScheduleTime("");
+      onSchedule?.();
+    } catch (err) {
+      showNotification({
+        title: "Failed to Reject Schedule",
+        message: err?.response?.data?.message || err?.message || "Failed to reject planned schedule.",
         type: "error",
       });
     } finally {
@@ -444,6 +1298,12 @@ export function MaintenanceDetailModal({
         attachments,
       },
     });
+  };
+
+  const handleAdminTypingChange = (isTyping) => {
+    const reqId = request?.request_id || request?.id || request?._id || incomingRequest?.request_id || incomingRequest?._id;
+    if (!reqId) return;
+    maintenanceApi.sendAdminTyping(reqId, isTyping).catch(() => {});
   };
 
   const handleCopyPhone = (phone) => {
@@ -502,6 +1362,15 @@ export function MaintenanceDetailModal({
 
   // Unified Multi-Card Next Action for Stage 3 (In Progress -> Resolved)
   const handleUnifiedCompleteAndResolve = async () => {
+    if (rescheduleRequestData?.status === "pending") {
+      showNotification({
+        title: "Pending Reschedule Request",
+        message: "Cannot mark work as done while a tenant reschedule request is pending. Please accept, adjust, or decline the reschedule request first.",
+        type: "warning",
+      });
+      return;
+    }
+
     setProofTouched(true);
 
     // 1. Validate proof photo
@@ -591,8 +1460,8 @@ export function MaintenanceDetailModal({
       }
 
       showNotification({
-        title: "Repair Marked as Resolved",
-        message: "Photo proof and repair details saved. The tenant has been notified to check the work.",
+        title: "Work Marked as Done",
+        message: "Resolution proof and repair details saved. The tenant has been notified to inspect and confirm.",
         type: "success",
       });
 
@@ -623,9 +1492,15 @@ export function MaintenanceDetailModal({
       setCopiedPhone(false);
       setShowScheduler(false);
       setShowProviderAssigner(false);
+      setShowAlternatePanel(false);
+      setShowReopenDialog(false);
+      setShowForceFinalizeModal(false);
       setScheduleDate("");
       setScheduleTime("");
       setScheduleNote("");
+      setAlternateDate("");
+      setAlternateTime("");
+      setAlternateNote("");
     }
   }, [open, request?.request_id]);
 
@@ -708,6 +1583,17 @@ export function MaintenanceDetailModal({
   const isResolvedStage = status === "resolved";
   const isCompletedStage = ["completed", "closed"].includes(status);
 
+  const isAwaitingVisitPhase =
+    !forceShowActiveWork &&
+    (status === "scheduled" || status === "provider_assigned") &&
+    !isReopened;
+
+  const isActiveWorkPhase =
+    forceShowActiveWork ||
+    status === "in_progress" ||
+    status === "waiting_tenant" ||
+    isReopened;
+
   // Attachment Collections
   const initialAttachments = Array.isArray(request?.attachments)
     ? request.attachments.filter((att) => !att?.isRemoved)
@@ -767,9 +1653,9 @@ export function MaintenanceDetailModal({
       case "scheduled":
         return "bg-sky-50 text-sky-800 border-sky-300 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-700/60";
       case "provider_assigned":
-        return "bg-indigo-50 text-indigo-800 border-indigo-300 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-700/60";
+        return "bg-sky-50 text-sky-800 border-sky-300 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-700/60";
       case "reviewed":
-        return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300";
+        return "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300";
       case "resolved":
         return "bg-yellow-50 text-yellow-800 border-yellow-300 dark:bg-yellow-950/40 dark:text-yellow-300 dark:border-yellow-700/60";
       case "reopened":
@@ -806,6 +1692,17 @@ export function MaintenanceDetailModal({
                 </button>
               </h2>
 
+              {/* Category Concern Badge in Header */}
+              {typeMeta && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0 bg-transparent text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                  {(() => {
+                    const CategoryIcon = typeMeta.icon || Wrench;
+                    return <CategoryIcon size={12} className="text-slate-600 dark:text-slate-400" />;
+                  })()}
+                  <span>{typeMeta.label}</span>
+                </span>
+              )}
+
               <span
                 className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0 bg-transparent border border-slate-200 dark:border-slate-700"
                 style={{
@@ -827,6 +1724,13 @@ export function MaintenanceDetailModal({
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-transparent text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700 shrink-0">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                   <span>Awaiting Verification</span>
+                </span>
+              )}
+
+              {isReopened && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-transparent text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700 shrink-0">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  <span>Reopened (Iteration #{request?.reopenCount || 2})</span>
                 </span>
               )}
             </div>
@@ -861,7 +1765,7 @@ export function MaintenanceDetailModal({
           <div className="flex items-center gap-2 mt-3.5 border-t border-slate-200/80 dark:border-slate-800/80 pt-2.5 overflow-x-auto">
             <button
               type="button"
-              onClick={() => setActiveTab("overview")}
+              onClick={() => handleTabChange("overview")}
               className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition cursor-pointer shrink-0 ${
                 activeTab === "overview"
                   ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 border-[#0A1628] dark:border-slate-100 shadow-2xs font-bold"
@@ -874,10 +1778,7 @@ export function MaintenanceDetailModal({
 
             <button
               type="button"
-              onClick={() => {
-                setActiveTab("conversation");
-                markConversationSeen(request.request_id || request._id);
-              }}
+              onClick={() => handleTabChange("conversation")}
               className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition cursor-pointer shrink-0 ${
                 activeTab === "conversation"
                   ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 border-[#0A1628] dark:border-slate-100 shadow-2xs font-bold"
@@ -886,12 +1787,8 @@ export function MaintenanceDetailModal({
             >
               <MessageSquare size={14} />
               <span>Conversation Thread</span>
-              {getUnreadConvCount(request, activeTab === "conversation") > 0 && (
-                <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
-                  activeTab === "conversation"
-                    ? "bg-white/20 text-white dark:bg-slate-900/30 dark:text-slate-900"
-                    : "bg-transparent text-sky-700 dark:text-sky-400 border border-slate-200 dark:border-slate-700"
-                }`}>
+              {getUnreadConvCount(request, activeTab === "conversation") > 0 && activeTab !== "conversation" && !viewedTabs.has("conversation") && (
+                <span className="rounded-full px-1.5 py-0.2 text-[10px] font-bold bg-transparent text-sky-700 dark:text-sky-400 border border-slate-200 dark:border-slate-700">
                   {getUnreadConvCount(request, activeTab === "conversation")}
                 </span>
               )}
@@ -900,7 +1797,7 @@ export function MaintenanceDetailModal({
 
             <button
               type="button"
-              onClick={() => setActiveTab("timeline")}
+              onClick={() => handleTabChange("timeline")}
               className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition cursor-pointer shrink-0 ${
                 activeTab === "timeline"
                   ? "bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 border-[#0A1628] dark:border-slate-100 shadow-2xs font-bold"
@@ -909,12 +1806,8 @@ export function MaintenanceDetailModal({
             >
               <History size={14} />
               <span>Audit &amp; Timeline</span>
-              {timelineItems.length > 0 && (
-                <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
-                  activeTab === "timeline"
-                    ? "bg-white/20 text-white dark:bg-slate-900/30 dark:text-slate-900"
-                    : "bg-transparent text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-                }`}>
+              {timelineItems.length > 0 && activeTab !== "timeline" && !viewedTabs.has("timeline") && (
+                <span className="rounded-full px-1.5 py-0.2 text-[10px] font-bold bg-transparent text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                   {timelineItems.length}
                 </span>
               )}
@@ -952,25 +1845,83 @@ export function MaintenanceDetailModal({
               {/* ═══════════════════════════════════════════ */}
               {activeTab === "overview" && (
                 <div className="space-y-4">
-                  {/* 1. TENANT CONCERN & CONTEXT CARD */}
-                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-slate-700 dark:text-slate-300 shrink-0">
-                          {getTypeIcon(request.request_type)}
-                        </span>
+                  {/* 1. TENANT CONCERN & CONTEXT CARD (EMPHASIZED CATEGORY OF CONCERN) */}
+                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm space-y-4">
+                    {/* Emphasized Category Header Banner */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-3.5">
+                      <div className="flex items-start sm:items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-2xs">
+                          {(() => {
+                            const CategoryIcon = typeMeta.icon || Wrench;
+                            return <CategoryIcon size={20} className="text-slate-700 dark:text-slate-300" />;
+                          })()}
+                        </div>
                         <div>
-                          <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                              Tenant Category Concern
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.2 rounded text-[11px] font-bold bg-transparent text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                              <span>{typeMeta.label}</span>
+                            </span>
+                          </div>
+                          <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100 mt-0.5">
                             {typeMeta.label} Request
                           </h3>
-                          <span className="text-xs text-slate-500 dark:text-slate-400">
-                            Submitted on {fmtDateTime(request.created_at)}
+                        </div>
+                      </div>
+
+                      {/* Reporter Context & Timestamp */}
+                      <div className="flex flex-wrap items-center gap-2 sm:text-right text-xs text-slate-500 dark:text-slate-400">
+                        <div className="flex flex-col sm:items-end">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200 inline-flex items-center gap-1">
+                            <User size={13} className="text-slate-400" />
+                            {tenantName}
+                          </span>
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 inline-flex items-center gap-1">
+                            <Clock size={11} className="text-slate-400" />
+                            Submitted {fmtDateTime(request.created_at)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Category Key Metadata Context Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/30 p-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-0.5">
+                          Category of Concern
+                        </span>
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-slate-100">
+                          {(() => {
+                            const CategoryIcon = typeMeta.icon || Wrench;
+                            return <CategoryIcon size={14} className="text-slate-600 dark:text-slate-400 shrink-0" />;
+                          })()}
+                          <span className="truncate">{typeMeta.label}</span>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/30 p-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-0.5">
+                          Priority &amp; Target ETA
+                        </span>
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-slate-100">
+                          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: urgencyMeta.color }} />
+                          <span>{urgencyMeta.label} Priority</span>
+                          <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500">
+                            • {urgencyMeta.estimate || "1-2 days"}
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 md:hidden font-medium">
-                        <span>{tenantName} • {fullLocationLabel}</span>
+                      <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/30 p-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-0.5">
+                          Assigned Location
+                        </span>
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-slate-100">
+                          <MapPin size={14} className="text-slate-500 dark:text-slate-400 shrink-0" />
+                          <span className="truncate">{fullLocationLabel}</span>
+                        </div>
                       </div>
                     </div>
 
@@ -1125,8 +2076,8 @@ export function MaintenanceDetailModal({
                       </div>
                     )}
 
-                    {/* Stage 5: Terminal Completed / Cancelled / Rejected Banner with AI Report Generator */}
-                    {isTerminal && (
+                    {/* Stage 5: Terminal Cancelled / Rejected Banner (Completed tickets render the Unified Executive Voucher below) */}
+                    {isTerminal && !isCompletedStage && (
                       <div className="flex flex-col gap-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 text-xs">
                         <div className="flex items-start gap-2.5">
                           {request?.status === "completed" || request?.status === "closed" ? (
@@ -1327,790 +2278,1625 @@ export function MaintenanceDetailModal({
                     </div>
                   )}
 
-                  {/* STAGE 3: IN PROGRESS (Active Execution, Tenant Reschedule, Proof Upload & Expenses) */}
+                  {/* STAGE 3: PROGRESSIVE 2-PHASE HUB (Phase 3A: Awaiting Visit vs Phase 3B: Active Work) */}
                   {(isExecutionStage || isReopened) && (
                     <div id="maintenance-stage3-actions" className="space-y-4">
-                      <div className="grid gap-4 md:grid-cols-2 items-stretch">
-                        {/* Left Column: Active Technician & Work Order Info */}
-                        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-col justify-between space-y-4">
-                          <div className="space-y-3">
+                      {/* ─────────────────────────────────────────────────────────────
+                          PHASE 3A: SCHEDULED & AWAITING VISIT (Triage & Reschedule Hub)
+                          ───────────────────────────────────────────────────────────── */}
+                      {isAwaitingVisitPhase && (
+                        <div className="space-y-4">
+                          {/* Confirmed Visit & Schedule Management Card */}
+                          <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-4">
+                            {/* Phase 3A Header */}
                             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
-                              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                                <PlayCircle size={16} className="text-amber-600 dark:text-amber-500" />
-                                <span>Active Work In Progress</span>
-                              </h3>
-                              <span className="px-2.5 py-0.5 text-xs font-semibold rounded bg-transparent text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700">
-                                Active on site
+                              <div className="flex items-center gap-2">
+                                <Calendar size={16} className="text-sky-600 dark:text-sky-400" />
+                                <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                                  Scheduled &amp; Awaiting Repair Visit
+                                </h3>
+                              </div>
+                              <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-sky-700 dark:text-sky-400 border border-slate-200 dark:border-slate-700">
+                                Stage 3: Awaiting Visit
                               </span>
                             </div>
 
-                            {/* Assigned Technician Profile Box */}
-                            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-3.5 space-y-3">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold tracking-wider">
-                                    Assigned Service Provider
+                            {/* Grid: Technician Summary (Left) & Scheduled Arrival Details (Right) */}
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {/* Left: Assigned Provider Box */}
+                              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-3.5 space-y-2.5">
+                                <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold tracking-wider">
+                                  Assigned Service Provider
+                                </span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                                    {assignedProviderName || "LilyCrest Facilities Team"}
                                   </span>
-                                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                    <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
-                                      {assignedProviderName || "LilyCrest Facilities Team"}
+                                  {assignedProviderCategory && (
+                                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                      {assignedProviderCategory}
                                     </span>
-                                    {assignedProviderCategory && (
-                                      <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                                        {assignedProviderCategory}
-                                      </span>
-                                    )}
-                                  </div>
+                                  )}
                                 </div>
+
+                                {assignedProviderContact && (
+                                  <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 dark:border-slate-700/80 text-xs">
+                                    <a
+                                      href={`tel:${assignedProviderContact}`}
+                                      className="text-slate-700 dark:text-slate-300 font-semibold hover:text-sky-600 dark:hover:text-sky-400 flex items-center gap-1.5"
+                                    >
+                                      <PhoneCall size={12} className="text-slate-500" />
+                                      <span>{assignedProviderContact}</span>
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopyPhone(assignedProviderContact)}
+                                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                                    >
+                                      {copiedPhone ? (
+                                        <Check size={12} className="text-emerald-600" />
+                                      ) : (
+                                        <Copy size={12} />
+                                      )}
+                                      <span>{copiedPhone ? "Copied" : "Copy"}</span>
+                                    </button>
+                                  </div>
+                                )}
                               </div>
 
-                              {assignedProviderContact && (
-                                <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 dark:border-slate-700/80 text-xs">
-                                  <a
-                                    href={`tel:${assignedProviderContact}`}
-                                    className="text-slate-700 dark:text-slate-300 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1.5"
-                                  >
-                                    <PhoneCall size={12} className="text-slate-500" />
-                                    <span>{assignedProviderContact}</span>
-                                  </a>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCopyPhone(assignedProviderContact)}
-                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
-                                  >
-                                    {copiedPhone ? (
-                                      <Check size={12} className="text-emerald-600" />
-                                    ) : (
-                                      <Copy size={12} />
-                                    )}
-                                    <span>{copiedPhone ? "Copied" : "Copy"}</span>
-                                  </button>
+                              {/* Right: Confirmed Schedule Box with Relative Arrival Badge */}
+                              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-3.5 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold tracking-wider">
+                                    Confirmed Arrival
+                                  </span>
+                                  {currentScheduledDate && (
+                                    <span className="text-[10px] font-bold text-sky-700 dark:text-sky-400">
+                                      {(() => {
+                                        const d = new Date(currentScheduledDate);
+                                        if (Number.isNaN(d.getTime())) return null;
+                                        const diffHours = Math.round((d.getTime() - Date.now()) / (1000 * 60 * 60));
+                                        if (diffHours < 0) return "Visit slot has arrived";
+                                        if (diffHours === 0) return "Arriving in less than 1 hr";
+                                        if (diffHours < 24) return `In ~${diffHours} hours`;
+                                        const diffDays = Math.round(diffHours / 24);
+                                        return `In ${diffDays} day${diffDays > 1 ? "s" : ""}`;
+                                      })()}
+                                    </span>
+                                  )}
                                 </div>
-                              )}
 
-                              {request?.scheduledDate && (
-                                <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between text-xs">
-                                  <div>
-                                    <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">
-                                      Scheduled Arrival
-                                    </span>
-                                    <span className="font-bold text-slate-800 dark:text-slate-200">
-                                      {fmtDateTime(request.scheduledDate)}
-                                    </span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowScheduler((v) => !v)}
-                                    title="Open visit rescheduling panel"
-                                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 active:scale-[0.98] transition cursor-pointer shadow-2xs"
-                                  >
-                                    {showScheduler ? "Hide" : "Reschedule"}
-                                  </button>
+                                <div className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                                  <Clock size={14} className="text-sky-600 dark:text-sky-400 shrink-0" />
+                                  <span>{currentScheduledDate ? fmtDateTime(currentScheduledDate) : "No date set"}</span>
                                 </div>
-                              )}
+
+                                <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 dark:border-slate-700/80 text-xs">
+                                  <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[160px]">
+                                    {request?.schedule?.notes || "Standard room access"}
+                                  </span>
+                                  {rescheduleRequestData?.status !== "pending" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowScheduler((v) => !v)}
+                                      className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 active:scale-[0.98] transition cursor-pointer shadow-2xs"
+                                    >
+                                      {showScheduler ? "Hide Calendar" : "Reschedule / Update"}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             </div>
 
-                            {/* Tenant Reschedule Request Alert Banner */}
-                            {request?.rescheduleRequest?.status === "pending" && (
-                              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-3 space-y-2 text-xs">
-                                <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-slate-100">
-                                  <Clock size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
-                                  <span>Tenant Requested Schedule Adjustment</span>
+                            {/* Tenant Reschedule Request Alert Banner (High Priority) */}
+                            {rescheduleRequestData?.status === "pending" && (
+                              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/90 dark:bg-slate-800/60 p-4 space-y-3.5 text-xs shadow-2xs">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                  <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-slate-100">
+                                    <Clock size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                                    <span className="text-xs">Tenant Requested Schedule Adjustment</span>
+                                  </div>
+                                  {currentScheduledDate && rescheduleRequestData?.proposedDate && (
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700 bg-transparent">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                      <span>
+                                        {(() => {
+                                          const d1 = new Date(currentScheduledDate).getTime();
+                                          const d2 = new Date(rescheduleRequestData.proposedDate).getTime();
+                                          if (Number.isNaN(d1) || Number.isNaN(d2)) return null;
+                                          const diffHours = Math.round((d2 - d1) / (1000 * 60 * 60));
+                                          if (diffHours === 0) return "Same Day / Time Shift";
+                                          if (Math.abs(diffHours) < 24) {
+                                            return diffHours > 0 ? `+${diffHours}h Later` : `${diffHours}h Earlier`;
+                                          }
+                                          const diffDays = Math.round(diffHours / 24);
+                                          return diffDays > 0 ? `+${diffDays} Day${diffDays > 1 ? "s" : ""} Later` : `${diffDays} Day${Math.abs(diffDays) > 1 ? "s" : ""} Earlier`;
+                                        })()}
+                                      </span>
+                                    </span>
+                                  )}
                                 </div>
-                                <p className="text-slate-600 dark:text-slate-400">
-                                  Preferred:{" "}
-                                  <strong className="text-slate-800 dark:text-slate-200">
-                                    {fmtDateTime(request.rescheduleRequest.proposedDate)}
-                                  </strong>
-                                  {request.rescheduleRequest.reason
-                                    ? ` • "${request.rescheduleRequest.reason}"`
-                                    : ""}
-                                </p>
-                                <div className="flex gap-2 pt-1">
+
+                                {/* Side-by-Side Comparison Grid */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                  {/* Left: Currently Scheduled */}
+                                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-1.5 shadow-2xs">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                      Current Scheduled Arrival
+                                    </span>
+                                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                      {currentScheduledDate ? fmtDateTime(currentScheduledDate) : "Not yet set"}
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                      Provider: {assignedProviderName || "LilyCrest Facilities Team"}
+                                    </div>
+                                  </div>
+
+                                  {/* Right: Tenant Requested */}
+                                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-1.5 shadow-2xs">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                      Tenant Requested Slot
+                                    </span>
+                                    <div className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                                      {fmtDateTime(rescheduleRequestData.proposedDate)}
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                      {rescheduleRequestData.reason ? (
+                                        <span className="italic text-slate-600 dark:text-slate-300">
+                                          &ldquo;{rescheduleRequestData.reason}&rdquo;
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400">No specific reason provided</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Quick Action Button Grid (3 Balanced Columns) */}
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-0.5">
+                                  {/* Accept New Date CTA */}
                                   <button
                                     type="button"
                                     onClick={() =>
                                       handleAcceptReschedule(
-                                        request.rescheduleRequest.proposedDate,
+                                        rescheduleRequestData.proposedDate,
                                       )
                                     }
-                                    disabled={isRespondingToReschedule}
+                                    disabled={isRespondingToReschedule || isSubmittingAlternate || isSubmittingDecline}
                                     title="Accept tenant's requested date & time adjustment"
-                                    className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] transition shadow-xs cursor-pointer"
+                                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] transition shadow-2xs cursor-pointer disabled:opacity-50"
                                   >
-                                    {isRespondingToReschedule
-                                      ? "Updating..."
-                                      : "Accept New Date"}
+                                    {isRespondingToReschedule ? (
+                                      <Loader2 size={13} className="animate-spin" />
+                                    ) : (
+                                      <Check size={13} />
+                                    )}
+                                    <span>
+                                      {isRespondingToReschedule
+                                        ? "Accepting..."
+                                        : "Accept New Date"}
+                                    </span>
                                   </button>
+
+                                  {/* Propose Alternate Date */}
                                   <button
                                     type="button"
-                                    onClick={() => setShowScheduler(true)}
-                                    title="Pick a different date and time for the repair visit"
-                                    className="px-3.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 active:scale-[0.98] transition cursor-pointer"
+                                    onClick={() => {
+                                      setShowAlternatePanel((v) => !v);
+                                      setShowDeclinePanel(false);
+                                    }}
+                                    title="Pick an alternate date/time and send explanation note to tenant"
+                                    className={`w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition cursor-pointer active:scale-[0.98] ${
+                                      showAlternatePanel
+                                        ? "border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white ring-1 ring-slate-300 dark:ring-slate-600"
+                                        : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600"
+                                    }`}
                                   >
-                                    Set Alternate Date
+                                    <Calendar size={13} />
+                                    <span>Propose Alternate</span>
+                                    {showAlternatePanel ? <ChevronUp size={12} className="opacity-70" /> : <ChevronDown size={12} className="opacity-70" />}
+                                  </button>
+
+                                  {/* Decline Request */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setShowDeclinePanel((v) => !v);
+                                      setShowAlternatePanel(false);
+                                    }}
+                                    title="Decline this reschedule request and keep the current schedule"
+                                    className={`w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition cursor-pointer active:scale-[0.98] ${
+                                      showDeclinePanel
+                                        ? "border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 ring-1 ring-rose-300 dark:ring-rose-800"
+                                        : "border-slate-200 dark:border-slate-700 text-rose-600 dark:text-rose-400 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-200 dark:hover:border-rose-900"
+                                    }`}
+                                  >
+                                    <X size={13} />
+                                    <span>Decline Request</span>
+                                    {showDeclinePanel ? <ChevronUp size={12} className="opacity-70" /> : <ChevronDown size={12} className="opacity-70" />}
                                   </button>
                                 </div>
+
+                                {/* Expandable Decline Request Panel */}
+                                {showDeclinePanel && (
+                                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 space-y-3 mt-1 transition-all">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                        Decline Tenant Reschedule Request
+                                      </span>
+                                      <span className="text-[10px] text-slate-500">Current schedule will remain active</span>
+                                    </div>
+
+                                    <div>
+                                      <div className="flex justify-between items-center mb-1">
+                                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                                          Reason for Declining * (Min 5 chars)
+                                        </label>
+                                        <span className="text-[10px] text-slate-400">{declineReason.length}/300</span>
+                                      </div>
+                                      <textarea
+                                        rows={2}
+                                        maxLength={300}
+                                        placeholder="e.g. Technician already dispatched and en route; cannot postpone."
+                                        value={declineReason}
+                                        onChange={(e) => setDeclineReason(e.target.value)}
+                                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-rose-500 focus:border-rose-500 resize-none transition"
+                                      />
+                                      {declineReason.length > 0 && declineReason.trim().length < 5 && (
+                                        <p className="text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1 mt-1 font-medium">
+                                          <AlertCircle size={12} />
+                                          Please enter at least 5 characters ({5 - declineReason.trim().length} more needed).
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setShowDeclinePanel(false);
+                                          setDeclineReason("");
+                                        }}
+                                        className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={handleDeclineReschedule}
+                                        disabled={!declineReason || declineReason.trim().length < 5 || isSubmittingDecline}
+                                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-2xs"
+                                      >
+                                        {isSubmittingDecline ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
+                                        <span>{isSubmittingDecline ? "Declining..." : "Confirm Decline"}</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Expandable Alternate Date & Explanation Note Panel */}
+                                {showAlternatePanel && (
+                                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 space-y-3 mt-1 transition-all">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                        Propose Alternate Visit Date &amp; Reason
+                                      </span>
+                                      <span className="text-[10px] text-slate-500">Operating hours: 8 AM – 6 PM</span>
+                                    </div>
+
+                                    <ModernDateTimePicker
+                                      dateValue={alternateDate}
+                                      timeValue={alternateTime}
+                                      onDateChange={setAlternateDate}
+                                      onTimeChange={setAlternateTime}
+                                      disabled={isSubmittingAlternate}
+                                    />
+
+                                    <div>
+                                      <div className="flex justify-between items-center mb-1">
+                                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                                          Staff Explanation Note to Tenant * (Min 5 chars)
+                                        </label>
+                                        <span className="text-[10px] text-slate-400">{alternateNote.length}/300</span>
+                                      </div>
+                                      <textarea
+                                        rows={2}
+                                        maxLength={300}
+                                        placeholder="e.g. Technician fully booked in the morning; available at 2:00 PM."
+                                        value={alternateNote}
+                                        onChange={(e) => setAlternateNote(e.target.value)}
+                                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 resize-none transition"
+                                      />
+                                      {alternateNote.length > 0 && alternateNote.trim().length < 5 && (
+                                        <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-1 font-medium">
+                                          <AlertCircle size={12} />
+                                          Please enter at least 5 characters ({5 - alternateNote.trim().length} more needed).
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowAlternatePanel(false)}
+                                        className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={handleSetAlternateSchedule}
+                                        disabled={!alternateDate || !alternateTime || alternateNote.trim().length < 5 || isSubmittingAlternate}
+                                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-2xs"
+                                      >
+                                        {isSubmittingAlternate ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                                        <span>{isSubmittingAlternate ? "Updating..." : "Submit Alternate Schedule"}</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
 
                             {/* Interactive Rescheduler if opened */}
                             {showScheduler && (
                               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-3.5 space-y-3">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-sky-950 dark:text-sky-200 block">
-                                  Update Repair Visit Date &amp; Time
-                                </span>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <input
-                                    type="date"
-                                    value={scheduleDate}
-                                    onChange={(e) => setScheduleDate(e.target.value)}
-                                    min={new Date().toISOString().slice(0, 10)}
-                                    className="h-9 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none"
-                                  />
-                                  <input
-                                    type="time"
-                                    value={scheduleTime}
-                                    onChange={(e) => setScheduleTime(e.target.value)}
-                                    className="h-9 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none"
-                                  />
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100 block">
+                                    Update Repair Visit Date &amp; Time
+                                  </span>
+                                  <span className="text-[10px] text-slate-500">Operating hours: 8 AM – 6 PM</span>
                                 </div>
-                                <div className="flex justify-end gap-2 pt-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowScheduler(false)}
-                                    className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg active:scale-[0.98] cursor-pointer"
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={handleScheduleVisit}
-                                    disabled={
-                                      !scheduleDate ||
-                                      !scheduleTime ||
-                                      isSubmittingSchedule
-                                    }
-                                    title={
-                                      !scheduleDate || !scheduleTime
-                                        ? "Select date and time first"
-                                        : "Save updated visit schedule"
-                                    }
-                                    className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-sky-600 text-white hover:bg-sky-700 active:bg-sky-800 disabled:opacity-50 active:scale-[0.98] cursor-pointer shadow-xs"
-                                  >
-                                    {isSubmittingSchedule
-                                      ? "Saving..."
-                                      : "Save Schedule"}
-                                  </button>
+
+                                <ModernDateTimePicker
+                                  dateValue={scheduleDate}
+                                  timeValue={scheduleTime}
+                                  onDateChange={setScheduleDate}
+                                  onTimeChange={setScheduleTime}
+                                  disabled={isSubmittingSchedule}
+                                />
+
+                                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200/80 dark:border-slate-700/80 flex-wrap">
+                                  <div className="text-[11px] text-slate-500">
+                                    {scheduleDate && scheduleTime ? (
+                                      <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                                        <Check size={12} />
+                                        <span>Selected: {scheduleDate} at {scheduleTime}</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                        Please pick both visit date and arrival time.
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex gap-2 items-center flex-wrap">
+                                    {currentScheduledDate && (
+                                      <button
+                                        type="button"
+                                        onClick={handleClearSchedule}
+                                        disabled={isSubmittingSchedule}
+                                        title="Reject and remove the planned schedule date without cancelling the maintenance request"
+                                        className="px-3 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg active:scale-[0.98] cursor-pointer transition border border-rose-200 dark:border-rose-900/40"
+                                      >
+                                        Reject Planned Schedule
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowScheduler(false)}
+                                      className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg active:scale-[0.98] cursor-pointer"
+                                    >
+                                      Close
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={handleScheduleVisit}
+                                      disabled={
+                                        !scheduleDate ||
+                                        !scheduleTime ||
+                                        isSubmittingSchedule
+                                      }
+                                      title={
+                                        !scheduleDate || !scheduleTime
+                                          ? "Select date and time first"
+                                          : "Save updated visit schedule"
+                                      }
+                                      className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] cursor-pointer shadow-xs transition"
+                                    >
+                                      {isSubmittingSchedule ? (
+                                        <Loader2 size={13} className="animate-spin" />
+                                      ) : (
+                                        <Check size={13} />
+                                      )}
+                                      <span>
+                                        {isSubmittingSchedule
+                                          ? "Saving..."
+                                          : "Save Schedule"}
+                                      </span>
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             )}
                           </div>
 
-                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-slate-500 dark:text-slate-400">
-                            Technician is active on site. Attach completion proof and record expenses to proceed to tenant verification.
+                          {/* Phase 3A Primary Action Footer Bar */}
+                          <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
+                            {rescheduleRequestData?.status === "pending" && (
+                              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-2.5 flex items-center gap-2 text-xs font-medium text-amber-800 dark:text-amber-300">
+                                <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                                <span>
+                                  <strong>Pending Reschedule Request:</strong> Please accept, propose an alternate date, or decline the tenant's reschedule request above before starting repair work.
+                                </span>
+                              </div>
+                            )}
+
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="text-xs text-slate-600 dark:text-slate-400 min-w-0">
+                                {rescheduleRequestData?.status === "pending" ? (
+                                  <span className="text-slate-500 dark:text-slate-400">
+                                    Start action locked until the pending reschedule request is resolved above.
+                                  </span>
+                                ) : isStartingWork ? (
+                                  <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                    <Loader2 size={13} className="animate-spin text-sky-600" />
+                                    Starting repair work and dispatching active status...
+                                  </span>
+                                ) : (
+                                  <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
+                                    <Sparkles size={13} className="text-sky-600 shrink-0" />
+                                    <span>
+                                      Technician on site? Click <strong>Start Repair Work</strong> to unlock resolution proof &amp; expense accounting.
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setForceShowActiveWork(true)}
+                                  className="text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 underline font-medium px-2 py-1 cursor-pointer"
+                                >
+                                  Jump to Proof Form
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleStartRepairWork}
+                                  disabled={isLocked || isStartingWork || rescheduleRequestData?.status === "pending"}
+                                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white px-5 py-2.5 text-xs font-bold shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer active:scale-[0.98]"
+                                >
+                                  {isStartingWork ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={14} />}
+                                  <span>{isStartingWork ? "Starting Work..." : "Start Repair Work"}</span>
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         </div>
+                      )}
 
-                        {/* Right Column: Resolution Proof Uploader */}
-                        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-col justify-between space-y-4">
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
-                              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                                <ShieldCheck size={16} className="text-slate-700 dark:text-slate-300" />
-                                <span>Upload Resolution Proof</span>
+                      {/* ─────────────────────────────────────────────────────────────
+                          PHASE 3B: ACTIVE WORK & RESOLUTION (Technician On-Site, Proof, Expenses)
+                          ───────────────────────────────────────────────────────────── */}
+                      {isActiveWorkPhase && (
+                        <div className="space-y-4">
+                          <div className="grid gap-4 md:grid-cols-2 items-stretch">
+                            {/* Left Column: Active Technician & Work Order Info */}
+                            <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-col justify-between space-y-4">
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                                  <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                                    <PlayCircle size={16} className="text-emerald-600 dark:text-emerald-500" />
+                                    <span>Active Work In Progress</span>
+                                  </h3>
+                                  <span className="px-2.5 py-0.5 text-xs font-semibold rounded bg-transparent text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700">
+                                    Active on site
+                                  </span>
+                                </div>
+
+                                {/* Assigned Technician Profile Box */}
+                                <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-3.5 space-y-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold tracking-wider">
+                                        Assigned Service Provider
+                                      </span>
+                                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                        <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                                          {assignedProviderName || "LilyCrest Facilities Team"}
+                                        </span>
+                                        {assignedProviderCategory && (
+                                          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                            {assignedProviderCategory}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {assignedProviderContact && (
+                                    <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 dark:border-slate-700/80 text-xs">
+                                      <a
+                                        href={`tel:${assignedProviderContact}`}
+                                        className="text-slate-700 dark:text-slate-300 font-semibold hover:text-sky-600 dark:hover:text-sky-400 flex items-center gap-1.5"
+                                      >
+                                        <PhoneCall size={12} className="text-slate-500" />
+                                        <span>{assignedProviderContact}</span>
+                                      </a>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyPhone(assignedProviderContact)}
+                                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                                      >
+                                        {copiedPhone ? (
+                                          <Check size={12} className="text-emerald-600" />
+                                        ) : (
+                                          <Copy size={12} />
+                                        )}
+                                        <span>{copiedPhone ? "Copied" : "Copy"}</span>
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {/* Scheduled Arrival Row */}
+                                  <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between text-xs">
+                                    <div>
+                                      <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">
+                                        Scheduled Arrival
+                                      </span>
+                                      {currentScheduledDate ? (
+                                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                                          {fmtDateTime(currentScheduledDate)}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-500 dark:text-slate-400 italic">
+                                          No visit date scheduled yet
+                                        </span>
+                                      )}
+                                    </div>
+                                    {rescheduleRequestData?.status === "pending" && (
+                                      <span
+                                        title="A tenant schedule adjustment request is pending review below."
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700 bg-transparent"
+                                      >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                        <span>Adjustment Pending</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Tenant Reschedule Request Alert Banner with Side-by-Side Comparison */}
+                                {rescheduleRequestData?.status === "pending" && (
+                                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/90 dark:bg-slate-800/60 p-4 space-y-3.5 text-xs shadow-2xs">
+                                    <div className="flex items-center justify-between flex-wrap gap-2">
+                                      <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-slate-100">
+                                        <Clock size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                                        <span className="text-xs">Tenant Requested Schedule Adjustment</span>
+                                      </div>
+                                      {currentScheduledDate && rescheduleRequestData?.proposedDate && (
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700 bg-transparent">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                          <span>
+                                            {(() => {
+                                              const d1 = new Date(currentScheduledDate).getTime();
+                                              const d2 = new Date(rescheduleRequestData.proposedDate).getTime();
+                                              if (Number.isNaN(d1) || Number.isNaN(d2)) return null;
+                                              const diffHours = Math.round((d2 - d1) / (1000 * 60 * 60));
+                                              if (diffHours === 0) return "Same Day / Time Shift";
+                                              if (Math.abs(diffHours) < 24) {
+                                                return diffHours > 0 ? `+${diffHours}h Later` : `${diffHours}h Earlier`;
+                                              }
+                                              const diffDays = Math.round(diffHours / 24);
+                                              return diffDays > 0 ? `+${diffDays} Day${diffDays > 1 ? "s" : ""} Later` : `${diffDays} Day${Math.abs(diffDays) > 1 ? "s" : ""} Earlier`;
+                                            })()}
+                                          </span>
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {/* Side-by-Side Comparison Grid */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                      {/* Left: Currently Scheduled */}
+                                      <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-1.5 shadow-2xs">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                          Current Scheduled Arrival
+                                        </span>
+                                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                          {currentScheduledDate ? fmtDateTime(currentScheduledDate) : "Not yet set"}
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                          Provider: {assignedProviderName || "LilyCrest Facilities Team"}
+                                        </div>
+                                      </div>
+
+                                      {/* Right: Tenant Requested */}
+                                      <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-1.5 shadow-2xs">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                          Tenant Requested Slot
+                                        </span>
+                                        <div className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                                          {fmtDateTime(rescheduleRequestData.proposedDate)}
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                          {rescheduleRequestData.reason ? (
+                                            <span className="italic text-slate-600 dark:text-slate-300">
+                                              &ldquo;{rescheduleRequestData.reason}&rdquo;
+                                            </span>
+                                          ) : (
+                                            <span className="text-slate-400">No specific reason provided</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Quick Action Button Grid (3 Balanced Columns) */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-0.5">
+                                      {/* Accept New Date CTA */}
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleAcceptReschedule(
+                                            rescheduleRequestData.proposedDate,
+                                          )
+                                        }
+                                        disabled={isRespondingToReschedule || isSubmittingAlternate || isSubmittingDecline}
+                                        title="Accept tenant's requested date & time adjustment"
+                                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] transition shadow-2xs cursor-pointer disabled:opacity-50"
+                                      >
+                                        {isRespondingToReschedule ? (
+                                          <Loader2 size={13} className="animate-spin" />
+                                        ) : (
+                                          <Check size={13} />
+                                        )}
+                                        <span>
+                                          {isRespondingToReschedule
+                                            ? "Accepting..."
+                                            : "Accept New Date"}
+                                        </span>
+                                      </button>
+
+                                      {/* Propose Alternate Date */}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setShowAlternatePanel((v) => !v);
+                                          setShowDeclinePanel(false);
+                                        }}
+                                        title="Pick an alternate date/time and send explanation note to tenant"
+                                        className={`w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition cursor-pointer active:scale-[0.98] ${
+                                          showAlternatePanel
+                                            ? "border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white ring-1 ring-slate-300 dark:ring-slate-600"
+                                            : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600"
+                                        }`}
+                                      >
+                                        <Calendar size={13} />
+                                        <span>Propose Alternate</span>
+                                        {showAlternatePanel ? <ChevronUp size={12} className="opacity-70" /> : <ChevronDown size={12} className="opacity-70" />}
+                                      </button>
+
+                                      {/* Decline Request */}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setShowDeclinePanel((v) => !v);
+                                          setShowAlternatePanel(false);
+                                        }}
+                                        title="Decline this reschedule request and keep the current schedule"
+                                        className={`w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition cursor-pointer active:scale-[0.98] ${
+                                          showDeclinePanel
+                                            ? "border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 ring-1 ring-rose-300 dark:ring-rose-800"
+                                            : "border-slate-200 dark:border-slate-700 text-rose-600 dark:text-rose-400 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-200 dark:hover:border-rose-900"
+                                        }`}
+                                      >
+                                        <X size={13} />
+                                        <span>Decline Request</span>
+                                        {showDeclinePanel ? <ChevronUp size={12} className="opacity-70" /> : <ChevronDown size={12} className="opacity-70" />}
+                                      </button>
+                                    </div>
+
+                                    {/* Expandable Decline Request Panel */}
+                                    {showDeclinePanel && (
+                                      <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 space-y-3 mt-1 transition-all">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                            Decline Tenant Reschedule Request
+                                          </span>
+                                          <span className="text-[10px] text-slate-500">Current schedule will remain active</span>
+                                        </div>
+
+                                        <div>
+                                          <div className="flex justify-between items-center mb-1">
+                                            <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                                              Reason for Declining * (Min 5 chars)
+                                            </label>
+                                            <span className="text-[10px] text-slate-400">{declineReason.length}/300</span>
+                                          </div>
+                                          <textarea
+                                            rows={2}
+                                            maxLength={300}
+                                            placeholder="e.g. Technician already dispatched and en route; cannot postpone."
+                                            value={declineReason}
+                                            onChange={(e) => setDeclineReason(e.target.value)}
+                                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-rose-500 focus:border-rose-500 resize-none transition"
+                                          />
+                                          {declineReason.length > 0 && declineReason.trim().length < 5 && (
+                                            <p className="text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1 mt-1 font-medium">
+                                              <AlertCircle size={12} />
+                                              Please enter at least 5 characters ({5 - declineReason.trim().length} more needed).
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setShowDeclinePanel(false);
+                                              setDeclineReason("");
+                                            }}
+                                            className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition"
+                                          >
+                                            Cancel
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={handleDeclineReschedule}
+                                            disabled={!declineReason || declineReason.trim().length < 5 || isSubmittingDecline}
+                                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-2xs"
+                                          >
+                                            {isSubmittingDecline ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
+                                            <span>{isSubmittingDecline ? "Declining..." : "Confirm Decline"}</span>
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Expandable Alternate Date & Explanation Note Panel */}
+                                    {showAlternatePanel && (
+                                      <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 space-y-3 mt-1 transition-all">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                            Propose Alternate Visit Date &amp; Reason
+                                          </span>
+                                          <span className="text-[10px] text-slate-500">Operating hours: 8 AM – 6 PM</span>
+                                        </div>
+
+                                        <ModernDateTimePicker
+                                          dateValue={alternateDate}
+                                          timeValue={alternateTime}
+                                          onDateChange={setAlternateDate}
+                                          onTimeChange={setAlternateTime}
+                                          disabled={isSubmittingAlternate}
+                                        />
+
+                                        <div>
+                                          <div className="flex justify-between items-center mb-1">
+                                            <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                                              Staff Explanation Note to Tenant * (Min 5 chars)
+                                            </label>
+                                            <span className="text-[10px] text-slate-400">{alternateNote.length}/300</span>
+                                          </div>
+                                          <textarea
+                                            rows={2}
+                                            maxLength={300}
+                                            placeholder="e.g. Technician fully booked in the morning; available at 2:00 PM."
+                                            value={alternateNote}
+                                            onChange={(e) => setAlternateNote(e.target.value)}
+                                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 resize-none transition"
+                                          />
+                                          {alternateNote.length > 0 && alternateNote.trim().length < 5 && (
+                                            <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-1 font-medium">
+                                              <AlertCircle size={12} />
+                                              Please enter at least 5 characters ({5 - alternateNote.trim().length} more needed).
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                          <button
+                                            type="button"
+                                            onClick={() => setShowAlternatePanel(false)}
+                                            className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition"
+                                          >
+                                            Cancel
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={handleSetAlternateSchedule}
+                                            disabled={!alternateDate || !alternateTime || alternateNote.trim().length < 5 || isSubmittingAlternate}
+                                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-2xs"
+                                          >
+                                            {isSubmittingAlternate ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                                            <span>{isSubmittingAlternate ? "Updating..." : "Submit Alternate Schedule"}</span>
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-slate-500 dark:text-slate-400">
+                                Technician is active on site. Attach completion proof and record expenses to proceed to tenant verification.
+                              </div>
+                            </div>
+
+                            {/* Right Column: Resolution Proof Uploader */}
+                            <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-col justify-between space-y-4">
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                                  <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                                    <ShieldCheck size={16} className="text-slate-700 dark:text-slate-300" />
+                                    <span>Upload Resolution Proof</span>
+                                  </h3>
+                                  <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                    Required *
+                                  </span>
+                                </div>
+
+                                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                                  Upload photo proof of the completed repair. This will notify the tenant to inspect and verify the resolution.
+                                </p>
+
+                                {/* Custom File Upload Dropzone / Trigger */}
+                                <input
+                                  ref={proofFileInputRef}
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/webp"
+                                  onChange={handleSelectProofFile}
+                                  className="hidden"
+                                />
+
+                                {!proofFile ? (
+                                  <div
+                                    onDragOver={(e) => {
+                                      e.preventDefault();
+                                      setIsDraggingProof(true);
+                                    }}
+                                    onDragLeave={() => setIsDraggingProof(false)}
+                                    onDrop={(e) => {
+                                      e.preventDefault();
+                                      setIsDraggingProof(false);
+                                      const file = e.dataTransfer.files?.[0];
+                                      if (file) handleProcessProofFile(file);
+                                    }}
+                                    onClick={() => proofFileInputRef.current?.click()}
+                                    className={`flex flex-col items-center justify-center rounded-xl border border-dashed p-4 text-center cursor-pointer transition ${
+                                      isDraggingProof
+                                        ? "border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/20"
+                                        : proofTouched && !proofFile
+                                          ? "border-rose-500 bg-rose-50/30 dark:bg-rose-950/20"
+                                          : "border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600 bg-slate-50/50 dark:bg-slate-800/30"
+                                    }`}
+                                  >
+                                    <div className="flex shrink-0 items-center justify-center text-slate-500 dark:text-slate-400 mb-2">
+                                      <Upload size={22} />
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                      Click to upload photo proof or drag &amp; drop
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                      Supports PNG, JPG, JPEG, WEBP (Max 5MB)
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/60 p-2.5">
+                                    {proofPreviewUrl && (
+                                      <div className="relative h-14 w-14 shrink-0 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-700">
+                                        <img
+                                          src={proofPreviewUrl}
+                                          alt="Proof Preview"
+                                          className="h-full w-full object-cover"
+                                        />
+                                      </div>
+                                    )}
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                                        {proofFile.name}
+                                      </p>
+                                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                                        {(proofFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to submit
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={handleClearProofFile}
+                                      className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                                      title="Remove photo"
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </div>
+                                )}
+
+                                {proofTouched && !proofFile && (
+                                  <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                                    <AlertCircle size={11} className="shrink-0" />
+                                    <span>Resolution proof photo is required to mark resolved.</span>
+                                  </p>
+                                )}
+
+                                {/* Resolution Notes Input */}
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                                      Resolution Notes <span className="text-[10px] font-normal text-slate-400">(Optional)</span>
+                                    </label>
+                                    <span className="text-[10px] text-slate-400">
+                                      {proofNote.length}/500
+                                    </span>
+                                  </div>
+                                  <input
+                                    type="text"
+                                    maxLength={500}
+                                    value={proofNote}
+                                    onChange={(e) => setProofNote(e.target.value)}
+                                    placeholder="e.g., Replaced ball valve, sealed hairline crack, tested water pressure"
+                                    className="h-9 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-slate-900 dark:focus:border-slate-100 focus:outline-none transition"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-slate-500 dark:text-slate-400">
+                                Photo proof will be displayed in the tenant's mobile verification screen.
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Post-Service Cost & Company Expense Accounting (Embedded with standalone save hidden) */}
+                          <CostAttributionCard
+                            ref={costCardRef}
+                            request={request}
+                            disabled={isLocked}
+                            hideStandaloneAction={true}
+                            defaultSummaryMode={false}
+                          />
+
+                          {/* Unified Stage 3 Primary Action Footer Bar */}
+                          <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
+                            {rescheduleRequestData?.status === "pending" && (
+                              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-2.5 flex items-center gap-2 text-xs font-medium text-amber-800 dark:text-amber-300">
+                                <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                                <span>
+                                  <strong>Pending Reschedule Request:</strong> You cannot mark work as done while a tenant reschedule request is pending. Please accept, propose an alternate date, or decline the request above first.
+                                </span>
+                              </div>
+                            )}
+
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="text-xs text-slate-600 dark:text-slate-400 min-w-0">
+                                {isSubmittingUnified ? (
+                                  <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                    <Loader2 size={13} className="animate-spin text-emerald-600" />
+                                    Saving repair details and submitting proof...
+                                  </span>
+                                ) : rescheduleRequestData?.status === "pending" ? (
+                                  <span className="text-slate-500 dark:text-slate-400">
+                                    Action locked until the pending reschedule request is resolved.
+                                  </span>
+                                ) : (
+                                  <span>
+                                    Ready to finish? This saves the repair details, logs the proof, and lets the tenant know the repair is done.
+                                  </span>
+                                )}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={handleUnifiedCompleteAndResolve}
+                                disabled={isLocked || isSubmittingUnified || rescheduleRequestData?.status === "pending"}
+                                title={
+                                  rescheduleRequestData?.status === "pending"
+                                    ? "Resolve the pending reschedule request first before marking work as done"
+                                    : "Mark work as done and submit proof"
+                                }
+                                className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-6 py-2.5 text-xs font-bold shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shrink-0 active:scale-[0.98]"
+                              >
+                                {isSubmittingUnified ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <CheckCircle2 size={14} />
+                                )}
+                                <span>
+                                  {isSubmittingUnified
+                                    ? "Marking as Done..."
+                                    : "Mark Work Done & Upload Proof"}
+                                </span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* STAGE 4: RESOLVED (Waiting with Summary Hub & 7-Day Auto-Completion) */}
+                  {isResolvedStage && (() => {
+                    const observation = getRemainingObservationDays(
+                      request?.resolved_at || request?.updatedAt || request?.created_at,
+                    );
+                    const latestResolutionLog =
+                      Array.isArray(rawWorkLog) && rawWorkLog.length > 0
+                        ? rawWorkLog[rawWorkLog.length - 1]
+                        : null;
+                    const resolutionNoteText =
+                      latestResolutionLog?.note ||
+                      request?.resolution_note ||
+                      request?.resolutionNote ||
+                      null;
+                    const hasTenantConfirmed = Boolean(request?.resolutionConfirmation?.confirmedAt);
+                    const totalLabor = Number(request?.costBreakdown?.laborCost || 0);
+                    const totalMaterials = Number(request?.costBreakdown?.materialsCost || 0);
+                    const totalCost = totalLabor + totalMaterials;
+
+                    return (
+                      <div className="space-y-4">
+                        {/* 1. Observation Window & Live Tenant Verification Status */}
+                        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
+                          <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                            <div className="flex items-center gap-2">
+                              <Clock size={16} className="text-slate-700 dark:text-slate-300 shrink-0" />
+                              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                                Stage 4: Work Resolved • Waiting for Tenant Feedback &amp; Rating
                               </h3>
-                              <span className="rounded bg-transparent px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                                Required *
+                            </div>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-semibold bg-transparent text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                              <span>
+                                {observation.isExpired
+                                  ? "7-Day Window Elapsed (Eligible for Auto-Completion)"
+                                  : `Day ${observation.elapsedDays + 1} of 7 • ${observation.remainingDays} Day${observation.remainingDays === 1 ? "" : "s"} Remaining`}
+                              </span>
+                            </span>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 flex-wrap gap-1">
+                              <span>
+                                {observation.isExpired
+                                  ? "Observation period completed. Ticket is eligible for immediate finalization."
+                                  : `Technician repair proof and resolution details have been recorded. The tenant has been prompted to inspect and submit a star rating. Auto-finalizes on ${observation.targetDate ? fmtDateTime(observation.targetDate) : "in 7 days"}.`}
+                              </span>
+                              <span className="font-semibold text-slate-800 dark:text-slate-200 shrink-0">
+                                {observation.percent}% Elapsed
                               </span>
                             </div>
 
-                            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                              Upload photo proof of the completed repair. This will notify the tenant to inspect and verify the resolution.
-                            </p>
-
-                            {/* Custom File Upload Dropzone / Trigger */}
-                            <input
-                              ref={proofFileInputRef}
-                              type="file"
-                              accept="image/png,image/jpeg,image/webp"
-                              onChange={handleSelectProofFile}
-                              className="hidden"
-                            />
-
-                            {!proofFile ? (
+                            {/* Clean 1px solid Progress Bar (No Gradients) */}
+                            <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-200 dark:border-slate-700">
                               <div
-                                onDragOver={(e) => {
-                                  e.preventDefault();
-                                  setIsDraggingProof(true);
-                                }}
-                                onDragLeave={() => setIsDraggingProof(false)}
-                                onDrop={(e) => {
-                                  e.preventDefault();
-                                  setIsDraggingProof(false);
-                                  const file = e.dataTransfer.files?.[0];
-                                  if (file) handleProcessProofFile(file);
-                                }}
-                                onClick={() => proofFileInputRef.current?.click()}
-                                className={`flex flex-col items-center justify-center rounded-xl border border-dashed p-4 text-center cursor-pointer transition ${
-                                  isDraggingProof
-                                    ? "border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/20"
-                                    : proofTouched && !proofFile
-                                      ? "border-rose-500 bg-rose-50/30 dark:bg-rose-950/20"
-                                      : "border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600 bg-slate-50/50 dark:bg-slate-800/30"
+                                className={`h-full transition-all duration-300 ${
+                                  observation.isExpired ? "bg-amber-600 dark:bg-amber-500" : "bg-blue-600 dark:bg-blue-500"
                                 }`}
-                              >
-                                <div className="flex shrink-0 items-center justify-center text-slate-500 dark:text-slate-400 mb-2">
-                                  <Upload size={22} />
-                                </div>
-                                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                                  Click to upload photo proof or drag &amp; drop
-                                </span>
-                                <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-                                  Supports PNG, JPG, JPEG, WEBP (Max 5MB)
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/60 p-2.5">
-                                {proofPreviewUrl && (
-                                  <div className="relative h-14 w-14 shrink-0 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-700">
-                                    <img
-                                      src={proofPreviewUrl}
-                                      alt="Proof Preview"
-                                      className="h-full w-full object-cover"
-                                    />
-                                  </div>
-                                )}
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                                    {proofFile.name}
-                                  </p>
-                                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                                    {(proofFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to submit
-                                  </p>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={handleClearProofFile}
-                                  className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
-                                  title="Remove photo"
-                                >
-                                  <X size={16} />
-                                </button>
-                              </div>
-                            )}
-
-                            {proofTouched && !proofFile && (
-                              <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                                <AlertCircle size={11} className="shrink-0" />
-                                <span>Resolution proof photo is required to mark resolved.</span>
-                              </p>
-                            )}
-
-                            {/* Resolution Notes Input */}
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                                  Resolution Notes <span className="text-[10px] font-normal text-slate-400">(Optional)</span>
-                                </label>
-                                <span className="text-[10px] text-slate-400">
-                                  {proofNote.length}/500
-                                </span>
-                              </div>
-                              <input
-                                type="text"
-                                maxLength={500}
-                                value={proofNote}
-                                onChange={(e) => setProofNote(e.target.value)}
-                                placeholder="e.g., Replaced ball valve, sealed hairline crack, tested water pressure"
-                                className="h-9 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-slate-900 dark:focus:border-slate-100 focus:outline-none transition"
+                                style={{ width: `${Math.max(5, observation.percent)}%` }}
                               />
                             </div>
                           </div>
 
-                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-slate-500 dark:text-slate-400">
-                            Photo proof will be displayed in the tenant's mobile verification screen.
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Post-Service Cost & Company Expense Accounting (Embedded with standalone save hidden) */}
-                      <CostAttributionCard
-                        ref={costCardRef}
-                        request={request}
-                        disabled={isLocked}
-                        hideStandaloneAction={true}
-                        defaultSummaryMode={false}
-                      />
-
-                      {/* Unified Stage 3 Primary Action Footer Bar */}
-                      <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="text-xs text-slate-600 dark:text-slate-400 min-w-0">
-                          {isSubmittingUnified ? (
-                            <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                              <Loader2 size={13} className="animate-spin text-emerald-600" />
-                              Saving repair details and submitting proof...
-                            </span>
-                          ) : (
-                            <span>
-                              Ready to finish? This saves the repair details, logs the proof, and lets the tenant know the repair is done.
-                            </span>
-                          )}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={handleUnifiedCompleteAndResolve}
-                          disabled={isLocked || isSubmittingUnified}
-                          className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-6 py-2.5 text-xs font-bold shadow-sm disabled:opacity-40 transition cursor-pointer shrink-0 active:scale-[0.98]"
-                        >
-                          {isSubmittingUnified ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <CheckCircle2 size={14} />
-                          )}
-                          <span>
-                            {isSubmittingUnified
-                              ? "Marking as Resolved..."
-                              : "Mark as Resolved"}
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* STAGE 4: RESOLVED (Tenant Verification & Rating Window) */}
-                  {isResolvedStage && (
-                    <div className="space-y-4">
-                      {/* Tenant Verification Status & Actions Card */}
-                      <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
-                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
-                          <div className="flex items-center gap-2">
-                            <Clock size={16} className="text-slate-700 dark:text-slate-300 shrink-0" />
-                            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
-                              Tenant Verification &amp; Feedback Window
-                            </h3>
-                          </div>
-                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-transparent text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700">
-                            Awaiting Feedback
-                          </span>
-                        </div>
-
-                        {/* Tenant Feedback Status */}
-                        {request?.resolutionConfirmation?.confirmedAt ? (
-                          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1.5">
-                                <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                <span className="text-xs font-bold uppercase tracking-wide text-slate-900 dark:text-slate-100">
-                                  Verified by Tenant
-                                </span>
+                          {/* 4-Stat Metric Grid for Waiting Summary */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-2.5 space-y-0.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                Assigned Provider
+                              </span>
+                              <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                                {assignedProviderName || "LilyCrest Team"}
                               </div>
-                              {request?.resolutionConfirmation?.confirmedAt && (
-                                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                                  {fmtDateTime(request.resolutionConfirmation.confirmedAt)}
+                              {assignedProviderCategory && (
+                                <span className="text-[9px] font-semibold text-slate-500 uppercase">
+                                  {assignedProviderCategory}
                                 </span>
                               )}
                             </div>
 
-                            {/* Tenant Star Rating if provided */}
-                            {request?.resolutionConfirmation?.rating ? (
-                              <div className="flex items-center gap-2 pt-0.5">
-                                <div className="flex items-center text-amber-500">
-                                  {[1, 2, 3, 4, 5].map((star) => (
-                                    <Star
-                                      key={star}
-                                      size={14}
-                                      className={
-                                        star <= request.resolutionConfirmation.rating
-                                          ? "fill-amber-400 text-amber-500"
-                                          : "text-slate-300 dark:text-slate-600"
-                                      }
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-2.5 space-y-0.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                Total Repair Cost
+                              </span>
+                              <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                {formatPeso(totalCost)}
+                              </div>
+                              <span className="text-[9px] text-slate-500">
+                                {formatPeso(totalLabor)} labor + {formatPeso(totalMaterials)} mat.
+                              </span>
+                            </div>
+
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-2.5 space-y-0.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                Work Resolved At
+                              </span>
+                              <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                                {request?.resolved_at ? fmtDateTime(request.resolved_at) : "Just Now"}
+                              </div>
+                              <span className="text-[9px] text-slate-500">
+                                Proof Verified
+                              </span>
+                            </div>
+
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-2.5 space-y-0.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                Auto-Close Target
+                              </span>
+                              <div className="text-xs font-bold text-amber-700 dark:text-amber-400 truncate">
+                                {observation.targetDate ? fmtDateTime(observation.targetDate) : "In 7 Days"}
+                              </div>
+                              <span className="text-[9px] text-slate-500">
+                                {observation.remainingDays} days left
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Live Tenant Confirmation Feedback Status */}
+                          {hasTenantConfirmed ? (
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                                  <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
+                                  <span>Tenant Feedback Received</span>
+                                </span>
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                  {fmtDateTime(request.resolutionConfirmation.confirmedAt)}
+                                </span>
+                              </div>
+                              {request?.resolutionConfirmation?.rating && (
+                                <div className="flex items-center gap-1.5">
+                                  <div className="flex items-center text-amber-500">
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                      <Star
+                                        key={star}
+                                        size={12}
+                                        className={
+                                          star <= request.resolutionConfirmation.rating
+                                            ? "fill-amber-400 text-amber-500"
+                                            : "text-slate-300 dark:text-slate-600"
+                                        }
+                                      />
+                                    ))}
+                                  </div>
+                                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                    {request.resolutionConfirmation.rating} / 5 Stars
+                                  </span>
+                                </div>
+                              )}
+                              {request?.resolutionConfirmation?.tenantFeedback && (
+                                <p className="text-xs text-slate-600 dark:text-slate-300 italic">
+                                  &ldquo;{request.resolutionConfirmation.tenantFeedback}&rdquo;
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1 flex-wrap gap-2">
+                              <span>Awaiting tenant feedback &amp; rating on web/mobile app...</span>
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab("conversation")}
+                                className="text-xs text-sky-600 dark:text-sky-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                              >
+                                <Send size={11} />
+                                <span>Send Message to Tenant</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 2. Side-by-Side Before vs After Visual Proof & Inspection Grid */}
+                        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
+                          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                            <div className="flex items-center gap-2">
+                              <ShieldCheck size={16} className="text-slate-700 dark:text-slate-300 shrink-0" />
+                              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                                Work Order Proof &amp; Inspection
+                              </h3>
+                            </div>
+                            <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-transparent text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                              Side-by-Side Review
+                            </span>
+                          </div>
+
+                          {resolutionNoteText && (
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3 text-xs space-y-1">
+                              <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block tracking-wider">
+                                Technician Resolution Notes
+                              </span>
+                              <p className="text-slate-800 dark:text-slate-200 leading-relaxed font-medium">
+                                {resolutionNoteText}
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {/* Tenant Reported Media (Before) */}
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 p-3 space-y-2">
+                              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+                                1. Tenant Reported Issue (Before)
+                              </span>
+                              {initialAttachments.length === 0 ? (
+                                <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 dark:bg-slate-800/40 text-xs text-slate-400">
+                                  No initial media attached
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-3 gap-2">
+                                  {initialAttachments.map((att, idx) => (
+                                    <AttachmentThumbnail
+                                      key={idx}
+                                      attachment={att}
+                                      index={idx}
+                                      onPreviewImage={setLightboxImage}
+                                      tag="Before Repair"
+                                      size="large"
                                     />
                                   ))}
                                 </div>
-                                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                                  {request.resolutionConfirmation.rating} / 5 Rating
-                                </span>
-                              </div>
-                            ) : null}
+                              )}
+                            </div>
 
-                            {request?.resolutionConfirmation?.tenantFeedback ? (
-                              <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 italic">
-                                "{request.resolutionConfirmation.tenantFeedback}"
-                              </p>
-                            ) : (
-                              <p className="text-xs text-slate-600 dark:text-slate-400">
-                                Tenant confirmed resolution without additional comments.
-                              </p>
-                            )}
-
-                            <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
-                              Observation window active: Ticket will automatically finalize as Completed after 7 days of inactivity.
+                            {/* Technician Resolution Proof (After) */}
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 p-3 space-y-2">
+                              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block">
+                                2. Technician Completion Proof (After)
+                              </span>
+                              {workLogAttachments.length === 0 ? (
+                                <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 dark:bg-slate-800/40 text-xs text-slate-400">
+                                  No resolution proof logged
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-3 gap-2">
+                                  {workLogAttachments.map((att, idx) => (
+                                    <AttachmentThumbnail
+                                      key={idx}
+                                      attachment={att}
+                                      index={idx}
+                                      onPreviewImage={setLightboxImage}
+                                      tag="Resolution Proof (After)"
+                                      size="large"
+                                    />
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
-                        ) : (
-                          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 space-y-2">
-                            <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-slate-200">
-                              <Clock size={15} className="text-slate-500" />
-                              <span>Pending Tenant Feedback on Web &amp; Mobile</span>
+                        </div>
+
+                        {/* 3. Contractor Performance Rating Form */}
+                        <ProviderRatingCard
+                          ref={providerRatingRef}
+                          request={request}
+                          isSubmitting={isRatingProvider || isSubmittingStage4}
+                          onSubmitRating={handleRatingSubmit}
+                          disabled={isLocked && Boolean(request?.providerRating?.rating)}
+                          hideStandaloneAction={false}
+                        />
+
+                        {/* 4. Cost Attribution Accounting */}
+                        <CostAttributionCard
+                          ref={costCardRef}
+                          request={request}
+                          disabled={isLocked}
+                          hideStandaloneAction={false}
+                          defaultSummaryMode={false}
+                        />
+
+                        {/* 5. Stage 4 Waiting Action Footer Bar */}
+                        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="text-xs text-slate-600 dark:text-slate-400 min-w-0">
+                              <span>
+                                Stage 4 resolution is active. The ticket will advance to <strong>Stage 5 (Completed)</strong> when the tenant confirms on mobile/web, or auto-complete after <strong>7 days</strong>.
+                              </span>
                             </div>
-                            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                              The tenant was notified to inspect the resolved issue and rate the repair. If no further movement or issues are reported within <strong>7 days (1 week)</strong>, the ticket will automatically close as Completed.
-                            </p>
+
+                            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab("conversation")}
+                                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer active:scale-[0.98] shadow-2xs"
+                              >
+                                <Send size={13} className="text-sky-600 dark:text-sky-400" />
+                                <span>Send Reminder</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setShowReopenDialog(true)}
+                                disabled={isSubmittingStage4 || isLocked}
+                                title="Reopen this request for additional maintenance servicing"
+                                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition cursor-pointer active:scale-[0.98] shadow-2xs disabled:opacity-50"
+                              >
+                                <RefreshCw size={13} className="text-amber-600 dark:text-amber-400" />
+                                <span>Reopen Request</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setShowForceFinalizeModal(true)}
+                                disabled={isLocked || isForceFinalizing}
+                                title="Direct staff on-site sign-off (bypasses 7-day tenant waiting window)"
+                                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-4 py-2 text-xs font-bold shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer active:scale-[0.98]"
+                              >
+                                <CheckCircle2 size={14} />
+                                <span>Direct Sign-Off (Manual Override)</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* STAGE 5: COMPLETED (Single Unified Executive Completion Summary Voucher) */}
+                  {isCompletedStage && (() => {
+                    const closureMeta = getClosureMethodMeta(request);
+                    const turnaroundDuration = formatTurnaroundDuration(
+                      request?.createdAt || request?.created_at,
+                      request?.resolutionConfirmation?.confirmedAt ||
+                        request?.closed_at ||
+                        request?.resolved_at ||
+                        request?.updatedAt,
+                    );
+                    const totalLabor = Number(request?.costBreakdown?.laborCost || 0);
+                    const totalMaterials = Number(request?.costBreakdown?.materialsCost || 0);
+                    const totalCost = totalLabor + totalMaterials;
+                    const isTenantBilled = Boolean(request?.costBreakdown?.isTenantChargeable);
+                    const tenantRating = request?.resolutionConfirmation?.rating;
+                    const tenantComment = request?.resolutionConfirmation?.tenantFeedback;
+                    const latestResolutionLog =
+                      Array.isArray(rawWorkLog) && rawWorkLog.length > 0
+                        ? rawWorkLog[rawWorkLog.length - 1]
+                        : null;
+                    const resolutionNoteText =
+                      latestResolutionLog?.note ||
+                      request?.resolution_note ||
+                      request?.resolutionNote ||
+                      null;
+                    const closedDate =
+                      request?.resolutionConfirmation?.confirmedAt ||
+                      request?.closed_at ||
+                      request?.resolved_at ||
+                      request?.updatedAt;
+
+                    return (
+                      <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm space-y-4">
+                        {/* 1. Official Header */}
+                        <div className="flex items-center justify-between flex-wrap gap-2.5 border-b border-slate-100 dark:border-slate-800 pb-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="h-9 w-9 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 flex items-center justify-center text-emerald-700 dark:text-emerald-400 shrink-0">
+                              <CheckCircle2 size={20} />
+                            </div>
+                            <div>
+                              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                                <span>Maintenance Request Completed</span>
+                              </h3>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                Ticket #{request.ticketNumber || shortId} • Closed on {fmtDateTime(closedDate)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${closureMeta.badge}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${closureMeta.dot} shrink-0`} />
+                            <span>{closureMeta.label}</span>
+                          </span>
+                        </div>
+
+                        {/* 2. 4-Column Quick-Stats Bar */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                          {/* Col 1: Turnaround Duration */}
+                          <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block tracking-wider flex items-center gap-1">
+                              <Timer size={12} className="text-slate-400 shrink-0" />
+                              <span>Turnaround Time</span>
+                            </span>
+                            <div className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                              {turnaroundDuration}
+                            </div>
+                            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium block truncate">
+                              Work Completed
+                            </span>
+                          </div>
+
+                          {/* Col 2: Total Cost Settlement */}
+                          <div
+                            className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-1"
+                            title={
+                              totalCost > 0
+                                ? `Labor: ${formatPeso(totalLabor)} • Materials: ${formatPeso(totalMaterials)}`
+                                : undefined
+                            }
+                          >
+                            <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block tracking-wider flex items-center gap-1">
+                              <Receipt size={12} className="text-slate-400 shrink-0" />
+                              <span>Total Cost</span>
+                            </span>
+                            <div className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                              {totalCost > 0 ? formatPeso(totalCost) : "PHP 0.00"}
+                            </div>
+                            <span className={`text-[10px] font-medium block truncate ${isTenantBilled ? "text-amber-700 dark:text-amber-400" : "text-slate-500 dark:text-slate-400"}`}>
+                              {isTenantBilled ? "Billed to Tenant" : "Dormitory Covered"}
+                            </span>
+                          </div>
+
+                          {/* Col 3: Service Provider */}
+                          <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block tracking-wider flex items-center gap-1">
+                              <UserCheck size={12} className="text-slate-400 shrink-0" />
+                              <span>Technician / Provider</span>
+                            </span>
+                            <div className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                              {assignedProviderName || "Facilities Team"}
+                            </div>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate">
+                              {assignedProviderCategory || "Internal Maintenance"}
+                            </span>
+                          </div>
+
+                          {/* Col 4: Quality & Satisfaction Scorecard */}
+                          <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block tracking-wider flex items-center gap-1">
+                              <Star size={12} className="text-amber-500 shrink-0" />
+                              <span>Tenant Rating</span>
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                                {tenantRating ? `${tenantRating}/5` : "5/5"}
+                              </span>
+                              <div className="flex items-center text-amber-500">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <Star
+                                    key={star}
+                                    size={11}
+                                    className={
+                                      star <= (tenantRating || 5)
+                                        ? "fill-amber-400 text-amber-500"
+                                        : "text-slate-300 dark:text-slate-600"
+                                    }
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate">
+                              {tenantRating ? "Tenant Verified" : "Staff Verified"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* 3. Technician Notes & Tenant Feedback Quotes */}
+                        {(resolutionNoteText || tenantComment) && (
+                          <div className="grid gap-2.5 sm:grid-cols-2 text-xs">
+                            {resolutionNoteText && (
+                              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/30 p-3 space-y-1">
+                                <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">
+                                  Technician Resolution Note
+                                </span>
+                                <p className="text-slate-800 dark:text-slate-200 leading-relaxed font-medium">
+                                  {resolutionNoteText}
+                                </p>
+                              </div>
+                            )}
+
+                            {tenantComment && (
+                              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/30 p-3 space-y-1">
+                                <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">
+                                  Tenant Comment
+                                </span>
+                                <p className="text-slate-800 dark:text-slate-200 italic leading-relaxed">
+                                  &ldquo;{tenantComment}&rdquo;
+                                </p>
+                              </div>
+                            )}
                           </div>
                         )}
 
-                        {/* Action Buttons: In-Person Confirmation or Reopen */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800/80">
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            The ticket will auto-complete after 7 days. If the tenant confirmed in person, you can manually complete now.
-                          </p>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  await onQuickStatusChange?.(rawRequestId, "in_progress");
-                                  setLocalRequestOverride((prev) => ({ ...(prev || request), status: "in_progress" }));
-                                } catch {
-                                  setLocalRequestOverride(null);
-                                }
-                              }}
-                              title="Reopen this ticket for additional maintenance servicing"
-                              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 active:scale-[0.98] shadow-xs transition cursor-pointer"
-                            >
-                              <RefreshCw size={13} className="text-amber-600 dark:text-amber-400" />
-                              <span>Reopen Issue</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  await onQuickStatusChange?.(rawRequestId, "completed");
-                                  setLocalRequestOverride((prev) => ({ ...(prev || request), status: "completed" }));
-                                } catch {
-                                  setLocalRequestOverride(null);
-                                }
-                              }}
-                              title="Manually verify and mark this ticket as Completed immediately (in-person confirmation)"
-                              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-sm active:scale-[0.98] transition cursor-pointer"
-                            >
-                              <CheckCircle2 size={14} />
-                              <span>Staff Early Close Override</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Contractor Performance Rating (Available in Stage 4) */}
-                      <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-                        <ProviderRatingCard
-                          request={request}
-                          isSubmitting={isRatingProvider}
-                          onSubmitRating={onRateProvider}
-                          disabled={isLocked && Boolean(request?.providerRating?.rating)}
-                        />
-                      </div>
-
-                      {/* Assigned Service Provider & Schedule Summary */}
-                      {(assignedProviderName || request?.scheduledDate) && (
-                        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-2">
-                          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                              <UserCheck size={14} className="text-slate-500" />
-                              <span>Assigned Service Provider &amp; Schedule</span>
+                        {/* 4. Compact Side-by-Side Visual Proof Strip */}
+                        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/40 dark:bg-slate-800/20 p-3 space-y-2.5">
+                          <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-slate-700/60 pb-1.5">
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                              <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
+                              <span>Verified Visual Proof (Before &amp; After)</span>
                             </span>
-                            <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-transparent text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                              Work Logged
+                            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                              Click any photo to enlarge
                             </span>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
-                            <div>
-                              <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">
-                                Provider
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {/* Before Attachments */}
+                            <div className="space-y-1.5">
+                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block">
+                                1. Tenant Initial Report (Before)
                               </span>
-                              <span className="font-bold text-slate-900 dark:text-slate-100">
-                                {assignedProviderName || "LilyCrest Facilities Team"}
-                              </span>
-                              {assignedProviderCategory && (
-                                <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block">
-                                  {assignedProviderCategory}
-                                </span>
-                              )}
-                            </div>
-                            {assignedProviderContact && (
-                              <div>
-                                <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">
-                                  Contact
-                                </span>
-                                <a href={`tel:${assignedProviderContact}`} className="font-semibold text-slate-700 dark:text-slate-300 hover:underline">
-                                  {assignedProviderContact}
-                                </a>
-                              </div>
-                            )}
-                            {request?.scheduledDate && (
-                              <div>
-                                <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">
-                                  Visit Date
-                                </span>
-                                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                  {fmtDateTime(request.scheduledDate)}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Before vs After Photo Comparison */}
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-2">
-                          <span className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-300 block">
-                            1. Tenant Reported Media (Before)
-                          </span>
-                          {initialAttachments.length === 0 ? (
-                            <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
-                              No initial media attached
-                            </div>
-                          ) : (
-                            <div className="grid grid-cols-3 gap-2">
-                              {initialAttachments.map((att, idx) => (
-                                <AttachmentThumbnail
-                                  key={idx}
-                                  attachment={att}
-                                  index={idx}
-                                  onPreviewImage={setLightboxImage}
-                                  tag="Before Repair"
-                                  size="large"
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-2">
-                          <span className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-300 block">
-                            2. Technician Resolution Proof (After)
-                          </span>
-                          {workLogAttachments.length === 0 ? (
-                            <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
-                              No resolution proof media logged
-                            </div>
-                          ) : (
-                            <div className="grid grid-cols-3 gap-2">
-                              {workLogAttachments.map((att, idx) => (
-                                <AttachmentThumbnail
-                                  key={idx}
-                                  attachment={att}
-                                  index={idx}
-                                  onPreviewImage={setLightboxImage}
-                                  tag="Resolution Proof (After)"
-                                  size="large"
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <CostAttributionCard
-                        request={request}
-                        disabled={isLocked}
-                        defaultSummaryMode={true}
-                      />
-                    </div>
-                  )}
-
-                  {/* STAGE 5: COMPLETED (Official Report & Final Records) */}
-                  {isCompletedStage && (
-                    <div className="space-y-4">
-                      {/* Official Completion & Resolution Summary Card */}
-                      <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3">
-                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2 size={16} className="text-slate-700 dark:text-slate-300 shrink-0" />
-                            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
-                              Official Ticket Resolution Record
-                            </h3>
-                          </div>
-                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-transparent text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700">
-                            Closed &amp; Archived
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                          <div className="rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 p-3 space-y-1.5">
-                            <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">
-                              Verification &amp; Tenant Rating
-                            </span>
-                            <span className="font-bold text-slate-900 dark:text-slate-100">
-                              {request?.resolutionConfirmation?.confirmedAt
-                                ? "Verified by Tenant on Web/Mobile"
-                                : "Staff In-Person Verification & Closure"}
-                            </span>
-
-                            {request?.resolutionConfirmation?.rating ? (
-                              <div className="flex items-center gap-1.5 pt-0.5">
-                                <div className="flex items-center text-amber-500">
-                                  {[1, 2, 3, 4, 5].map((star) => (
-                                    <Star
-                                      key={star}
-                                      size={12}
-                                      className={
-                                        star <= request.resolutionConfirmation.rating
-                                          ? "fill-amber-400 text-amber-500"
-                                          : "text-slate-300 dark:text-slate-600"
-                                      }
+                              {initialAttachments.length === 0 ? (
+                                <div className="flex h-16 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 dark:bg-slate-800/30 text-[11px] text-slate-400">
+                                  No initial media attached
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {initialAttachments.map((att, idx) => (
+                                    <AttachmentThumbnail
+                                      key={idx}
+                                      attachment={att}
+                                      index={idx}
+                                      onPreviewImage={setLightboxImage}
+                                      tag="Before"
+                                      size="small"
                                     />
                                   ))}
                                 </div>
-                                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                                  {request.resolutionConfirmation.rating} / 5 Stars
-                                </span>
-                              </div>
-                            ) : null}
-
-                            {request?.resolutionConfirmation?.tenantFeedback && (
-                              <p className="text-[11px] text-slate-600 dark:text-slate-400 italic pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-                                "{request.resolutionConfirmation.tenantFeedback}"
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 p-3 space-y-1">
-                            <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">
-                              Final Closure Date
-                            </span>
-                            <span className="font-bold text-slate-900 dark:text-slate-100">
-                              {fmtDateTime(request?.resolutionConfirmation?.confirmedAt || request?.updatedAt)}
-                            </span>
-                            <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
-                              Archived to property maintenance history
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Contractor Rating Card (Only when finished) */}
-                      <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-                        <ProviderRatingCard
-                          request={request}
-                          isSubmitting={isRatingProvider}
-                          onSubmitRating={onRateProvider}
-                          disabled={isLocked && Boolean(request?.providerRating?.rating)}
-                        />
-                      </div>
-
-                      {/* Assigned Service Provider & Schedule Summary */}
-                      {(assignedProviderName || request?.scheduledDate) && (
-                        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-2">
-                          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                              <UserCheck size={14} className="text-slate-500" />
-                              <span>Assigned Service Provider &amp; Schedule</span>
-                            </span>
-                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-transparent text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700">
-                              Completed Work
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
-                            <div>
-                              <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">
-                                Provider
-                              </span>
-                              <span className="font-bold text-slate-900 dark:text-slate-100">
-                                {assignedProviderName || "LilyCrest Facilities Team"}
-                              </span>
-                              {assignedProviderCategory && (
-                                <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block">
-                                  {assignedProviderCategory}
-                                </span>
                               )}
                             </div>
-                            {assignedProviderContact && (
-                              <div>
-                                <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">
-                                  Contact
+
+                            {/* After Attachments */}
+                            <div className="space-y-1.5">
+                              <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 block">
+                                2. Technician Resolution Proof (After)
+                              </span>
+                              {workLogAttachments.length === 0 ? (
+                                <div className="flex h-16 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 dark:bg-slate-800/30 text-[11px] text-slate-400">
+                                  No resolution proof media logged
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {workLogAttachments.map((att, idx) => (
+                                    <AttachmentThumbnail
+                                      key={idx}
+                                      attachment={att}
+                                      index={idx}
+                                      onPreviewImage={setLightboxImage}
+                                      tag="After"
+                                      size="small"
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 5. Clean Action Footer Bar */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab("conversation")}
+                              className="text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 font-semibold flex items-center gap-1.5 cursor-pointer transition"
+                            >
+                              <History size={13} />
+                              <span>View Complete Audit Timeline</span>
+                            </button>
+
+                            <span className="text-slate-300 dark:text-slate-700">|</span>
+
+                            <button
+                              type="button"
+                              onClick={() => setShowReopenDialog(true)}
+                              className="text-xs text-amber-700 dark:text-amber-400 hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+                            >
+                              <RefreshCw size={12} />
+                              <span>Reopen Request</span>
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {onGenerateReport && (
+                              <button
+                                type="button"
+                                onClick={() => onGenerateReport("admin")}
+                                title="Generate or view official maintenance completion report"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] transition cursor-pointer shadow-sm"
+                              >
+                                <Sparkles size={13} />
+                                <span>
+                                  {request?.completionReport?.summary
+                                    ? "View Official Completion Report"
+                                    : "Generate AI Completion Report"}
                                 </span>
-                                <a href={`tel:${assignedProviderContact}`} className="font-semibold text-slate-700 dark:text-slate-300 hover:underline">
-                                  {assignedProviderContact}
-                                </a>
-                              </div>
-                            )}
-                            {request?.scheduledDate && (
-                              <div>
-                                <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">
-                                  Visit Date
-                                </span>
-                                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                  {fmtDateTime(request.scheduledDate)}
-                                </span>
-                              </div>
+                              </button>
                             )}
                           </div>
                         </div>
-                      )}
-
-                      {/* Before vs After Photo Comparison */}
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-2">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                            1. Tenant Reported Media (Before)
-                          </span>
-                          {initialAttachments.length === 0 ? (
-                            <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
-                              No initial media attached
-                            </div>
-                          ) : (
-                            <div className="grid grid-cols-3 gap-2">
-                              {initialAttachments.map((att, idx) => (
-                                <AttachmentThumbnail
-                                  key={idx}
-                                  attachment={att}
-                                  index={idx}
-                                  onPreviewImage={setLightboxImage}
-                                  tag="Before Repair"
-                                  size="large"
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-2">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block">
-                            2. Technician Resolution Proof (After)
-                          </span>
-                          {workLogAttachments.length === 0 ? (
-                            <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
-                              No resolution proof media logged
-                            </div>
-                          ) : (
-                            <div className="grid grid-cols-3 gap-2">
-                              {workLogAttachments.map((att, idx) => (
-                                <AttachmentThumbnail
-                                  key={idx}
-                                  attachment={att}
-                                  index={idx}
-                                  onPreviewImage={setLightboxImage}
-                                  tag="Resolution Proof (After)"
-                                  size="large"
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
                       </div>
-
-                      <CostAttributionCard
-                        request={request}
-                        disabled={isLocked}
-                        defaultSummaryMode={true}
-                      />
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
 
@@ -2152,6 +3938,9 @@ export function MaintenanceDetailModal({
                       }
                     }}
                     requestId={request.request_id || request._id}
+                    isOtherTyping={tenantIsTyping}
+                    otherTypingName={tenantTypingName}
+                    onTypingChange={handleAdminTypingChange}
                   />
                 </div>
               )}
@@ -2310,6 +4099,22 @@ export function MaintenanceDetailModal({
             document.body,
           );
         })()}
+
+      <ReopenRequestModal
+        open={showReopenDialog}
+        onClose={() => setShowReopenDialog(false)}
+        request={request}
+        onSubmit={handleConfirmReopen}
+        isSubmitting={reopenAdminMutation.isPending}
+      />
+
+      <ForceFinalizeModal
+        open={showForceFinalizeModal}
+        onClose={() => setShowForceFinalizeModal(false)}
+        request={request}
+        onConfirm={handleConfirmForceFinalize}
+        isSubmitting={isForceFinalizing}
+      />
     </div>
   );
 }

@@ -106,10 +106,14 @@ export const generateContractNumber = async (branch, date = new Date(), session 
 
 const formatReservationAddress = (address) => {
   if (!address) return "";
-  if (typeof address === "string") return address.trim();
+  if (typeof address === "string") {
+    return address
+      .replace(/,\s*(National Capital Region\s*(\(NCR\))?|NCR|Region\s+[IVXLCDM\d\-A-Za-z]+(\s*\([^\)]+\))?)\s*$/i, "")
+      .trim();
+  }
   return [
     address.unitHouseNo, address.street, address.barangay,
-    address.city, address.province, address.region,
+    address.city, address.province,
   ].filter(Boolean).join(", ");
 };
 

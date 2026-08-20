@@ -106,8 +106,8 @@
 .summary-pill--red    .summary-pill__value { color: var(--accent-red); }
 .summary-pill--red    .summary-pill__icon  { background: var(--accent-red-bg);    color: var(--accent-red); }
 
-.summary-pill--purple .summary-pill__value { color: var(--accent-purple); }
-.summary-pill--purple .summary-pill__icon  { background: var(--accent-purple-bg); color: var(--accent-purple); }
+.summary-pill--purple .summary-pill__value { color: var(--text-secondary); }
+.summary-pill--purple .summary-pill__icon  { background: var(--bg-active); color: var(--text-secondary); }
 
 .summary-pill--neutral .summary-pill__value { color: var(--text-secondary); }
 .summary-pill--neutral .summary-pill__icon  { background: var(--bg-active); color: var(--text-secondary); }

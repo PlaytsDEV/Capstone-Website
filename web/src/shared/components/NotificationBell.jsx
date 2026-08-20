@@ -36,6 +36,7 @@ function NotificationBellIcon({ type }) {
   switch (type) {
     case "reservation_created":
     case "bill_generated":
+    case "contract_document_ready":
       return <FileText {...iconProps} style={{ color: "#2563EB" }} />;
     case "maintenance_update":
     case "maintenance_new":
@@ -44,25 +45,30 @@ function NotificationBellIcon({ type }) {
     case "reservation_confirmed":
     case "payment_verified":
     case "payment_approved":
+    case "visit_approved":
+    case "account_reactivated":
       return <CheckCircle2 {...iconProps} style={{ color: "#059669" }} />;
     case "reservation_rejected":
     case "reservation_cancelled":
+    case "reservation_cancellation_rejected":
     case "payment_rejected":
     case "visit_rejected":
       return <XCircle {...iconProps} style={{ color: "#DC2626" }} />;
     case "reservation_expired":
+    case "reservation_cancellation_requested":
+    case "visit_requested":
+    case "bill_due_reminder":
+    case "penalty_applied":
+    case "grace_period_warning":
+    case "contract_expiring":
       return <Clock {...iconProps} style={{ color: "#D97706" }} />;
     case "reservation_noshow":
       return <Slash {...iconProps} style={{ color: "#DC2626" }} />;
     case "payment_received":
       return <CreditCard {...iconProps} style={{ color: "#059669" }} />;
-    case "visit_approved":
-      return <Home {...iconProps} style={{ color: "#059669" }} />;
     case "account_suspended":
     case "account_banned":
       return <Lock {...iconProps} style={{ color: "#DC2626" }} />;
-    case "account_reactivated":
-      return <Unlock {...iconProps} style={{ color: "#059669" }} />;
     case "announcement":
       return <Megaphone {...iconProps} style={{ color: "#2563EB" }} />;
     default:

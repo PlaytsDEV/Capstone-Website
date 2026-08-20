@@ -192,7 +192,7 @@ export default function AnalyticsAcquisitionTab({
     },
     {
       icon: Percent,
-      tone: "purple",
+      tone: "green",
       label: "Conversion Rate",
       value: `${overallConversionRate}%`,
       trend: "Overall lead-to-lease",

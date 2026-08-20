@@ -79,7 +79,7 @@ export default function UtilityTimelinePanel({
       {/* Timeline List */}
       <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
         {pagedTimelineRows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-center text-xs text-muted-foreground rounded-lg border border-dashed border-border">
+          <div className="flex flex-col items-center justify-center py-14 min-h-[280px] text-center text-xs text-muted-foreground rounded-lg border border-dashed border-border">
             <ClipboardList size={28} className="text-slate-400" />
             <p className="mt-2 text-sm font-semibold text-card-foreground">No Timeline Events</p>
             <p className="mt-0.5 text-xs">No meter logs or tenant occupancy events found for this billing period.</p>

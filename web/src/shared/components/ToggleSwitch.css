@@ -29,7 +29,7 @@
 }
 
 .ts-track:focus-visible {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary, #6366f1) 35%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary, #0A1628) 35%, transparent);
 }
 
 /* Checked State */

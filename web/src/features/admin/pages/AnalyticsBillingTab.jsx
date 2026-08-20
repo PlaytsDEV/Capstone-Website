@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   AlertCircle,
   PhilippinePeso,
@@ -195,44 +195,47 @@ export default function AnalyticsBillingTab({
 
   const anomalies = detectBillingAnomalies(kpis);
 
-  const metricCards = [
-    {
-      icon: PhilippinePeso,
-      tone: "green",
-      label: "Revenue Collected",
-      value: collectedStr,
-      trend: revenueDelta.text || `${revenueDelta.label || "+0%"} vs prev period`,
-      changeType: revenueDelta.changeType || "neutral",
-    },
-    {
-      icon: Receipt,
-      tone: "teal",
-      label: "Total Billed",
-      value: billedStr,
-      trend: billedDelta.text || `${billedDelta.label || "+0%"} vs prev period`,
-      changeType: billedDelta.changeType || "neutral",
-    },
-    {
-      icon: AlertCircle,
-      tone: "rose",
-      label: "Outstanding Balance",
-      value: overdueStr,
-      trend: balanceDelta.text || `${balanceDelta.label || "0%"} vs prev period`,
-      changeType: balanceDelta.changeType === "up" ? "down" : balanceDelta.changeType === "down" ? "up" : "neutral",
-      anomalyBadge: anomalies.overdueAmount,
-    },
-    {
-      icon: TrendingUp,
-      tone: "amber",
-      label: "Collection Rate",
-      value: rateStr,
-      trend: rateDelta.text || `${rateDelta.label || "+0 pp"} vs prev period`,
-      changeType: rateDelta.changeType || "neutral",
-      anomalyBadge: anomalies.collectionRate,
-    },
-  ];
+  const metricCards = useMemo(
+    () => [
+      {
+        icon: PhilippinePeso,
+        tone: "green",
+        label: "Revenue Collected",
+        value: collectedStr,
+        trend: revenueDelta.text || `${revenueDelta.label || "+0%"} vs prev period`,
+        changeType: revenueDelta.changeType || "neutral",
+      },
+      {
+        icon: Receipt,
+        tone: "teal",
+        label: "Total Billed",
+        value: billedStr,
+        trend: billedDelta.text || `${billedDelta.label || "+0%"} vs prev period`,
+        changeType: billedDelta.changeType || "neutral",
+      },
+      {
+        icon: AlertCircle,
+        tone: "rose",
+        label: "Outstanding Balance",
+        value: overdueStr,
+        trend: balanceDelta.text || `${balanceDelta.label || "0%"} vs prev period`,
+        changeType: balanceDelta.changeType === "up" ? "down" : balanceDelta.changeType === "down" ? "up" : "neutral",
+        anomalyBadge: anomalies.overdueAmount,
+      },
+      {
+        icon: TrendingUp,
+        tone: "amber",
+        label: "Collection Rate",
+        value: rateStr,
+        trend: rateDelta.text || `${rateDelta.label || "+0 pp"} vs prev period`,
+        changeType: rateDelta.changeType || "neutral",
+        anomalyBadge: anomalies.collectionRate,
+      },
+    ],
+    [collectedStr, revenueDelta, billedStr, billedDelta, overdueStr, balanceDelta, anomalies, rateStr, rateDelta],
+  );
 
-  const exportCsv = () => {
+  const exportCsv = useCallback(() => {
     handleCsvExport(
       filteredOverdue,
       [
@@ -246,9 +249,9 @@ export default function AnalyticsBillingTab({
       ],
       `lilycrest-billing-${branch || "all"}-${range}`,
     );
-  };
+  }, [filteredOverdue, branch, range]);
 
-  const exportPdf = () => {
+  const exportPdf = useCallback(() => {
     handlePdfExport({
       title: "Billing & Revenue Analytics Report",
       subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
@@ -320,7 +323,7 @@ export default function AnalyticsBillingTab({
         },
       ],
     });
-  };
+  }, [range, data, branch, metricCards, insight, revenueByMonth, utilityBreakdown, overdueAging, filteredOverdue]);
 
   useEffect(() => {
     if (registerExport) {

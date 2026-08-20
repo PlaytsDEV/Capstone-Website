@@ -143,9 +143,9 @@ describe("ensureCurrentCycleRentBill", () => {
   });
 
   test.each([
-    ["2026-01-05T00:00:00.000Z", "2026-02-26T00:00:00.000Z", "2026-3-5", "2026-4-5", "2026-3-5"],
-    ["2026-01-12T00:00:00.000Z", "2026-03-05T00:00:00.000Z", "2026-3-12", "2026-4-12", "2026-3-12"],
-    ["2026-01-23T00:00:00.000Z", "2026-03-16T00:00:00.000Z", "2026-3-23", "2026-4-23", "2026-3-23"],
+    ["2026-01-05T00:00:00.000Z", "2026-02-19T00:00:00.000Z", "2026-3-5", "2026-4-5", "2026-2-26"],
+    ["2026-01-12T00:00:00.000Z", "2026-02-26T00:00:00.000Z", "2026-3-12", "2026-4-12", "2026-3-5"],
+    ["2026-01-23T00:00:00.000Z", "2026-03-09T00:00:00.000Z", "2026-3-23", "2026-4-23", "2026-3-16"],
   ])(
     "creates a bill on the tenant-specific generation date for move-in %s",
     async (moveInDate, referenceDate, expectedStart, expectedEnd, expectedDueDate) => {
@@ -247,7 +247,7 @@ describe("ensureCurrentCycleRentBill", () => {
     expect(result.status).toBe("preview");
     expect(localYmd(result.cycle.billingCycleStart)).toBe("2026-3-5");
     expect(localYmd(result.cycle.billingCycleEnd)).toBe("2026-4-5");
-    expect(localYmd(result.cycle.dueDate)).toBe("2026-3-5");
+    expect(localYmd(result.cycle.dueDate)).toBe("2026-2-26");
     expect(localYmd(result.bill.billingCycleStart)).toBe("2026-3-5");
     expect(notify.billGenerated).not.toHaveBeenCalled();
   });

@@ -60,6 +60,16 @@ router.post(
   verifyApplicant,
   maintenanceController.sendTenantReply,
 );
+router.post(
+  "/:requestId/typing",
+  verifyApplicant,
+  maintenanceController.broadcastTenantMaintenanceTyping,
+);
+router.patch(
+  "/:requestId/read",
+  verifyApplicant,
+  maintenanceController.markTenantMaintenanceRead,
+);
 
 // ============================================================================
 // ADMIN/STAFF ROUTES
@@ -74,11 +84,27 @@ router.get(
 );
 
 router.patch(
+  "/admin/:requestId/read",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.markAdminMaintenanceRead,
+);
+
+router.patch(
   "/admin/:requestId/status",
   verifyAdmin,
   filterByBranch,
   requirePermission("manageMaintenance"),
   maintenanceController.updateAdminRequestStatus,
+);
+
+router.patch(
+  "/admin/:requestId/reopen",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.reopenAdminMaintenanceRequest,
 );
 
 router.patch(
@@ -169,9 +195,18 @@ router.post(
   maintenanceController.sendAdminReply,
 );
 
+router.post(
+  "/admin/:requestId/typing",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.broadcastAdminMaintenanceTyping,
+);
+
 router.get("/my-requests", verifyApplicant, maintenanceController.getMyRequests);
 router.post("/requests", verifyApplicant, maintenanceController.createRequestCompat);
 router.post("/requests/:requestId/reply", verifyApplicant, maintenanceController.sendTenantReply);
+router.post("/requests/:requestId/typing", verifyApplicant, maintenanceController.broadcastTenantMaintenanceTyping);
 router.get("/requests/:requestId", maintenanceController.getRequestById);
 
 router.get("/:requestId", maintenanceController.getRequestById);

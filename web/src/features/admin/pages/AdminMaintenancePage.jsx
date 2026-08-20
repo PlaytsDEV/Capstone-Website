@@ -97,6 +97,7 @@ import {
   validatePhilippineMobile,
   validateProgressAttachmentFile,
   formatSlaState,
+  getDateFieldLabel,
   getStageLabel,
   getStatusLabel,
   getStageStatusLabel,
@@ -145,6 +146,8 @@ export default function AdminMaintenancePage() {
     setUrgencyFilter,
     slaFilter,
     setSlaFilter,
+    dateType,
+    setDateType,
     dateFrom,
     setDateFrom,
     dateTo,
@@ -358,24 +361,43 @@ export default function AdminMaintenancePage() {
         onRemove: () => setSlaFilter("all"),
       });
     }
-    if (dateFrom) {
+    if (dateFrom && dateTo) {
+      const fieldLabel = getDateFieldLabel(dateType);
       chips.push({
-        key: `from-${dateFrom}`,
-        label: `From: ${fmtDate(dateFrom)}`,
+        key: `date-range-${dateType}-${dateFrom}-${dateTo}`,
+        label: `${fieldLabel}: ${fmtDate(dateFrom)} – ${fmtDate(dateTo)}`,
+        onRemove: () => {
+          setDateFrom("");
+          setDateTo("");
+        },
+      });
+    } else if (dateFrom) {
+      const fieldLabel = getDateFieldLabel(dateType);
+      chips.push({
+        key: `from-${dateType}-${dateFrom}`,
+        label: `${fieldLabel} From: ${fmtDate(dateFrom)}`,
         onRemove: () => setDateFrom(""),
       });
-    }
-    if (dateTo) {
+    } else if (dateTo) {
+      const fieldLabel = getDateFieldLabel(dateType);
       chips.push({
-        key: `to-${dateTo}`,
-        label: `To: ${fmtDate(dateTo)}`,
+        key: `to-${dateType}-${dateTo}`,
+        label: `${fieldLabel} To: ${fmtDate(dateTo)}`,
         onRemove: () => setDateTo(""),
+      });
+    } else if (dateType !== "created_at") {
+      const fieldLabel = getDateFieldLabel(dateType);
+      chips.push({
+        key: `datetype-${dateType}`,
+        label: `Date Target: ${fieldLabel}`,
+        onRemove: () => setDateType("created_at"),
       });
     }
     return chips;
   }, [
     archiveView,
     branchFilter,
+    dateType,
     dateFrom,
     dateTo,
     isOwner,
@@ -556,10 +578,17 @@ export default function AdminMaintenancePage() {
   };
 
   const handleRateProvider = async (payload) => {
-    if (!selectedRequest) return;
+    const targetRequestId =
+      payload?.requestId ||
+      selectedRequest?.request_id ||
+      selectedRequest?.id ||
+      selectedRequest?._id ||
+      selectedRequestId;
+
+    if (!targetRequestId) return null;
     try {
-      await rateProviderMutation.mutateAsync({
-        requestId: selectedRequest.request_id,
+      const res = await rateProviderMutation.mutateAsync({
+        requestId: targetRequestId,
         ...payload,
       });
       showNotification({
@@ -567,12 +596,14 @@ export default function AdminMaintenancePage() {
         message: "Contractor rating recorded. This helps prioritize top-rated contractors in future AI suggestions.",
         type: "success",
       });
+      return res;
     } catch (err) {
       showNotification({
         title: "Rating Failed",
         message: getMaintenanceApiErrorMessage(err, "Unable to record provider rating."),
         type: "error",
       });
+      throw err;
     }
   };
 
@@ -611,7 +642,11 @@ export default function AdminMaintenancePage() {
         requestId: selectedRequest.request_id,
         reportType,
       });
-      setReportPreview(res?.data || res);
+      const reportPayload = res?.data || res;
+      setReportPreview(reportPayload);
+      if (reportPayload?.request) {
+        setSelectedRequest(reportPayload.request);
+      }
     } catch (err) {
       showNotification({
         title: "Report Generation Failed",
@@ -657,6 +692,7 @@ export default function AdminMaintenancePage() {
             urgencyFilter={urgencyFilter}
             slaFilter={slaFilter}
             requestTypeFilter={requestTypeFilter}
+            dateType={dateType}
             dateFrom={dateFrom}
             dateTo={dateTo}
             sortMode={sortMode}
@@ -674,6 +710,7 @@ export default function AdminMaintenancePage() {
             onUrgencyFilterChange={setUrgencyFilter}
             onSlaFilterChange={setSlaFilter}
             onRequestTypeFilterChange={setRequestTypeFilter}
+            onDateTypeChange={setDateType}
             onDateFromChange={setDateFrom}
             onDateToChange={setDateTo}
             onSortModeChange={setSortMode}
@@ -752,6 +789,14 @@ export default function AdminMaintenancePage() {
             open={Boolean(reportPreview)}
             report={reportPreview}
             request={selectedRequest}
+            onExport={(format) => {
+              if (format === "csv") {
+                handleExportCsv();
+              } else {
+                handleExportPdf();
+              }
+            }}
+            onSendToTenant={() => setSendTenantSummaryDialogOpen(true)}
             onClose={() => setReportPreview(null)}
           />
 

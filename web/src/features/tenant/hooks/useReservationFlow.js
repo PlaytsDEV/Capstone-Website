@@ -2950,6 +2950,7 @@ export default function useReservationFlow() {
           setApplicationSubmitted(true);
           setEditingApplication(false);
           await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+          await queryClient.invalidateQueries({ queryKey: ["users"] });
           setSuccessOverlay({
             show: true,
             title: "Application Submitted!",

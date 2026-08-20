@@ -496,7 +496,7 @@ const AuditLogsPage = () => {
       const result = await cleanupAuditLogs.mutateAsync(daysToKeep);
       setIsCleanupConfirmOpen(false);
       showNotification(
-        `Old activity logs cleaned up successfully. ${result.deletedCount || 0} record(s) removed.`,
+        `Old activity logs cleaned up successfully. ${result.deletedCount || 0} record(s) deleted.`,
         "success",
         3500,
       );

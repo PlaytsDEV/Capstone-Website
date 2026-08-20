@@ -250,7 +250,7 @@ export default function AnalyticsSupportChatTab({
       },
       {
         icon: Clock,
-        tone: "purple",
+        tone: "amber",
         label: "Avg Resolution Turnaround",
         value: kpis.avgResolutionLabel || "0m",
         trend: "From creation to resolution",

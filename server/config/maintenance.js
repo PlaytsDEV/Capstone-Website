@@ -216,3 +216,60 @@ export const buildMaintenanceNotificationTitle = (requestType) =>
 export const buildMaintenanceNotificationBody = (requestType, status) =>
   `Your ${formatMaintenanceTypeLabel(requestType).toLowerCase()} request is now ${formatMaintenanceStatusLabel(status)}.`;
 
+export const MAINTENANCE_OPERATING_HOURS = Object.freeze({
+  startHour: 8,
+  endHour: 18,
+  allowSunday: false,
+  minAdvanceMinutes: 120, // 2 hours
+});
+
+export const validateMaintenanceSlot = (dateInput, { isEmergency = false, now = new Date() } = {}) => {
+  if (!dateInput) return { valid: false, reason: "A valid preferred reschedule date and time is required." };
+  const date = new Date(dateInput);
+  if (Number.isNaN(date.getTime())) {
+    return { valid: false, reason: "Invalid date format." };
+  }
+
+  const diffMs = date.getTime() - now.getTime();
+  const minAdvanceMs = MAINTENANCE_OPERATING_HOURS.minAdvanceMinutes * 60 * 1000;
+  if (diffMs < minAdvanceMs) {
+    return {
+      valid: false,
+      reason: "Please select a preferred visit time at least 2 hours in advance.",
+    };
+  }
+
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const localTimeInHours = hours + minutes / 60;
+
+  const utcHours = date.getUTCHours();
+  const utcMinutes = date.getUTCMinutes();
+  const utcTimeInHours = utcHours + utcMinutes / 60;
+
+  const isLocalInRange =
+    localTimeInHours >= MAINTENANCE_OPERATING_HOURS.startHour &&
+    localTimeInHours <= MAINTENANCE_OPERATING_HOURS.endHour;
+  const isUtcInRange =
+    utcTimeInHours >= MAINTENANCE_OPERATING_HOURS.startHour &&
+    utcTimeInHours <= MAINTENANCE_OPERATING_HOURS.endHour;
+
+  if (!isLocalInRange && !isUtcInRange) {
+    return {
+      valid: false,
+      reason: "Maintenance visits must be scheduled between 8:00 AM and 6:00 PM.",
+    };
+  }
+
+  const dayOfWeek = date.getDay(); // 0 = Sunday
+  const utcDayOfWeek = date.getUTCDay();
+  if ((dayOfWeek === 0 || utcDayOfWeek === 0) && !isLocalInRange && !MAINTENANCE_OPERATING_HOURS.allowSunday && !isEmergency) {
+    return {
+      valid: false,
+      reason: "Standard maintenance visits are scheduled Monday through Saturday.",
+    };
+  }
+
+  return { valid: true, date };
+};
+

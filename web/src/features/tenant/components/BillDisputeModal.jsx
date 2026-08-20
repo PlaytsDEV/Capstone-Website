@@ -65,7 +65,7 @@ export default function BillDisputeModal({ isOpen, onClose, bill, onDisputeSubmi
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="Explain why you are contesting this charge (e.g. meter reading discrepancy, incorrect rate)..."
-            className="w-full p-2.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full p-2.5 text-xs border border-slate-300 rounded focus:ring-2 focus:ring-[#0A1628]/20 focus:border-[#0A1628]"
             required
           />
         </div>
@@ -80,7 +80,7 @@ export default function BillDisputeModal({ isOpen, onClose, bill, onDisputeSubmi
             value={evidenceUrl}
             onChange={(e) => setEvidenceUrl(e.target.value)}
             placeholder="https://example.com/meter-photo.jpg"
-            className="w-full p-2 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500"
+            className="w-full p-2 text-xs border border-slate-300 rounded focus:ring-2 focus:ring-[#0A1628]/20 focus:border-[#0A1628]"
           />
         </div>
 
@@ -95,7 +95,7 @@ export default function BillDisputeModal({ isOpen, onClose, bill, onDisputeSubmi
           <button
             type="submit"
             disabled={loading}
-            className="px-4 py-2 text-xs font-medium text-white bg-indigo-600 border border-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50"
+            className="px-4 py-2 text-xs font-medium text-white bg-[#0A1628] border border-[#0A1628] rounded hover:bg-[#13243D] disabled:opacity-50"
           >
             {loading ? "Submitting..." : "Submit Dispute"}
           </button>

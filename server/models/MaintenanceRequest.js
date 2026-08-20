@@ -145,6 +145,21 @@ const reopenHistorySchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    actor_id: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    actor_name: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    actor_role: {
+      type: String,
+      default: null,
+      trim: true,
+    },
   },
   { _id: false },
 );
@@ -504,6 +519,15 @@ const completionReportSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    generatedAt: {
+      type: Date,
+      default: null,
+    },
+    reportType: {
+      type: String,
+      enum: ["admin", "tenant", null],
+      default: "admin",
+    },
     reportUrl: {
       type: String,
       default: null,
@@ -836,8 +860,8 @@ const maintenanceRequestSchema = new mongoose.Schema(
     },
     branch: {
       type: String,
-      enum: ROOM_BRANCHES,
-      required: true,
+      enum: [...ROOM_BRANCHES, null],
+      default: "gil-puyat",
       index: true,
     },
     userId: {
@@ -904,8 +928,13 @@ const maintenanceRequestSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // --- Unread tracking (Decision #5: lastAdminReadAt) ---
+    // --- Unread tracking (lastAdminReadAt & lastTenantReadAt) ---
     lastAdminReadAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    lastTenantReadAt: {
       type: Date,
       default: null,
       index: true,
@@ -989,6 +1018,9 @@ maintenanceRequestSchema.pre("validate", function ensureIdentifiers(next) {
   }
   if (!this.ticketNumber) {
     this.ticketNumber = buildTicketNumber();
+  }
+  if (!this.branch) {
+    this.branch = "gil-puyat";
   }
   next();
 });

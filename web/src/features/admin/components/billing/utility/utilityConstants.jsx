@@ -114,7 +114,7 @@ export const toInputDate = (value) => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-export const getTodayInput = () => new Date().toISOString().slice(0, 10);
+export const getTodayInput = () => toInputDate(new Date());
 
 export const getCycleLabel = (period) =>
   period
@@ -146,7 +146,7 @@ export const getDisplayStatusIcon = (status) => {
     return <CheckCheck size={12} className="shrink-0 text-slate-500" />;
   }
   if (s === "ready_to_send" || s === "ready") {
-    return <Send size={12} className="shrink-0 text-sky-600 dark:text-sky-400" />;
+    return <Send size={12} className="shrink-0 text-emerald-600 dark:text-emerald-400" />;
   }
   if (s === "paid") {
     return <CheckCircle2 size={12} className="shrink-0 text-emerald-600 dark:text-emerald-400" />;
@@ -175,7 +175,7 @@ export const getHistoryStatusClasses = (status) => {
       return "text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 bg-transparent font-medium";
     case "ready_to_send":
     case "ready":
-      return "text-sky-700 dark:text-sky-400 border border-slate-200 dark:border-slate-700 bg-transparent font-semibold";
+      return "text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700 bg-transparent font-semibold";
     case "open":
     case "paid":
       return "text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700 bg-transparent font-semibold";
@@ -198,8 +198,8 @@ export const getRoomStatusInfo = (room) => {
     case "ready":
       return {
         label: "Ready to send",
-        dotClass: "bg-sky-500",
-        textClass: "text-sky-700 dark:text-sky-400",
+        dotClass: "bg-emerald-500",
+        textClass: "text-emerald-700 dark:text-emerald-400",
       };
     case "sent":
     case "finalized":

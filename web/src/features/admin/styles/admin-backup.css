@@ -406,8 +406,8 @@
 }
 
 .backup-type-badge--automatic {
-  background: var(--accent-purple-bg);
-  color: var(--chart-4);
+  background: var(--bg-active);
+  color: var(--text-secondary);
 }
 
 /* ── Table Actions ────────────────────────────────────────────────────────── */

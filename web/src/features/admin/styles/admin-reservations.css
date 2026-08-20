@@ -148,7 +148,7 @@
 .res-step-pill--blue   { background: var(--accent-blue-bg);   color: var(--accent-blue); }
 .res-step-pill--orange { background: var(--accent-orange-bg); color: var(--accent-orange); }
 .res-step-pill--green  { background: var(--accent-green-bg);  color: var(--accent-green); }
-.res-step-pill--purple { background: var(--accent-purple-bg); color: var(--accent-purple); }
+.res-step-pill--purple { background: var(--bg-active); color: var(--text-secondary); }
 .res-step-pill--gray   { background: var(--bg-active);        color: var(--text-secondary); }
 
 .res-id-pill {

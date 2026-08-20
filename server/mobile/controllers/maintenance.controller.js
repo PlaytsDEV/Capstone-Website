@@ -20,6 +20,27 @@ const COLLECTIONS = [...new Set([PRIMARY_COLLECTION, LEGACY_COLLECTION])];
 // nothing below this file requires the field.
 const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
+async function emitMaintenanceUpdatedToAdmins(request, extra = {}) {
+  try {
+    const { emitToAdmins, emitToUser } = await import('../../utils/socket.js');
+    const payload = {
+      requestId: String(request?._id || request?.id || request?.request_id || ''),
+      request_id: request?.request_id,
+      ticketId: request?.request_id,
+      status: request?.status,
+      branch: request?.branch,
+      isArchived: Boolean(request?.isArchived),
+      ...extra,
+    };
+    emitToAdmins('ticket:updated', payload);
+    if (extra?.message) {
+      emitToAdmins('ticket:message', payload);
+    }
+  } catch {
+    // non-fatal
+  }
+}
+
 // Lazily create the uniqueness constraint the first time it's needed, the
 // same way auth.controller.js does for its otp_store TTL index — avoids a
 // separate migration step while still guaranteeing the index exists before
@@ -1064,6 +1085,13 @@ async function sendTenantReply(req, res) {
     });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
+
+    await emitMaintenanceUpdatedToAdmins(updated || located.request, {
+      message: reply,
+      conversation: updated?.conversation || conversation,
+      senderSide: 'tenant',
+    });
+
     res.status(201).json(stripTenantRequestFields(updated));
   } catch (error) {
     console.error('Tenant maintenance reply error:', error);
@@ -1211,6 +1239,7 @@ async function createMaintenance(req, res) {
 
     try {
       await db.collection(PRIMARY_COLLECTION).insertOne(newRequest);
+      emitMaintenanceUpdatedToAdmins(newRequest, { isNew: true });
     } catch (error) {
       if (clientRequestId && error?.code === 11000) {
         const winner = await db.collection(PRIMARY_COLLECTION).findOne({
@@ -1312,6 +1341,7 @@ async function updateMaintenance(req, res) {
     });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
+    emitMaintenanceUpdatedToAdmins(updated);
     res.json(stripTenantRequestFields(updated));
   } catch (error) {
     console.error('Update maintenance error:', error);
@@ -1371,6 +1401,7 @@ async function cancelMaintenance(req, res) {
     });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
+    emitMaintenanceUpdatedToAdmins(updated);
     res.json(stripTenantRequestFields(updated));
   } catch (error) {
     console.error('Cancel maintenance error:', error);
@@ -1454,6 +1485,7 @@ async function reopenMaintenance(req, res) {
     });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
+    emitMaintenanceUpdatedToAdmins(updated);
     res.json(stripTenantRequestFields(updated));
   } catch (error) {
     console.error('Reopen maintenance error:', error);
@@ -1497,13 +1529,13 @@ async function confirmMaintenanceResolved(req, res) {
       : [];
     statusHistory.push({
       event: 'tenant_confirmed_resolved',
-      status: 'resolved',
+      status: 'completed',
       actor_id: req.user.user_id || null,
       actor_name: actorNameFromUser(req.user),
       actor_role: req.user.role || 'tenant',
       note: feedback
-        ? `Tenant verified issue resolution${ratingNote}. Feedback: "${feedback}"`
-        : `Tenant verified issue resolution${ratingNote}.`,
+        ? `Tenant confirmed resolution of maintenance request${ratingNote}. Feedback: "${feedback}"`
+        : `Tenant confirmed resolution of maintenance request${ratingNote}.`,
       timestamp: now,
     });
 
@@ -1518,10 +1550,11 @@ async function confirmMaintenanceResolved(req, res) {
       { request_id: located.request.request_id || requestId },
       {
         $set: {
-          status: 'resolved',
+          status: 'completed',
           tenant_confirmed_resolved: true,
           resolutionConfirmation,
           resolved_at: located.request.resolved_at || now,
+          closed_at: now,
           statusHistory,
           updated_at: now,
           updatedAt: now,
@@ -1534,6 +1567,7 @@ async function confirmMaintenanceResolved(req, res) {
     });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
+    emitMaintenanceUpdatedToAdmins(updated);
     res.json(stripTenantRequestFields(updated));
   } catch (error) {
     console.error('Confirm maintenance resolved error:', error);

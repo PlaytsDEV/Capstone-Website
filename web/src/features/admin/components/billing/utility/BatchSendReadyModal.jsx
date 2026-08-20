@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   Send,
@@ -96,9 +97,9 @@ export default function BatchSendReadyModal({
     onConfirmSend(idsToSend);
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
       role="dialog"
@@ -152,6 +153,7 @@ export default function BatchSendReadyModal({
               />
               <input
                 type="text"
+                maxLength={50}
                 placeholder="Search room name or branch..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -341,6 +343,7 @@ export default function BatchSendReadyModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

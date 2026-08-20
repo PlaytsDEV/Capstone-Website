@@ -41,6 +41,24 @@ const _setDashboardCache = (branch, rangeKey, data) => {
   const key = _getDashboardCacheKey(branch, rangeKey);
   _dashboardCache.set(key, { data, expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS });
 };
+
+// ─── In-process audit analytics cache ───────────────────────────────────────
+const _auditCache = new Map();
+const AUDIT_CACHE_TTL_MS = 30_000;
+
+const _getAuditCacheKey = (branch, rangeKey) => `${branch}:${rangeKey}`;
+
+const _getAuditCacheHit = (branch, rangeKey) => {
+  const key = _getAuditCacheKey(branch, rangeKey);
+  const entry = _auditCache.get(key);
+  if (entry && entry.expiresAt > Date.now()) return entry.data;
+  return null;
+};
+
+const _setAuditCache = (branch, rangeKey, data) => {
+  const key = _getAuditCacheKey(branch, rangeKey);
+  _auditCache.set(key, { data, expiresAt: Date.now() + AUDIT_CACHE_TTL_MS });
+};
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DASHBOARD_RANGE_DAYS = Object.freeze({
@@ -204,11 +222,13 @@ const calculatePeriodDelta = (
   };
 };
 
-const formatBranchLabel = (value) =>
-  value
+const formatBranchLabel = (value) => {
+  if (!value || typeof value !== "string") return "General";
+  return value
     .split("-")
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
+};
 
 const parseCustomDays = (value) => {
   if (!value) return null;
@@ -1748,12 +1768,14 @@ const buildAuditSummaryData = async (scope, rangeKey, tableRequest = parseTableR
             ],
           }),
     })
+      .select("logId branch type action severity user timestamp details")
       .sort({ timestamp: -1 })
       .lean(),
     LoginLog.find({
       success: false,
       createdAt: { $gte: sinceDate },
     })
+      .select("ipAddress email createdAt success")
       .sort({ createdAt: -1 })
       .lean(),
   ]);
@@ -2668,6 +2690,10 @@ export const getDashboardAnalytics = async (req, res, next) => {
 
     const roomIds = scopedRooms.map((room) => room._id);
 
+    const todayStart = dayjs().startOf("day").toDate();
+    const todayEnd = dayjs().endOf("day").toDate();
+    const next14Days = dayjs().add(14, "day").endOf("day").toDate();
+
     const [
       revenueCollected,
       approvedReservations,
@@ -2678,6 +2704,12 @@ export const getDashboardAnalytics = async (req, res, next) => {
       recentInquiries,
       branchComparison,
       billingTrendBills,
+      unverifiedPaymentsCount,
+      expiringLeasesCount,
+      todayMoveInsCount,
+      todayMoveOutsCount,
+      unrespondedInquiriesCount,
+      urgentMaintenanceCount,
     ] = await Promise.all([
       fetchRevenueCollected(scope.branchesIncluded, sinceDate),
       roomIds.length
@@ -2705,6 +2737,57 @@ export const getDashboardAnalytics = async (req, res, next) => {
       buildBranchComparison(scope, sinceDate),
       fetchScopedBills(scope.branchesIncluded, {
         billingMonth: { $gte: billingSinceMonth },
+      }),
+      roomIds.length
+        ? Reservation.countDocuments({
+            roomId: { $in: roomIds },
+            isArchived: false,
+            status: { $in: ["approved_for_payment", "payment_pending", "under_review", "pending_approval"] },
+          })
+        : 0,
+      roomIds.length
+        ? Reservation.countDocuments({
+            roomId: { $in: roomIds },
+            isArchived: false,
+            status: { $in: APPROVED_RESERVATION_STATUSES },
+            $or: [
+              { checkOutDate: { $gte: todayStart, $lte: next14Days } },
+              { moveOutDate: { $gte: todayStart, $lte: next14Days } },
+            ],
+          })
+        : 0,
+      roomIds.length
+        ? Reservation.countDocuments({
+            roomId: { $in: roomIds },
+            isArchived: false,
+            status: { $in: ["approved", "confirmed", "reserved", "approved_for_payment"] },
+            $or: [
+              { moveInDate: { $gte: todayStart, $lte: todayEnd } },
+              { targetMoveInDate: { $gte: todayStart, $lte: todayEnd } },
+            ],
+          })
+        : 0,
+      roomIds.length
+        ? Reservation.countDocuments({
+            roomId: { $in: roomIds },
+            isArchived: false,
+            status: { $in: ["moveOut", "active", "checked_in", "movein", "moved_in"] },
+            $or: [
+              { checkOutDate: { $gte: todayStart, $lte: todayEnd } },
+              { moveOutDate: { $gte: todayStart, $lte: todayEnd } },
+            ],
+          })
+        : 0,
+      Inquiry.countDocuments({
+        branch: { $in: getInquiryBranches(scope.branchesIncluded) },
+        isArchived: { $ne: true },
+        status: { $nin: ["resolved", "closed"] },
+      }),
+      MaintenanceRequest.countDocuments({
+        branch: { $in: scope.branchesIncluded },
+        isArchived: false,
+        status: { $in: OPEN_MAINTENANCE_STATUSES },
+        urgency: "high",
       }),
     ]);
 
@@ -2749,6 +2832,21 @@ export const getDashboardAnalytics = async (req, res, next) => {
       filters: {
         range: rangeKey,
         since: sinceDate.toISOString(),
+      },
+      triage: {
+        unverifiedPayments: unverifiedPaymentsCount,
+        expiringLeases: expiringLeasesCount,
+        todayMoveIns: todayMoveInsCount,
+        todayMoveOuts: todayMoveOutsCount,
+        unrespondedInquiries: unrespondedInquiriesCount,
+        urgentMaintenance: urgentMaintenanceCount,
+        totalActionable:
+          unverifiedPaymentsCount +
+          expiringLeasesCount +
+          todayMoveInsCount +
+          todayMoveOutsCount +
+          unrespondedInquiriesCount +
+          urgentMaintenanceCount,
       },
       kpis: {
         occupancyRate,
@@ -2902,7 +3000,32 @@ export const getAuditSummary = async (req, res, next) => {
   try {
     const scope = await resolveAnalyticsScope(req);
     const rangeKey = String(req.query.range || "30d").trim().toLowerCase();
-    sendSuccess(res, await buildAuditSummaryData(scope, rangeKey, parseTableRequest(req.query)));
+
+    // ── Cache hit: return instantly without re-aggregating logs ──────────────
+    const cacheHit = _getAuditCacheHit(
+      scope.branch === "all" ? "all" : scope.branch,
+      rangeKey,
+    );
+    if (cacheHit && !req.query.tableOffset && !req.query.offset) {
+      return sendSuccess(res, cacheHit);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const responsePayload = await buildAuditSummaryData(
+      scope,
+      rangeKey,
+      parseTableRequest(req.query),
+    );
+
+    if (!req.query.tableOffset && !req.query.offset) {
+      _setAuditCache(
+        scope.branch === "all" ? "all" : scope.branch,
+        rangeKey,
+        responsePayload,
+      );
+    }
+
+    sendSuccess(res, responsePayload);
   } catch (error) {
     next(error);
   }

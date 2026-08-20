@@ -47,7 +47,7 @@ export default function LeaseRenewalModal({ isOpen, onClose, renewalOffer, reser
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Proposed Monthly Rent:</span>
-            <span className="font-bold text-indigo-600">₱{renewalOffer.proposedRent?.toLocaleString() || "0"}</span>
+            <span className="font-bold text-slate-900">₱{renewalOffer.proposedRent?.toLocaleString() || "0"}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Proposed Lease Term:</span>
@@ -73,7 +73,7 @@ export default function LeaseRenewalModal({ isOpen, onClose, renewalOffer, reser
             value={tenantNotes}
             onChange={(e) => setTenantNotes(e.target.value)}
             placeholder="Add any questions or remarks regarding the proposed lease renewal..."
-            className="w-full p-2.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500"
+            className="w-full p-2.5 text-xs border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
           />
         </div>
 
@@ -82,7 +82,7 @@ export default function LeaseRenewalModal({ isOpen, onClose, renewalOffer, reser
             type="button"
             onClick={() => handleRespond("decline")}
             disabled={loading}
-            className="px-4 py-2 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 disabled:opacity-50"
+            className="px-4 py-2 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded hover:bg-rose-100 disabled:opacity-50"
           >
             Decline Proposal
           </button>
@@ -90,7 +90,7 @@ export default function LeaseRenewalModal({ isOpen, onClose, renewalOffer, reser
             type="button"
             onClick={() => handleRespond("accept")}
             disabled={loading}
-            className="px-4 py-2 text-xs font-medium text-white bg-indigo-600 border border-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50"
+            className="px-4 py-2 text-xs font-medium text-white bg-emerald-600 border border-emerald-600 rounded hover:bg-emerald-700 disabled:opacity-50"
           >
             {loading ? "Processing..." : "Sign & Accept Renewal"}
           </button>

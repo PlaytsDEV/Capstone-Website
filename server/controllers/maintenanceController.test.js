@@ -127,6 +127,9 @@ const {
   finalizeAdminMaintenanceReport,
   confirmResolution,
   requestMaintenanceReschedule,
+  respondToMaintenanceReschedule,
+  reopenAdminMaintenanceRequest,
+  rateAdminMaintenanceProvider,
 } = await import("./maintenanceController.js");
 const {
   resolveMaintenanceRequestBranch,
@@ -378,6 +381,65 @@ describe("maintenanceController", () => {
     expect(sendSuccess).toHaveBeenCalledTimes(1);
     expect(sendSuccess.mock.calls[0][1].requests[0].tenant.full_name).toBe("Lily Tenant");
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("getAdminAll applies date_type filtering for scheduled and resolved dates", async () => {
+    const requestDoc = buildRequestDoc();
+    maintenanceFind.mockReturnValue(buildListQuery([requestDoc]));
+    userFind.mockReturnValue(
+      buildSelectLeanQuery([
+        {
+          user_id: requestDoc.user_id,
+          firstName: "Lily",
+          lastName: "Tenant",
+          role: "tenant",
+        },
+      ]),
+    );
+
+    const reqScheduled = {
+      query: {
+        date_type: "scheduled_date",
+        date_from: "2026-05-01",
+        date_to: "2026-05-31",
+      },
+      branchFilter: null,
+      isOwner: true,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await getAdminAll(reqScheduled, res, next);
+
+    expect(maintenanceFind).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "schedule.scheduledDate": expect.objectContaining({
+          $gte: expect.any(Date),
+          $lte: expect.any(Date),
+        }),
+      }),
+    );
+
+    const reqResolved = {
+      query: {
+        date_type: "resolved_at",
+        date_from: "2026-05-01",
+        date_to: "2026-05-31",
+      },
+      branchFilter: null,
+      isOwner: true,
+    };
+
+    await getAdminAll(reqResolved, res, next);
+
+    expect(maintenanceFind).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resolved_at: expect.objectContaining({
+          $gte: expect.any(Date),
+          $lte: expect.any(Date),
+        }),
+      }),
+    );
   });
 
   test("resolveUploadBranch uses admin maintenance request context from requestId", async () => {
@@ -1593,19 +1655,7 @@ describe("maintenanceController", () => {
       }),
     );
     expect(requestDoc.save).toHaveBeenCalledTimes(1);
-    expect(maintenanceUpdated).toHaveBeenCalledWith(
-      "mongo_user_1",
-      "plumbing",
-      "pending",
-      requestDoc.request_id,
-      {
-        statusChanged: false,
-        hasAdminNote: true,
-        hasProgressEntry: false,
-        hasProgressAttachments: false,
-        eventId: expect.stringMatching(/^reply:/),
-      },
-    );
+    expect(maintenanceUpdated).not.toHaveBeenCalled();
     expect(sendSuccess).toHaveBeenCalledTimes(1);
     expect(next).not.toHaveBeenCalled();
   });
@@ -2825,19 +2875,7 @@ describe("maintenanceController", () => {
         }),
       );
       expect(requestDoc.save).toHaveBeenCalledTimes(1);
-      expect(maintenanceUpdated).toHaveBeenCalledWith(
-        "tenant_user_1",
-        "plumbing",
-        "in_progress",
-        requestDoc.request_id,
-        {
-          statusChanged: false,
-          hasAdminNote: true,
-          hasProgressEntry: false,
-          hasProgressAttachments: false,
-          eventId: expect.stringMatching(/^reply:/),
-        },
-      );
+      expect(maintenanceUpdated).not.toHaveBeenCalled();
       expect(sendSuccess.mock.calls[0][1].report).toEqual(
         expect.objectContaining({
           reportType: "tenant",
@@ -3063,6 +3101,66 @@ describe("maintenanceController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("reopenAdminMaintenanceRequest allows staff to reopen ticket with required reason and records new history cycle", async () => {
+    const requestDoc = buildRequestDoc({
+      status: "completed",
+      resolved_at: new Date("2026-04-10T08:00:00.000Z"),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation(({ firebaseUid, user_id }) => {
+      if (firebaseUid === "firebase_admin_uid") {
+        return buildLeanQuery({
+          _id: "mongo_admin_1",
+          user_id: "user_admin_1",
+          firstName: "Staff",
+          lastName: "Admin",
+          email: "staff@lilycrest.com",
+          branch: "gil-puyat",
+          role: "admin",
+        });
+      }
+      return buildLeanQuery({
+        _id: "mongo_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "gil-puyat",
+        role: "tenant",
+      });
+    });
+
+    const req = {
+      user: { uid: "firebase_admin_uid" },
+      branchFilter: "gil-puyat",
+      params: { requestId: requestDoc.request_id },
+      body: { note: "Tenant reported in person that faucet is still leaking", nextStatus: "in_progress" },
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await reopenAdminMaintenanceRequest(req, res, next);
+
+    expect(requestDoc.status).toBe("in_progress");
+    expect(requestDoc.isReopened).toBe(true);
+    expect(requestDoc.reopenCount).toBe(1);
+    expect(requestDoc.reopen_note).toBe("Tenant reported in person that faucet is still leaking");
+    expect(requestDoc.reopen_history).toHaveLength(1);
+    expect(requestDoc.reopen_history[0]).toEqual(
+      expect.objectContaining({
+        previous_status: "completed",
+        note: "Tenant reported in person that faucet is still leaking",
+        actor_name: "Staff Admin",
+        actor_role: "admin",
+      }),
+    );
+    expect(requestDoc.resolved_at).toBeNull();
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("confirmResolution: confirms resolution and records 5-star tenant rating", async () => {
     const requestDoc = buildRequestDoc({
       status: "resolved",
@@ -3097,7 +3195,7 @@ describe("maintenanceController", () => {
 
     await confirmResolution(req, res, next);
 
-    expect(requestDoc.status).toBe("resolved");
+    expect(requestDoc.status).toBe("completed");
     expect(requestDoc.resolutionConfirmation).toEqual(
       expect.objectContaining({
         action: "confirm",
@@ -3109,7 +3207,7 @@ describe("maintenanceController", () => {
       expect.arrayContaining([
         expect.objectContaining({
           event: "tenant_confirmed_resolved",
-          status: "resolved",
+          status: "completed",
         }),
       ]),
     );
@@ -3253,6 +3351,460 @@ describe("maintenanceController", () => {
     );
     expect(requestDoc.save).toHaveBeenCalledTimes(1);
     expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("respondToMaintenanceReschedule: accepts tenant reschedule request", async () => {
+    const requestDoc = new MockMaintenanceRequest({
+      _id: "req_reschedule_accept",
+      request_id: "maint_reschedule_accept",
+      user_id: "user_95f39d5b4ea4",
+      branch: "gil-puyat",
+      status: "in_progress",
+      schedule: {
+        scheduledDate: new Date("2026-08-20T10:00:00.000Z"),
+      },
+      rescheduleRequest: {
+        proposedDate: new Date("2026-08-22T14:00:00.000Z"),
+        reason: "Tenant preferred afternoon.",
+        status: "pending",
+      },
+    });
+
+    maintenanceFindOne.mockImplementation(() => ({
+      populate: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue(requestDoc),
+      then: (resolve) => resolve(requestDoc),
+    }));
+
+    userFindOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          _id: "admin_id_1",
+          user_id: "user_admin_1",
+          firstName: "Admin",
+          lastName: "Staff",
+          role: "branch_admin",
+          branch: "gil-puyat",
+        }),
+      }),
+      lean: jest.fn().mockResolvedValue({
+        _id: "admin_id_1",
+        user_id: "user_admin_1",
+        firstName: "Admin",
+        lastName: "Staff",
+        role: "branch_admin",
+        branch: "gil-puyat",
+      }),
+    });
+
+    const req = {
+      user: { uid: "admin_firebase_uid" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        action: "accept",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await respondToMaintenanceReschedule(req, res, next);
+
+    expect(requestDoc.rescheduleRequest.status).toBe("accepted");
+    expect(requestDoc.schedule.scheduledDate).toEqual(new Date("2026-08-22T14:00:00.000Z"));
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("respondToMaintenanceReschedule: adjusts schedule with required staff note", async () => {
+    const requestDoc = new MockMaintenanceRequest({
+      _id: "req_reschedule_adjust",
+      request_id: "maint_reschedule_adjust",
+      user_id: "user_95f39d5b4ea4",
+      branch: "gil-puyat",
+      status: "in_progress",
+      rescheduleRequest: {
+        proposedDate: new Date("2026-08-22T09:00:00.000Z"),
+        reason: "Tenant preferred morning.",
+        status: "pending",
+      },
+    });
+
+    maintenanceFindOne.mockImplementation(() => ({
+      populate: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue(requestDoc),
+      then: (resolve) => resolve(requestDoc),
+    }));
+
+    userFindOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          _id: "admin_id_1",
+          user_id: "user_admin_1",
+          firstName: "Admin",
+          lastName: "Staff",
+          role: "branch_admin",
+          branch: "gil-puyat",
+        }),
+      }),
+      lean: jest.fn().mockResolvedValue({
+        _id: "admin_id_1",
+        user_id: "user_admin_1",
+        firstName: "Admin",
+        lastName: "Staff",
+        role: "branch_admin",
+        branch: "gil-puyat",
+      }),
+    });
+
+    const req = {
+      user: { uid: "admin_firebase_uid" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        action: "adjust",
+        scheduledDate: "2026-08-22T14:00:00.000Z",
+        notes: "Technician available at 2 PM instead.",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await respondToMaintenanceReschedule(req, res, next);
+
+    expect(requestDoc.rescheduleRequest.status).toBe("adjusted");
+    expect(requestDoc.rescheduleRequest.responseNote).toBe("Technician available at 2 PM instead.");
+    expect(requestDoc.schedule.scheduledDate).toEqual(new Date("2026-08-22T14:00:00.000Z"));
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("respondToMaintenanceReschedule: rejects adjust when explanation note is missing", async () => {
+    const requestDoc = new MockMaintenanceRequest({
+      _id: "req_reschedule_adjust_err",
+      request_id: "maint_reschedule_adjust_err",
+      user_id: "user_95f39d5b4ea4",
+      branch: "gil-puyat",
+      status: "in_progress",
+      rescheduleRequest: {
+        proposedDate: new Date("2026-08-22T09:00:00.000Z"),
+        status: "pending",
+      },
+    });
+
+    maintenanceFindOne.mockImplementation(() => ({
+      populate: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue(requestDoc),
+      then: (resolve) => resolve(requestDoc),
+    }));
+
+    userFindOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          _id: "admin_id_1",
+          user_id: "user_admin_1",
+          firstName: "Admin",
+          lastName: "Staff",
+          role: "branch_admin",
+          branch: "gil-puyat",
+        }),
+      }),
+      lean: jest.fn().mockResolvedValue({
+        _id: "admin_id_1",
+        user_id: "user_admin_1",
+        firstName: "Admin",
+        lastName: "Staff",
+        role: "branch_admin",
+        branch: "gil-puyat",
+      }),
+    });
+
+    const req = {
+      user: { uid: "admin_firebase_uid" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        action: "adjust",
+        scheduledDate: "2026-08-22T14:00:00.000Z",
+        notes: "",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await respondToMaintenanceReschedule(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "RESPONSE_NOTE_REQUIRED",
+      }),
+    );
+  });
+
+  test("respondToMaintenanceReschedule: declines tenant reschedule request with required reason note", async () => {
+    const requestDoc = new MockMaintenanceRequest({
+      _id: "req_reschedule_decline_1",
+      request_id: "MNT-2026-9904",
+      status: "in_progress",
+      branch: "gil-puyat",
+      user_id: "user_95f39d5b4ea4",
+      schedule: {
+        scheduledDate: new Date("2026-08-20T10:00:00.000Z"),
+      },
+      rescheduleRequest: {
+        status: "pending",
+        proposedDate: new Date("2026-08-21T15:00:00.000Z"),
+        reason: "Midterm exam",
+      },
+    });
+
+    maintenanceFindOne.mockImplementation(() => ({
+      populate: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue(requestDoc),
+      then: (resolve) => resolve(requestDoc),
+    }));
+
+    userFindOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          _id: "admin_id_1",
+          user_id: "user_admin_1",
+          firstName: "Admin",
+          lastName: "Staff",
+          role: "branch_admin",
+          branch: "gil-puyat",
+        }),
+      }),
+      lean: jest.fn().mockResolvedValue({
+        _id: "admin_id_1",
+        user_id: "user_admin_1",
+        firstName: "Admin",
+        lastName: "Staff",
+        role: "branch_admin",
+        branch: "gil-puyat",
+      }),
+    });
+
+    const req = {
+      user: { uid: "admin_firebase_uid" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        action: "decline",
+        notes: "Technician already dispatched and en route.",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await respondToMaintenanceReschedule(req, res, next);
+
+    expect(requestDoc.rescheduleRequest.status).toBe("declined");
+    expect(requestDoc.rescheduleRequest.responseNote).toBe("Technician already dispatched and en route.");
+    expect(requestDoc.save).toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("updateAdminRequestStatus: blocks transition to resolved when a reschedule request is pending", async () => {
+    const requestDoc = new MockMaintenanceRequest({
+      _id: "req_reschedule_block_resolve_1",
+      request_id: "MNT-2026-9905",
+      status: "in_progress",
+      branch: "gil-puyat",
+      user_id: "user_95f39d5b4ea4",
+      assigned_to: "Lead Tech",
+      schedule: {
+        scheduledDate: new Date("2026-08-20T10:00:00.000Z"),
+      },
+      rescheduleRequest: {
+        status: "pending",
+        proposedDate: new Date("2026-08-21T15:00:00.000Z"),
+        reason: "Tenant conflict",
+      },
+    });
+
+    maintenanceFindOne.mockImplementation(() => ({
+      populate: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue(requestDoc),
+      then: (resolve) => resolve(requestDoc),
+    }));
+
+    userFindOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          _id: "admin_id_1",
+          user_id: "user_admin_1",
+          firstName: "Admin",
+          lastName: "Staff",
+          role: "branch_admin",
+          branch: "gil-puyat",
+        }),
+      }),
+      lean: jest.fn().mockResolvedValue({
+        _id: "admin_id_1",
+        user_id: "user_admin_1",
+        firstName: "Admin",
+        lastName: "Staff",
+        role: "branch_admin",
+        branch: "gil-puyat",
+      }),
+    });
+
+    const req = {
+      user: { uid: "admin_firebase_uid" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        status: "resolved",
+        notes: "Fixed the pipe problem.",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await updateAdminRequestStatus(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "PENDING_RESCHEDULE_EXISTS",
+      }),
+    );
+  });
+
+  test("scheduleAdminMaintenance: successfully rejects/clears planned schedule without requiring date/time", async () => {
+    const requestDoc = new MockMaintenanceRequest({
+      _id: "req_clear_sched_1",
+      request_id: "MNT-2026-9906",
+      status: "in_progress",
+      branch: "gil-puyat",
+      user_id: "user_95f39d5b4ea4",
+      assigned_to: "Lead Tech",
+      schedule: {
+        scheduledDate: new Date("2026-08-20T10:00:00.000Z"),
+        notes: "Initial schedule",
+      },
+    });
+
+    maintenanceFindOne.mockImplementation(() => ({
+      populate: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue(requestDoc),
+      then: (resolve) => resolve(requestDoc),
+    }));
+
+    userFindOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          _id: "admin_id_1",
+          user_id: "user_admin_1",
+          firstName: "Admin",
+          lastName: "Staff",
+          role: "branch_admin",
+          branch: "gil-puyat",
+        }),
+      }),
+      lean: jest.fn().mockResolvedValue({
+        _id: "admin_id_1",
+        user_id: "user_admin_1",
+        firstName: "Admin",
+        lastName: "Staff",
+        role: "branch_admin",
+        branch: "gil-puyat",
+      }),
+    });
+
+    const req = {
+      user: { uid: "admin_firebase_uid" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        action: "reject_schedule",
+        clearSchedule: true,
+        scheduledDate: null,
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await scheduleAdminMaintenance(req, res, next);
+
+    expect(requestDoc.schedule.scheduledDate).toBeNull();
+    expect(requestDoc.scheduledDate).toBeNull();
+    expect(requestDoc.save).toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("rateAdminMaintenanceProvider: rates in-house facilities team with fallback providerName and persists rating", async () => {
+    const requestDoc = new MockMaintenanceRequest({
+      _id: "req_rate_1",
+      request_id: "REQ-RATE-101",
+      status: "resolved",
+      urgency: "medium",
+      branch: "gil-puyat",
+      user_id: "user_tenant_rate_1",
+      assignedProviderName: null,
+      assigned_to: null,
+      statusHistory: [],
+    });
+
+    maintenanceFindOne.mockImplementation(() => ({
+      populate: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue(requestDoc),
+      then: (resolve) => resolve(requestDoc),
+    }));
+
+    userFindOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          _id: "admin_id_rate",
+          user_id: "user_admin_rate",
+          firstName: "Admin",
+          lastName: "Manager",
+          role: "branch_admin",
+          branch: "gil-puyat",
+        }),
+      }),
+      lean: jest.fn().mockResolvedValue({
+        _id: "admin_id_rate",
+        user_id: "user_admin_rate",
+        firstName: "Admin",
+        lastName: "Manager",
+        role: "branch_admin",
+        branch: "gil-puyat",
+      }),
+    });
+
+    const req = {
+      user: { uid: "admin_firebase_uid" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        rating: 5,
+        tags: ["Quality Repair", "Punctual"],
+        feedback: "Great job by in-house staff!",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await rateAdminMaintenanceProvider(req, res, next);
+
+    expect(requestDoc.providerRating).toBeDefined();
+    expect(requestDoc.providerRating.rating).toBe(5);
+    expect(requestDoc.providerRating.tags).toEqual(["Quality Repair", "Punctual"]);
+    expect(requestDoc.providerRating.feedback).toBe("Great job by in-house staff!");
+    expect(requestDoc.assignedProviderName).toBe("Lilycrest Facilities Team");
+    expect(requestDoc.save).toHaveBeenCalled();
+    expect(sendSuccess).toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 });

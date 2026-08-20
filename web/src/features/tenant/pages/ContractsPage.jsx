@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 import {
@@ -135,7 +135,7 @@ function ContractSummaryBanner({ contract, stayData }) {
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Initial Deposits
           </span>
-          <ShieldCheck size={16} className="text-purple-600 dark:text-purple-400 flex-shrink-0" strokeWidth={2} />
+          <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" strokeWidth={2} />
         </div>
         <div className="mt-2">
           <div className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
@@ -288,36 +288,48 @@ export default function ContractsPage() {
   const [error, setError] = useState("");
   const [actionBusyId, setActionBusyId] = useState(null);
 
-  useEffect(() => {
-    let active = true;
-    Promise.allSettled([
-      tenantContractApi.getMyCurrentContract(),
-      tenantContractApi.getMyStayProofData(),
-      tenantContractApi.getMyContractHistory(),
-    ])
-      .then(([contractRes, stayProofRes, historyRes]) => {
-        if (!active) return;
-        if (contractRes.status === "fulfilled" && contractRes.value?.contract) {
-          setContract(contractRes.value.contract);
-        }
-        if (stayProofRes.status === "fulfilled" && stayProofRes.value?.stayProof) {
-          setStayData(stayProofRes.value.stayProof);
-        }
-        if (historyRes.status === "fulfilled" && Array.isArray(historyRes.value?.contracts)) {
-          setContractHistory(historyRes.value.contracts);
-        }
-      })
-      .catch((requestError) => {
-        if (active) setError(getTenantContractError(requestError));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
+  const loadContracts = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    setError("");
+    try {
+      const [contractRes, stayProofRes, historyRes] = await Promise.allSettled([
+        tenantContractApi.getMyCurrentContract(),
+        tenantContractApi.getMyStayProofData(),
+        tenantContractApi.getMyContractHistory(),
+      ]);
+      if (contractRes.status === "fulfilled") {
+        setContract(contractRes.value?.contract || null);
+      }
+      if (stayProofRes.status === "fulfilled") {
+        setStayData(stayProofRes.value?.stayProof || null);
+      }
+      if (historyRes.status === "fulfilled") {
+        setContractHistory(historyRes.value?.contracts || []);
+      }
+    } catch (requestError) {
+      setError(getTenantContractError(requestError));
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadContracts();
+  }, [loadContracts]);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      loadContracts({ silent: true });
+    };
+    window.addEventListener("lilycrest:contract-updated", handleUpdate);
+    window.addEventListener("lilycrest:payment-updated", handleUpdate);
+    window.addEventListener("lilycrest:reservation-updated", handleUpdate);
+    return () => {
+      window.removeEventListener("lilycrest:contract-updated", handleUpdate);
+      window.removeEventListener("lilycrest:payment-updated", handleUpdate);
+      window.removeEventListener("lilycrest:reservation-updated", handleUpdate);
+    };
+  }, [loadContracts]);
 
   const handleViewSignedCopy = async (version) => {
     if (!contract?.id) return;
@@ -467,30 +479,6 @@ export default function ContractsPage() {
         </div>
       ) : (
         <>
-          {/* Informative Pre-Move-In Draft Notice when not notarized */}
-          {!isNotarized && (
-            <div className="mb-5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all duration-200">
-              <div className="flex items-start gap-3">
-                <FileText size={18} className="text-sky-600 dark:text-sky-400 mt-0.5 flex-shrink-0" strokeWidth={2} />
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                    Pre-Move-In Draft Review
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                    This prepared copy is provided so you can inspect all lease terms and house rules in advance. Your 1-month advance rent and 1-month security deposit will be settled prior to move-in, after which your agreement will be signed and notarized.
-                  </p>
-                </div>
-              </div>
-              <Link
-                to="/tenant/reservation"
-                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white transition-colors flex-shrink-0"
-              >
-                <span>View My Reservation</span>
-                <ArrowRight size={13} strokeWidth={2} />
-              </Link>
-            </div>
-          )}
-
           {/* Key Information Banner */}
           <ContractSummaryBanner contract={contract} stayData={stayData} />
 

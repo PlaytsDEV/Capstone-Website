@@ -53,15 +53,21 @@ export const resolveApplicantIdentity = ({ contract = {}, reservation = {} } = {
     value !== null &&
     (typeof value !== "string" || value.trim() !== "");
 
+  const stripRegionSuffix = (addr) => {
+    if (!addr || typeof addr !== "string") return "";
+    return addr
+      .replace(/,\s*(National Capital Region\s*(\(NCR\))?|NCR|Region\s+[IVXLCDM\d\-A-Za-z]+(\s*\([^\)]+\))?)\s*$/i, "")
+      .trim();
+  };
+
   const joinAddress = (address = {}) => {
-    if (typeof address === "string") return collapseWhitespace(address);
+    if (typeof address === "string") return stripRegionSuffix(collapseWhitespace(address));
     return [
       address.unitHouseNo,
       address.street,
       address.barangay,
       address.city,
       address.province,
-      address.region,
     ]
       .filter(hasValue)
       .map((value) => collapseWhitespace(value))
@@ -74,7 +80,12 @@ export const resolveApplicantIdentity = ({ contract = {}, reservation = {} } = {
   const reservationFullName = [firstName, middleName, lastName].filter(hasValue).join(" ") || null;
 
   const legalName = collapseWhitespace(contract.tenantLegalName || reservationFullName || "");
-  const currentAddress = collapseWhitespace(contract.tenantAddress || joinAddress(reservationAddress) || "");
+  const formattedReservationAddress = joinAddress(reservationAddress);
+  const currentAddress = collapseWhitespace(
+    (contract.tenantAddress ? stripRegionSuffix(contract.tenantAddress) : "") ||
+    formattedReservationAddress ||
+    ""
+  );
   const email = collapseWhitespace(contract.tenantEmail || reservation.email || reservation.billingEmail || "");
   const phone = collapseWhitespace(contract.tenantPhone || reservation.mobileNumber || "");
   const nationality = collapseWhitespace(contract.tenantNationality || reservation.nationality || "");

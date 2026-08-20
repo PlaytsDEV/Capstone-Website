@@ -141,7 +141,7 @@ describe("services/billing/rentGenerator", () => {
 
     const result = await ensureCurrentCycleRentBill({
       reservation,
-      referenceDate: new Date("2026-02-26T00:00:00.000Z"),
+      referenceDate: new Date("2026-02-19T00:00:00.000Z"),
       dryRun: false,
       notifyTenant: true,
       requireGenerationDateMatch: true,
@@ -151,7 +151,7 @@ describe("services/billing/rentGenerator", () => {
     expect(billInstances).toHaveLength(1);
     expect(localYmd(billInstances[0].billingCycleStart)).toBe("2026-3-5");
     expect(localYmd(billInstances[0].billingCycleEnd)).toBe("2026-4-5");
-    expect(localYmd(billInstances[0].dueDate)).toBe("2026-3-5");
+    expect(localYmd(billInstances[0].dueDate)).toBe("2026-2-26");
     expect(notify.billGenerated).toHaveBeenCalledTimes(1);
 
     // Regression (bill-release notification audit): this cron-generation
@@ -200,7 +200,7 @@ describe("services/billing/rentGenerator", () => {
 
     const result = await ensureCurrentCycleRentBill({
       reservation,
-      referenceDate: new Date("2026-04-16T00:00:00.000Z"),
+      referenceDate: new Date("2026-04-09T00:00:00.000Z"),
       notifyTenant: false,
       requireGenerationDateMatch: true,
     });
@@ -209,7 +209,7 @@ describe("services/billing/rentGenerator", () => {
     expect(billInstances).toHaveLength(1);
     expect(localYmd(billInstances[0].billingCycleStart)).toBe("2026-4-23");
     expect(localYmd(billInstances[0].billingCycleEnd)).toBe("2026-5-23");
-    expect(localYmd(billInstances[0].dueDate)).toBe("2026-4-23");
+    expect(localYmd(billInstances[0].dueDate)).toBe("2026-4-16");
     expect(billInstances[0].charges.rent).toBe(6300);
     expect(billInstances[0].totalAmount).toBe(6300);
     expect(billInstances[0].reservationCreditApplied).toBe(0);

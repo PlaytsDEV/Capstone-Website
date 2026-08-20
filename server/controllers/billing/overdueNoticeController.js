@@ -19,7 +19,7 @@ import {
   User,
   Room,
 } from "../../models/index.js";
-import { getAdminInfo } from "./_helpers.js";
+import { getAdminInfo, resolveAdminUserId } from "./_helpers.js";
 import logger from "../../middleware/logger.js";
 import { logBillingAudit } from "../../utils/billingAudit.js";
 import { sendOverdueNoticeEmail } from "../../config/email.js";
@@ -209,6 +209,15 @@ export const getOverdueNoticesAction = async (req, res, next) => {
 export const sendOverdueNoticeAction = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);
+    const adminUserId = await resolveAdminUserId(req, admin);
+
+    if (!adminUserId) {
+      return res.status(401).json({
+        success: false,
+        error: "Authenticated user record not found in system.",
+      });
+    }
+
     const { billId } = req.params;
     const { noticeType, noticeNumber: rawNoticeNumber, noticeMessage, forceOverride } = req.body;
 
@@ -290,7 +299,7 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
 
     if (noticeDoc) {
       // Re-dispatch update
-      noticeDoc.issuedBy = req.user._id;
+      noticeDoc.issuedBy = adminUserId;
       noticeDoc.issuedAt = new Date();
       noticeDoc.outstandingAmountAtIssuance = totalFrozenAmount;
       noticeDoc.penaltyAmountAtIssuance = penaltyAmount;
@@ -309,7 +318,7 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
         penaltyAmountAtIssuance: penaltyAmount,
         totalAmountAtIssuance: totalFrozenAmount,
         daysOverdueAtIssuance: daysOverdue,
-        issuedBy: req.user._id,
+        issuedBy: adminUserId,
         issuedAt: new Date(),
         noticeMessage: (noticeMessage || "").trim(),
         deliveryStatus: "pending",
@@ -422,7 +431,7 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
           totalOutstandingAtOpen: totalFrozenAmount,
           penaltyAmountAtOpen: penaltyAmount,
           daysOverdueAtOpen: daysOverdue,
-          openedBy: req.user._id,
+          openedBy: adminUserId,
           openedAt: new Date(),
           status: "open",
         });
@@ -447,7 +456,7 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
     // 6. Audit Log
     await logBillingAudit({
       action: "DISPATCH_OVERDUE_NOTICE",
-      actorId: req.user._id,
+      actorId: adminUserId,
       targetUserId: tenantUser._id,
       branch: bill.branch,
       details: {
@@ -483,6 +492,15 @@ export const sendOverdueNoticeAction = async (req, res, next) => {
 export const updateTerminationDecisionAction = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);
+    const adminUserId = await resolveAdminUserId(req, admin);
+
+    if (!adminUserId) {
+      return res.status(401).json({
+        success: false,
+        error: "Authenticated user record not found in system.",
+      });
+    }
+
     const { id } = req.params;
     const {
       outcome,
@@ -545,7 +563,7 @@ export const updateTerminationDecisionAction = async (req, res, next) => {
     review.decision = {
       outcome,
       outcomeDetail: trimmedOutcomeDetail,
-      decidedBy: req.user._id,
+      decidedBy: adminUserId,
       decidedAt: new Date(),
     };
 
@@ -599,7 +617,7 @@ export const updateTerminationDecisionAction = async (req, res, next) => {
         numberOfInstallments: installmentsCount,
         installmentAmount: installmentAmt,
         firstPaymentDue: firstDueDate,
-        approvedBy: req.user._id,
+        approvedBy: adminUserId,
         approvedAt: new Date(),
         installments: computedInstallments,
       };
@@ -625,7 +643,7 @@ export const updateTerminationDecisionAction = async (req, res, next) => {
 
       review.preTerminationNotice = {
         issuedAt: new Date(),
-        issuedBy: req.user._id,
+        issuedBy: adminUserId,
         vacateByDate: vacateDateObj,
         noticeText: noticeTextTrimmed,
         deliveredVia: preTerminationNotice.deliveredVia || "both",
@@ -639,7 +657,7 @@ export const updateTerminationDecisionAction = async (req, res, next) => {
     // Audit Log
     await logBillingAudit({
       action: "ADJUDICATE_TERMINATION_REVIEW",
-      actorId: req.user._id,
+      actorId: adminUserId,
       targetUserId: review.tenantId,
       branch: review.branch,
       details: {

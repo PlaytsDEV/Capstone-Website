@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   ShieldAlert,
@@ -18,7 +19,15 @@ const getInitials = (name) => {
   return name.slice(0, 2).toUpperCase();
 };
 
-export default function OpenTerminationCaseModal({ isOpen, branch, onClose, onCreated }) {
+export default function OpenTerminationCaseModal({
+  isOpen,
+  branch,
+  initialTenantId = "",
+  initialReason = "",
+  initialTenantName = "",
+  onClose,
+  onCreated,
+}) {
   const [tenants, setTenants] = useState([]);
   const [loadingTenants, setLoadingTenants] = useState(true);
   const [selectedTenantId, setSelectedTenantId] = useState("");
@@ -32,11 +41,11 @@ export default function OpenTerminationCaseModal({ isOpen, branch, onClose, onCr
     if (isOpen) {
       setError("");
       setSuccessMsg("");
-      setTriggerReason("");
-      setSelectedTenantId("");
+      setTriggerReason(initialReason || "");
+      setSelectedTenantId(initialTenantId || "");
       fetchActiveTenants();
     }
-  }, [isOpen, branch]);
+  }, [isOpen, branch, initialTenantId, initialReason]);
 
   const fetchActiveTenants = async () => {
     try {
@@ -44,7 +53,7 @@ export default function OpenTerminationCaseModal({ isOpen, branch, onClose, onCr
       const res = await billingApi.getActiveTenantsForViolations(branch ? { branch } : {});
       setTenants(res.data || []);
     } catch (err) {
-      console.error("Failed to load active tenants:", err);
+      console.error("[OpenTerminationCaseModal] Failed to load active tenants:", err);
     } finally {
       setLoadingTenants(false);
     }
@@ -86,9 +95,9 @@ export default function OpenTerminationCaseModal({ isOpen, branch, onClose, onCr
     try {
       setSubmitting(true);
       await billingApi.createTerminationCase({
-        tenantId: selectedTenant.tenantId,
-        reservationId: selectedTenant.reservationId,
-        branch: selectedTenant.branch || branch || "gil-puyat",
+        tenantId: selectedTenant ? selectedTenant.tenantId : selectedTenantId,
+        reservationId: selectedTenant ? selectedTenant.reservationId : undefined,
+        branch: selectedTenant?.branch || branch || "gil-puyat",
         triggerReason: triggerReason.trim(),
       });
 
@@ -100,7 +109,7 @@ export default function OpenTerminationCaseModal({ isOpen, branch, onClose, onCr
         onClose();
       }, 1200);
     } catch (err) {
-      console.error("Create review case error:", err);
+      console.error("[OpenTerminationCaseModal] Create review case error:", err);
       const friendlyErr = err.message || "Unable to open termination review case. Please try again.";
       setError(friendlyErr);
       showNotification(friendlyErr, "error");
@@ -109,7 +118,9 @@ export default function OpenTerminationCaseModal({ isOpen, branch, onClose, onCr
     }
   };
 
-  return (
+  if (!isOpen || typeof document === "undefined") return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-card shadow-2xl text-card-foreground">
         {/* Header */}
@@ -123,7 +134,7 @@ export default function OpenTerminationCaseModal({ isOpen, branch, onClose, onCr
                 Open Termination Review Case
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Refer a serious lease breach or notice exhaustion to the administrative review board.
+                Refer a severe lease infraction or notice exhaustion to the administrative review board.
               </p>
             </div>
           </div>
@@ -186,7 +197,7 @@ export default function OpenTerminationCaseModal({ isOpen, branch, onClose, onCr
               <div>
                 <p className="font-bold text-card-foreground">{selectedTenant.fullName}</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Room: <strong>{selectedTenant.roomName}</strong> · Warning Count: <strong>{selectedTenant.warningCount || 0}</strong>
+                  Room: <strong>{selectedTenant.roomName}</strong> · Warnings Logged: <strong>{selectedTenant.warningCount || 0}</strong>
                 </p>
               </div>
             </div>
@@ -240,6 +251,7 @@ export default function OpenTerminationCaseModal({ isOpen, branch, onClose, onCr
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -22,6 +22,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useAppNavigation } from "../hooks/useAppNavigation";
 import { useUnreadCount } from "../hooks/queries/useNotifications";
 import { tenantContractApi } from "../../features/tenant/api/tenantContractApi";
+import { useReservations } from "../hooks/queries/useReservations";
 import { prefetchRoute } from "../lib/routePrefetch";
 import useBodyScrollLock from "../hooks/useBodyScrollLock";
 import { USER_ROLES } from "../utils/constants";
@@ -166,10 +167,42 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
         return null;
       }
     },
-    staleTime: 60 * 1000,
+    staleTime: 15 * 1000,
     enabled: !!user,
   });
-  const hasContract = Boolean(contractData);
+
+  const { data: reservationsData } = useReservations({}, { enabled: !!user && !isTenant });
+
+  const hasSettledReservation = useMemo(() => {
+    if (isTenant) return false;
+    const list = Array.isArray(reservationsData)
+      ? reservationsData
+      : (reservationsData?.reservations || []);
+    return list.some(
+      (r) =>
+        r.initialPaymentStatus === "paid" ||
+        r.status === "reserved" ||
+        r.status === "moveIn" ||
+        r.advanceRentPaid === true ||
+        r.paymentStatus === "paid" ||
+        r.paymentStatus === "paid_in_full"
+    );
+  }, [isTenant, reservationsData]);
+
+  const hasContract = Boolean(contractData) || hasSettledReservation;
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      queryClient.invalidateQueries({ queryKey: ["contracts", "myCurrentContract"] });
+    };
+    window.addEventListener("lilycrest:contract-updated", handleUpdate);
+    window.addEventListener("lilycrest:payment-updated", handleUpdate);
+    return () => {
+      window.removeEventListener("lilycrest:contract-updated", handleUpdate);
+      window.removeEventListener("lilycrest:payment-updated", handleUpdate);
+    };
+  }, [queryClient]);
+
   const navSections = useMemo(() => buildNavSections(isTenant, hasContract), [isTenant, hasContract]);
   const { data: unreadData } = useUnreadCount();
   const sidebarUnreadCount = unreadData?.unreadCount ?? 0;

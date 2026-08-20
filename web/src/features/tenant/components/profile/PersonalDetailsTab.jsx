@@ -923,6 +923,7 @@ const PersonalDetailsTab = ({
 
     return (
       (editData.firstName || "").trim() !== (profileData.firstName || "").trim() ||
+      (editData.middleName || "").trim() !== (profileData.middleName || "").trim() ||
       (editData.lastName || "").trim() !== (profileData.lastName || "").trim() ||
       normEditDob !== normProfileDob ||
       (editData.gender || "") !== (profileData.gender || "") ||
@@ -946,7 +947,7 @@ const PersonalDetailsTab = ({
 
   const handleSaveWithValidation = async () => {
     const newErrors = {};
-    const fieldsToValidate = ["firstName", "lastName", "dateOfBirth", "gender", "civilStatus", "nationality", "occupation"];
+    const fieldsToValidate = ["firstName", "middleName", "lastName", "dateOfBirth", "gender", "civilStatus", "nationality", "occupation"];
     for (const f of fieldsToValidate) {
       const val = editData[f];
       const e = validateField(f, val);
@@ -962,6 +963,7 @@ const PersonalDetailsTab = ({
     let payload = {
       ...editData,
       firstName: (editData.firstName || "").trim(),
+      middleName: (editData.middleName || "").trim(),
       lastName: (editData.lastName || "").trim(),
       nationality: (editData.nationality || "").trim(),
       occupation: (editData.occupation || "").trim(),
@@ -1178,6 +1180,16 @@ const PersonalDetailsTab = ({
               field="firstName"
               value={profileData.firstName}
               required
+              maxLength={50}
+              autoCapitalizeWords
+              onAdd={handleStartEditing}
+              {...fp}
+            />
+            <Field
+              icon={User}
+              label="Middle Name"
+              field="middleName"
+              value={isEditingProfile ? editData?.middleName || "" : profileData.middleName}
               maxLength={50}
               autoCapitalizeWords
               onAdd={handleStartEditing}

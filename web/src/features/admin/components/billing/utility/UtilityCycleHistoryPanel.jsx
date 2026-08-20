@@ -86,7 +86,7 @@ export default function UtilityCycleHistoryPanel({
   return (
     <div className="space-y-4">
       {/* Search and Filters Bar */}
-      <div className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-3">
+      <div className="rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-card-foreground">
@@ -124,6 +124,8 @@ export default function UtilityCycleHistoryPanel({
           {/* Start date */}
           <input
             type="date"
+            min="2020-01-01"
+            max="2099-12-31"
             value={periodStartDate}
             onChange={(e) => onStartDateChange(e.target.value)}
             className="h-9 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-foreground focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
@@ -134,6 +136,8 @@ export default function UtilityCycleHistoryPanel({
           {/* End date */}
           <input
             type="date"
+            min="2020-01-01"
+            max="2099-12-31"
             value={periodEndDate}
             onChange={(e) => onEndDateChange(e.target.value)}
             className="h-9 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-foreground focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
@@ -145,10 +149,11 @@ export default function UtilityCycleHistoryPanel({
           <div className="relative">
             <input
               type="text"
+              maxLength={50}
               value={periodSearch}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search by cycle label..."
-              className="h-9 w-full rounded-lg border border-border bg-card px-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
+              className="h-9 w-full rounded-lg border border-border bg-card pl-3 pr-8 text-xs text-foreground placeholder:text-muted-foreground focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
               aria-label="Search cycles"
             />
             {periodSearch && (
@@ -177,9 +182,9 @@ export default function UtilityCycleHistoryPanel({
       </div>
 
       {/* Cycle List Container */}
-      <div className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-2.5">
+      <div className="rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-2.5">
         {filteredPeriods.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-center text-xs text-muted-foreground">
+          <div className="flex flex-col items-center justify-center py-14 min-h-[220px] text-center text-xs text-muted-foreground">
             <ClipboardX size={32} className="text-slate-400" />
             <p className="mt-2 text-sm font-semibold text-card-foreground">
               {periods.length === 0 ? "No billing history found" : "No cycles match your filters"}
@@ -329,11 +334,11 @@ export default function UtilityCycleHistoryPanel({
                                 setActiveMenuPeriodId(null);
                                 onDeletePeriod(p.id);
                               }}
-                              title="Archive period"
+                              title="Delete cycle"
                               disabled={isDeletingPeriod}
                             >
                               <Trash2 size={13} className="shrink-0" />
-                              <span>Archive Cycle</span>
+                              <span>Delete Cycle</span>
                             </button>
                           )}
 

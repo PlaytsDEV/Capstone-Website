@@ -597,7 +597,7 @@ export const openUtilityPeriod = async (req, res, next) => {
       status: { $in: ["closed", "revised"] },
       isArchived: false,
       startDate: { $lte: parsedStartDate },
-      endDate: { $gte: parsedStartDate },
+      endDate: { $gt: parsedStartDate },
     });
     if (overlappingPeriod) {
       return res.status(409).json({
@@ -798,7 +798,7 @@ export const deleteUtilityPeriod = async (req, res, next) => {
     const { utilityType, id } = req.params;
 
     const period = await UtilityPeriod.findById(id);
-    if (!period || period.isArchived)
+    if (!period)
       return res.status(404).json({ error: "Period not found" });
 
     if (!admin.isOwner && period.branch !== admin.branch) {
@@ -815,33 +815,31 @@ export const deleteUtilityPeriod = async (req, res, next) => {
 
     await assertUtilityPeriodNotSent(period, utilityType);
 
-    // Archive is intentionally non-destructive: unsent draft charges are
-    // detached from active billing, while the original period, readings,
-    // and any empty draft bill remain available for audit/history.
+    // Root-level deletion of draft bills associated with this period
     if (period.tenantSummaries && period.tenantSummaries.length > 0) {
       const chargeField = utilityType === "water" ? "water" : "electricity";
+      const otherUtilityField = utilityType === "water" ? "electricity" : "water";
+
       for (const summary of period.tenantSummaries) {
         if (summary.billId) {
           const bill = await Bill.findById(summary.billId);
           if (bill) {
             bill.charges[chargeField] = 0;
-            bill.utilityDispatch = bill.utilityDispatch || {};
-            bill.utilityDispatch[utilityType] = {
-              state: "draft",
-              periodId: null,
-              publishedAt: null,
-              issuedAt: null,
-              dueDate: null,
-              amount: 0,
-            };
+            if (bill.utilityDispatch) {
+              delete bill.utilityDispatch[utilityType];
+            }
+            const remainingRent = Number(bill.charges.rent || 0);
+            const remainingOtherUtility = Number(bill.charges[otherUtilityField] || 0);
+            const remainingPenalty = Number(bill.charges.penalty || 0);
+
+            // If the draft bill only existed for this utility cycle, remove it at its root
             if (
-              bill.charges.electricity === 0 &&
-              bill.charges.water === 0 &&
-              bill.charges.rent === 0
+              remainingRent === 0 &&
+              remainingOtherUtility === 0 &&
+              remainingPenalty === 0 &&
+              (bill.status === "draft" || bill.isArchived)
             ) {
-              bill.isArchived = true;
-              bill.status = "draft";
-              await bill.save();
+              await Bill.findByIdAndDelete(bill._id);
             } else {
               syncBillAmounts(bill, { preserveStatus: bill.status === "draft" });
               await bill.save();
@@ -851,8 +849,8 @@ export const deleteUtilityPeriod = async (req, res, next) => {
       }
     }
 
-    // Keep tenant lifecycle readings (move-in/move-out) detached from periods
-    // so deleting a cycle does not erase account-level history.
+    // Keep tenant lifecycle readings (move-in/move-out) detached from deleted periods
+    // so deleting a cycle does not erase tenant-level check-in/out history.
     await UtilityReading.updateMany(
       {
         utilityPeriodId: period._id,
@@ -861,28 +859,39 @@ export const deleteUtilityPeriod = async (req, res, next) => {
       { $set: { utilityPeriodId: null } },
     );
 
-    // Boundary/checkpoint readings are archived, not erased.
-    await UtilityReading.updateMany(
-      {
-        utilityPeriodId: period._id,
-        eventType: {
-          $in: utilityEventTypesForQuery(
-            "periodStart",
-            "periodEnd",
-            "regularBilling",
-          ),
-        },
+    // Hard-delete cycle boundary and regular billing readings created for this period
+    await UtilityReading.deleteMany({
+      utilityPeriodId: period._id,
+      eventType: {
+        $in: utilityEventTypesForQuery(
+          "periodStart",
+          "periodEnd",
+          "regularBilling",
+        ),
       },
-      { $set: { isArchived: true } },
-    );
+    });
 
-    period.isArchived = true;
-    period.revised = true;
-    period.revisedAt = new Date();
-    period.revisionNote = "Archived by an administrator; related draft charges were removed from active billing.";
-    await period.save();
+    // Permanently delete the utility period document at root
+    await UtilityPeriod.findByIdAndDelete(period._id);
 
-    res.json({ success: true, message: "Billing period archived" });
+    const room = await Room.findById(period.roomId);
+    await logBillingAudit(req, {
+      admin,
+      action: "utility_period_deleted",
+      severity: "high",
+      entityId: period._id,
+      branch: period.branch,
+      details: `Deleted ${utilityType} billing cycle for room ${getRoomLabel(room || {})}.`,
+      metadata: {
+        utilityType,
+        roomId: period.roomId,
+        periodId: period._id,
+        startDate: period.startDate,
+        endDate: period.endDate,
+      },
+    });
+
+    res.json({ success: true, message: "Billing cycle deleted successfully" });
   } catch (err) {
     next(err);
   }

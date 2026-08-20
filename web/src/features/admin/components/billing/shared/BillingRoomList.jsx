@@ -49,6 +49,7 @@ export default function BillingRoomList({
  <div className="billing-room-list__search-wrap">
  <input
  type="text"
+ maxLength={50}
  className="billing-room-list__search"
  value={searchValue}
  onChange={(event) => onSearchChange(event.target.value)}

@@ -184,6 +184,8 @@ export default function ConsolidatedBillingMonitorTab({
             <span className="text-xs font-medium text-muted-foreground">Billing Month:</span>
             <input
               type="month"
+              min="2020-01"
+              max="2099-12"
               value={monthFilter}
               onChange={(e) => setMonthFilter(e.target.value)}
               className="h-8 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground focus:border-slate-400 focus:outline-none"
@@ -212,6 +214,7 @@ export default function ConsolidatedBillingMonitorTab({
             <Search size={14} className="absolute left-2.5 top-2.5 text-muted-foreground" />
             <input
               type="text"
+              maxLength={50}
               placeholder="Search tenant or room..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -332,19 +335,23 @@ export default function ConsolidatedBillingMonitorTab({
 
                       <td className="px-4 py-3 text-center">
                         {isPaid ? (
-                          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 uppercase dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                            <CheckCircle2 size={11} /> Paid
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            Paid
                           </span>
                         ) : isPartial ? (
-                          <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 uppercase dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                            <Clock size={11} /> Partial
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                            Partial
                           </span>
                         ) : isOverdue ? (
-                          <span className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-rose-100 px-2.5 py-0.5 text-[11px] font-bold text-rose-800 uppercase dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
-                            <AlertTriangle size={11} /> Overdue
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-700 dark:text-rose-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                            Overdue
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-800 uppercase dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
                             Unpaid
                           </span>
                         )}

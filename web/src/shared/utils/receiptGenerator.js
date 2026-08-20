@@ -602,9 +602,14 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
     advanceRent,
     securityDeposit,
     grossTotal,
-    reservationFeeAmount,
-    remainingDue,
   } = resolveReservationFinancials(reservation, profile);
+
+  const totalSettlementAmount = Number(
+    bill?.paidAmount ||
+      bill?.totalAmount ||
+      (advanceRent + securityDeposit) ||
+      grossTotal,
+  );
 
   const selectedBedRaw = reservation.selectedBed || reservation.bed || reservation.bedId;
   let bedText = "";
@@ -684,31 +689,24 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
     },
     {
       title: "1-Month Security Deposit",
-      subtext: `Refundable security deposit held for room maintenance & final utility clearing upon move-out.`,
+      subtext: "Refundable security deposit held for room maintenance & final utility clearing upon move-out.",
       qty: 1,
       unitPrice: securityDeposit,
       amount: securityDeposit,
     },
-    {
-      title: "Less: Slot Reservation Fee Credit (Paid Online)",
-      subtext: `Online slot reservation holding fee previously settled — credited in full against move-in requirements.`,
-      qty: 1,
-      unitPrice: reservationFeeAmount,
-      amount: reservationFeeAmount,
-      isCredit: true,
-    },
   ];
 
-  y = drawItemizedTable(doc, y, tableItems, "MOVE-IN FINANCIAL REQUIREMENTS & APPLIED CREDITS");
+  y = drawItemizedTable(doc, y, tableItems, "ADVANCE RENT & SECURITY DEPOSIT SETTLEMENT");
 
   // 4. Totals
+  const subtotal = advanceRent + securityDeposit;
   const totals = [
-    { label: "Gross Move-In Total:", amount: grossTotal },
-    { label: "Reservation Credit Applied:", amount: reservationFeeAmount, isCredit: true },
+    { label: "Subtotal Charges:", amount: subtotal },
+    { label: "VAT / Tax (Exempt):", amount: 0 },
   ];
-  totals.mainTotal = remainingDue;
+  totals.mainTotal = totalSettlementAmount;
 
-  y = drawAccountingTotals(doc, y, totals, "NET SETTLEMENT PAID:");
+  y = drawAccountingTotals(doc, y, totals, "TOTAL AMOUNT PAID:");
 
   // 5. Audit & Sign Off
   const auditFields = [
@@ -721,7 +719,7 @@ async function buildMoveInReceiptDoc(reservation, profile, bill) {
   drawAuditAndSignOff(doc, y, auditFields);
 
   // 6. Footer
-  drawOfficialFooter(doc, "This document serves as your official electronic receipt for your move-in financial settlement (advance rent & security deposit).");
+  drawOfficialFooter(doc, "This document serves as your official electronic receipt for your 1-Month Advance Rent and 1-Month Security Deposit settlement.");
 
   return doc;
 }
@@ -1013,15 +1011,18 @@ async function buildBillingReceiptDoc(bill) {
   y = drawItemizedTable(doc, y, tableItems, "ITEMIZED BILLING CHARGES & COVERAGE");
 
   // 4. Totals
-  const subtotal = (rentAmt + elecAmt + waterAmt + penaltyAmt) || amount;
+  const baseSubtotal = (rentAmt + elecAmt + waterAmt) || Math.max(0, amount - penaltyAmt + discountAmt);
   const totals = [
-    { label: "Subtotal Charges:", amount: subtotal },
+    { label: "Base Subtotal Charges:", amount: baseSubtotal },
   ];
+  if (penaltyAmt > 0) {
+    totals.push({ label: "Late Payment Penalty:", amount: penaltyAmt });
+  }
   if (discountAmt > 0) {
-    totals.push({ label: "Discount / Credit:", amount: discountAmt, isCredit: true });
+    totals.push({ label: "Discount / Credit Adjustment:", amount: discountAmt, isCredit: true });
   }
   totals.push({ label: "VAT / Tax (Exempt):", amount: 0 });
-  totals.mainTotal = amount;
+  totals.mainTotal = amount || Math.max(0, baseSubtotal + penaltyAmt - discountAmt);
 
   y = drawAccountingTotals(doc, y, totals, "TOTAL AMOUNT PAID:");
 
@@ -1173,15 +1174,18 @@ async function buildBillingStatementDoc(bill) {
   y = drawItemizedTable(doc, y, tableItems, "ITEMIZED STATEMENT CHARGES");
 
   // 4. Totals
-  const subtotal = (rentAmt + elecAmt + waterAmt + penaltyAmt) || amount;
+  const baseSubtotal = (rentAmt + elecAmt + waterAmt) || Math.max(0, amount - penaltyAmt + discountAmt);
   const totals = [
-    { label: "Subtotal Charges:", amount: subtotal },
+    { label: "Base Subtotal Charges:", amount: baseSubtotal },
   ];
+  if (penaltyAmt > 0) {
+    totals.push({ label: "Late Payment Penalty:", amount: penaltyAmt });
+  }
   if (discountAmt > 0) {
-    totals.push({ label: "Applied Credit:", amount: discountAmt, isCredit: true });
+    totals.push({ label: "Applied Credit / Discount:", amount: discountAmt, isCredit: true });
   }
   totals.push({ label: "VAT / Tax (Exempt):", amount: 0 });
-  totals.mainTotal = amount;
+  totals.mainTotal = amount || Math.max(0, baseSubtotal + penaltyAmt - discountAmt);
 
   y = drawAccountingTotals(doc, y, totals, isPaid ? "TOTAL AMOUNT PAID:" : "TOTAL AMOUNT DUE:");
 

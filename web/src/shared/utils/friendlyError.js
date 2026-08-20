@@ -31,7 +31,7 @@ const ERROR_MAP = [
   [/validationerror/i, "Some required information is invalid. Please check your details and try again."],
 
   // Not found
-  [/not\s*found|404/i, "The requested item could not be found. It may have been removed."],
+  [/not\s*found|404/i, "The requested item could not be found. It may have been deleted."],
 
   // Server
   [/500|internal\s*server/i, "Something went wrong on our end. Please try again later."],

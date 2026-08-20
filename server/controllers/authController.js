@@ -863,10 +863,11 @@ export const getProfile = async (req, res, next) => {
       user_id: user.user_id,
       email: user.email,
       username: user.username,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      phone: personalInformation.phone,
-      profileImage: personalInformation.profileImage,
+      firstName: personalInformation.firstName || user.firstName,
+      middleName: personalInformation.middleName || user.middleName || "",
+      lastName: personalInformation.lastName || user.lastName,
+      phone: personalInformation.phone || user.phone || "",
+      profileImage: personalInformation.profileImage || user.profileImage || "",
       branch: occupancy.branch || user.branch,
       role: user.role,
       permissions: user.permissions,
@@ -875,19 +876,20 @@ export const getProfile = async (req, res, next) => {
       isActive: user.isActive,
       isEmailVerified: user.isEmailVerified,
       // Extended profile fields
-      gender: personalInformation.gender || "",
-      civilStatus: personalInformation.civilStatus || "",
-      nationality: personalInformation.nationality || "",
-      occupation: personalInformation.occupation || "",
-      address: personalInformation.currentAddress || "",
-      city: personalInformation.city || "",
-      province: personalInformation.province || "",
+      gender: personalInformation.gender || user.gender || "",
+      civilStatus: personalInformation.civilStatus || user.civilStatus || "",
+      nationality: personalInformation.nationality || user.nationality || "",
+      occupation: personalInformation.occupation || user.occupation || "",
+      educationLevel: personalInformation.educationLevel || user.educationLevel || "",
+      address: personalInformation.currentAddress || user.address || "",
+      city: personalInformation.city || user.city || "",
+      province: personalInformation.province || user.province || "",
       zipCode: user.zipCode || "",
-      dateOfBirth: personalInformation.birthDate,
-      emergencyContact: personalInformation.emergencyContact.name || "",
-      emergencyPhone: personalInformation.emergencyContact.phone || "",
+      dateOfBirth: personalInformation.birthDate || user.dateOfBirth || null,
+      emergencyContact: personalInformation.emergencyContact.name || user.emergencyContact || "",
+      emergencyPhone: personalInformation.emergencyContact.phone || user.emergencyPhone || "",
       emergencyRelationship:
-        personalInformation.emergencyContact.relationship || "",
+        personalInformation.emergencyContact.relationship || user.emergencyRelationship || "",
       personalInformation,
       emergencyContactDetails: personalInformation.emergencyContact,
       occupancy,
@@ -934,6 +936,9 @@ export const updateProfile = async (req, res, next) => {
     const firstName = source.firstName !== undefined
       ? (req.sanitizedData?.firstName || sanitizeName(req.body.firstName))
       : null;
+    const middleName = source.middleName !== undefined
+      ? (req.sanitizedData?.middleName !== undefined ? req.sanitizedData.middleName : sanitizeName(req.body.middleName))
+      : undefined;
     const lastName = source.lastName !== undefined
       ? (req.sanitizedData?.lastName || sanitizeName(req.body.lastName))
       : null;
@@ -973,6 +978,7 @@ export const updateProfile = async (req, res, next) => {
     const civilStatus = source.civilStatus !== undefined ? source.civilStatus : undefined;
     const nationality = source.nationality !== undefined ? (req.sanitizedData?.nationality !== undefined ? req.sanitizedData.nationality : sanitizeText(req.body.nationality)) : undefined;
     const occupation = source.occupation !== undefined ? (req.sanitizedData?.occupation !== undefined ? req.sanitizedData.occupation : sanitizeText(req.body.occupation)) : undefined;
+    const educationLevel = source.educationLevel !== undefined ? (req.sanitizedData?.educationLevel !== undefined ? req.sanitizedData.educationLevel : sanitizeText(req.body.educationLevel)) : undefined;
     const address = source.address !== undefined ? (req.sanitizedData?.address !== undefined ? req.sanitizedData.address : sanitizeText(req.body.address)) : undefined;
     const city = source.city !== undefined ? (req.sanitizedData?.city !== undefined ? req.sanitizedData.city : sanitizeText(req.body.city)) : undefined;
     const province = source.province !== undefined ? (req.sanitizedData?.province !== undefined ? req.sanitizedData.province : sanitizeText(req.body.province)) : undefined;
@@ -988,6 +994,7 @@ export const updateProfile = async (req, res, next) => {
     // Build update object with only provided fields
     const updateData = {};
     if (firstName) updateData.firstName = firstName;
+    if (middleName !== undefined) updateData.middleName = middleName || "";
     if (lastName) updateData.lastName = lastName;
     if (phone !== undefined && phone !== null) updateData.phone = phone;
     if (profileImage !== undefined) updateData.profileImage = profileImage;
@@ -996,6 +1003,7 @@ export const updateProfile = async (req, res, next) => {
     if (civilStatus !== undefined) updateData.civilStatus = civilStatus;
     if (nationality !== undefined) updateData.nationality = nationality;
     if (occupation !== undefined) updateData.occupation = occupation;
+    if (educationLevel !== undefined) updateData.educationLevel = educationLevel;
     if (address !== undefined) updateData.address = address;
     if (city !== undefined) updateData.city = city;
     if (province !== undefined) updateData.province = province;
@@ -1037,6 +1045,7 @@ export const updateProfile = async (req, res, next) => {
         email: user.email,
         username: user.username,
         firstName: user.firstName,
+        middleName: user.middleName || "",
         lastName: user.lastName,
         phone: user.phone,
         profileImage: user.profileImage,
@@ -1047,6 +1056,7 @@ export const updateProfile = async (req, res, next) => {
         civilStatus: user.civilStatus || "",
         nationality: user.nationality || "",
         occupation: user.occupation || "",
+        educationLevel: user.educationLevel || "",
         address: user.address || "",
         city: user.city || "",
         province: user.province || "",

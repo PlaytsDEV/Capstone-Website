@@ -959,7 +959,6 @@ export default function AdminNotificationsPage() {
               notification.message
             );
             const variant = meta.variant || meta.priority || "neutral";
-            const isPrimaryAction = meta.isPrimaryAction ?? (meta.priority === "critical" || meta.priority === "high");
             const notifBranch = resolveNotificationBranch(notification);
 
             return (
@@ -995,27 +994,17 @@ export default function AdminNotificationsPage() {
 
                 {/* Body Content */}
                 <div className="admin-notif-item__body">
-                  <div className="admin-notif-item__top">
-                    <div className="admin-notif-item__title-row">
-                      <span className="admin-notif-item__title">
-                        {cleanedTitle}
-                      </span>
-                      {isUnread && (
-                        <span
-                          className="admin-notif-item__dot"
-                          title="Unread notification"
-                          aria-label="Unread"
-                        />
-                      )}
-                    </div>
-
-                    <time
-                      className="admin-notif-item__time"
-                      title={fullDateTooltip}
-                      dateTime={notification.createdAt}
-                    >
-                      {relativeTime}
-                    </time>
+                  <div className="admin-notif-item__title-row">
+                    <span className="admin-notif-item__title">
+                      {cleanedTitle}
+                    </span>
+                    {isUnread && (
+                      <span
+                        className="admin-notif-item__dot"
+                        title="Unread notification"
+                        aria-label="Unread"
+                      />
+                    )}
                   </div>
 
                   <p className="admin-notif-item__message">{cleanedMessage}</p>
@@ -1044,39 +1033,41 @@ export default function AdminNotificationsPage() {
                   </div>
                 </div>
 
-                {/* Right Action Controls */}
-                <div className="admin-notif-item__actions">
-                  {isUnread && (
-                    <button
-                      type="button"
-                      className="admin-notif-item__mark-read-btn"
-                      onClick={(e) => handleSingleMarkRead(e, notification)}
-                      title="Mark as read"
-                      aria-label="Mark notification as read"
-                    >
-                      <Check size={14} />
-                    </button>
-                  )}
+                {/* Right Column: Persistent Timestamp & Action Controls */}
+                <div className="admin-notif-item__right">
+                  <time
+                    className="admin-notif-item__time"
+                    title={fullDateTooltip}
+                    dateTime={notification.createdAt}
+                  >
+                    {relativeTime}
+                  </time>
 
-                  {isClickable && (
-                    <button
-                      type="button"
-                      className={`admin-notif-item__action-btn ${
-                        isPrimaryAction
-                          ? "admin-notif-item__action-btn--primary"
-                          : "admin-notif-item__action-btn--secondary"
-                      }`}
-                      onClick={() => handleNotificationClick(notification)}
-                      title={
-                        isPrimaryAction
-                          ? `${meta.actionLabel || "Review"} (Urgent action)`
-                          : `${meta.actionLabel || "View Details"}`
-                      }
-                    >
-                      <span>{meta.actionLabel || "Review"}</span>
-                      <ArrowUpRight size={13} />
-                    </button>
-                  )}
+                  <div className="admin-notif-item__actions">
+                    {isUnread && (
+                      <button
+                        type="button"
+                        className="admin-notif-item__mark-read-btn"
+                        onClick={(e) => handleSingleMarkRead(e, notification)}
+                        title="Mark as read"
+                        aria-label="Mark notification as read"
+                      >
+                        <Check size={14} />
+                      </button>
+                    )}
+
+                    {isClickable && (
+                      <button
+                        type="button"
+                        className="admin-notif-item__action-btn"
+                        onClick={() => handleNotificationClick(notification)}
+                        title="View Details"
+                      >
+                        <span>View Details</span>
+                        <ArrowUpRight size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </article>
             );

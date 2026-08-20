@@ -84,6 +84,11 @@ router.post(
   verifyApplicant,
   maintenanceController.sendTenantReply,
 );
+router.patch(
+  "/:requestId/read",
+  verifyApplicant,
+  maintenanceController.markTenantMaintenanceRead,
+);
 
 // Canonical admin routes
 router.get(
@@ -120,6 +125,13 @@ router.patch(
   filterByBranch,
   requirePermission("manageMaintenance"),
   maintenanceController.updateAdminRequestStatus,
+);
+router.patch(
+  "/admin/:requestId/reopen",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.reopenAdminMaintenanceRequest,
 );
 router.patch(
   "/admin/:requestId/provider",

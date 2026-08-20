@@ -13,7 +13,7 @@ const TABS = [
   { id: "water",                label: "Water",                icon: Droplets,      iconClassName: "text-sky-500 dark:text-sky-400" },
   { id: "rent",                 label: "Rent",                 icon: Home,          iconClassName: "text-emerald-600 dark:text-emerald-400" },
   { id: "reservation-payments", label: "Reservation Payments", icon: CreditCard,    iconClassName: "text-emerald-600 dark:text-emerald-400" },
-  { id: "overdue-notices",      label: "Overdue Notices",      icon: AlertTriangle, iconClassName: "text-rose-600 dark:text-rose-400" },
+  { id: "overdue-notices",      label: "Overdue Accounts",      icon: AlertTriangle, iconClassName: "text-rose-600 dark:text-rose-400" },
   { id: "violations",           label: "Violations & Log",      icon: ShieldAlert,   iconClassName: "text-rose-600 dark:text-rose-400" },
 ];
 

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ExternalLink, Globe, KeyRound, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ExternalLink, Globe, KeyRound, RotateCcw, ShieldAlert } from "lucide-react";
 import { useAuditAnalytics } from "../../../shared/hooks/queries/useAnalyticsReports";
 import {
  AnalyticsBarChart,
@@ -27,18 +27,127 @@ import {
  getDynamicMonitoringPrompts,
 } from "./analyticsTabShared";
 
+const getSeverityDot = (severity) => {
+  const s = String(severity || "").toLowerCase();
+  if (s === "critical" || s === "high") return "bg-rose-500";
+  if (s === "warning" || s === "medium") return "bg-amber-500";
+  return "bg-slate-400 dark:bg-slate-500";
+};
+
+const getSeverityTextColor = (severity) => {
+  const s = String(severity || "").toLowerCase();
+  if (s === "critical" || s === "high") return "text-rose-600 dark:text-rose-400";
+  if (s === "warning" || s === "medium") return "text-amber-600 dark:text-amber-400";
+  return "text-muted-foreground";
+};
+
 const EVENT_COLUMNS = [
- { key: "action", label: "Event", sortable: true },
- { key: "branch", label: "Branch", render: (row) => formatBranch(row.branch), sortable: true },
- { key: "severity", label: "Severity", sortable: true },
- { key: "user", label: "User", sortable: true },
- { key: "timestamp", label: "Time", render: (row) => formatDateTime(row.timestamp), sortable: true },
+  {
+    key: "action",
+    label: "Event",
+    width: "28%",
+    sortable: true,
+    render: (row) => (
+      <span className="font-medium text-foreground text-xs leading-relaxed line-clamp-2">
+        {row.action || "—"}
+      </span>
+    ),
+  },
+  {
+    key: "branch",
+    label: "Branch",
+    width: "16%",
+    sortable: true,
+    render: (row) => (
+      <span className="text-xs text-muted-foreground whitespace-nowrap">
+        {formatBranch(row.branch)}
+      </span>
+    ),
+  },
+  {
+    key: "severity",
+    label: "Severity",
+    width: "16%",
+    sortable: true,
+    render: (row) => {
+      const s = String(row.severity || "info").toLowerCase();
+      const label = s.charAt(0).toUpperCase() + s.slice(1);
+      return (
+        <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${getSeverityTextColor(s)}`}>
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${getSeverityDot(s)}`} />
+          {label}
+        </span>
+      );
+    },
+  },
+  {
+    key: "user",
+    label: "User",
+    width: "20%",
+    sortable: true,
+    render: (row) => {
+      const userStr = String(row.user || "—");
+      const isHash = userStr.startsWith("sha256:") || userStr.length > 20;
+      const displayVal = isHash ? `${userStr.slice(0, 16)}…` : userStr;
+      return (
+        <span
+          className="font-mono text-xs text-muted-foreground truncate block max-w-full"
+          title={userStr}
+        >
+          {displayVal}
+        </span>
+      );
+    },
+  },
+  {
+    key: "timestamp",
+    label: "Time",
+    width: "20%",
+    align: "right",
+    sortable: true,
+    render: (row) => (
+      <span className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+        {formatDateTime(row.timestamp)}
+      </span>
+    ),
+  },
 ];
 
 const SUSPICIOUS_IP_COLUMNS = [
- { key: "ipAddress", label: "IP Address", sortable: true },
- { key: "attempts", label: "Failed Logins", sortable: true },
- { key: "lastSeenAt", label: "Last Seen", render: (row) => formatDateTime(row.lastSeenAt), sortable: true },
+  {
+    key: "ipAddress",
+    label: "IP Address",
+    width: "36%",
+    sortable: true,
+    render: (row) => (
+      <span className="font-mono text-xs text-foreground font-medium">
+        {row.ipAddress || "—"}
+      </span>
+    ),
+  },
+  {
+    key: "attempts",
+    label: "Failed Logins",
+    width: "30%",
+    sortable: true,
+    render: (row) => (
+      <span className="font-semibold text-rose-600 dark:text-rose-400 text-xs tabular-nums">
+        {row.attempts || 0} attempts
+      </span>
+    ),
+  },
+  {
+    key: "lastSeenAt",
+    label: "Last Seen",
+    width: "34%",
+    align: "right",
+    sortable: true,
+    render: (row) => (
+      <span className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+        {formatDateTime(row.lastSeenAt)}
+      </span>
+    ),
+  },
 ];
 
 export default function AnalyticsMonitoringTab({
@@ -57,7 +166,7 @@ export default function AnalyticsMonitoringTab({
   const [ipPageSize, setIpPageSize] = useState(5);
 
   const params = useMemo(() => ({ branch, range }), [branch, range]);
-  const { data, isLoading, isError } = useAuditAnalytics(params);
+  const { data, isLoading, isError, error, refetch } = useAuditAnalytics(params);
 
   const {
     data: insightData,
@@ -95,14 +204,17 @@ export default function AnalyticsMonitoringTab({
     [data],
   );
 
-  const metricCards = [
-    { icon: ShieldAlert, label: "Failed Logins", value: kpis.failedLogins || 0, tone: "rose", trend: "Authentication failures" },
-    { icon: AlertTriangle, label: "Critical Events", value: kpis.criticalEvents || 0, tone: "amber", trend: "High priority alerts" },
-    { icon: KeyRound, label: "Access Overrides", value: kpis.accessOverrides || 0, tone: "blue", trend: "Permission changes" },
-    { icon: Globe, label: "Unique IPs", value: kpis.uniqueFailedLoginIps || 0, tone: "green", trend: "Origin addresses" },
-  ];
+  const metricCards = useMemo(
+    () => [
+      { icon: ShieldAlert, label: "Failed Logins", value: kpis.failedLogins || 0, tone: "rose", trend: "Authentication failures" },
+      { icon: AlertTriangle, label: "Critical Events", value: kpis.criticalEvents || 0, tone: "amber", trend: "High priority alerts" },
+      { icon: KeyRound, label: "Access Overrides", value: kpis.accessOverrides || 0, tone: "blue", trend: "Permission changes" },
+      { icon: Globe, label: "Unique IPs", value: kpis.uniqueFailedLoginIps || 0, tone: "green", trend: "Origin addresses" },
+    ],
+    [kpis],
+  );
 
-  const exportCsv = () => {
+  const exportCsv = useCallback(() => {
     handleCsvExport(
       filteredSecurityEvents,
       [
@@ -114,9 +226,9 @@ export default function AnalyticsMonitoringTab({
       ],
       `lilycrest-monitoring-${branch || "all"}-${range}`,
     );
-  };
+  }, [filteredSecurityEvents, branch, range]);
 
-  const exportPdf = () => {
+  const exportPdf = useCallback(() => {
     handlePdfExport({
       title: "System Monitoring & Security Analytics",
       subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
@@ -177,16 +289,42 @@ export default function AnalyticsMonitoringTab({
         },
       ],
     });
-  };
+  }, [range, data, branch, metricCards, insightData, branchSummary, filteredSecurityEvents, suspiciousIps]);
 
   useEffect(() => {
-    if (registerExport) {
+    if (typeof registerExport === "function") {
       registerExport({ exportCsv, exportPdf });
     }
   }, [registerExport, exportCsv, exportPdf]);
 
   if (isLoading && !data) {
     return <AdminAnalyticsDetailSkeleton tab="monitoring" />;
+  }
+
+  if (isError && !data) {
+    return (
+      <div className="analytics-tab-content flex flex-col items-center justify-center p-8 bg-card border border-border rounded-xl text-center space-y-4 my-4">
+        <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/30 flex items-center justify-center text-rose-600 dark:text-rose-400">
+          <ShieldAlert size={24} />
+        </div>
+        <div className="space-y-1 max-w-md">
+          <h3 className="text-base font-semibold text-foreground">
+            System Monitoring Unavailable
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {error?.message || "Could not load security audit metrics. Please check your network connection or try again."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium text-foreground bg-secondary hover:bg-secondary/80 border border-border rounded-lg transition-colors cursor-pointer"
+        >
+          <RotateCcw size={14} />
+          <span>Retry Loading</span>
+        </button>
+      </div>
+    );
   }
 
   const handleExecuteAction = (action) => {
@@ -244,98 +382,98 @@ export default function AnalyticsMonitoringTab({
         </ReportChartPanel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-  <ReportChartPanel title="Recent security events" subtitle="Latest owner-level security and audit activity">
-   <AnalyticsTableToolbar
-     searchQuery={searchQuery}
-     onSearchChange={(val) => {
-       setSearchQuery(val);
-       setEventPage(1);
-     }}
-     searchPlaceholder="Search event or user..."
-     filters={[
-       {
-         key: "severityFilter",
-         label: "Severity",
-         value: severityFilter,
-         onChange: (val) => {
-           setSeverityFilter(val);
-           setEventPage(1);
-         },
-         options: [
-           { value: "all", label: "All Severities" },
-           { value: "critical", label: "Critical" },
-           { value: "warning", label: "Warning" },
-           { value: "info", label: "Info" },
-         ],
-       },
-     ]}
-     hasActiveFilters={Boolean(searchQuery || severityFilter !== "all")}
-     onResetFilters={() => {
-       setSearchQuery("");
-       setSeverityFilter("all");
-       setEventPage(1);
-     }}
-     extraActions={
-       <div className="flex items-center gap-2">
-         <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
-           Showing {filteredSecurityEvents.length} of {recentSecurityEvents.length} events
-         </span>
-         <ExportButtons onCsv={exportCsv} onPdf={exportPdf} />
-       </div>
-     }
-   />
+      <div className="flex flex-col gap-6">
+        <ReportChartPanel title="Recent security events" subtitle="Latest owner-level security and audit activity">
+          <AnalyticsTableToolbar
+            searchQuery={searchQuery}
+            onSearchChange={(val) => {
+              setSearchQuery(val);
+              setEventPage(1);
+            }}
+            searchPlaceholder="Search event or user..."
+            filters={[
+              {
+                key: "severityFilter",
+                label: "Severity",
+                value: severityFilter,
+                onChange: (val) => {
+                  setSeverityFilter(val);
+                  setEventPage(1);
+                },
+                options: [
+                  { value: "all", label: "All Severities" },
+                  { value: "critical", label: "Critical" },
+                  { value: "warning", label: "Warning" },
+                  { value: "info", label: "Info" },
+                ],
+              },
+            ]}
+            hasActiveFilters={Boolean(searchQuery || severityFilter !== "all")}
+            onResetFilters={() => {
+              setSearchQuery("");
+              setSeverityFilter("all");
+              setEventPage(1);
+            }}
+            extraActions={
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
+                  Showing {filteredSecurityEvents.length} of {recentSecurityEvents.length} events
+                </span>
+                <ExportButtons onCsv={exportCsv} onPdf={exportPdf} />
+              </div>
+            }
+          />
 
-  <DataTable
-  columns={EVENT_COLUMNS}
-  data={filteredSecurityEvents}
-  loading={isLoading}
-  pagination={{
-  page: eventPage,
-  pageSize: eventPageSize,
-  total: filteredSecurityEvents.length,
-  onPageChange: setEventPage,
-  onPageSizeChange: setEventPageSize,
-  }}
-  emptyState={{
-  title: isError ? "System monitoring unavailable" : "No recent security events",
-  description: isError
-  ? "The audit summary could not be loaded."
-  : "No recent security activity matched the selected filter.",
-  }}
-  />
-  </ReportChartPanel>
+          <DataTable
+            columns={EVENT_COLUMNS}
+            data={filteredSecurityEvents}
+            loading={isLoading}
+            pagination={{
+              page: eventPage,
+              pageSize: eventPageSize,
+              total: filteredSecurityEvents.length,
+              onPageChange: setEventPage,
+              onPageSizeChange: setEventPageSize,
+            }}
+            emptyState={{
+              title: isError ? "System monitoring unavailable" : "No recent security events",
+              description: isError
+                ? "The audit summary could not be loaded."
+                : "No recent security activity matched the selected filter.",
+            }}
+          />
+        </ReportChartPanel>
 
-  <ReportChartPanel
-  title="Suspicious IPs"
-  subtitle="Failed login sources with repeated attempts"
-  actions={
-  <Link to="/admin/audit-logs" className="admin-reports__link">
-  Open full audit log
-  <ExternalLink size={14} />
-  </Link>
-  }
-  >
-  <DataTable
-  columns={SUSPICIOUS_IP_COLUMNS}
-  data={suspiciousIps}
-  loading={isLoading}
-  pagination={{
-  page: ipPage,
-  pageSize: ipPageSize,
-  total: suspiciousIps.length,
-  onPageChange: setIpPage,
-  onPageSizeChange: setIpPageSize,
-  }}
-  emptyState={{
-  title: isError ? "Suspicious IP summary unavailable" : "No suspicious IPs",
-  description: isError
-  ? "The suspicious IP summary could not be loaded."
-  : "No repeated failed-login IPs were found for this scope.",
-  }}
-  />
- </ReportChartPanel>
- </div>
+        <ReportChartPanel
+          title="Suspicious IPs"
+          subtitle="Failed login sources with repeated attempts"
+          actions={
+            <Link to="/admin/audit-logs" className="admin-reports__link">
+              Open full audit log
+              <ExternalLink size={14} />
+            </Link>
+          }
+        >
+          <DataTable
+            columns={SUSPICIOUS_IP_COLUMNS}
+            data={suspiciousIps}
+            loading={isLoading}
+            pagination={{
+              page: ipPage,
+              pageSize: ipPageSize,
+              total: suspiciousIps.length,
+              onPageChange: setIpPage,
+              onPageSizeChange: setIpPageSize,
+            }}
+            emptyState={{
+              title: isError ? "Suspicious IP summary unavailable" : "No suspicious IPs",
+              description: isError
+                ? "The suspicious IP summary could not be loaded."
+                : "No repeated failed-login IPs were found for this scope.",
+            }}
+          />
+        </ReportChartPanel>
+      </div>
     </div>
  );
 }

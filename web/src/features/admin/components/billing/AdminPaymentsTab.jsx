@@ -106,6 +106,7 @@ export default function AdminPaymentsTab({ isActive }) {
               <Search size={15} />
               <input
                 type="text"
+                maxLength={100}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search tenant, bill, payment ID..."
@@ -141,6 +142,8 @@ export default function AdminPaymentsTab({ isActive }) {
 
             <input
               type="date"
+              min="2020-01-01"
+              max="2099-12-31"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-card-foreground"
@@ -149,6 +152,8 @@ export default function AdminPaymentsTab({ isActive }) {
             <div className="flex gap-2">
               <input
                 type="date"
+                min="2020-01-01"
+                max="2099-12-31"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
                 className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-card-foreground"

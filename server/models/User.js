@@ -99,6 +99,11 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    middleName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     lastName: {
       type: String,
       required: true,
@@ -131,6 +136,11 @@ const userSchema = new mongoose.Schema(
       default: "",
     },
     occupation: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    educationLevel: {
       type: String,
       trim: true,
       default: "",

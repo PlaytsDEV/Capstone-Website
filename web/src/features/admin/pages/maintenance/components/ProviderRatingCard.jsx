@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, forwardRef, useImperativeHandle } from "react";
 import { AlertCircle, Award, CheckCircle2, Loader2, Star, ThumbsUp } from "lucide-react";
 import { getAssignedProviderName } from "../maintenanceUtils";
 
@@ -23,24 +23,107 @@ const RATING_LABELS = {
 
 const MAX_FEEDBACK_LENGTH = 500;
 
-export function ProviderRatingCard({
-  request,
-  isSubmitting = false,
-  onSubmitRating,
-  disabled = false,
-}) {
+export const ProviderRatingCard = forwardRef(function ProviderRatingCard(
+  {
+    request,
+    isSubmitting = false,
+    onSubmitRating,
+    disabled = false,
+    hideStandaloneAction = false,
+  },
+  ref,
+) {
   const [selectedRating, setSelectedRating] = useState(5);
   const [hoverRating, setHoverRating] = useState(0);
   const [selectedTags, setSelectedTags] = useState(["Quality Repair", "Punctual"]);
   const [feedback, setFeedback] = useState("");
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState(false);
+  const [isLocalSubmitting, setIsLocalSubmitting] = useState(false);
+  const effectiveSubmitting = Boolean(isSubmitting || isLocalSubmitting);
 
   const providerName = getAssignedProviderName(request);
   const existingRating = request?.providerRating;
   const isResolvedOrCompleted = ["completed", "resolved", "closed"].includes(
     String(request?.status || "").toLowerCase(),
   );
+
+  const validate = (ratingVal, tagsVal, notesVal) => {
+    const errs = {};
+    if (!ratingVal || ratingVal < 1 || ratingVal > 5) {
+      errs.rating = "Please select a valid rating from 1 to 5 stars.";
+    }
+
+    if (!Array.isArray(tagsVal) || tagsVal.length === 0) {
+      errs.tags = "Please select at least 1 performance attribute.";
+    }
+
+    if (notesVal && notesVal.length > MAX_FEEDBACK_LENGTH) {
+      errs.feedback = `Notes cannot exceed ${MAX_FEEDBACK_LENGTH} characters.`;
+    }
+
+    // Require an explanatory note or low-performance tag if 1 or 2 stars
+    if (ratingVal <= 2) {
+      const hasNegativeTag = tagsVal.some((t) =>
+        ["Delayed Arrival", "Required Follow-up", "Unsatisfactory"].includes(t),
+      );
+      if (!hasNegativeTag && (!notesVal || notesVal.trim().length < 5)) {
+        errs.feedback = "Please provide brief notes explaining the low rating (min 5 characters).";
+      }
+    }
+
+    return errs;
+  };
+
+  useImperativeHandle(ref, () => ({
+    validate: () => {
+      setTouched(true);
+      if (!providerName || existingRating?.rating) {
+        return { valid: true, skipped: true };
+      }
+      const validationErrors = validate(selectedRating, selectedTags, feedback);
+      if (Object.keys(validationErrors).length > 0) {
+        setErrors(validationErrors);
+        const firstKey = Object.keys(validationErrors)[0];
+        return { valid: false, message: validationErrors[firstKey], errors: validationErrors };
+      }
+      return {
+        valid: true,
+        payload: {
+          rating: selectedRating,
+          tags: selectedTags,
+          feedback: feedback.trim() || undefined,
+        },
+      };
+    },
+    saveRating: async () => {
+      setTouched(true);
+      if (!providerName || existingRating?.rating) {
+        return { skipped: true };
+      }
+      const validationErrors = validate(selectedRating, selectedTags, feedback);
+      if (Object.keys(validationErrors).length > 0) {
+        setErrors(validationErrors);
+        const firstKey = Object.keys(validationErrors)[0];
+        throw new Error(validationErrors[firstKey]);
+      }
+      if (onSubmitRating) {
+        return onSubmitRating({
+          rating: selectedRating,
+          tags: selectedTags,
+          feedback: feedback.trim() || undefined,
+        });
+      }
+    },
+    getRatingPayload: () => ({
+      rating: selectedRating,
+      tags: selectedTags,
+      feedback: feedback.trim() || undefined,
+    }),
+    hasContractor: Boolean(providerName),
+    isAlreadyRated: Boolean(existingRating?.rating),
+    isPending: effectiveSubmitting,
+  }));
 
   // If no contractor is assigned, do not show the rating card
   if (!providerName) return null;
@@ -113,33 +196,6 @@ export function ProviderRatingCard({
     );
   }
 
-  const validate = (ratingVal, tagsVal, notesVal) => {
-    const errs = {};
-    if (!ratingVal || ratingVal < 1 || ratingVal > 5) {
-      errs.rating = "Please select a valid rating from 1 to 5 stars.";
-    }
-
-    if (!Array.isArray(tagsVal) || tagsVal.length === 0) {
-      errs.tags = "Please select at least 1 performance attribute.";
-    }
-
-    if (notesVal && notesVal.length > MAX_FEEDBACK_LENGTH) {
-      errs.feedback = `Notes cannot exceed ${MAX_FEEDBACK_LENGTH} characters.`;
-    }
-
-    // Require an explanatory note or low-performance tag if 1 or 2 stars
-    if (ratingVal <= 2) {
-      const hasNegativeTag = tagsVal.some((t) =>
-        ["Delayed Arrival", "Required Follow-up", "Unsatisfactory"].includes(t),
-      );
-      if (!hasNegativeTag && (!notesVal || notesVal.trim().length < 5)) {
-        errs.feedback = "Please provide brief notes explaining the low rating (min 5 characters).";
-      }
-    }
-
-    return errs;
-  };
-
   const handleTagToggle = (tag) => {
     setSelectedTags((prev) => {
       const next = prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag];
@@ -176,11 +232,18 @@ export function ProviderRatingCard({
     setErrors({});
 
     if (!onSubmitRating) return;
-    await onSubmitRating({
-      rating: selectedRating,
-      tags: selectedTags,
-      feedback: feedback.trim() || undefined,
-    });
+    try {
+      setIsLocalSubmitting(true);
+      await onSubmitRating({
+        rating: selectedRating,
+        tags: selectedTags,
+        feedback: feedback.trim() || undefined,
+      });
+    } catch {
+      // Error handling and notification is handled by the caller/mutation
+    } finally {
+      setIsLocalSubmitting(false);
+    }
   };
 
   const currentDisplayRating = hoverRating || selectedRating;
@@ -330,29 +393,32 @@ export function ProviderRatingCard({
           )}
         </div>
 
-        {/* Submit Button */}
-        <div className="flex items-center justify-end pt-1">
-          <button
-            type="submit"
-            disabled={disabled || isSubmitting}
-            title={
-              disabled
-                ? "Rating submission is locked"
-                : isSubmitting
-                  ? "Saving rating..."
-                  : "Submit contractor rating and performance feedback"
-            }
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-5 text-xs font-bold shadow-xs disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer active:scale-[0.98]"
-          >
-            {isSubmitting ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <ThumbsUp size={13} />
-            )}
-            <span>{isSubmitting ? "Saving Rating..." : "Save Contractor Rating"}</span>
-          </button>
-        </div>
+        {/* Standalone Submit Button (Rendered only when not embedded in unified stage) */}
+        {!hideStandaloneAction && (
+          <div className="flex items-center justify-end pt-1">
+            <button
+              type="submit"
+              disabled={disabled || effectiveSubmitting}
+              title={
+                disabled
+                  ? "Rating submission is locked"
+                  : effectiveSubmitting
+                    ? "Saving rating..."
+                    : "Submit contractor rating and performance feedback"
+              }
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-5 text-xs font-bold shadow-xs disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer active:scale-[0.98]"
+            >
+              {effectiveSubmitting ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <ThumbsUp size={13} />
+              )}
+              <span>{effectiveSubmitting ? "Saving Rating..." : "Save Contractor Rating"}</span>
+            </button>
+          </div>
+        )}
       </form>
     </div>
   );
-}
+});
+

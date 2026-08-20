@@ -396,6 +396,22 @@ export const validateProfileUpdateInput = (body) => {
     }
   }
 
+  // Validate middleName (optional)
+  if (body.middleName !== undefined) {
+    if (body.middleName === null || body.middleName === "") {
+      data.middleName = "";
+    } else {
+      const middleName = sanitizeName(body.middleName);
+      if (!middleName) {
+        errors.push(
+          "Middle name must be letters/spaces/hyphens/apostrophes only",
+        );
+      } else {
+        data.middleName = middleName;
+      }
+    }
+  }
+
   // Validate lastName (optional)
   if (body.lastName !== undefined) {
     if (body.lastName === null || body.lastName === "") {
@@ -487,6 +503,17 @@ export const validateProfileUpdateInput = (body) => {
     data.profileImage = body.profileImage;
   }
 
+  // Validate educationLevel (optional, max 50 chars)
+  if (body.educationLevel !== undefined) {
+    if (body.educationLevel === null || body.educationLevel === "") {
+      data.educationLevel = "";
+    } else if (body.educationLevel.length > 50) {
+      errors.push("Education level must be 50 characters or less");
+    } else {
+      data.educationLevel = sanitizeText(body.educationLevel);
+    }
+  }
+
   // Validate address (optional, max 200 chars)
   if (body.address !== undefined) {
     if (body.address.length > 200) {
@@ -502,6 +529,17 @@ export const validateProfileUpdateInput = (body) => {
       errors.push("City must be 100 characters or less");
     } else {
       data.city = body.city.trim();
+    }
+  }
+
+  // Validate province (optional, max 100 chars)
+  if (body.province !== undefined) {
+    if (body.province === null || body.province === "") {
+      data.province = "";
+    } else if (body.province.length > 100) {
+      errors.push("Province must be 100 characters or less");
+    } else {
+      data.province = body.province.trim();
     }
   }
 
@@ -543,6 +581,17 @@ export const validateProfileUpdateInput = (body) => {
       errors.push("Emergency contact name must be 100 characters or less");
     } else {
       data.emergencyContact = formatProperCase(body.emergencyContact.trim());
+    }
+  }
+
+  // Validate emergencyRelationship (optional, max 50 chars)
+  if (body.emergencyRelationship !== undefined) {
+    if (body.emergencyRelationship === null || body.emergencyRelationship === "") {
+      data.emergencyRelationship = "";
+    } else if (body.emergencyRelationship.length > 50) {
+      errors.push("Emergency relationship must be 50 characters or less");
+    } else {
+      data.emergencyRelationship = sanitizeText(body.emergencyRelationship);
     }
   }
 

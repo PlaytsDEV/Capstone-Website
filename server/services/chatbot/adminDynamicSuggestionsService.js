@@ -33,13 +33,23 @@ export async function getAdminDynamicSuggestions({ branch = "all", userRole = "b
 
     const suggestions = [];
 
-    // 1. Always include the primary standup briefing
-    suggestions.push({
-      label: "Today's Shift Briefing",
-      prompt: "Today's Shift Briefing",
-      category: "standup",
-      priority: 1,
-    });
+    // 1. Primary standup briefing chip
+    if (isOwner && (branch === "all" || !branch)) {
+      suggestions.push({
+        label: "Consolidated Operations Briefing",
+        prompt: "Today's Shift Briefing",
+        category: "standup",
+        priority: 1,
+      });
+    } else {
+      const branchLabel = branch === "guadalupe" ? "Guadalupe" : "Gil Puyat";
+      suggestions.push({
+        label: `Today's Shift Briefing · ${branchLabel}`,
+        prompt: "Today's Shift Briefing",
+        category: "standup",
+        priority: 1,
+      });
+    }
 
     // 2. Urgent / High-Priority Maintenance Suggestions
     try {

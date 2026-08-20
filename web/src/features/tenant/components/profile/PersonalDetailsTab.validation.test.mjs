@@ -43,6 +43,25 @@ test("validateField enforces first name and last name constraints", () => {
   assert.equal(validateField("lastName", "Dela Cruz"), null);
 });
 
+test("validateField enforces middle name constraints", () => {
+  // Empty/null is allowed (optional)
+  assert.equal(validateField("middleName", ""), null);
+  assert.equal(validateField("middleName", null), null);
+
+  // Max length (50 chars)
+  const longName = "M".repeat(51);
+  assert.equal(validateField("middleName", longName), "50 characters maximum");
+
+  // Format (letters, hyphens, apostrophes only)
+  assert.equal(validateField("middleName", "Santos123"), "Letters, hyphens, and apostrophes only");
+  assert.equal(validateField("middleName", "Dela@Cruz"), "Letters, hyphens, and apostrophes only");
+
+  // Valid
+  assert.equal(validateField("middleName", "Santos"), null);
+  assert.equal(validateField("middleName", "Dela Cruz"), null);
+  assert.equal(validateField("middleName", "Mary-Ann"), null);
+});
+
 test("validateField enforces nationality constraints", () => {
   // Empty is allowed (optional)
   assert.equal(validateField("nationality", ""), null);

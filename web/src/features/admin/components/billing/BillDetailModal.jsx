@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Check, XCircle, Eye, Clock, AlertTriangle } from "lucide-react";
 import { fmtCurrency, fmtDate, fmtMonth } from "../../utils/formatters";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
@@ -29,7 +30,9 @@ export default function BillDetailModal({
  paymentFlow?.adminMessage ||
  "Manual settlement should only be used for branch-assisted offline payments.";
 
- return (
+ if (!bill || typeof document === "undefined") return null;
+
+ return createPortal(
  <div className="modal-overlay" onClick={onClose}>
  <div
  className="modal-content modal-lg"
@@ -89,77 +92,115 @@ export default function BillDetailModal({
  </div>
  )}
 
- {/* Charges breakdown */}
- <div className="charges-breakdown">
- <h3>Charges Breakdown</h3>
- <div className="charge-row">
- <span>Monthly Rent</span>
- <span>{fmtCurrency(bill.charges?.rent)}</span>
- </div>
- {(bill.charges?.electricity || 0) > 0 && (
- <div className="charge-row">
- <span>Electricity</span>
- <span>{fmtCurrency(bill.charges.electricity)}</span>
- </div>
- )}
- {(bill.charges?.water || 0) > 0 && (
- <div className="charge-row">
- <span>Water (room reading)</span>
- <span>{fmtCurrency(bill.charges.water)}</span>
- </div>
- )}
- {/* Dynamic custom charges */}
- {(bill.additionalCharges || []).map((charge, idx) => (
- <div className="charge-row" key={idx}>
- <span>{charge.name}</span>
- <span>{fmtCurrency(charge.amount)}</span>
- </div>
- ))}
- {(bill.charges?.penalty || 0) > 0 && (
- <div className="charge-row penalty">
- <span>
- Penalty
- {bill.penaltyDetails?.daysLate
- ? ` (${bill.penaltyDetails.daysLate}d × ₱${bill.penaltyDetails.ratePerDay || 50})`
- : ""}
- </span>
- <span>+{fmtCurrency(bill.charges.penalty)}</span>
- </div>
- )}
- {(bill.charges?.discount || 0) > 0 && (
- <div className="charge-row discount">
- <span>Discount</span>
- <span>-{fmtCurrency(bill.charges.discount)}</span>
- </div>
- )}
- {(bill.grossAmount || 0) > 0 && bill.reservationCreditApplied > 0 && (
- <>
- <div className="charge-row total">
- <span>Gross Charges</span>
- <span>{fmtCurrency(bill.grossAmount)}</span>
- </div>
- <div className="charge-row discount">
- <span>Reservation Credit Applied</span>
- <span>-{fmtCurrency(bill.reservationCreditApplied)}</span>
- </div>
- </>
- )}
- <div className="charge-row total">
- <span>Total</span>
- <span>{fmtCurrency(bill.totalAmount)}</span>
- </div>
- {bill.paidAmount > 0 && (
- <div className="charge-row paid">
- <span>Amount Paid</span>
- <span>{fmtCurrency(bill.paidAmount)}</span>
- </div>
- )}
- {(bill.remainingAmount ?? 0) > 0 && (
- <div className="charge-row total">
- <span>Remaining Balance</span>
- <span>{fmtCurrency(bill.remainingAmount)}</span>
- </div>
- )}
+  {/* Charges breakdown */}
+  {(() => {
+    const rentAmt = Number(bill.charges?.rent || 0);
+    const elecAmt = Number(bill.charges?.electricity || 0);
+    const waterAmt = Number(bill.charges?.water || 0);
+    const applianceAmt = Number(bill.charges?.applianceFees || 0);
+    const corkageAmt = Number(bill.charges?.corkageFees || 0);
+    const customChargesList = bill.additionalCharges || [];
+    const customChargesAmt = customChargesList.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+    const baseSubtotal = rentAmt + elecAmt + waterAmt + applianceAmt + corkageAmt + customChargesAmt;
+
+    const daysLate = Number(bill.penaltyDetails?.daysLate || (bill.dueDate && new Date(bill.dueDate) < new Date() && !bill.paidAt ? Math.floor((new Date().setHours(0,0,0,0) - new Date(bill.dueDate).setHours(0,0,0,0))/86400000) : 0));
+    const penaltyRate = Number(bill.penaltyDetails?.ratePerDay || 50);
+    const persistedPenalty = Number(bill.charges?.penalty || 0);
+    const livePenalty = persistedPenalty > 0 ? persistedPenalty : (daysLate > 0 && bill.status !== 'paid' ? daysLate * penaltyRate : 0);
+    const discountAmt = Number(bill.charges?.discount || 0);
+    const creditApplied = Number(bill.reservationCreditApplied || 0);
+    const computedTotal = Math.max(0, baseSubtotal + livePenalty - discountAmt - creditApplied);
+    const totalAmount = bill.totalAmount && persistedPenalty > 0 ? Number(bill.totalAmount) : computedTotal;
+    const paidAmt = Number(bill.paidAmount || (bill.status === 'paid' ? totalAmount : 0));
+    const remainingBal = Math.max(0, totalAmount - paidAmt);
+
+    return (
+      <div className="charges-breakdown">
+        <h3>Charges Breakdown</h3>
+        {rentAmt > 0 && (
+          <div className="charge-row">
+            <span>Monthly Rent</span>
+            <span>{fmtCurrency(rentAmt)}</span>
+          </div>
+        )}
+        {elecAmt > 0 && (
+          <div className="charge-row">
+            <span>Electricity</span>
+            <span>{fmtCurrency(elecAmt)}</span>
+          </div>
+        )}
+        {waterAmt > 0 && (
+          <div className="charge-row">
+            <span>Water (room reading)</span>
+            <span>{fmtCurrency(waterAmt)}</span>
+          </div>
+        )}
+        {applianceAmt > 0 && (
+          <div className="charge-row">
+            <span>Appliance Fees</span>
+            <span>{fmtCurrency(applianceAmt)}</span>
+          </div>
+        )}
+        {corkageAmt > 0 && (
+          <div className="charge-row">
+            <span>Corkage Fees</span>
+            <span>{fmtCurrency(corkageAmt)}</span>
+          </div>
+        )}
+        {/* Dynamic custom charges */}
+        {customChargesList.map((charge, idx) => (
+          <div className="charge-row" key={idx}>
+            <span>{charge.name}</span>
+            <span>{fmtCurrency(charge.amount)}</span>
+          </div>
+        ))}
+
+        {/* Subtotal row */}
+        <div className="charge-row" style={{ fontWeight: "600", borderTop: "1px solid var(--border)", paddingTop: "6px" }}>
+          <span>Subtotal (Base Charges)</span>
+          <span>{fmtCurrency(baseSubtotal)}</span>
+        </div>
+
+        {livePenalty > 0 && (
+          <div className="charge-row penalty">
+            <span>
+              Late Payment Penalty
+              {daysLate > 0 ? ` (${daysLate}d × ₱${penaltyRate.toFixed(2)})` : ""}
+            </span>
+            <span>+{fmtCurrency(livePenalty)}</span>
+          </div>
+        )}
+        {discountAmt > 0 && (
+          <div className="charge-row discount">
+            <span>Discount</span>
+            <span>-{fmtCurrency(discountAmt)}</span>
+          </div>
+        )}
+        {creditApplied > 0 && (
+          <div className="charge-row discount">
+            <span>Reservation Credit Applied</span>
+            <span>-{fmtCurrency(creditApplied)}</span>
+          </div>
+        )}
+        <div className="charge-row total">
+          <span>Total Amount Due</span>
+          <span>{fmtCurrency(totalAmount)}</span>
+        </div>
+        {paidAmt > 0 && (
+          <div className="charge-row paid">
+            <span>Amount Paid</span>
+            <span>{fmtCurrency(paidAmt)}</span>
+          </div>
+        )}
+        {remainingBal > 0 && (
+          <div className="charge-row total">
+            <span>Remaining Balance</span>
+            <span>{fmtCurrency(remainingBal)}</span>
+          </div>
+        )}
+      </div>
+    );
+  })()}
  </div>
 
  {/* ─── Payment Proof Section ─── */}
@@ -430,6 +471,7 @@ export default function BillDetailModal({
  )}
  </div>
  </div>
- </div>
+ </div>,
+ document.body
  );
 }

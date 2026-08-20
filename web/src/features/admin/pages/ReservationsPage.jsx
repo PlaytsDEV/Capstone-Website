@@ -22,6 +22,7 @@ import {
   User,
   Search,
   ArrowLeft,
+  RefreshCw,
   X,
 } from "lucide-react";
 import { useSearchParams, useNavigate } from "react-router-dom";
@@ -223,19 +224,41 @@ function ReservationsPage() {
   });
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
+  useEffect(() => {
+    const nextBranch = normalizeBranchFilterValue({
+      requestedBranch: isOwner ? requestedBranch : null,
+      fallbackBranch: isOwner ? null : user?.branch,
+      allValue: "all",
+    });
+
+    setBranchFilter((current) =>
+      current === nextBranch ? current : nextBranch,
+    );
+  }, [isOwner, requestedBranch, user?.branch]);
+
   const {
     data: rawReservations,
     isLoading: loading,
     error: queryError,
+    refetch: refetchReservationsQuery,
+    isFetching,
   } = useReservations(
     { view: "admin-list", archive: isOwner ? "all" : "active" },
-    { refetchInterval: 5000, refetchOnWindowFocus: true, refetchOnMount: true },
+    {
+      enabled: Boolean(user),
+      refetchInterval: 10000,
+      refetchOnWindowFocus: true,
+      refetchOnMount: true,
+    },
   );
   const error = queryError?.message || null;
 
   const reservations = useMemo(
-    () => (Array.isArray(rawReservations) ? rawReservations.map((raw) => mapReservationAdminRow(raw)) : []),
-    [rawReservations],
+    () =>
+      Array.isArray(rawReservations)
+        ? rawReservations.map((raw) => mapReservationAdminRow(raw, seenIds))
+        : [],
+    [rawReservations, seenIds],
   );
 
   const activeReservations = useMemo(
@@ -364,7 +387,7 @@ function ReservationsPage() {
   const handleResetAllFilters = useCallback(() => {
     setSearchTerm("");
     setStatusFilter("all");
-    setBranchFilter("all");
+    setBranchFilter(isOwner ? "all" : user?.branch || "all");
     setAdvancedFilters({
       moveIn: "any",
       applicationDate: "any",
@@ -375,7 +398,7 @@ function ReservationsPage() {
       appDateEnd: "",
     });
     setCurrentPage(1);
-  }, []);
+  }, [isOwner, user?.branch]);
 
 
   const sortedReservations = useMemo(() => {
@@ -662,6 +685,14 @@ function ReservationsPage() {
   const handleView = useCallback(
     async (reservationId) => {
       markAsSeen(reservationId);
+      queryClient.setQueriesData({ queryKey: ["reservations"] }, (old) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((r) =>
+          String(r._id || r.id) === String(reservationId)
+            ? { ...r, isViewedByAdmin: true, lastAdminViewedAt: new Date().toISOString() }
+            : r,
+        );
+      });
       try {
         const reservation = await prefetchReservationDetail(reservationId);
         setSelectedReservation({
@@ -743,10 +774,12 @@ function ReservationsPage() {
     handleView(reservationId);
   }, [activeTab, handleView, markAsSeen, searchParams, selectedReservation?.id]);
 
-  const refetchReservations = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ["reservations"] }),
-    [queryClient],
-  );
+  const refetchReservations = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+    if (typeof refetchReservationsQuery === "function") {
+      await refetchReservationsQuery();
+    }
+  }, [queryClient, refetchReservationsQuery]);
 
   const handleDelete = useCallback(
     (reservationId) => {
@@ -1127,6 +1160,42 @@ function ReservationsPage() {
 
       {activeTab === "reservations" && (
         <>
+          {queryError && (
+            <div
+              style={{
+                backgroundColor: "var(--bg-card)",
+                borderColor: "var(--border-light)",
+              }}
+              className="border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4"
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 text-rose-600 dark:text-rose-400 shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground">
+                    Unable to load reservations
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {queryError?.message ||
+                      "A network or authentication issue occurred while loading reservation records. Please check your connection or try again."}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => refetchReservations()}
+                disabled={isFetching}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-muted text-foreground transition-colors cursor-pointer shrink-0"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`}
+                />
+                <span>{isFetching ? "Retrying..." : "Retry Loading"}</span>
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             {summaryItems.map((item) => (
               <div
@@ -1360,13 +1429,14 @@ function ReservationsPage() {
               onClearSearch={() => setSearchTerm("")}
               statusFilter={statusFilter}
               onClearStatus={() => setStatusFilter("all")}
-              branchFilter={branchFilter}
-              onClearBranch={() => setBranchFilter("all")}
+              branchFilter={isOwner ? branchFilter : null}
+              onClearBranch={isOwner ? () => setBranchFilter("all") : undefined}
               advancedFilters={advancedFilters}
               onClearAdvancedField={(field) =>
                 setAdvancedFilters((prev) => ({ ...prev, [field]: "any" }))
               }
               onClearAll={handleResetAllFilters}
+              isOwner={isOwner}
             />
 
             <ReservationFilterDrawer
@@ -1583,11 +1653,35 @@ function ReservationsPage() {
                     <tr>
                       <td
                         colSpan={6}
-                        className="py-8 text-center text-muted-foreground"
+                        className="py-12 text-center text-muted-foreground"
                       >
-                        {isArchivedView
-                          ? "No archived reservations found."
-                          : "No reservations found. Try adjusting your filters."}
+                        <div className="flex flex-col items-center justify-center gap-2 max-w-sm mx-auto">
+                          <Calendar className="w-8 h-8 text-muted-foreground/40 mb-1" />
+                          <p className="text-sm font-medium text-foreground">
+                            {isArchivedView
+                              ? "No archived reservations found"
+                              : hasActiveFilters
+                                ? "No reservations match your filters"
+                                : "No reservations found for this branch"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {isArchivedView
+                              ? "Archived reservation records will appear here once deleted from the active list."
+                              : hasActiveFilters
+                                ? "Try adjusting your search terms, status tabs, or advanced date filters to see more results."
+                                : "New room applications and reservations submitted by applicants will appear here."}
+                          </p>
+                          {hasActiveFilters && !isArchivedView && (
+                            <button
+                              type="button"
+                              onClick={handleResetAllFilters}
+                              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border-light)] hover:bg-muted text-foreground transition-colors cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Reset All Filters</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )}

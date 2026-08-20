@@ -93,7 +93,7 @@ export default function UtilityKpiCards({
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
             Ready to Send
           </p>
-          <div className="flex shrink-0 items-center justify-center text-sky-600 dark:text-sky-400">
+          <div className="flex shrink-0 items-center justify-center text-emerald-600 dark:text-emerald-400">
             <Send size={18} />
           </div>
         </div>
@@ -102,7 +102,7 @@ export default function UtilityKpiCards({
         </p>
         <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
           {kpiMetrics.readyToSendCount > 0 ? (
-            <span className="font-semibold text-sky-700 dark:text-sky-400 flex items-center gap-1">
+            <span className="font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
               Finalized & awaiting release to tenants
             </span>
           ) : (

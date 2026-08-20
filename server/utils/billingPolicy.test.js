@@ -48,22 +48,22 @@ describe("buildBillingCycle", () => {
 });
 
 describe("buildRentBillingCycle", () => {
-  test("sets the rent due date to the move-in day of the cycle", () => {
+  test("sets the rent due date to 1 week before the cycle start", () => {
     const cycle = buildRentBillingCycle(new Date("2026-05-05T00:00:00.000Z"));
 
     expect(localYmd(cycle.billingCycleStart)).toBe("2026-5-5");
     expect(localYmd(cycle.billingCycleEnd)).toBe("2026-6-5");
-    expect(localYmd(cycle.dueDate)).toBe("2026-5-5");
-    expect(localYmd(cycle.generationDate)).toBe("2026-4-28");
+    expect(localYmd(cycle.dueDate)).toBe("2026-4-28");
+    expect(localYmd(cycle.generationDate)).toBe("2026-4-21");
   });
 
-  test("keeps the move-in-day due date regardless of weekday", () => {
+  test("keeps the 1-week-before due date regardless of weekday", () => {
     const cycle = buildRentBillingCycle(new Date("2026-01-23T00:00:00.000Z"));
 
     expect(localYmd(cycle.billingCycleStart)).toBe("2026-1-23");
     expect(localYmd(cycle.billingCycleEnd)).toBe("2026-2-23");
-    expect(localYmd(cycle.dueDate)).toBe("2026-1-23");
-    expect(localYmd(cycle.generationDate)).toBe("2026-1-16");
+    expect(localYmd(cycle.dueDate)).toBe("2026-1-16");
+    expect(localYmd(cycle.generationDate)).toBe("2026-1-9");
   });
 });
 
@@ -112,8 +112,8 @@ describe("resolveCurrentRentBillingCycle", () => {
 
     expect(localYmd(cycle.billingCycleStart)).toBe("2026-3-5");
     expect(localYmd(cycle.billingCycleEnd)).toBe("2026-4-5");
-    expect(localYmd(cycle.dueDate)).toBe("2026-3-5");
-    expect(localYmd(cycle.generationDate)).toBe("2026-2-26");
+    expect(localYmd(cycle.dueDate)).toBe("2026-2-26");
+    expect(localYmd(cycle.generationDate)).toBe("2026-2-19");
     expect(cycle.cycleIndex).toBe(2);
   });
 });

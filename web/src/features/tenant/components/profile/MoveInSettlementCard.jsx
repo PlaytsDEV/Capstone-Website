@@ -469,8 +469,6 @@ export default function MoveInSettlementCard({
               style={{
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
                 gap: 8,
                 padding: "8px 12px",
                 background: "#F0FDF4",
@@ -478,27 +476,13 @@ export default function MoveInSettlementCard({
                 borderRadius: 6,
                 marginBottom: 12,
                 fontSize: 12,
+                color: "#15803D",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#15803D" }}>
-                <CheckCircle2 size={16} color="#16A34A" style={{ flexShrink: 0 }} />
-                <span style={{ fontWeight: 600 }}>
-                  Advance rent & deposit verified with zero remaining balance.
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  fontSize: 11.5,
-                  color: "#475569",
-                  flexWrap: "wrap",
-                }}
-              >
-                <span><strong>• Move-In Day:</strong> Valid ID required</span>
-                <span><strong>• Turnover:</strong> Meter baseline logged</span>
-              </div>
+              <CheckCircle2 size={16} color="#16A34A" style={{ flexShrink: 0 }} />
+              <span style={{ fontWeight: 600 }}>
+                Advance rent & deposit verified with zero remaining balance.
+              </span>
             </div>
           )}
 

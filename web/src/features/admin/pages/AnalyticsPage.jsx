@@ -345,29 +345,38 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
       branch,
   );
 
-  const handleRangeChange = (value) => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.set("range", value);
-    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
-  };
+  const handleRangeChange = React.useCallback(
+    (value) => {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set("range", value);
+      setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
-  const handleBranchChange = (value) => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.set("branch", value);
-    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
-  };
+  const handleBranchChange = React.useCallback(
+    (value) => {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set("branch", value);
+      setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
-  const handleTabChange = (nextTab) => {
-    const resolvedTab = nextTab === "revenue" ? "billing" : nextTab;
-    setActiveTab(resolvedTab);
-    const nextParams = new URLSearchParams(searchParams);
-    if (resolvedTab === "overview") {
-      nextParams.delete("tab");
-    } else {
-      nextParams.set("tab", resolvedTab);
-    }
-    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
-  };
+  const handleTabChange = React.useCallback(
+    (nextTab) => {
+      const resolvedTab = nextTab === "revenue" ? "billing" : nextTab;
+      setActiveTab(resolvedTab);
+      const nextParams = new URLSearchParams(searchParams);
+      if (resolvedTab === "overview") {
+        nextParams.delete("tab");
+      } else {
+        nextParams.set("tab", resolvedTab);
+      }
+      setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   const analyticsTabs = useMemo(
     () => [
@@ -376,7 +385,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
       { id: "billing", label: "Billing & Revenue", icon: Receipt, iconClassName: "text-emerald-600 dark:text-emerald-400" },
       { id: "operations", label: "Operations", icon: Wrench, iconClassName: "text-amber-500 dark:text-amber-400" },
       { id: "support", label: "Support & Chat", icon: MessageSquare, iconClassName: "text-sky-500 dark:text-sky-400" },
-      { id: "demographics", label: "Demographics", icon: Users, iconClassName: "text-purple-500 dark:text-purple-400" },
+      { id: "demographics", label: "Demographics", icon: Users, iconClassName: "text-sky-600 dark:text-sky-400" },
       { id: "acquisition", label: "Lead Acquisition", icon: Target, iconClassName: "text-teal-500 dark:text-teal-400" },
       ...(isOwner
         ? [
@@ -384,7 +393,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
               id: "consolidated",
               label: "Consolidated",
               icon: PanelsTopLeft,
-              iconClassName: "text-indigo-500 dark:text-indigo-400",
+              iconClassName: "text-blue-600 dark:text-blue-400",
             },
             {
               id: "financials",
@@ -404,21 +413,28 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     [isOwner],
   );
 
-
-
-
   const [tabExports, setTabExports] = useState({});
 
   const registerTabExport = React.useCallback((tabKey, exports) => {
-    if (!tabKey) return;
+    if (!tabKey || !exports) return;
     setTabExports((prev) => {
-      if (prev[tabKey] === exports) return prev;
+      if (
+        prev[tabKey]?.exportCsv === exports.exportCsv &&
+        prev[tabKey]?.exportPdf === exports.exportPdf
+      ) {
+        return prev;
+      }
       return {
         ...prev,
         [tabKey]: exports,
       };
     });
   }, []);
+
+  const registerCurrentTabExport = React.useCallback(
+    (exports) => registerTabExport(activeTabNormalized, exports),
+    [activeTabNormalized, registerTabExport],
+  );
 
   const detailSharedProps = useMemo(
     () => ({
@@ -427,9 +443,9 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
       isOwner,
       onRangeChange: handleRangeChange,
       onBranchChange: handleBranchChange,
-      registerExport: (exports) => registerTabExport(activeTabNormalized, exports),
+      registerExport: registerCurrentTabExport,
     }),
-    [branch, activeTab, range, isOwner, activeTabNormalized, registerTabExport],
+    [branch, activeTab, range, isOwner, registerCurrentTabExport, handleRangeChange, handleBranchChange],
   );
 
   const currentTabExport =
@@ -619,12 +635,12 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                   title="Click to view Operations details"
                 >
                   <div className="analytics-kpi-card-header">
-                    <div className="analytics-kpi-icon purple">
+                    <div className="analytics-kpi-icon amber">
                       <Wrench size={15} strokeWidth={1.5} />
                     </div>
                     <MiniSparkline
                       data={(operationsData?.series?.maintenanceByType || []).map((item) => item.count)}
-                      stroke="#7c3aed"
+                      stroke="#d97706"
                     />
                   </div>
                   <div className="analytics-kpi-label">Maintenance</div>

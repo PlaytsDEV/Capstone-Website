@@ -306,7 +306,7 @@ export default function Dashboard() {
   const metricValueStyle = {
     blue: { color: "var(--info)" },
     green: { color: "var(--success)" },
-    violet: { color: "var(--chart-4)" },
+    violet: { color: "var(--text-primary)" },
     amber: { color: "var(--warning-dark, #92400e)" },
     rose: { color: "var(--danger)" },
     neutral: { color: "var(--text-primary)" },

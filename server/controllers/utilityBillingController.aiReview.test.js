@@ -5,13 +5,16 @@ const utilityPeriodFind = jest.fn();
 const utilityPeriodFindById = jest.fn();
 const utilityPeriodUpdateOne = jest.fn();
 const utilityPeriodFindByIdAndUpdate = jest.fn();
+const utilityPeriodFindByIdAndDelete = jest.fn();
 const roomFindById = jest.fn();
 const utilityReadingFind = jest.fn();
 const utilityReadingFindById = jest.fn();
 const utilityReadingUpdateMany = jest.fn();
+const utilityReadingDeleteMany = jest.fn();
 const reservationFind = jest.fn();
 const billFind = jest.fn();
 const billFindById = jest.fn();
+const billFindByIdAndDelete = jest.fn();
 const resolveAdminAccessContext = jest.fn();
 const deriveUtilityPeriodBillingState = jest.fn();
 const buildElectricityReview = jest.fn();
@@ -43,15 +46,18 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     findById: utilityPeriodFindById,
     updateOne: utilityPeriodUpdateOne,
     findByIdAndUpdate: utilityPeriodFindByIdAndUpdate,
+    findByIdAndDelete: utilityPeriodFindByIdAndDelete,
   },
   UtilityReading: {
     find: utilityReadingFind,
     findById: utilityReadingFindById,
     updateMany: utilityReadingUpdateMany,
+    deleteMany: utilityReadingDeleteMany,
   },
   Bill: {
     find: billFind,
     findById: billFindById,
+    findByIdAndDelete: billFindByIdAndDelete,
   },
   BedHistory: {},
 }));
@@ -507,7 +513,7 @@ describe("exportUtilityRows", () => {
   });
 });
 
-describe("utility archive safety", () => {
+describe("utility cycle root deletion safety", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resolveAdminAccessContext.mockResolvedValue({
@@ -515,17 +521,34 @@ describe("utility archive safety", () => {
       branch: "gil-puyat",
     });
     utilityReadingUpdateMany.mockResolvedValue({ modifiedCount: 1 });
+    utilityReadingDeleteMany.mockResolvedValue({ deletedCount: 2 });
+    utilityPeriodFindByIdAndDelete.mockResolvedValue({ _id: "period-1" });
+    roomFindById.mockReturnValue(makeQueryChain(baseRoom));
   });
 
-  test("archives an unsent period and its boundary readings without hard deletion", async () => {
+  test("permanently deletes an unsent cycle, boundary readings, and draft bills at root", async () => {
     const period = {
       _id: "period-1",
       branch: "gil-puyat",
-      isArchived: false,
-      tenantSummaries: [],
+      roomId: "room-1",
+      tenantSummaries: [
+        {
+          tenantId: "tenant-1",
+          billId: "bill-1",
+        },
+      ],
+    };
+    const draftBill = {
+      _id: "bill-1",
+      charges: { rent: 0, electricity: 500, water: 0, penalty: 0 },
+      utilityDispatch: { electricity: { state: "draft" } },
+      status: "draft",
       save: jest.fn(),
     };
     utilityPeriodFindById.mockResolvedValue(period);
+    billFindById.mockResolvedValue(draftBill);
+    billFindByIdAndDelete.mockResolvedValue(draftBill);
+
     const res = createRes();
     const next = jest.fn();
 
@@ -535,24 +558,27 @@ describe("utility archive safety", () => {
       next,
     );
 
-    expect(period.isArchived).toBe(true);
-    expect(period.revised).toBe(true);
-    expect(period.save).toHaveBeenCalledTimes(1);
-    expect(utilityReadingUpdateMany).toHaveBeenCalledTimes(2);
+    expect(billFindByIdAndDelete).toHaveBeenCalledWith("bill-1");
+    expect(utilityReadingUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ utilityPeriodId: "period-1" }),
+      { $set: { utilityPeriodId: null } },
+    );
+    expect(utilityReadingDeleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({ utilityPeriodId: "period-1" }),
+    );
+    expect(utilityPeriodFindByIdAndDelete).toHaveBeenCalledWith("period-1");
     expect(res.payload).toEqual({
       success: true,
-      message: "Billing period archived",
+      message: "Billing cycle deleted successfully",
     });
     expect(next).not.toHaveBeenCalled();
   });
 
-  test("denies cross-branch period and reading archive requests", async () => {
+  test("denies cross-branch period and reading deletion requests", async () => {
     const period = {
       _id: "period-1",
       branch: "guadalupe",
-      isArchived: false,
       tenantSummaries: [],
-      save: jest.fn(),
     };
     const reading = {
       _id: "reading-1",
@@ -578,8 +604,7 @@ describe("utility archive safety", () => {
 
     expect(periodRes.status).toHaveBeenCalledWith(403);
     expect(readingRes.status).toHaveBeenCalledWith(403);
-    expect(period.save).not.toHaveBeenCalled();
-    expect(reading.save).not.toHaveBeenCalled();
-    expect(utilityReadingUpdateMany).not.toHaveBeenCalled();
+    expect(utilityPeriodFindByIdAndDelete).not.toHaveBeenCalled();
+    expect(utilityReadingDeleteMany).not.toHaveBeenCalled();
   });
 });

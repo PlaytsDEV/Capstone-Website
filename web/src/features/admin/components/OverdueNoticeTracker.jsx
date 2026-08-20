@@ -11,6 +11,7 @@ import {
   DollarSign,
   Send,
   ShieldAlert,
+  ArrowRight,
 } from "lucide-react";
 import { billingApi } from "../../../shared/api/billingApi.js";
 import StatusBadge from "./shared/StatusBadge.jsx";
@@ -23,7 +24,12 @@ const getInitials = (name) => {
   return name.slice(0, 2).toUpperCase();
 };
 
-export default function OverdueNoticeTracker({ branch }) {
+export default function OverdueNoticeTracker({
+  branch,
+  onEscalateToTermination,
+  onNoticesUpdated,
+  hideTopKpiCards = false,
+}) {
   const [notices, setNotices] = useState([]);
   const [stats, setStats] = useState({
     totalExposure: 0,
@@ -50,12 +56,13 @@ export default function OverdueNoticeTracker({ branch }) {
       if (stageFilter !== "all") params.stage = stageFilter;
 
       const res = await billingApi.getOverdueNotices(params);
-      setNotices(res.data || []);
-      if (res.stats) {
+      const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      setNotices(list);
+      if (res?.stats) {
         setStats(res.stats);
       }
     } catch (err) {
-      console.error("Notices fetch error:", err);
+      console.error("[OverdueNoticeTracker] Notices fetch error:", err);
     } finally {
       setLoading(false);
     }
@@ -69,6 +76,11 @@ export default function OverdueNoticeTracker({ branch }) {
     setSelectedItemForNotice(item);
     setSelectedTargetStage(stage);
     setIsModalOpen(true);
+  };
+
+  const handleRefresh = () => {
+    fetchNotices();
+    onNoticesUpdated?.();
   };
 
   const filteredNotices = useMemo(() => {
@@ -88,11 +100,11 @@ export default function OverdueNoticeTracker({ branch }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="flex items-center gap-2 text-base font-bold text-card-foreground">
-            <BellRing size={18} className="text-rose-600 dark:text-rose-400" />
-            3-Notice Overdue Escalation Tracker
+            <BellRing size={18} className="text-amber-600 dark:text-amber-400" />
+            Notice Escalation Pipeline
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Formal overdue escalation state machine (Eligible → Notice 1 → Notice 2 → Notice 3 Final → Review Board).
+            Formal overdue escalation sequence: Eligible → 1st Reminder → 2nd Urgent Notice → Final Demand.
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -117,88 +129,90 @@ export default function OverdueNoticeTracker({ branch }) {
           </div>
           <button
             type="button"
-            onClick={fetchNotices}
+            onClick={handleRefresh}
             disabled={loading}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:opacity-50"
-            title="Refresh notice delivery log"
+            title="Refresh notice delivery records"
           >
             <RefreshCw size={13} className={loading ? "animate-spin text-muted-foreground" : "text-muted-foreground"} /> Refresh
           </button>
         </div>
       </div>
 
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-4">
-        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-              Total Overdue Debt
-            </span>
-            <DollarSign size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
+      {/* KPI Summary Cards (only when standalone) */}
+      {!hideTopKpiCards && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-4">
+          <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                Total Overdue Debt
+              </span>
+              <DollarSign size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
+              ₱{Number(stats.totalExposure || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
           </div>
-          <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
-            ₱{Number(stats.totalExposure || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-        </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-              Overdue Accounts
-            </span>
-            <AlertCircle size={18} className="text-slate-500 dark:text-slate-400 shrink-0" />
+          <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                Overdue Accounts
+              </span>
+              <AlertCircle size={18} className="text-slate-500 dark:text-slate-400 shrink-0" />
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-card-foreground mt-2">
+              {stats.overdueAccounts || 0}
+            </div>
           </div>
-          <div className="text-2xl font-bold tracking-tight text-card-foreground mt-2">
-            {stats.overdueAccounts || 0}
-          </div>
-        </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-              Pending Notice 1
-            </span>
-            <Clock size={18} className="text-sky-600 dark:text-sky-400 shrink-0" />
+          <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                Pending Notice 1
+              </span>
+              <Clock size={18} className="text-sky-600 dark:text-sky-400 shrink-0" />
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-sky-600 dark:text-sky-400 mt-2">
+              {stats.pendingNotice1Count || 0}
+            </div>
           </div>
-          <div className="text-2xl font-bold tracking-tight text-sky-600 dark:text-sky-400 mt-2">
-            {stats.pendingNotice1Count || 0}
-          </div>
-        </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-              Notice 2 Urgent
-            </span>
-            <AlertCircle size={18} className="text-amber-600 dark:text-amber-400 shrink-0" />
+          <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                Notice 2 Urgent
+              </span>
+              <AlertCircle size={18} className="text-amber-600 dark:text-amber-400 shrink-0" />
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
+              {stats.notice1ActiveCount || stats.notice2ActiveCount || 0}
+            </div>
           </div>
-          <div className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-2">
-            {stats.notice1ActiveCount || stats.notice2ActiveCount || 0}
-          </div>
-        </div>
 
-        <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-              Notice 3 / Critical
-            </span>
-            <ShieldAlert size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
-          </div>
-          <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
-            {stats.notice3FinalCount || 0}
+          <div className="group relative flex flex-col justify-between min-h-[104px] rounded-xl border border-border bg-card p-4 shadow-xs transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-0.5 cursor-default">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                Notice 3 / Critical
+              </span>
+              <ShieldAlert size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-2">
+              {stats.notice3FinalCount || 0}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Stage Filter Tabs */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-border pb-2 text-xs">
         <span className="text-[11px] font-bold text-muted-foreground mr-1">Stage Filter:</span>
         {[
           { key: "all", label: "All Overdue" },
-          { key: "eligible", label: "Needs Notice 1 (N0)" },
-          { key: "notice_1", label: "Notice 1 Sent" },
-          { key: "notice_2", label: "Notice 2 Sent" },
-          { key: "notice_3", label: "Notice 3 Final / Escalated" },
+          { key: "eligible", label: "Needs 1st Reminder" },
+          { key: "notice_1", label: "1st Reminder Sent" },
+          { key: "notice_2", label: "2nd Notice Sent" },
+          { key: "notice_3", label: "Final Notice / Escalated" },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -226,7 +240,7 @@ export default function OverdueNoticeTracker({ branch }) {
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Current Stage</th>
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Overdue Balance</th>
                 <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Delivery Status</th>
-                <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Dispatch Actions</th>
+                <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50 bg-card">
@@ -241,7 +255,7 @@ export default function OverdueNoticeTracker({ branch }) {
                   <td colSpan={6} className="py-10 text-center">
                     <div className="mx-auto flex max-w-sm flex-col items-center justify-center text-muted-foreground">
                       <CheckCircle2 size={26} className="text-emerald-600 mb-2" />
-                      <p className="font-bold text-card-foreground">No overdue notice records</p>
+                      <p className="font-bold text-card-foreground">No overdue accounts found</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {searchQuery
                           ? `No records match "${searchQuery}"`
@@ -253,71 +267,87 @@ export default function OverdueNoticeTracker({ branch }) {
                   </td>
                 </tr>
               ) : (
-                filteredNotices.map((n) => (
-                  <tr key={n._id} className="group transition-colors hover:bg-muted/30">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 text-[11px] font-bold shadow-xs">
-                          {getInitials(n.tenantName)}
+                filteredNotices.map((n) => {
+                  const isNotice3OrHigher = n.noticeStage === "notice_3" || (n.noticeCount && n.noticeCount >= 3);
+                  return (
+                    <tr key={n._id} className="group transition-colors hover:bg-muted/30">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0A1628] text-white dark:bg-[#D4AF37] dark:text-[#0A1628] border border-[#0A1628]/20 dark:border-[#D4AF37]/40 text-[11px] font-bold shadow-xs">
+                            {getInitials(n.tenantName)}
+                          </div>
+                          <div>
+                            <p className="font-bold text-card-foreground">{n.tenantName || "Tenant"}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Room: <strong className="text-card-foreground font-semibold">{n.roomName || n.roomId || "N/A"}</strong> · {n.daysOverdue || 0}d late
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-bold text-card-foreground">{n.tenantName || "Tenant"}</p>
-                          <p className="text-[11px] text-muted-foreground">
-                            Room: <strong className="text-card-foreground font-semibold">{n.roomName || n.roomId || "N/A"}</strong> · {n.daysOverdue}d late
-                          </p>
+                      </td>
+                      <td className="px-4 py-3 font-mono font-semibold text-card-foreground">
+                        #{n.billNumber || String(n.billId || "").slice(-6)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={n.noticeStage || `notice_${n.noticeCount || 1}`} />
+                      </td>
+                      <td className="px-4 py-3 font-bold text-rose-600 dark:text-rose-400">
+                        ₱{Number(n.remainingAmount || n.frozenAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-[11px] font-medium">
+                        {n.deliveredAt ? (
+                          <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
+                            Delivered: {new Date(n.deliveredAt).toLocaleDateString("en-PH")}
+                          </span>
+                        ) : n.noticeCount === 0 ? (
+                          <span className="text-sky-700 dark:text-sky-400 font-medium">Eligible for 1st Reminder</span>
+                        ) : (
+                          <span className="text-amber-700 dark:text-amber-400 font-medium">Pending Delivery</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenNoticeModal(n, 1)}
+                            className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-border bg-card text-[11px] font-semibold text-card-foreground hover:bg-muted active:scale-[0.98]"
+                            title="Send 1st Payment Reminder"
+                          >
+                            Send N1
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenNoticeModal(n, 2)}
+                            className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-border bg-card text-[11px] font-semibold text-amber-700 dark:text-amber-400 hover:bg-muted active:scale-[0.98]"
+                            title="Send 2nd Urgent Payment Demand"
+                          >
+                            Send N2
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenNoticeModal(n, 3)}
+                            className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-border bg-card text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-muted active:scale-[0.98]"
+                            title="Send Final Pre-Termination Notice"
+                          >
+                            Send Final
+                          </button>
+
+                          {/* Escalate to Board CTA for Notice 3 accounts */}
+                          {isNotice3OrHigher && onEscalateToTermination && (
+                            <button
+                              type="button"
+                              onClick={() => onEscalateToTermination(n)}
+                              className="inline-flex h-7 px-2.5 items-center gap-1 justify-center rounded-md bg-[#0A1628] text-white dark:bg-slate-100 dark:text-slate-900 text-[11px] font-bold shadow-xs hover:bg-[#13243D] active:scale-[0.98]"
+                              title="Escalate to Administrative Termination Review Board"
+                            >
+                              <ShieldAlert size={12} className="text-rose-400 dark:text-rose-600" />
+                              <span>Escalate</span>
+                            </button>
+                          )}
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-mono font-semibold text-card-foreground">
-                      #{n.billNumber || String(n.billId || "").slice(-6)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={n.noticeStage || `notice_${n.noticeCount || 1}`} />
-                    </td>
-                    <td className="px-4 py-3 font-bold text-rose-600 dark:text-rose-400">
-                      ₱{Number(n.remainingAmount || n.frozenAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-4 py-3 text-[11px] font-medium">
-                      {n.deliveredAt ? (
-                        <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
-                          Delivered: {new Date(n.deliveredAt).toLocaleDateString("en-PH")}
-                        </span>
-                      ) : n.noticeCount === 0 ? (
-                        <span className="text-sky-700 dark:text-sky-400 font-medium">Eligible for Notice 1</span>
-                      ) : (
-                        <span className="text-amber-700 dark:text-amber-400 font-medium">Pending Delivery</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenNoticeModal(n, 1)}
-                          className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-border bg-card text-[11px] font-semibold text-slate-800 hover:bg-muted active:scale-[0.98] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                          title="Dispatch Notice 1: Friendly Payment Reminder"
-                        >
-                          Dispatch N1
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenNoticeModal(n, 2)}
-                          className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-border bg-card text-[11px] font-semibold text-amber-700 hover:bg-amber-50/50 active:scale-[0.98] dark:border-slate-700 dark:bg-slate-800 dark:text-amber-400 dark:hover:bg-slate-700"
-                          title="Dispatch Notice 2: Urgent Demand Notice"
-                        >
-                          Dispatch N2
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenNoticeModal(n, 3)}
-                          className="inline-flex h-7 px-2.5 items-center justify-center rounded-md bg-rose-600 text-[11px] font-semibold text-white hover:bg-rose-700 active:scale-[0.98] dark:bg-rose-600 dark:hover:bg-rose-700"
-                          title="Dispatch Notice 3 (Final): Intent to Terminate"
-                        >
-                          Dispatch N3 Final
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -334,7 +364,7 @@ export default function OverdueNoticeTracker({ branch }) {
             setIsModalOpen(false);
             setSelectedItemForNotice(null);
           }}
-          onDispatched={fetchNotices}
+          onDispatched={handleRefresh}
         />
       )}
     </div>

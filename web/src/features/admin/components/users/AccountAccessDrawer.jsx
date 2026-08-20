@@ -158,7 +158,7 @@ export default function AccountAccessDrawer({
       onClose={onClose}
       title={
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-indigo-500 dark:bg-indigo-600 text-white flex items-center justify-center font-semibold text-sm tracking-wide flex-shrink-0">
+          <div className="w-10 h-10 rounded-full bg-[#0A1628] dark:bg-slate-800 text-white flex items-center justify-center font-semibold text-sm tracking-wide flex-shrink-0">
             {initials}
           </div>
           <div className="flex flex-col -space-y-0.5">

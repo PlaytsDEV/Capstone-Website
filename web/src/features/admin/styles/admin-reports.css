@@ -245,9 +245,9 @@
 }
 
 .analytics-summary-overview-signal--violet {
-  --analytics-summary-overview-accent: #7c3aed;
-  --analytics-summary-overview-bg: rgba(237, 233, 254, 0.7);
-  --analytics-summary-overview-border: rgba(196, 181, 253, 0.7);
+  --analytics-summary-overview-accent: #475569;
+  --analytics-summary-overview-bg: rgba(241, 245, 249, 0.7);
+  --analytics-summary-overview-border: rgba(203, 213, 225, 0.7);
 }
 
 .analytics-summary-overview-signal__label {
@@ -944,7 +944,7 @@
 }
 
 .analytics-kpi-icon.purple {
-  color: #7c3aed;
+  color: #d97706;
 }
 
 .analytics-kpi-card-header {

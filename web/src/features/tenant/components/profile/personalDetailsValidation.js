@@ -95,6 +95,13 @@ export const validateField = (field, value) => {
         return "Letters, hyphens, and apostrophes only";
       return null;
 
+    case "middleName":
+      if (!strVal) return null;
+      if (strVal.length > 50) return "50 characters maximum";
+      if (!/^[a-zA-Z\s\-']+$/.test(strVal))
+        return "Letters, hyphens, and apostrophes only";
+      return null;
+
     case "lastName":
       if (!strVal) return "Last name is required";
       if (strVal.length < 2) return "At least 2 characters required";
