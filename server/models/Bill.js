@@ -564,8 +564,23 @@ const billSchema = new mongoose.Schema(
           toRoomPrice: { type: Number, default: 0 },
           effectiveTransferDate: { type: Date, default: null },
           outstandingBalanceAtTransfer: { type: Number, default: 0 },
+          // proRataDays/proRataRent = source-room days used / source-room
+          // consumed rent value for this period (kept as-is for backward
+          // compatibility with existing admin UI reads of bill.proRataDays).
           proRataDays: { type: Number, default: 0 },
           proRataRent: { type: Number, default: 0 },
+          // Full actual-days + unused-credit settlement breakdown (see
+          // server/services/billing/roomTransferSettlement.js) — additive,
+          // for audit/explainability. sourceApprovedRate/destinationApprovedRate
+          // are the Contract-approved rates used (never a mutable Room price).
+          sourceApprovedRate: { type: Number, default: null },
+          destinationApprovedRate: { type: Number, default: null },
+          totalCoverageDays: { type: Number, default: null },
+          destinationDays: { type: Number, default: null },
+          destinationProratedValue: { type: Number, default: null },
+          unusedPrepaidCredit: { type: Number, default: null },
+          additionalAmountDue: { type: Number, default: null },
+          excessCredit: { type: Number, default: null },
           // Utility proration fields — populated when source meter reading is known at transfer time
           estimatedElectricityKwh: { type: Number, default: null },
           estimatedElectricityCharge: { type: Number, default: null },

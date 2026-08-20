@@ -28,6 +28,8 @@ import {
   activateRoomTransferSuccessor,
   resolveRoomTransferSuccessor,
 } from "../services/contractRoomTransferActivationService.js";
+import { resolveCurrentBillingCycle } from "../services/billing/billingPolicy.js";
+import { calculateRoomTransferRentSettlement } from "../services/billing/roomTransferSettlement.js";
 import { createNotification } from "../services/notifications/notificationService.js";
 
 const normalizeDate = (value, endOfDay = false) => {
@@ -677,26 +679,29 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         }
       }
 
-      // ── Pro-rata Rent Calculation ──────────────────────────────────────────
-      // Calculate partial-month rent for the source room from the last billing
-      // cycle start to the effective transfer date.
-      const cycleStart = reservation.billingCycleStart
-        ? new Date(reservation.billingCycleStart)
+      // ── Room-Transfer Rent Settlement ───────────────────────────────────────
+      // Lilycrest's confirmed rule: charge only for actual days spent in
+      // each accommodation; the unused prepaid value of the old room is
+      // credited against the destination room's prorated remaining-period
+      // charge. Period boundaries come from the tenant's actual movein-
+      // anchored rent cycle (resolveCurrentBillingCycle — correctly handles
+      // 28/29/30/31-day months, never a fixed 30-day divisor). Rates come
+      // from the Contract-approved amounts already validated by the legal
+      // readiness gate above — never the mutable Room master price, and
+      // never re-resolved here even if it has since changed.
+      const moveInDate = readMoveInDate(reservation);
+      const currentBillingCycle = moveInDate
+        ? resolveCurrentBillingCycle(moveInDate, effectiveTransferDate)
         : null;
-      let proRataDays = 0;
-      let proRataRent = 0;
-      if (cycleStart && cycleStart < effectiveTransferDate) {
-        proRataDays = Math.max(
-          1,
-          Math.ceil((effectiveTransferDate - cycleStart) / (1000 * 60 * 60 * 24)),
-        );
-        const monthlyPrice =
-          Number(currentRoom.monthlyPrice || currentRoom.price || 0);
-        const daysInMonth = dayjs(effectiveTransferDate).daysInMonth();
-        proRataRent = daysInMonth > 0
-          ? Math.round((monthlyPrice / daysInMonth) * proRataDays * 100) / 100
-          : 0;
-      }
+      const settlement = calculateRoomTransferRentSettlement({
+        periodStart: currentBillingCycle?.billingCycleStart || effectiveTransferDate,
+        periodEnd: currentBillingCycle?.billingCycleEnd || effectiveTransferDate,
+        transferDate: effectiveTransferDate,
+        sourceApprovedRate: predecessorContract.approvedMonthlyRate,
+        destinationApprovedRate: successorContract.approvedMonthlyRate,
+      });
+      const proRataDays = settlement.sourceDays;
+      const proRataRent = settlement.sourceConsumedValue;
 
       // ── Electricity Proration ─────────────────────────────────────────────
       // Estimate electricity consumed in the source room since the last recorded
@@ -749,11 +754,17 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         }
       }
 
-      const transferSettlementTotal = Math.round((proRataRent + estimatedElectricityCharge) * 100) / 100;
+      // charges.rent represents the NET settlement amount actually due
+      // (destination prorated charge minus the unused old-room credit) —
+      // never negative; an excess credit is recorded in transferSnapshot
+      // for audit only, never auto-refunded (no existing policy to do so).
+      const transferSettlementTotal = Math.round(
+        (settlement.additionalAmountDue + estimatedElectricityCharge) * 100,
+      ) / 100;
 
       // ── Transfer Settlement Bill ───────────────────────────────────────────
       // Create a dedicated transfer_settlement bill inside the same transaction
-      // so the billing history reflects the pro-rated source room charges.
+      // so the billing history reflects the actual-days settlement.
       const [transferBill] = await Bill.create(
         [
           {
@@ -763,11 +774,11 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
             branch: currentRoom.branch,
             roomId: currentRoom._id,
             billingMonth: effectiveTransferDate,
-            billingCycleStart: cycleStart || effectiveTransferDate,
-            billingCycleEnd: effectiveTransferDate,
+            billingCycleStart: currentBillingCycle?.billingCycleStart || effectiveTransferDate,
+            billingCycleEnd: currentBillingCycle?.billingCycleEnd || effectiveTransferDate,
             proRataDays: proRataDays || null,
             charges: {
-              rent: proRataRent,
+              rent: settlement.additionalAmountDue,
               electricity: estimatedElectricityCharge,
               water: 0,
               applianceFees: 0,
@@ -779,7 +790,10 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
             grossAmount: transferSettlementTotal,
             remainingAmount: transferSettlementTotal,
             status: transferSettlementTotal > 0 ? "pending" : "paid",
-            notes: `Transfer settlement: ${currentRoom.name || currentRoom.roomNumber} → ${targetRoom.name || targetRoom.roomNumber} on ${effectiveTransferDate.toISOString().slice(0, 10)}`,
+            notes: `Transfer settlement: ${currentRoom.name || currentRoom.roomNumber} → ${targetRoom.name || targetRoom.roomNumber} on ${effectiveTransferDate.toISOString().slice(0, 10)}` +
+              (settlement.excessCredit > 0
+                ? ` (excess prepaid credit of ₱${settlement.excessCredit.toFixed(2)} recorded, not auto-refunded)`
+                : ""),
             transferSnapshot: {
               fromRoomId: currentRoom._id,
               fromRoomName: currentRoom.name || currentRoom.roomNumber || "",
@@ -791,8 +805,19 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
               toRoomPrice: targetRoom.monthlyPrice || targetRoom.price || 0,
               effectiveTransferDate,
               outstandingBalanceAtTransfer: billingSummary.currentBalance,
+              // Source-room days used / consumed value (kept under the
+              // existing field names for backward-compatible admin UI reads).
               proRataDays,
               proRataRent,
+              // Full actual-days + unused-credit breakdown (new, additive).
+              sourceApprovedRate: predecessorContract.approvedMonthlyRate,
+              destinationApprovedRate: successorContract.approvedMonthlyRate,
+              totalCoverageDays: settlement.totalCoverageDays,
+              destinationDays: settlement.destinationDays,
+              destinationProratedValue: settlement.destinationProratedValue,
+              unusedPrepaidCredit: settlement.unusedPrepaidCredit,
+              additionalAmountDue: settlement.additionalAmountDue,
+              excessCredit: settlement.excessCredit,
               estimatedElectricityKwh,
               estimatedElectricityCharge: estimatedElectricityCharge > 0 ? estimatedElectricityCharge : null,
             },
@@ -876,6 +901,11 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       };
       reservation.currentStayId = activeStay._id;
       reservation.latestStayStatus = activeStay.status;
+      // Future rent bills (generated after this transfer) must bill the
+      // destination room's approved rate, not the old room's — the
+      // recurring due-date/billing-cycle anchor itself (movein-based) is
+      // deliberately left untouched, this only updates which rate applies.
+      reservation.monthlyRent = Number(successorContract.approvedMonthlyRate) || reservation.monthlyRent;
       await reservation.save({ session });
 
       // ── Contract cutover — last step before commit. Participates in this
