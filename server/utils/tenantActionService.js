@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
 import dayjs from "dayjs";
+import logger from "../middleware/logger.js";
 import {
   AuditLog,
   BedHistory,
   Bill,
+  Contract,
   Reservation,
   Room,
   Stay,
@@ -385,10 +387,39 @@ export async function renewStayWorkflow({ reservationId, payload, actorId }) {
         stay: newStay.toObject(),
       };
     });
-    return result;
   } finally {
     await session.endSession();
   }
+
+  // ── Automated Renewal Successor Contract Generation ──────────────────────
+  // Fire-and-forget, mirrors transferStayWorkflow's post-transaction contract
+  // trigger below. Never touches the old Contract's status/isCurrent — see
+  // createSuccessorContractForRenewal's comment (contractService.js).
+  if (result) {
+    try {
+      const oldContract = await Contract.findOne({
+        reservationId: result.reservation._id,
+        isCurrent: true,
+      }).sort({ version: -1, createdAt: -1 });
+      if (oldContract) {
+        const { autoGenerateRenewalContract } = await import("../services/autoContractOrchestratorService.js");
+        autoGenerateRenewalContract({
+          reservationId: result.reservation._id,
+          oldContract,
+          newStay: result.stay,
+          actorId,
+        }).catch((err) => {
+          logger.warn({ err, reservationId }, "[RenewalWorkflow] Background successor contract auto-generation failed (non-fatal)");
+        });
+      } else {
+        logger.warn({ reservationId }, "[RenewalWorkflow] Renewal successor contract skipped: no current Contract found");
+      }
+    } catch (contractImportErr) {
+      logger.warn({ err: contractImportErr }, "[RenewalWorkflow] Auto contract orchestrator invocation error");
+    }
+  }
+
+  return result;
 }
 
 export async function transferStayWorkflow({ reservationId, payload, actorId }) {

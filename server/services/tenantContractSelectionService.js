@@ -87,13 +87,40 @@ const relationshipRank = (contract, activeStay) => {
 // early-stage Contract in the first place, so this tier is a no-op there.
 const stageTier = (contract) => (EARLY_STAGE_STATUSES.has(contract.status) ? 0 : 1);
 
+// A renewal/replacement successor Contract is generated well before it
+// takes effect (createSuccessorContractForRenewal/
+// createReplacementContractForTransfer never touch the predecessor's
+// isCurrent, and the successor itself is created with isCurrent: false —
+// but renewStayWorkflow already swaps the tenant's active Stay immediately
+// at acceptance, which would otherwise make relationshipRank's stayId match
+// (400) outrank the still-legally-current predecessor's reservationId match
+// (300) the instant the successor is generated, long before it's even
+// signed. This must never happen — "current" always means "in effect
+// today". A not-yet-effective successor is exposed separately via
+// resolveTenantUpcomingContract below, not through this selector.
+const isNotYetEffectiveSuccessor = (contract, now) => {
+  if (!contract.replacesContractId) return false;
+  if (!contract.leaseStartDate) return false;
+  return new Date(contract.leaseStartDate).getTime() > now.getTime();
+};
+
 export const selectCanonicalTenantContract = ({
   contracts = [],
   activeStay = null,
   includeEarlyStages = false,
+  now = new Date(),
 }) => {
+  const eligibleIds = new Set(
+    contracts
+      .filter((contract) => isResidentContractEligible(contract, { includeEarlyStages }))
+      .map((contract) => id(contract._id)),
+  );
   const candidates = contracts
     .filter((contract) => isResidentContractEligible(contract, { includeEarlyStages }))
+    .filter((contract) => !(
+      isNotYetEffectiveSuccessor(contract, now) &&
+      eligibleIds.has(id(contract.replacesContractId))
+    ))
     .map((contract) => ({
       contract,
       rank: relationshipRank(contract, activeStay),
@@ -146,4 +173,33 @@ export const resolveTenantContractHistory = async (tenantId) => {
     if (contract.duplicateOfContractId) return false;
     return HISTORY_VISIBLE_STATUSES.has(contract.status);
   });
+};
+
+// The "upcoming" leg of the current/upcoming/history triad (spec §AI): a
+// generated or final successor of the tenant's current contract whose
+// effective date hasn't arrived yet. Shared by web and mobile — neither
+// gets its own resolver (spec §AJ).
+const UPCOMING_VISIBLE_STATUSES = new Set([
+  "generated",
+  "awaiting_signatures",
+  "partially_signed",
+  "signed",
+  "awaiting_notarization",
+  "notarized",
+  "ready_for_publication",
+  "published",
+]);
+
+export const resolveTenantUpcomingContract = async (tenantId) => {
+  const canonical = await resolveTenantCanonicalContract(tenantId).catch(() => null);
+  if (!canonical) return null;
+  const upcoming = await Contract.find({
+    tenantId,
+    replacesContractId: canonical._id,
+  }).sort({ createdAt: -1 });
+  return upcoming.find((contract) => (
+    UPCOMING_VISIBLE_STATUSES.has(contract.status) &&
+    !contract.archivedAt &&
+    contract.duplicateOfContractId == null
+  )) || null;
 };

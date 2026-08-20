@@ -294,9 +294,35 @@ const contractSchema = new mongoose.Schema(
     isCurrent: { type: Boolean, default: true, index: true },
     statusHistory: { type: [statusHistorySchema], default: [] },
     previousContractId: { type: mongoose.Schema.Types.ObjectId, ref: "Contract", default: null },
+    // Deprecated/unwritten — no service in this codebase writes this field
+    // (confirmed by a full-repo grep). previousContractId/parentContractId/
+    // replacesContractId are the canonical predecessor links; do not start
+    // writing this field without first reconciling it with those.
     renewedContractId: { type: mongoose.Schema.Types.ObjectId, ref: "Contract", default: null },
+    // supersededBy/supersededByContractId have always been written together
+    // as a redundant mirror pair. Going forward only supersededByContractId
+    // is the write target (contractService.js); supersededBy is kept
+    // read-only for backward compatibility with historical records —
+    // isResidentContractEligible (tenantContractSelectionService.js) already
+    // excludes a contract if either field is set.
     supersededBy: { type: mongoose.Schema.Types.ObjectId, ref: "Contract", default: null },
     supersededByContractId: { type: mongoose.Schema.Types.ObjectId, ref: "Contract", default: null },
+    // Informational/audit snapshot only, computed at renewal/replacement
+    // successor-contract creation — no Bill/charge is auto-generated from
+    // this (no authoritative deposit-adjustment billing policy exists in
+    // this codebase; see server/utils/depositUtils.js).
+    depositAdjustment: {
+      type: new mongoose.Schema(
+        {
+          heldAmount: { type: Number, default: 0 },
+          requiredAmount: { type: Number, default: 0 },
+          adjustmentAmount: { type: Number, default: 0 },
+          computedAt: { type: Date, default: null },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   },

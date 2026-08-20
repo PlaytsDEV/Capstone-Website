@@ -571,6 +571,41 @@ const notify = {
     );
   },
 
+  // Fired once by contractRenewalActivationService.activateDueRenewalContracts
+  // when a renewal successor Contract transitions published -> active at its
+  // effective (leaseStartDate) date. dedupeKey is keyed off the contract
+  // alone (not a date) since activation happens exactly once per contract.
+  renewalEffective: (userId, roomName, contractId) => {
+    if (!userId || !contractId) {
+      return Promise.reject(new Error("A tenant and contract are required."));
+    }
+    const normalizedContractId = String(contractId);
+    return createNotificationWithPush(
+      userId,
+      "renewal_effective",
+      "Lease Renewal Now Active",
+      `Your renewed lease for ${roomName || "your room"} is now active.`,
+      {
+        entityType: "contract",
+        entityId: normalizedContractId,
+        actionUrl: "/tenant/documents",
+        dedupeKey: `renewal_effective:${normalizedContractId}`,
+      },
+      (_notification, pushIdentity) =>
+        sendMobilePushToRecipients([userId], {
+          title: "Lease Renewal Now Active",
+          body: `Your renewed lease for ${roomName || "your room"} is now active.`,
+          data: {
+            ...pushIdentity,
+            type: "renewal_effective",
+            contract_id: normalizedContractId,
+            screen: "contract",
+            url: "/contract-viewer",
+          },
+        }),
+    );
+  },
+
   overdueMoveIn: (userId, reservationCode, roomName, tenantName, daysOverdue, options = {}) => {
     const code = formatCode(reservationCode);
     const codeStr = code ? ` (${code})` : "";

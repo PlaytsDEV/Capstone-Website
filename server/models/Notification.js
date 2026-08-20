@@ -54,6 +54,7 @@ const notificationSchema = new mongoose.Schema(
         "contract_expiring",
         "contract_prepared",
         "contract_document_ready",
+        "renewal_effective",
         "contract_incomplete",
         "contract_error",
         "grace_period_warning",

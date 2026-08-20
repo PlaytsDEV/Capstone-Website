@@ -5,6 +5,7 @@ import { notify } from "../utils/notificationService.js";
 import {
   createDraftContract,
   createReplacementContractForTransfer,
+  createSuccessorContractForRenewal,
   transitionContract,
   validateContractForGeneration,
 } from "./contractService.js";
@@ -360,6 +361,117 @@ export async function autoGenerateTransferContract({
         "contract_error",
         "Transfer Contract Auto-Generation Alert",
         `Room transfer contract auto-generation encountered an issue: ${error.message || "Unknown error"}. Review required in Contracts workspace.`,
+        { entityType: "reservation", entityId: String(reservationId), actionUrl: "/admin/contracts" },
+      );
+    } catch (alertErr) {
+      // Non-fatal
+    }
+    return { success: false, error: error.message, code: error.code };
+  }
+}
+
+/**
+ * Automatically creates and generates a prepared PDF successor Contract when
+ * a lease renewal is accepted (renewStayWorkflow / respondToRenewalOffer).
+ * The successor is created FINAL-eligible-but-not-yet-effective (isCurrent:
+ * false, status draft -> generated) — it never touches oldContract's status
+ * or isCurrent; only contractRenewalActivationService.activateDueRenewalContracts
+ * flips both contracts, at the successor's actual leaseStartDate.
+ *
+ * @param {Object} params
+ * @param {string|mongoose.Types.ObjectId} params.reservationId
+ * @param {Object} params.oldContract - the tenant's current Contract document
+ * @param {Object} params.newStay - the Stay document renewStayWorkflow just created
+ * @param {string|mongoose.Types.ObjectId} params.actorId
+ * @returns {Promise<{ success: boolean, successorContractId?: string, error?: string }>}
+ */
+export async function autoGenerateRenewalContract({
+  reservationId,
+  oldContract,
+  newStay,
+  actorId,
+}) {
+  try {
+    if (!oldContract) {
+      logger.warn({ reservationId }, "[AutoContract] Renewal contract skipped: no current Contract found");
+      return { success: false, error: "PREVIOUS_CONTRACT_REQUIRED" };
+    }
+
+    logger.info(
+      { oldContractId: oldContract._id, oldContractNumber: oldContract.contractNumber },
+      "[AutoContract] Creating successor contract for lease renewal",
+    );
+    const successorContract = await createSuccessorContractForRenewal({
+      reservationId,
+      oldContract,
+      newStay,
+      actorId,
+    });
+
+    if (successorContract.status !== "ready_for_generation") {
+      const validation = await validateContractForGeneration(successorContract);
+      if (validation.valid) {
+        await transitionContract(successorContract, "ready_for_generation", actorId, "Renewal successor contract auto-validated");
+        Object.assign(successorContract, validation.generationData.pricing);
+        successorContract.templateType = validation.template.templateId;
+        successorContract.templateVersion = validation.template.templateVersion;
+        successorContract.legalContentVersion = validation.template.legalContentVersion;
+        successorContract.validatedGenerationData = validation.generationData;
+        successorContract.lastValidatedAt = new Date();
+        successorContract.updatedBy = actorId;
+        await successorContract.save();
+      } else {
+        logger.warn(
+          { contractId: successorContract._id, missing: validation.missingFields, errors: validation.errors },
+          "[AutoContract] Renewal contract validation incomplete; draft created for administrator review",
+        );
+        return {
+          success: true,
+          successorContractId: String(successorContract._id),
+          contractNumber: successorContract.contractNumber,
+          status: successorContract.status,
+          incomplete: true,
+        };
+      }
+    }
+
+    logger.info(
+      { contractId: successorContract._id, contractNumber: successorContract.contractNumber },
+      "[AutoContract] Generating prepared PDF for renewal successor contract",
+    );
+    const result = await generatePreparedContractPdf({
+      contractId: successorContract._id,
+      actorId,
+      regenerationReason: `Auto-generated renewal successor for Room ${successorContract.roomNumber}`,
+    });
+
+    try {
+      const tenant = await User.findById(successorContract.tenantId).select("firstName lastName").lean();
+      const tenantName = tenant ? `${tenant.firstName} ${tenant.lastName}`.trim() : successorContract.tenantLegalName || "Tenant";
+      notifyBranchAdminsSafe(
+        successorContract.branch,
+        "contract_prepared",
+        "Renewal Contract Ready",
+        `Renewal contract for ${tenantName} (Room ${successorContract.roomNumber}) was auto-generated and is ready for signing.`,
+        { entityType: "contract", entityId: String(successorContract._id), actionUrl: "/admin/contracts" },
+      );
+    } catch (notifErr) {
+      logger.warn({ err: notifErr }, "[AutoContract] Post-renewal notification error (non-fatal)");
+    }
+
+    return {
+      success: true,
+      successorContractId: String(result.contract._id),
+      contractNumber: result.contract.contractNumber,
+    };
+  } catch (error) {
+    logger.error({ err: error, reservationId }, "[AutoContract] Failed to auto-generate Renewal contract");
+    try {
+      notifyBranchAdminsSafe(
+        oldContract?.branch || "",
+        "contract_error",
+        "Renewal Contract Auto-Generation Alert",
+        `Renewal contract auto-generation encountered an issue: ${error.message || "Unknown error"}. Review required in Contracts workspace.`,
         { entityType: "reservation", entityId: String(reservationId), actionUrl: "/admin/contracts" },
       );
     } catch (alertErr) {

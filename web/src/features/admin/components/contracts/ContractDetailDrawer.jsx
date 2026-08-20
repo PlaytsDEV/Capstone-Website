@@ -515,12 +515,18 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
           <section><h3>Contract Overview</h3>
             <dl>
               <dt>Status</dt><dd>{formatContractStatus(contract.status)}</dd>
-              {contract.contractPurpose === "replacement" && (
+              {(contract.contractPurpose === "replacement" || contract.contractPurpose === "renewal") && (
                 <>
                   <dt>Contract Type</dt>
-                  <dd><span className="contract-badge-replacement">Room Transfer Replacement</span></dd>
-                  <dt>Replacement Note</dt>
-                  <dd>{contract.replacementReason || "Replaces previous contract due to room transfer"}</dd>
+                  <dd>
+                    <span className="contract-badge-replacement">
+                      {contract.contractPurpose === "renewal" ? "Lease Renewal" : "Room Transfer Replacement"}
+                    </span>
+                  </dd>
+                  <dt>{contract.contractPurpose === "renewal" ? "Renewal Note" : "Replacement Note"}</dt>
+                  <dd>{contract.replacementReason || (contract.contractPurpose === "renewal"
+                    ? "Successor lease continuing the previous contract"
+                    : "Replaces previous contract due to room transfer")}</dd>
                   {contract.replacesContractId && (
                     <>
                       <dt>Predecessor</dt>
@@ -535,6 +541,20 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
                       </dd>
                     </>
                   )}
+                </>
+              )}
+              {(contract.supersededByContractId || contract.supersededBy) && (
+                <>
+                  <dt>Successor</dt>
+                  <dd>
+                    <button
+                      type="button"
+                      className="contract-lineage-link"
+                      onClick={() => navigate(`/admin/contracts/${contract.supersededByContractId || contract.supersededBy}`)}
+                    >
+                      View Successor Contract
+                    </button>
+                  </dd>
                 </>
               )}
               <dt>Contract Version</dt><dd>{contract.version}</dd>
