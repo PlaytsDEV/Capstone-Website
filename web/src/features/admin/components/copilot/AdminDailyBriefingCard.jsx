@@ -79,18 +79,19 @@ export default function AdminDailyBriefingCard({ briefing, onCloseDrawer }) {
         </div>
 
         {moveIns.length === 0 ? (
-          <div className="p-2 text-center rounded bg-muted/20 text-muted-foreground text-[11px]">
+          <div className="p-2 text-center rounded bg-muted/20 border border-border text-muted-foreground text-[11px]">
             No scheduled move-ins for today.
           </div>
         ) : (
           <div className="space-y-1">
             {moveIns.map((m, idx) => (
-              <div key={idx} className="flex items-center justify-between p-2 rounded bg-muted/30 border border-border text-[11px]">
+              <div key={idx} className="flex items-center justify-between p-2 rounded bg-card border border-border text-[11px]">
                 <div>
                   <span className="font-bold text-foreground">{m.name}</span>
                   <span className="text-muted-foreground ml-1.5">({m.roomNumber} - {m.bedId})</span>
                 </div>
-                <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   Ready for Key Turnover
                 </span>
               </div>
@@ -108,7 +109,7 @@ export default function AdminDailyBriefingCard({ briefing, onCloseDrawer }) {
 
           <div className="space-y-1">
             {maintenance.map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between p-2 rounded bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 text-[11px]">
+              <div key={idx} className="flex items-center justify-between p-2 rounded bg-card border border-border text-[11px]">
                 <div className="truncate min-w-0 pr-2">
                   <span className="font-bold text-foreground">{item.title}</span>
                   <span className="text-muted-foreground ml-1.5">({item.roomNumber})</span>
@@ -127,7 +128,7 @@ export default function AdminDailyBriefingCard({ briefing, onCloseDrawer }) {
       {announcements.length > 0 && (
         <div className="space-y-1">
           <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-            Active Branch Notice:
+            Active Notice:
           </div>
           {announcements.map((ann, idx) => (
             <div key={idx} className="p-2 rounded bg-muted/20 border border-border text-[11px] text-foreground font-medium">

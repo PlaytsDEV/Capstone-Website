@@ -334,11 +334,11 @@ export default function UtilityCycleHistoryPanel({
                                 setActiveMenuPeriodId(null);
                                 onDeletePeriod(p.id);
                               }}
-                              title="Archive period"
+                              title="Delete cycle"
                               disabled={isDeletingPeriod}
                             >
                               <Trash2 size={13} className="shrink-0" />
-                              <span>Archive Cycle</span>
+                              <span>Delete Cycle</span>
                             </button>
                           )}
 

@@ -21,6 +21,7 @@ import {
   Filter,
   ArrowUpRight,
   ShieldAlert,
+  ChevronDown,
   X
 } from "lucide-react";
 import { billingApi } from "../../../../shared/api/apiClient";
@@ -296,9 +297,9 @@ function PreviewModal({
             onClick={onGenerate}
             disabled={generateDisabled}
             title={generateDisabled ? "A bill for this cycle has already been generated" : "Generate and dispatch rent bill statement now"}
-            className="flex h-10 items-center gap-2 rounded-xl bg-[color:var(--color-primary,#0A1628)] px-5 text-xs font-bold text-white shadow-md transition-transform hover:bg-[#13243D] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent,#D4AF37)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[color:var(--color-primary,#0A1628)] disabled:active:scale-100"
+            className="flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-xs font-bold text-white shadow-md transition-transform hover:bg-emerald-700 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-emerald-600 disabled:active:scale-100"
           >
-            {isGenerating ? <LoaderCircle className="animate-spin" size={15} /> : <Send size={15} className="text-[color:var(--color-accent,#D4AF37)]" />}
+            {isGenerating ? <LoaderCircle className="animate-spin" size={15} /> : <Send size={15} className="text-white" />}
             Generate & Send Statement
           </button>
         </div>
@@ -1068,28 +1069,147 @@ export default function RentBillingTab({
                         </p>
                       </td>
                       <td className="px-5 py-3">
-                        {row.bill ? (
-                          <>
-                            <p className="text-xs font-bold text-card-foreground">{fmtCurrency(row.normalizedBill.balance)}</p>
-                            <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">of {fmtCurrency(row.bill.totalAmount)} total</p>
-                          </>
-                        ) : (
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-bold text-card-foreground">
-                                {fmtCurrency(row.contractRate)}
-                              </span>
-                              <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                                Contract
-                              </span>
+                        {(() => {
+                          const rentCharge = Number(row.bill?.charges?.rent || row.contractRate || 0);
+                          const elecAmt = Number(row.bill?.charges?.electricity || 0);
+                          const waterAmt = Number(row.bill?.charges?.water || 0);
+                          const applianceAmt = Number(row.bill?.charges?.applianceFees || row.applianceFees || 0);
+                          const corkageAmt = Number(row.bill?.charges?.corkageFees || 0);
+                          const baseSubtotal = rentCharge + elecAmt + waterAmt + applianceAmt + corkageAmt;
+                          
+                          const daysLate = Number(row.bill?.penaltyDetails?.daysLate || row.daysOverdue || 0);
+                          const penaltyRate = Number(row.bill?.penaltyDetails?.ratePerDay || 50);
+                          const persistedPenalty = Number(row.bill?.charges?.penalty || 0);
+                          const livePenalty = persistedPenalty > 0 ? persistedPenalty : (daysLate > 0 && !row.normalizedBill?.isPaid ? daysLate * penaltyRate : 0);
+                          const discount = Number(row.bill?.charges?.discount || 0);
+                          const credit = Number(row.bill?.reservationCreditApplied || 0);
+                          
+                          const computedTotal = Math.max(0, baseSubtotal + livePenalty - discount - credit);
+                          const totalDisplay = row.bill?.totalAmount && persistedPenalty > 0 ? Number(row.bill.totalAmount) : computedTotal;
+                          const paidAmount = Number(row.bill?.paidAmount || (row.normalizedBill?.isPaid ? totalDisplay : 0));
+                          const remainingBalance = Math.max(0, totalDisplay - paidAmount);
+
+                          if (row.bill) {
+                            return (
+                              <div className="relative group/breakdown">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-bold text-card-foreground">
+                                    {fmtCurrency(row.normalizedBill.isPaid ? 0 : remainingBalance)}
+                                  </span>
+                                  {livePenalty > 0 && !row.normalizedBill.isPaid && (
+                                    <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-border cursor-pointer hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors">
+                                      +{fmtCurrency(livePenalty)} overdue
+                                      <ChevronDown size={10} />
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">
+                                  {livePenalty > 0 && !row.normalizedBill.isPaid ? (
+                                    <span>Subtotal: {fmtCurrency(baseSubtotal)} · of {fmtCurrency(totalDisplay)} total</span>
+                                  ) : (
+                                    <span>of {fmtCurrency(totalDisplay)} total</span>
+                                  )}
+                                </p>
+
+                                {/* Interactive Overdue / Charge Breakdown Dropdown */}
+                                <div className="pointer-events-none group-hover/breakdown:pointer-events-auto absolute right-0 top-full mt-1.5 z-40 hidden group-hover/breakdown:block w-72 rounded-xl border border-border bg-card p-3.5 shadow-xl">
+                                  <div className="flex items-center justify-between border-b border-border pb-2 mb-2.5">
+                                    <span className="text-xs font-bold text-card-foreground">Billing Breakdown</span>
+                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${daysLate > 0 ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground"}`}>
+                                      {daysLate > 0 ? `${daysLate}d Overdue` : row.normalizedBill.isPaid ? "Settled" : "Current Cycle"}
+                                    </span>
+                                  </div>
+
+                                  <div className="space-y-1.5 text-xs">
+                                    <div className="flex justify-between text-muted-foreground">
+                                      <span>Monthly Base Rent</span>
+                                      <span className="font-semibold text-card-foreground">{fmtCurrency(rentCharge)}</span>
+                                    </div>
+                                    {applianceAmt > 0 && (
+                                      <div className="flex justify-between text-muted-foreground">
+                                        <span>Appliance Fees</span>
+                                        <span className="font-semibold text-card-foreground">{fmtCurrency(applianceAmt)}</span>
+                                      </div>
+                                    )}
+                                    {elecAmt > 0 && (
+                                      <div className="flex justify-between text-muted-foreground">
+                                        <span>Electricity Share</span>
+                                        <span className="font-semibold text-card-foreground">{fmtCurrency(elecAmt)}</span>
+                                      </div>
+                                    )}
+                                    {waterAmt > 0 && (
+                                      <div className="flex justify-between text-muted-foreground">
+                                        <span>Water Share</span>
+                                        <span className="font-semibold text-card-foreground">{fmtCurrency(waterAmt)}</span>
+                                      </div>
+                                    )}
+
+                                    {/* Subtotal */}
+                                    <div className="flex justify-between border-t border-border pt-1.5 font-semibold text-card-foreground">
+                                      <span>Subtotal (Base Charges)</span>
+                                      <span>{fmtCurrency(baseSubtotal)}</span>
+                                    </div>
+
+                                    {/* Overdue / Late Penalty Line */}
+                                    {livePenalty > 0 && (
+                                      <div className="flex justify-between items-center bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg border border-border text-rose-700 dark:text-rose-400 my-1">
+                                        <div className="flex flex-col">
+                                          <span className="font-bold text-[11px]">Late Payment Penalty</span>
+                                          <span className="text-[10px] text-muted-foreground">{daysLate} days @ ₱{penaltyRate.toFixed(2)}/day</span>
+                                        </div>
+                                        <span className="font-bold">+{fmtCurrency(livePenalty)}</span>
+                                      </div>
+                                    )}
+
+                                    {discount > 0 && (
+                                      <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                                        <span>Discount Applied</span>
+                                        <span>-{fmtCurrency(discount)}</span>
+                                      </div>
+                                    )}
+
+                                    {/* Total Amount Due */}
+                                    <div className="flex justify-between border-t border-border pt-2 font-bold text-card-foreground text-sm">
+                                      <span>Total Amount Due</span>
+                                      <span>{fmtCurrency(totalDisplay)}</span>
+                                    </div>
+
+                                    {paidAmount > 0 && (
+                                      <div className="flex justify-between text-emerald-600 dark:text-emerald-400 text-xs">
+                                        <span>Total Amount Paid</span>
+                                        <span>-{fmtCurrency(paidAmount)}</span>
+                                      </div>
+                                    )}
+                                    {paidAmount > 0 && (
+                                      <div className="flex justify-between font-bold text-card-foreground border-t border-dashed border-border pt-1">
+                                        <span>Remaining Balance</span>
+                                        <span>{fmtCurrency(remainingBalance)}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-card-foreground">
+                                  {fmtCurrency(row.contractRate)}
+                                </span>
+                                <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                  Contract
+                                </span>
+                              </div>
+                              {Number(row.applianceFees || row.charges?.applianceFees || 0) > 0 && (
+                                <p className="mt-0.5 text-[10px] font-medium text-muted-foreground">
+                                  +{fmtCurrency(row.applianceFees || row.charges?.applianceFees)} appliance fee
+                                </p>
+                              )}
                             </div>
-                            {Number(row.applianceFees || row.charges?.applianceFees || 0) > 0 && (
-                              <p className="mt-0.5 text-[10px] font-medium text-muted-foreground">
-                                +{fmtCurrency(row.applianceFees || row.charges?.applianceFees)} appliance fee
-                              </p>
-                            )}
-                          </div>
-                        )}
+                          );
+                        })()}
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">

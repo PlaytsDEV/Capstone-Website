@@ -114,7 +114,7 @@ export const toInputDate = (value) => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-export const getTodayInput = () => new Date().toISOString().slice(0, 10);
+export const getTodayInput = () => toInputDate(new Date());
 
 export const getCycleLabel = (period) =>
   period

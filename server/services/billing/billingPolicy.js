@@ -12,7 +12,7 @@ import { getManilaDayjs, toManilaStartOfDay } from "../../utils/dateUtils.js";
 export const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 export const UTILITY_CYCLE_DAY = 15;
 export const UTILITY_CHARGE_FIELDS = ["electricity", "water"];
-const RENT_GENERATION_LEAD_DAYS = 7;
+export const RENT_GENERATION_LEAD_DAYS = 14;
 
 function normalizeBillingDate(dateLike) {
   const normalized = toManilaStartOfDay(dateLike);
@@ -355,9 +355,8 @@ export function buildBillingCycle(checkInDate, cycleIndex = 0) {
 export function buildRentBillingCycle(moveInDate, cycleIndex = 0) {
   const start = toManilaStartOfDay(moveInDate).add(cycleIndex, "month");
   const end = start.add(1, "month");
-  // Recurring due date follows the tenant's move-in day, not a fixed
-  // business-day offset from the cycle end.
-  const dueDate = start.toDate();
+  // Recurring due date is 1 week (7 calendar days) before the billing cycle starts.
+  const dueDate = start.subtract(7, "day").toDate();
   const generationDate = start
     .subtract(RENT_GENERATION_LEAD_DAYS, "day")
     .toDate();

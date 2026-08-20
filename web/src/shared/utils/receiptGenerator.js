@@ -1011,15 +1011,18 @@ async function buildBillingReceiptDoc(bill) {
   y = drawItemizedTable(doc, y, tableItems, "ITEMIZED BILLING CHARGES & COVERAGE");
 
   // 4. Totals
-  const subtotal = (rentAmt + elecAmt + waterAmt + penaltyAmt) || amount;
+  const baseSubtotal = (rentAmt + elecAmt + waterAmt) || Math.max(0, amount - penaltyAmt + discountAmt);
   const totals = [
-    { label: "Subtotal Charges:", amount: subtotal },
+    { label: "Base Subtotal Charges:", amount: baseSubtotal },
   ];
+  if (penaltyAmt > 0) {
+    totals.push({ label: "Late Payment Penalty:", amount: penaltyAmt });
+  }
   if (discountAmt > 0) {
-    totals.push({ label: "Discount / Credit:", amount: discountAmt, isCredit: true });
+    totals.push({ label: "Discount / Credit Adjustment:", amount: discountAmt, isCredit: true });
   }
   totals.push({ label: "VAT / Tax (Exempt):", amount: 0 });
-  totals.mainTotal = amount;
+  totals.mainTotal = amount || Math.max(0, baseSubtotal + penaltyAmt - discountAmt);
 
   y = drawAccountingTotals(doc, y, totals, "TOTAL AMOUNT PAID:");
 
@@ -1171,15 +1174,18 @@ async function buildBillingStatementDoc(bill) {
   y = drawItemizedTable(doc, y, tableItems, "ITEMIZED STATEMENT CHARGES");
 
   // 4. Totals
-  const subtotal = (rentAmt + elecAmt + waterAmt + penaltyAmt) || amount;
+  const baseSubtotal = (rentAmt + elecAmt + waterAmt) || Math.max(0, amount - penaltyAmt + discountAmt);
   const totals = [
-    { label: "Subtotal Charges:", amount: subtotal },
+    { label: "Base Subtotal Charges:", amount: baseSubtotal },
   ];
+  if (penaltyAmt > 0) {
+    totals.push({ label: "Late Payment Penalty:", amount: penaltyAmt });
+  }
   if (discountAmt > 0) {
-    totals.push({ label: "Applied Credit:", amount: discountAmt, isCredit: true });
+    totals.push({ label: "Applied Credit / Discount:", amount: discountAmt, isCredit: true });
   }
   totals.push({ label: "VAT / Tax (Exempt):", amount: 0 });
-  totals.mainTotal = amount;
+  totals.mainTotal = amount || Math.max(0, baseSubtotal + penaltyAmt - discountAmt);
 
   y = drawAccountingTotals(doc, y, totals, isPaid ? "TOTAL AMOUNT PAID:" : "TOTAL AMOUNT DUE:");
 

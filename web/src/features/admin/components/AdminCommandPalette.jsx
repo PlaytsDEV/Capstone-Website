@@ -27,10 +27,12 @@ import {
   PlusCircle,
   AlertCircle,
   CornerDownLeft,
+  LoaderCircle,
 } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useTheme } from "../../public/context/ThemeContext";
 import { usePermissions } from "../../../shared/hooks/usePermissions";
+import { authFetch } from "../../../shared/api/httpClient.js";
 import "../styles/admin-command-palette.css";
 
 const BASE_NAV_ITEMS = [
@@ -51,7 +53,7 @@ const BASE_NAV_ITEMS = [
     icon: Users,
     group: "Navigation",
     permission: "manageTenants",
-    keywords: ["tenants", "residents", "occupants", "move out", "transfer", "profiles"],
+    keywords: ["tenants", "occupants", "move out", "transfer", "profiles"],
   },
   {
     id: "nav-contracts",
@@ -217,8 +219,47 @@ export default function AdminCommandPalette({
 
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [liveResults, setLiveResults] = useState({ tenants: [], rooms: [], maintenance: [] });
+  const [isSearchingLive, setIsSearchingLive] = useState(false);
   const inputRef = useRef(null);
   const resultsRef = useRef(null);
+
+  const branchDisplayName = useMemo(() => {
+    if (isOwner) return "All Branches";
+    if (user?.branch === "guadalupe") return "Guadalupe Branch";
+    if (user?.branch === "gil-puyat" || user?.branch === "gil_puyat") return "Gil Puyat Branch";
+    return "Branch";
+  }, [isOwner, user?.branch]);
+
+  // Live entity search with debouncing
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!isOpen || trimmed.length < 1) {
+      setLiveResults({ tenants: [], rooms: [], maintenance: [] });
+      setIsSearchingLive(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setIsSearchingLive(true);
+        const res = await authFetch(`/search/quick?query=${encodeURIComponent(trimmed)}`);
+        if (res?.success && res?.data) {
+          setLiveResults({
+            tenants: res.data.tenants || [],
+            rooms: res.data.rooms || [],
+            maintenance: res.data.maintenance || [],
+          });
+        }
+      } catch (err) {
+        console.warn("Live quick search error:", err?.message);
+      } finally {
+        setIsSearchingLive(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [query, isOpen]);
 
   // Filter allowed navigation items by role and permissions
   const allowedNavItems = useMemo(() => {
@@ -229,19 +270,94 @@ export default function AdminCommandPalette({
     });
   }, [can, isOwner]);
 
-  // Define Quick Actions
+  // Define Quick Actions with role and permission filtering
   const quickActions = useMemo(() => {
-    const actions = [
-      {
-        id: "act-verify-payments",
-        label: "Review Pending Payments",
-        subtext: "Verify uploaded reservation and rent payment receipts",
-        icon: CreditCard,
+    const actions = [];
+
+    // Operations Assistant
+    if (onOpenAssistant) {
+      actions.push({
+        id: "act-open-assistant",
+        label: isOwner ? "Open Executive Operations Assistant" : `Open ${branchDisplayName} Assistant`,
+        subtext: isOwner
+          ? "Cross-branch standup, revenue insights & policy guidance"
+          : "Daily shift briefing, tenant lookups & branch SOP procedures",
+        icon: Sparkles,
         group: "Quick Actions",
-        keywords: ["verify", "receipts", "pending payments", "approve payment"],
-        action: () => navigate("/admin/billing?tab=reservation-payments"),
-      },
-      {
+        keywords: ["assistant", "briefing", "sop", "help", "chat bot", "shift summary", "standup"],
+        action: () => onOpenAssistant(),
+      });
+    }
+
+    // Owner-Only Quick Actions
+    if (isOwner) {
+      actions.push(
+        {
+          id: "act-backups",
+          label: "System Backups & Recovery",
+          subtext: "Create database snapshots or manage automated backup schedule",
+          icon: Database,
+          group: "Owner Controls",
+          keywords: ["backups", "database", "export", "restore", "snapshot"],
+          action: () => navigate("/admin/backups"),
+        },
+        {
+          id: "act-audit-logs",
+          label: "Security Audit Logs",
+          subtext: "Inspect administrator event trails and security history",
+          icon: Shield,
+          group: "Owner Controls",
+          keywords: ["audit", "logs", "security", "history", "admin events"],
+          action: () => navigate("/admin/audit-logs"),
+        },
+        {
+          id: "act-manage-branches",
+          label: "Branch Properties & Submeters",
+          subtext: "Configure Gil Puyat & Guadalupe properties and billing modes",
+          icon: Building2,
+          group: "Owner Controls",
+          keywords: ["branches", "properties", "locations", "submeter", "buildings"],
+          action: () => navigate("/admin/branches"),
+        },
+        {
+          id: "act-manage-roles",
+          label: "Roles & Staff Permissions",
+          subtext: "Customize access rights and permissions for branch administrators",
+          icon: Lock,
+          group: "Owner Controls",
+          keywords: ["roles", "permissions", "staff", "privileges"],
+          action: () => navigate("/admin/roles"),
+        }
+      );
+    }
+
+    // Billing Quick Actions (Owner or manageBilling)
+    if (isOwner || can("manageBilling")) {
+      actions.push(
+        {
+          id: "act-verify-payments",
+          label: "Review Pending Payments",
+          subtext: "Verify uploaded reservation and rent payment receipts",
+          icon: CreditCard,
+          group: "Quick Actions",
+          keywords: ["verify", "receipts", "pending payments", "approve payment"],
+          action: () => navigate("/admin/billing?tab=reservation-payments"),
+        },
+        {
+          id: "act-overdue",
+          label: "Review Overdue Accounts",
+          subtext: "View overdue notices and outstanding tenant balances",
+          icon: AlertCircle,
+          group: "Quick Actions",
+          keywords: ["overdue", "late", "penalties", "outstanding", "escalations"],
+          action: () => navigate("/admin/billing?tab=overdue-escalations"),
+        }
+      );
+    }
+
+    // Tenant / Lease Actions (Owner or manageTenants)
+    if (isOwner || can("manageTenants")) {
+      actions.push({
         id: "act-expiring-leases",
         label: "View Expiring Leases (Next 14 Days)",
         subtext: "Filter active tenants whose leases are expiring soon",
@@ -249,26 +365,25 @@ export default function AdminCommandPalette({
         group: "Quick Actions",
         keywords: ["expiring", "renew", "lease end", "extend"],
         action: () => navigate("/admin/tenants?filter=expiring_soon"),
-      },
-      {
-        id: "act-overdue",
-        label: "Review Overdue Accounts",
-        subtext: "View overdue notices and outstanding tenant balances",
-        icon: AlertCircle,
-        group: "Quick Actions",
-        keywords: ["overdue", "late", "penalties", "outstanding", "escalations"],
-        action: () => navigate("/admin/billing?tab=overdue-escalations"),
-      },
-      {
+      });
+    }
+
+    // Announcements (Owner or manageAnnouncements)
+    if (isOwner || can("manageAnnouncements")) {
+      actions.push({
         id: "act-new-announcement",
         label: "Create Announcement",
-        subtext: "Publish a new bulletin notice to all dormitory tenants",
+        subtext: "Publish a new bulletin notice to dormitory tenants",
         icon: Megaphone,
         group: "Quick Actions",
         keywords: ["post announcement", "broadcast", "publish notice"],
         action: () => navigate("/admin/announcements"),
-      },
-      {
+      });
+    }
+
+    // Maintenance (Owner or manageMaintenance)
+    if (isOwner || can("manageMaintenance")) {
+      actions.push({
         id: "act-report-maintenance",
         label: "Log Maintenance Work Order",
         subtext: "Create a new facility repair or inspection ticket",
@@ -276,37 +391,47 @@ export default function AdminCommandPalette({
         group: "Quick Actions",
         keywords: ["new ticket", "report issue", "repair", "maintenance work order"],
         action: () => navigate("/admin/maintenance"),
-      },
-      {
-        id: "act-toggle-theme",
-        label: `Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`,
-        subtext: `Toggle visual theme interface to ${theme === "dark" ? "light" : "dark"}`,
-        icon: theme === "dark" ? Sun : Moon,
-        group: "Preferences",
-        keywords: ["theme", "dark mode", "light mode", "color scheme"],
-        action: () => toggleTheme(),
-      },
-    ];
-
-    if (onOpenAssistant) {
-      actions.unshift({
-        id: "act-open-assistant",
-        label: "Open Operations Assistant",
-        subtext: "Ask questions about dormitory SOPs or get shift briefings",
-        icon: Sparkles,
-        group: "Quick Actions",
-        keywords: ["assistant", "briefing", "sop", "help", "chat bot", "shift summary"],
-        action: () => onOpenAssistant(),
       });
     }
 
-    return actions;
-  }, [navigate, onOpenAssistant, theme, toggleTheme]);
+    // Preferences
+    actions.push({
+      id: "act-toggle-theme",
+      label: `Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`,
+      subtext: `Toggle visual theme interface to ${theme === "dark" ? "light" : "dark"}`,
+      icon: theme === "dark" ? Sun : Moon,
+      group: "Preferences",
+      keywords: ["theme", "dark mode", "light mode", "color scheme"],
+      action: () => toggleTheme(),
+    });
 
-  // Combine and search items
+    return actions;
+  }, [branchDisplayName, can, isOwner, navigate, onOpenAssistant, theme, toggleTheme]);
+
+  // Combine static commands and live entity search results
   const filteredItems = useMemo(() => {
     const rawQuery = query.trim().toLowerCase();
-    const all = [
+
+    // Map live results
+    const liveTenantItems = (liveResults.tenants || []).map((t) => ({
+      ...t,
+      icon: Users,
+      action: () => navigate(t.to),
+    }));
+
+    const liveRoomItems = (liveResults.rooms || []).map((r) => ({
+      ...r,
+      icon: DoorOpen,
+      action: () => navigate(r.to),
+    }));
+
+    const liveMaintItems = (liveResults.maintenance || []).map((m) => ({
+      ...m,
+      icon: Wrench,
+      action: () => navigate(m.to),
+    }));
+
+    const allStatic = [
       ...quickActions,
       ...allowedNavItems.map((item) => ({
         ...item,
@@ -314,15 +439,25 @@ export default function AdminCommandPalette({
       })),
     ];
 
-    if (!rawQuery) return all;
+    if (!rawQuery) {
+      return allStatic;
+    }
 
-    return all.filter((item) => {
+    const filteredStatic = allStatic.filter((item) => {
       const matchLabel = item.label.toLowerCase().includes(rawQuery);
       const matchSubtext = item.subtext?.toLowerCase().includes(rawQuery);
       const matchKeywords = item.keywords?.some((k) => k.toLowerCase().includes(rawQuery));
       return matchLabel || matchSubtext || matchKeywords;
     });
-  }, [allowedNavItems, navigate, query, quickActions]);
+
+    // Merge live results with static filtered items
+    return [
+      ...liveTenantItems,
+      ...liveRoomItems,
+      ...liveMaintItems,
+      ...filteredStatic,
+    ];
+  }, [allowedNavItems, liveResults, navigate, query, quickActions]);
 
   // Group filtered results
   const groupedResults = useMemo(() => {
@@ -345,6 +480,7 @@ export default function AdminCommandPalette({
     if (isOpen) {
       setQuery("");
       setSelectedIndex(0);
+      setLiveResults({ tenants: [], rooms: [], maintenance: [] });
       const timer = setTimeout(() => {
         inputRef.current?.focus();
       }, 50);
@@ -420,12 +556,20 @@ export default function AdminCommandPalette({
       <div className="cmd-palette-modal" onKeyDown={handleKeyDown}>
         {/* Search Header */}
         <div className="cmd-palette-search-wrap">
-          <Search className="cmd-palette-search-icon" aria-hidden="true" />
+          {isSearchingLive ? (
+            <LoaderCircle className="cmd-palette-search-icon animate-spin text-[var(--primary)]" aria-hidden="true" />
+          ) : (
+            <Search className="cmd-palette-search-icon" aria-hidden="true" />
+          )}
           <input
             ref={inputRef}
             type="text"
             className="cmd-palette-input"
-            placeholder="Search pages, actions, or type a command..."
+            placeholder={
+              isOwner
+                ? "Search all branches, tenants, rooms, tickets, or commands..."
+                : `Search ${branchDisplayName} pages, tenants, rooms, or actions...`
+            }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-autocomplete="list"
@@ -441,9 +585,11 @@ export default function AdminCommandPalette({
           {filteredItems.length === 0 ? (
             <div className="cmd-palette-empty">
               <Search className="cmd-palette-empty-icon" aria-hidden="true" />
-              <p className="cmd-palette-empty-title">No matching commands or pages</p>
+              <p className="cmd-palette-empty-title">No matching commands or records</p>
               <p className="cmd-palette-empty-text">
-                Try searching for "billing", "tenants", "maintenance", or "dark mode"
+                {isOwner
+                  ? "Try searching for a tenant name, room number, ticket, or system command"
+                  : `Try searching for ${branchDisplayName} tenants, rooms, billing, or maintenance`}
               </p>
             </div>
           ) : (
@@ -479,7 +625,11 @@ export default function AdminCommandPalette({
                         </div>
                       </div>
                       <div className="cmd-palette-item-right">
-                        <span className="cmd-palette-tag">{groupName}</span>
+                        {item.branch && isOwner ? (
+                          <span className="cmd-palette-tag">{item.branch}</span>
+                        ) : (
+                          <span className="cmd-palette-tag">{groupName}</span>
+                        )}
                         <span className="cmd-palette-enter-hint" aria-hidden="true">
                           <CornerDownLeft size={13} />
                         </span>
@@ -510,7 +660,7 @@ export default function AdminCommandPalette({
             </div>
           </div>
           <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            Lilycrest Command Center
+            {isOwner ? "Lilycrest Command Center · Multi-Branch" : `Lilycrest Command Center · ${branchDisplayName}`}
           </div>
         </div>
       </div>

@@ -528,14 +528,16 @@ export async function generateBillPdf({ bill, billingResult, electricityBreakdow
   // ── CHARGES SUMMARY ───────────────────────────────────────────────────────
   sectionHeading(doc, "Charges Summary");
 
+  const baseSubtotal = (rent || 0) + (electricity || 0) + (water || 0) + (applianceFees || 0) + (corkageFees || 0);
   const chargeRows = [];
-  if (electricity > 0)   chargeRows.push(["Electricity", formatPeso(electricity)]);
-  if (water > 0)         chargeRows.push(["Water",          formatPeso(water)]);
-  if (rent > 0)          chargeRows.push(["Rent",           formatPeso(rent)]);
-  if (applianceFees > 0) chargeRows.push(["Appliance Fees", formatPeso(applianceFees)]);
-  if (corkageFees > 0)   chargeRows.push(["Corkage Fees",   formatPeso(corkageFees)]);
-  if (penalty > 0)       chargeRows.push(["Penalty",        formatPeso(penalty)]);
-  if (discount > 0)      chargeRows.push(["Discount",       `-${formatPeso(discount)}`]);
+  if (rent > 0)          chargeRows.push(["Monthly Rent",           formatPeso(rent)]);
+  if (electricity > 0)   chargeRows.push(["Electricity",            formatPeso(electricity)]);
+  if (water > 0)         chargeRows.push(["Water",                  formatPeso(water)]);
+  if (applianceFees > 0) chargeRows.push(["Appliance Fees",         formatPeso(applianceFees)]);
+  if (corkageFees > 0)   chargeRows.push(["Corkage Fees",           formatPeso(corkageFees)]);
+  chargeRows.push(["Subtotal (Base Charges)", formatPeso(baseSubtotal)]);
+  if (penalty > 0)       chargeRows.push(["Late Payment Penalty",   formatPeso(penalty)]);
+  if (discount > 0)      chargeRows.push(["Discount",               `-${formatPeso(discount)}`]);
   if (reservationCreditApplied > 0) {
     chargeRows.push(["Reservation Credit Applied", `-${formatPeso(reservationCreditApplied)}`]);
   }
@@ -901,6 +903,22 @@ export async function generateBillReceiptPdf({
   row("Tenant", tenantName);
   if (room?.name || room?.roomNumber) row("Room", room.name || room.roomNumber);
   if (billingPeriod) row("Billing Period", billingPeriod);
+
+  const ch = bill.charges || {};
+  const rentAmt = Number(ch.rent || 0);
+  const elecAmt = Number(ch.electricity || 0);
+  const waterAmt = Number(ch.water || 0);
+  const applianceAmt = Number(ch.applianceFees || 0);
+  const corkageAmt = Number(ch.corkageFees || 0);
+  const baseSubtotal = rentAmt + elecAmt + waterAmt + applianceAmt + corkageAmt;
+  const penaltyAmt = Number(ch.penalty || 0);
+
+  if (baseSubtotal > 0 || penaltyAmt > 0) {
+    row("Base Subtotal Charges", formatPeso(baseSubtotal));
+    if (penaltyAmt > 0) {
+      row("Late Payment Penalty", formatPeso(penaltyAmt));
+    }
+  }
 
   doc.moveDown(0.3);
   doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor(PDF_THEME.border).lineWidth(0.5).stroke();

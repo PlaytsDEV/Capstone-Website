@@ -93,6 +93,7 @@ async function retryJobOperation(fn, { label, branch = null } = {}) {
 import { generateAutomatedRentBills } from "./rentGenerator.js";
 import { dispatchDueScheduledAnnouncements } from "./announcementDispatch.js";
 import { detectSlaBreaches } from "./slaAlertJob.js";
+import { sendPaymentReminderEmail } from "../config/email.js";
 
 // ─── Job 1: Overdue Move-In Detection (daily at 08:30) ──────────────────────────
 
@@ -271,17 +272,46 @@ async function sendPaymentReminders() {
         status: { $in: ["pending", "partially-paid"] },
         dueDate: { $gte: targetDate.toDate(), $lt: nextDay.toDate() },
         isArchived: false,
-      }).lean();
+      })
+        .populate("userId", "firstName lastName email")
+        .populate("roomId", "name branch");
 
       for (const bill of bills) {
+        if (!bill.userId) continue;
         const month = dayjs(bill.billingMonth).format("MMMM YYYY");
+        const userId = bill.userId._id || bill.userId;
+        const tenantName = [bill.userId?.firstName, bill.userId?.lastName]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || "Tenant";
+        const dueDateLabel = dayjs(bill.dueDate).format("MMMM D, YYYY");
+        const billTypeLabel = (bill.charges?.rent || 0) > 0 ? "Rent" : "Utility";
+
         await notify.billDueReminder(
-          bill.userId,
+          userId,
           month,
           bill.totalAmount,
           daysAhead,
           { billId: bill._id, eventId: `due:${daysAhead}` },
         );
+
+        // Send payment reminder email on 3-day pre-due milestone
+        if (daysAhead === 3 && bill.userId?.email) {
+          try {
+            await sendPaymentReminderEmail({
+              to: bill.userId.email,
+              tenantName,
+              billingMonth: month,
+              totalAmount: bill.totalAmount,
+              dueDate: dueDateLabel,
+              billType: billTypeLabel,
+              branchName: bill.branch || bill.roomId?.branch || "Lilycrest",
+            });
+          } catch (emailErr) {
+            logger.warn({ err: emailErr, billId: bill._id }, "Failed to send 3-day payment reminder email");
+          }
+        }
+
         sent++;
       }
     }

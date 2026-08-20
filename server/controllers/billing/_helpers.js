@@ -779,8 +779,8 @@ export function resolveRentCycleForBillingMonth(reservation, billingMonth) {
       billingMonth: period.coverageStart,
       billingCycleStart: period.coverageStart,
       billingCycleEnd: period.coverageEndExclusive,
-      dueDate: period.coverageStart,
-      generationDate: dayjs(period.coverageStart).subtract(7, "day").toDate(),
+      dueDate: period.dueDate || dayjs(period.coverageStart).subtract(7, "day").toDate(),
+      generationDate: period.generationDate || dayjs(period.coverageStart).subtract(14, "day").toDate(),
       cycleIndex,
       structured: true,
     };
@@ -807,10 +807,10 @@ export function resolveRentCycleForBillingMonth(reservation, billingMonth) {
 
 export function resolveRentDueDate(cycle, dueDate) {
   if (cycle.structured) {
-    const requiredDueDate = dayjs(cycle.billingCycleStart).startOf("day");
+    const requiredDueDate = dayjs(cycle.dueDate || dayjs(cycle.billingCycleStart).subtract(7, "day")).startOf("day");
     if (dueDate && !parseRequiredDate(dueDate, "Due date").isSame(requiredDueDate, "day")) {
       throw createBillingError(
-        "Structured rent is due when its rolling rental period begins.",
+        "Structured rent is due 1 week before its rolling rental period begins.",
         400,
         "INVALID_STRUCTURED_DUE_DATE",
       );
@@ -819,15 +819,7 @@ export function resolveRentDueDate(cycle, dueDate) {
   }
   const resolved = dueDate
     ? parseRequiredDate(dueDate, "Due date")
-    : dayjs(cycle.dueDate).startOf("day");
-
-  if (resolved.isBefore(dayjs(cycle.billingCycleEnd).startOf("day"))) {
-    throw createBillingError(
-      "Due date must be on or after the billing period end.",
-      400,
-      "INVALID_DUE_DATE",
-    );
-  }
+    : dayjs(cycle.dueDate || dayjs(cycle.billingCycleStart).subtract(7, "day")).startOf("day");
 
   return resolved.toDate();
 }

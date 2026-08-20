@@ -64,18 +64,40 @@ const get15th = () => {
   return d.toISOString().slice(0, 10);
 };
 
-const addOneMonth = (fromDateStr) => {
+const getDaysInMonth = (year, monthIndex) => {
+  return new Date(year, monthIndex + 1, 0).getDate();
+};
+
+const isMonthEndDate = (dateStr) => {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return false;
+  const lastDay = getDaysInMonth(d.getFullYear(), d.getMonth());
+  return d.getDate() === lastDay;
+};
+
+const addOneMonth = (fromDateStr, preferredAnchorDay = null) => {
   if (!fromDateStr) return "";
   const d = new Date(fromDateStr);
   if (Number.isNaN(d.getTime())) return "";
-  const currentDay = d.getDate();
-  d.setMonth(d.getMonth() + 1);
-  if (d.getDate() !== currentDay) {
-    d.setDate(0);
-  }
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
+  const originalDay = preferredAnchorDay ? Number(preferredAnchorDay) : d.getDate();
+  const currentMonth = d.getMonth();
+  const currentYear = d.getFullYear();
+
+  const targetYear = currentMonth === 11 ? currentYear + 1 : currentYear;
+  const targetMonth = (currentMonth + 1) % 12;
+  const maxDaysInTargetMonth = getDaysInMonth(targetYear, targetMonth);
+
+  // If start date was month-end (e.g. Jan 31, Feb 28/29), keep month-end behavior unless custom anchor is set
+  const isOriginalMonthEnd = isMonthEndDate(fromDateStr);
+  const targetDay =
+    isOriginalMonthEnd && !preferredAnchorDay
+      ? maxDaysInTargetMonth
+      : Math.min(originalDay, maxDaysInTargetMonth);
+
+  const yyyy = targetYear;
+  const mm = String(targetMonth + 1).padStart(2, "0");
+  const dd = String(targetDay).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 };
 
@@ -85,7 +107,7 @@ const getMonthEnd = (startDateStr) => {
   if (Number.isNaN(d.getTime())) return "";
   const y = d.getFullYear();
   const m = d.getMonth();
-  const lastDay = new Date(y, m + 1, 0).getDate();
+  const lastDay = getDaysInMonth(y, m);
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 };
 
@@ -221,7 +243,7 @@ export default function NewBillingPeriodModal({
   useEffect(() => {
     if (isOpen) {
       const continuationDate = lastClosedPeriod?.endDate
-        ? addDays(toInputDate(lastClosedPeriod.endDate), 1)
+        ? toInputDate(lastClosedPeriod.endDate)
         : null;
       const continuationReading = lastClosedPeriod?.endReading ?? null;
       const startDate = continuationDate || toInputDate(new Date());
@@ -322,13 +344,13 @@ export default function NewBillingPeriodModal({
     periodForm.endDate &&
     new Date(periodForm.endDate) <= new Date(periodForm.startDate);
 
-  // Date Overlap validation against existing periods in this room
+  // Date Overlap validation against existing periods in this room (strict interior overlap)
   const isDateOverlapping = (periods || []).some((p) => {
     if (p.id === selectedPeriodId || p.status === "archived") return false;
     const pStart = toInputDate(p.startDate);
     const pEnd = toInputDate(p.endDate);
     if (!pStart || !pEnd) return false;
-    return periodForm.startDate <= pEnd && periodForm.endDate >= pStart;
+    return periodForm.startDate < pEnd && periodForm.endDate > pStart;
   });
 
   // Cycle duration in days
@@ -363,9 +385,9 @@ export default function NewBillingPeriodModal({
   const estPerTenantCost =
     tenantCount > 0 ? estimatedTotalCost / tenantCount : estimatedTotalCost;
 
-  // Unbilled gap check: expected start is previous cycle end + 1 day
+  // Unbilled gap check: expected start is previous cycle end date
   const continuationDate = lastClosedPeriod?.endDate
-    ? addDays(toInputDate(lastClosedPeriod.endDate), 1)
+    ? toInputDate(lastClosedPeriod.endDate)
     : null;
   const hasUnbilledGap =
     continuationDate &&

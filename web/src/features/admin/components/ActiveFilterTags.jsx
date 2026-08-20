@@ -43,10 +43,19 @@ export default function ActiveFilterTags({
   advancedFilters = {},
   onClearAdvancedField,
   onClearAll,
+  isOwner = false,
 }) {
   const tags = [];
 
-  if (branchFilter && branchFilter !== "all") {
+  if (searchTerm && searchTerm.trim()) {
+    tags.push({
+      id: "search",
+      label: `Search: "${searchTerm.trim()}"`,
+      onRemove: onClearSearch,
+    });
+  }
+
+  if (isOwner && branchFilter && branchFilter !== "all") {
     const opt = OWNER_BRANCH_FILTER_OPTIONS.find((o) => o.value === branchFilter);
     tags.push({
       id: "branch",

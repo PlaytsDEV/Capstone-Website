@@ -594,14 +594,14 @@ export default function AdminAnnouncementsPage() {
     statusFilter !== "all" ||
     categoryFilter !== "all" ||
     typeFilter !== "all" ||
-    branchFilter !== "all" ||
+    (isOwner && branchFilter !== "all") ||
     searchTerm.trim() !== "";
 
   const handleResetFilters = () => {
     setStatusFilter("all");
     setCategoryFilter("all");
     setTypeFilter("all");
-    setBranchFilter("all");
+    if (isOwner) setBranchFilter("all");
     setSearchTerm("");
     setCurrentPage(1);
   };

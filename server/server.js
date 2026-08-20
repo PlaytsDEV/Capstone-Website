@@ -73,6 +73,7 @@ import mobileNotificationRoutes from "./routes/mobileNotificationRoutes.js";
 import mobileUploadRoutes from "./routes/mobileUploadRoutes.js";
 import mobileChatRoutes from "./routes/mobileChatRoutes.js";
 import chatbotRoutes from "./routes/chatbotRoutes.js";
+import searchRoutes from "./routes/adminSearchRoutes.js";
 import { initSocket } from "./utils/socket.js";
 import mobileRoutes from "./mobile/mobileRoutes.mjs";
 
@@ -369,6 +370,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/attachments", attachmentRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/chatbot", chatbotRoutes);
+app.use("/api/search", searchRoutes);
 app.use("/api/utilities", utilityBillingRoutes);
 app.use("/api/financial", financialRoutes);
 app.use("/api/settings", settingsRoutes);

@@ -57,11 +57,28 @@ async function searchByRoomNumber({ roomNumber, branch, isOwner }) {
 
     const room = await Room.findOne(roomQuery).lean();
     if (!room) {
+      if (!isOwner && branch) {
+        const otherRoom = await Room.findOne({
+          roomNumber: new RegExp(`^${roomNumber}$`, "i"),
+          isArchived: { $ne: true },
+          branch: { $ne: branch },
+        }).select("branch").lean();
+        if (otherRoom) {
+          const otherBranchDisplay = otherRoom.branch === "guadalupe" ? "Guadalupe Branch" : "Gil Puyat Branch";
+          return {
+            found: false,
+            isRoomSearch: true,
+            roomNumber,
+            message: `Room ${roomNumber} is located at ${otherBranchDisplay} and cannot be viewed from your branch.`
+          };
+        }
+      }
+      const branchDisplay = branch === "guadalupe" ? "Guadalupe Branch" : branch === "gil-puyat" || branch === "gil_puyat" ? "Gil Puyat Branch" : `${branch} branch`;
       return {
         found: false,
         isRoomSearch: true,
         roomNumber,
-        message: `No room matching "${roomNumber}" was found in ${isOwner ? "any branch" : `${branch} branch`}.`
+        message: `No room matching "${roomNumber}" was found in ${isOwner ? "any branch" : branchDisplay}.`
       };
     }
 
@@ -174,10 +191,30 @@ async function searchByTenantIdentifier({ searchTarget, branch, isOwner }) {
       .lean();
 
     if (!matchedUsers || matchedUsers.length === 0) {
+      if (!isOwner && branch) {
+        const otherBranchUser = await User.findOne({
+          role: "tenant",
+          isArchived: { $ne: true },
+          branch: { $ne: branch },
+          $or: userQuery.$or,
+        }).select("branch firstName lastName").lean();
+
+        if (otherBranchUser) {
+          const otherBranchDisplay = otherBranchUser.branch === "guadalupe" ? "Guadalupe Branch" : "Gil Puyat Branch";
+          const otherName = `${otherBranchUser.firstName || ""} ${otherBranchUser.lastName || ""}`.trim() || searchTarget;
+          return {
+            found: false,
+            searchTarget,
+            message: `Tenant "${otherName}" is registered at ${otherBranchDisplay} and cannot be viewed from your branch.`
+          };
+        }
+      }
+
+      const branchDisplay = branch === "guadalupe" ? "Guadalupe Branch" : branch === "gil-puyat" || branch === "gil_puyat" ? "Gil Puyat Branch" : `${branch} branch`;
       return {
         found: false,
         searchTarget,
-        message: `No active tenant found matching "${searchTarget}" in ${isOwner ? "all branches" : `${branch} branch`}.`
+        message: `No active tenant found matching "${searchTarget}" in ${isOwner ? "all branches" : branchDisplay}.`
       };
     }
 

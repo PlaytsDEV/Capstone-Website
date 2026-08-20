@@ -138,6 +138,39 @@ describe("Contract generation-data mapping", () => {
     }));
   });
 
+  test("properly formats applicant form address and excludes administrative region", async () => {
+    records.reservation.address = {
+      unitHouseNo: "Unit 1204 Tower A",
+      street: "SMDC JAZZ RESIDENCES",
+      barangay: "Bel-Air",
+      city: "City of Makati",
+      province: "",
+      region: "National Capital Region (NCR)",
+    };
+    const data = await buildContractGenerationData(contract(), { verifyTemplate: false });
+    expect(data.tenant.tenantAddress).toBe(
+      "Unit 1204 Tower A, SMDC JAZZ RESIDENCES, Bel-Air, City of Makati",
+    );
+    expect(data.fields.tenantResidentialAddress).toBe(
+      "Unit 1204 Tower A, SMDC JAZZ RESIDENCES, Bel-Air, City of Makati",
+    );
+  });
+
+  test("strips legacy administrative region suffix from existing contract address snapshot", async () => {
+    const input = {
+      ...contract(),
+      tenantAddress:
+        "SMDC JAZZ RESIDENCES, Bel-Air, City of Makati, National Capital Region (NCR)",
+    };
+    const data = await buildContractGenerationData(input, { verifyTemplate: false });
+    expect(data.tenant.tenantAddress).toBe(
+      "SMDC JAZZ RESIDENCES, Bel-Air, City of Makati",
+    );
+    expect(data.fields.tenantResidentialAddress).toBe(
+      "SMDC JAZZ RESIDENCES, Bel-Air, City of Makati",
+    );
+  });
+
   test("contract generation data is exclusive to applicant application and ignores User profile mutations", async () => {
     records.user.firstName = "Mutated In User Profile";
     records.user.lastName = "Account";

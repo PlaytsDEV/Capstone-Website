@@ -25,6 +25,7 @@ import { queryAdminSopService } from "../services/chatbot/adminCopilotService.js
 import { generateAdminReplyDraft } from "../services/chatbot/adminReplyDrafterService.js";
 import { detectIssueClusters } from "../services/chatbot/issueClusterService.js";
 import { getOwnerSupportTrends } from "../services/chatbot/ownerSupportTrendsService.js";
+import { isOwnerRole } from "../config/roles.js";
 import Inquiry from "../models/Inquiry.js";
 
 const querySchema = z.object({
@@ -396,8 +397,12 @@ export const handleAdminSopQuery = async (req, res, next) => {
     if (!query) {
       return res.status(400).json({ success: false, message: "Query is required" });
     }
-    const resolvedBranch = req.branchFilter || branch || req.user?.branch;
-    const userRole = req.user?.role || "branch_admin";
+    const rawRole = req.authUser?.role || req.user?.role || "branch_admin";
+    const isOwner = isOwnerRole(rawRole);
+    const userRole = isOwner ? "owner" : "branch_admin";
+    const resolvedBranch = isOwner
+      ? (branch || "all")
+      : (req.branchFilter || req.authUser?.branch || "all");
     const result = await queryAdminSopService({ query, branch: resolvedBranch, userRole });
     if (!result.success) {
       return res.status(500).json({ success: false, message: result.error });
@@ -466,8 +471,12 @@ export const handleOwnerSupportTrends = async (req, res, next) => {
  */
 export const handleAdminDailyBriefing = async (req, res, next) => {
   try {
-    const branch = req.branchFilter || req.query.branch || req.user?.branch;
-    const userRole = req.user?.role || "branch_admin";
+    const rawRole = req.authUser?.role || req.user?.role || "branch_admin";
+    const isOwner = isOwnerRole(rawRole);
+    const userRole = isOwner ? "owner" : "branch_admin";
+    const branch = isOwner
+      ? (req.query.branch || "all")
+      : (req.branchFilter || req.authUser?.branch || "all");
     const result = await generateDailyShiftBriefing({ branch, userRole });
     if (!result.success) {
       return res.status(500).json({ success: false, message: result.error });
@@ -483,8 +492,12 @@ export const handleAdminDailyBriefing = async (req, res, next) => {
  */
 export const handleAdminDynamicSuggestions = async (req, res, next) => {
   try {
-    const branch = req.branchFilter || req.query.branch || req.user?.branch;
-    const userRole = req.user?.role || "branch_admin";
+    const rawRole = req.authUser?.role || req.user?.role || "branch_admin";
+    const isOwner = isOwnerRole(rawRole);
+    const userRole = isOwner ? "owner" : "branch_admin";
+    const branch = isOwner
+      ? (req.query.branch || "all")
+      : (req.branchFilter || req.authUser?.branch || "all");
     const result = await getAdminDynamicSuggestions({ branch, userRole });
     res.status(200).json(result);
   } catch (error) {

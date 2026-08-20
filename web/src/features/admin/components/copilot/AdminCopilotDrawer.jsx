@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   Send,
@@ -18,12 +18,12 @@ import { chatbotApi } from "../../../../shared/api/chatbotApi";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 
 const SUGGESTED_PROMPTS = [
-  { label: "Today's Shift Briefing", prompt: "Today's Shift Briefing" },
-  { label: "Move-out clearance checklist", prompt: "Move-out clearance checklist" },
-  { label: "Lost room key policy", prompt: "Lost room key policy" },
-  { label: "Utility late penalty rules", prompt: "Utility late penalty rules" },
-  { label: "Guest curfew & visitor policy", prompt: "Guest curfew & visitor policy" },
-  { label: "Urgent maintenance turnaround times", prompt: "Urgent maintenance turnaround times" },
+  { label: "Today's Shift Briefing", prompt: "Today's Shift Briefing", category: "standup" },
+  { label: "Move-out clearance checklist", prompt: "Move-out clearance checklist", category: "sop" },
+  { label: "Lost room key policy", prompt: "Lost room key policy", category: "sop" },
+  { label: "Utility late penalty rules", prompt: "Utility late penalty rules", category: "billing" },
+  { label: "Guest curfew & visitor policy", prompt: "Guest curfew & visitor policy", category: "sop" },
+  { label: "Urgent maintenance turnaround times", prompt: "Urgent maintenance turnaround times", category: "maintenance" },
 ];
 
 const DEFAULT_SOPS = {
@@ -79,16 +79,37 @@ const DEFAULT_SOPS = {
   }
 };
 
-const INITIAL_MESSAGE = {
-  id: "init-1",
-  sender: "assistant",
-  text: "Hello! I am your Lilycrest Operations Assistant. Click \"Today's Shift Briefing\" for your daily operations standup, search tenant records, or ask about any dormitory procedure.",
-  timestamp: new Date(),
-};
-
 export default function AdminCopilotDrawer({ isOpen, onClose }) {
   const { user } = useAuth();
-  const [messages, setMessages] = useState([INITIAL_MESSAGE]);
+  const isOwner = user?.role === "owner" || user?.role === "super_admin";
+
+  const branchDisplayName = useMemo(() => {
+    if (isOwner) return "All Branches";
+    if (user?.branch === "guadalupe") return "Guadalupe Branch";
+    if (user?.branch === "gil-puyat" || user?.branch === "gil_puyat") return "Gil Puyat Branch";
+    return "Assigned Branch";
+  }, [isOwner, user?.branch]);
+
+  const assistantTitle = useMemo(() => {
+    return isOwner ? "Owner Operations Assistant" : `${branchDisplayName} Assistant`;
+  }, [branchDisplayName, isOwner]);
+
+  const assistantSubtitle = useMemo(() => {
+    return isOwner
+      ? "Consolidated standups, cross-branch lookups & executive governance"
+      : "Shift standup, tenant lookups & branch operating SOPs";
+  }, [isOwner]);
+
+  const initialGreeting = useMemo(() => ({
+    id: "init-1",
+    sender: "assistant",
+    text: isOwner
+      ? 'Hello! I am your Lilycrest Executive Operations Assistant. Click "Today\'s Shift Briefing" for a consolidated multi-branch standup, search tenant and room records across all branches, or review dormitory policies and revenue trends.'
+      : `Hello! I am your ${branchDisplayName} Operations Assistant. Click "Today's Shift Briefing" for your daily shift standup, look up ${branchDisplayName} tenants and rooms, or ask about front-desk operating procedures.`,
+    timestamp: new Date(),
+  }), [branchDisplayName, isOwner]);
+
+  const [messages, setMessages] = useState([initialGreeting]);
   const [inputMessage, setInputMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [activeSop, setActiveSop] = useState(null);
@@ -101,10 +122,17 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
   const inputRef = useRef(null);
   const recognitionRef = useRef(null);
 
+  // Sync initial message when user identity / role changes
+  useEffect(() => {
+    setMessages([initialGreeting]);
+  }, [initialGreeting]);
+
   const fetchDynamicSuggestions = async () => {
     try {
       setLoadingSuggestions(true);
-      const res = await chatbotApi.getAdminDynamicSuggestions({ branch: user?.branch || "all" });
+      const res = await chatbotApi.getAdminDynamicSuggestions({
+        branch: isOwner ? "all" : (user?.branch || "all"),
+      });
       if (res?.success && Array.isArray(res.data) && res.data.length > 0) {
         setSuggestedPrompts(res.data);
       }
@@ -212,7 +240,7 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
     try {
       const response = await chatbotApi.queryAdminSop({
         query: queryText,
-        branch: user?.branch || "all",
+        branch: isOwner ? "all" : (user?.branch || "all"),
       });
 
       if (response?.success && response?.data) {
@@ -244,7 +272,11 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
         setMessages((prev) => [...prev, botMsg]);
       } else if (isBriefing) {
         // Safe graceful briefing fallback
-        const branchTitle = user?.branch === "guadalupe" ? "Guadalupe Branch" : user?.branch === "gil-puyat" ? "Gil Puyat Branch" : "Consolidated Operations";
+        const branchTitle = isOwner
+          ? "Consolidated Operations (All Branches)"
+          : user?.branch === "guadalupe"
+          ? "Guadalupe Branch"
+          : "Gil Puyat Branch";
         setMessages((prev) => [
           ...prev,
           {
@@ -288,7 +320,11 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
     } catch (err) {
       console.warn("Assistant query fallback triggered:", err?.message);
       if (isBriefing) {
-        const branchTitle = user?.branch === "guadalupe" ? "Guadalupe Branch" : user?.branch === "gil-puyat" ? "Gil Puyat Branch" : "Consolidated Operations";
+        const branchTitle = isOwner
+          ? "Consolidated Operations (All Branches)"
+          : user?.branch === "guadalupe"
+          ? "Guadalupe Branch"
+          : "Gil Puyat Branch";
         setMessages((prev) => [
           ...prev,
           {
@@ -357,7 +393,7 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
   };
 
   const handleResetChat = () => {
-    setMessages([INITIAL_MESSAGE]);
+    setMessages([initialGreeting]);
   };
 
   const content = (
@@ -374,14 +410,14 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-foreground truncate">
-                  {user?.role === "owner" ? "Owner Operations Assistant" : "Admin Operations Assistant"}
+                  {assistantTitle}
                 </h3>
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 shrink-0">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  SOP & Briefings
+                  {isOwner ? "Multi-Branch Executive AI" : `${branchDisplayName} Shift AI`}
                 </span>
               </div>
-              <p className="text-[11px] text-muted-foreground truncate">Instant briefings, tenant lookups & SOP answers</p>
+              <p className="text-[11px] text-muted-foreground truncate">{assistantSubtitle}</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -602,7 +638,7 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
         <div className="px-3.5 py-2 border-t border-border bg-card flex items-center gap-1.5 overflow-x-auto shrink-0">
           <div className="flex items-center gap-1 shrink-0 mr-1">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-              Live Suggestions:
+              Suggestions:
             </span>
             <button
               type="button"
@@ -620,17 +656,17 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
             const prompt = item.prompt || item;
             const category = item.category || "sop";
 
-            let colorClasses = "bg-muted/50 border-border text-muted-foreground hover:text-foreground hover:border-primary";
-            if (category === "standup" || label.includes("Today's Shift Briefing")) {
-              colorClasses = "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800 font-bold";
-            } else if (category === "maintenance") {
-              colorClasses = "bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800 font-semibold";
-            } else if (category === "move_in") {
-              colorClasses = "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 font-semibold";
-            } else if (category === "billing") {
-              colorClasses = "bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800 font-semibold";
-            } else if (category === "contracts") {
-              colorClasses = "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 font-semibold";
+            let dotColor = "bg-slate-400";
+            if (category === "standup" || label.includes("Briefing") || label.includes("Standup")) {
+              dotColor = "bg-amber-500";
+            } else if (category === "maintenance" || label.includes("Urgent")) {
+              dotColor = "bg-rose-500";
+            } else if (category === "move_in" || label.includes("Move-In")) {
+              dotColor = "bg-emerald-500";
+            } else if (category === "billing" || label.includes("Bill") || label.includes("Due")) {
+              dotColor = "bg-sky-500";
+            } else if (category === "contracts" || label.includes("Contract")) {
+              dotColor = "bg-indigo-500";
             }
 
             return (
@@ -639,14 +675,14 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                 type="button"
                 onClick={() => handleSendMessage(prompt)}
                 disabled={loading}
-                className={`px-2.5 py-1 text-[11px] font-medium border rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50 ${colorClasses}`}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium border border-border bg-card hover:bg-muted text-foreground rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
               >
-                {label}
+                <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
+                <span>{label}</span>
               </button>
             );
           })}
         </div>
-
 
         {/* Bottom Message Composer with Voice Dictation */}
         <footer className="p-3 border-t border-border bg-card shrink-0">
@@ -666,7 +702,9 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
                 placeholder={
                   isListening
                     ? "Listening... Speak your question now..."
-                    : "Ask SOP, search tenant name, or click Shift Briefing..."
+                    : isOwner
+                    ? "Ask cross-branch SOP, search any tenant, or click Standup Briefing..."
+                    : `Ask ${branchDisplayName} SOP, search tenant name, or click Shift Briefing...`
                 }
                 disabled={loading}
                 className={`w-full pl-3.5 pr-10 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-none transition-colors ${
@@ -710,7 +748,7 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
           </form>
           <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground px-1">
             <span>Press Enter to send · Voice enabled</span>
-            <span>Lilycrest Ground Operations Advisor</span>
+            <span>{isOwner ? "Lilycrest Executive Operations Advisor" : `Lilycrest ${branchDisplayName} Advisor`}</span>
           </div>
         </footer>
       </div>
@@ -723,5 +761,3 @@ export default function AdminCopilotDrawer({ isOpen, onClose }) {
 
   return createPortal(content, document.body);
 }
-
-

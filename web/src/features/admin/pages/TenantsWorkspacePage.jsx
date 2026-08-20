@@ -193,7 +193,7 @@ export default function TenantsWorkspacePage() {
 
   const hasActiveFilters =
     Boolean(searchTerm.trim()) ||
-    branchFilter !== "all" ||
+    (isOwner && branchFilter !== "all") ||
     leaseStatusFilter !== "all" ||
     paymentStatusFilter !== "all" ||
     stayStatusFilter !== "all" ||
