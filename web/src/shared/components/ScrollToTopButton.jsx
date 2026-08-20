@@ -8,13 +8,44 @@ import { ArrowUp } from "lucide-react";
  */
 export default function ScrollToTopButton() {
   const [visible, setVisible] = useState(false);
+  const [bottomOffset, setBottomOffset] = useState(96);
 
   useEffect(() => {
-    const onScroll = () => {
-      setVisible(window.scrollY > 400);
+    let rafId = null;
+
+    const onScrollOrResize = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        setVisible(window.scrollY > 400);
+
+        const footer = document.querySelector("footer");
+        if (footer) {
+          const rect = footer.getBoundingClientRect();
+          const windowHeight = window.innerHeight;
+          if (rect.top < windowHeight) {
+            const visibleFooterHeight = windowHeight - rect.top;
+            setBottomOffset(Math.max(96, Math.round(visibleFooterHeight + 96)));
+          } else {
+            setBottomOffset(96);
+          }
+        } else {
+          setBottomOffset(96);
+        }
+
+        rafId = null;
+      });
     };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+
+    window.addEventListener("scroll", onScrollOrResize, { passive: true });
+    window.addEventListener("resize", onScrollOrResize, { passive: true });
+
+    onScrollOrResize();
+
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize);
+      window.removeEventListener("resize", onScrollOrResize);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
   }, []);
 
   if (!visible) return null;
@@ -59,7 +90,7 @@ export default function ScrollToTopButton() {
         title="Back to top"
         className="fixed z-[980] flex items-center justify-center rounded-full transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:ring-offset-2 group scroll-to-top-btn"
         style={{
-          bottom: "96px",
+          bottom: `${bottomOffset}px`,
           right: "32px",
           width: "40px",
           height: "40px",

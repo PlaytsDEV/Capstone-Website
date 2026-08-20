@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { X, Bot } from "lucide-react";
 import { motion } from "framer-motion";
 import PublicChatbotModal from "./PublicChatbotModal";
@@ -7,14 +8,18 @@ import PublicChatbotModal from "./PublicChatbotModal";
  * PublicChatbotLauncher
  *
  * Floating bottom-right circular launcher button that toggles the AI receptionist modal.
+ * Dynamically computes footer intersection on scroll/resize so the bot gracefully
+ * stops and floats above the footer without overlapping footer content.
  * Uses hardware-accelerated Framer Motion for buttery-smooth 60fps floating
  * with zero layout repaints and optimal battery/CPU efficiency.
  */
 export function PublicChatbotLauncher() {
+  const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [hasUnread, setHasUnread] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const [externalPrompt, setExternalPrompt] = useState("");
+  const [bottomOffset, setBottomOffset] = useState(24);
 
   // Dismiss unread badge upon opening and clear pending prompt on close
   const handleToggle = () => {
@@ -34,6 +39,50 @@ export function PublicChatbotLauncher() {
   const handleClearInitialPrompt = () => {
     setExternalPrompt("");
   };
+
+  // Dynamic footer collision avoidance: elevates bot above the footer when scrolled into view
+  useEffect(() => {
+    let rafId = null;
+
+    const updateFooterOffset = () => {
+      const footer = document.querySelector("footer");
+      if (!footer) {
+        setBottomOffset(24);
+        return;
+      }
+
+      const rect = footer.getBoundingClientRect();
+      const windowHeight = window.innerHeight;
+
+      // If the top of the footer enters into the visible viewport
+      if (rect.top < windowHeight) {
+        const visibleFooterHeight = windowHeight - rect.top;
+        setBottomOffset(Math.max(24, Math.round(visibleFooterHeight + 24)));
+      } else {
+        setBottomOffset(24);
+      }
+    };
+
+    const handleScrollOrResize = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        updateFooterOffset();
+        rafId = null;
+      });
+    };
+
+    window.addEventListener("scroll", handleScrollOrResize, { passive: true });
+    window.addEventListener("resize", handleScrollOrResize, { passive: true });
+
+    // Initial check and on route/layout changes
+    updateFooterOffset();
+
+    return () => {
+      window.removeEventListener("scroll", handleScrollOrResize);
+      window.removeEventListener("resize", handleScrollOrResize);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [location.pathname]);
 
   // Listen for custom event from other public sections (e.g., FAQ accordion)
   useEffect(() => {
@@ -150,7 +199,7 @@ export function PublicChatbotLauncher() {
       {/* Floating Launcher Container */}
       <div
         className="fixed z-[990] flex items-center gap-3 select-none pointer-events-none"
-        style={{ bottom: "24px", right: "24px" }}
+        style={{ bottom: `${bottomOffset}px`, right: "24px" }}
       >
         {/* Floating Attention Pill / Tooltip (pure fade on hover, perfectly centered) */}
         {!isOpen && (
