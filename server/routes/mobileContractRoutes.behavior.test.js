@@ -70,6 +70,7 @@ await jest.unstable_mockModule("../utils/auditLogger.js", () => ({
 }));
 
 const { default: mobileContractRoutes } = await import("./mobileContractRoutes.js");
+const { resolvePublishedFinalDocument } = await import("../services/contractPublicationService.js");
 
 let server;
 let baseUrl;
@@ -125,6 +126,35 @@ describe("mobile Contract canonical document behavior", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/pdf");
     expect(Buffer.from(await response.arrayBuffer()).toString()).toBe("%PDF-canonical-v2\n");
+  });
+
+  test("backward-compatible /documents/contract streams the final admin_scan document with no notarizationVerifiedAt set", async () => {
+    const finalBytes = Buffer.from("%PDF-wet-signed-final\n");
+    resolvePublishedFinalDocument.mockResolvedValueOnce({
+      finalDocument: {
+        fileName: "wet-signed-final.pdf",
+        mimeType: "application/pdf",
+        fileSize: finalBytes.length,
+        sourceType: "admin_scan",
+        sourceVersion: 1,
+        fileHash: "hash",
+      },
+      createReadStream: () => Readable.from(finalBytes),
+    });
+    const finalizedContract = {
+      ...contract,
+      status: "published",
+      tenantVisible: true,
+      notarizationVerifiedAt: null,
+      finalDocument: { fileName: "wet-signed-final.pdf", sourceType: "admin_scan" },
+    };
+    resolveTenantCanonicalContract.mockResolvedValueOnce(finalizedContract);
+
+    const response = await fetch(`${baseUrl}/api/m/documents/contract`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(Buffer.from(await response.arrayBuffer()).toString()).toBe("%PDF-wet-signed-final\n");
+    expect(resolvePublishedFinalDocument).toHaveBeenCalledWith(finalizedContract);
   });
 
   test("current contract logs warning and reports issue code when prepared document resolution fails", async () => {

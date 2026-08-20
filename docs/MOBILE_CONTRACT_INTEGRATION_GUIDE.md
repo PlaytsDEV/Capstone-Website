@@ -1,5 +1,12 @@
 # Lilycrest DMS — Mobile Contract Integration Guide
 
+> **Note:** For the full canonical lifecycle (initial/renewal/transfer,
+> resolver precedence, notifications, storage architecture) see
+> [`docs/CONTRACT_CANONICAL_WEB_MOBILE_WORKFLOW.md`](./CONTRACT_CANONICAL_WEB_MOBILE_WORKFLOW.md).
+> This guide remains accurate as a narrower API-endpoint quick reference, but
+> §1's "only two document types" framing omits the renewal/transfer/
+> notification pieces the canonical doc covers.
+
 This guide describes how the mobile app integrates with the Lilycrest backend to display, preview, and download tenant lease contracts as PDFs.
 
 ---

@@ -1,5 +1,12 @@
 # Lilycrest DMS — Contract Generation & Lifecycle Architecture
 
+> **Note:** For the current canonical web/mobile document-resolution and
+> finality rules (including the wet-signed-is-final-on-upload rule), see
+> [`docs/CONTRACT_CANONICAL_WEB_MOBILE_WORKFLOW.md`](./CONTRACT_CANONICAL_WEB_MOBILE_WORKFLOW.md).
+> This document's §4–5 narrative (18-point publication gate as the only path
+> to tenant visibility) predates that change and is retained here only for
+> the PDF-generation-engine background in §2–3.
+
 ## 1. Executive Summary & Architecture Overview
 
 The Contract Management & Generation Subsystem in **Lilycrest Dormitory Management System (Lilycrest DMS)** is an enterprise-grade legal document engine designed to manage the entire lifecycle of tenant lease contracts. It bridges operational dormitory events (such as reservations, check-ins, room transfers, and renewals) with legally binding lease agreements formatted to strict Philippine lease standards.
