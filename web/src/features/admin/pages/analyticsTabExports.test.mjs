@@ -22,7 +22,8 @@ test("AnalyticsPage disallows export buttons on overview tab and binds registerT
 
   // Tab export registration is passed down for detailed tabs
   assert.match(source, /const \[tabExports, setTabExports\] = useState\(\{\}\)/);
-  assert.match(source, /registerExport:\s*\(exports\)\s*=>\s*registerTabExport\(activeTabNormalized,\s*exports\)/);
+  assert.match(source, /registerTabExport\(activeTabNormalized,\s*exports\)/);
+  assert.match(source, /registerExport:\s*registerCurrentTabExport/);
 });
 
 test("AnalyticsOccupancyTab accepts registerExport and defines standardized CSV & PDF export handlers", async () => {
