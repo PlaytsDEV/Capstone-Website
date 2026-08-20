@@ -305,33 +305,26 @@ export const buildContractGenerationData = async (
       leaseEndDate: dateField(contract.leaseEndDate),
       advanceCoverageStart: dateField(contract.advanceCoverageStart),
       advanceCoverageEnd: dateField(contract.advanceCoverageEnd),
-      regularMonthlyRate: Number(
-        (String(room.type || contract.roomType || "").toLowerCase().includes("private") && (Number(contract.regularMonthlyRate) < 10000 || Number(contract.regularMonthlyRate) < Number(contract.approvedMonthlyRate)))
-          ? (Number(contract.leaseDurationMonths || 12) >= 6 ? 15000 : 16000)
-          : (Number(contract.regularMonthlyRate) < Number(contract.approvedMonthlyRate) && Number(contract.discountPercentage) > 0)
-            ? Math.round(Number(contract.approvedMonthlyRate) / (1 - Number(contract.discountPercentage) / 100))
-            : (Number(contract.regularMonthlyRate) || Number(contract.approvedMonthlyRate))
-      ).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      discountPercentage: Number(
-        (String(room.type || contract.roomType || "").toLowerCase().includes("private") && (Number(contract.regularMonthlyRate) < 10000 || Number(contract.regularMonthlyRate) < Number(contract.approvedMonthlyRate)))
-          ? (Number(contract.leaseDurationMonths || 12) >= 6 ? 10 : 0)
-          : Number(contract.discountPercentage)
-      ).toLocaleString("en-PH", { maximumFractionDigits: 2 }),
+      // The generated PDF renders the Contract's already-approved legal
+      // snapshot verbatim — it must never recompute or substitute a
+      // room-type-conditioned value here. (This block previously injected
+      // hardcoded numbers, e.g. 15000/16000/13500, and recomputed
+      // regularMonthlyRate/discountPercentage from approvedMonthlyRate
+      // whenever contract.regularMonthlyRate looked "off" — silently
+      // diverging the rendered PDF from the Contract record it supposedly
+      // represents. Contract.regularMonthlyRate/discountPercentage/
+      // advanceRentAmount/securityDepositAmount are now reliably correct at
+      // creation time for every contractPurpose — see contractService.js
+      // resolveAuthoritativeLeasePricing usage.)
+      regularMonthlyRate: Number(contract.regularMonthlyRate || 0)
+        .toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      discountPercentage: Number(contract.discountPercentage || 0)
+        .toLocaleString("en-PH", { maximumFractionDigits: 2 }),
       approvedMonthlyRate: Number(contract.approvedMonthlyRate).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      advanceRentAmount: Number(
-        (String(room.type || contract.roomType || "").toLowerCase().includes("private") && (Number(contract.advanceRentAmount) < 10000 || Number(contract.advanceRentAmount) < Number(contract.approvedMonthlyRate)))
-          ? (Number(contract.approvedMonthlyRate) >= 10000 ? Number(contract.approvedMonthlyRate) : (Number(contract.leaseDurationMonths || 12) >= 6 ? 13500 : 16000))
-          : (Number(contract.advanceRentAmount) < Number(contract.approvedMonthlyRate) && Number(contract.approvedMonthlyRate) > 0)
-            ? Number(contract.approvedMonthlyRate)
-            : (Number(contract.advanceRentAmount) || Number(contract.approvedMonthlyRate))
-      ).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      securityDepositAmount: Number(
-        (String(room.type || contract.roomType || "").toLowerCase().includes("private") && (Number(contract.securityDepositAmount) < 10000 || Number(contract.securityDepositAmount) < Number(contract.approvedMonthlyRate)))
-          ? (Number(contract.approvedMonthlyRate) >= 10000 ? Number(contract.approvedMonthlyRate) : (Number(contract.leaseDurationMonths || 12) >= 6 ? 13500 : 16000))
-          : (Number(contract.securityDepositAmount) < Number(contract.approvedMonthlyRate) && Number(contract.approvedMonthlyRate) > 0)
-            ? Number(contract.approvedMonthlyRate)
-            : (Number(contract.securityDepositAmount) || Number(contract.approvedMonthlyRate))
-      ).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      advanceRentAmount: Number(contract.advanceRentAmount || 0)
+        .toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      securityDepositAmount: Number(contract.securityDepositAmount || 0)
+        .toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       finalPageCount: null,
     },
     notarialFields: {

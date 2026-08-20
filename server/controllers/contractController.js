@@ -50,6 +50,7 @@ import {
 import {
   resolveTenantCanonicalContract,
   resolveTenantContractHistory,
+  resolveTenantUpcomingContract,
 } from "../services/tenantContractSelectionService.js";
 import {
   archiveContract as archiveContractRecord,
@@ -485,11 +486,27 @@ export const uploadSignedDocument = async (req, res) => {
       }
     }
 
+    // This upload just auto-finalized the Contract (contractSigningService's
+    // canAutoFinalize/advanceStatusToPublished ran inline) — notify the
+    // tenant their final contract is ready, matching the "prepared" tenant
+    // notification already sent at generation time.
+    const justFinalized = contract.finalDocument?.sourceType === "admin_scan" &&
+      Number(contract.finalDocument?.sourceVersion) === Number(document.version);
+    if (justFinalized && contract.tenantId) {
+      notify
+        .contractDocumentReady(contract.tenantId, "final", contract._id, document.version)
+        .catch((e) => logger.warn({ err: e }, "Tenant final-contract-ready notification failed (non-fatal)"));
+    }
+
     res.status(201).json({ success: true, document: {
       version: document.version, fileName: document.fileName, fileHash: document.fileHash,
       fileSize: document.fileSize, mimeType: document.mimeType, uploadedAt: document.uploadedAt,
       preparedDocumentVersion: document.preparedDocumentVersion,
-    }, status: contract.status });
+    }, status: contract.status, finalDocument: contract.finalDocument ? {
+      sourceType: contract.finalDocument.sourceType,
+      publishedAt: contract.finalDocument.publishedAt,
+      fileName: contract.finalDocument.fileName,
+    } : null });
   } catch (error) { fail(res, error); }
 };
 
@@ -1268,6 +1285,29 @@ export const getMyCurrentContract = async (req, res) => {
       preparedDocument,
       preparedDocumentIssue,
     });
+
+    // "Upcoming" leg of the current/upcoming/history triad — a renewal or
+    // room-transfer successor to this contract that hasn't taken effect yet
+    // (FINAL + SCHEDULED, or still generated/awaiting signature). Web and
+    // mobile share this one resolver; neither gets its own logic.
+    let upcomingView = null;
+    try {
+      const upcomingContract = await resolveTenantUpcomingContract(user._id);
+      if (upcomingContract) {
+        let upcomingPrepared = null;
+        if (selectCurrentPreparedDocument(upcomingContract)) {
+          try {
+            upcomingPrepared = (await resolveCurrentPreparedDocument(upcomingContract)).document;
+          } catch {
+            // Non-fatal — upcoming view still returns without a prepared document
+          }
+        }
+        upcomingView = toTenantContractView(upcomingContract, new Date(), { preparedDocument: upcomingPrepared });
+      }
+    } catch {
+      upcomingView = null;
+    }
+
     res.json({
       contractAvailable: true,
       state: preparedDocument
@@ -1277,6 +1317,7 @@ export const getMyCurrentContract = async (req, res) => {
           : "CONTRACT_BEING_PREPARED",
       contract: view,
       documents: { prepared: view.preparedDocument },
+      upcoming: upcomingView,
     });
   } catch (error) {
     if (error.code === "MULTIPLE_CANONICAL_CONTRACTS") {

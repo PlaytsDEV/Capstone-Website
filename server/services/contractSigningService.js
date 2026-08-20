@@ -117,6 +117,19 @@ export const uploadSignedContract = async ({ contract, file, actorId, replacemen
   if (["terminated", "cancelled", "archived", "voided", "rejected"].includes(contract.status)) {
     throw error("Signed copy upload is not allowed in the current Contract status.", "SIGNED_DOCUMENT_UPLOAD_NOT_ALLOWED", 409);
   }
+  // Once a finalDocument exists, superseding the signedDocuments[] entry it
+  // was built from (every upload here supersedes all prior entries, below)
+  // would silently break resolvePublishedFinalDocument's ability to serve
+  // the already-finalized copy. Matches the model's documented invariant
+  // ("existing finalDocument -> replacement requires the formal process")
+  // and the same guard contractNotarizationService.assertDirectUploadAllowed
+  // already applies to the notarized-upload path.
+  if (contract.finalDocument) {
+    throw error(
+      "Replacing a published final document requires a formal process.",
+      "FINAL_DOCUMENT_REPLACEMENT_REQUIRES_FORMAL_PROCESS", 409,
+    );
+  }
   const type = validateSignedDocumentUpload(file);
   if ((contract.signedDocuments?.length || 0) > 0 && !String(replacementReason).trim()) {
     throw error("A replacement reason is required.", "SIGNED_DOCUMENT_REPLACEMENT_REASON_REQUIRED");
@@ -153,6 +166,47 @@ export const uploadSignedContract = async ({ contract, file, actorId, replacemen
       await contract.save();
     } else {
       await applyDerivedStatus(contract, actorId, version === 1 ? "Signed Contract copy uploaded" : `Signed Contract copy replaced: ${resolvedReason}`);
+    }
+
+    // CORE BUSINESS RULE: an authorized admin's wet-signed upload is the
+    // final contract the moment it lands — no notarization, verification,
+    // or separate publish action required. canAutoFinalize()/
+    // advanceStatusToPublished() were originally written for the offline
+    // reconcileFinalContractUploads.mjs backfill; reused here unchanged so
+    // the live upload path and the historical backfill agree on exactly
+    // what "safe to finalize" means. Stops at "published", never forces
+    // "active" — resolveContractDisplayLifecycle() already derives the
+    // correct "not yet started"/"active" display state from leaseStartDate,
+    // and tenantContractSelectionService already treats "published" as
+    // fully tenant-visible/current.
+    if (canAutoFinalize(contract)) {
+      let pageCount = 1;
+      if (type.mimeType === "application/pdf") {
+        try {
+          const pdfDoc = await PDFDocument.load(file.buffer, { updateMetadata: false });
+          pageCount = pdfDoc.getPageCount();
+        } catch (_) {
+          pageCount = 1;
+        }
+      }
+      const finalizedAt = new Date();
+      contract.finalDocument = {
+        storageKey: stored.storageKey, fileName: storedName, fileHash, fileSize: type.fileSize,
+        mimeType: type.mimeType, pageCount, sourceType: "admin_scan", sourceVersion: version,
+        sourceUploadedAt: uploadedAt, sourceVerifiedAt: null, sourceVerifiedBy: null,
+        publishedAt: finalizedAt, publishedBy: actorId, tenantVisible: true,
+      };
+      contract.finalStorageKey = stored.storageKey;
+      contract.publishedAt = finalizedAt;
+      contract.publishedBy = actorId;
+      contract.tenantVisible = true;
+      contract.isCanonical = !contract.duplicateOfContractId;
+      contract.publicationStatus = "published";
+      advanceStatusToPublished(
+        contract, actorId,
+        "Wet-signed Contract copy uploaded by an authorized admin and automatically finalized as the canonical final document",
+      );
+      await contract.save();
     }
   } catch (saveError) {
     await removeSignedContractDocument({ storageProvider: stored.provider, storageKey: stored.storageKey }).catch(() => {});
@@ -202,9 +256,8 @@ export const rejectSignedContract = async ({ contract, actorId, reason }) => {
   return contract;
 };
 
-// Statuses a signedDocuments[]-only Contract (predating the
-// auto-finalize-on-upload fix) can safely be promoted to canonical
-// `finalDocument` from — mirrors contractNotarizationService.js's
+// Statuses a signedDocuments[]-only Contract can safely be promoted to
+// canonical `finalDocument` from — mirrors contractNotarizationService.js's
 // DIRECT_NOTARIZED_UPLOAD_STATUSES plus the notarization/publication
 // statuses a contract may already be sitting in, kept as a separate literal
 // here (not imported) to avoid a circular dependency: contractNotarizationService.js
@@ -217,11 +270,16 @@ const AUTO_FINALIZE_ALREADY_PUBLISHED_STATUSES = Object.freeze([
   "published", "active", "expiring_soon", "expired",
 ]);
 
-// Whether an existing signedDocuments[]-only Contract is safe for
-// scripts/reconcileFinalContractUploads.mjs to promote straight to the
-// canonical finalDocument. Never used by an interactive admin upload —
-// those go through uploadNotarizedContract / uploadAndFinalizeNotarizedContract,
-// which enforce the full checklist-gated process instead.
+// Whether an existing signedDocuments[]-only Contract is safe to promote
+// straight to the canonical finalDocument. Used by both uploadSignedContract
+// above (the live, interactive admin upload path — a wet-signed upload is
+// final the moment it lands, no notarization required) and by
+// scripts/reconcileFinalContractUploads.mjs (the offline backfill for
+// records created before that live-path finalization existed), so the two
+// paths agree on exactly what "safe to finalize" means. The separate
+// uploadNotarizedContract / uploadAndFinalizeNotarizedContract flow remains
+// available as an optional, internal notarization upgrade — it is blocked
+// once finalDocument is already set (assertDirectUploadAllowed), by design.
 export const canAutoFinalize = (contract) => {
   if (contract.finalDocument) return false;
   return AUTO_FINALIZE_PENDING_STATUSES.includes(contract.status) ||
@@ -272,6 +330,20 @@ export const deleteSignedContract = async ({ contract, version = null, actorId, 
   const targetIndex = docs.findIndex((item) => Number(item.version) === targetVersion);
   if (targetIndex === -1) {
     throw error(`Signed contract document version ${targetVersion} not found.`, "SIGNED_DOCUMENT_NOT_FOUND", 404);
+  }
+  // The finalDocument for an admin_scan final points back at this exact
+  // signedDocuments[] entry (resolvePublishedFinalDocument re-resolves it by
+  // version) — deleting it would break tenant/admin retrieval of the
+  // already-finalized Contract, so it requires the same formal process any
+  // other final-document replacement does.
+  if (
+    contract.finalDocument?.sourceType === "admin_scan" &&
+    Number(contract.finalDocument.sourceVersion) === targetVersion
+  ) {
+    throw error(
+      "This signed copy is the source of the published final document; replacing it requires a formal process.",
+      "FINAL_DOCUMENT_REPLACEMENT_REQUIRES_FORMAL_PROCESS", 409,
+    );
   }
 
   const [deletedDoc] = docs.splice(targetIndex, 1);

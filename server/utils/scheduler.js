@@ -35,6 +35,7 @@ import dayjs from "dayjs";
 import { Reservation, Room, Bill, User, MaintenanceRequest } from "../models/index.js";
 import { getAuth } from "../config/firebase.js";
 import notify from "./notificationService.js";
+import { activateDueRenewalContracts } from "../services/contractRenewalActivationService.js";
 import {
   updateOccupancyOnReservationChange,
   releaseOrphanedBeds,
@@ -1333,6 +1334,22 @@ export function startScheduler(options = {}) {
       scheduled: true,
       timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "support-chat-inactivity-autoclose",
+    }),
+  );
+
+  // Job 18: Renewal successor Contract activation — daily at 09:05
+  // Flips a renewal successor Contract from FINAL+SCHEDULED (published,
+  // leaseStartDate in the future) to ACTIVE once its effective date
+  // arrives, and its predecessor from active to replaced in the same
+  // transaction. See contractRenewalActivationService.js for the full
+  // finality-vs-effectivity rationale. Idempotent — safe to retry.
+  scheduledJobs.push(
+    cron.schedule("5 9 * * *", () =>
+      retryJobOperation(activateDueRenewalContracts, { label: "Job 18: Renewal Contract activation" }),
+    {
+      scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
+      name: "renewal-contract-activation",
     }),
   );
 

@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
 import dayjs from "dayjs";
+import logger from "../middleware/logger.js";
 import {
   AuditLog,
   BedHistory,
   Bill,
+  Contract,
   Reservation,
   Room,
   Stay,
@@ -22,6 +24,16 @@ import {
   utilityEventTypesForQuery,
 } from "./lifecycleNaming.js";
 import { resolveSecurityDeposit } from "./depositUtils.js";
+import {
+  activateRoomTransferSuccessor,
+  resolveRoomTransferSuccessor,
+} from "../services/contractRoomTransferActivationService.js";
+import { resolveCurrentBillingCycle } from "../services/billing/billingPolicy.js";
+import { calculateRoomTransferRentSettlement } from "../services/billing/roomTransferSettlement.js";
+import {
+  resolveApplicablePrepaidRentForTransfer,
+  resolveSourceEffectiveRentForTransfer,
+} from "../services/billing/prepaidRentResolver.js";
 import { createNotification } from "../services/notifications/notificationService.js";
 
 const normalizeDate = (value, endOfDay = false) => {
@@ -354,6 +366,7 @@ export async function renewStayWorkflow({ reservationId, payload, actorId }) {
             monthlyRent: Number(payload.monthlyRent ?? getMonthlyRent(reservation)),
             status: "active",
             previousStayId: activeStay._id,
+            renewalOfferId: payload.renewalOfferId || null,
             renewalNotes: payload.notes || "",
             createdBy: actorId,
             updatedBy: actorId,
@@ -376,7 +389,19 @@ export async function renewStayWorkflow({ reservationId, payload, actorId }) {
 
       reservation.currentStayId = newStay._id;
       reservation.latestStayStatus = "active";
-      reservation.monthlyRent = Number(payload.monthlyRent ?? getMonthlyRent(reservation));
+      // Deliberately NOT updating reservation.monthlyRent here — it remains
+      // the billing source of truth for the CURRENT (pre-renewal) period.
+      // rentGenerator.resolveReservationRentAmount reads it live at bill
+      // generation time, which can happen up to RENT_GENERATION_LEAD_DAYS
+      // before a cycle even starts, so writing the new rate immediately at
+      // acceptance (often weeks before newLeaseStartDate) would let it leak
+      // into current-period bills. The approved new rate is already
+      // durably captured on the renewal successor Contract's
+      // approvedMonthlyRate (createSuccessorContractForRenewal /
+      // autoGenerateRenewalContract, triggered below) and is applied to
+      // reservation.monthlyRent exactly once, atomically, by
+      // contractRenewalActivationService.activateDueRenewalContracts at the
+      // successor's actual leaseStartDate.
       await reservation.save({ session });
 
       result = {
@@ -385,10 +410,39 @@ export async function renewStayWorkflow({ reservationId, payload, actorId }) {
         stay: newStay.toObject(),
       };
     });
-    return result;
   } finally {
     await session.endSession();
   }
+
+  // ── Automated Renewal Successor Contract Generation ──────────────────────
+  // Fire-and-forget, mirrors transferStayWorkflow's post-transaction contract
+  // trigger below. Never touches the old Contract's status/isCurrent — see
+  // createSuccessorContractForRenewal's comment (contractService.js).
+  if (result) {
+    try {
+      const oldContract = await Contract.findOne({
+        reservationId: result.reservation._id,
+        isCurrent: true,
+      }).sort({ version: -1, createdAt: -1 });
+      if (oldContract) {
+        const { autoGenerateRenewalContract } = await import("../services/autoContractOrchestratorService.js");
+        autoGenerateRenewalContract({
+          reservationId: result.reservation._id,
+          oldContract,
+          newStay: result.stay,
+          actorId,
+        }).catch((err) => {
+          logger.warn({ err, reservationId }, "[RenewalWorkflow] Background successor contract auto-generation failed (non-fatal)");
+        });
+      } else {
+        logger.warn({ reservationId }, "[RenewalWorkflow] Renewal successor contract skipped: no current Contract found");
+      }
+    } catch (contractImportErr) {
+      logger.warn({ err: contractImportErr }, "[RenewalWorkflow] Auto contract orchestrator invocation error");
+    }
+  }
+
+  return result;
 }
 
 export async function transferStayWorkflow({ reservationId, payload, actorId }) {
@@ -465,6 +519,42 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       );
       if (!targetBed || targetBed.status !== "available") {
         throw Object.assign(new Error("Selected target bed is not available."), { statusCode: 409, code: "BED_NOT_AVAILABLE" });
+      }
+
+      // ── Legal readiness gate — resolved and validated BEFORE any physical
+      // mutation below. A room transfer may only physically execute once a
+      // prepared, wet-signed replacement Contract already exists for the
+      // exact destination room; see contractRoomTransferActivationService.js
+      // for the canonical resolver/activator this reuses (no duplicated
+      // Contract transition logic here).
+      const predecessorContract = await Contract.findOne({
+        reservationId: reservation._id,
+        isCurrent: true,
+      }).session(session).sort({ version: -1, createdAt: -1 });
+      if (!predecessorContract || predecessorContract.status !== "active") {
+        throw Object.assign(
+          new Error("The tenant's current Contract is not active — room transfer cannot proceed."),
+          { statusCode: 409, code: "ROOM_TRANSFER_PREDECESSOR_NOT_ACTIVE" },
+        );
+      }
+      const successorContract = await resolveRoomTransferSuccessor({
+        predecessorContractId: predecessorContract._id,
+        session,
+      });
+      if (String(successorContract.roomId) !== String(targetRoom._id)) {
+        throw Object.assign(
+          new Error("The prepared replacement Contract does not match the selected destination room."),
+          { statusCode: 409, code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" },
+        );
+      }
+      if (successorContract.status !== "published" || !successorContract.finalDocument) {
+        throw Object.assign(
+          new Error(
+            "The replacement Contract for this room transfer is not yet finalized — upload the " +
+            "wet-signed Contract before executing the transfer.",
+          ),
+          { statusCode: 422, code: "ROOM_TRANSFER_CONTRACT_NOT_FINAL" },
+        );
       }
 
       const currentRoom = await Room.findById(activeStay.roomId).session(session);
@@ -594,26 +684,45 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         }
       }
 
-      // ── Pro-rata Rent Calculation ──────────────────────────────────────────
-      // Calculate partial-month rent for the source room from the last billing
-      // cycle start to the effective transfer date.
-      const cycleStart = reservation.billingCycleStart
-        ? new Date(reservation.billingCycleStart)
+      // ── Room-Transfer Rent Settlement ───────────────────────────────────────
+      // Lilycrest's confirmed rule: charge only for actual days spent in
+      // each accommodation; the unused prepaid value of the old room is
+      // credited against the destination room's prorated remaining-period
+      // charge. Period boundaries come from the tenant's actual movein-
+      // anchored rent cycle (resolveCurrentBillingCycle — correctly handles
+      // 28/29/30/31-day months, never a fixed 30-day divisor). Destination
+      // rate is always the successor Contract's approved amount — never the
+      // mutable Room master price, and never re-resolved here even if it has
+      // since changed. Source rate/prepaid basis are resolved below (see
+      // prepaidRentResolver.js) rather than assumed to be the predecessor
+      // Contract's approvedMonthlyRate verbatim: a structured reservation's
+      // approved rent (and what it actually prepaid) lives on its immutable
+      // pricingSnapshot, which can diverge from the Contract field over time.
+      const moveInDate = readMoveInDate(reservation);
+      const currentBillingCycle = moveInDate
+        ? resolveCurrentBillingCycle(moveInDate, effectiveTransferDate)
         : null;
-      let proRataDays = 0;
-      let proRataRent = 0;
-      if (cycleStart && cycleStart < effectiveTransferDate) {
-        proRataDays = Math.max(
-          1,
-          Math.ceil((effectiveTransferDate - cycleStart) / (1000 * 60 * 60 * 24)),
-        );
-        const monthlyPrice =
-          Number(currentRoom.monthlyPrice || currentRoom.price || 0);
-        const daysInMonth = dayjs(effectiveTransferDate).daysInMonth();
-        proRataRent = daysInMonth > 0
-          ? Math.round((monthlyPrice / daysInMonth) * proRataDays * 100) / 100
-          : 0;
-      }
+      const { sourceEffectiveRate, sourceRateSource } = resolveSourceEffectiveRentForTransfer({
+        reservation,
+        predecessorContract,
+      });
+      const { applicablePrepaidRent, prepaidRentSource } =
+        await resolveApplicablePrepaidRentForTransfer({
+          reservation,
+          sourceEffectiveRate,
+          currentBillingCycle,
+          session,
+        });
+      const settlement = calculateRoomTransferRentSettlement({
+        periodStart: currentBillingCycle?.billingCycleStart || effectiveTransferDate,
+        periodEnd: currentBillingCycle?.billingCycleEnd || effectiveTransferDate,
+        transferDate: effectiveTransferDate,
+        sourceApprovedRate: sourceEffectiveRate,
+        destinationApprovedRate: successorContract.approvedMonthlyRate,
+        applicablePrepaidRent,
+      });
+      const proRataDays = settlement.sourceDays;
+      const proRataRent = settlement.sourceConsumedValue;
 
       // ── Electricity Proration ─────────────────────────────────────────────
       // Estimate electricity consumed in the source room since the last recorded
@@ -666,11 +775,17 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         }
       }
 
-      const transferSettlementTotal = Math.round((proRataRent + estimatedElectricityCharge) * 100) / 100;
+      // charges.rent represents the NET settlement amount actually due
+      // (destination prorated charge minus the unused old-room credit) —
+      // never negative; an excess credit is recorded in transferSnapshot
+      // for audit only, never auto-refunded (no existing policy to do so).
+      const transferSettlementTotal = Math.round(
+        (settlement.additionalAmountDue + estimatedElectricityCharge) * 100,
+      ) / 100;
 
       // ── Transfer Settlement Bill ───────────────────────────────────────────
       // Create a dedicated transfer_settlement bill inside the same transaction
-      // so the billing history reflects the pro-rated source room charges.
+      // so the billing history reflects the actual-days settlement.
       const [transferBill] = await Bill.create(
         [
           {
@@ -680,11 +795,11 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
             branch: currentRoom.branch,
             roomId: currentRoom._id,
             billingMonth: effectiveTransferDate,
-            billingCycleStart: cycleStart || effectiveTransferDate,
-            billingCycleEnd: effectiveTransferDate,
+            billingCycleStart: currentBillingCycle?.billingCycleStart || effectiveTransferDate,
+            billingCycleEnd: currentBillingCycle?.billingCycleEnd || effectiveTransferDate,
             proRataDays: proRataDays || null,
             charges: {
-              rent: proRataRent,
+              rent: settlement.additionalAmountDue,
               electricity: estimatedElectricityCharge,
               water: 0,
               applianceFees: 0,
@@ -696,7 +811,10 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
             grossAmount: transferSettlementTotal,
             remainingAmount: transferSettlementTotal,
             status: transferSettlementTotal > 0 ? "pending" : "paid",
-            notes: `Transfer settlement: ${currentRoom.name || currentRoom.roomNumber} → ${targetRoom.name || targetRoom.roomNumber} on ${effectiveTransferDate.toISOString().slice(0, 10)}`,
+            notes: `Transfer settlement: ${currentRoom.name || currentRoom.roomNumber} → ${targetRoom.name || targetRoom.roomNumber} on ${effectiveTransferDate.toISOString().slice(0, 10)}` +
+              (settlement.excessCredit > 0
+                ? ` (excess prepaid credit of ₱${settlement.excessCredit.toFixed(2)} recorded, not auto-refunded)`
+                : ""),
             transferSnapshot: {
               fromRoomId: currentRoom._id,
               fromRoomName: currentRoom.name || currentRoom.roomNumber || "",
@@ -708,8 +826,27 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
               toRoomPrice: targetRoom.monthlyPrice || targetRoom.price || 0,
               effectiveTransferDate,
               outstandingBalanceAtTransfer: billingSummary.currentBalance,
+              // Source-room days used / consumed value (kept under the
+              // existing field names for backward-compatible admin UI reads).
               proRataDays,
               proRataRent,
+              // Full actual-days + unused-credit breakdown (new, additive).
+              // sourceApprovedRate is the RESOLVED source-effective rent used to
+              // value consumed days (see sourceRateSource) — for a structured
+              // reservation with an approved discount this is
+              // pricingSnapshot.finalMonthlyRate, not necessarily the raw
+              // predecessor Contract field.
+              sourceApprovedRate: sourceEffectiveRate,
+              destinationApprovedRate: successorContract.approvedMonthlyRate,
+              sourceRateSource,
+              applicablePrepaidRent,
+              prepaidRentSource,
+              totalCoverageDays: settlement.totalCoverageDays,
+              destinationDays: settlement.destinationDays,
+              destinationProratedValue: settlement.destinationProratedValue,
+              unusedPrepaidCredit: settlement.unusedPrepaidCredit,
+              additionalAmountDue: settlement.additionalAmountDue,
+              excessCredit: settlement.excessCredit,
               estimatedElectricityKwh,
               estimatedElectricityCharge: estimatedElectricityCharge > 0 ? estimatedElectricityCharge : null,
             },
@@ -793,9 +930,32 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       };
       reservation.currentStayId = activeStay._id;
       reservation.latestStayStatus = activeStay.status;
+      // Future rent bills (generated after this transfer) must bill the
+      // destination room's approved rate, not the old room's — the
+      // recurring due-date/billing-cycle anchor itself (movein-based) is
+      // deliberately left untouched, this only updates which rate applies.
+      reservation.monthlyRent = Number(successorContract.approvedMonthlyRate) || reservation.monthlyRent;
       await reservation.save({ session });
 
+      // ── Contract cutover — last step before commit. Participates in this
+      // same transaction (session passed through): a failure here rolls
+      // back every physical mutation above via session.withTransaction's
+      // automatic abort; success here can never be reached if any physical
+      // mutation above already failed. This is the single Contract
+      // transition authority — no manual status/isCurrent mutation here.
+      const cutover = await activateRoomTransferSuccessor({
+        successorContractId: successorContract._id,
+        actorId,
+        session,
+      });
+
       result = {
+        contractCutover: {
+          predecessorContractId: String(predecessorContract._id),
+          successorContractId: String(successorContract._id),
+          predecessorStatus: cutover.predecessor?.status || predecessorContract.status,
+          successorStatus: cutover.successor?.status || successorContract.status,
+        },
         reservation,
         stay: activeStay.toObject(),
         fromRoomName: currentRoom.name || currentRoom.roomNumber || "Unknown room",
@@ -877,25 +1037,15 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       ).catch(() => {});
     }
 
-    // ── Automated Contract Lineage & Replacement Generation ─────────────
-    try {
-      const { autoGenerateTransferContract } = await import("../services/autoContractOrchestratorService.js");
-      const targetRoomDoc = await Room.findById(payload.targetRoomId || payload.newRoomId).lean();
-      if (targetRoomDoc) {
-        autoGenerateTransferContract({
-          reservationId,
-          activeStay: result.stay,
-          targetRoom: targetRoomDoc,
-          targetBed: { id: payload.targetBedId || payload.newBedId, label: result.toRoomDetails?.assignedBedId },
-          effectiveTransferDate: payload.effectiveTransferDate || new Date(),
-          actorId,
-        }).catch((err) => {
-          logger.warn({ err, reservationId }, "[TransferWorkflow] Background replacement contract auto-generation failed (non-fatal)");
-        });
-      }
-    } catch (contractImportErr) {
-      logger.warn({ err: contractImportErr }, "[TransferWorkflow] Auto contract orchestrator invocation error");
-    }
+    // Contract lineage: the replacement Contract must already exist and be
+    // legally final before this function is ever allowed to reach here (see
+    // the legal readiness gate near the top of the transaction, and
+    // activateRoomTransferSuccessor's call right before commit above) — so,
+    // unlike the old behavior, there is nothing left to generate here after
+    // the fact. Preparing a replacement Contract ahead of execution is done
+    // via the dedicated prepareRoomTransferContract admin action
+    // (server/controllers/reservations/tenancyActionsController.js), which
+    // reuses autoGenerateTransferContract directly.
 
     return result;
   }

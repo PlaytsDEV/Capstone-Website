@@ -15,7 +15,7 @@ test("generated stage exposes one viewer action and separate workflow actions", 
   assert.doesNotMatch(panel, /Print Prepared Copy/);
   assert.match(drawer, /Prepared Contract Actions/);
   assert.match(drawer, /Print or download the document using the controls in the PDF viewer/);
-  assert.match(drawer, /After Wet Signing and Notarization/);
+  assert.match(drawer, /<h4>After Wet Signing<\/h4>/);
 });
 
 test("current prepared copy is newest non-superseded document, not generatedVersion", () => {

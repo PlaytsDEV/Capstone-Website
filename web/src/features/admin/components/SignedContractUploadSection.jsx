@@ -183,7 +183,7 @@ export default function SignedContractUploadSection({
       }
 
       const uploadReason = notes.trim() || "Uploaded scanned contract copy";
-      await contractApi.uploadSignedContract(activeContractId, selectedFile, uploadReason);
+      const uploadResult = await contractApi.uploadSignedContract(activeContractId, selectedFile, uploadReason);
 
       // Fetch the updated contract record
       const updated = await contractApi.getContract(activeContractId);
@@ -195,7 +195,15 @@ export default function SignedContractUploadSection({
       setSelectedFile(null);
       setNotes("");
       setShowUploadForm(false);
-      showNotification("Scanned contract copy uploaded successfully!", "success");
+      // The plain wet-signed upload finalizes the Contract immediately — no
+      // separate notarization step is required for the tenant to see it.
+      const finalized = Boolean(uploadResult?.finalDocument) || Boolean(updated?.contract?.finalDocument?.sourceType === "admin_scan");
+      showNotification(
+        finalized
+          ? "Wet-signed contract uploaded — this is now the tenant's final contract."
+          : "Scanned contract copy uploaded successfully!",
+        "success",
+      );
     } catch (err) {
       showNotification(err?.message || "Upload failed. Please try again.", "error");
     } finally {

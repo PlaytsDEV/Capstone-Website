@@ -14,8 +14,12 @@ import {
   resolveApplicantIdentity,
 } from "./contractGenerationDataService.js";
 import { resolveContractTemplate } from "./contractTemplateService.js";
-import { resolveContractLeasePricing } from "./contractPricingResolver.js";
+import {
+  resolveContractLeasePricing,
+  resolveAuthoritativeLeasePricing,
+} from "./contractPricingResolver.js";
 import { getBusinessSettings } from "../utils/businessSettings.js";
+import { resolveSecurityDeposit } from "../utils/depositUtils.js";
 
 export const CONTRACT_TRANSITIONS = Object.freeze({
   draft: ["incomplete", "ready_for_generation", "awaiting_signatures", "partially_signed", "signed", "cancelled"],
@@ -514,18 +518,26 @@ export const approveContractPricing = async ({ contract, actorId, pricing, notes
   return contract;
 };
 
-export const transitionContract = async (contract, nextStatus, actorId, reason = "") => {
+export const transitionContract = async (contract, nextStatus, actorId, reason = "", session = null) => {
   assertValidContractTransition(contract.status, nextStatus);
   contract.status = nextStatus;
   contract.updatedBy = actorId;
   contract.statusHistory.push({ status: nextStatus, changedBy: actorId, reason });
   if (terminalStatuses.has(nextStatus)) contract.isCurrent = false;
-  await contract.save();
+  await contract.save(session ? { session } : undefined);
   return contract;
 };
 
 export const findCurrentContract = (filter) =>
   Contract.findOne({ ...filter, isCurrent: true }).sort({ version: -1, createdAt: -1 });
+
+// Statuses on a room-transfer successor Contract that represent a legitimately
+// abandoned attempt — a fresh replacement is allowed after any of these.
+// Deliberately excludes every other status (including "active") so a retry
+// after the successor has already been activated still returns the existing
+// Contract instead of creating a duplicate (see the idempotency guard in
+// createReplacementContractForTransfer below).
+export const ABANDONED_TRANSFER_SUCCESSOR_STATUSES = new Set(["cancelled", "voided", "rejected", "archived"]);
 
 export const createReplacementContractForTransfer = async ({
   reservationId,
@@ -541,6 +553,31 @@ export const createReplacementContractForTransfer = async ({
     throw serviceError("Previous active contract is required for replacement.", "PREVIOUS_CONTRACT_REQUIRED", 400);
   }
 
+  // Idempotency guard — no stable transfer/event identifier exists anywhere
+  // in the current architecture (transferStayWorkflow/autoGenerateTransferContract
+  // never generate or thread one through to the Contract layer), so
+  // replacesContractId + contractPurpose is the identifier basis for this
+  // phase. Reusing an existing, non-abandoned successor here (rather than
+  // creating a new one) is what makes a retried/duplicate call safe now that
+  // the predecessor is no longer immediately flipped to isCurrent: false —
+  // see the module-level comment below.
+  const existingSuccessors = await Contract.find({
+    replacesContractId: oldContract._id,
+    contractPurpose: "replacement",
+    status: { $nin: [...ABANDONED_TRANSFER_SUCCESSOR_STATUSES] },
+  }).session(session);
+  if (existingSuccessors.length > 1) {
+    throw serviceError(
+      "Multiple room-transfer successor Contracts already reference this Contract — admin repair required.",
+      "MULTIPLE_TRANSFER_SUCCESSORS",
+      409,
+      { predecessorId: String(oldContract._id), successorIds: existingSuccessors.map((c) => String(c._id)) },
+    );
+  }
+  if (existingSuccessors.length === 1) {
+    return existingSuccessors[0];
+  }
+
   const reservation = await Reservation.findById(reservationId).session(session).lean();
   if (!reservation) throw serviceError("Reservation not found.", "RESERVATION_NOT_FOUND", 404);
 
@@ -554,33 +591,60 @@ export const createReplacementContractForTransfer = async ({
   const canonicalRoomType = validateBranchRoomType(branch, targetRoom.type);
   const property = resolveContractBranch(branch);
 
-  // Mark old contract as replaced
-  oldContract.status = "replaced";
-  oldContract.isCurrent = false;
-  oldContract.updatedBy = actorId;
-  oldContract.statusHistory.push({
-    status: "replaced",
-    changedBy: actorId,
-    changedAt: new Date(),
-    reason: `Replaced by room transfer contract (${oldContract.roomNumber} -> ${targetRoom.roomNumber})`,
-  });
-  await oldContract.save({ session });
-
-  const leaseStartDate = oldContract.leaseStartDate || stay?.leaseStartDate || effectiveTransferDate;
+  // The predecessor is a historical legal record and must NOT be mutated
+  // here — it stays ACTIVE/current until the real room transfer executes
+  // and explicitly calls contractRoomTransferActivationService.
+  // activateRoomTransferSuccessor. Its room, rate, and lease dates are
+  // untouched; status/isCurrent/supersededByContractId are set only by that
+  // cutover, not at successor-creation time.
+  const leaseStartDate = effectiveTransferDate;
   const leaseEndDate = oldContract.leaseEndDate || stay?.leaseEndDate;
   const leaseDurationMonths = oldContract.leaseDurationMonths || (
     leaseStartDate && leaseEndDate ? Math.max(1, dayjs(leaseEndDate).diff(dayjs(leaseStartDate), "month")) : 1
   );
 
-  const targetRate = Number(targetRoom.monthlyPrice || targetRoom.price || 0);
   const settings = await getBusinessSettings();
-  const pricing = resolveContractLeasePricing({
-    room: targetRoom,
-    roomType: canonicalRoomType,
-    leaseDurationMonths,
-    approvedMonthlyRate: targetRate,
-    longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
-  });
+  // The destination Contract must snapshot the room-type + approved-term
+  // -correct rate from the same authoritative regular/discount table used
+  // everywhere else (resolveAuthoritativeLeasePricing) — never the
+  // destination Room's raw monthlyPrice/price master field, which is an
+  // admin-set input to pricing resolution, not a pre-validated approved rate
+  // (see the identical renewal-pricing fix above).
+  let authoritativePricing = null;
+  try {
+    authoritativePricing = resolveAuthoritativeLeasePricing({
+      room: targetRoom,
+      roomType: canonicalRoomType,
+      branch,
+      leaseDurationMonths,
+      settings,
+    });
+  } catch {
+    // Unsupported/legacy room type or invalid duration — fall back below
+    // rather than blocking the room-transfer replacement Contract.
+  }
+  const targetRate = Number(
+    authoritativePricing?.finalMonthlyRate ??
+      targetRoom.monthlyPrice ??
+      targetRoom.price ??
+      0,
+  );
+  const pricing = authoritativePricing
+    ? {
+        isLongTerm: authoritativePricing.isLongTerm,
+        leaseType: authoritativePricing.leaseType,
+        regularMonthlyRate: authoritativePricing.regularMonthlyRate,
+        discountPercentage: authoritativePricing.discountPercentage,
+        discountAmount: authoritativePricing.discountAmount,
+        approvedMonthlyRate: authoritativePricing.finalMonthlyRate,
+      }
+    : resolveContractLeasePricing({
+        room: targetRoom,
+        roomType: canonicalRoomType,
+        leaseDurationMonths,
+        approvedMonthlyRate: targetRate,
+        longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
+      });
 
   let resolvedTemplate = null;
   try {
@@ -637,9 +701,9 @@ export const createReplacementContractForTransfer = async ({
         leaseEndDate,
         leaseDurationMonths,
         regularMonthlyRate: pricing.regularMonthlyRate,
-        discountPercentage: 0,
-        discountType: "none",
-        discountAmount: 0,
+        discountPercentage: pricing.discountPercentage || 0,
+        discountType: pricing.discountPercentage > 0 ? "percentage" : "none",
+        discountAmount: pricing.discountAmount || 0,
         approvedMonthlyRate: pricing.approvedMonthlyRate,
         advanceRentAmount: 0,
         securityDepositAmount: oldContract.securityDepositAmount || 0,
@@ -657,17 +721,246 @@ export const createReplacementContractForTransfer = async ({
         ],
         createdBy: actorId,
         updatedBy: actorId,
-        isCurrent: true,
+        isCurrent: false,
       },
     ],
     { session },
   );
 
-  const created = createdDocs[0];
-  oldContract.supersededByContractId = created._id;
-  oldContract.supersededBy = created._id;
-  await oldContract.save({ session });
+  return createdDocs[0];
+};
 
-  return created;
+// Creates a successor Contract for a lease renewal. Like
+// createReplacementContractForTransfer above, this deliberately does NOT
+// touch oldContract.status/isCurrent at all — the predecessor stays the
+// tenant's fully active, current, legally unmutated contract until
+// contractRenewalActivationService.activateDueRenewalContracts flips both
+// contracts at the successor's actual leaseStartDate. The successor itself
+// is created with isCurrent: false for the same reason (so isCurrent:true
+// lookups elsewhere, e.g. autoGenerateTransferContract's Contract.findOne,
+// never see two "current" contracts for one reservation during the
+// FINAL + SCHEDULED window) and flips to true only at activation.
+// Mirrors ABANDONED_TRANSFER_SUCCESSOR_STATUSES above — a renewal successor
+// in one of these statuses does not count as a legitimate existing successor
+// (see the idempotency guard in createSuccessorContractForRenewal below).
+export const ABANDONED_RENEWAL_SUCCESSOR_STATUSES = new Set(["cancelled", "voided", "rejected", "archived"]);
+
+export const createSuccessorContractForRenewal = async ({
+  reservationId,
+  oldContract,
+  newStay,
+  actorId,
+  session = null,
+}) => {
+  if (!oldContract) {
+    throw serviceError("Previous active contract is required for renewal.", "PREVIOUS_CONTRACT_REQUIRED", 400);
+  }
+  if (!newStay) {
+    throw serviceError("The renewed Stay record is required for renewal.", "RENEWAL_STAY_REQUIRED", 400);
+  }
+
+  // Idempotency guard — one predecessor Contract may produce at most one
+  // legitimate renewal successor. Mirrors createReplacementContractForTransfer's
+  // guard exactly (replacesContractId + contractPurpose): a retried/duplicate
+  // call (network retry, retried background trigger, accidental re-invocation
+  // after the successor is already published/active) must reuse the existing
+  // successor rather than create Contract C, D, etc.
+  const existingSuccessors = await Contract.find({
+    replacesContractId: oldContract._id,
+    contractPurpose: "renewal",
+    status: { $nin: [...ABANDONED_RENEWAL_SUCCESSOR_STATUSES] },
+  }).session(session);
+  if (existingSuccessors.length > 1) {
+    throw serviceError(
+      "Multiple renewal successor Contracts already reference this Contract — admin repair required.",
+      "MULTIPLE_RENEWAL_SUCCESSORS",
+      409,
+      { predecessorId: String(oldContract._id), successorIds: existingSuccessors.map((c) => String(c._id)) },
+    );
+  }
+  if (existingSuccessors.length === 1) {
+    return existingSuccessors[0];
+  }
+
+  const reservation = await Reservation.findById(reservationId).session(session).lean();
+  if (!reservation) throw serviceError("Reservation not found.", "RESERVATION_NOT_FOUND", 404);
+
+  const [tenant, room] = await Promise.all([
+    User.findById(reservation.userId).session(session).lean(),
+    Room.findById(oldContract.roomId).session(session).lean(),
+  ]);
+  if (!tenant) throw serviceError("Tenant not found.", "TENANT_NOT_FOUND", 404);
+
+  const branch = oldContract.branch;
+  const canonicalRoomType = oldContract.roomType;
+
+  const leaseStartDate = newStay.leaseStartDate;
+  const leaseEndDate = newStay.leaseEndDate;
+  const leaseDurationMonths = Math.max(1, dayjs(leaseEndDate).diff(dayjs(leaseStartDate), "month"));
+
+  // The renewal successor Contract must snapshot the SAME approved pricing
+  // the tenant actually accepted — never a re-resolution against whatever
+  // BusinessSettings/Room pricing happen to be live at Contract-generation
+  // time (which could have changed between offer acceptance and this call).
+  // Prefer the exact accepted Reservation.renewalOffers[] entry (linked via
+  // newStay.renewalOfferId, set at acceptance in tenantActionService.js's
+  // renewStayWorkflow) when it was itself resolved canonically.
+  const acceptedOffer = newStay.renewalOfferId
+    ? (reservation.renewalOffers || []).find((offer) => offer.offerId === newStay.renewalOfferId)
+    : null;
+  const hasFrozenCanonicalOffer =
+    acceptedOffer?.pricingSource === "canonical_resolver" &&
+    Number.isFinite(Number(acceptedOffer.proposedRent)) &&
+    Number(acceptedOffer.proposedRent) > 0;
+
+  const settings = await getBusinessSettings();
+  // Legacy/compatibility path: no linked accepted offer (renewal created
+  // outside the offer flow) or an offer predating canonical-pricing support
+  // — reconstruct the correct room-type + NEW-duration rate from the same
+  // authoritative regular/discount table the initial approval and room
+  // listings already use, rather than trusting newStay.monthlyRent (which
+  // could be duration-unaware) or the old Contract's now-stale rate. This is
+  // what previously let e.g. a 3-month Quadruple renewing to 6 months keep
+  // the short-term ₱6,300 instead of resolving to the long-term ₱5,400.
+  let authoritativePricing = null;
+  if (!hasFrozenCanonicalOffer) {
+    try {
+      authoritativePricing = resolveAuthoritativeLeasePricing({
+        room: room || { type: canonicalRoomType, branch },
+        roomType: canonicalRoomType,
+        branch,
+        leaseDurationMonths,
+        settings,
+      });
+    } catch {
+      // Unsupported/legacy room type or invalid duration — fall back below
+      // rather than blocking renewal Contract creation.
+    }
+  }
+  const newRate = Number(
+    (hasFrozenCanonicalOffer ? acceptedOffer.proposedRent : null) ??
+      authoritativePricing?.finalMonthlyRate ??
+      newStay.monthlyRent ??
+      oldContract.approvedMonthlyRate ??
+      0,
+  );
+  const pricing = hasFrozenCanonicalOffer
+    ? {
+        isLongTerm: acceptedOffer.pricingTier === "long_term",
+        leaseType: acceptedOffer.pricingTier || (leaseDurationMonths >= settings.longTermLeaseMinMonths ? "long_term" : "short_term"),
+        regularMonthlyRate: Number(acceptedOffer.regularMonthlyRate ?? acceptedOffer.proposedRent),
+        discountPercentage: Number(acceptedOffer.discountPercentage) || 0,
+        discountAmount: Math.max(0, Number(acceptedOffer.regularMonthlyRate ?? acceptedOffer.proposedRent) - Number(acceptedOffer.proposedRent)),
+        approvedMonthlyRate: Number(acceptedOffer.proposedRent),
+      }
+    : authoritativePricing
+      ? {
+          isLongTerm: authoritativePricing.isLongTerm,
+          leaseType: authoritativePricing.leaseType,
+          regularMonthlyRate: authoritativePricing.regularMonthlyRate,
+          discountPercentage: authoritativePricing.discountPercentage,
+          discountAmount: authoritativePricing.discountAmount,
+          approvedMonthlyRate: authoritativePricing.finalMonthlyRate,
+        }
+      : resolveContractLeasePricing({
+          room: room || { type: canonicalRoomType, branch, monthlyPrice: newRate },
+          roomType: canonicalRoomType,
+          leaseDurationMonths,
+          approvedMonthlyRate: newRate,
+          longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
+        });
+
+  let resolvedTemplate = null;
+  try {
+    resolvedTemplate = resolveContractTemplate({
+      branch,
+      roomType: canonicalRoomType,
+      leaseType: pricing.isLongTerm ? "long-term" : "short-term",
+      leaseStartDate,
+      leaseEndDate,
+      leaseDurationMonths,
+    });
+  } catch {
+    // Template resolved on validation
+  }
+
+  const person = resolveApplicantIdentity({ contract: oldContract, reservation });
+  const number = await generateContractNumber(branch, new Date(), session);
+
+  // Deposit is carried forward, not automatically recharged (spec §R/§AC) —
+  // this is an informational/audit snapshot only, no Bill/charge is created.
+  const heldDeposit = Number(oldContract.securityDepositAmount || 0);
+  const requiredDeposit = Number(resolveSecurityDeposit({ ...reservation, monthlyRent: newRate })) || newRate;
+
+  const createdDocs = await Contract.create(
+    [
+      {
+        ...number,
+        contractPurpose: "renewal",
+        parentContractId: oldContract.parentContractId || oldContract._id,
+        replacesContractId: oldContract._id,
+        replacementReason: `Lease renewal: Room ${oldContract.roomNumber} continuing from ${dayjs(leaseStartDate).format("YYYY-MM-DD")}`,
+        initialContractKey: null,
+        initialStayKey: null,
+        tenantId: tenant._id,
+        applicationId: reservation._id,
+        reservationId: reservation._id,
+        stayId: newStay._id,
+        roomId: oldContract.roomId,
+        branch,
+        version: (oldContract.version || 1) + 1,
+        templateType: resolvedTemplate?.templateId || `${canonicalRoomType.replaceAll("-", "_")}_${pricing.leaseType}`,
+        roomType: canonicalRoomType,
+        leaseType: pricing.leaseType,
+        propertyName: oldContract.propertyName,
+        propertyAddress: oldContract.propertyAddress,
+        roomNumber: oldContract.roomNumber,
+        bedId: oldContract.bedId,
+        bedLabel: oldContract.bedLabel,
+        tenantLegalName: oldContract.tenantLegalName || person.fullName || "",
+        tenantAddress: oldContract.tenantAddress || person.currentAddress || formatReservationAddress(reservation.address) || "",
+        tenantEmail: oldContract.tenantEmail || person.email || "",
+        tenantPhone: oldContract.tenantPhone || person.phone || "",
+        tenantNationality: oldContract.tenantNationality || person.nationality || "",
+        tenantBirthDate: oldContract.tenantBirthDate || person.birthDate || null,
+        leaseStartDate,
+        leaseEndDate,
+        leaseDurationMonths,
+        regularMonthlyRate: pricing.regularMonthlyRate,
+        discountPercentage: pricing.discountPercentage || 0,
+        discountType: pricing.discountPercentage > 0 ? "percentage" : "none",
+        discountAmount: pricing.discountAmount || 0,
+        approvedMonthlyRate: pricing.approvedMonthlyRate,
+        advanceRentAmount: 0,
+        securityDepositAmount: heldDeposit,
+        reservationFeeAmount: 0,
+        reservationFeeCreditAmount: 0,
+        pricingApprovalId: reservation._id,
+        pricingApprovedBy: actorId,
+        pricingApprovedAt: new Date(),
+        pricingApprovalNotes: hasFrozenCanonicalOffer
+          ? `Renewal pricing from accepted offer ${acceptedOffer.offerId} (canonical, Room ${oldContract.roomNumber})`
+          : `Auto-approved renewal pricing continuing Room ${oldContract.roomNumber}`,
+        advanceCoverageStart: leaseStartDate,
+        advanceCoverageEnd: leaseStartDate ? dayjs(leaseStartDate).add(1, "month").subtract(1, "day").toDate() : null,
+        depositAdjustment: {
+          heldAmount: heldDeposit,
+          requiredAmount: requiredDeposit,
+          adjustmentAmount: requiredDeposit - heldDeposit,
+          computedAt: new Date(),
+        },
+        status: "draft",
+        statusHistory: [
+          { status: "draft", changedBy: actorId, reason: `Renewal successor draft created for Room ${oldContract.roomNumber}` },
+        ],
+        createdBy: actorId,
+        updatedBy: actorId,
+        isCurrent: false,
+      },
+    ],
+    { session },
+  );
+
+  return createdDocs[0];
 };
 

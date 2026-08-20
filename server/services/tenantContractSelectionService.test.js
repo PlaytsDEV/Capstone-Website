@@ -95,6 +95,49 @@ describe("resident canonical Contract selection", () => {
     expect(selected._id).toBe("renewal");
   });
 
+  test("a not-yet-effective renewal successor never outranks its still-active predecessor, even when it already carries the new (already-swapped) Stay's stayId", () => {
+    // Reproduces the exact scenario found during Phase 2 research:
+    // renewStayWorkflow swaps the active Stay immediately at acceptance,
+    // before the new lease even starts, so a freshly-generated renewal
+    // successor Contract can carry the *new* Stay's stayId (rank 400)
+    // while its predecessor only matches by reservationId (rank 300) —
+    // without the fix, the not-yet-effective successor would win.
+    const selected = selectCanonicalTenantContract({
+      contracts: [
+        contract({ _id: "current", status: "active" }),
+        contract({
+          _id: "renewal-successor",
+          contractPurpose: "renewal",
+          replacesContractId: "current",
+          status: "published",
+          stayId: "stay-1", // matches activeStay — would otherwise rank 400
+          leaseStartDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        }),
+      ],
+      activeStay,
+      now: new Date(),
+    });
+    expect(selected._id).toBe("current");
+  });
+
+  test("a renewal successor whose effective date has already arrived is eligible to be selected (post-activation, isCurrent already flipped)", () => {
+    const selected = selectCanonicalTenantContract({
+      contracts: [
+        contract({ _id: "old", status: "replaced", isCurrent: false, supersededByContractId: "renewal-successor" }),
+        contract({
+          _id: "renewal-successor",
+          contractPurpose: "renewal",
+          replacesContractId: "old",
+          status: "active",
+          leaseStartDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        }),
+      ],
+      activeStay: { _id: "stay-1", reservationId: "reservation-1" },
+      now: new Date(),
+    });
+    expect(selected._id).toBe("renewal-successor");
+  });
+
   test("keeps legacy generated Contracts visible without exposing legacy drafts", () => {
     expect(isResidentContractEligible(contract({ publicationStatus: undefined }))).toBe(true);
     expect(isResidentContractEligible(contract({

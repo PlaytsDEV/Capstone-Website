@@ -2,7 +2,10 @@ import express from "express";
 import mongoose from "mongoose";
 import { toTenantContractView } from "../services/tenantContractViewService.js";
 import { resolvePublishedFinalDocument } from "../services/contractPublicationService.js";
-import { resolveTenantCanonicalContract } from "../services/tenantContractSelectionService.js";
+import {
+  resolveTenantCanonicalContract,
+  resolveTenantUpcomingContract,
+} from "../services/tenantContractSelectionService.js";
 import auditLogger from "../utils/auditLogger.js";
 import logger from "../middleware/logger.js";
 import {
@@ -43,6 +46,32 @@ router.get("/contracts/current", mobileTenant, asyncRoute(async (req, res) => {
       preparedDocumentIssue = error.code || "PREPARED_DOCUMENT_UNAVAILABLE";
     }
   }
+  // Same resolveTenantUpcomingContract used by the web endpoint
+  // (contractController.js getMyCurrentContract) — no mobile-only renewal/
+  // transfer logic.
+  let upcomingView = null;
+  if (contract) {
+    try {
+      const upcomingContract = await resolveTenantUpcomingContract(req.mobileTenant._id);
+      if (upcomingContract) {
+        let upcomingPrepared = null;
+        if (selectCurrentPreparedDocument(upcomingContract)) {
+          try {
+            upcomingPrepared = (await resolveCurrentPreparedDocument(upcomingContract))?.document || null;
+          } catch {
+            // Non-fatal — upcoming view still returns without a prepared document
+          }
+        }
+        upcomingView = toTenantContractView(upcomingContract, new Date(), {
+          preparedDocument: upcomingPrepared,
+          documentBasePath: "/api/m/contracts",
+        });
+      }
+    } catch (error) {
+      logger.warn({ err: error, tenantId: req.mobileTenant?._id }, "Mobile upcoming contract resolution failed (non-fatal)");
+    }
+  }
+
   return res.json({
     contract: toTenantContractView(contract, new Date(), {
       preparedDocument,
@@ -51,6 +80,7 @@ router.get("/contracts/current", mobileTenant, asyncRoute(async (req, res) => {
     }),
     state: contract ? "CONTRACT_AVAILABLE" : "NO_PUBLISHED_CONTRACT",
     emptyState: contract ? null : "Contract Not Available Yet",
+    upcoming: upcomingView,
   });
 }));
 

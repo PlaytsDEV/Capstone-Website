@@ -538,7 +538,7 @@ const notify = {
     const isFinal = normalizedVariant === "final";
     const title = isFinal ? "Final Contract Ready" : "Contract Ready for Signing";
     const message = isFinal
-      ? "Your final notarized lease contract is now available to view and download."
+      ? "Your final lease contract is now available to view and download."
       : "Your lease contract has been prepared and is ready for your review and in-person signing.";
     const normalizedContractId = String(contractId);
     // The unique index is { userId, dedupeKey }, so an identical contract
@@ -563,6 +563,41 @@ const notify = {
           data: {
             ...pushIdentity,
             type: "contract_document_ready",
+            contract_id: normalizedContractId,
+            screen: "contract",
+            url: "/contract-viewer",
+          },
+        }),
+    );
+  },
+
+  // Fired once by contractRenewalActivationService.activateDueRenewalContracts
+  // when a renewal successor Contract transitions published -> active at its
+  // effective (leaseStartDate) date. dedupeKey is keyed off the contract
+  // alone (not a date) since activation happens exactly once per contract.
+  renewalEffective: (userId, roomName, contractId) => {
+    if (!userId || !contractId) {
+      return Promise.reject(new Error("A tenant and contract are required."));
+    }
+    const normalizedContractId = String(contractId);
+    return createNotificationWithPush(
+      userId,
+      "renewal_effective",
+      "Lease Renewal Now Active",
+      `Your renewed lease for ${roomName || "your room"} is now active.`,
+      {
+        entityType: "contract",
+        entityId: normalizedContractId,
+        actionUrl: "/tenant/documents",
+        dedupeKey: `renewal_effective:${normalizedContractId}`,
+      },
+      (_notification, pushIdentity) =>
+        sendMobilePushToRecipients([userId], {
+          title: "Lease Renewal Now Active",
+          body: `Your renewed lease for ${roomName || "your room"} is now active.`,
+          data: {
+            ...pushIdentity,
+            type: "renewal_effective",
             contract_id: normalizedContractId,
             screen: "contract",
             url: "/contract-viewer",

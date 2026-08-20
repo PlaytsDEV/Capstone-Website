@@ -1007,7 +1007,24 @@ const reservationSchema = new mongoose.Schema(
         {
           offerId: { type: String, required: true },
           months: { type: Number, required: true },
+          // The final approved monthly rent offered to the tenant — i.e. the
+          // SAME room-type + duration canonical finalMonthlyRate that will be
+          // snapshotted onto the renewal successor Contract
+          // (resolveAuthoritativeLeasePricing, see contractService.js
+          // createSuccessorContractForRenewal). Never a room list price, the
+          // tenant's current/old rent, or an arbitrary unvalidated amount.
           proposedRent: { type: Number, default: null },
+          // Audit/traceability fields populated when proposedRent was
+          // resolved canonically (pricingSource: "canonical_resolver").
+          // Absent/null on legacy offers created before this existed.
+          regularMonthlyRate: { type: Number, default: null },
+          discountPercentage: { type: Number, default: null },
+          pricingTier: { type: String, enum: ["long_term", "short_term", null], default: null },
+          pricingSource: {
+            type: String,
+            enum: ["canonical_resolver", "legacy_manual", null],
+            default: null,
+          },
           notes: { type: String, default: "" },
           status: {
             type: String,

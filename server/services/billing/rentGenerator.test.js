@@ -229,4 +229,67 @@ describe("services/billing/rentGenerator", () => {
     });
     expect(billInstances).toHaveLength(0);
   });
+
+  // Phase 2B renewal-cutover regression: rentGenerator itself has no
+  // renewal awareness — it always reads whatever reservation.monthlyRent
+  // currently is at generation time. Correctness for a pending renewal
+  // therefore depends entirely on WHEN that field changes, which is now
+  // contractRenewalActivationService's job (at the successor Contract's
+  // leaseStartDate), not renewStayWorkflow's (at acceptance). These two
+  // tests lock in the two halves of that contract: an already-generated
+  // Bill is immutable even if the Reservation's rate changes later, and a
+  // bill generated for a later cycle picks up whatever rate is current at
+  // ITS generation time.
+  test("an already-generated Bill's rent is immutable even if reservation.monthlyRent changes afterward", async () => {
+    const reservation = createReservation({
+      moveInDate: new Date("2026-01-05T00:00:00.000Z"),
+      monthlyRent: 6300,
+    });
+    billFindOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+    const result = await ensureCurrentCycleRentBill({
+      reservation,
+      referenceDate: new Date("2026-02-26T00:00:00.000Z"),
+    });
+
+    expect(result.status).toBe("created");
+    expect(billInstances[0].charges.rent).toBe(6300);
+
+    // Simulates the renewal's effective-date cutover happening AFTER this
+    // bill was already generated — the historical bill must not retroactively
+    // change.
+    reservation.monthlyRent = 6800;
+    expect(billInstances[0].charges.rent).toBe(6300);
+  });
+
+  test("a bill generated for a later cycle uses whichever rate is current at ITS generation time (post-cutover rate applies going forward, not retroactively)", async () => {
+    const reservation = createReservation({
+      moveInDate: new Date("2026-01-05T00:00:00.000Z"),
+      monthlyRent: 6300,
+    });
+
+    billFindOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    const beforeCutover = await ensureCurrentCycleRentBill({
+      reservation,
+      referenceDate: new Date("2026-02-26T00:00:00.000Z"),
+    });
+    expect(beforeCutover.status).toBe("created");
+    expect(billInstances[0].charges.rent).toBe(6300);
+
+    // Renewal effective-date cutover: contractRenewalActivationService
+    // applies the successor Contract's approvedMonthlyRate to
+    // reservation.monthlyRent exactly once, atomically, at leaseStartDate.
+    reservation.monthlyRent = 6800;
+
+    billFindOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    const afterCutover = await ensureCurrentCycleRentBill({
+      reservation,
+      referenceDate: new Date("2026-03-26T00:00:00.000Z"),
+    });
+
+    expect(afterCutover.status).toBe("created");
+    expect(billInstances[1].charges.rent).toBe(6800);
+    // The earlier bill remains untouched.
+    expect(billInstances[0].charges.rent).toBe(6300);
+  });
 });

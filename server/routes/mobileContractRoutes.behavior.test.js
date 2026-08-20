@@ -34,6 +34,7 @@ const contract = {
 };
 
 const resolveTenantCanonicalContract = jest.fn(async () => contract);
+const resolveTenantUpcomingContract = jest.fn(async () => null);
 const selectCurrentPreparedDocument = jest.fn((source) => [...(source?.preparedDocuments || [])]
   .filter((entry) => entry.superseded !== true)
   .sort((left, right) => Number(right.version) - Number(left.version))[0] || null);
@@ -48,6 +49,7 @@ const resolveCurrentPreparedDocument = jest.fn(async (source) => {
 });
 await jest.unstable_mockModule("../services/tenantContractSelectionService.js", () => ({
   resolveTenantCanonicalContract,
+  resolveTenantUpcomingContract,
 }));
 await jest.unstable_mockModule("../services/preparedContractDocumentService.js", () => ({
   resolveCurrentPreparedDocument,

@@ -89,6 +89,16 @@ const staySchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // Links this Stay back to the accepted Reservation.renewalOffers[]
+    // entry (offerId) it originated from, so the renewal successor Contract
+    // can consume the tenant's ACCEPTED (frozen) canonical pricing instead
+    // of re-resolving live pricing that could drift if BusinessSettings/Room
+    // pricing changes between acceptance and Contract generation. Null for
+    // renewals created outside the offer flow (legacy/manual).
+    renewalOfferId: {
+      type: String,
+      default: null,
+    },
     transferNotes: {
       type: String,
       default: "",

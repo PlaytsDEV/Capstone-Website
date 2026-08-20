@@ -307,4 +307,56 @@ describe("Contract generation-data mapping", () => {
       );
     });
   });
+
+  describe("rendered fields never recompute/override the Contract's approved pricing snapshot", () => {
+    // A renewal/transfer successor Contract for a private room legitimately
+    // has advanceRentAmount: 0 (no new advance charged) and a carried-forward
+    // securityDepositAmount that need not equal approvedMonthlyRate — the PDF
+    // must render exactly those Contract values, never substitute a
+    // room-type-conditioned hardcoded number (this previously injected
+    // 13500/15000/16000 for "private" rooms whenever the stored value looked
+    // low relative to approvedMonthlyRate).
+    test("private-room renewal successor: fields render the Contract's own values verbatim, not hardcoded room-type substitutes", async () => {
+      const renewalContract = {
+        ...contract(),
+        contractPurpose: "renewal",
+        roomType: "private",
+        leaseType: "long_term",
+        leaseEndDate: new Date("2026-07-01T00:00:00.000Z"),
+        leaseDurationMonths: 6,
+        regularMonthlyRate: 15000,
+        discountPercentage: 10,
+        approvedMonthlyRate: 13500,
+        advanceRentAmount: 0,
+        securityDepositAmount: 9000, // carried-forward held deposit, deliberately != approvedMonthlyRate
+      };
+      const data = await buildContractGenerationData(renewalContract, { verifyTemplate: false });
+      expect(data.fields.regularMonthlyRate).toBe("15,000.00");
+      expect(data.fields.discountPercentage).toBe("10");
+      expect(data.fields.approvedMonthlyRate).toBe("13,500.00");
+      expect(data.fields.advanceRentAmount).toBe("0.00");
+      expect(data.fields.securityDepositAmount).toBe("9,000.00");
+    });
+
+    test("private-room initial contract: fields match contract.regularMonthlyRate/discountPercentage exactly, no recomputation from approvedMonthlyRate", async () => {
+      const initialContract = {
+        ...contract(),
+        contractPurpose: "initial",
+        roomType: "private",
+        leaseType: "long_term",
+        leaseEndDate: new Date("2027-01-01T00:00:00.000Z"),
+        leaseDurationMonths: 12,
+        regularMonthlyRate: 15000,
+        discountPercentage: 10,
+        approvedMonthlyRate: 13500,
+        advanceRentAmount: 13500,
+        securityDepositAmount: 13500,
+      };
+      const data = await buildContractGenerationData(initialContract, { verifyTemplate: false });
+      expect(data.fields.regularMonthlyRate).toBe("15,000.00");
+      expect(data.fields.discountPercentage).toBe("10");
+      expect(data.fields.advanceRentAmount).toBe("13,500.00");
+      expect(data.fields.securityDepositAmount).toBe("13,500.00");
+    });
+  });
 });

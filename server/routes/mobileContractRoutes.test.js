@@ -12,9 +12,8 @@ describe("mobile Contract route safety", () => {
   );
 
   test("uses the canonical tenant resolver on every document lookup", () => {
-    expect(routes).toContain(
-      'import { resolveTenantCanonicalContract } from "../services/tenantContractSelectionService.js"',
-    );
+    expect(routes).toContain("resolveTenantCanonicalContract");
+    expect(routes).toContain('from "../services/tenantContractSelectionService.js"');
     expect(routes).toContain(
       // Mobile opts into includeEarlyStages so a draft Contract is visible
       // (see tenantContractSelectionService.js), but ownership is still

@@ -58,7 +58,7 @@ export const getReadinessCopy = (contract, validation, hasUnverifiedNotarized = 
   if (["published", "active"].includes(contract?.status)) return { title: "Published", message: "The final Contract is available." };
   if (hasUnverifiedNotarized) return { title: "Pending Physical Completion", message: "Verify the uploaded signed-and-notarized copy." };
   if (["generated", "awaiting_signatures", "partially_signed", "signed", "awaiting_notarization"].includes(contract?.status)) {
-    return { title: contract.status === "generated" ? "Prepared Contract Available" : "Pending Physical Completion", message: "Complete physical signing and in-person notarization." };
+    return { title: contract.status === "generated" ? "Prepared Contract Available" : "Pending Physical Completion", message: "Complete physical signing, then upload the wet-signed copy to finalize the Contract." };
   }
   if (validation?.valid) return { title: "Ready to Generate", message: "Approved information is complete and ready for the prepared Contract." };
   const count = getContractBlockers(validation).length;

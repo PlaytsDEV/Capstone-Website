@@ -64,12 +64,14 @@ import {
   archiveReservation,
   restoreReservation,
   renewContract,
+  previewRenewalPricing,
   createRenewalOffer,
   cancelRenewalOffer,
   respondToRenewalOffer,
   getMyRenewalOffers,
   moveOutReservation,
   transferTenant,
+  prepareRoomTransferContract,
   processDepositRefund,
   cancelTransferAction,
   cancelMoveOutAction,
@@ -689,6 +691,20 @@ router.put(
 );
 
 /**
+ * GET /api/reservations/:reservationId/renewal-offer/preview?months=N
+ * Read-only preview of the canonical room-type + duration pricing a
+ * renewal offer for this reservation would use (see createRenewalOffer).
+ */
+router.get(
+  "/:reservationId/renewal-offer/preview",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  previewRenewalPricing,
+);
+
+/**
  * POST /api/reservations/:reservationId/renewal-offer
  * Issue a contract renewal offer to a tenant.
  */
@@ -821,6 +837,31 @@ router.put(
   filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   transferTenant,
+);
+
+/**
+ * POST /api/reservations/:reservationId/transfer/prepare-contract
+ *
+ * Prepares (generates) the replacement Contract for a planned room transfer
+ * WITHOUT moving the tenant — no Room/Bed/Stay/Reservation mutation. The
+ * generated Contract must then be wet-signed (Phase 1 upload flow) before
+ * PUT /:reservationId/transfer above will allow the actual physical
+ * transfer to execute.
+ *
+ * Access: Admin | Owner
+ *
+ * @param {string} reservationId - MongoDB ObjectId
+ * @body {string} targetRoomId - Destination room ObjectId
+ * @body {string} targetBedId - Destination bed identifier
+ * @returns {Object} { contractId, contractNumber, incomplete }
+ */
+router.post(
+  "/:reservationId/transfer/prepare-contract",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  prepareRoomTransferContract,
 );
 
 /**
