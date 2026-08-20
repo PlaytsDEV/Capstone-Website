@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, PhilippinePeso, Receipt, TrendingUp } from "lucide-react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { AlertCircle, PhilippinePeso, Receipt, RotateCcw, TrendingUp } from "lucide-react";
 import { useFinancialsAnalytics } from "../../../shared/hooks/queries/useAnalyticsReports";
 import {
   AnalyticsBarChart,
@@ -52,7 +52,7 @@ export default function AnalyticsFinancialsTab({
   const [pageSize, setPageSize] = useState(5);
 
   const params = useMemo(() => ({ branch, range }), [branch, range]);
-  const { data, isLoading, isError } = useFinancialsAnalytics(params);
+  const { data, isLoading, isError, error, refetch } = useFinancialsAnalytics(params);
 
   const {
     data: insightData,
@@ -90,44 +90,45 @@ export default function AnalyticsFinancialsTab({
     [data],
   );
 
-  const anomalies = detectBillingAnomalies(data?.kpis);
+  const anomalies = useMemo(() => detectBillingAnomalies(data?.kpis), [data?.kpis]);
 
-  const metricCards = [
-    {
-      icon: PhilippinePeso,
-      label: "Collected",
-      value: (data?.kpis?.collectedRevenueLabel || "PHP 0").replace("PHP ", "₱"),
-      tone: "green",
-      trend: "Total collected",
-    },
-    {
-      icon: AlertCircle,
-      label: "Outstanding",
-      value: (data?.kpis?.outstandingBalanceLabel || "PHP 0").replace("PHP ", "₱"),
-      tone: "rose",
-      trend: "Pending dues",
-      changeType: "down",
-      anomalyBadge: anomalies.overdueAmount,
-    },
-    {
-      icon: Receipt,
-      label: "Overdue",
-      value: (data?.kpis?.overdueAmountLabel || "PHP 0").replace("PHP ", "₱"),
-      tone: "amber",
-      trend: "Late payments",
-      anomalyBadge: anomalies.overdueAmount,
-    },
-    {
-      icon: TrendingUp,
-      label: "Collection Rate",
-      value: data?.kpis?.collectionRateLabel || "0%",
-      tone: "blue",
-      trend: "Target: > 90%",
-      anomalyBadge: anomalies.collectionRate,
-    },
-  ];
+  const metricCards = useMemo(
+    () => [
+      {
+        icon: PhilippinePeso,
+        label: "Collected",
+        value: (data?.kpis?.collectedRevenueLabel || "PHP 0").replace("PHP ", "₱"),
+        tone: "green",
+        trend: "Settled revenue this period",
+      },
+      {
+        icon: Receipt,
+        label: "Total Billed",
+        value: (data?.kpis?.billedAmountLabel || "PHP 0").replace("PHP ", "₱"),
+        tone: "blue",
+        trend: "Gross invoices issued",
+      },
+      {
+        icon: AlertCircle,
+        label: "Outstanding",
+        value: (data?.kpis?.outstandingBalanceLabel || "PHP 0").replace("PHP ", "₱"),
+        tone: "rose",
+        trend: `${data?.kpis?.overdueRoomsCount || 0} rooms with balance`,
+        anomalyBadge: anomalies.overdueAmount,
+      },
+      {
+        icon: TrendingUp,
+        label: "Collection Rate",
+        value: data?.kpis?.collectionRateLabel || "0%",
+        tone: "blue",
+        trend: "Target: > 90%",
+        anomalyBadge: anomalies.collectionRate,
+      },
+    ],
+    [data?.kpis, anomalies],
+  );
 
-  const exportCsv = () => {
+  const exportCsv = useCallback(() => {
     handleCsvExport(
       filteredOverdueRooms,
       [
@@ -139,9 +140,9 @@ export default function AnalyticsFinancialsTab({
       ],
       `lilycrest-financials-${branch || "all"}-${range}`,
     );
-  };
+  }, [filteredOverdueRooms, branch, range]);
 
-  const exportPdf = () => {
+  const exportPdf = useCallback(() => {
     handlePdfExport({
       title: "Financial Analytics Overview",
       subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
@@ -202,16 +203,42 @@ export default function AnalyticsFinancialsTab({
         },
       ],
     });
-  };
+  }, [range, data, branch, metricCards, insightData, branchComparison, revenueByMonth, filteredOverdueRooms]);
 
   useEffect(() => {
-    if (registerExport) {
+    if (typeof registerExport === "function") {
       registerExport({ exportCsv, exportPdf });
     }
   }, [registerExport, exportCsv, exportPdf]);
 
   if (isLoading && !data) {
     return <AdminAnalyticsDetailSkeleton tab="financials" />;
+  }
+
+  if (isError && !data) {
+    return (
+      <div className="analytics-tab-content flex flex-col items-center justify-center p-8 bg-card border border-border rounded-xl text-center space-y-4 my-4">
+        <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/30 flex items-center justify-center text-rose-600 dark:text-rose-400">
+          <AlertCircle size={24} />
+        </div>
+        <div className="space-y-1 max-w-md">
+          <h3 className="text-base font-semibold text-foreground">
+            Financial Analytics Unavailable
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {error?.message || "Could not load financial report metrics. Please check your connection or try again."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium text-foreground bg-secondary hover:bg-secondary/80 border border-border rounded-lg transition-colors cursor-pointer"
+        >
+          <RotateCcw size={14} />
+          <span>Retry Loading</span>
+        </button>
+      </div>
+    );
   }
 
   const handleExecuteAction = (action) => {

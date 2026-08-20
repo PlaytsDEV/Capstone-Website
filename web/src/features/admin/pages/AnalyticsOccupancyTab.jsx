@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Bed,
   Building,
@@ -242,41 +242,44 @@ export default function AnalyticsOccupancyTab({
 
   const anomalies = detectOccupancyAnomalies(kpis);
 
-  const metricCards = [
-    {
-      icon: Bed,
-      tone: "blue",
-      label: "Occupancy Rate",
-      value: kpis.occupancyRateLabel || "0%",
-      trend: occupancyDelta.text || `${occupancyDelta.label || "+0 pp"} vs prev period`,
-      changeType: occupancyDelta.changeType || "neutral",
-      anomalyBadge: anomalies.occupancyRate,
-    },
-    {
-      icon: Users,
-      tone: "green",
-      label: "Occupied Beds",
-      value: kpis.occupiedBeds || 0,
-      trend: "Active tenants",
-    },
-    {
-      icon: DoorOpen,
-      tone: "amber",
-      label: "Available Beds",
-      value: kpis.availableBeds || 0,
-      trend: "Ready for move-in",
-      anomalyBadge: anomalies.availableBeds,
-    },
-    {
-      icon: Building,
-      tone: "blue",
-      label: "Total Beds",
-      value: kpis.totalCapacity || 0,
-      trend: "Total room inventory",
-    },
-  ];
+  const metricCards = useMemo(
+    () => [
+      {
+        icon: Bed,
+        tone: "blue",
+        label: "Occupancy Rate",
+        value: kpis.occupancyRateLabel || "0%",
+        trend: occupancyDelta.text || `${occupancyDelta.label || "+0 pp"} vs prev period`,
+        changeType: occupancyDelta.changeType || "neutral",
+        anomalyBadge: anomalies.occupancyRate,
+      },
+      {
+        icon: Users,
+        tone: "green",
+        label: "Occupied Beds",
+        value: kpis.occupiedBeds || 0,
+        trend: "Active tenants",
+      },
+      {
+        icon: DoorOpen,
+        tone: "amber",
+        label: "Available Beds",
+        value: kpis.availableBeds || 0,
+        trend: "Ready for move-in",
+        anomalyBadge: anomalies.availableBeds,
+      },
+      {
+        icon: Building,
+        tone: "blue",
+        label: "Total Beds",
+        value: kpis.totalCapacity || 0,
+        trend: "Total room inventory",
+      },
+    ],
+    [kpis, occupancyDelta, anomalies],
+  );
 
-  const exportPdf = () => {
+  const exportPdf = useCallback(() => {
     const insight = insightData?.insight;
     handlePdfExport({
       title: "Occupancy Analytics Report",
@@ -325,9 +328,9 @@ export default function AnalyticsOccupancyTab({
         },
       ],
     });
-  };
+  }, [range, data, branch, metricCards, insightData, filteredInventory]);
 
-  const exportCsv = () => {
+  const exportCsv = useCallback(() => {
     handleCsvExport(
       filteredInventory,
       [
@@ -343,10 +346,10 @@ export default function AnalyticsOccupancyTab({
       ],
       `lilycrest-occupancy-${branch || "all"}-${range}`,
     );
-  };
+  }, [filteredInventory, branch, range]);
 
   useEffect(() => {
-    if (registerExport) {
+    if (typeof registerExport === "function") {
       registerExport({ exportCsv, exportPdf });
     }
   }, [registerExport, exportCsv, exportPdf]);

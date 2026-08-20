@@ -71,6 +71,9 @@ import SignedContractUploadSection from "./SignedContractUploadSection";
 import TenantDetailModalSkeleton from "./TenantDetailModalSkeleton";
 import { formatBranch, formatRoomType } from "../utils/formatters";
 import { resolveReservationFinancials } from "../../../shared/utils/depositUtils";
+import { billingApi } from "../../../shared/api/billingApi";
+import RecordViolationModal from "./billing/RecordViolationModal";
+import ViolationDetailModal from "./billing/ViolationDetailModal";
 
 const WARNING_DETAILS_MAP = {
   overdue_electricity: {
@@ -227,7 +230,46 @@ const getInitials = (name) => {
   const parts = name.split(/\s+/).filter(Boolean);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
-};const getContractStatusConfig = (status) => {
+};
+
+const VIOLATION_CATEGORY_LABELS = {
+  smoking_inside: "Smoking / Vaping Indoors",
+  cooking_in_room: "Cooking / Prohibited Appliances in Room",
+  unauthorized_appliance: "Unauthorized High-Wattage Appliance",
+  unauthorized_visitors: "Unauthorized Guest / Curfew Breach",
+  rfid_misuse: "RFID Card Lending / Misuse",
+  unauthorized_bed_transfer: "Unauthorized Bed Transfer",
+  unauthorized_room_transfer: "Unauthorized Room Transfer",
+  property_damage: "Property / Fixture Damage",
+  cleanliness_issues: "Sanitation & Cleanliness Violation",
+  persistent_unpaid_bills: "Persistent Unpaid Dues / Non-Compliance",
+  custom: "Custom House Rule Infraction",
+};
+
+const getViolationStatusBadge = (status) => {
+  switch (status) {
+    case "reported":
+      return { label: "Reported", color: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
+    case "under_review":
+      return { label: "Under Review", color: "text-sky-700 dark:text-sky-400", dot: "bg-sky-500" };
+    case "confirmed":
+      return { label: "Confirmed", color: "text-emerald-700 dark:text-emerald-400", dot: "bg-emerald-500" };
+    case "warning_issued":
+      return { label: "Warning Issued", color: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" };
+    case "penalty_issued":
+      return { label: "Penalty Issued", color: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" };
+    case "escalated":
+      return { label: "Escalated to Board", color: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" };
+    case "resolved":
+      return { label: "Resolved", color: "text-emerald-700 dark:text-emerald-400", dot: "bg-emerald-500" };
+    case "dismissed":
+      return { label: "Dismissed", color: "text-slate-600 dark:text-slate-400", dot: "bg-slate-400" };
+    default:
+      return { label: status ? String(status).replace(/_/g, " ") : "Reported", color: "text-slate-600 dark:text-slate-400", dot: "bg-slate-400" };
+  }
+};
+
+const getContractStatusConfig = (status) => {
   switch (status) {
     case "active":
       return {
@@ -631,6 +673,12 @@ export default function TenantDetailModal({
   const [activeDigitalContract, setActiveDigitalContract] = useState(null);
   const [loadingDigitalContract, setLoadingDigitalContract] = useState(false);
 
+  // Tenant Rule Violations & Formal Warnings state
+  const [tenantViolations, setTenantViolations] = useState([]);
+  const [loadingViolations, setLoadingViolations] = useState(false);
+  const [recordViolationOpen, setRecordViolationOpen] = useState(false);
+  const [selectedViolationForDetail, setSelectedViolationForDetail] = useState(null);
+
   useEffect(() => {
     if (initialTab) {
       setActiveTab(initialTab);
@@ -728,6 +776,37 @@ export default function TenantDetailModal({
       active = false;
     };
   }, [fetchedDetail, initialTenant, reservationId]);
+
+  const fetchTenantViolations = useCallback(async () => {
+    const targetTenantId =
+      fetchedDetail?.tenantId ||
+      fetchedDetail?.userId?._id ||
+      fetchedDetail?.userId ||
+      initialTenant?.tenantId?._id ||
+      initialTenant?.tenantId ||
+      initialTenant?.userId?._id ||
+      initialTenant?.userId ||
+      initialTenant?._id;
+
+    if (!targetTenantId) return;
+
+    try {
+      setLoadingViolations(true);
+      const res = await billingApi.getViolations({
+        tenantId: String(targetTenantId),
+      });
+      const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      setTenantViolations(list);
+    } catch (err) {
+      console.error("Failed to load tenant violations in detail modal:", err);
+    } finally {
+      setLoadingViolations(false);
+    }
+  }, [fetchedDetail, initialTenant]);
+
+  useEffect(() => {
+    fetchTenantViolations();
+  }, [fetchTenantViolations]);
 
   const handleDownloadStayProof = async (contractOverride = null) => {
     const targetContract = contractOverride || activeDigitalContract || dedicatedContract;
@@ -1672,10 +1751,10 @@ export default function TenantDetailModal({
                   }`}
                 >
                   <AlertTriangle className={`w-3.5 h-3.5 ${activeTab === "warnings" ? "text-amber-600 dark:text-amber-400" : "text-amber-500/80"}`} />
-                  <span>System Warnings</span>
-                  {warnings.length > 0 && activeTab !== "warnings" && !viewedTabs.has("warnings") && (
+                  <span>Warnings &amp; Infractions</span>
+                  {(warnings.length > 0 || tenantViolations.filter((v) => !["dismissed", "resolved"].includes(v.status)).length > 0) && activeTab !== "warnings" && !viewedTabs.has("warnings") && (
                     <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 inline-block border border-slate-200 dark:border-slate-700">
-                      {warnings.length}
+                      {warnings.length + tenantViolations.filter((v) => !["dismissed", "resolved"].includes(v.status)).length}
                     </span>
                   )}
                 </button>
@@ -2378,18 +2457,145 @@ export default function TenantDetailModal({
                   </div>
                 )}
 
-                {/* TAB 4: SYSTEM WARNINGS */}
+                {/* TAB 4: TENANT RULE INFRACTIONS & SYSTEM WARNINGS */}
                 {activeTab === "warnings" && (
                   <div className="space-y-4">
-                    {warnings.length > 0 ? (
-                      <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                            Active System Warnings ({warnings.length})
+                    {/* Header Action Bar */}
+                    <div className="flex items-center justify-between bg-muted/30 border border-border/60 rounded-xl p-3.5 flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <ShieldAlert className="w-4 h-4 text-slate-700 dark:text-slate-300 shrink-0" />
+                        <div>
+                          <h4 className="text-xs font-bold text-foreground uppercase tracking-wide">
+                            Rule Compliance &amp; Account Safeguards
                           </h4>
-                          <span className="text-[11px] text-muted-foreground">Itemized warning cards</span>
+                          <p className="text-[11px] text-muted-foreground">
+                            {tenantViolations.length} infraction record(s) on file · {warnings.length} system alert(s)
+                          </p>
                         </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setRecordViolationOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-all active:scale-[0.98] cursor-pointer shadow-xs"
+                      >
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>+ Log Rule Infraction</span>
+                      </button>
+                    </div>
+
+                    {/* Section 1: House Rule Violations & Formal Warnings */}
+                    <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
+                          <ShieldAlert className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                          House Rule Violations &amp; Written Warnings ({tenantViolations.length})
+                        </h4>
+                        <span className="text-[11px] text-muted-foreground">Formal strike tracking</span>
+                      </div>
+
+                      {loadingViolations ? (
+                        <div className="space-y-2">
+                          <div className="h-16 bg-slate-200 dark:bg-slate-800 rounded-lg animate-pulse" />
+                          <div className="h-16 bg-slate-200 dark:bg-slate-800 rounded-lg animate-pulse" />
+                        </div>
+                      ) : tenantViolations.length > 0 ? (
+                        <div className="space-y-3">
+                          {tenantViolations.map((v) => {
+                            const badge = getViolationStatusBadge(v.status);
+                            const catLabel = VIOLATION_CATEGORY_LABELS[v.violationType] || v.violationType || "Rule Infraction";
+                            const hasPhoto = (v.evidenceUrls && v.evidenceUrls.length > 0) || v.evidenceUrl;
+                            const primaryPhoto = (v.evidenceUrls && v.evidenceUrls[0]) || v.evidenceUrl;
+
+                            return (
+                              <div
+                                key={v._id || v.id}
+                                className="bg-card border border-border rounded-xl p-3.5 space-y-2.5 transition-all"
+                              >
+                                <div className="flex items-start justify-between gap-2 flex-wrap">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                      Warning #{v.warningNumber || 1}
+                                    </span>
+                                    <span className="text-xs font-bold text-foreground">
+                                      {catLabel}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1 text-xs font-medium">
+                                    <div className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
+                                    <span className={badge.color}>{badge.label}</span>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
+                                  <div className="flex items-center gap-1.5">
+                                    <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                    <span>
+                                      {v.dateOfIncident ? formatDate(v.dateOfIncident) : "N/A"}
+                                      {v.timeOfIncident ? ` at ${v.timeOfIncident}` : ""}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                    <span className="truncate">{v.locationOfIncident || "Assigned Room"}</span>
+                                  </div>
+                                </div>
+
+                                {v.evidenceNotes && (
+                                  <p className="text-xs text-foreground bg-muted/40 p-2.5 rounded-lg border border-border/50">
+                                    {v.evidenceNotes}
+                                  </p>
+                                )}
+
+                                <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40 text-xs flex-wrap">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {Number(v.penaltyApplied) > 0 && (
+                                      <span className="text-rose-600 dark:text-rose-400 font-semibold font-mono">
+                                        Penalty: ₱{Number(v.penaltyApplied).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                                      </span>
+                                    )}
+                                    {hasPhoto && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setPreviewDoc({ url: primaryPhoto, label: `Evidence: ${catLabel}`, category: "photo" })}
+                                        className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
+                                      >
+                                        <Eye className="w-3 h-3" />
+                                        <span>View Evidence Photo</span>
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedViolationForDetail(v)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-foreground transition-colors cursor-pointer ml-auto"
+                                  >
+                                    <span>Review Infraction</span>
+                                    <ArrowRight className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="p-4 text-center rounded-lg bg-card border border-border/50 text-xs text-muted-foreground">
+                          Zero house rule infractions on record for this tenant.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Section 2: Account & Financial System Warnings */}
+                    <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                          Account &amp; Financial Warnings ({warnings.length})
+                        </h4>
+                        <span className="text-[11px] text-muted-foreground">Overdue &amp; contract triggers</span>
+                      </div>
+
+                      {warnings.length > 0 ? (
                         <div className="space-y-3">
                           {warnings.map((warning) => (
                             <WarningCard
@@ -2400,14 +2606,12 @@ export default function TenantDetailModal({
                             />
                           ))}
                         </div>
-                      </div>
-                    ) : (
-                      <div className="bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-6 text-center">
-                        <CheckCircle className="w-10 h-10 text-emerald-600 dark:text-emerald-400 mx-auto mb-2" />
-                        <p className="text-sm text-emerald-800 dark:text-emerald-300 font-bold">No Active Warnings</p>
-                        <p className="text-xs text-muted-foreground mt-1">All account metrics and contract safeguards are clear.</p>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="p-4 text-center rounded-lg bg-card border border-border/50 text-xs text-muted-foreground">
+                          All account metrics, rent statements, and contract safeguards are clear.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -2946,6 +3150,32 @@ export default function TenantDetailModal({
         )}
       </div>
     </div>
+  )}
+
+  {recordViolationOpen && (
+    <RecordViolationModal
+      isOpen={recordViolationOpen}
+      onClose={() => setRecordViolationOpen(false)}
+      onSuccess={() => {
+        fetchTenantViolations();
+        queryClient.invalidateQueries(["tenantWorkspaceDetail", reservationId]);
+      }}
+      branch={tenant?.branch}
+      preselectedTenant={tenant}
+    />
+  )}
+
+  {selectedViolationForDetail && (
+    <ViolationDetailModal
+      isOpen={!!selectedViolationForDetail}
+      onClose={() => setSelectedViolationForDetail(null)}
+      violation={selectedViolationForDetail}
+      onUpdate={() => {
+        fetchTenantViolations();
+        setSelectedViolationForDetail(null);
+        queryClient.invalidateQueries(["tenantWorkspaceDetail", reservationId]);
+      }}
+    />
   )}
 </div>
  );

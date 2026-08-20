@@ -77,6 +77,23 @@ import {
 import { isPathInsideRoot } from "../../services/billingDocumentPath.js";
 
 export const getAdminInfo = resolveAdminAccessContext;
+
+export async function resolveAdminUserId(req, adminContext = null) {
+  if (adminContext?._id) return adminContext._id;
+  if (req.user?._id) return req.user._id;
+  if (req.user?.id) return req.user.id;
+  if (req.user?.uid || req.user?.email) {
+    const user = await User.findOne({
+      $or: [
+        ...(req.user.uid ? [{ firebaseUid: req.user.uid }] : []),
+        ...(req.user.email ? [{ email: req.user.email }] : []),
+      ],
+    }).select("_id").lean();
+    if (user?._id) return user._id;
+  }
+  return null;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 export const SERVER_ROOT = path.join(__dirname, "..", "..");

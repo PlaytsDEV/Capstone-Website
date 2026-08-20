@@ -121,9 +121,17 @@ export default function TenantViolationManager({ branch }) {
       if (categoryFilter !== "all") params.category = categoryFilter;
 
       const res = await billingApi.getViolations(params);
-      setViolations(res.data || []);
-      if (res.stats) {
+      const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      setViolations(list);
+      if (res?.stats) {
         setStats(res.stats);
+      } else if (Array.isArray(list)) {
+        setStats({
+          total: list.length,
+          activeWarnings: list.filter((v) => ["confirmed", "warning_issued"].includes(v.status)).length,
+          totalPenalties: list.reduce((sum, v) => sum + (Number(v.penaltyApplied) || 0), 0),
+          escalatedCases: list.filter((v) => v.status === "escalated").length,
+        });
       }
     } catch (err) {
       console.error("Violations fetch error:", err);

@@ -50,7 +50,8 @@ export default function TerminationReviewBoard({
       if (branch && branch !== "all") params.branch = branch;
 
       const res = await billingApi.getTerminationCases(params);
-      setCases(res.data || []);
+      const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      setCases(list);
     } catch (err) {
       console.error("[TerminationReviewBoard] Cases fetch error:", err);
     } finally {

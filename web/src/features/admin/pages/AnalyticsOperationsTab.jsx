@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   CalendarDays,
@@ -312,44 +312,47 @@ export default function AnalyticsOperationsTab({
 
   const anomalies = detectOperationsAnomalies(data?.kpis);
 
-  const metricCards = [
-    {
-      icon: CalendarDays,
-      tone: "amber",
-      label: "Reservations",
-      value: resCount,
-      trend: reservationsDelta.text || `${reservationsDelta.label || "+0"} vs prev period`,
-      changeType: reservationsDelta.changeType || "neutral",
-    },
-    {
-      icon: Wrench,
-      tone: "amber",
-      label: "Maintenance Requests",
-      value: maintCount,
-      trend: maintenanceDelta.text || `${maintenanceDelta.label || "+0"} vs prev period`,
-      changeType: maintenanceDelta.changeType === "up" ? "down" : maintenanceDelta.changeType === "down" ? "up" : "neutral",
-      anomalyBadge: anomalies.maintenanceRequests,
-    },
-    {
-      icon: Users,
-      tone: "teal",
-      label: "Inquiries",
-      value: inqCount,
-      trend: inquiriesDelta.text || `${inquiriesDelta.label || "+0"} vs prev period`,
-      changeType: inquiriesDelta.changeType || "neutral",
-    },
-    {
-      icon: CheckCircle2,
-      tone: "green",
-      label: "On-Time Resolution Rate",
-      value: slaRate,
-      trend: slaDelta.text || `${slaDelta.label || "+0 pp"} on-time rate`,
-      changeType: slaDelta.changeType || "neutral",
-      anomalyBadge: anomalies.slaComplianceRate,
-    },
-  ];
+  const metricCards = useMemo(
+    () => [
+      {
+        icon: CalendarDays,
+        tone: "blue",
+        label: "Reservations",
+        value: resCount,
+        trend: reservationsDelta.text || `${reservationsDelta.label || "+0"} vs prev period`,
+        changeType: reservationsDelta.changeType || "neutral",
+      },
+      {
+        icon: Wrench,
+        tone: "amber",
+        label: "Maintenance Requests",
+        value: maintCount,
+        trend: maintenanceDelta.text || `${maintenanceDelta.label || "+0"} vs prev period`,
+        changeType: maintenanceDelta.changeType === "up" ? "down" : maintenanceDelta.changeType === "down" ? "up" : "neutral",
+        anomalyBadge: anomalies.maintenanceRequests,
+      },
+      {
+        icon: Users,
+        tone: "teal",
+        label: "Inquiries",
+        value: inqCount,
+        trend: inquiriesDelta.text || `${inquiriesDelta.label || "+0"} vs prev period`,
+        changeType: inquiriesDelta.changeType || "neutral",
+      },
+      {
+        icon: CheckCircle2,
+        tone: "green",
+        label: "On-Time Resolution Rate",
+        value: slaRate,
+        trend: slaDelta.text || `${slaDelta.label || "+0 pp"} on-time rate`,
+        changeType: slaDelta.changeType || "neutral",
+        anomalyBadge: anomalies.slaComplianceRate,
+      },
+    ],
+    [resCount, reservationsDelta, maintCount, maintenanceDelta, anomalies, inqCount, inquiriesDelta, slaRate, slaDelta],
+  );
 
-  const exportCsv = () => {
+  const exportCsv = useCallback(() => {
     handleCsvExport(
       filteredMaintenance,
       [
@@ -365,9 +368,9 @@ export default function AnalyticsOperationsTab({
       ],
       `lilycrest-operations-${branch || "all"}-${range}`,
     );
-  };
+  }, [filteredMaintenance, branch, range]);
 
-  const exportPdf = () => {
+  const exportPdf = useCallback(() => {
     handlePdfExport({
       title: "Operations Analytics Report",
       subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
@@ -428,10 +431,10 @@ export default function AnalyticsOperationsTab({
         },
       ],
     });
-  };
+  }, [range, data, branch, metricCards, insightData, resolutionTrend, inquiryWindows, filteredMaintenance]);
 
   useEffect(() => {
-    if (registerExport) {
+    if (typeof registerExport === "function") {
       registerExport({ exportCsv, exportPdf });
     }
   }, [registerExport, exportCsv, exportPdf]);

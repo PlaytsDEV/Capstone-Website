@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import dayjs from "dayjs";
 import {
   Calendar,
@@ -135,58 +135,61 @@ export default function AnalyticsDemographicsTab({
     setDrilldownSearch("");
   };
 
-  const metricCards = [
-    {
-      icon: Users,
-      tone: "blue",
-      label: "Tenants Analyzed",
-      value: kpis.totalAnalyzed || 0,
-      trend: "Confirmed profiles",
-      onClick: () => openDrilldown(
-        "All Analyzed Tenants",
-        kpiDetails.allTenants,
-        `${kpis.totalAnalyzed || 0} confirmed tenants in this period`,
-      ),
-    },
-    {
-      icon: GraduationCap,
-      tone: "green",
-      label: "Student Ratio",
-      value: kpis.studentPercentageLabel || "0%",
-      trend: "Academic tenants",
-      onClick: () => openDrilldown(
-        "Student Tenants",
-        kpiDetails.students,
-        `${kpiDetails.students?.length || 0} tenants classified as students`,
-      ),
-    },
-    {
-      icon: DoorOpen,
-      tone: "amber",
-      label: "Top Room Preference",
-      value: kpis.topRoomType || "N/A",
-      trend: "Most selected category",
-      onClick: () => openDrilldown(
-        `${kpis.topRoomType || "Room Type"} Reservations`,
-        kpiDetails.topRoomType,
-        `${kpiDetails.topRoomType?.length || 0} tenants preferred ${kpis.topRoomType || "this room type"}`,
-      ),
-    },
-    {
-      icon: Calendar,
-      tone: "amber",
-      label: "Peak Move-in Month",
-      value: kpis.peakMonth || "N/A",
-      trend: "High reservation volume",
-      onClick: () => openDrilldown(
-        `Reservations in ${kpis.peakMonth || "Peak Month"}`,
-        kpiDetails.peakMonth,
-        `${kpiDetails.peakMonth?.length || 0} reservations created in ${kpis.peakMonth || "the peak month"}`,
-      ),
-    },
-  ];
+  const metricCards = useMemo(
+    () => [
+      {
+        icon: Users,
+        tone: "blue",
+        label: "Active Tenants",
+        value: kpis.activeTenants || 0,
+        trend: "Total current population",
+        onClick: () => openDrilldown(
+          "Active Tenants",
+          kpiDetails.activeTenants,
+          `${kpiDetails.activeTenants?.length || 0} active tenants across all rooms`,
+        ),
+      },
+      {
+        icon: GraduationCap,
+        tone: "green",
+        label: "Students",
+        value: `${kpis.studentPercentage || 0}%`,
+        trend: `${kpis.studentsCount || 0} enrolled students`,
+        onClick: () => openDrilldown(
+          "Student Tenants",
+          kpiDetails.students,
+          `${kpiDetails.students?.length || 0} tenants identified as students`,
+        ),
+      },
+      {
+        icon: DoorOpen,
+        tone: "amber",
+        label: "Top Province",
+        value: kpis.topProvince || "N/A",
+        trend: `${kpis.topProvinceCount || 0} tenants`,
+        onClick: () => openDrilldown(
+          `Tenants from ${kpis.topProvince || "Top Province"}`,
+          kpiDetails.topProvince,
+          `${kpiDetails.topProvince?.length || 0} tenants from ${kpis.topProvince || "this province"}`,
+        ),
+      },
+      {
+        icon: Calendar,
+        tone: "purple",
+        label: "Peak Month",
+        value: kpis.peakMonth || "N/A",
+        trend: "High reservation volume",
+        onClick: () => openDrilldown(
+          `Reservations in ${kpis.peakMonth || "Peak Month"}`,
+          kpiDetails.peakMonth,
+          `${kpiDetails.peakMonth?.length || 0} reservations created in ${kpis.peakMonth || "the peak month"}`,
+        ),
+      },
+    ],
+    [kpis, kpiDetails],
+  );
 
-  const exportCsv = () => {
+  const exportCsv = useCallback(() => {
     handleCsvExport(
       filteredGeographicOrigin,
       [
@@ -196,9 +199,9 @@ export default function AnalyticsDemographicsTab({
       ],
       `lilycrest-demographics-${branch || "all"}-${range}`,
     );
-  };
+  }, [filteredGeographicOrigin, branch, range]);
 
-  const exportPdf = () => {
+  const exportPdf = useCallback(() => {
     const insight = insightData?.insight;
     handlePdfExport({
       title: "Tenant Demographics Analytics Report",
@@ -269,10 +272,10 @@ export default function AnalyticsDemographicsTab({
         },
       ],
     });
-  };
+  }, [range, data, branch, metricCards, insightData, occupationMix, genderDistribution, reservationsByMonth, geographicOrigin]);
 
   useEffect(() => {
-    if (registerExport) {
+    if (typeof registerExport === "function") {
       registerExport({ exportCsv, exportPdf });
     }
   }, [registerExport, exportCsv, exportPdf]);

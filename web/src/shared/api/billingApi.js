@@ -259,7 +259,9 @@ export const billingApi = {
 
   getDisputes: (params = {}) => {
     const query = new URLSearchParams(params).toString();
-    return authFetch(`/billing/disputes${query ? `?${query}` : ""}`);
+    return authFetch(`/billing/disputes${query ? `?${query}` : ""}`, {
+      preserveEnvelope: true,
+    });
   },
 
   resolveDispute: (disputeId, payload) =>
@@ -271,7 +273,9 @@ export const billingApi = {
   // ── Overdue 3-Notice Machine & Case Review (P3-01, P3-02) ──
   getOverdueNotices: (params = {}) => {
     const query = new URLSearchParams(params).toString();
-    return authFetch(`/billing/overdue-notices${query ? `?${query}` : ""}`);
+    return authFetch(`/billing/overdue-notices${query ? `?${query}` : ""}`, {
+      preserveEnvelope: true,
+    });
   },
 
   sendOverdueNotice: (billId, payload) => {
@@ -284,7 +288,9 @@ export const billingApi = {
 
   getTerminationCases: (params = {}) => {
     const query = new URLSearchParams(params).toString();
-    return authFetch(`/billing/termination-reviews${query ? `?${query}` : ""}`);
+    return authFetch(`/billing/termination-reviews${query ? `?${query}` : ""}`, {
+      preserveEnvelope: true,
+    });
   },
 
   createTerminationCase: (payload) =>
@@ -302,12 +308,16 @@ export const billingApi = {
   // ── Tenant Violation & Warning Log (P4-01) ──
   getViolations: (params = {}) => {
     const query = new URLSearchParams(params).toString();
-    return authFetch(`/billing/violations${query ? `?${query}` : ""}`);
+    return authFetch(`/billing/violations${query ? `?${query}` : ""}`, {
+      preserveEnvelope: true,
+    });
   },
 
   getActiveTenantsForViolations: (params = {}) => {
     const query = new URLSearchParams(params).toString();
-    return authFetch(`/billing/violations/active-tenants${query ? `?${query}` : ""}`);
+    return authFetch(`/billing/violations/active-tenants${query ? `?${query}` : ""}`, {
+      preserveEnvelope: true,
+    });
   },
 
   getViolationById: (id) =>
@@ -319,7 +329,19 @@ export const billingApi = {
       body: JSON.stringify(payload),
     }),
 
+  recordViolation: (payload) =>
+    authFetch("/billing/violations", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
   updateViolationDecision: (id, payload) =>
+    authFetch(`/billing/violations/${id}/decision`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  adjudicateViolation: (id, payload) =>
     authFetch(`/billing/violations/${id}/decision`, {
       method: "PATCH",
       body: JSON.stringify(payload),
@@ -328,7 +350,9 @@ export const billingApi = {
   // ── Consolidated Billing & Payments Monitor ──
   getConsolidatedBillingMonitor: (params = {}) => {
     const query = new URLSearchParams(params).toString();
-    return authFetch(`/billing/consolidated-monitor${query ? `?${query}` : ""}`);
+    return authFetch(`/billing/consolidated-monitor${query ? `?${query}` : ""}`, {
+      preserveEnvelope: true,
+    });
   },
 };
 

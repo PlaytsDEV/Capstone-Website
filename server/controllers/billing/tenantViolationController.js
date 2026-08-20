@@ -20,9 +20,10 @@ import {
   Room,
 } from "../../models/index.js";
 import { VIOLATION_TYPES } from "../../models/TenantViolation.js";
-import { getAdminInfo, CURRENT_RESIDENT_STATUS_QUERY } from "./_helpers.js";
+import { getAdminInfo, resolveAdminUserId, CURRENT_RESIDENT_STATUS_QUERY } from "./_helpers.js";
 import logger from "../../middleware/logger.js";
 import { logBillingAudit } from "../../utils/billingAudit.js";
+import { createNotification } from "../../services/notifications/notificationService.js";
 
 // Helper to format category for bill line-item label
 const formatCategoryLabel = (type) => {
@@ -49,10 +50,12 @@ export const getViolations = async (req, res, next) => {
       return res.status(403).json({ success: false, error: "Access denied. Invalid branch filter." });
     }
 
-    const { status, category, violationType, search } = req.query;
+    const { status, category, violationType, search, tenantId, reservationId } = req.query;
 
     const filter = { isArchived: false };
     if (branch) filter.branch = branch;
+    if (tenantId) filter.tenantId = tenantId;
+    if (reservationId) filter.reservationId = reservationId;
     if (status && status !== "all") filter.status = status;
     const cat = category || violationType;
     if (cat && cat !== "all") filter.violationType = cat;
@@ -313,6 +316,15 @@ export const getViolationById = async (req, res, next) => {
 export const createViolation = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);
+    const adminUserId = await resolveAdminUserId(req, admin);
+
+    if (!adminUserId) {
+      return res.status(401).json({
+        success: false,
+        error: "Authenticated user record not found in system.",
+      });
+    }
+
     const {
       tenantId,
       reservationId: providedReservationId,
@@ -424,7 +436,7 @@ export const createViolation = async (req, res, next) => {
 
     // Create the violation record
     const violation = new TenantViolation({
-      reservationId: reservation._id,
+      reservationId: reservation?._id || null,
       tenantId,
       branch,
       violationType,
@@ -438,14 +450,14 @@ export const createViolation = async (req, res, next) => {
       warningNumber: nextWarningNumber,
       penaltyApplied: penaltyNum > 0 ? penaltyNum : null,
       penaltyReason: penaltyNum > 0 ? penaltyReason.trim() : null,
-      reportedBy: req.user._id,
+      reportedBy: adminUserId,
     });
 
     await violation.save();
 
     // If penalty is applied, automatically append to resident's active/open rent bill with dedicated line item
     let attachedBillId = null;
-    if (chargeToBill !== false && penaltyNum > 0) {
+    if (chargeToBill !== false && penaltyNum > 0 && reservation?._id) {
       try {
         const openBill = await Bill.findOne({
           reservationId: reservation._id,
@@ -483,7 +495,7 @@ export const createViolation = async (req, res, next) => {
 
     await logBillingAudit({
       action: "LOG_TENANT_VIOLATION",
-      actorId: req.user._id,
+      actorId: adminUserId,
       targetUserId: tenantId,
       branch,
       details: {
@@ -494,6 +506,21 @@ export const createViolation = async (req, res, next) => {
         attachedBillId,
       },
     });
+
+    // Dispatch in-app notification to tenant
+    try {
+      const categoryLabel = formatCategoryLabel(violationType);
+      const penaltyText = penaltyNum > 0 ? ` with an assessed penalty fee of ₱${penaltyNum.toFixed(2)}` : "";
+      await createNotification(
+        tenantId,
+        "tenant_violation",
+        `House Rule Warning (#${nextWarningNumber})`,
+        `A dormitory rule infraction (${categoryLabel}) was recorded on your account${penaltyText}. Please review your account policies.`,
+        { entityType: "violation", entityId: violation._id }
+      );
+    } catch (notifErr) {
+      logger.warn("[TenantViolation] Failed to dispatch tenant in-app notification:", notifErr);
+    }
 
     res.status(201).json({
       success: true,
@@ -514,6 +541,7 @@ export const createViolation = async (req, res, next) => {
 export const updateViolationDecision = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);
+    const adminUserId = await resolveAdminUserId(req, admin);
     const { id } = req.params;
     const {
       decision,
@@ -551,13 +579,13 @@ export const updateViolationDecision = async (req, res, next) => {
 
     violation.adminDecision = decision;
     violation.adminDecisionReason = decisionReason.trim();
-    violation.decidedBy = req.user._id;
+    violation.decidedBy = adminUserId;
     violation.decidedAt = new Date();
 
     if (decision === "dismissed") {
       violation.status = "dismissed";
       violation.resolution = resolution ? resolution.trim() : "Infraction dismissed upon administrative review.";
-      violation.resolvedBy = req.user._id;
+      violation.resolvedBy = adminUserId;
       violation.resolvedAt = new Date();
     } else {
       // Confirmed
@@ -570,12 +598,12 @@ export const updateViolationDecision = async (req, res, next) => {
       if (penaltyApplied !== undefined && Number(penaltyApplied) > 0) {
         violation.penaltyApplied = Number(penaltyApplied);
         violation.penaltyReason = (penaltyReason || decisionReason).trim();
-        violation.penaltyApprovedBy = req.user._id;
+        violation.penaltyApprovedBy = adminUserId;
       }
 
       if (resolution && resolution.trim()) {
         violation.resolution = resolution.trim();
-        violation.resolvedBy = req.user._id;
+        violation.resolvedBy = adminUserId;
         violation.resolvedAt = new Date();
       }
 
@@ -588,7 +616,7 @@ export const updateViolationDecision = async (req, res, next) => {
           triggerType: "violation_escalation",
           triggeredByViolationId: violation._id,
           triggerReason: `Violation Escalation: ${violation.violationType} — ${decisionReason.trim()}`,
-          openedBy: req.user._id,
+          openedBy: adminUserId,
           openedAt: new Date(),
           status: "open",
         });
@@ -603,7 +631,7 @@ export const updateViolationDecision = async (req, res, next) => {
       }
 
       // Handle optional bill line-item attachment
-      if (chargeToBill && violation.penaltyApplied > 0) {
+      if (chargeToBill && violation.penaltyApplied > 0 && violation.reservationId) {
         const openBill = await Bill.findOne({
           reservationId: violation.reservationId,
           userId: violation.tenantId,
@@ -635,7 +663,7 @@ export const updateViolationDecision = async (req, res, next) => {
 
     await logBillingAudit({
       action: "UPDATE_VIOLATION_DECISION",
-      actorId: req.user._id,
+      actorId: adminUserId,
       targetUserId: violation.tenantId,
       branch: violation.branch,
       details: {
@@ -645,6 +673,25 @@ export const updateViolationDecision = async (req, res, next) => {
         escalatedToReviewId: violation.escalatedToReviewId,
       },
     });
+
+    // Dispatch decision notification to tenant
+    try {
+      if (violation.tenantId) {
+        const categoryLabel = formatCategoryLabel(violation.violationType);
+        const isDismissed = decision === "dismissed";
+        await createNotification(
+          violation.tenantId,
+          "tenant_violation",
+          `Rule Infraction Status: ${isDismissed ? "Infraction Dismissed" : "Warning Confirmed"}`,
+          isDismissed
+            ? `Your recorded infraction for ${categoryLabel} has been dismissed upon administrative review.`
+            : `Administrative review has confirmed the infraction for ${categoryLabel}. ${decisionReason.trim()}`,
+          { entityType: "violation", entityId: violation._id }
+        );
+      }
+    } catch (notifErr) {
+      logger.warn("[TenantViolation] Failed to dispatch decision notification:", notifErr);
+    }
 
     res.json({
       success: true,
@@ -707,6 +754,8 @@ export const getTerminationCases = async (req, res, next) => {
  */
 export const createTerminationCase = async (req, res, next) => {
   try {
+    const admin = await getAdminInfo(req);
+    const adminUserId = await resolveAdminUserId(req, admin);
     const { tenantId, reservationId, branch, triggerReason } = req.body;
 
     if (!tenantId || !reservationId || !branch) {
@@ -729,7 +778,7 @@ export const createTerminationCase = async (req, res, next) => {
       branch,
       triggerType: "manual",
       triggerReason: triggerReason.trim(),
-      openedBy: req.user._id,
+      openedBy: adminUserId,
       openedAt: new Date(),
       status: "open",
     });

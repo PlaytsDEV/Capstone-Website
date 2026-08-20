@@ -254,8 +254,11 @@ function ReservationsPage() {
   const error = queryError?.message || null;
 
   const reservations = useMemo(
-    () => (Array.isArray(rawReservations) ? rawReservations.map((raw) => mapReservationAdminRow(raw)) : []),
-    [rawReservations],
+    () =>
+      Array.isArray(rawReservations)
+        ? rawReservations.map((raw) => mapReservationAdminRow(raw, seenIds))
+        : [],
+    [rawReservations, seenIds],
   );
 
   const activeReservations = useMemo(
@@ -682,6 +685,14 @@ function ReservationsPage() {
   const handleView = useCallback(
     async (reservationId) => {
       markAsSeen(reservationId);
+      queryClient.setQueriesData({ queryKey: ["reservations"] }, (old) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((r) =>
+          String(r._id || r.id) === String(reservationId)
+            ? { ...r, isViewedByAdmin: true, lastAdminViewedAt: new Date().toISOString() }
+            : r,
+        );
+      });
       try {
         const reservation = await prefetchReservationDetail(reservationId);
         setSelectedReservation({

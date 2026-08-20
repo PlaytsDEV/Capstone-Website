@@ -56,8 +56,9 @@ export default function OverdueNoticeTracker({
       if (stageFilter !== "all") params.stage = stageFilter;
 
       const res = await billingApi.getOverdueNotices(params);
-      setNotices(res.data || []);
-      if (res.stats) {
+      const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      setNotices(list);
+      if (res?.stats) {
         setStats(res.stats);
       }
     } catch (err) {

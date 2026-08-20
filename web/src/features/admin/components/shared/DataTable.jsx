@@ -196,6 +196,7 @@ export default function DataTable({
                       <td
                         key={col.key}
                         className={`${cellPadding} text-foreground ${col.align === "right" ? "text-right" : ""} ${col.align === "center" ? "text-center" : ""}`}
+                        style={col.width ? { width: col.width } : undefined}
                         {...(col.align === "right"
                           ? { "data-action-cell": "true" }
                           : {})}

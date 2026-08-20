@@ -53,8 +53,8 @@ export default function OverdueEscalationTab({ branch }) {
       const casesData = casesRes.status === "fulfilled" ? casesRes.value : null;
 
       const noticeStats = noticesData?.stats || {};
-      const overdueList = noticesData?.data || [];
-      const casesList = casesData?.data || [];
+      const overdueList = Array.isArray(noticesData?.data) ? noticesData.data : Array.isArray(noticesData) ? noticesData : [];
+      const casesList = Array.isArray(casesData?.data) ? casesData.data : Array.isArray(casesData) ? casesData : [];
 
       setStats({
         totalExposure: noticeStats.totalExposure || 0,

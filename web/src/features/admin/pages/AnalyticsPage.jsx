@@ -345,29 +345,38 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
       branch,
   );
 
-  const handleRangeChange = (value) => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.set("range", value);
-    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
-  };
+  const handleRangeChange = React.useCallback(
+    (value) => {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set("range", value);
+      setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
-  const handleBranchChange = (value) => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.set("branch", value);
-    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
-  };
+  const handleBranchChange = React.useCallback(
+    (value) => {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set("branch", value);
+      setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
-  const handleTabChange = (nextTab) => {
-    const resolvedTab = nextTab === "revenue" ? "billing" : nextTab;
-    setActiveTab(resolvedTab);
-    const nextParams = new URLSearchParams(searchParams);
-    if (resolvedTab === "overview") {
-      nextParams.delete("tab");
-    } else {
-      nextParams.set("tab", resolvedTab);
-    }
-    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
-  };
+  const handleTabChange = React.useCallback(
+    (nextTab) => {
+      const resolvedTab = nextTab === "revenue" ? "billing" : nextTab;
+      setActiveTab(resolvedTab);
+      const nextParams = new URLSearchParams(searchParams);
+      if (resolvedTab === "overview") {
+        nextParams.delete("tab");
+      } else {
+        nextParams.set("tab", resolvedTab);
+      }
+      setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   const analyticsTabs = useMemo(
     () => [
@@ -404,21 +413,28 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     [isOwner],
   );
 
-
-
-
   const [tabExports, setTabExports] = useState({});
 
   const registerTabExport = React.useCallback((tabKey, exports) => {
-    if (!tabKey) return;
+    if (!tabKey || !exports) return;
     setTabExports((prev) => {
-      if (prev[tabKey] === exports) return prev;
+      if (
+        prev[tabKey]?.exportCsv === exports.exportCsv &&
+        prev[tabKey]?.exportPdf === exports.exportPdf
+      ) {
+        return prev;
+      }
       return {
         ...prev,
         [tabKey]: exports,
       };
     });
   }, []);
+
+  const registerCurrentTabExport = React.useCallback(
+    (exports) => registerTabExport(activeTabNormalized, exports),
+    [activeTabNormalized, registerTabExport],
+  );
 
   const detailSharedProps = useMemo(
     () => ({
@@ -427,9 +443,9 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
       isOwner,
       onRangeChange: handleRangeChange,
       onBranchChange: handleBranchChange,
-      registerExport: (exports) => registerTabExport(activeTabNormalized, exports),
+      registerExport: registerCurrentTabExport,
     }),
-    [branch, activeTab, range, isOwner, activeTabNormalized, registerTabExport],
+    [branch, activeTab, range, isOwner, registerCurrentTabExport, handleRangeChange, handleBranchChange],
   );
 
   const currentTabExport =

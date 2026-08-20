@@ -30,7 +30,6 @@ import { AdminDashboardSkeleton } from "../components/AdminContentSkeletons";
 import { PageShell, StatusBadge } from "../components/shared";
 import OccupancyTrendCard from "../components/dashboard/OccupancyTrendCard";
 import RevenueTrendCard from "../components/dashboard/RevenueTrendCard";
-import AdminShiftTriageCenter from "../components/dashboard/AdminShiftTriageCenter";
 import "../styles/design-tokens.css";
 import "../styles/admin-dashboard.css";
 
@@ -429,9 +428,6 @@ export default function Dashboard() {
         </PageShell.Summary>
 
         <PageShell.Content>
-          {/* Daily Shift Triage Center */}
-          <AdminShiftTriageCenter triage={data?.triage} isLoading={showSkeleton} />
-
           <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             <section
               className="rounded-xl border p-6 lg:col-span-2 shadow-sm"

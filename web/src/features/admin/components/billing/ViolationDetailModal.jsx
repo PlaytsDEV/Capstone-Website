@@ -19,6 +19,7 @@ import {
   Send,
 } from "lucide-react";
 import { billingApi } from "../../../../shared/api/billingApi.js";
+import { showNotification } from "../../../../shared/utils/notification.js";
 
 const getInitials = (name) => {
   if (!name) return "TN";
@@ -92,33 +93,40 @@ export default function ViolationDetailModal({ isOpen, violation, onClose, onRef
     setSuccessMsg("");
 
     if (!decisionReason.trim()) {
-      setError("Please provide a clear administrative rationale for this decision.");
+      const errText = "Please provide a clear administrative rationale for this decision.";
+      setError(errText);
+      showNotification(errText, "warning");
       return;
     }
 
     try {
       setAdjudicating(true);
-      const res = await billingApi.adjudicateViolation(violation._id, {
+      await billingApi.adjudicateViolation(violation._id, {
         decision,
         targetStatus: decision === "confirmed" ? targetStatus : "dismissed",
         decisionReason: decisionReason.trim(),
         chargeToBill: decision === "confirmed" && Number(violation.penaltyApplied) > 0 ? chargeToBill : false,
       });
 
-      setSuccessMsg("Adjudication decision recorded and tenant notified successfully.");
+      const msg = "Adjudication decision recorded and tenant notified successfully.";
+      setSuccessMsg(msg);
+      showNotification(msg, "success");
       onRefresh?.();
       setTimeout(() => {
         onClose();
       }, 1500);
     } catch (err) {
       console.error("Decision recording error:", err);
-      setError(err.message || "Failed to record decision.");
+      const errText = err.message || "Failed to record decision.";
+      setError(errText);
+      showNotification(errText, "error");
     } finally {
       setAdjudicating(false);
     }
   };
 
   const badgeCfg = getStatusBadgeConfig(violation.status);
+  const primaryPhoto = violation.evidenceUrls?.[0] || violation.evidenceUrl;
 
   const formattedDate = violation.dateOfIncident
     ? new Date(violation.dateOfIncident).toLocaleDateString("en-PH", {

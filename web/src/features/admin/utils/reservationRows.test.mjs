@@ -202,5 +202,69 @@ test("checkOverdueReservation evaluates confirmed reserved bookings accurately",
   );
 });
 
+test("mapReservationAdminRow marks unviewed pending applications as isNew: true", () => {
+  const row = mapReservationAdminRow({
+    _id: "res-unviewed-1",
+    status: "pending_application_review",
+    createdAt: new Date().toISOString(),
+    isViewedByAdmin: false,
+    roomId: { name: "Room 101", branch: "gil-puyat" },
+  });
+
+  assert.equal(row.isNew, true);
+  assert.equal(row.isViewedByAdmin, false);
+});
+
+test("mapReservationAdminRow clears isNew when isViewedByAdmin is true", () => {
+  const row = mapReservationAdminRow({
+    _id: "res-viewed-1",
+    status: "pending_application_review",
+    createdAt: new Date().toISOString(),
+    isViewedByAdmin: true,
+    roomId: { name: "Room 101", branch: "gil-puyat" },
+  });
+
+  assert.equal(row.isNew, false);
+  assert.equal(row.isViewedByAdmin, true);
+});
+
+test("mapReservationAdminRow clears isNew when reservation ID is present in session seenIds", () => {
+  const seenIds = new Set(["res-seen-in-session"]);
+  const row = mapReservationAdminRow(
+    {
+      _id: "res-seen-in-session",
+      status: "pending_application_review",
+      createdAt: new Date().toISOString(),
+      isViewedByAdmin: false,
+      roomId: { name: "Room 101", branch: "gil-puyat" },
+    },
+    seenIds,
+  );
+
+  assert.equal(row.isNew, false);
+  assert.equal(row.isViewedByAdmin, true);
+});
+
+test("mapReservationAdminRow does not mark moveIn or confirmed reservations as isNew", () => {
+  const rowMoveIn = mapReservationAdminRow({
+    _id: "res-movein-1",
+    status: "moveIn",
+    createdAt: new Date().toISOString(),
+    isViewedByAdmin: false,
+    roomId: { name: "Room 510", branch: "gil-puyat" },
+  });
+  assert.equal(rowMoveIn.isNew, false);
+
+  const rowConfirmed = mapReservationAdminRow({
+    _id: "res-confirmed-1",
+    status: "confirmed",
+    createdAt: new Date().toISOString(),
+    isViewedByAdmin: false,
+    roomId: { name: "Room 510", branch: "gil-puyat" },
+  });
+  assert.equal(rowConfirmed.isNew, false);
+});
+
+
 
 

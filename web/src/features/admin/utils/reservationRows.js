@@ -63,17 +63,40 @@ export function isPendingAdminApproval(reservation) {
 
   // Terminal or resolved statuses require no admin action
   if (
+    hasReservationStatus(
+      status,
+      "cancelled",
+      "rejected",
+      "reserved",
+      "checked_in",
+      "checked_out",
+      "moved_in",
+      "movein",
+      "move_in",
+      "confirmed",
+      "occupied",
+      "completed",
+    ) ||
     status === "cancelled" ||
     status === "rejected" ||
     status === "reserved" ||
     status === "checked_in" ||
     status === "checked_out" ||
-    status === "moved_in"
+    status === "moved_in" ||
+    status === "movein" ||
+    status === "move_in" ||
+    status === "confirmed" ||
+    status === "occupied"
   ) {
     return false;
   }
 
-  // 1. Pending application review (new submission requiring admin action)
+  // If already viewed by admin, it is no longer unread / "NEW"
+  if (reservation.isViewedByAdmin) {
+    return false;
+  }
+
+  // 1. Pending application review (new unviewed submission requiring admin review)
   if (
     status === "pending" ||
     status === "pending_application_review" ||
@@ -85,11 +108,6 @@ export function isPendingAdminApproval(reservation) {
   }
 
   // Proof uploaded check removed — manual proof decommissioned (PayMongo only)
-
-  // 3. Pending cancellation request
-  if (hasPendingCancellationRequest(reservation)) {
-    return true;
-  }
 
   // 4. Pending visit / schedule approval
   if (
@@ -139,11 +157,15 @@ export function getCancelledByName(cancelledBy, cancellationSource, customerName
   return "Branch Admin";
 }
 
-export function mapReservationAdminRow(reservation) {
+export function mapReservationAdminRow(reservation, seenIds = null) {
   const branchCode = reservation.roomId?.branch || "";
-  const isViewedByAdmin = Boolean(reservation.isViewedByAdmin);
+  const idStr = String(reservation._id || reservation.id || "");
+  const isSeenInSession = Boolean(
+    seenIds && (seenIds.has(idStr) || seenIds.has(reservation._id) || seenIds.has(reservation.id)),
+  );
+  const isViewedByAdmin = Boolean(reservation.isViewedByAdmin || isSeenInSession);
   const isPendingCancellation = hasPendingCancellationRequest(reservation);
-  const isNew = isPendingAdminApproval(reservation);
+  const isNew = isPendingAdminApproval({ ...reservation, isViewedByAdmin });
   const customer =
     `${reservation.userId?.firstName || ""} ${reservation.userId?.lastName || ""}`.trim() ||
     "Unknown";

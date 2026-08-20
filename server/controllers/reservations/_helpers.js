@@ -183,6 +183,9 @@ export const ADMIN_LIST_FIELDS = [
   "archiveReason",
   "idType",
   "validIDType",
+  "isViewedByAdmin",
+  "adminViewedAt",
+  "lastAdminViewedAt",
 ].join(" ");
 // profileImage is the applicant's CURRENT/live profile photo (User.profileImage),
 // distinct from Reservation.selfiePhotoUrl (the photo submitted with THIS

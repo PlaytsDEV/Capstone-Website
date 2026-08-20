@@ -129,7 +129,8 @@ await jest.unstable_mockModule("../../models/index.js", () => {
 });
 
 await jest.unstable_mockModule("./_helpers.js", () => ({
-  getAdminInfo: jest.fn().mockResolvedValue({ isOwner: true, branch: "gil-puyat" }),
+  getAdminInfo: jest.fn().mockResolvedValue({ isOwner: true, branch: "gil-puyat", _id: new mongoose.Types.ObjectId() }),
+  resolveAdminUserId: jest.fn().mockImplementation((req, admin) => admin?._id || req?.user?._id || new mongoose.Types.ObjectId()),
   CURRENT_RESIDENT_STATUS_QUERY: ["checked-in", "active"],
 }));
 
@@ -143,6 +144,12 @@ await jest.unstable_mockModule("../../middleware/logger.js", () => ({
 
 await jest.unstable_mockModule("../../utils/billingAudit.js", () => ({
   logBillingAudit: jest.fn().mockResolvedValue({}),
+}));
+
+await jest.unstable_mockModule("../../services/notifications/notificationService.js", () => ({
+  createNotification: jest.fn().mockResolvedValue({ _id: new mongoose.Types.ObjectId() }),
+  notify: jest.fn().mockResolvedValue(true),
+  default: jest.fn().mockResolvedValue(true),
 }));
 
 const {

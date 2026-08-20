@@ -41,6 +41,24 @@ const _setDashboardCache = (branch, rangeKey, data) => {
   const key = _getDashboardCacheKey(branch, rangeKey);
   _dashboardCache.set(key, { data, expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS });
 };
+
+// ─── In-process audit analytics cache ───────────────────────────────────────
+const _auditCache = new Map();
+const AUDIT_CACHE_TTL_MS = 30_000;
+
+const _getAuditCacheKey = (branch, rangeKey) => `${branch}:${rangeKey}`;
+
+const _getAuditCacheHit = (branch, rangeKey) => {
+  const key = _getAuditCacheKey(branch, rangeKey);
+  const entry = _auditCache.get(key);
+  if (entry && entry.expiresAt > Date.now()) return entry.data;
+  return null;
+};
+
+const _setAuditCache = (branch, rangeKey, data) => {
+  const key = _getAuditCacheKey(branch, rangeKey);
+  _auditCache.set(key, { data, expiresAt: Date.now() + AUDIT_CACHE_TTL_MS });
+};
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DASHBOARD_RANGE_DAYS = Object.freeze({
@@ -204,11 +222,13 @@ const calculatePeriodDelta = (
   };
 };
 
-const formatBranchLabel = (value) =>
-  value
+const formatBranchLabel = (value) => {
+  if (!value || typeof value !== "string") return "General";
+  return value
     .split("-")
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
+};
 
 const parseCustomDays = (value) => {
   if (!value) return null;
@@ -1748,12 +1768,14 @@ const buildAuditSummaryData = async (scope, rangeKey, tableRequest = parseTableR
             ],
           }),
     })
+      .select("logId branch type action severity user timestamp details")
       .sort({ timestamp: -1 })
       .lean(),
     LoginLog.find({
       success: false,
       createdAt: { $gte: sinceDate },
     })
+      .select("ipAddress email createdAt success")
       .sort({ createdAt: -1 })
       .lean(),
   ]);
@@ -2978,7 +3000,32 @@ export const getAuditSummary = async (req, res, next) => {
   try {
     const scope = await resolveAnalyticsScope(req);
     const rangeKey = String(req.query.range || "30d").trim().toLowerCase();
-    sendSuccess(res, await buildAuditSummaryData(scope, rangeKey, parseTableRequest(req.query)));
+
+    // ── Cache hit: return instantly without re-aggregating logs ──────────────
+    const cacheHit = _getAuditCacheHit(
+      scope.branch === "all" ? "all" : scope.branch,
+      rangeKey,
+    );
+    if (cacheHit && !req.query.tableOffset && !req.query.offset) {
+      return sendSuccess(res, cacheHit);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const responsePayload = await buildAuditSummaryData(
+      scope,
+      rangeKey,
+      parseTableRequest(req.query),
+    );
+
+    if (!req.query.tableOffset && !req.query.offset) {
+      _setAuditCache(
+        scope.branch === "all" ? "all" : scope.branch,
+        rangeKey,
+        responsePayload,
+      );
+    }
+
+    sendSuccess(res, responsePayload);
   } catch (error) {
     next(error);
   }

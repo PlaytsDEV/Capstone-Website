@@ -71,6 +71,7 @@ const notificationSchema = new mongoose.Schema(
         "announcement",
         "sla_breach",
         "chat_unresponded",
+        "tenant_violation",
         "general",
       ],
       index: true,
@@ -104,7 +105,7 @@ const notificationSchema = new mongoose.Schema(
     // --- Optional Entity Reference ---
     entityType: {
       type: String,
-      enum: ["reservation", "bill", "room", "user", "maintenance", "chat", "inquiry", "contract", "announcement", ""],
+      enum: ["reservation", "bill", "room", "user", "maintenance", "chat", "inquiry", "contract", "announcement", "violation", ""],
       default: "",
     },
     entityId: {
