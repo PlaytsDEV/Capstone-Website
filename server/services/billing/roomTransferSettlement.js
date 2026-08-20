@@ -84,7 +84,13 @@ export function calculateRoomTransferRentSettlement({
   const destinationDays = totalCoverageDays - sourceDays;
 
   const sourceConsumedValue = roundMoney((sourceRate / totalCoverageDays) * sourceDays);
-  const unusedPrepaidCredit = roundMoney(prepaidRent - sourceConsumedValue);
+  // Floored at 0: if the actual funded/prepaid amount is less than the value
+  // already consumed (e.g. a structured reservation's advance-rent basis is
+  // lower than the Contract rate used to value days consumed, or a current
+  // period Bill was left partially/unpaid), there is no unused credit to
+  // reconcile — the shortfall is a separate, pre-existing rent obligation
+  // that this settlement does not create, erase, or otherwise touch.
+  const unusedPrepaidCredit = roundMoney(Math.max(0, prepaidRent - sourceConsumedValue));
   const destinationProratedValue = roundMoney((destinationRate / totalCoverageDays) * destinationDays);
   const settlementAmount = roundMoney(destinationProratedValue - unusedPrepaidCredit);
 

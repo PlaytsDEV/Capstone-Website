@@ -166,4 +166,25 @@ describe("calculateRoomTransferRentSettlement", () => {
     });
     expect(result.sourceConsumedValue + result.unusedPrepaidCredit).toBeCloseTo(5000, 2);
   });
+
+  test("applicablePrepaidRent lower than the value already consumed floors unusedPrepaidCredit at 0, never a negative credit", () => {
+    const result = calculateRoomTransferRentSettlement({
+      periodStart: "2026-08-01T00:00:00.000Z",
+      periodEnd: "2026-09-01T00:00:00.000Z",
+      transferDate: "2026-08-15T00:00:00.000Z",
+      sourceApprovedRate: 6300,
+      destinationApprovedRate: 14400,
+      // sourceConsumedValue = 6300/31*14 ≈ 2845.16 — less than the amount
+      // actually prepaid/funded (e.g. an unpaid current-period Bill, or a
+      // structured advance-rent basis lower than the Contract rate).
+      applicablePrepaidRent: 0,
+    });
+    expect(result.sourceConsumedValue).toBeCloseTo(2845.16, 2);
+    expect(result.unusedPrepaidCredit).toBe(0);
+    expect(result.excessCredit).toBe(0);
+    // The shortfall is not folded into this settlement's additionalAmountDue —
+    // it remains a separate, pre-existing rent obligation on the source-room
+    // period, untouched by room-transfer settlement.
+    expect(result.additionalAmountDue).toBeCloseTo(result.destinationProratedValue, 2);
+  });
 });
