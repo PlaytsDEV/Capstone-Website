@@ -134,13 +134,8 @@ router.get("/documents/contract", mobileTenant, asyncRoute(async (req, res) => {
   const contract = await ownedCurrentContract(req.mobileTenant._id);
   if (!contract) return res.status(404).json({ detail: "Contract is being prepared." });
 
-  // Stream the final document whenever one exists — an admin_scan (wet-signed
-  // upload) finalDocument is final on upload and never sets
-  // notarizationVerifiedAt (that field only applies to the optional notarized
-  // pipeline), so gating on it here would keep serving the stale prepared
-  // draft after finalization. resolvePublishedFinalDocument already branches
-  // correctly on sourceType.
-  if (contract.finalDocument) {
+  // If finalDocument is available and verified, stream the final notarized PDF
+  if (contract.finalDocument && Boolean(contract.notarizationVerifiedAt)) {
     try {
       const resolved = await resolvePublishedFinalDocument(contract);
       const download = req.query.download === "1";
