@@ -1,8 +1,9 @@
 import mongoose from "mongoose";
 import logger from "../middleware/logger.js";
-import { Contract } from "../models/index.js";
+import { Contract, Reservation } from "../models/index.js";
 import { transitionContract } from "./contractService.js";
-import { notify } from "./notifications/notificationService.js";
+import { notify, notifyBranchAdmins } from "./notifications/notificationService.js";
+import { toManilaStartOfDay } from "../utils/dateUtils.js";
 
 /**
  * ============================================================================
@@ -18,23 +19,79 @@ import { notify } from "./notifications/notificationService.js";
  *
  *   successor:   published -> active,   isCurrent: false -> true
  *   predecessor: active    -> replaced, isCurrent: true  -> false
+ *   reservation: monthlyRent -> successor.approvedMonthlyRate
+ *
+ * "replaced" (not "expired") is the deliberate predecessor terminal status —
+ * confirmed by a full-repo audit that "expired" has zero writers anywhere
+ * and active->expired isn't even a legal CONTRACT_TRANSITIONS edge (only
+ * expiring_soon->expired is), while "replaced" already has real, tested
+ * write support for exactly this "superseded by a successor" scenario and
+ * is fully wired into HISTORY_VISIBLE_STATUSES / archival / admin display.
+ * Introducing "expired" here would mean shipping a brand-new, untested
+ * state-machine edge for a cosmetic label difference.
+ *
+ * The main query only matches status: "published" AND finalDocument !=
+ * null, so cancelled/voided/rejected/archived/generated-only successors are
+ * never matched — legal finality (Phase 1's wet-signed-upload rule) is a
+ * hard precondition for activation, never bypassed here.
  *
  * Idempotent: the query only matches contracts still at "published", so a
- * contract already activated by a previous run is never matched again.
+ * contract already activated by a previous run is never matched again, and
+ * session.withTransaction's automatic retry-on-transient-error re-fetches
+ * fresh state from inside the callback (see the comment further down) so a
+ * retried attempt can never double-apply an in-memory mutation.
+ *
  * Intended to be invoked by a scheduled job (server/utils/scheduler.js) and
  * is DB-connection-agnostic so it can also run from a test/manual trigger.
  * ============================================================================
  */
 export async function activateDueRenewalContracts({ now = new Date() } = {}) {
-  const report = { scanned: 0, activated: 0, errors: 0, records: [] };
+  const report = {
+    scanned: 0, activated: 0, blocked: 0, conflicts: 0, errors: 0, records: [],
+  };
 
-  const due = await Contract.find({
-    status: "published",
+  // Manila-calendar-date cutoff, not raw UTC "now" — a leaseStartDate of
+  // 2027-02-01 must mean the correct Lilycrest local business date, matching
+  // the same convention billingPolicy.js/rentGenerator.js already use.
+  const manilaCutoff = toManilaStartOfDay(now).add(1, "day").toDate();
+
+  const dueCandidates = await Contract.find({
     contractPurpose: "renewal",
-    leaseStartDate: { $lte: now },
+    status: "published",
+    leaseStartDate: { $lt: manilaCutoff },
     finalDocument: { $ne: null },
-  }).select("_id contractNumber").sort({ leaseStartDate: 1 }).lean();
+  }).select("_id contractNumber replacesContractId").sort({ leaseStartDate: 1 }).lean();
+
+  // Multiple-successor conflict guard: never guess which of two due
+  // successors against the same predecessor should win. Detected up front
+  // (deterministic regardless of iteration/race order) rather than relying
+  // on the per-contract predecessor-status check below, which could let a
+  // second successor "win" nondeterministically depending on execution
+  // order if checked only inline.
+  const byPredecessor = new Map();
+  for (const candidate of dueCandidates) {
+    const key = candidate.replacesContractId ? String(candidate.replacesContractId) : null;
+    if (!key) continue;
+    if (!byPredecessor.has(key)) byPredecessor.set(key, []);
+    byPredecessor.get(key).push(candidate);
+  }
+  const conflictedContractIds = new Set();
+  for (const [predecessorId, candidates] of byPredecessor) {
+    if (candidates.length > 1) {
+      for (const candidate of candidates) conflictedContractIds.add(String(candidate._id));
+      logger.error(
+        { predecessorId, candidateIds: candidates.map((c) => String(c._id)) },
+        "[RenewalActivation] Multiple due renewal successors reference the same predecessor Contract — skipping all, admin repair required",
+      );
+    }
+  }
+
+  const due = dueCandidates.filter((c) => !conflictedContractIds.has(String(c._id)));
   report.scanned = due.length;
+  report.conflicts = conflictedContractIds.size;
+  for (const contractId of conflictedContractIds) {
+    report.records.push({ contractId, outcome: "CONFLICT_MULTIPLE_SUCCESSORS" });
+  }
 
   for (const { _id: contractId, contractNumber } of due) {
     const entry = { contractId: String(contractId), contractNumber };
@@ -59,6 +116,14 @@ export async function activateDueRenewalContracts({ now = new Date() } = {}) {
         const predecessor = successor.replacesContractId
           ? await Contract.findById(successor.replacesContractId).session(session)
           : null;
+        if (!predecessor || predecessor.status !== "active") {
+          // The predecessor was already superseded/closed by something else
+          // (another activation, manual admin action, data corruption) —
+          // activating this successor too would leave two "current"
+          // contracts for one reservation. Surface, don't guess.
+          outcome = { conflict: true };
+          return;
+        }
 
         successor.isCurrent = true;
         await transitionContract(
@@ -69,22 +134,35 @@ export async function activateDueRenewalContracts({ now = new Date() } = {}) {
           session,
         );
 
-        let predecessorId = null;
-        if (predecessor && predecessor.status === "active") {
-          predecessor.supersededByContractId = successor._id;
-          await transitionContract(
-            predecessor,
-            "replaced",
-            successor.updatedBy || successor.createdBy,
-            `Superseded by renewal successor Contract ${successor.contractNumber}`,
-            session,
+        predecessor.supersededByContractId = successor._id;
+        await transitionContract(
+          predecessor,
+          "replaced",
+          successor.updatedBy || successor.createdBy,
+          `Superseded by renewal successor Contract ${successor.contractNumber}`,
+          session,
+        );
+
+        // Reservation is the actual billing source of truth
+        // (rentGenerator.resolveReservationRentAmount reads
+        // reservation.monthlyRent, not Contract) — this is the other half
+        // of the cutover renewStayWorkflow deliberately defers. Only
+        // monthlyRent is updated here; pricingSnapshot (used by
+        // structured-initial-payment reservations instead) is intentionally
+        // left untouched — see this file's module header / the Phase 2B
+        // report for why that's a documented, separate gap rather than a
+        // silent omission.
+        if (successor.reservationId && Number.isFinite(Number(successor.approvedMonthlyRate))) {
+          await Reservation.updateOne(
+            { _id: successor.reservationId },
+            { $set: { monthlyRent: Number(successor.approvedMonthlyRate) } },
+            { session },
           );
-          predecessorId = String(predecessor._id);
         }
 
         outcome = {
           activated: true,
-          predecessorId,
+          predecessorId: String(predecessor._id),
           tenantId: successor.tenantId,
           roomNumber: successor.roomNumber,
         };
@@ -95,6 +173,13 @@ export async function activateDueRenewalContracts({ now = new Date() } = {}) {
         entry.outcome = "ACTIVATED";
         entry.predecessorId = outcome.predecessorId;
         notifyTarget = outcome;
+      } else if (outcome?.conflict) {
+        report.conflicts += 1;
+        entry.outcome = "CONFLICT_PREDECESSOR_NOT_ACTIVE";
+        logger.error(
+          { contractId },
+          "[RenewalActivation] Predecessor is not active/current — skipping, admin repair required",
+        );
       } else {
         entry.outcome = "SKIPPED_ALREADY_ACTIVE";
       }
@@ -110,6 +195,9 @@ export async function activateDueRenewalContracts({ now = new Date() } = {}) {
       await session.endSession();
     }
 
+    // Notification only fires after a successful commit — never on a
+    // failed/rolled-back transaction, so "Renewal is now effective" always
+    // reflects genuinely committed canonical state.
     if (notifyTarget) {
       try {
         await notify.renewalEffective(notifyTarget.tenantId, notifyTarget.roomNumber, contractId);
@@ -125,5 +213,63 @@ export async function activateDueRenewalContracts({ now = new Date() } = {}) {
     report.records.push(entry);
   }
 
+  const blockedRecords = await flagRenewalsBlockedOnFinality(manilaCutoff);
+  report.blocked = blockedRecords.length;
+  report.records.push(...blockedRecords);
+
   return report;
+}
+
+// A renewal successor whose leaseStartDate has arrived but which never
+// received (or never completed) a wet-signed final upload must NOT
+// silently extend the predecessor's legal term or fabricate finality —
+// this is a business-risk condition that needs an admin, not a scheduler,
+// to resolve. Detected and reported/notified every run, but the
+// notification itself dedupes on the contract ID (via notifyBranchAdmins'
+// createNotification dedupe-key support) so it alerts once, not daily.
+const CLOSED_RENEWAL_STATUSES = new Set([
+  "cancelled", "terminated", "archived", "voided", "rejected", "active", "replaced",
+]);
+
+async function flagRenewalsBlockedOnFinality(manilaCutoff) {
+  const blocked = await Contract.find({
+    contractPurpose: "renewal",
+    leaseStartDate: { $lt: manilaCutoff },
+    finalDocument: null,
+    status: { $nin: [...CLOSED_RENEWAL_STATUSES] },
+  }).select("_id contractNumber branch roomNumber tenantLegalName leaseStartDate status").lean();
+
+  const records = [];
+  for (const contract of blocked) {
+    const entry = {
+      contractId: String(contract._id),
+      contractNumber: contract.contractNumber,
+      outcome: "BLOCKED_NOT_FINAL",
+    };
+    try {
+      await notifyBranchAdmins(
+        contract.branch,
+        "contract_error",
+        "Renewal Effective Date Reached Without a Final Signed Contract",
+        `${contract.tenantLegalName || "A tenant"}'s renewal (Room ${contract.roomNumber || "—"}, ` +
+        `${contract.contractNumber}) was due to take effect on ` +
+        `${contract.leaseStartDate ? new Date(contract.leaseStartDate).toDateString() : "an unknown date"} ` +
+        "but has no final wet-signed contract yet. The prior contract has NOT been superseded. Manual review required.",
+        {
+          entityType: "contract",
+          entityId: String(contract._id),
+          actionUrl: "/admin/contracts",
+          dedupeKey: `renewal_activation_blocked:${String(contract._id)}`,
+        },
+      );
+    } catch (notifyError) {
+      entry.notifyError = notifyError.message;
+      logger.warn(
+        { err: notifyError, contractId: contract._id },
+        "[RenewalActivation] Admin blocked-renewal notification failed (non-fatal)",
+      );
+    }
+    records.push(entry);
+  }
+  return records;
 }

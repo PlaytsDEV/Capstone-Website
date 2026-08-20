@@ -378,7 +378,19 @@ export async function renewStayWorkflow({ reservationId, payload, actorId }) {
 
       reservation.currentStayId = newStay._id;
       reservation.latestStayStatus = "active";
-      reservation.monthlyRent = Number(payload.monthlyRent ?? getMonthlyRent(reservation));
+      // Deliberately NOT updating reservation.monthlyRent here — it remains
+      // the billing source of truth for the CURRENT (pre-renewal) period.
+      // rentGenerator.resolveReservationRentAmount reads it live at bill
+      // generation time, which can happen up to RENT_GENERATION_LEAD_DAYS
+      // before a cycle even starts, so writing the new rate immediately at
+      // acceptance (often weeks before newLeaseStartDate) would let it leak
+      // into current-period bills. The approved new rate is already
+      // durably captured on the renewal successor Contract's
+      // approvedMonthlyRate (createSuccessorContractForRenewal /
+      // autoGenerateRenewalContract, triggered below) and is applied to
+      // reservation.monthlyRent exactly once, atomically, by
+      // contractRenewalActivationService.activateDueRenewalContracts at the
+      // successor's actual leaseStartDate.
       await reservation.save({ session });
 
       result = {
