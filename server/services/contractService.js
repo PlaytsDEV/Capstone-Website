@@ -524,6 +524,14 @@ export const transitionContract = async (contract, nextStatus, actorId, reason =
 export const findCurrentContract = (filter) =>
   Contract.findOne({ ...filter, isCurrent: true }).sort({ version: -1, createdAt: -1 });
 
+// Statuses on a room-transfer successor Contract that represent a legitimately
+// abandoned attempt — a fresh replacement is allowed after any of these.
+// Deliberately excludes every other status (including "active") so a retry
+// after the successor has already been activated still returns the existing
+// Contract instead of creating a duplicate (see the idempotency guard in
+// createReplacementContractForTransfer below).
+const ABANDONED_TRANSFER_SUCCESSOR_STATUSES = new Set(["cancelled", "voided", "rejected", "archived"]);
+
 export const createReplacementContractForTransfer = async ({
   reservationId,
   stayId = null,
@@ -536,6 +544,31 @@ export const createReplacementContractForTransfer = async ({
 }) => {
   if (!oldContract) {
     throw serviceError("Previous active contract is required for replacement.", "PREVIOUS_CONTRACT_REQUIRED", 400);
+  }
+
+  // Idempotency guard — no stable transfer/event identifier exists anywhere
+  // in the current architecture (transferStayWorkflow/autoGenerateTransferContract
+  // never generate or thread one through to the Contract layer), so
+  // replacesContractId + contractPurpose is the identifier basis for this
+  // phase. Reusing an existing, non-abandoned successor here (rather than
+  // creating a new one) is what makes a retried/duplicate call safe now that
+  // the predecessor is no longer immediately flipped to isCurrent: false —
+  // see the module-level comment below.
+  const existingSuccessors = await Contract.find({
+    replacesContractId: oldContract._id,
+    contractPurpose: "replacement",
+    status: { $nin: [...ABANDONED_TRANSFER_SUCCESSOR_STATUSES] },
+  }).session(session);
+  if (existingSuccessors.length > 1) {
+    throw serviceError(
+      "Multiple room-transfer successor Contracts already reference this Contract — admin repair required.",
+      "MULTIPLE_TRANSFER_SUCCESSORS",
+      409,
+      { predecessorId: String(oldContract._id), successorIds: existingSuccessors.map((c) => String(c._id)) },
+    );
+  }
+  if (existingSuccessors.length === 1) {
+    return existingSuccessors[0];
   }
 
   const reservation = await Reservation.findById(reservationId).session(session).lean();
@@ -551,19 +584,13 @@ export const createReplacementContractForTransfer = async ({
   const canonicalRoomType = validateBranchRoomType(branch, targetRoom.type);
   const property = resolveContractBranch(branch);
 
-  // Mark old contract as replaced
-  oldContract.status = "replaced";
-  oldContract.isCurrent = false;
-  oldContract.updatedBy = actorId;
-  oldContract.statusHistory.push({
-    status: "replaced",
-    changedBy: actorId,
-    changedAt: new Date(),
-    reason: `Replaced by room transfer contract (${oldContract.roomNumber} -> ${targetRoom.roomNumber})`,
-  });
-  await oldContract.save({ session });
-
-  const leaseStartDate = oldContract.leaseStartDate || stay?.leaseStartDate || effectiveTransferDate;
+  // The predecessor is a historical legal record and must NOT be mutated
+  // here — it stays ACTIVE/current until the real room transfer executes
+  // and explicitly calls contractRoomTransferActivationService.
+  // activateRoomTransferSuccessor. Its room, rate, and lease dates are
+  // untouched; status/isCurrent/supersededByContractId are set only by that
+  // cutover, not at successor-creation time.
+  const leaseStartDate = effectiveTransferDate;
   const leaseEndDate = oldContract.leaseEndDate || stay?.leaseEndDate;
   const leaseDurationMonths = oldContract.leaseDurationMonths || (
     leaseStartDate && leaseEndDate ? Math.max(1, dayjs(leaseEndDate).diff(dayjs(leaseStartDate), "month")) : 1
@@ -654,21 +681,16 @@ export const createReplacementContractForTransfer = async ({
         ],
         createdBy: actorId,
         updatedBy: actorId,
-        isCurrent: true,
+        isCurrent: false,
       },
     ],
     { session },
   );
 
-  const created = createdDocs[0];
-  oldContract.supersededByContractId = created._id;
-  oldContract.supersededBy = created._id;
-  await oldContract.save({ session });
-
-  return created;
+  return createdDocs[0];
 };
 
-// Creates a successor Contract for a lease renewal. Unlike
+// Creates a successor Contract for a lease renewal. Like
 // createReplacementContractForTransfer above, this deliberately does NOT
 // touch oldContract.status/isCurrent at all — the predecessor stays the
 // tenant's fully active, current, legally unmutated contract until
