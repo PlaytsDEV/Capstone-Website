@@ -88,7 +88,7 @@ describe("tenant Contract safe view", () => {
     expect(calculateContractDaysRemaining(null)).toBeNull();
   });
 
-  test("only exposes a final document after verified publication", () => {
+  test("only exposes a final document once the Contract has actually reached a published status", () => {
     const base = {
       _id: "contract-1",
       finalStorageKey: "private/final.pdf",
@@ -111,6 +111,48 @@ describe("tenant Contract safe view", () => {
       viewUrl: "/api/contracts/my/contract-1/documents/final",
     });
     expect(JSON.stringify(published)).not.toContain("private/final.pdf");
+  });
+
+  test("exposes an admin_scan (wet-signed) final document even though notarizationVerifiedAt is never set", () => {
+    const view = toTenantContractView({
+      _id: "contract-1",
+      status: "published",
+      publicationStatus: "published",
+      tenantVisible: true,
+      notarizationVerifiedAt: null,
+      finalDocument: {
+        fileName: "wet-signed.pdf",
+        storageKey: "private/wet-signed.pdf",
+        fileSize: 456,
+        pageCount: 2,
+        sourceType: "admin_scan",
+        publishedAt: new Date(),
+      },
+    });
+    expect(view.finalDocument).toMatchObject({
+      available: true,
+      fileName: "wet-signed.pdf",
+      viewUrl: "/api/contracts/my/contract-1/documents/final",
+    });
+    expect(view.tenantDocument).toMatchObject({ isFinal: true, available: true });
+  });
+
+  test("still exposes a notarized final document once verified and published", () => {
+    const view = toTenantContractView({
+      _id: "contract-1",
+      status: "published",
+      tenantVisible: true,
+      notarizationVerifiedAt: new Date(),
+      finalDocument: {
+        fileName: "notarized.pdf",
+        storageKey: "private/notarized.pdf",
+        fileSize: 789,
+        pageCount: 3,
+        sourceType: "notarized",
+        publishedAt: new Date(),
+      },
+    });
+    expect(view.finalDocument).toMatchObject({ available: true, fileName: "notarized.pdf" });
   });
 
   test("populates unified tenantDocument for draft and final states", () => {
