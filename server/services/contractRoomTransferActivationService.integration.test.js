@@ -8,7 +8,10 @@ import mongoose from "mongoose";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, jest } from "@jest/globals";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 
-import { activateRoomTransferSuccessor } from "./contractRoomTransferActivationService.js";
+import {
+  activateRoomTransferSuccessor,
+  resolveRoomTransferSuccessor,
+} from "./contractRoomTransferActivationService.js";
 import { generateContractNumber } from "./contractService.js";
 import { Contract, Reservation, Room, User, Stay, BedHistory } from "../models/index.js";
 
@@ -273,5 +276,194 @@ describe("contractRoomTransferActivationService.activateRoomTransferSuccessor", 
 
     await expect(activateRoomTransferSuccessor({ successorContractId: renewalSuccessor._id, actorId }))
       .rejects.toMatchObject({ code: "NOT_A_TRANSFER_SUCCESSOR" });
+  });
+
+  test("participates in a caller-supplied session — an outer transaction rollback undoes the Contract cutover too", async () => {
+    const { tenant, roomA, reservation, stay } = await seedTenantRoomReservation();
+    const actorId = new mongoose.Types.ObjectId();
+    const oldContract = await createContract({ tenant, room: roomA, reservation, stay, actorId });
+    const successor = await createContract({
+      tenant, room: roomA, reservation, stay, actorId,
+      overrides: {
+        contractPurpose: "replacement",
+        replacesContractId: oldContract._id,
+        status: "published",
+        isCurrent: false,
+        finalDocument: minimalFinalDocument(actorId),
+      },
+    });
+
+    const callerSession = await mongoose.startSession();
+    try {
+      await expect(callerSession.withTransaction(async () => {
+        const result = await activateRoomTransferSuccessor({
+          successorContractId: successor._id, actorId, session: callerSession,
+        });
+        expect(result.activated).toBe(true);
+        // Force the outer transaction to abort after the cutover already
+        // ran — proves activateRoomTransferSuccessor did not independently
+        // commit its own session when one was supplied.
+        throw new Error("forced-outer-rollback");
+      })).rejects.toThrow("forced-outer-rollback");
+    } finally {
+      await callerSession.endSession();
+    }
+
+    const [reloadedOld, reloadedSuccessor] = await Promise.all([
+      Contract.findById(oldContract._id),
+      Contract.findById(successor._id),
+    ]);
+    expect(reloadedOld.status).toBe("active");
+    expect(reloadedOld.isCurrent).toBe(true);
+    expect(reloadedSuccessor.status).toBe("published");
+    expect(reloadedSuccessor.isCurrent).toBe(false);
+  });
+
+  test("with a session supplied, still activates successfully when the caller commits", async () => {
+    const { tenant, roomA, reservation, stay } = await seedTenantRoomReservation();
+    const actorId = new mongoose.Types.ObjectId();
+    const oldContract = await createContract({ tenant, room: roomA, reservation, stay, actorId });
+    const successor = await createContract({
+      tenant, room: roomA, reservation, stay, actorId,
+      overrides: {
+        contractPurpose: "replacement",
+        replacesContractId: oldContract._id,
+        status: "published",
+        isCurrent: false,
+        finalDocument: minimalFinalDocument(actorId),
+      },
+    });
+
+    const callerSession = await mongoose.startSession();
+    try {
+      await callerSession.withTransaction(async () => {
+        await activateRoomTransferSuccessor({ successorContractId: successor._id, actorId, session: callerSession });
+      });
+    } finally {
+      await callerSession.endSession();
+    }
+
+    const reloadedSuccessor = await Contract.findById(successor._id);
+    expect(reloadedSuccessor.status).toBe("active");
+    expect(reloadedSuccessor.isCurrent).toBe(true);
+  });
+});
+
+describe("resolveRoomTransferSuccessor", () => {
+  let mongo;
+
+  beforeAll(async () => {
+    mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+    await mongoose.connect(mongo.getUri(), { dbName: "room_transfer_resolver" });
+  }, 120_000);
+
+  afterAll(async () => {
+    await mongoose.disconnect();
+    await mongo?.stop();
+  }, 120_000);
+
+  beforeEach(async () => {
+    await Promise.all([
+      Reservation.deleteMany({}),
+      Room.deleteMany({}),
+      User.deleteMany({}),
+      Contract.deleteMany({}),
+      Stay.deleteMany({}),
+      BedHistory.deleteMany({}),
+    ]);
+  });
+
+  async function seed() {
+    const tenant = await User.create({
+      firebaseUid: `firebase-${new mongoose.Types.ObjectId()}`,
+      email: `tenant-${new mongoose.Types.ObjectId()}@example.test`,
+      username: `tenant_${new mongoose.Types.ObjectId().toString().slice(-10)}`,
+      firstName: "Test", lastName: "Tenant", role: "tenant",
+    });
+    const room = await Room.create({
+      name: "Room 301", roomNumber: "301", branch: "gil-puyat",
+      type: "quadruple-sharing", capacity: 4, price: 6300,
+    });
+    const reservation = await Reservation.create({
+      userId: tenant._id, roomId: room._id, status: "moveIn", leaseDuration: 6,
+      reservationFeeAmount: 2000, preferredRoomType: "quadruple-sharing",
+      agreedToPrivacy: true, agreedToCertification: true, totalPrice: 6300,
+      moveInDate: new Date("2026-08-01T00:00:00.000Z"),
+    });
+    const stay = await Stay.create({
+      tenantId: tenant._id, reservationId: reservation._id, branch: room.branch,
+      roomId: room._id, bedId: "bed-1", leaseStartDate: new Date("2026-08-01T00:00:00.000Z"),
+      leaseEndDate: new Date("2027-01-31T00:00:00.000Z"), monthlyRent: 6300, status: "active",
+    });
+    const actorId = new mongoose.Types.ObjectId();
+    const number = await generateContractNumber(room.branch, new Date());
+    const predecessor = await Contract.create({
+      ...number, contractPurpose: "initial", tenantId: tenant._id, applicationId: reservation._id,
+      reservationId: reservation._id, stayId: stay._id, roomId: room._id, branch: room.branch,
+      propertyName: "Lilycrest Dormitory", propertyAddress: "123 Test St.", roomNumber: room.roomNumber,
+      roomType: "quadruple-sharing", leaseType: "long_term", status: "active", isCurrent: true,
+      statusHistory: [{ status: "active", changedBy: actorId, reason: "seed" }],
+      createdBy: actorId, updatedBy: actorId,
+    });
+    return { tenant, room, reservation, stay, predecessor, actorId };
+  }
+
+  test("throws ROOM_TRANSFER_CONTRACT_NOT_PREPARED when no successor exists", async () => {
+    const { predecessor } = await seed();
+    await expect(resolveRoomTransferSuccessor({ predecessorContractId: predecessor._id }))
+      .rejects.toMatchObject({ code: "ROOM_TRANSFER_CONTRACT_NOT_PREPARED" });
+  });
+
+  test("returns the single successor when exactly one exists", async () => {
+    const { predecessor, tenant, room, reservation, stay, actorId } = await seed();
+    const number = await generateContractNumber(room.branch, new Date());
+    const successor = await Contract.create({
+      ...number, contractPurpose: "replacement", replacesContractId: predecessor._id,
+      tenantId: tenant._id, applicationId: reservation._id, reservationId: reservation._id,
+      stayId: stay._id, roomId: room._id, branch: room.branch, propertyName: "Lilycrest Dormitory",
+      propertyAddress: "123 Test St.", roomNumber: room.roomNumber, roomType: "quadruple-sharing",
+      leaseType: "long_term", status: "published", isCurrent: false,
+      statusHistory: [{ status: "published", changedBy: actorId, reason: "seed" }],
+      createdBy: actorId, updatedBy: actorId,
+    });
+
+    const resolved = await resolveRoomTransferSuccessor({ predecessorContractId: predecessor._id });
+    expect(String(resolved._id)).toBe(String(successor._id));
+  });
+
+  test("throws MULTIPLE_TRANSFER_SUCCESSORS when more than one non-abandoned successor exists", async () => {
+    const { predecessor, tenant, room, reservation, stay, actorId } = await seed();
+    for (let i = 0; i < 2; i += 1) {
+      const number = await generateContractNumber(room.branch, new Date());
+      await Contract.create({
+        ...number, contractPurpose: "replacement", replacesContractId: predecessor._id,
+        tenantId: tenant._id, applicationId: reservation._id, reservationId: reservation._id,
+        stayId: stay._id, roomId: room._id, branch: room.branch, propertyName: "Lilycrest Dormitory",
+        propertyAddress: "123 Test St.", roomNumber: room.roomNumber, roomType: "quadruple-sharing",
+        leaseType: "long_term", status: "published", isCurrent: false,
+        statusHistory: [{ status: "published", changedBy: actorId, reason: "seed" }],
+        createdBy: actorId, updatedBy: actorId,
+      });
+    }
+
+    await expect(resolveRoomTransferSuccessor({ predecessorContractId: predecessor._id }))
+      .rejects.toMatchObject({ code: "MULTIPLE_TRANSFER_SUCCESSORS" });
+  });
+
+  test("ignores a cancelled successor — treated the same as no successor", async () => {
+    const { predecessor, tenant, room, reservation, stay, actorId } = await seed();
+    const number = await generateContractNumber(room.branch, new Date());
+    await Contract.create({
+      ...number, contractPurpose: "replacement", replacesContractId: predecessor._id,
+      tenantId: tenant._id, applicationId: reservation._id, reservationId: reservation._id,
+      stayId: stay._id, roomId: room._id, branch: room.branch, propertyName: "Lilycrest Dormitory",
+      propertyAddress: "123 Test St.", roomNumber: room.roomNumber, roomType: "quadruple-sharing",
+      leaseType: "long_term", status: "cancelled", isCurrent: false,
+      statusHistory: [{ status: "cancelled", changedBy: actorId, reason: "seed" }],
+      createdBy: actorId, updatedBy: actorId,
+    });
+
+    await expect(resolveRoomTransferSuccessor({ predecessorContractId: predecessor._id }))
+      .rejects.toMatchObject({ code: "ROOM_TRANSFER_CONTRACT_NOT_PREPARED" });
   });
 });
