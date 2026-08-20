@@ -21,6 +21,7 @@ import {
 } from "./tenantContractSelectionService.js";
 import { generateContractNumber } from "./contractService.js";
 import { activateDueRenewalContracts } from "./contractRenewalActivationService.js";
+import { activateRoomTransferSuccessor } from "./contractRoomTransferActivationService.js";
 import { Contract, Reservation, Room, User, Stay } from "../models/index.js";
 
 jest.setTimeout(60_000);
@@ -231,5 +232,44 @@ describe("tenant current/upcoming/history contract resolution", () => {
 
     const upcomingForOther = await resolveTenantUpcomingContract(otherTenant._id);
     expect(upcomingForOther).toBeNull();
+  });
+
+  // Room transfer uses contractPurpose: "replacement" and a manually-invoked
+  // cutover (activateRoomTransferSuccessor) rather than renewal's date-driven
+  // sweep — this proves the SAME selection logic (fixed generically in
+  // Phase 2B, not renewal-specific) correctly treats a transfer successor as
+  // upcoming before cutover and current/history after, with no
+  // transfer-specific selection code needed.
+  test("room transfer: predecessor is current/successor is upcoming before cutover, then swap after activateRoomTransferSuccessor", async () => {
+    const { tenant, room, reservation, stay } = await seedTenant();
+    const actorId = new mongoose.Types.ObjectId();
+    const contractA = await createContract({ tenant, room, reservation, stay, actorId });
+    const contractB = await createContract({
+      tenant, room, reservation, stay, actorId,
+      overrides: {
+        contractPurpose: "replacement",
+        replacesContractId: contractA._id,
+        parentContractId: contractA._id,
+        status: "published",
+        isCurrent: false,
+        approvedMonthlyRate: 14400,
+        leaseStartDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        finalDocument: minimalFinalDocument(actorId),
+      },
+    });
+
+    const beforeCurrent = await resolveTenantCanonicalContract(tenant._id);
+    const beforeUpcoming = await resolveTenantUpcomingContract(tenant._id);
+    expect(String(beforeCurrent._id)).toBe(String(contractA._id));
+    expect(String(beforeUpcoming._id)).toBe(String(contractB._id));
+
+    await activateRoomTransferSuccessor({ successorContractId: contractB._id, actorId });
+
+    const afterCurrent = await resolveTenantCanonicalContract(tenant._id);
+    const afterUpcoming = await resolveTenantUpcomingContract(tenant._id);
+    const afterHistory = await resolveTenantContractHistory(tenant._id);
+    expect(String(afterCurrent._id)).toBe(String(contractB._id));
+    expect(afterUpcoming).toBeNull();
+    expect(afterHistory.map((c) => String(c._id))).toContain(String(contractA._id));
   });
 });
