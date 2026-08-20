@@ -128,9 +128,16 @@ describe("createReplacementContractForTransfer", () => {
 
     // Successor: destination room, approved destination rate, transfer date,
     // predecessor's original end date preserved by default (§4/§6).
+    // The predecessor's leaseDurationMonths (6, inherited by the successor)
+    // is LONG-TERM per longTermLeaseMinMonths — so the destination rate is
+    // resolved from the room-type+term table (Private long-term final =
+    // ₱13,500), NOT the destination Room's raw price field (₱14,400, which
+    // happens to be Private SHORT-term — a stale/mismatched master price is
+    // exactly what approved-pricing resolution must not blindly inherit).
     expect(String(successor.roomId)).toBe(String(roomB._id));
     expect(successor.roomNumber).toBe("101");
-    expect(successor.approvedMonthlyRate).toBe(14400);
+    expect(successor.approvedMonthlyRate).toBe(13500);
+    expect(successor.regularMonthlyRate).toBe(15000);
     expect(successor.leaseStartDate.toISOString()).toBe(transferDate.toISOString());
     expect(successor.leaseEndDate.toISOString()).toBe(oldContract.leaseEndDate.toISOString());
     expect(successor.contractPurpose).toBe("replacement");
@@ -164,10 +171,11 @@ describe("createReplacementContractForTransfer", () => {
       actorId,
     });
 
-    await Room.updateOne({ _id: roomB._id }, { $set: { price: 15000 } });
+    await Room.updateOne({ _id: roomB._id }, { $set: { price: 20000 } });
 
     const reloadedSuccessor = await Contract.findById(successor._id);
-    expect(reloadedSuccessor.approvedMonthlyRate).toBe(14400);
+    // Private long-term final (₱13,500) — unaffected by the later Room-price edit.
+    expect(reloadedSuccessor.approvedMonthlyRate).toBe(13500);
   });
 
   test("calling again before activation returns the same successor — no duplicate", async () => {

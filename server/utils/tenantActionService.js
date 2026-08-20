@@ -30,6 +30,10 @@ import {
 } from "../services/contractRoomTransferActivationService.js";
 import { resolveCurrentBillingCycle } from "../services/billing/billingPolicy.js";
 import { calculateRoomTransferRentSettlement } from "../services/billing/roomTransferSettlement.js";
+import {
+  resolveApplicablePrepaidRentForTransfer,
+  resolveSourceEffectiveRentForTransfer,
+} from "../services/billing/prepaidRentResolver.js";
 import { createNotification } from "../services/notifications/notificationService.js";
 
 const normalizeDate = (value, endOfDay = false) => {
@@ -362,6 +366,7 @@ export async function renewStayWorkflow({ reservationId, payload, actorId }) {
             monthlyRent: Number(payload.monthlyRent ?? getMonthlyRent(reservation)),
             status: "active",
             previousStayId: activeStay._id,
+            renewalOfferId: payload.renewalOfferId || null,
             renewalNotes: payload.notes || "",
             createdBy: actorId,
             updatedBy: actorId,
@@ -685,20 +690,36 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       // credited against the destination room's prorated remaining-period
       // charge. Period boundaries come from the tenant's actual movein-
       // anchored rent cycle (resolveCurrentBillingCycle — correctly handles
-      // 28/29/30/31-day months, never a fixed 30-day divisor). Rates come
-      // from the Contract-approved amounts already validated by the legal
-      // readiness gate above — never the mutable Room master price, and
-      // never re-resolved here even if it has since changed.
+      // 28/29/30/31-day months, never a fixed 30-day divisor). Destination
+      // rate is always the successor Contract's approved amount — never the
+      // mutable Room master price, and never re-resolved here even if it has
+      // since changed. Source rate/prepaid basis are resolved below (see
+      // prepaidRentResolver.js) rather than assumed to be the predecessor
+      // Contract's approvedMonthlyRate verbatim: a structured reservation's
+      // approved rent (and what it actually prepaid) lives on its immutable
+      // pricingSnapshot, which can diverge from the Contract field over time.
       const moveInDate = readMoveInDate(reservation);
       const currentBillingCycle = moveInDate
         ? resolveCurrentBillingCycle(moveInDate, effectiveTransferDate)
         : null;
+      const { sourceEffectiveRate, sourceRateSource } = resolveSourceEffectiveRentForTransfer({
+        reservation,
+        predecessorContract,
+      });
+      const { applicablePrepaidRent, prepaidRentSource } =
+        await resolveApplicablePrepaidRentForTransfer({
+          reservation,
+          sourceEffectiveRate,
+          currentBillingCycle,
+          session,
+        });
       const settlement = calculateRoomTransferRentSettlement({
         periodStart: currentBillingCycle?.billingCycleStart || effectiveTransferDate,
         periodEnd: currentBillingCycle?.billingCycleEnd || effectiveTransferDate,
         transferDate: effectiveTransferDate,
-        sourceApprovedRate: predecessorContract.approvedMonthlyRate,
+        sourceApprovedRate: sourceEffectiveRate,
         destinationApprovedRate: successorContract.approvedMonthlyRate,
+        applicablePrepaidRent,
       });
       const proRataDays = settlement.sourceDays;
       const proRataRent = settlement.sourceConsumedValue;
@@ -810,8 +831,16 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
               proRataDays,
               proRataRent,
               // Full actual-days + unused-credit breakdown (new, additive).
-              sourceApprovedRate: predecessorContract.approvedMonthlyRate,
+              // sourceApprovedRate is the RESOLVED source-effective rent used to
+              // value consumed days (see sourceRateSource) — for a structured
+              // reservation with an approved discount this is
+              // pricingSnapshot.finalMonthlyRate, not necessarily the raw
+              // predecessor Contract field.
+              sourceApprovedRate: sourceEffectiveRate,
               destinationApprovedRate: successorContract.approvedMonthlyRate,
+              sourceRateSource,
+              applicablePrepaidRent,
+              prepaidRentSource,
               totalCoverageDays: settlement.totalCoverageDays,
               destinationDays: settlement.destinationDays,
               destinationProratedValue: settlement.destinationProratedValue,

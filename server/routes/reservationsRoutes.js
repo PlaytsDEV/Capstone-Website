@@ -63,6 +63,7 @@ import {
   archiveReservation,
   restoreReservation,
   renewContract,
+  previewRenewalPricing,
   createRenewalOffer,
   cancelRenewalOffer,
   respondToRenewalOffer,
@@ -677,6 +678,20 @@ router.put(
   filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   renewContract,
+);
+
+/**
+ * GET /api/reservations/:reservationId/renewal-offer/preview?months=N
+ * Read-only preview of the canonical room-type + duration pricing a
+ * renewal offer for this reservation would use (see createRenewalOffer).
+ */
+router.get(
+  "/:reservationId/renewal-offer/preview",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  previewRenewalPricing,
 );
 
 /**

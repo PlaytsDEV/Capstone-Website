@@ -45,6 +45,7 @@ export {
   archiveReservation,
   restoreReservation,
   renewContract,
+  previewRenewalPricing,
   createRenewalOffer,
   cancelRenewalOffer,
   respondToRenewalOffer,

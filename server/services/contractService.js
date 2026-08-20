@@ -14,7 +14,10 @@ import {
   resolveApplicantIdentity,
 } from "./contractGenerationDataService.js";
 import { resolveContractTemplate } from "./contractTemplateService.js";
-import { resolveContractLeasePricing } from "./contractPricingResolver.js";
+import {
+  resolveContractLeasePricing,
+  resolveAuthoritativeLeasePricing,
+} from "./contractPricingResolver.js";
 import { getBusinessSettings } from "../utils/businessSettings.js";
 import { resolveSecurityDeposit } from "../utils/depositUtils.js";
 
@@ -596,15 +599,48 @@ export const createReplacementContractForTransfer = async ({
     leaseStartDate && leaseEndDate ? Math.max(1, dayjs(leaseEndDate).diff(dayjs(leaseStartDate), "month")) : 1
   );
 
-  const targetRate = Number(targetRoom.monthlyPrice || targetRoom.price || 0);
   const settings = await getBusinessSettings();
-  const pricing = resolveContractLeasePricing({
-    room: targetRoom,
-    roomType: canonicalRoomType,
-    leaseDurationMonths,
-    approvedMonthlyRate: targetRate,
-    longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
-  });
+  // The destination Contract must snapshot the room-type + approved-term
+  // -correct rate from the same authoritative regular/discount table used
+  // everywhere else (resolveAuthoritativeLeasePricing) — never the
+  // destination Room's raw monthlyPrice/price master field, which is an
+  // admin-set input to pricing resolution, not a pre-validated approved rate
+  // (see the identical renewal-pricing fix above).
+  let authoritativePricing = null;
+  try {
+    authoritativePricing = resolveAuthoritativeLeasePricing({
+      room: targetRoom,
+      roomType: canonicalRoomType,
+      branch,
+      leaseDurationMonths,
+      settings,
+    });
+  } catch {
+    // Unsupported/legacy room type or invalid duration — fall back below
+    // rather than blocking the room-transfer replacement Contract.
+  }
+  const targetRate = Number(
+    authoritativePricing?.finalMonthlyRate ??
+      targetRoom.monthlyPrice ??
+      targetRoom.price ??
+      0,
+  );
+  const pricing = authoritativePricing
+    ? {
+        isLongTerm: authoritativePricing.isLongTerm,
+        leaseType: authoritativePricing.leaseType,
+        regularMonthlyRate: authoritativePricing.regularMonthlyRate,
+        discountPercentage: authoritativePricing.discountPercentage,
+        discountAmount: authoritativePricing.discountAmount,
+        approvedMonthlyRate: authoritativePricing.finalMonthlyRate,
+      }
+    : resolveContractLeasePricing({
+        room: targetRoom,
+        roomType: canonicalRoomType,
+        leaseDurationMonths,
+        approvedMonthlyRate: targetRate,
+        longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
+      });
 
   let resolvedTemplate = null;
   try {
@@ -661,9 +697,9 @@ export const createReplacementContractForTransfer = async ({
         leaseEndDate,
         leaseDurationMonths,
         regularMonthlyRate: pricing.regularMonthlyRate,
-        discountPercentage: 0,
-        discountType: "none",
-        discountAmount: 0,
+        discountPercentage: pricing.discountPercentage || 0,
+        discountType: pricing.discountPercentage > 0 ? "percentage" : "none",
+        discountAmount: pricing.discountAmount || 0,
         approvedMonthlyRate: pricing.approvedMonthlyRate,
         advanceRentAmount: 0,
         securityDepositAmount: oldContract.securityDepositAmount || 0,
@@ -700,6 +736,11 @@ export const createReplacementContractForTransfer = async ({
 // lookups elsewhere, e.g. autoGenerateTransferContract's Contract.findOne,
 // never see two "current" contracts for one reservation during the
 // FINAL + SCHEDULED window) and flips to true only at activation.
+// Mirrors ABANDONED_TRANSFER_SUCCESSOR_STATUSES above — a renewal successor
+// in one of these statuses does not count as a legitimate existing successor
+// (see the idempotency guard in createSuccessorContractForRenewal below).
+export const ABANDONED_RENEWAL_SUCCESSOR_STATUSES = new Set(["cancelled", "voided", "rejected", "archived"]);
+
 export const createSuccessorContractForRenewal = async ({
   reservationId,
   oldContract,
@@ -712,6 +753,29 @@ export const createSuccessorContractForRenewal = async ({
   }
   if (!newStay) {
     throw serviceError("The renewed Stay record is required for renewal.", "RENEWAL_STAY_REQUIRED", 400);
+  }
+
+  // Idempotency guard — one predecessor Contract may produce at most one
+  // legitimate renewal successor. Mirrors createReplacementContractForTransfer's
+  // guard exactly (replacesContractId + contractPurpose): a retried/duplicate
+  // call (network retry, retried background trigger, accidental re-invocation
+  // after the successor is already published/active) must reuse the existing
+  // successor rather than create Contract C, D, etc.
+  const existingSuccessors = await Contract.find({
+    replacesContractId: oldContract._id,
+    contractPurpose: "renewal",
+    status: { $nin: [...ABANDONED_RENEWAL_SUCCESSOR_STATUSES] },
+  }).session(session);
+  if (existingSuccessors.length > 1) {
+    throw serviceError(
+      "Multiple renewal successor Contracts already reference this Contract — admin repair required.",
+      "MULTIPLE_RENEWAL_SUCCESSORS",
+      409,
+      { predecessorId: String(oldContract._id), successorIds: existingSuccessors.map((c) => String(c._id)) },
+    );
+  }
+  if (existingSuccessors.length === 1) {
+    return existingSuccessors[0];
   }
 
   const reservation = await Reservation.findById(reservationId).session(session).lean();
@@ -730,15 +794,77 @@ export const createSuccessorContractForRenewal = async ({
   const leaseEndDate = newStay.leaseEndDate;
   const leaseDurationMonths = Math.max(1, dayjs(leaseEndDate).diff(dayjs(leaseStartDate), "month"));
 
-  const newRate = Number(newStay.monthlyRent || oldContract.approvedMonthlyRate || 0);
+  // The renewal successor Contract must snapshot the SAME approved pricing
+  // the tenant actually accepted — never a re-resolution against whatever
+  // BusinessSettings/Room pricing happen to be live at Contract-generation
+  // time (which could have changed between offer acceptance and this call).
+  // Prefer the exact accepted Reservation.renewalOffers[] entry (linked via
+  // newStay.renewalOfferId, set at acceptance in tenantActionService.js's
+  // renewStayWorkflow) when it was itself resolved canonically.
+  const acceptedOffer = newStay.renewalOfferId
+    ? (reservation.renewalOffers || []).find((offer) => offer.offerId === newStay.renewalOfferId)
+    : null;
+  const hasFrozenCanonicalOffer =
+    acceptedOffer?.pricingSource === "canonical_resolver" &&
+    Number.isFinite(Number(acceptedOffer.proposedRent)) &&
+    Number(acceptedOffer.proposedRent) > 0;
+
   const settings = await getBusinessSettings();
-  const pricing = resolveContractLeasePricing({
-    room: room || { type: canonicalRoomType, branch, monthlyPrice: newRate },
-    roomType: canonicalRoomType,
-    leaseDurationMonths,
-    approvedMonthlyRate: newRate,
-    longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
-  });
+  // Legacy/compatibility path: no linked accepted offer (renewal created
+  // outside the offer flow) or an offer predating canonical-pricing support
+  // — reconstruct the correct room-type + NEW-duration rate from the same
+  // authoritative regular/discount table the initial approval and room
+  // listings already use, rather than trusting newStay.monthlyRent (which
+  // could be duration-unaware) or the old Contract's now-stale rate. This is
+  // what previously let e.g. a 3-month Quadruple renewing to 6 months keep
+  // the short-term ₱6,300 instead of resolving to the long-term ₱5,400.
+  let authoritativePricing = null;
+  if (!hasFrozenCanonicalOffer) {
+    try {
+      authoritativePricing = resolveAuthoritativeLeasePricing({
+        room: room || { type: canonicalRoomType, branch },
+        roomType: canonicalRoomType,
+        branch,
+        leaseDurationMonths,
+        settings,
+      });
+    } catch {
+      // Unsupported/legacy room type or invalid duration — fall back below
+      // rather than blocking renewal Contract creation.
+    }
+  }
+  const newRate = Number(
+    (hasFrozenCanonicalOffer ? acceptedOffer.proposedRent : null) ??
+      authoritativePricing?.finalMonthlyRate ??
+      newStay.monthlyRent ??
+      oldContract.approvedMonthlyRate ??
+      0,
+  );
+  const pricing = hasFrozenCanonicalOffer
+    ? {
+        isLongTerm: acceptedOffer.pricingTier === "long_term",
+        leaseType: acceptedOffer.pricingTier || (leaseDurationMonths >= settings.longTermLeaseMinMonths ? "long_term" : "short_term"),
+        regularMonthlyRate: Number(acceptedOffer.regularMonthlyRate ?? acceptedOffer.proposedRent),
+        discountPercentage: Number(acceptedOffer.discountPercentage) || 0,
+        discountAmount: Math.max(0, Number(acceptedOffer.regularMonthlyRate ?? acceptedOffer.proposedRent) - Number(acceptedOffer.proposedRent)),
+        approvedMonthlyRate: Number(acceptedOffer.proposedRent),
+      }
+    : authoritativePricing
+      ? {
+          isLongTerm: authoritativePricing.isLongTerm,
+          leaseType: authoritativePricing.leaseType,
+          regularMonthlyRate: authoritativePricing.regularMonthlyRate,
+          discountPercentage: authoritativePricing.discountPercentage,
+          discountAmount: authoritativePricing.discountAmount,
+          approvedMonthlyRate: authoritativePricing.finalMonthlyRate,
+        }
+      : resolveContractLeasePricing({
+          room: room || { type: canonicalRoomType, branch, monthlyPrice: newRate },
+          roomType: canonicalRoomType,
+          leaseDurationMonths,
+          approvedMonthlyRate: newRate,
+          longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
+        });
 
   let resolvedTemplate = null;
   try {
@@ -797,9 +923,9 @@ export const createSuccessorContractForRenewal = async ({
         leaseEndDate,
         leaseDurationMonths,
         regularMonthlyRate: pricing.regularMonthlyRate,
-        discountPercentage: 0,
-        discountType: "none",
-        discountAmount: 0,
+        discountPercentage: pricing.discountPercentage || 0,
+        discountType: pricing.discountPercentage > 0 ? "percentage" : "none",
+        discountAmount: pricing.discountAmount || 0,
         approvedMonthlyRate: pricing.approvedMonthlyRate,
         advanceRentAmount: 0,
         securityDepositAmount: heldDeposit,
@@ -808,7 +934,9 @@ export const createSuccessorContractForRenewal = async ({
         pricingApprovalId: reservation._id,
         pricingApprovedBy: actorId,
         pricingApprovedAt: new Date(),
-        pricingApprovalNotes: `Auto-approved renewal pricing continuing Room ${oldContract.roomNumber}`,
+        pricingApprovalNotes: hasFrozenCanonicalOffer
+          ? `Renewal pricing from accepted offer ${acceptedOffer.offerId} (canonical, Room ${oldContract.roomNumber})`
+          : `Auto-approved renewal pricing continuing Room ${oldContract.roomNumber}`,
         advanceCoverageStart: leaseStartDate,
         advanceCoverageEnd: leaseStartDate ? dayjs(leaseStartDate).add(1, "month").subtract(1, "day").toDate() : null,
         depositAdjustment: {
