@@ -7,6 +7,7 @@ import { resolveDepositFromPaymentInfo } from "../../../shared/utils/depositUtil
 import { formatBedPosition, getBedDisplayLabel, getBedShortCode } from "../../../shared/utils/bedIdentifier";
 import { reservationApi } from "../../../shared/api/reservationApi";
 import { showNotification } from "../../../shared/utils/notification";
+import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { Clock, History, ChevronLeft, ChevronRight, Download, CheckCircle2, LogOut, LoaderCircle, AlertTriangle, ArrowRight } from "lucide-react";
 
 const fmtDate = (value) =>
@@ -91,9 +92,16 @@ export function RenewLeaseModal({
   const [newLeaseStartDate, setNewLeaseStartDate] = useState("");
   const [newLeaseEndDate, setNewLeaseEndDate] = useState("");
   const [offerMonths, setOfferMonths] = useState(6);
-  const [proposedRent, setProposedRent] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [notes, setNotes] = useState("");
+  // Canonical room-type + duration pricing, resolved server-side from the
+  // SAME resolver createRenewalOffer itself uses — never computed here.
+  // proposedRent is not user-editable: custom/negotiated renewal pricing is
+  // not a supported workflow (see server tenancyActionsController.js).
+  const [pricingPreview, setPricingPreview] = useState(null);
+  const [pricingLoading, setPricingLoading] = useState(false);
+  const [pricingError, setPricingError] = useState(null);
+  const [showOfferConfirm, setShowOfferConfirm] = useState(false);
 
   const currentEndRaw =
     context?.currentStay?.leaseEndDate ||
@@ -125,11 +133,46 @@ export function RenewLeaseModal({
     setNewLeaseEndDate(initialEnd);
     setSelectedDuration(6);
     setOfferMonths(6);
-    setProposedRent(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || "");
     setExpiresAt(toDateInputValue(expiry));
     setNotes("");
     setMode("direct");
+    setPricingPreview(null);
+    setPricingError(null);
   }, [open, detail, context, tenant, currentEndRaw]);
+
+  // Fetch the canonical pricing preview whenever the offer duration changes
+  // — the admin never types a rate; the backend resolves it from room type
+  // + duration (resolveAuthoritativeLeasePricing), the same resolver that
+  // creates the offer and later the successor Contract.
+  useEffect(() => {
+    if (!open || mode !== "offer" || !tenant?.reservationId) return;
+    const months = Number(offerMonths);
+    if (!Number.isFinite(months) || months < 1 || months > 12) {
+      setPricingPreview(null);
+      setPricingError(months > 12 ? "Renewal offers support 1–12 months." : null);
+      return;
+    }
+    let cancelled = false;
+    setPricingLoading(true);
+    setPricingError(null);
+    reservationApi
+      .previewRenewalPricing(tenant.reservationId, months)
+      .then((data) => {
+        if (!cancelled) setPricingPreview(data);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setPricingPreview(null);
+          setPricingError(err?.message || "Could not resolve pricing for this room/duration.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPricingLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, mode, offerMonths, tenant?.reservationId]);
 
   const handleSelectDuration = (months) => {
     if (months === "custom") {
@@ -151,16 +194,20 @@ export function RenewLeaseModal({
   const extensionHistory =
     context?.renewalHistory || detail?.leaseInfo?.extensionHistory || [];
 
+  const submitOffer = () => {
+    if (onOfferSubmit) {
+      onOfferSubmit({
+        months: Number(offerMonths) || 6,
+        expiresAt,
+        notes,
+      });
+    }
+    setShowOfferConfirm(false);
+  };
+
   const handleConfirm = () => {
     if (mode === "offer") {
-      if (onOfferSubmit) {
-        onOfferSubmit({
-          months: Number(offerMonths) || 6,
-          proposedRent: proposedRent ? Number(proposedRent) : null,
-          expiresAt,
-          notes,
-        });
-      }
+      setShowOfferConfirm(true);
     } else {
       onSubmit({ newLeaseStartDate, newLeaseEndDate, notes });
     }
@@ -184,7 +231,11 @@ export function RenewLeaseModal({
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--primary"
-            disabled={loading || (mode === "direct" && !newLeaseEndDate)}
+            disabled={
+              loading ||
+              (mode === "direct" && !newLeaseEndDate) ||
+              (mode === "offer" && (pricingLoading || !pricingPreview))
+            }
             onClick={handleConfirm}
           >
             {loading ? (
@@ -309,17 +360,7 @@ export function RenewLeaseModal({
               <option value={3}>3 Months</option>
               <option value={6}>6 Months</option>
               <option value={12}>12 Months (1 Year)</option>
-              <option value={24}>24 Months (2 Years)</option>
             </select>
-          </label>
-          <label className="tenant-modal-field">
-            <span>Proposed Monthly Rent (₱)</span>
-            <input
-              type="number"
-              placeholder="Leave blank for current rent"
-              value={proposedRent}
-              onChange={(e) => setProposedRent(e.target.value)}
-            />
           </label>
           <label className="tenant-modal-field">
             <span>Offer Expiry Date</span>
@@ -329,6 +370,50 @@ export function RenewLeaseModal({
               onChange={(e) => setExpiresAt(e.target.value)}
             />
           </label>
+        </div>
+      )}
+
+      {mode === "offer" && (
+        <div className="bg-muted/40 border border-border/80 rounded-xl p-3.5 mb-5 space-y-1.5 shadow-2xs">
+          <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+            Canonical Renewal Pricing
+          </div>
+          {pricingLoading ? (
+            <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <LoaderCircle className="w-3.5 h-3.5 animate-spin" /> Resolving pricing…
+            </div>
+          ) : pricingError ? (
+            <div className="text-xs text-destructive">{pricingError}</div>
+          ) : pricingPreview ? (
+            <>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Room Type</span>
+                <span className="font-semibold text-foreground capitalize">
+                  {String(pricingPreview.roomType || "").replace(/-/g, " ")}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Pricing Tier</span>
+                <span className="font-semibold text-foreground">
+                  {pricingPreview.pricingTier === "long_term" ? "Long Term" : "Short Term"}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Regular Monthly Rate</span>
+                <span className="text-foreground">{fmtMoney(pricingPreview.regularMonthlyRate)}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Discount</span>
+                <span className="text-foreground">{pricingPreview.discountPercentage || 0}%</span>
+              </div>
+              <div className="flex justify-between text-sm pt-1 border-t border-border/60">
+                <span className="font-semibold text-foreground">Final Monthly Rate</span>
+                <span className="font-bold text-primary">{fmtMoney(pricingPreview.finalMonthlyRate)}</span>
+              </div>
+            </>
+          ) : (
+            <div className="text-xs text-muted-foreground">Select a duration to resolve pricing.</div>
+          )}
         </div>
       )}
 
@@ -414,6 +499,20 @@ export function RenewLeaseModal({
           </div>
         )}
       </div>
+      <ConfirmModal
+        isOpen={showOfferConfirm}
+        onClose={() => setShowOfferConfirm(false)}
+        onConfirm={submitOffer}
+        loading={loading}
+        variant="info"
+        title="Create Renewal Offer?"
+        confirmText="Create Offer"
+        message={
+          pricingPreview
+            ? `${String(pricingPreview.roomType || "").replace(/-/g, " ")} • ${offerMonths} month${offerMonths === 1 ? "" : "s"} (${pricingPreview.pricingTier === "long_term" ? "Long Term" : "Short Term"}) • Regular ${fmtMoney(pricingPreview.regularMonthlyRate)} → Final ${fmtMoney(pricingPreview.finalMonthlyRate)} (${pricingPreview.discountPercentage || 0}% off). The tenant will be offered this exact rate.`
+            : "The tenant will be offered the canonical rate resolved above."
+        }
+      />
     </TenantModalShell>
   );
 }

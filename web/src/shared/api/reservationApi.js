@@ -403,6 +403,14 @@ export const reservationApi = {
     authFetch(`/reservations/room-meter-baseline/${roomId}`),
 
   /**
+   * Read-only preview of the canonical room-type + duration pricing a
+   * renewal offer would use (admin only) — same resolver createRenewalOffer
+   * itself uses, so the preview and the created offer can never disagree.
+   */
+  previewRenewalPricing: (reservationId, months) =>
+    authFetch(`/reservations/${reservationId}/renewal-offer/preview?months=${encodeURIComponent(months)}`),
+
+  /**
    * Create lease renewal offer (admin only)
    */
   createRenewalOffer: (reservationId, data) =>
