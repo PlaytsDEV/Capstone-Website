@@ -118,6 +118,10 @@ await jest.unstable_mockModule("./rentGenerator.js", () => ({
   generateAutomatedRentBills: jest.fn(),
 }));
 
+await jest.unstable_mockModule("../services/contractRenewalActivationService.js", () => ({
+  activateDueRenewalContracts: jest.fn(),
+}));
+
 await jest.unstable_mockModule("./announcementDispatch.js", () => ({
   dispatchDueScheduledAnnouncements,
 }));

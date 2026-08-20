@@ -7,8 +7,10 @@ describe("autoContractOrchestratorService", () => {
   let mockContractFindOne;
   let mockReservationFindById;
   let mockUserFindById;
+  let autoGenerateRenewalContract;
   let mockCreateDraftContract;
   let mockCreateReplacementContractForTransfer;
+  let mockCreateSuccessorContractForRenewal;
   let mockValidateContractForGeneration;
   let mockTransitionContract;
   let mockGeneratePreparedContractPdf;
@@ -22,6 +24,7 @@ describe("autoContractOrchestratorService", () => {
     mockUserFindById = jest.fn();
     mockCreateDraftContract = jest.fn();
     mockCreateReplacementContractForTransfer = jest.fn();
+    mockCreateSuccessorContractForRenewal = jest.fn();
     mockValidateContractForGeneration = jest.fn().mockResolvedValue({
       valid: true,
       status: "ready_for_generation",
@@ -52,6 +55,7 @@ describe("autoContractOrchestratorService", () => {
     jest.unstable_mockModule("./contractService.js", () => ({
       createDraftContract: mockCreateDraftContract,
       createReplacementContractForTransfer: mockCreateReplacementContractForTransfer,
+      createSuccessorContractForRenewal: mockCreateSuccessorContractForRenewal,
       validateContractForGeneration: mockValidateContractForGeneration,
       transitionContract: mockTransitionContract,
     }));
@@ -77,6 +81,7 @@ describe("autoContractOrchestratorService", () => {
     const mod = await import("./autoContractOrchestratorService.js");
     autoGenerateMoveInContract = mod.autoGenerateMoveInContract;
     autoGenerateTransferContract = mod.autoGenerateTransferContract;
+    autoGenerateRenewalContract = mod.autoGenerateRenewalContract;
   });
 
   describe("autoGenerateMoveInContract", () => {
@@ -280,6 +285,79 @@ describe("autoContractOrchestratorService", () => {
       expect(mockGeneratePreparedContractPdf).toHaveBeenCalledWith(
         expect.objectContaining({ contractId: replacementId }),
       );
+    });
+  });
+
+  describe("autoGenerateRenewalContract", () => {
+    test("creates a renewal successor, validates, and generates PDF without touching the old contract", async () => {
+      const resId = new mongoose.Types.ObjectId();
+      const oldContractId = new mongoose.Types.ObjectId();
+      const successorId = new mongoose.Types.ObjectId();
+      const actorId = new mongoose.Types.ObjectId();
+
+      const oldContract = {
+        _id: oldContractId,
+        contractNumber: "LIL-MNL-2026-00001",
+        version: 1,
+        status: "active",
+        branch: "manila",
+        roomNumber: "101",
+      };
+
+      const successorDoc = {
+        _id: successorId,
+        contractNumber: "LIL-MNL-2026-00006",
+        version: 2,
+        status: "draft",
+        branch: "manila",
+        roomNumber: "101",
+        tenantId: "tenant123",
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      mockCreateSuccessorContractForRenewal.mockResolvedValue(successorDoc);
+      mockGeneratePreparedContractPdf.mockResolvedValue({
+        contract: { ...successorDoc, status: "generated" },
+      });
+      mockUserFindById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({ firstName: "Juan", lastName: "Dela Cruz" }),
+        }),
+      });
+
+      const result = await autoGenerateRenewalContract({
+        reservationId: resId,
+        oldContract,
+        newStay: { _id: "stay456", leaseStartDate: new Date(), leaseEndDate: new Date(), monthlyRent: 6800 },
+        actorId,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.successorContractId).toBe(String(successorId));
+      expect(mockCreateSuccessorContractForRenewal).toHaveBeenCalledWith(
+        expect.objectContaining({ reservationId: resId, oldContract }),
+      );
+      expect(mockGeneratePreparedContractPdf).toHaveBeenCalledWith(
+        expect.objectContaining({ contractId: successorId }),
+      );
+      // The old contract is passed through untouched — no status/isCurrent
+      // mutation happens in this orchestrator (that only ever happens in
+      // contractRenewalActivationService at the successor's effective date).
+      expect(oldContract.status).toBe("active");
+      expect(oldContract.isCurrent).toBeUndefined();
+    });
+
+    test("returns a non-throwing failure when no current contract is provided", async () => {
+      const resId = new mongoose.Types.ObjectId();
+      const result = await autoGenerateRenewalContract({
+        reservationId: resId,
+        oldContract: null,
+        newStay: { _id: "stay456" },
+        actorId: new mongoose.Types.ObjectId(),
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("PREVIOUS_CONTRACT_REQUIRED");
+      expect(mockCreateSuccessorContractForRenewal).not.toHaveBeenCalled();
     });
   });
 });

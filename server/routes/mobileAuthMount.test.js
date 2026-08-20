@@ -24,7 +24,10 @@ jest.unstable_mockModule("../middleware/mobileTenantAuth.js", () => ({
 }));
 jest.unstable_mockModule("../services/tenantContractViewService.js", () => ({ toTenantContractView: jest.fn() }));
 jest.unstable_mockModule("../services/contractPublicationService.js", () => ({ resolvePublishedFinalDocument: jest.fn() }));
-jest.unstable_mockModule("../services/tenantContractSelectionService.js", () => ({ resolveTenantCanonicalContract: jest.fn() }));
+jest.unstable_mockModule("../services/tenantContractSelectionService.js", () => ({
+  resolveTenantCanonicalContract: jest.fn(),
+  resolveTenantUpcomingContract: jest.fn(),
+}));
 jest.unstable_mockModule("../services/preparedContractDocumentService.js", () => ({
   resolveCurrentPreparedDocument: jest.fn(),
   selectCurrentPreparedDocument: jest.fn(),
