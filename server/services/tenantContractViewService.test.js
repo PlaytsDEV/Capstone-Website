@@ -113,6 +113,29 @@ describe("tenant Contract safe view", () => {
     expect(JSON.stringify(published)).not.toContain("private/final.pdf");
   });
 
+  test("exposes a final document for an admin_scan (wet-signed) finalization with no notarizationVerifiedAt", () => {
+    const wetSigned = toTenantContractView({
+      _id: "contract-2",
+      status: "published",
+      tenantVisible: true,
+      finalStorageKey: "private/wet-signed-final.pdf",
+      publishedAt: new Date(),
+      notarizationVerifiedAt: null,
+      finalDocument: {
+        fileName: "wet-signed-final.pdf",
+        fileSize: 456,
+        pageCount: 2,
+        sourceType: "admin_scan",
+        publishedAt: new Date(),
+      },
+    });
+    expect(wetSigned.finalDocument).toMatchObject({
+      available: true,
+      fileName: "wet-signed-final.pdf",
+      viewUrl: "/api/contracts/my/contract-2/documents/final",
+    });
+  });
+
   test("populates unified tenantDocument for draft and final states", () => {
     const draftContract = {
       _id: "contract-draft",

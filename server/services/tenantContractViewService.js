@@ -38,9 +38,14 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
   const currentDocument = Object.prototype.hasOwnProperty.call(options, "preparedDocument")
     ? options.preparedDocument
     : selectCurrentPreparedDocument(contract);
+  // notarizationVerifiedAt only applies to the optional notarized pipeline —
+  // an admin_scan (wet-signed upload) finalDocument is final on upload and
+  // never sets it, so requiring it here left this field permanently
+  // `available: false` for the now-standard finalization path. Status and
+  // tenantVisible are kept as defense-in-depth against a finalDocument set
+  // outside the publish-family status range.
   const finalPublished = ["published", "active", "expiring_soon", "expired"]
     .includes(contract.status)
-    && Boolean(contract.notarizationVerifiedAt)
     && contract.tenantVisible === true
     && Boolean(contract.finalDocument);
   const displayLifecycle = resolveContractDisplayLifecycle(contract, now);
