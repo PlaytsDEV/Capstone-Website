@@ -24,6 +24,10 @@ import {
   utilityEventTypesForQuery,
 } from "./lifecycleNaming.js";
 import { resolveSecurityDeposit } from "./depositUtils.js";
+import {
+  activateRoomTransferSuccessor,
+  resolveRoomTransferSuccessor,
+} from "../services/contractRoomTransferActivationService.js";
 import { createNotification } from "../services/notifications/notificationService.js";
 
 const normalizeDate = (value, endOfDay = false) => {
@@ -510,6 +514,42 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         throw Object.assign(new Error("Selected target bed is not available."), { statusCode: 409, code: "BED_NOT_AVAILABLE" });
       }
 
+      // ── Legal readiness gate — resolved and validated BEFORE any physical
+      // mutation below. A room transfer may only physically execute once a
+      // prepared, wet-signed replacement Contract already exists for the
+      // exact destination room; see contractRoomTransferActivationService.js
+      // for the canonical resolver/activator this reuses (no duplicated
+      // Contract transition logic here).
+      const predecessorContract = await Contract.findOne({
+        reservationId: reservation._id,
+        isCurrent: true,
+      }).session(session).sort({ version: -1, createdAt: -1 });
+      if (!predecessorContract || predecessorContract.status !== "active") {
+        throw Object.assign(
+          new Error("The tenant's current Contract is not active — room transfer cannot proceed."),
+          { statusCode: 409, code: "ROOM_TRANSFER_PREDECESSOR_NOT_ACTIVE" },
+        );
+      }
+      const successorContract = await resolveRoomTransferSuccessor({
+        predecessorContractId: predecessorContract._id,
+        session,
+      });
+      if (String(successorContract.roomId) !== String(targetRoom._id)) {
+        throw Object.assign(
+          new Error("The prepared replacement Contract does not match the selected destination room."),
+          { statusCode: 409, code: "ROOM_TRANSFER_CONTRACT_ROOM_MISMATCH" },
+        );
+      }
+      if (successorContract.status !== "published" || !successorContract.finalDocument) {
+        throw Object.assign(
+          new Error(
+            "The replacement Contract for this room transfer is not yet finalized — upload the " +
+            "wet-signed Contract before executing the transfer.",
+          ),
+          { statusCode: 422, code: "ROOM_TRANSFER_CONTRACT_NOT_FINAL" },
+        );
+      }
+
       const currentRoom = await Room.findById(activeStay.roomId).session(session);
       if (!currentRoom) {
         throw Object.assign(new Error("Current room not found."), { statusCode: 404, code: "CURRENT_ROOM_NOT_FOUND" });
@@ -838,7 +878,25 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       reservation.latestStayStatus = activeStay.status;
       await reservation.save({ session });
 
+      // ── Contract cutover — last step before commit. Participates in this
+      // same transaction (session passed through): a failure here rolls
+      // back every physical mutation above via session.withTransaction's
+      // automatic abort; success here can never be reached if any physical
+      // mutation above already failed. This is the single Contract
+      // transition authority — no manual status/isCurrent mutation here.
+      const cutover = await activateRoomTransferSuccessor({
+        successorContractId: successorContract._id,
+        actorId,
+        session,
+      });
+
       result = {
+        contractCutover: {
+          predecessorContractId: String(predecessorContract._id),
+          successorContractId: String(successorContract._id),
+          predecessorStatus: cutover.predecessor?.status || predecessorContract.status,
+          successorStatus: cutover.successor?.status || successorContract.status,
+        },
         reservation,
         stay: activeStay.toObject(),
         fromRoomName: currentRoom.name || currentRoom.roomNumber || "Unknown room",
@@ -920,25 +978,15 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       ).catch(() => {});
     }
 
-    // ── Automated Contract Lineage & Replacement Generation ─────────────
-    try {
-      const { autoGenerateTransferContract } = await import("../services/autoContractOrchestratorService.js");
-      const targetRoomDoc = await Room.findById(payload.targetRoomId || payload.newRoomId).lean();
-      if (targetRoomDoc) {
-        autoGenerateTransferContract({
-          reservationId,
-          activeStay: result.stay,
-          targetRoom: targetRoomDoc,
-          targetBed: { id: payload.targetBedId || payload.newBedId, label: result.toRoomDetails?.assignedBedId },
-          effectiveTransferDate: payload.effectiveTransferDate || new Date(),
-          actorId,
-        }).catch((err) => {
-          logger.warn({ err, reservationId }, "[TransferWorkflow] Background replacement contract auto-generation failed (non-fatal)");
-        });
-      }
-    } catch (contractImportErr) {
-      logger.warn({ err: contractImportErr }, "[TransferWorkflow] Auto contract orchestrator invocation error");
-    }
+    // Contract lineage: the replacement Contract must already exist and be
+    // legally final before this function is ever allowed to reach here (see
+    // the legal readiness gate near the top of the transaction, and
+    // activateRoomTransferSuccessor's call right before commit above) — so,
+    // unlike the old behavior, there is nothing left to generate here after
+    // the fact. Preparing a replacement Contract ahead of execution is done
+    // via the dedicated prepareRoomTransferContract admin action
+    // (server/controllers/reservations/tenancyActionsController.js), which
+    // reuses autoGenerateTransferContract directly.
 
     return result;
   }

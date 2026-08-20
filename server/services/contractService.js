@@ -530,7 +530,7 @@ export const findCurrentContract = (filter) =>
 // after the successor has already been activated still returns the existing
 // Contract instead of creating a duplicate (see the idempotency guard in
 // createReplacementContractForTransfer below).
-const ABANDONED_TRANSFER_SUCCESSOR_STATUSES = new Set(["cancelled", "voided", "rejected", "archived"]);
+export const ABANDONED_TRANSFER_SUCCESSOR_STATUSES = new Set(["cancelled", "voided", "rejected", "archived"]);
 
 export const createReplacementContractForTransfer = async ({
   reservationId,

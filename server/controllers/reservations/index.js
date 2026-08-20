@@ -52,6 +52,7 @@ export {
   moveOutReservation,
   checkoutReservation,
   transferTenant,
+  prepareRoomTransferContract,
   processDepositRefund,
   cancelTransferAction,
   cancelMoveOutAction,

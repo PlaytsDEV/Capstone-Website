@@ -724,6 +724,105 @@ export const transferTenant = async (req, res, next) => {
   }
 };
 
+// Prepares the legal paperwork for a room transfer WITHOUT touching any
+// physical state (Room/Bed/Stay/Reservation) — reuses the existing,
+// unmodified autoGenerateTransferContract pipeline directly. This exists
+// because transferStayWorkflow now REQUIRES a final, wet-signed replacement
+// Contract to already exist before it will physically move a tenant (see
+// its "legal readiness gate"); previously Contract generation only ever
+// happened automatically after the physical transfer, which would make
+// transfer permanently unusable once that gate exists without this
+// separate preparation step.
+export const prepareRoomTransferContract = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const reservation = await Reservation.findById(reservationId).populate("roomId");
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    }
+    if (!hasReservationStatus(reservation.status, "moveIn")) {
+      return res.status(400).json({
+        error: "Only moved-in tenants can have a room-transfer Contract prepared.",
+        code: "INVALID_STATUS_FOR_TRANSFER",
+      });
+    }
+    const denied = checkBranchAccess(res, req.branchFilter, reservation.roomId?.branch);
+    if (denied) return;
+
+    const targetRoomId = req.body.targetRoomId || req.body.newRoomId;
+    const targetBedId = req.body.targetBedId || req.body.newBedId;
+    if (!targetRoomId || !targetBedId) {
+      return res.status(400).json({ error: "Target room and bed are required.", code: "MISSING_TRANSFER_FIELDS" });
+    }
+
+    const { Room, Stay } = await import("../../models/index.js");
+    const targetRoomDoc = await Room.findById(targetRoomId).lean();
+    if (!targetRoomDoc) {
+      return res.status(404).json({ error: "Target room not found.", code: "TARGET_ROOM_NOT_FOUND" });
+    }
+    if (String(targetRoomDoc.branch) !== String(reservation.roomId?.branch || "")) {
+      return res.status(400).json({
+        error: "Transfers are limited to rooms within the same branch.",
+        code: "CROSS_BRANCH_TRANSFER_NOT_ALLOWED",
+      });
+    }
+    const targetBed = (targetRoomDoc.beds || []).find(
+      (bed) => String(bed.id) === String(targetBedId) || String(bed._id) === String(targetBedId),
+    );
+    if (!targetBed) {
+      return res.status(404).json({ error: "Target bed not found.", code: "TARGET_BED_NOT_FOUND" });
+    }
+
+    const activeStay = await Stay.findOne({ reservationId: reservation._id, status: "active" });
+    if (!activeStay) {
+      return res.status(400).json({ error: "No active stay found for this reservation.", code: "NO_ACTIVE_STAY" });
+    }
+
+    const actor = await findDbUser(req.user.uid);
+    const { autoGenerateTransferContract } = await import("../../services/autoContractOrchestratorService.js");
+    const generation = await autoGenerateTransferContract({
+      reservationId,
+      activeStay,
+      targetRoom: targetRoomDoc,
+      targetBed: { id: targetBed.id || String(targetBed._id), label: targetBed.position || "" },
+      effectiveTransferDate: req.body.effectiveTransferDate ? new Date(req.body.effectiveTransferDate) : new Date(),
+      actorId: actor?._id || null,
+    });
+
+    if (!generation.success) {
+      return res.status(422).json({
+        error: generation.error || "Failed to prepare the room-transfer replacement Contract.",
+        code: generation.code || "TRANSFER_CONTRACT_PREPARATION_FAILED",
+      });
+    }
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      {},
+      { replacementContractId: generation.replacementContractId },
+      `Room-transfer replacement Contract prepared for Room ${targetRoomDoc.roomNumber || targetRoomDoc.name}`,
+    );
+
+    res.status(201).json({
+      message: "Room-transfer replacement Contract prepared.",
+      contractId: generation.replacementContractId,
+      contractNumber: generation.contractNumber,
+      incomplete: Boolean(generation.incomplete),
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Prepare room transfer contract error");
+    await auditLogger.logError(req, error, "Failed to prepare room transfer contract");
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code || "TRANSFER_CONTRACT_PREPARATION_FAILED" });
+    }
+    handleReservationError(res, error, "prepare room transfer contract");
+  }
+};
+
 export const processDepositRefund = async (req, res, next) => {
   try {
     const { reservationId } = req.params;
