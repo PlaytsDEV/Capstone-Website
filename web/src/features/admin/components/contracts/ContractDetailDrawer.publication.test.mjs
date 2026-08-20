@@ -22,7 +22,8 @@ test("publication review is server-backed and requires all checklist confirmatio
 test("published panel exposes final metadata without an unpublish action", () => {
   assert.match(drawer, /Final Contract Published/);
   assert.match(drawer, /Published date/);
-  assert.match(drawer, /Source notarized version/);
+  assert.match(drawer, /<dt>Source<\/dt>/);
+  assert.match(drawer, /<dt>Source document version<\/dt>/);
   assert.match(drawer, /View Final Contract/);
   assert.doesNotMatch(drawer, /Unpublish/);
 });
