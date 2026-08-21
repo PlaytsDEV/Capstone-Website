@@ -117,7 +117,15 @@ export default function DigitalContractPaper({
   // sample address silently substituted for missing data is exactly the
   // class of bug this replaces (a real tenant's contract must never render
   // another address that looks legitimate but isn't theirs).
-  const tenantAddress = stayData?.tenantResidentialAddress || contract?.tenantResidentialAddress || "—";
+  // contract.tenantAddress is the raw Contract schema field name (see
+  // Contract.js) — tenantResidentialAddress is the alias
+  // tenantContractViewService.js/digitalStayProofService.js expose on their
+  // computed views. Accept both so a caller passing the raw Contract record
+  // (e.g. Admin Web's /contracts list, before its own canonical fetch
+  // resolves) still renders the tenant's real address instead of falling
+  // through to "—".
+  const tenantAddress = stayData?.tenantResidentialAddress || contract?.tenantResidentialAddress
+    || contract?.tenantAddress || "—";
   const roomNumber = stayData?.roomNumber || contract?.roomNumber || (isPrivate ? "GP-803" : "GP-305");
   const bedSlot = isPrivate ? "Entire Room" : (stayData?.bedLabel || contract?.bedLabel || "upper");
 
@@ -125,7 +133,7 @@ export default function DigitalContractPaper({
     ? "LILYCREST GUADALUPE"
     : "LILYCREST GIL PUYAT";
 
-  const branchAddress = stayData?.propertyAddress || (String(stayData?.branch || contract?.branch || "").toLowerCase().includes("guadalupe")
+  const branchAddress = stayData?.propertyAddress || contract?.propertyAddress || (String(stayData?.branch || contract?.branch || "").toLowerCase().includes("guadalupe")
     ? "9431 Magallanes St., Guadalupe Nuevo, Makati City"
     : "#7 Gil Puyat Ave. corner Marconi St., Makati City");
 
