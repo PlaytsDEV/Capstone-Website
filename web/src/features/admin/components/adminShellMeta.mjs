@@ -14,11 +14,6 @@ const PAGE_META = {
     description:
       "Handle renewals, transfers, move-out actions, and current-stay visibility in one workspace.",
   },
-  "/admin/contracts": {
-    title: "Contracts",
-    description:
-      "Create, verify, generate, and review versioned prepared Contract copies from official templates.",
-  },
   "/admin/users": {
     title: "Accounts & Access",
     description:
@@ -170,18 +165,6 @@ const PAGE_TAB_META = {
 
 export function getPageMeta(pathname, search = "") {
   const params = new URLSearchParams(search);
-
-  if (pathname.startsWith("/admin/contracts/")) {
-    const base = PAGE_META["/admin/contracts"];
-    return {
-      ...base,
-      breadcrumbs: [
-        { label: "Admin", href: "/admin/dashboard" },
-        { label: "Contracts", href: "/admin/contracts" },
-        { label: "Contract Details" },
-      ],
-    };
-  }
 
   if (pathname === "/admin/analytics/details") {
     const tab = params.get("tab") || "occupancy";

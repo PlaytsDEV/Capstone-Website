@@ -56,16 +56,6 @@ const BASE_NAV_ITEMS = [
     keywords: ["tenants", "occupants", "move out", "transfer", "profiles"],
   },
   {
-    id: "nav-contracts",
-    label: "Contracts & Leases",
-    subtext: "View tenant contracts, terms, and digital agreements",
-    to: "/admin/contracts",
-    icon: FileText,
-    group: "Navigation",
-    permission: "manageTenants",
-    keywords: ["contracts", "leases", "agreements", "signatures", "documents"],
-  },
-  {
     id: "nav-rooms",
     label: "Room Availability",
     subtext: "Inspect bed occupancy, floor maps, and room configs",

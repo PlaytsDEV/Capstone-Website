@@ -8,7 +8,6 @@ import {
   ReservationsPage,
   RoomAvailabilityPage,
   TenantsWorkspacePage,
-  AdminContractsPage,
   AuditLogsPage,
   UserManagementPage,
   AdminBillingPage,
@@ -95,25 +94,10 @@ export function AdminRoutes() {
           </RequirePermission>
         }
       />
-      <Route
-        path="contracts"
-        element={
-          <RequirePermission permission="manageTenants">
-            <RouteShell name="Contracts" fallback={<AdminTablePageSkeleton />}>
-              <AdminContractsPage />
-            </RouteShell>
-          </RequirePermission>
-        }
-      />
+      <Route path="contracts" element={<Navigate to="/admin/tenants" replace />} />
       <Route
         path="contracts/:contractId"
-        element={
-          <RequirePermission permission="manageTenants">
-            <RouteShell name="Contracts" fallback={<AdminTablePageSkeleton />}>
-              <AdminContractsPage />
-            </RouteShell>
-          </RequirePermission>
-        }
+        element={<Navigate to="/admin/tenants" replace />}
       />
       <Route
         path="audit-logs"
