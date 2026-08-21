@@ -672,6 +672,13 @@ export default function TenantDetailModal({
   const [digitalContractData, setDigitalContractData] = useState(null);
   const [activeDigitalContract, setActiveDigitalContract] = useState(null);
   const [loadingDigitalContract, setLoadingDigitalContract] = useState(false);
+  const [digitalContractError, setDigitalContractError] = useState("");
+  // Guards against an earlier tenant's slow/late-resolving stay-proof
+  // fetch overwriting a later tenant's freshly-opened preview — this modal
+  // instance is reused across different tenants (no per-tenant remount), so
+  // without this a stale response can land after the admin has already
+  // switched to someone else's record.
+  const digitalContractRequestRef = useRef(0);
 
   // Tenant Rule Violations & Formal Warnings state
   const [tenantViolations, setTenantViolations] = useState([]);
@@ -777,6 +784,18 @@ export default function TenantDetailModal({
     };
   }, [fetchedDetail, initialTenant, reservationId]);
 
+  // This modal instance is reused across different tenants (no per-tenant
+  // remount from the parent), so Digital Contract preview state from a
+  // previously viewed tenant must never survive a switch to another one.
+  useEffect(() => {
+    digitalContractRequestRef.current += 1;
+    setShowDigitalContractModal(false);
+    setDigitalContractData(null);
+    setDigitalContractError("");
+    setActiveDigitalContract(null);
+    setLoadingDigitalContract(false);
+  }, [reservationId]);
+
   const fetchTenantViolations = useCallback(async () => {
     const targetTenantId =
       fetchedDetail?.tenantId ||
@@ -843,7 +862,13 @@ export default function TenantDetailModal({
       (specificContract && typeof specificContract === "object")
         ? specificContract
         : dedicatedContract;
+    const requestId = ++digitalContractRequestRef.current;
     setActiveDigitalContract(selectedContract);
+    // Clear the previous tenant/contract's preview data immediately so a
+    // slow request can never leave stale values on screen behind the
+    // loading state.
+    setDigitalContractData(null);
+    setDigitalContractError("");
     setLoadingDigitalContract(true);
     setShowDigitalContractModal(true);
     try {
@@ -861,13 +886,19 @@ export default function TenantDetailModal({
         initialTenant?._id ||
         initialTenant?.id;
       const res = await contractApi.getStayProofData(targetId);
+      if (digitalContractRequestRef.current !== requestId) return; // superseded by a newer open
       if (res?.stayProof) {
         setDigitalContractData(res.stayProof);
+      } else {
+        setDigitalContractError("The current contract details are unavailable for this tenant.");
       }
-    } catch {
-      // fallback to tenant local fields if error
+    } catch (err) {
+      if (digitalContractRequestRef.current !== requestId) return; // superseded by a newer open
+      setDigitalContractError(
+        err?.response?.data?.error || "Unable to load the current contract details. Please try again.",
+      );
     } finally {
-      setLoadingDigitalContract(false);
+      if (digitalContractRequestRef.current === requestId) setLoadingDigitalContract(false);
     }
   };
 
@@ -3129,24 +3160,24 @@ export default function TenantDetailModal({
           </div>
         </div>
 
-        {loadingDigitalContract && !digitalContractData ? (
+        {loadingDigitalContract ? (
           <div className="py-16 text-center text-muted-foreground text-xs animate-pulse">
             Loading contract data and legal clauses…
           </div>
+        ) : digitalContractError && !digitalContractData ? (
+          <div className="py-16 text-center space-y-3">
+            <p className="text-xs text-red-600 dark:text-red-400 max-w-sm mx-auto">{digitalContractError}</p>
+            <button
+              type="button"
+              onClick={() => handleOpenDigitalContract(activeDigitalContract || dedicatedContract)}
+              className="text-xs font-medium text-primary hover:underline cursor-pointer"
+            >
+              Try again
+            </button>
+          </div>
         ) : (
           <DigitalContractPaper
-            stayData={digitalContractData || {
-              tenantName: tenant?.fullName || tenant?.name,
-              roomNumber: (activeDigitalContract || dedicatedContract)?.roomNumber || tenant?.roomNumber || tenant?.roomName,
-              bedLabel: (activeDigitalContract || dedicatedContract)?.bedLabel || tenant?.bedNumber || tenant?.bedLabel,
-              roomType: (activeDigitalContract || dedicatedContract)?.roomType || tenant?.roomType,
-              branchName: (activeDigitalContract || dedicatedContract)?.branch || tenant?.branchName || tenant?.branch,
-              leaseStartDate: (activeDigitalContract || dedicatedContract)?.leaseStartDate || tenant?.startDate || tenant?.leaseStart,
-              leaseEndDate: (activeDigitalContract || dedicatedContract)?.leaseEndDate || tenant?.endDate || tenant?.leaseEnd,
-              monthlyRent: (activeDigitalContract || dedicatedContract)?.approvedMonthlyRate || (activeDigitalContract || dedicatedContract)?.regularMonthlyRate || tenant?.monthlyRent || tenant?.rentAmount,
-              securityDeposit: (activeDigitalContract || dedicatedContract)?.securityDeposit || tenant?.securityDeposit,
-              referenceNumber: (activeDigitalContract || dedicatedContract)?.contractNumber || tenant?.reservationCode || "LIL-CONTRACT",
-            }}
+            stayData={digitalContractData}
             contract={activeDigitalContract || dedicatedContract}
             onDownloadPdf={() => handleDownloadStayProof(activeDigitalContract || dedicatedContract)}
             isDownloading={downloadingProof}
