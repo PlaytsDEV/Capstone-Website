@@ -80,11 +80,17 @@ export default function DigitalContractPaper({
   let advanceRent = Number(stayData?.advanceRentAmount ?? contract?.advanceRentAmount ?? 0);
   let securityDeposit = Number(stayData?.securityDepositAmount ?? contract?.securityDepositAmount ?? 0);
 
+  // Only fill in a placeholder when the contract genuinely has no value yet
+  // (e.g. previewing before pricing is set) — never override a real,
+  // authoritative value just because it looks low. Contract.regularMonthlyRate
+  // /approvedMonthlyRate/advanceRentAmount/securityDepositAmount are already
+  // the single canonical pricing snapshot (see tenantContractViewService.js);
+  // this view must render them verbatim like every other consumer does.
   if (isPrivate) {
-    if (regularRate <= 0 || regularRate < 10000) regularRate = 15000;
-    if (monthlyRent <= 0 || monthlyRent < 10000) monthlyRent = 13500;
-    if (advanceRent <= 0 || advanceRent < 10000) advanceRent = monthlyRent || 13500;
-    if (securityDeposit <= 0 || securityDeposit < 10000) securityDeposit = monthlyRent || 13500;
+    if (regularRate <= 0) regularRate = 15000;
+    if (monthlyRent <= 0) monthlyRent = 13500;
+    if (advanceRent <= 0) advanceRent = monthlyRent || 13500;
+    if (securityDeposit <= 0) securityDeposit = monthlyRent || 13500;
   } else {
     if (regularRate <= 0) regularRate = 5400;
     if (monthlyRent <= 0) monthlyRent = 5400;
@@ -105,7 +111,13 @@ export default function DigitalContractPaper({
   const executionYear = startDate.format("YYYY");
 
   const tenantName = stayData?.tenantLegalName || contract?.tenantLegalName || stayData?.tenantName || contract?.tenantName || "Valued Tenant";
-  const tenantAddress = stayData?.tenantResidentialAddress || contract?.tenantResidentialAddress || "SMDC JAZZ RESIDENCES, Bel-Air, City of Makati, National Capital Region (NCR)";
+  // No hardcoded literal fallback here on purpose: both stayData and contract
+  // now carry the tenant's real tenantResidentialAddress (see
+  // tenantContractViewService.js / digitalStayProofService.js) — a specific
+  // sample address silently substituted for missing data is exactly the
+  // class of bug this replaces (a real tenant's contract must never render
+  // another address that looks legitimate but isn't theirs).
+  const tenantAddress = stayData?.tenantResidentialAddress || contract?.tenantResidentialAddress || "—";
   const roomNumber = stayData?.roomNumber || contract?.roomNumber || (isPrivate ? "GP-803" : "GP-305");
   const bedSlot = isPrivate ? "Entire Room" : (stayData?.bedLabel || contract?.bedLabel || "upper");
 

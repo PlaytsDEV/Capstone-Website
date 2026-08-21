@@ -14,6 +14,15 @@ const escapeHtml = (value) => String(value ?? "")
 const formatMoney = (val) => val == null ? "—" : `₱${Number(val).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
 const formatDate = (val) => val ? dayjs(val).format("MMMM D, YYYY") : "—";
 
+const formatReservationAddress = (address) => {
+  if (!address) return "";
+  if (typeof address === "string") return address.trim();
+  return [address.unitHouseNo, address.street, address.barangay, address.city, address.province]
+    .filter((part) => typeof part === "string" && part.trim())
+    .map((part) => part.trim())
+    .join(", ");
+};
+
 /**
  * Generates a clean, crisp, high-density SVG QR code representation for verification links
  */
@@ -355,15 +364,30 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
   const verificationUrl = `https://lilycrest.ph/verify-stay/${referenceNumber}`;
   const qrCodeSvg = generateQrSvg(verificationUrl, 110);
 
+  // Contract.tenantAddress (when a Contract exists) is the same authoritative
+  // creation-time snapshot the real lease PDF is generated from — prefer it
+  // over reconstructing from Reservation/User so this preview can't diverge
+  // from the actual contract. User.address is a plain string field (not an
+  // object — there is no User.address.street), so it must be read directly;
+  // reading `.street` off it was always undefined and this branch could
+  // never actually resolve to it.
+  const resolvedTenantAddress =
+    contract?.tenantAddress ||
+    formatReservationAddress(reservation?.address) ||
+    (typeof user?.address === "string" ? user.address.trim() : "") ||
+    "—";
+
   return {
     referenceNumber,
     tenantId: String(user?._id || ""),
     tenantName,
     tenantEmail: user?.email || reservation?.email || "—",
     tenantPhone: user?.phone || user?.emergencyPhone || reservation?.emergencyPhone || "—",
-    tenantAddress: user?.address?.street || reservation?.address?.street
-      ? `${user?.address?.street || reservation?.address?.street || ""}, ${user?.address?.city || reservation?.address?.city || ""}`
-      : "Makati City, Metro Manila",
+    tenantAddress: resolvedTenantAddress,
+    // DigitalContractPaper.jsx (both Admin's and the tenant's own "Digital
+    // Contract" view) reads this exact field name — without it, that
+    // component silently fell back to a hardcoded sample address.
+    tenantResidentialAddress: resolvedTenantAddress,
     emergencyContact: user?.emergencyContactName || reservation?.emergencyContactName || "—",
     emergencyPhone: user?.emergencyContactPhone || reservation?.emergencyContactPhone || user?.emergencyPhone || "—",
     branchName,
