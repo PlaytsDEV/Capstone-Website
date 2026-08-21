@@ -628,6 +628,10 @@ export default function TenantDetailModal({
   const [dialogState, setDialogState] = useState({ type: null, loading: false, error: null });
   const [safeguardsData, setSafeguardsData] = useState(null);
   const [dedicatedContract, setDedicatedContract] = useState(null);
+  // "MULTIPLE_CANONICAL_CONTRACTS" | "LOOKUP_FAILED" | null — set only when the
+  // backend canonical resolver cannot determine a single current Contract; the
+  // UI must show a controlled error rather than guessing which record to display.
+  const [dedicatedContractError, setDedicatedContractError] = useState(null);
   const [contractLookupDone, setContractLookupDone] = useState(false);
   const [allTenantContracts, setAllTenantContracts] = useState([]);
   const [expandedWarnings, setExpandedWarnings] = useState({});
@@ -734,7 +738,7 @@ export default function TenantDetailModal({
     }
   }, [reservationId]);
 
-  // Sync dedicatedContract and all contracts from fetched detail or contractApi
+  // Sync the tenant's full contract list for display (list-only, no selection logic).
   useEffect(() => {
     if (!fetchedDetail && !initialTenant) return;
     const tenantId =
@@ -745,7 +749,6 @@ export default function TenantDetailModal({
       initialTenant?.userId;
 
     let active = true;
-    setContractLookupDone(false);
     contractApi
       .listContracts({
         tenantId: tenantId ? String(tenantId) : undefined,
@@ -760,20 +763,53 @@ export default function TenantDetailModal({
             (tenantId && String(item.tenantId) === String(tenantId)),
         );
         setAllTenantContracts(matchingContracts);
-
-        const currentContract =
-          fetchedDetail?.dedicatedContract ||
-          initialTenant?.dedicatedContract ||
-          matchingContracts.find((item) => item.isCurrent && !item.archivedAt) ||
-          matchingContracts[0] ||
-          null;
-
-        setDedicatedContract(currentContract);
       })
       .catch(() => {
-        if (active) {
-          setDedicatedContract(null);
-          setAllTenantContracts([]);
+        if (active) setAllTenantContracts([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [fetchedDetail, initialTenant, reservationId]);
+
+  // Resolve the tenant's current Contract via the backend canonical selector
+  // (resolveTenantCanonicalContract, through GET /contracts/tenant/:tenantId/current).
+  // Never guessed client-side — no first-match/newest-record fallback.
+  useEffect(() => {
+    if (!fetchedDetail && !initialTenant) return;
+    const tenantId =
+      fetchedDetail?.tenantId ||
+      initialTenant?.tenantId?._id ||
+      initialTenant?.tenantId ||
+      initialTenant?.userId?._id ||
+      initialTenant?.userId;
+
+    if (!tenantId) {
+      setDedicatedContract(null);
+      setDedicatedContractError(null);
+      setContractLookupDone(true);
+      return;
+    }
+
+    let active = true;
+    setContractLookupDone(false);
+    setDedicatedContractError(null);
+    contractApi
+      .getTenantCurrentContract(String(tenantId))
+      .then(({ contract }) => {
+        if (!active) return;
+        setDedicatedContract(contract || null);
+      })
+      .catch((err) => {
+        if (!active) return;
+        const code = err?.response?.data?.code;
+        setDedicatedContract(null);
+        if (code === "MULTIPLE_CANONICAL_CONTRACTS") {
+          setDedicatedContractError("MULTIPLE_CANONICAL_CONTRACTS");
+        } else if (code === "CONTRACT_NOT_FOUND") {
+          setDedicatedContractError(null);
+        } else {
+          setDedicatedContractError("LOOKUP_FAILED");
         }
       })
       .finally(() => {
@@ -782,7 +818,7 @@ export default function TenantDetailModal({
     return () => {
       active = false;
     };
-  }, [fetchedDetail, initialTenant, reservationId]);
+  }, [fetchedDetail, initialTenant]);
 
   // This modal instance is reused across different tenants (no per-tenant
   // remount from the parent), so Digital Contract preview state from a
@@ -829,6 +865,13 @@ export default function TenantDetailModal({
 
   const handleDownloadStayProof = async (contractOverride = null) => {
     const targetContract = contractOverride || activeDigitalContract || dedicatedContract;
+    if (!targetContract && dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS") {
+      showNotification(
+        "Multiple active contract records were found for this tenant. Please resolve the conflicting contract records before downloading the lease contract.",
+        "error",
+      );
+      return;
+    }
     setDownloadingProof(true);
     try {
       const targetId =
@@ -862,6 +905,14 @@ export default function TenantDetailModal({
       (specificContract && typeof specificContract === "object")
         ? specificContract
         : dedicatedContract;
+    if (!selectedContract && dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS") {
+      setDigitalContractData(null);
+      setDigitalContractError(
+        "Multiple active contract records were found for this tenant. Please resolve the conflicting contract records before viewing the digital contract.",
+      );
+      setShowDigitalContractModal(true);
+      return;
+    }
     const requestId = ++digitalContractRequestRef.current;
     setActiveDigitalContract(selectedContract);
     // Clear the previous tenant/contract's preview data immediately so a
@@ -1826,7 +1877,7 @@ export default function TenantDetailModal({
                           </div>
                           <div>
                             <span className="text-muted-foreground block text-[11px]">Stay Reference</span>
-                            <span className="font-semibold font-mono text-foreground">{dedicatedContract?.contractNumber || tenant.reservationCode || "LIL-RES-RECORD"}</span>
+                            <span className="font-semibold font-mono text-foreground">{dedicatedContractError === "MULTIPLE_CANONICAL_CONTRACTS" ? "Conflicting records" : (dedicatedContract?.contractNumber || tenant.reservationCode || "LIL-RES-RECORD")}</span>
                           </div>
                           <div>
                             <span className="text-muted-foreground block text-[11px]">Monthly Rent Rate</span>

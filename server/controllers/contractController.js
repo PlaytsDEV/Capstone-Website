@@ -1150,6 +1150,12 @@ export const getTenantCurrentContract = async (req, res) => {
     assertContractBranchAccess(req, contract.branch);
     res.json({ contract });
   } catch (error) {
+    if (error.code === "MULTIPLE_CANONICAL_CONTRACTS") {
+      logger.error(
+        { requestId: req.id, tenantId: req.params.tenantId, candidateCount: error.candidateCount },
+        "Multiple resident-visible canonical Contracts detected (admin lookup)",
+      );
+    }
     fail(res, error);
   }
 };

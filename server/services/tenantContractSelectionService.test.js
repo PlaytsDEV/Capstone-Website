@@ -204,6 +204,41 @@ describe("resident canonical Contract selection", () => {
     })).toBeNull();
   });
 
+  // Tenant Details required scenario: a historical Contract (expired/terminal
+  // status) sitting alongside the tenant's current Contract must never win —
+  // the frontend must display exactly what this selector returns, never guess.
+  test("historical Contract never outranks the current Contract for the same tenant", () => {
+    const historical = contract({
+      _id: "historical",
+      status: "expired",
+      isCurrent: false,
+      stayId: "stay-old",
+      reservationId: "reservation-old",
+    });
+    const current = contract({ _id: "current" });
+    const selected = selectCanonicalTenantContract({
+      contracts: [historical, current],
+      activeStay,
+    });
+    expect(selected._id).toBe("current");
+  });
+
+  // Tenant Details required scenario: an archived Contract sitting alongside
+  // the tenant's current (non-archived) Contract must never win.
+  test("archived Contract never outranks the current (non-archived) Contract for the same tenant", () => {
+    const archived = contract({
+      _id: "archived",
+      archivedAt: new Date(),
+      isCurrent: false,
+    });
+    const current = contract({ _id: "current" });
+    const selected = selectCanonicalTenantContract({
+      contracts: [archived, current],
+      activeStay,
+    });
+    expect(selected._id).toBe("current");
+  });
+
   // Reproduces the production mobile/web discrepancy where the tenant's
   // admin-visible "Verified Active Stay" Contract (dates, room, PDF) was
   // authoritative, but the mobile app still showed "Preparing Contract" with

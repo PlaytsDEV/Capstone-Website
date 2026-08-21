@@ -14,6 +14,7 @@ import {
   resolveApplicantIdentity,
 } from "./contractGenerationDataService.js";
 import { resolveContractTemplate } from "./contractTemplateService.js";
+import { resolveTenantCanonicalContract } from "./tenantContractSelectionService.js";
 import {
   resolveContractLeasePricing,
   resolveAuthoritativeLeasePricing,
@@ -528,8 +529,13 @@ export const transitionContract = async (contract, nextStatus, actorId, reason =
   return contract;
 };
 
-export const findCurrentContract = (filter) =>
-  Contract.findOne({ ...filter, isCurrent: true }).sort({ version: -1, createdAt: -1 });
+// Delegates to the canonical resident-contract selector (tenantContractSelectionService.js)
+// instead of the naive `isCurrent: true` query this used to run — that query had no
+// eligibility/ambiguity handling and could return an archived, superseded, or orphaned
+// Contract. includeEarlyStages defaults true here (unlike the tenant-facing resolver)
+// because admin must be able to manage a Contract while it's still draft/incomplete.
+export const findCurrentContract = ({ tenantId, includeEarlyStages = true }) =>
+  resolveTenantCanonicalContract(tenantId, { includeEarlyStages });
 
 // Statuses on a room-transfer successor Contract that represent a legitimately
 // abandoned attempt — a fresh replacement is allowed after any of these.
