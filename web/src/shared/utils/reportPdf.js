@@ -132,7 +132,7 @@ export const computeAutoColWidths = (hdrs = [], rows = [], printableW = 178) => 
   if (!hdrs || hdrs.length === 0) return [];
   if (hdrs.length === 1) return [printableW];
 
-  const sampleRows = Array.isArray(rows) ? rows.slice(0, 15) : [];
+  const sampleRows = Array.isArray(rows) ? rows.slice(0, 25) : [];
   const weights = hdrs.map((h) => {
     const hStr = String(h || "");
     const hLen = hStr.length;
@@ -142,7 +142,7 @@ export const computeAutoColWidths = (hdrs = [], rows = [], printableW = 178) => 
     }, 0);
     const hLow = hStr.toLowerCase();
 
-    let minW = 18;
+    let minW = 16;
     if (
       hLow.includes("date") ||
       hLow.includes("created") ||
@@ -151,25 +151,51 @@ export const computeAutoColWidths = (hdrs = [], rows = [], printableW = 178) => 
       hLow.includes("appointment") ||
       hLow.includes("effective")
     ) {
-      minW = 23;
+      minW = 22;
     } else if (
-      hLow.includes("room") ||
+      hLow.includes("contractor") ||
+      hLow.includes("provider") ||
+      hLow.includes("assigned")
+    ) {
+      minW = 38;
+    } else if (
       hLow.includes("tenant") ||
       hLow.includes("applicant") ||
-      hLow.includes("name") ||
+      hLow.includes("full name") ||
       hLow.includes("inquirer") ||
-      hLow.includes("visitor")
+      hLow.includes("visitor") ||
+      hLow.includes("customer")
     ) {
-      minW = 26;
-    } else if (hLow.includes("code") || hLow.includes("id") || hLow.includes("status")) {
+      minW = 28;
+    } else if (hLow.includes("room") || hLow.includes("branch") || hLow.includes("category") || hLow.includes("type")) {
       minW = 22;
+    } else if (hLow.includes("status") || hLow.includes("urgency") || hLow.includes("stage") || hLow.includes("sla")) {
+      minW = 24;
+    } else if (
+      hLow.includes("cost") ||
+      hLow.includes("amount") ||
+      hLow.includes("price") ||
+      hLow.includes("rent") ||
+      hLow.includes("balance") ||
+      hLow.includes("paid")
+    ) {
+      minW = 20;
+    } else if (
+      hLow.includes("code") ||
+      hLow.includes("id") ||
+      hLow.includes("floor") ||
+      hLow.includes("capacity") ||
+      hLow.includes("occupied") ||
+      hLow.includes("pinned")
+    ) {
+      minW = 16;
     } else if (
       hLow.includes("message") ||
       hLow.includes("notes") ||
       hLow.includes("description") ||
       hLow.includes("title")
     ) {
-      minW = 38;
+      minW = 40;
     }
 
     return Math.max(minW, Math.max(hLen * 2.2, maxContentLen * 1.8));
@@ -179,7 +205,13 @@ export const computeAutoColWidths = (hdrs = [], rows = [], printableW = 178) => 
   return weights.map((w) => (w / totalWeight) * printableW);
 };
 
-export const computeKpiColumns = (count) => {
+export const computeKpiColumns = (count, isLandscape = false) => {
+  if (isLandscape) {
+    if (count <= 6) return count || 1;
+    if (count % 4 === 0) return 4;
+    if (count % 3 === 0) return 3;
+    return Math.min(count, 6);
+  }
   if (count <= 3) return count || 1;
   if (count === 4) return 4;
   if (count === 5) return 5;
@@ -189,28 +221,46 @@ export const computeKpiColumns = (count) => {
 };
 
 export async function exportReportPdf({
-  logo       = defaultLogo,
-  title      = "Analytics Report",
-  subtitle   = "",
-  filename   = "report.pdf",
-  period     = "",
-  reportType = "Analytics",
-  kpis       = [],
-  aiInsight  = null,
-  sections   = [],
+  logo        = defaultLogo,
+  title       = "Analytics Report",
+  subtitle    = "",
+  filename    = "report.pdf",
+  period      = "",
+  reportType  = "Analytics",
+  kpis        = [],
+  aiInsight   = null,
+  sections    = [],
+  orientation = "auto",
 } = {}) {
   const logoData = await loadImageAsDataURL(logo);
   const { jsPDF } = await import("jspdf");
-  const doc = new jsPDF("p", "mm", "a4");
 
-  const W   = doc.internal.pageSize.getWidth();    // 210 mm
-  const H   = doc.internal.pageSize.getHeight();   // 297 mm
-  const M   = 16;                                  // 16 mm margins
-  const CW  = W - M * 2;                           // 178 mm printable width
+  // Determine orientation: "portrait" or "landscape"
+  let isLandscape = false;
+  if (orientation === "landscape") {
+    isLandscape = true;
+  } else if (orientation === "portrait") {
+    isLandscape = false;
+  } else {
+    // "auto" detection based on table column count across sections
+    const maxTableCols = sections.reduce((max, s) => {
+      const hLen = Array.isArray(s.headers) ? s.headers.length : 0;
+      const wLen = Array.isArray(s.colWidths) ? s.colWidths.length : 0;
+      return Math.max(max, hLen, wLen);
+    }, 0);
+    isLandscape = maxTableCols >= 7;
+  }
+
+  const doc = new jsPDF(isLandscape ? "l" : "p", "mm", "a4");
+
+  const W   = doc.internal.pageSize.getWidth();    // 297 mm in landscape, 210 mm in portrait
+  const H   = doc.internal.pageSize.getHeight();   // 210 mm in landscape, 297 mm in portrait
+  const M   = isLandscape ? 14 : 16;               // 14 mm in landscape, 16 mm in portrait
+  const CW  = W - M * 2;                           // 269 mm in landscape, 178 mm in portrait
 
   const Y_START_PAGE1    = M + 2;
   const Y_START_CONT     = M + 10;
-  const FOOTER_CLEARANCE = 18; // Keep 7mm buffer above footer line at H - 11
+  const FOOTER_CLEARANCE = 18; // Buffer above footer line at H - 11
 
   let y = Y_START_PAGE1;
 
@@ -429,7 +479,7 @@ export async function exportReportPdf({
   if (kpis.length > 0) {
     sectionTitle("Key Performance Indicators");
 
-    const COLS = computeKpiColumns(kpis.length);
+    const COLS = computeKpiColumns(kpis.length, isLandscape);
     const GAP  = S.MD;
     const CARD_W = (CW - GAP * (COLS - 1)) / COLS;
     const CARD_PAD_X = 2.8;
@@ -719,9 +769,14 @@ export async function exportReportPdf({
       acc += w;
     });
 
-    const ROW_H_BASE = 7.5;
+    const colCount = hdrs.length;
+    const tableFontSize = colCount >= 9 ? 6.8 : colCount >= 7 ? 7.0 : F.SMALL;
+    const tableLh = colCount >= 9 ? 3.3 : colCount >= 7 ? 3.5 : LH.SMALL;
+    const tableHeaderSize = colCount >= 9 ? 6.2 : colCount >= 7 ? 6.5 : F.LABEL;
+    const ROW_H_BASE = colCount >= 9 ? 6.8 : 7.5;
     const CELL_PAD_X = 2.0;
-    const CELL_PAD_Y = 2.2;
+    const CELL_PAD_Y = 2.0;
+    const STATUS_DOT_OFFSET = 3.8;
 
     // Detect numeric, monetary, rate, and counter columns for right-alignment
     const isNumericHeader = (h) => {
@@ -733,6 +788,8 @@ export async function exportReportPdf({
         key.includes("unavailable") ||
         key.includes("rate") ||
         key.includes("amount") ||
+        key.includes("cost") ||
+        key.includes("price") ||
         key.includes("collected") ||
         key.includes("billed") ||
         key.includes("balance") ||
@@ -751,16 +808,22 @@ export async function exportReportPdf({
       );
     };
 
+    const isStatusHeader = (h) => {
+      const hLow = String(h || "").toLowerCase();
+      return hLow === "status" || hLow.includes("turnaround status") || hLow.includes("sla");
+    };
+
     const renderTableHeader = (yPos) => {
       rect(M, yPos, CW, ROW_H_BASE, C.BG_HEADER, 0, C.BORDER, 0.25);
       hdrs.forEach((h, i) => {
         const alignRight = isNumericHeader(h);
         const textX = alignRight ? colX[i] + colWidths[i] - CELL_PAD_X : colX[i] + CELL_PAD_X;
-        txt(sanitizePdfText(h).toUpperCase(), textX, yPos + CELL_PAD_Y + capH(F.LABEL), {
-          size: F.LABEL,
+        txt(sanitizePdfText(h).toUpperCase(), textX, yPos + CELL_PAD_Y + capH(tableHeaderSize), {
+          size: tableHeaderSize,
           weight: "bold",
           color: C.TEXT_MUTED,
           align: alignRight ? "right" : "left",
+          maxW: Math.max(8, colWidths[i] - CELL_PAD_X * 2),
         });
       });
       return yPos + ROW_H_BASE;
@@ -771,10 +834,15 @@ export async function exportReportPdf({
     y = renderTableHeader(y);
 
     rows.forEach((row, rIdx) => {
-      const cellValues = hdrs.map((h) => formatPdfValue(row[h]));
-      const wrappedCells = cellValues.map((val, i) => wrap(val, colWidths[i] - CELL_PAD_X * 2));
-      const maxLines = Math.max(1, ...wrappedCells.map((lines) => lines.length));
-      const rowH = Math.max(ROW_H_BASE, maxLines * LH.SMALL + CELL_PAD_Y * 2);
+      const cellWrappedLines = hdrs.map((h, i) => {
+        const val = formatPdfValue(row[h]);
+        const availW = isStatusHeader(h)
+          ? Math.max(8, colWidths[i] - CELL_PAD_X * 2 - STATUS_DOT_OFFSET)
+          : Math.max(8, colWidths[i] - CELL_PAD_X * 2);
+        return wrap(val, availW);
+      });
+      const maxLines = Math.max(1, ...cellWrappedLines.map((lines) => lines.length));
+      const rowH = Math.max(ROW_H_BASE, maxLines * tableLh + CELL_PAD_Y * 2);
 
       // Trigger multi-page pagination with repeated table header
       if (y + rowH > H - FOOTER_CLEARANCE) {
@@ -789,49 +857,52 @@ export async function exportReportPdf({
       rect(M, y, CW, rowH, rowBg);
       hline(M, y + rowH, W - M, C.BORDER, 0.15);
 
-      const cellBaseY = y + CELL_PAD_Y + capH(F.SMALL);
+      const cellBaseY = y + CELL_PAD_Y + capH(tableFontSize);
 
       hdrs.forEach((h, i) => {
-        const val = row[h];
+        const lines = cellWrappedLines[i];
         const cx = colX[i] + CELL_PAD_X;
-        const hLow = h.toLowerCase();
 
         // Status Badge: Strict Invariant
         // Transparent background + colored status dot + semantic text (Strictly ZERO matching colored border outlines)
-        if (hLow === "status" || hLow.includes("turnaround status") || hLow.includes("sla")) {
-          const vStr = sanitizePdfText(val);
+        if (isStatusHeader(h)) {
+          const vStr = sanitizePdfText(row[h]);
           const vLow = vStr.toLowerCase();
 
           const isGood = ["full", "good", "closed", "sent", "paid", "finalized", "on-time", "within target", "active", "resolved", "completed"].some((k) => vLow.includes(k));
-          const isWarn = ["watch", "ready", "open", "pending", "partial", "at risk", "at-risk"].some((k) => vLow.includes(k));
-          const isCrit = ["low", "overdue", "rejected", "canceled", "breached", "delayed", "critical", "unpaid"].some((k) => vLow.includes(k));
+          const isWarn = ["watch", "ready", "open", "pending", "partial", "at risk", "at-risk", "provider assigned", "in progress", "scheduled"].some((k) => vLow.includes(k));
+          const isCrit = ["low", "overdue", "rejected", "canceled", "cancelled", "breached", "delayed", "critical", "unpaid", "terminated"].some((k) => vLow.includes(k));
 
           const dotColor = isGood ? C.EMERALD_DOT : isWarn ? C.AMBER_DOT : isCrit ? C.ROSE_DOT : C.SLATE_DOT;
           const textColor = isGood ? C.EMERALD_TEXT : isWarn ? C.AMBER_TEXT : isCrit ? C.ROSE_TEXT : C.SLATE_TEXT;
 
           // Draw semantic status dot
           doc.setFillColor(...dotColor);
-          doc.circle(cx + 1.2, cellBaseY - capH(F.SMALL) * 0.35, 0.75, "F");
+          doc.circle(cx + 1.2, cellBaseY - capH(tableFontSize) * 0.35, 0.75, "F");
 
-          // Draw semantic text label (No colored border outline)
-          txt(vStr, cx + 3.4, cellBaseY, {
-            size: F.SMALL,
+          // Draw semantic text label (No colored border outline, wrapped properly beside dot)
+          const availStatusW = Math.max(8, colWidths[i] - CELL_PAD_X * 2 - STATUS_DOT_OFFSET);
+          txt(lines, cx + STATUS_DOT_OFFSET, cellBaseY, {
+            size: tableFontSize,
             weight: "bold",
             color: textColor,
             align: "left",
+            lh: tableLh,
+            maxW: availStatusW,
           });
           return;
         }
 
         const alignRight = isNumericHeader(h);
         const textX = alignRight ? colX[i] + colWidths[i] - CELL_PAD_X : cx;
-        const lines = wrappedCells[i];
+        const availCellW = Math.max(8, colWidths[i] - CELL_PAD_X * 2);
 
         txt(lines, textX, cellBaseY, {
-          size: F.SMALL,
+          size: tableFontSize,
           color: i === 0 ? C.TEXT_PRIMARY : C.TEXT_SECONDARY,
-          lh: LH.SMALL,
+          lh: tableLh,
           align: alignRight ? "right" : "left",
+          maxW: availCellW,
         });
       });
 

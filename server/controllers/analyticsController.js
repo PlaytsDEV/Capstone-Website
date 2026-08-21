@@ -103,7 +103,7 @@ const REPORT_MONTH_RANGES = Object.freeze({
 });
 
 const TABLE_PAGE_DEFAULT_LIMIT = 10;
-const TABLE_PAGE_MAX_LIMIT = 100;
+const TABLE_PAGE_MAX_LIMIT = 1000;
 
 const PENDING_RESERVATION_STATUSES = Object.freeze([
   "pending",
@@ -272,19 +272,28 @@ const parsePositiveInteger = (value, fallback, max = Number.POSITIVE_INFINITY) =
   return Math.min(parsed, max);
 };
 
-const parseTableRequest = (query = {}) => ({
-  limit: parsePositiveInteger(
-    query.tableLimit ?? query.limit,
-    TABLE_PAGE_DEFAULT_LIMIT,
-    TABLE_PAGE_MAX_LIMIT,
-  ),
-  offset: parsePositiveInteger(query.tableOffset ?? query.offset, 0),
-  sort: String(query.tableSort ?? query.sort ?? "").trim(),
-  direction:
-    String(query.tableDirection ?? query.direction ?? "asc").toLowerCase() === "desc"
-      ? "desc"
-      : "asc",
-});
+const parseTableRequest = (query = {}) => {
+  const rawLimit = query.tableLimit ?? query.limit;
+  const hasExplicitLimit = rawLimit !== undefined && rawLimit !== null && String(rawLimit).trim() !== "";
+  const isAll = String(rawLimit || "").trim().toLowerCase() === "all";
+
+  return {
+    hasExplicitLimit,
+    limit: !hasExplicitLimit || isAll
+      ? Number.POSITIVE_INFINITY
+      : parsePositiveInteger(
+          rawLimit,
+          TABLE_PAGE_DEFAULT_LIMIT,
+          TABLE_PAGE_MAX_LIMIT,
+        ),
+    offset: parsePositiveInteger(query.tableOffset ?? query.offset, 0),
+    sort: String(query.tableSort ?? query.sort ?? "").trim(),
+    direction:
+      String(query.tableDirection ?? query.direction ?? "asc").toLowerCase() === "desc"
+        ? "desc"
+        : "asc",
+  };
+};
 
 const getSortableValue = (row, key) => {
   if (!key) return null;
@@ -508,7 +517,7 @@ const fetchScopedBills = async (branchesIncluded, query = {}) =>
     branch: { $in: branchesIncluded },
     ...query,
   })
-    .populate("userId", "firstName lastName user_id")
+    .populate("userId", "firstName lastName fullName name username email user_id")
     .populate("roomId", "name roomNumber branch type")
     .sort({ billingMonth: -1, createdAt: -1 })
     .lean();
@@ -835,6 +844,12 @@ const buildOverdueAging = (bills) => {
 const buildBillingTableRow = (bill) => {
   const tenantName =
     `${bill.userId?.firstName || ""} ${bill.userId?.lastName || ""}`.trim() ||
+    bill.userId?.fullName ||
+    bill.userId?.name ||
+    bill.userId?.username ||
+    bill.tenantName ||
+    bill.user_name ||
+    (bill.userId?.email ? bill.userId.email.split("@")[0] : null) ||
     "Unknown Tenant";
   const roomName =
     bill.roomId?.name || bill.roomId?.roomNumber || "Unknown Room";
@@ -1481,10 +1496,22 @@ const buildOccupancyReportData = async (scope, rangeKey, tableRequest = parseTab
       }),
     },
     tables: {
-      inventory: buildPaginatedTable(inventory, tableRequest, {
-        sort: "roomNumber",
-        direction: "asc",
-      }),
+      inventory: tableRequest?.hasExplicitLimit
+        ? buildPaginatedTable(inventory, tableRequest, {
+            sort: "roomNumber",
+            direction: "asc",
+          })
+        : {
+            rows: inventory,
+            pagination: {
+              total: inventory.length,
+              limit: inventory.length,
+              offset: 0,
+              sort: "roomNumber",
+              direction: "asc",
+              hasMore: false,
+            },
+          },
       roomTypes,
     },
   };
@@ -1564,12 +1591,10 @@ const buildBillingReportData = async (scope, rangeKey, tableRequest = parseTable
 
   const overdueRows = overdueBills
     .map(buildBillingTableRow)
-    .sort((left, right) => right.daysOverdue - left.daysOverdue)
-    .slice(0, 15);
+    .sort((left, right) => right.daysOverdue - left.daysOverdue);
   const unpaidRows = openBills
     .map(buildBillingTableRow)
-    .sort((left, right) => right.balance - left.balance)
-    .slice(0, 15);
+    .sort((left, right) => right.balance - left.balance);
 
   return {
     ...buildRangeEnvelope(scope, {
@@ -1913,8 +1938,7 @@ const buildFinancialsReportData = async (scope, rangeKey, tableRequest = parseTa
       }),
       unpaidBalances: openBills
         .map(buildBillingTableRow)
-        .sort((left, right) => right.balance - left.balance)
-        .slice(0, 20),
+        .sort((left, right) => right.balance - left.balance),
     },
   };
 };
@@ -2003,16 +2027,18 @@ const buildAnalyticsHubReportData = async (scope, rangeKey, options = {}) => {
 // DEMOGRAPHICS & RESERVATION BEHAVIOR ANALYTICS
 // ============================================================================
 
-const STUDENT_KEYWORDS = /student|school|college|university|academy|institute|scholar/i;
+const STUDENT_KEYWORDS = /student|school|college|university|academy|institute|scholar|intern|reviewee|senior high/i;
+const PROFESSIONAL_KEYWORDS = /nurse|doctor|engineer|agent|bpo|call center|corporate|developer|accountant|accounting|manager|supervisor|freelance|staff|clerk|tech|officer|associate|executive|specialist|analyst|worker|employee/i;
 
 const classifyOccupation = (reservation) => {
-  const occupation = reservation?.employment?.occupation || "";
-  const employer = reservation?.employment?.employerSchool || "";
-  const education = reservation?.educationLevel || "";
+  const occupation = reservation?.employment?.occupation || reservation?.userId?.occupation || "";
+  const employer = reservation?.employment?.employerSchool || reservation?.employerSchool || reservation?.userId?.school || "";
+  const education = reservation?.educationLevel || reservation?.userId?.educationLevel || "";
   const combined = `${occupation} ${employer} ${education}`;
 
   if (!combined.trim()) return "Unspecified";
   if (STUDENT_KEYWORDS.test(combined)) return "Student";
+  if (PROFESSIONAL_KEYWORDS.test(combined) || employer.trim()) return "Professional";
   return "Professional";
 };
 
@@ -2156,16 +2182,21 @@ const buildGeographicOriginRows = (reservations) => {
   const counts = new Map();
 
   for (const reservation of reservations) {
-    const province = (reservation.address?.province || "").trim();
-    const city = (reservation.address?.city || "").trim();
+    let province = (reservation.address?.province || reservation.userId?.province || "").trim();
+    const city = (reservation.address?.city || reservation.userId?.city || "").trim();
     if (!province && !city) continue;
+
+    if (/^(ncr|national capital region|metro manila)$/i.test(province)) {
+      province = "Metro Manila";
+    }
+
     const key = province || city;
     const existing = counts.get(key);
     if (existing) {
       existing.count += 1;
       if (city && !existing.city) existing.city = city;
     } else {
-      counts.set(key, { province: province || "Unknown", city: city || "", count: 1 });
+      counts.set(key, { province: province || city || "Unknown", city: city || "", count: 1 });
     }
   }
 
@@ -2226,14 +2257,17 @@ const buildDemographicsReportData = async (scope, rangeKey, tableRequest = parse
         roomId: { $in: roomIds },
         isArchived: false,
         status: { $in: ["reserved", "moveIn", "moveOut"] },
-        createdAt: { $gte: sinceDate },
+        $or: [
+          { createdAt: { $gte: sinceDate } },
+          { status: { $in: ["reserved", "moveIn"] } },
+        ],
       })
         .select(
           "createdAt preferredRoomType referralSource workSchedule birthday " +
           "leaseDuration educationLevel employment address maritalStatus nationality gender " +
           "firstName lastName status roomId userId",
         )
-        .populate("userId", "firstName lastName email gender")
+        .populate("userId", "firstName lastName email gender province city occupation school address")
         .populate("roomId", "name roomNumber branch type")
         .lean()
     : [];
@@ -2253,8 +2287,16 @@ const buildDemographicsReportData = async (scope, rangeKey, tableRequest = parse
 
   const occupationMix = buildOccupationDistribution(confirmedReservations);
   const studentCount = occupationMix.find((item) => item.label === "Student")?.value || 0;
+  const professionalCount = occupationMix.find((item) => item.label === "Professional")?.value || 0;
+  const unspecifiedCount = occupationMix.find((item) => item.label === "Unspecified")?.value || 0;
   const totalAnalyzed = confirmedReservations.length;
+  const activeTenants = confirmedReservations.filter((r) => ["reserved", "moveIn"].includes(String(r.status))).length || totalAnalyzed;
   const studentPct = totalAnalyzed > 0 ? Math.round((studentCount / totalAnalyzed) * 100) : 0;
+  const professionalPct = totalAnalyzed > 0 ? Math.round((professionalCount / totalAnalyzed) * 100) : 0;
+
+  const dominantOccupation = studentCount >= professionalCount ? "Students" : "Working Professionals";
+  const dominantPercentage = studentCount >= professionalCount ? studentPct : professionalPct;
+  const dominantCount = studentCount >= professionalCount ? studentCount : professionalCount;
 
   const reservationsByMonth = buildReservationsByMonth(allReservations);
   const peakMonth = [...reservationsByMonth].sort((a, b) => b.count - a.count)[0];
@@ -2267,6 +2309,10 @@ const buildDemographicsReportData = async (scope, rangeKey, tableRequest = parse
   const topRoomType = roomTypePref.length > 0 ? roomTypePref[0].label : "N/A";
 
   const geographicRows = buildGeographicOriginRows(confirmedReservations);
+  const topProvinceRow = geographicRows.length > 0 ? geographicRows[0] : null;
+  const topProvince = topProvinceRow ? (topProvinceRow.province || topProvinceRow.city || "N/A") : "N/A";
+  const topProvinceCount = topProvinceRow ? topProvinceRow.count : 0;
+
   const genderDistribution = buildGenderDistribution(confirmedReservations);
 
   // Build a concise tenant row for drill-down lists
@@ -2278,11 +2324,22 @@ const buildDemographicsReportData = async (scope, rangeKey, tableRequest = parse
     status: r.status,
     createdAt: r.createdAt,
     occupation: classifyOccupation(r),
+    province: r.address?.province || r.userId?.province || "—",
+    city: r.address?.city || r.userId?.city || "—",
   });
 
   // KPI detail lists — each card's drill-down
   const allTenantRows = confirmedReservations.map(formatTenantRow);
+  const activeTenantRows = allTenantRows.filter((r) => ["reserved", "moveIn"].includes(String(r.status)));
   const studentRows = allTenantRows.filter((r) => r.occupation === "Student");
+  const professionalRows = allTenantRows.filter((r) => r.occupation === "Professional");
+  const topProvinceRows = topProvince !== "N/A"
+    ? allTenantRows.filter((r) => {
+        const prov = (r.province || "").toLowerCase();
+        const top = topProvince.toLowerCase();
+        return prov === top || (top === "metro manila" && /^(ncr|national capital region|metro manila)$/i.test(prov));
+      })
+    : [];
 
   // Top room type — find the raw key matching the label
   const topRoomTypeRaw = Object.entries(ROOM_TYPE_LABELS).find(([, v]) => v === topRoomType)?.[0] || topRoomType;
@@ -2303,16 +2360,31 @@ const buildDemographicsReportData = async (scope, rangeKey, tableRequest = parse
       since: sinceDate.toISOString(),
     }),
     kpis: {
+      activeTenants,
       totalAnalyzed,
+      studentsCount: studentCount,
       studentPercentage: studentPct,
       studentPercentageLabel: `${studentPct}%`,
+      professionalsCount: professionalCount,
+      professionalPercentage: professionalPct,
+      professionalPercentageLabel: `${professionalPct}%`,
+      unspecifiedCount,
+      dominantOccupation,
+      dominantPercentage,
+      dominantPercentageLabel: `${dominantPercentage}%`,
+      dominantCount,
+      topProvince,
+      topProvinceCount,
       peakMonth: peakMonth?.label || "N/A",
       peakMonthCount: peakMonth?.count || 0,
       topRoomType,
     },
     kpiDetails: {
       allTenants: allTenantRows,
+      activeTenants: activeTenantRows.length > 0 ? activeTenantRows : allTenantRows,
       students: studentRows,
+      professionals: professionalRows,
+      topProvince: topProvinceRows,
       topRoomType: topRoomTypeRows,
       peakMonth: peakMonthRows,
     },

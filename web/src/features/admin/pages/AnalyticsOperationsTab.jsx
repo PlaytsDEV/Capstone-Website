@@ -180,9 +180,9 @@ export default function AnalyticsOperationsTab({
   const [searchQuery, setSearchQuery] = useState("");
   const [slaFilter, setSlaFilter] = useState("all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(10);
   const [providerPage, setProviderPage] = useState(1);
-  const [providerPageSize, setProviderPageSize] = useState(5);
+  const [providerPageSize, setProviderPageSize] = useState(10);
 
   const [resRange, setResRange] = useState(null);
   const activeResRange = resRange || range;

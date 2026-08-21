@@ -162,8 +162,8 @@ export default function AnalyticsMonitoringTab({
   const [ipPage, setIpPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [severityFilter, setSeverityFilter] = useState("all");
-  const [eventPageSize, setEventPageSize] = useState(5);
-  const [ipPageSize, setIpPageSize] = useState(5);
+  const [eventPageSize, setEventPageSize] = useState(10);
+  const [ipPageSize, setIpPageSize] = useState(10);
 
   const params = useMemo(() => ({ branch, range }), [branch, range]);
   const { data, isLoading, isError, error, refetch } = useAuditAnalytics(params);

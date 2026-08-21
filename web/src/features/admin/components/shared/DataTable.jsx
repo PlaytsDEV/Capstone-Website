@@ -108,6 +108,15 @@ export default function DataTable({
   const headerPadding = paddingConfig.header;
   const cellPadding = paddingConfig.cell;
 
+  // Maintain consistent container height when multiple pages exist to prevent layout shift and scroll jumping
+  const minTableHeight = useMemo(() => {
+    if (!pagination || total <= pageSize) return undefined;
+    const targetRows = Math.min(pageSize, 20);
+    const rowHeight = density === "compact" ? 36 : density === "spacious" ? 54 : 45;
+    const headerHeight = density === "compact" ? 33 : density === "spacious" ? 45 : 41;
+    return headerHeight + targetRows * rowHeight;
+  }, [pagination, total, pageSize, density]);
+
   if (!loading && safeData.length === 0 && emptyState) {
     return (
       <EmptyState
@@ -120,7 +129,10 @@ export default function DataTable({
 
   return (
     <div className="flex flex-col justify-between flex-1 gap-3">
-      <div className="overflow-x-auto rounded-lg border border-border/60">
+      <div
+        className="overflow-x-auto rounded-lg border border-border/60 bg-card"
+        style={minTableHeight ? { minHeight: `${minTableHeight}px` } : undefined}
+      >
         <table className="w-full border-collapse table-fixed">
           <thead>
             <tr className="border-b border-border bg-muted/40">

@@ -246,6 +246,7 @@ export async function handleExportRoomsPDF({
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
     reportType: "Room Inventory",
+    orientation: "landscape",
     kpis,
     sections: [
       {
@@ -263,7 +264,7 @@ export async function handleExportRoomsPDF({
           "Status",
           "Monthly Rent",
         ],
-        colWidths: [16, 26, 20, 12, 24, 16, 16, 22, 26],
+        colWidths: [18, 34, 22, 16, 30, 18, 18, 24, 28],
         rows: tableRows,
       },
     ],

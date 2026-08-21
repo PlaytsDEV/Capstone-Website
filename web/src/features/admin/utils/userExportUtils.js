@@ -216,6 +216,7 @@ export async function handleExportUsersPDF({
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
     reportType: "User Accounts",
+    orientation: "landscape",
     kpis,
     sections: [
       {
@@ -223,7 +224,7 @@ export async function handleExportUsersPDF({
         title: "Filtered User Accounts Registry",
         description: `Official management report containing ${users.length} account record(s) matching active search and filter criteria.`,
         headers: ["Full Name", "Username", "Email", "Phone", "Role", "Branch", "Status", "Created"],
-        colWidths: [28, 18, 36, 22, 16, 18, 18, 22],
+        colWidths: [32, 22, 40, 24, 20, 20, 22, 22],
         rows: tableRows,
       },
     ],

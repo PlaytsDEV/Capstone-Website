@@ -47,7 +47,7 @@ const NAV_ITEMS = [
   { to: "/admin/tenants", icon: Users, text: "Tenants", group: "workspace", priority: 4 },
   { to: "/admin/maintenance", icon: Wrench, text: "Maintenance", group: "workspace", priority: 5, permission: "manageMaintenance" },
   { to: "/admin/billing", icon: Receipt, text: "Billing", group: "workspace", priority: 6 },
-  { to: "/admin/analytics", icon: BarChart3, text: "Analytics", group: "workspace", priority: 7 },
+  { to: "/admin/analytics", icon: BarChart3, text: "Analytics", group: "workspace", priority: 7, saOnly: true },
   { to: "/admin/announcements", icon: Megaphone, text: "Announcements", group: "workspace", priority: 8, permission: "manageAnnouncements" },
   // SYSTEM group
   { to: "/admin/users", icon: UserCog, text: "Accounts & Access", group: "system", priority: 1 },

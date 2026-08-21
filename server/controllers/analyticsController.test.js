@@ -97,6 +97,7 @@ const {
   getAnalyticsInsights,
   getBillingReport,
   getDashboardAnalytics,
+  getDemographicsReport,
   getFinancialsReport,
   getOccupancyForecast,
   getOccupancyReport,
@@ -370,6 +371,45 @@ describe("analyticsController", () => {
             pagination: expect.objectContaining({ total: 1 }),
           }),
         }),
+      }),
+    );
+  });
+
+  test("returns full room inventory when tableLimit is not specified", async () => {
+    getUserBranchInfo.mockResolvedValue({
+      role: "owner",
+      branch: "gil-puyat",
+      isOwner: true,
+    });
+    const mockRooms = Array.from({ length: 15 }, (_, i) => ({
+      _id: `room-${i + 1}`,
+      name: `Room ${i + 1}`,
+      roomNumber: `GP-${100 + i + 1}`,
+      branch: "gil-puyat",
+      type: "quadruple-sharing",
+      capacity: 4,
+      currentOccupancy: 2,
+      beds: [],
+    }));
+    roomFind.mockReturnValueOnce(createLeanChain(mockRooms));
+    reservationFind.mockReturnValue(createLeanChain([]));
+
+    const req = {
+      user: { uid: "firebase-owner-full" },
+      query: { range: "30d" },
+    };
+    const res = { req };
+
+    await getOccupancyReport(req, res, jest.fn());
+
+    const [, payload] = sendSuccess.mock.calls.at(-1);
+    expect(payload.tables.inventory.rows).toHaveLength(15);
+    expect(payload.tables.inventory.pagination).toEqual(
+      expect.objectContaining({
+        total: 15,
+        limit: 15,
+        offset: 0,
+        hasMore: false,
       }),
     );
   });
@@ -1269,6 +1309,99 @@ describe("analyticsController", () => {
         }),
         tables: expect.objectContaining({
           recentConversations: expect.objectContaining({
+            rows: expect.any(Array),
+          }),
+        }),
+      }),
+    );
+  });
+
+  test("getDemographicsReport computes activeTenants, dominantOccupation, topProvince, and drilldown lists", async () => {
+    roomFind.mockReturnValue(
+      createLeanChain([
+        { _id: "room-1", branch: "gil-puyat", type: "private" },
+        { _id: "room-2", branch: "gil-puyat", type: "double-sharing" },
+      ]),
+    );
+
+    const mockConfirmedReservations = [
+      {
+        _id: "res-1",
+        status: "moveIn",
+        createdAt: new Date(),
+        preferredRoomType: "private",
+        roomId: { _id: "room-1", name: "Room 101", type: "private" },
+        userId: {
+          _id: "user-1",
+          firstName: "Ana",
+          lastName: "Cruz",
+          province: "Metro Manila",
+          city: "Makati",
+          occupation: "College Student",
+          school: "Mapua University",
+        },
+        address: { province: "Metro Manila", city: "Makati" },
+        employment: { occupation: "College Student", employerSchool: "Mapua University" },
+      },
+      {
+        _id: "res-2",
+        status: "moveIn",
+        createdAt: new Date(),
+        preferredRoomType: "double-sharing",
+        roomId: { _id: "room-2", name: "Room 201", type: "double-sharing" },
+        userId: {
+          _id: "user-2",
+          firstName: "Mark",
+          lastName: "Dizon",
+          province: "Metro Manila",
+          city: "Pasay",
+          occupation: "Call Center Agent",
+        },
+        address: { province: "Metro Manila", city: "Pasay" },
+        employment: { occupation: "Call Center Agent", employerSchool: "Concentrix" },
+      },
+    ];
+
+    reservationFind
+      .mockReturnValueOnce(createLeanChain(mockConfirmedReservations))
+      .mockReturnValueOnce(createLeanChain(mockConfirmedReservations));
+
+    getUserBranchInfo.mockResolvedValue({
+      role: "branch_admin",
+      branch: "gil-puyat",
+      isOwner: false,
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1", role: "admin", branch: "gil-puyat" },
+      query: { range: "12m" },
+    };
+    const res = { req };
+
+    await getDemographicsReport(req, res, jest.fn());
+
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        kpis: expect.objectContaining({
+          activeTenants: 2,
+          totalAnalyzed: 2,
+          studentsCount: 1,
+          professionalsCount: 1,
+          studentPercentage: 50,
+          professionalPercentage: 50,
+          dominantOccupation: expect.stringMatching(/Students|Working Professionals/),
+          topProvince: "Metro Manila",
+          topProvinceCount: 2,
+        }),
+        kpiDetails: expect.objectContaining({
+          activeTenants: expect.any(Array),
+          students: expect.any(Array),
+          professionals: expect.any(Array),
+          topProvince: expect.any(Array),
+        }),
+        tables: expect.objectContaining({
+          geographicOrigin: expect.objectContaining({
             rows: expect.any(Array),
           }),
         }),

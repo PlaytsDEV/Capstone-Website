@@ -57,6 +57,8 @@ import {
   createReportFilterPayload,
   exportCsvFile,
   exportMaintenanceRequestsPdf,
+  handleExportMaintenanceCSV,
+  handleExportMaintenancePDF,
   fmtDate,
   fmtDateTime,
   formatBranchLabel,
@@ -644,9 +646,6 @@ export default function AdminMaintenancePage() {
       });
       const reportPayload = res?.data || res;
       setReportPreview(reportPayload);
-      if (reportPayload?.request) {
-        setSelectedRequest(reportPayload.request);
-      }
     } catch (err) {
       showNotification({
         title: "Report Generation Failed",

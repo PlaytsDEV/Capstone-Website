@@ -391,7 +391,7 @@ function ForceFinalizeModal({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
-                Direct Staff Sign-Off (Manual Override)
+                Staff Direct Sign-Off
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 #{request?.ticketNumber || request?.request_id?.slice(-8)?.toUpperCase() || "—"} • Advance to Stage 5
@@ -414,7 +414,7 @@ function ForceFinalizeModal({
               This action will <strong>bypass the remaining 7-day tenant observation window</strong> and immediately advance this maintenance ticket to <strong>Stage 5 (Completed)</strong>.
             </p>
             <p>
-              Please only use this direct override if the tenant has verbally confirmed repair satisfaction, verified in person at the front desk, or has checked out.
+              Please only use this direct sign-off if the tenant has verbally confirmed repair satisfaction, verified in person at the front desk, or has checked out.
             </p>
           </div>
 
@@ -454,7 +454,7 @@ function ForceFinalizeModal({
               ) : (
                 <>
                   <Check size={13} />
-                  <span>Confirm Direct Sign-Off</span>
+                  <span>Confirm Staff Sign-Off</span>
                 </>
               )}
             </button>
@@ -3611,11 +3611,11 @@ export function MaintenanceDetailModal({
                                 type="button"
                                 onClick={() => setShowForceFinalizeModal(true)}
                                 disabled={isLocked || isForceFinalizing}
-                                title="Direct staff on-site sign-off (bypasses 7-day tenant waiting window)"
+                                title="Staff on-site verification and direct sign-off"
                                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-4 py-2 text-xs font-bold shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer active:scale-[0.98]"
                               >
                                 <CheckCircle2 size={14} />
-                                <span>Direct Sign-Off (Manual Override)</span>
+                                <span>Staff Direct Sign-Off</span>
                               </button>
                             </div>
                           </div>

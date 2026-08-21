@@ -102,7 +102,7 @@ export default function AnalyticsBillingTab({
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(10);
 
   const [revenueRange, setRevenueRange] = useState(null);
   const activeRevenueRange = revenueRange || range;

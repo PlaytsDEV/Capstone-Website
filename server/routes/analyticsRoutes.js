@@ -20,21 +20,24 @@ import {
 
 const router = express.Router();
 
-router.use(verifyToken, verifyAdmin, filterByBranch, requirePermission("viewReports"));
+// Operational dashboard summary used by /admin/dashboard (branch-scoped)
+router.get("/dashboard", verifyToken, verifyAdmin, filterByBranch, getDashboardAnalytics);
 
-router.get("/dashboard", getDashboardAnalytics);
-router.get("/reports/occupancy", getOccupancyReport);
-router.get("/reports/occupancy-history", getOccupancyRateHistory);
-router.get("/rooms/:roomId/bed-history", getRoomBedHistory);
-router.get("/reports/billing", getBillingReport);
-router.get("/reports/operations", getOperationsReport);
-router.get("/reports/support-chat", getSupportChatReport);
-router.get("/reports/demographics", getDemographicsReport);
-router.get("/forecast/occupancy", getOccupancyForecast);
-router.post("/insights", getAnalyticsInsights);
-router.get("/financials", verifyOwner, getFinancialsReport);
-router.get("/audit", verifyOwner, getAuditSummary);
-router.get("/system-performance", verifyOwner, getSystemPerformance);
+// Deep analytics, reports, forecasts, and AI insights are strictly Owner-only
+router.use(verifyToken, verifyAdmin, verifyOwner);
+
+router.get("/reports/occupancy", filterByBranch, getOccupancyReport);
+router.get("/reports/occupancy-history", filterByBranch, getOccupancyRateHistory);
+router.get("/rooms/:roomId/bed-history", filterByBranch, getRoomBedHistory);
+router.get("/reports/billing", filterByBranch, getBillingReport);
+router.get("/reports/operations", filterByBranch, getOperationsReport);
+router.get("/reports/support-chat", filterByBranch, getSupportChatReport);
+router.get("/reports/demographics", filterByBranch, getDemographicsReport);
+router.get("/forecast/occupancy", filterByBranch, getOccupancyForecast);
+router.post("/insights", filterByBranch, getAnalyticsInsights);
+router.get("/financials", getFinancialsReport);
+router.get("/audit", getAuditSummary);
+router.get("/system-performance", getSystemPerformance);
 
 export default router;
 

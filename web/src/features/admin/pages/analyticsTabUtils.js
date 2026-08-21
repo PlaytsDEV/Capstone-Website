@@ -243,17 +243,23 @@ export function getDynamicDemographicsPrompts(data) {
   const kpis = data?.kpis || {};
   const prompts = [];
 
-  const studentPercent = kpis.studentPercentageLabel;
+  const dominantOcc = kpis.dominantOccupation;
+  const dominantPct = kpis.dominantPercentageLabel || kpis.studentPercentageLabel;
+  const topProvince = kpis.topProvince;
   const topRoom = kpis.topRoomType;
   const peakMonth = kpis.peakMonth;
 
-  if (studentPercent) {
-    prompts.push(`Who are our primary residents (${studentPercent} students vs workers)?`);
+  if (dominantOcc && dominantPct) {
+    prompts.push(`Who are our primary tenants (${dominantPct} ${dominantOcc.toLowerCase()} vs other occupations)?`);
   } else {
-    prompts.push("Who are our primary residents—students or workers?");
+    prompts.push("Who are our primary tenants—students or working professionals?");
   }
 
-  prompts.push("Where do most of our tenants come from?");
+  if (topProvince && topProvince !== "N/A") {
+    prompts.push(`Why do most of our tenants come from ${topProvince}?`);
+  } else {
+    prompts.push("Where do most of our tenants come from?");
+  }
 
   if (topRoom && topRoom !== "N/A") {
     prompts.push(`Why is ${topRoom} the top room preference among applicants?`);

@@ -370,8 +370,16 @@ const buildDemographicsSnapshot = (reportData) => {
 
   return {
     metrics: {
+      activeTenants: Number(kpis.activeTenants || kpis.totalAnalyzed || 0),
       totalAnalyzed: Number(kpis.totalAnalyzed || 0),
+      studentsCount: Number(kpis.studentsCount || 0),
       studentPercentage: Number(kpis.studentPercentage || 0),
+      professionalsCount: Number(kpis.professionalsCount || 0),
+      professionalPercentage: Number(kpis.professionalPercentage || 0),
+      dominantOccupation: kpis.dominantOccupation || "Students",
+      dominantPercentage: Number(kpis.dominantPercentage || kpis.studentPercentage || 0),
+      topProvince: kpis.topProvince || "N/A",
+      topProvinceCount: Number(kpis.topProvinceCount || 0),
       peakMonth: kpis.peakMonth || "N/A",
       peakMonthCount: Number(kpis.peakMonthCount || 0),
       topRoomType: kpis.topRoomType || "N/A",
@@ -1027,17 +1035,26 @@ const heuristicInsightBuilders = {
       : null;
 
     const q = String(question || "").toLowerCase();
-    let headline = `${metrics.totalAnalyzed} tenant(s) analyzed — ${safePercent(metrics.studentPercentage)} are students.`;
+    const dominantLabel = metrics.dominantOccupation || (metrics.studentPercentage >= metrics.professionalPercentage ? "Students" : "Working Professionals");
+    const dominantPct = metrics.dominantPercentage || (dominantLabel === "Students" ? metrics.studentPercentage : metrics.professionalPercentage);
+
+    let headline = `${metrics.totalAnalyzed} tenant(s) analyzed — ${dominantLabel} lead the community at ${safePercent(dominantPct)}.`;
     let summaryText = [
-      topOccupation ? `The most common occupation is ${topOccupation.label} with ${topOccupation.value} tenant(s).` : null,
+      topOccupation ? `Primary occupation segment is ${topOccupation.label} with ${topOccupation.value} tenant(s).` : null,
+      metrics.topProvince && metrics.topProvince !== "N/A" ? `Leading tenant origin is ${metrics.topProvince} (${metrics.topProvinceCount} tenants).` : null,
       topMonths.length > 0 ? `Busiest booking month is ${topMonths[0].label} with ${topMonths[0].count} reservation(s).` : null,
       `The most popular room choice is ${metrics.topRoomType}.`,
       question ? `You asked: ${question}` : null,
     ].filter(Boolean).join(" ");
 
-    if (q.includes("student") || q.includes("occupation") || q.includes("profession") || q.includes("job")) {
-      headline = `${safePercent(metrics.studentPercentage)} of analyzed residents are students.`;
-      summaryText = `In response to your occupation query: Students make up ${safePercent(metrics.studentPercentage)} of the resident community, with ${topOccupation?.label || "Students"} being the largest group.`;
+    if (q.includes("student") || q.includes("occupation") || q.includes("profession") || q.includes("job") || q.includes("work")) {
+      headline = `${dominantLabel} represent ${safePercent(dominantPct)} of analyzed tenants (${metrics.studentsCount || 0} students, ${metrics.professionalsCount || 0} professionals).`;
+      summaryText = `In response to your occupation query: Community mix comprises ${safePercent(metrics.studentPercentage)} students and ${safePercent(metrics.professionalPercentage)} working professionals, with ${topOccupation?.label || dominantLabel} being the largest group.`;
+    } else if (q.includes("province") || q.includes("origin") || q.includes("where") || q.includes("city")) {
+      headline = metrics.topProvince && metrics.topProvince !== "N/A"
+        ? `${metrics.topProvince} is the leading origin with ${metrics.topProvinceCount} tenant(s).`
+        : "Geographic origin distribution is currently building up.";
+      summaryText = `In response to your geographic query: Most tenants originate from ${metrics.topProvince || "local branches"}, followed by surrounding regional provinces.`;
     } else if (q.includes("referral") || q.includes("channel") || q.includes("source") || q.includes("acquisition")) {
       headline = topReferral ? `${topReferral.label} is the top referral source (${topReferral.value} tenants).` : "Referral channel analysis active.";
       summaryText = `In response to your referral source query: Most tenants found Lilycrest through ${topReferral?.label || "direct inquiries"}.`;
@@ -1048,20 +1065,21 @@ const heuristicInsightBuilders = {
       summary: summaryText,
       keyFindings: [
         topOccupation ? `${topOccupation.label} tenants make up the largest share of confirmed bookings.` : null,
+        metrics.topProvince && metrics.topProvince !== "N/A" ? `${metrics.topProvince} represents the top geographic origin (${metrics.topProvinceCount} tenants).` : null,
         roomTypePref.length > 0 ? `${roomTypePref[0].label} is the most popular room choice.` : null,
         topReferral ? `${topReferral.label} is the top referral source with ${topReferral.value} tenant(s).` : null,
         topAgeGroup ? `The ${topAgeGroup.label} age bracket has the most residents.` : null,
         topMonths.length >= 2 ? `${topMonths[0].label} and ${topMonths[1].label} are the busiest booking months.` : null,
       ].filter(Boolean).slice(0, MAX_FINDINGS),
       anomalies: [
-        Number(metrics.studentPercentage || 0) >= 90 ? "Nearly all tenants are students — consider also promoting rooms to working professionals." : null,
-        Number(metrics.studentPercentage || 0) <= 10 && Number(metrics.totalAnalyzed || 0) > 5 ? "Few student tenants — check if school-year promotions or pricing adjustments could attract more students." : null,
+        Number(metrics.studentPercentage || 0) >= 90 ? "Nearly all tenants are students — consider targeted outreach for working professionals." : null,
+        Number(metrics.professionalPercentage || 0) >= 90 ? "Working professionals dominate the current tenant base." : null,
         occupationMix.find((m) => m.label === "Unspecified" && m.value > metrics.totalAnalyzed * 0.3) ? "A number of tenants have an unspecified occupation — encourage applicants to share employment or school details." : null,
       ].filter(Boolean).slice(0, MAX_ANOMALIES),
       recommendedActions: [
         topMonths.length > 0 ? `Prepare room readiness before ${topMonths[0].label} to welcome the wave of new tenants smoothly.` : null,
+        metrics.topProvince && metrics.topProvince !== "N/A" ? `Target marketing in ${metrics.topProvince} and adjacent commuting routes.` : null,
         topReferral ? `Keep investing in ${topReferral.label} as a referral channel — it brings in the most confirmed bookings.` : null,
-        referralSources.length < 3 ? "Try new inquiry and referral channels to reach more prospective tenants." : null,
         topAgeGroup ? `Tailor amenities and community updates for the ${topAgeGroup.label} age group, which is your largest community segment.` : null,
       ].filter(Boolean).slice(0, MAX_ACTIONS),
       confidence: Number(metrics.totalAnalyzed || 0) >= 10 ? "medium" : "low",

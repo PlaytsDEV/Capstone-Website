@@ -122,7 +122,7 @@ const BASE_NAV_ITEMS = [
     to: "/admin/analytics",
     icon: BarChart3,
     group: "Navigation",
-    permission: "viewReports",
+    ownerOnly: true,
     keywords: ["analytics", "reports", "insights", "trends", "financials", "revenue"],
   },
   {

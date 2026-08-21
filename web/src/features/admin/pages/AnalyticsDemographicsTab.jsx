@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import dayjs from "dayjs";
 import {
+  Briefcase,
   Calendar,
-  DoorOpen,
-  GraduationCap,
+  MapPin,
   Users,
 } from "lucide-react";
 import { useDemographicsReport } from "../../../shared/hooks/queries/useAnalyticsReports";
@@ -41,6 +41,8 @@ const GEO_COLUMNS = [
 
 const DRILLDOWN_COLUMNS = [
   { key: "name", label: "Tenant Name", sortable: true },
+  { key: "occupation", label: "Occupation", sortable: true, render: (row) => row.occupation || "—" },
+  { key: "province", label: "Province", sortable: true, render: (row) => row.province || "—" },
   { key: "room", label: "Room", sortable: true },
   { key: "roomType", label: "Room Type", sortable: true },
   { key: "status", label: "Status", sortable: true },
@@ -61,8 +63,8 @@ export default function AnalyticsDemographicsTab({
   const [drilldown, setDrilldown] = useState(null);
   const [drilldownPage, setDrilldownPage] = useState(1);
   const [drilldownSearch, setDrilldownSearch] = useState("");
-  const [pageSize, setPageSize] = useState(5);
-  const [drilldownPageSize, setDrilldownPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(10);
+  const [drilldownPageSize, setDrilldownPageSize] = useState(10);
 
   const params = useMemo(
     () => ({
@@ -119,6 +121,8 @@ export default function AnalyticsDemographicsTab({
     if (!drilldownSearch) return drilldown.rows;
     return drilldown.rows.filter((row) =>
       (row.name && String(row.name).toLowerCase().includes(drilldownSearch.toLowerCase())) ||
+      (row.occupation && String(row.occupation).toLowerCase().includes(drilldownSearch.toLowerCase())) ||
+      (row.province && String(row.province).toLowerCase().includes(drilldownSearch.toLowerCase())) ||
       (row.room && String(row.room).toLowerCase().includes(drilldownSearch.toLowerCase())) ||
       (row.roomType && String(row.roomType).toLowerCase().includes(drilldownSearch.toLowerCase()))
     );
@@ -141,28 +145,30 @@ export default function AnalyticsDemographicsTab({
         icon: Users,
         tone: "blue",
         label: "Active Tenants",
-        value: kpis.activeTenants || 0,
+        value: kpis.activeTenants ?? kpis.totalAnalyzed ?? 0,
         trend: "Total current population",
         onClick: () => openDrilldown(
           "Active Tenants",
-          kpiDetails.activeTenants,
-          `${kpiDetails.activeTenants?.length || 0} active tenants across all rooms`,
+          kpiDetails.activeTenants || kpiDetails.allTenants,
+          `${kpiDetails.activeTenants?.length || kpis.activeTenants || kpis.totalAnalyzed || 0} active tenants across all rooms`,
         ),
       },
       {
-        icon: GraduationCap,
-        tone: "green",
-        label: "Students",
-        value: `${kpis.studentPercentage || 0}%`,
-        trend: `${kpis.studentsCount || 0} enrolled students`,
+        icon: Briefcase,
+        tone: "emerald",
+        label: "Occupation",
+        value: kpis.dominantOccupation
+          ? `${kpis.dominantOccupation} (${kpis.dominantPercentage ?? kpis.studentPercentage ?? 0}%)`
+          : (kpis.studentPercentage !== undefined ? `${kpis.studentPercentage}% Students` : "—"),
+        trend: `${kpis.studentsCount || 0} Students • ${kpis.professionalsCount || 0} Working`,
         onClick: () => openDrilldown(
-          "Student Tenants",
-          kpiDetails.students,
-          `${kpiDetails.students?.length || 0} tenants identified as students`,
+          "Tenant Occupations",
+          kpiDetails.allTenants,
+          `${kpis.studentsCount || 0} students, ${kpis.professionalsCount || 0} working professionals`,
         ),
       },
       {
-        icon: DoorOpen,
+        icon: MapPin,
         tone: "amber",
         label: "Top Province",
         value: kpis.topProvince || "N/A",
@@ -170,7 +176,7 @@ export default function AnalyticsDemographicsTab({
         onClick: () => openDrilldown(
           `Tenants from ${kpis.topProvince || "Top Province"}`,
           kpiDetails.topProvince,
-          `${kpiDetails.topProvince?.length || 0} tenants from ${kpis.topProvince || "this province"}`,
+          `${kpiDetails.topProvince?.length || kpis.topProvinceCount || 0} tenants from ${kpis.topProvince || "this province"}`,
         ),
       },
       {
@@ -178,11 +184,11 @@ export default function AnalyticsDemographicsTab({
         tone: "purple",
         label: "Peak Month",
         value: kpis.peakMonth || "N/A",
-        trend: "High reservation volume",
+        trend: `${kpis.peakMonthCount || 0} reservations`,
         onClick: () => openDrilldown(
           `Reservations in ${kpis.peakMonth || "Peak Month"}`,
           kpiDetails.peakMonth,
-          `${kpiDetails.peakMonth?.length || 0} reservations created in ${kpis.peakMonth || "the peak month"}`,
+          `${kpiDetails.peakMonth?.length || kpis.peakMonthCount || 0} reservations created in ${kpis.peakMonth || "the peak month"}`,
         ),
       },
     ],

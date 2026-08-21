@@ -151,6 +151,7 @@ export async function handleExportReservationsPDF({
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
     reportType: "Reservations",
+    orientation: "landscape",
     kpis,
     sections: [
       {
@@ -158,7 +159,7 @@ export async function handleExportReservationsPDF({
         title: "Filtered Reservations List",
         description: `Export containing ${reservations.length} reservation records matching the active filter criteria.`,
         headers: ["Code", "Applicant", "Branch", "Room", "Status", "Move In", "Created"],
-        colWidths: [25, 35, 22, 26, 24, 23, 23],
+        colWidths: [26, 40, 24, 28, 24, 24, 24],
         rows: tableRows,
       },
     ],

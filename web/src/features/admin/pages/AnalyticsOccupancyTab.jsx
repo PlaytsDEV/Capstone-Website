@@ -138,7 +138,7 @@ export default function AnalyticsOccupancyTab({
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(10);
 
   const [occupancyMetric, setOccupancyMetric] = useState("rate");
   const [trendRange, setTrendRange] = useState(null);

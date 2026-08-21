@@ -30,7 +30,7 @@ export const NAV_ITEMS = [
   { to: "/admin/maintenance", icon: Wrench, text: "Maintenance", group: "workspace", priority: 5, permission: "manageMaintenance" },
   { to: "/admin/chat", icon: MessageSquareText, text: "Support Chat", group: "workspace", priority: 6 },
   { to: "/admin/billing", icon: CreditCard, text: "Billing", group: "workspace", priority: 7 },
-  { to: "/admin/analytics", icon: TrendingUp, text: "Analytics", group: "workspace", priority: 8 },
+  { to: "/admin/analytics", icon: TrendingUp, text: "Analytics", group: "workspace", priority: 8, saOnly: true },
   { to: "/admin/announcements", icon: Megaphone, text: "Announcements", group: "workspace", priority: 9, permission: "manageAnnouncements" },
   { to: "/admin/notifications", icon: Bell, text: "Notifications", group: "workspace", priority: 10 },
   { to: "/admin/users", icon: UserCog, text: "Accounts & Access", group: "system", priority: 1, permission: "manageUsers" },

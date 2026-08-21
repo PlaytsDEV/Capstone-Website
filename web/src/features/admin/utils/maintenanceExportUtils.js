@@ -454,6 +454,7 @@ export async function handleExportMaintenancePDF({
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
     reportType: "Maintenance",
+    orientation: "landscape",
     kpis: kpis.slice(0, 6),
     sections: [
       {
@@ -461,7 +462,7 @@ export async function handleExportMaintenancePDF({
         title: "Filtered Maintenance Requests",
         description: `Export containing ${requests.length} maintenance records matching the active filter criteria.`,
         headers: ["ID", "Tenant", "Branch", "Room", "Category", "Urgency", "Status", "Contractor", "Cost", "Submitted"],
-        colWidths: [18, 24, 18, 16, 18, 15, 18, 18, 15, 18],
+        colWidths: [18, 30, 20, 18, 26, 20, 28, 44, 20, 22],
         rows: tableRows,
       },
     ],

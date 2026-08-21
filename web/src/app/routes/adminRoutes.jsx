@@ -160,21 +160,21 @@ export function AdminRoutes() {
       <Route
         path="analytics"
         element={
-          <RequirePermission permission="viewReports">
+          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminAnalyticsSkeleton />}>
             <RouteShell name="Analytics" fallback={<AdminAnalyticsSkeleton />}>
               <AnalyticsPage />
             </RouteShell>
-          </RequirePermission>
+          </ProtectedRoute>
         }
       />
       <Route
         path="analytics/details"
         element={
-          <RequirePermission permission="viewReports">
+          <ProtectedRoute requiredRole="owner" loadingFallback={<AdminAnalyticsSkeleton />}>
             <RouteShell name="AnalyticsDetails" fallback={<AdminAnalyticsSkeleton />}>
               <AnalyticsDetailsPage />
             </RouteShell>
-          </RequirePermission>
+          </ProtectedRoute>
         }
       />
       <Route

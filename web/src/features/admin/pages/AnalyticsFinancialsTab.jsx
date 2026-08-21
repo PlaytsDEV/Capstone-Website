@@ -49,7 +49,7 @@ export default function AnalyticsFinancialsTab({
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [exposureFilter, setExposureFilter] = useState("all");
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(10);
 
   const params = useMemo(() => ({ branch, range }), [branch, range]);
   const { data, isLoading, isError, error, refetch } = useFinancialsAnalytics(params);

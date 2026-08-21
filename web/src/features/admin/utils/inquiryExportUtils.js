@@ -235,6 +235,7 @@ export async function handleExportInquiriesPDF({
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
     reportType: "Inquiries",
+    orientation: "landscape",
     kpis,
     sections: [
       {
@@ -242,7 +243,7 @@ export async function handleExportInquiriesPDF({
         title: "Filtered Inquiry Records",
         description: `Export containing ${inquiries.length} inquiry record(s) matching active search and filter criteria.`,
         headers: ["Inquirer", "Branch", "Room Interest", "Source", "Status", "Submitted", "Message"],
-        colWidths: [28, 20, 25, 18, 20, 22, 45],
+        colWidths: [34, 22, 28, 20, 24, 24, 55],
         rows: tableRows,
       },
     ],

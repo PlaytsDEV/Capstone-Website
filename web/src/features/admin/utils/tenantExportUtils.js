@@ -152,6 +152,7 @@ export async function handleExportTenantsPDF({
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
     reportType: "Tenants",
+    orientation: "landscape",
     kpis,
     sections: [
       {
@@ -159,7 +160,7 @@ export async function handleExportTenantsPDF({
         title: "Current Tenant Roster",
         description: `Listing ${tenants.length} tenant record(s) matching the active workspace filters.`,
         headers: ["Tenant", "Branch", "Room", "Contract End", "Billing", "Contract", "Occupancy"],
-        colWidths: [34, 20, 25, 23, 24, 26, 26],
+        colWidths: [38, 22, 28, 24, 26, 28, 28],
         rows: tableRows,
       },
     ],

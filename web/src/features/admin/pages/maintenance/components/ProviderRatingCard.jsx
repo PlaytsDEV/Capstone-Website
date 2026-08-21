@@ -77,10 +77,10 @@ export const ProviderRatingCard = forwardRef(function ProviderRatingCard(
 
   useImperativeHandle(ref, () => ({
     validate: () => {
-      setTouched(true);
-      if (!providerName || existingRating?.rating) {
+      if (!providerName || existingRating?.rating || !selectedRating || selectedRating === 0) {
         return { valid: true, skipped: true };
       }
+      setTouched(true);
       const validationErrors = validate(selectedRating, selectedTags, feedback);
       if (Object.keys(validationErrors).length > 0) {
         setErrors(validationErrors);
@@ -97,10 +97,10 @@ export const ProviderRatingCard = forwardRef(function ProviderRatingCard(
       };
     },
     saveRating: async () => {
-      setTouched(true);
-      if (!providerName || existingRating?.rating) {
+      if (!providerName || existingRating?.rating || !selectedRating || selectedRating === 0) {
         return { skipped: true };
       }
+      setTouched(true);
       const validationErrors = validate(selectedRating, selectedTags, feedback);
       if (Object.keys(validationErrors).length > 0) {
         setErrors(validationErrors);

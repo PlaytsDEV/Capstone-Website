@@ -178,6 +178,7 @@ export async function handleExportAnnouncementsPDF({
     subtitle: `Filter Context: ${filterDesc}`,
     filename,
     reportType: "Announcements",
+    orientation: "landscape",
     kpis,
     sections: [
       {
@@ -185,7 +186,7 @@ export async function handleExportAnnouncementsPDF({
         title: "Announcements & Policy Records List",
         description: `Official management report containing ${announcements.length} broadcast records matching active filters.`,
         headers: ["Title", "Type", "Category", "Branch", "Status", "Effective / Start", "Pinned", "Ack Rate"],
-        colWidths: [36, 16, 18, 20, 18, 26, 14, 30],
+        colWidths: [44, 18, 22, 22, 20, 26, 16, 32],
         rows: tableRows,
       },
     ],
