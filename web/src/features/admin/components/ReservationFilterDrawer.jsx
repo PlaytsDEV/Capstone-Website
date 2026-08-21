@@ -6,6 +6,8 @@ export default function ReservationFilterDrawer({
   onClose,
   filters,
   onChange,
+  categoryFilter = "all",
+  onCategoryFilterChange,
   statusFilter = "all",
   onStatusFilterChange,
   onReset,
@@ -72,18 +74,24 @@ export default function ReservationFilterDrawer({
               onChange={(e) => onStatusFilterChange?.(e.target.value)}
               className="res-drawer__select"
             >
-              <option value="all">All Active Statuses</option>
-              <option value="new">New Applications</option>
-              <option value="under_review">Under Review</option>
-              <option value="needs_revision">Needs Revision</option>
-              <option value="approved_for_payment">Approved for Payment</option>
-              <option value="reserved">Reserved</option>
-              <option value="moveIn">Move In</option>
-              <option value="overdue">Overdue Move-In</option>
-              <option value="cancellation_requested">Cancellation Requested</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="rejected">Rejected</option>
-              {isOwner && <option value="archived">Archived</option>}
+              <option value="all">All Statuses</option>
+              <optgroup label="Active Workflow">
+                <option value="new">New Applications</option>
+                <option value="under_review">Under Review</option>
+                <option value="needs_revision">Needs Revision</option>
+                <option value="approved_for_payment">Approved for Payment</option>
+                <option value="reserved">Reserved</option>
+                <option value="moveIn">Move In</option>
+              </optgroup>
+              <optgroup label="Action Required">
+                <option value="overdue">Overdue Move-In</option>
+                <option value="cancellation_requested">Cancellation Requested</option>
+              </optgroup>
+              <optgroup label="Closed & Archived">
+                <option value="cancelled">Cancelled</option>
+                <option value="rejected">Rejected</option>
+                {isOwner && <option value="archived">Archived</option>}
+              </optgroup>
             </select>
           </div>
 

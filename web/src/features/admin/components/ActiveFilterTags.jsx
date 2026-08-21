@@ -17,8 +17,15 @@ const APP_DATE_LABELS = {
   custom: "Submitted: Custom Range",
 };
 
+const CATEGORY_LABELS = {
+  active_workflow: "Active Workflow",
+  action_required: "Action Required",
+  closed_archive: "Closed & Archived",
+};
+
 const STATUS_LABELS = {
   all: "All Active",
+  all_active: "All Active",
   new: "New Applications",
   pending_review: "Under Review",
   under_review: "Under Review",
@@ -40,6 +47,8 @@ const STATUS_LABELS = {
 export default function ActiveFilterTags({
   searchTerm,
   onClearSearch,
+  categoryFilter,
+  onClearCategory,
   statusFilter,
   onClearStatus,
   branchFilter,
@@ -65,6 +74,14 @@ export default function ActiveFilterTags({
       id: "branch",
       label: `Branch: ${opt?.label || branchFilter}`,
       onRemove: onClearBranch,
+    });
+  }
+
+  if (categoryFilter && categoryFilter !== "all") {
+    tags.push({
+      id: "category",
+      label: `Category: ${CATEGORY_LABELS[categoryFilter] || categoryFilter}`,
+      onRemove: onClearCategory,
     });
   }
 

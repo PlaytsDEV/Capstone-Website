@@ -272,19 +272,26 @@ roomSchema.methods.restore = async function () {
 
 /**
  * Mark a bed as occupied
- * @param {string} bedId - The bed ID to occupy
+ * @param {string} bedId - The bed ID or code to occupy
  * @param {string} userId - User ID occupying the bed
  * @param {string} reservationId - Reservation ID for tracking
  * @returns {boolean} - true if successful, false if bed not found
  */
 roomSchema.methods.occupyBed = function (bedId, userId, reservationId) {
-  const bed = this.beds.find((b) => b.id === bedId || String(b._id) === String(bedId));
+  const normBedId = bedId ? String(bedId).trim().toLowerCase() : null;
+  const bed = this.beds.find((b) => {
+    const bId = b.id ? String(b.id).trim().toLowerCase() : "";
+    const bCode = b.code ? String(b.code).trim().toLowerCase() : "";
+    const bMongoId = b._id ? String(b._id).trim().toLowerCase() : "";
+    const bNum = b.bedNumber != null ? String(b.bedNumber) : "";
+    return normBedId && (bId === normBedId || bCode === normBedId || bMongoId === normBedId || bNum === normBedId);
+  });
   if (!bed) return false;
 
   bed.status = "occupied";
   bed.occupiedBy = {
-    userId,
-    reservationId,
+    userId: userId?._id || userId || null,
+    reservationId: reservationId?._id || reservationId || null,
     occupiedSince: new Date(),
   };
   return true;
@@ -292,14 +299,41 @@ roomSchema.methods.occupyBed = function (bedId, userId, reservationId) {
 
 /**
  * Mark a bed as vacant
- * @param {string} bedId - The bed ID to vacate
+ * @param {string} bedId - The bed ID, code, or identifier to vacate
+ * @param {string} [userId] - Optional User ID to match if bedId doesn't match
+ * @param {string} [reservationId] - Optional Reservation ID to match if bedId doesn't match
  * @returns {boolean} - true if successful, false if bed not found
  */
-roomSchema.methods.vacateBed = function (bedId) {
-  const bed = this.beds.find((b) => b.id === bedId || String(b._id) === String(bedId));
+roomSchema.methods.vacateBed = function (bedId, userId, reservationId) {
+  const normBedId = bedId ? String(bedId).trim().toLowerCase() : null;
+  const normUserId = userId ? String(userId?._id || userId).trim() : null;
+  const normResId = reservationId ? String(reservationId?._id || reservationId).trim() : null;
+
+  const bed = this.beds.find((b) => {
+    const bId = b.id ? String(b.id).trim().toLowerCase() : "";
+    const bCode = b.code ? String(b.code).trim().toLowerCase() : "";
+    const bMongoId = b._id ? String(b._id).trim().toLowerCase() : "";
+    const bNum = b.bedNumber != null ? String(b.bedNumber) : "";
+    const bUserId = b.occupiedBy?.userId ? String(b.occupiedBy.userId).trim() : "";
+    const bResId = b.occupiedBy?.reservationId ? String(b.occupiedBy.reservationId).trim() : "";
+
+    if (normBedId && (bId === normBedId || bCode === normBedId || bMongoId === normBedId || bNum === normBedId)) {
+      return true;
+    }
+    if (normUserId && bUserId && bUserId === normUserId) {
+      return true;
+    }
+    if (normResId && bResId && bResId === normResId) {
+      return true;
+    }
+    return false;
+  });
+
   if (!bed) return false;
 
   bed.status = "available";
+  bed.lockedBy = null;
+  bed.lockExpiresAt = null;
   bed.occupiedBy = {
     userId: null,
     reservationId: null,

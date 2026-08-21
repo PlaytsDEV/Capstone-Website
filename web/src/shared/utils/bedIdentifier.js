@@ -7,18 +7,26 @@
  * Gets the Bunk Block letter ('A', 'B', etc.) for a bed based on its bunkBlock field, ID/code, or index.
  */
 export const getBunkBlockLetter = (bed, index) => {
-  if (bed?.bunkBlock && bed.bunkBlock !== "none") {
-    return String(bed.bunkBlock).toUpperCase();
-  }
-  // If bed ID or code ends with -[A-Z]-[UL] or contains bunk information
+  // If bed ID or code ends with -[A-Z]-[UL] or contains bunk information (e.g., -B-U, -B-L)
   const bedIdentifier = String(bed?.code || bed?.id || bed?._id || "");
   const match = bedIdentifier.match(/[-_]([A-Z])[-_][UL]$/i) || bedIdentifier.match(/bunk[-_\s]*([A-Z])/i);
   if (match) {
     return match[1].toUpperCase();
   }
+
+  // If index is provided and valid, use natural pairing (index 0,1 -> A; index 2,3 -> B; index 4,5 -> C)
+  // unless the bed object has an explicitly differentiated bunkBlock (e.g., 'B', 'C')
   if (typeof index === "number" && index >= 0) {
     const blockIndex = Math.floor(index / 2);
-    return String.fromCharCode(65 + blockIndex);
+    const expectedLetter = String.fromCharCode(65 + blockIndex);
+    if (bed?.bunkBlock && bed.bunkBlock !== "none" && bed.bunkBlock !== "A") {
+      return String(bed.bunkBlock).toUpperCase();
+    }
+    return expectedLetter;
+  }
+
+  if (bed?.bunkBlock && bed.bunkBlock !== "none") {
+    return String(bed.bunkBlock).toUpperCase();
   }
 
   return "A";

@@ -51,31 +51,36 @@ const syncRealtimeBedStatuses = async (rooms) => {
   const roomIds = rooms.map((r) => r._id).filter(Boolean);
   if (roomIds.length === 0) return rooms;
 
-  const activeReservations = await Reservation.find({
-    roomId: { $in: roomIds },
-    status: { $in: ACTIVE_BED_HOLD_STATUSES },
-    isArchived: { $ne: true },
-  })
-    .select(
-      "roomId selectedBed status moveInDate checkInDate targetMoveInDate createdAt leaseDuration leaseExtensions userId",
-    )
-    .populate("userId", "firstName lastName name email role user_id phone")
-    .lean();
+  const [activeReservations, activeStays] = await Promise.all([
+    Reservation.find({
+      roomId: { $in: roomIds },
+      status: { $in: ACTIVE_BED_HOLD_STATUSES },
+      isArchived: { $ne: true },
+    })
+      .select(
+        "roomId selectedBed status moveInDate checkInDate targetMoveInDate createdAt leaseDuration leaseExtensions userId",
+      )
+      .populate("userId", "firstName lastName name email role user_id phone")
+      .lean(),
+    Stay.find({
+      roomId: { $in: roomIds },
+      status: { $in: ["active", "ending_soon", "expired_occupancy_continuing"] },
+    })
+      .select("roomId bedId bunkBlock bedCode tenantId moveInDate checkInDate status monthlyRent")
+      .populate("tenantId", "firstName lastName name email role user_id phone")
+      .lean(),
+  ]);
 
-  // Collect unpopulated userId references from bed.occupiedBy
+  // Collect unpopulated userId references from active reservations and stays
   const unpopulatedUserIds = new Set();
-  for (const room of rooms) {
-    for (const bed of room.beds || []) {
-      if (bed.occupiedBy?.userId) {
-        unpopulatedUserIds.add(String(bed.occupiedBy.userId));
-      }
+  for (const resDoc of activeReservations) {
+    if (resDoc.userId && typeof resDoc.userId !== "object") {
+      unpopulatedUserIds.add(String(resDoc.userId));
     }
   }
-
-  // Remove userIds already fetched via activeReservations
-  for (const resDoc of activeReservations) {
-    if (resDoc.userId?._id) {
-      unpopulatedUserIds.delete(String(resDoc.userId._id));
+  for (const stayDoc of activeStays) {
+    if (stayDoc.tenantId && typeof stayDoc.tenantId !== "object") {
+      unpopulatedUserIds.add(String(stayDoc.tenantId));
     }
   }
 
@@ -83,6 +88,11 @@ const syncRealtimeBedStatuses = async (rooms) => {
   for (const resDoc of activeReservations) {
     if (resDoc.userId?._id) {
       userMap.set(String(resDoc.userId._id), resDoc.userId);
+    }
+  }
+  for (const stayDoc of activeStays) {
+    if (stayDoc.tenantId?._id) {
+      userMap.set(String(stayDoc.tenantId._id), stayDoc.tenantId);
     }
   }
 
@@ -105,46 +115,49 @@ const syncRealtimeBedStatuses = async (rooms) => {
     resByRoom.get(key).push(resDoc);
   }
 
+  const staysByRoom = new Map();
+  for (const stayDoc of activeStays) {
+    const key = String(stayDoc.roomId);
+    if (!staysByRoom.has(key)) staysByRoom.set(key, []);
+    staysByRoom.get(key).push(stayDoc);
+  }
+
   return rooms.map((room) => {
     const roomReservations = resByRoom.get(String(room._id)) || [];
+    const roomStays = staysByRoom.get(String(room._id)) || [];
     const beds = Array.isArray(room.beds) ? room.beds : [];
 
     const matchedResIds = new Set();
-    let updatedBeds = beds.map((bed) => {
-      const bId = bed.id ? String(bed.id) : null;
-      const bMongoId = bed._id ? String(bed._id) : null;
+    const matchedStayIds = new Set();
+
+    let updatedBeds = beds.map((bed, bedIdx) => {
+      const bId = bed.id ? String(bed.id).trim().toLowerCase() : null;
+      const bCode = bed.code ? String(bed.code).trim().toLowerCase() : null;
+      const bMongoId = bed._id ? String(bed._id).trim() : null;
       const bNum = bed.bedNumber != null ? String(bed.bedNumber) : null;
 
       const matchingHold = roomReservations.find((resDoc) => {
-        const selId = resDoc.selectedBed?.id ? String(resDoc.selectedBed.id) : null;
+        if (matchedResIds.has(String(resDoc._id))) return false;
+        const selId = resDoc.selectedBed?.id ? String(resDoc.selectedBed.id).trim().toLowerCase() : null;
+        const selCode = resDoc.selectedBed?.code ? String(resDoc.selectedBed.code).trim().toLowerCase() : null;
         const selNum = resDoc.selectedBed?.bedNumber != null ? String(resDoc.selectedBed.bedNumber) : null;
         return (
-          (selId && (selId === bId || selId === bMongoId || selId === bNum)) ||
+          (selId && (selId === bId || selId === bCode || selId === bMongoId || selId === bNum)) ||
+          (selCode && (selCode === bCode || selCode === bId)) ||
           (selNum && (selNum === bNum || selNum === bId))
         );
       });
 
-      const resUser =
-        matchingHold?.userId && typeof matchingHold.userId === "object"
-          ? matchingHold.userId
-          : null;
-      const occUserId = bed.occupiedBy?.userId
-        ? String(bed.occupiedBy.userId)
-        : resUser?._id
-          ? String(resUser._id)
-          : null;
-      const userDoc = (occUserId ? userMap.get(occUserId) : null) || resUser;
-
-      let name = null;
-      if (userDoc) {
-        if (userDoc.name) name = userDoc.name;
-        else if (userDoc.firstName || userDoc.lastName) {
-          name = `${userDoc.firstName || ""} ${userDoc.lastName || ""}`.trim();
-        } else if (userDoc.email) name = userDoc.email;
-      }
-      if (!name && bed.occupiedBy?.name) {
-        name = bed.occupiedBy.name;
-      }
+      const matchingStay = !matchingHold
+        ? roomStays.find((stayDoc) => {
+            if (matchedStayIds.has(String(stayDoc._id))) return false;
+            const sBedId = stayDoc.bedId ? String(stayDoc.bedId).trim().toLowerCase() : null;
+            return (
+              sBedId &&
+              (sBedId === bId || sBedId === bCode || sBedId === bMongoId || sBedId === bNum)
+            );
+          })
+        : null;
 
       if (matchingHold) {
         matchedResIds.add(String(matchingHold._id));
@@ -170,28 +183,40 @@ const syncRealtimeBedStatuses = async (rooms) => {
           daysRemaining = Math.max(0, expectedEnd.diff(dayjs(), "day"));
         }
 
+        const resUser =
+          matchingHold.userId && typeof matchingHold.userId === "object"
+            ? matchingHold.userId
+            : matchingHold.userId
+            ? userMap.get(String(matchingHold.userId))
+            : null;
+
+        let name = null;
+        if (resUser) {
+          if (resUser.name) name = resUser.name;
+          else if (resUser.firstName || resUser.lastName) {
+            name = `${resUser.firstName || ""} ${resUser.lastName || ""}`.trim();
+          } else if (resUser.email) name = resUser.email;
+        }
+
         return {
           ...bed,
           status: nextStatus,
-          // FCFS model: early-stage reservations (pending, review, etc.) resolve to
-          // "available" — bed must be marked available so other tenants can select it.
-          available: nextStatus !== "available",
+          available: nextStatus === "available",
           expectedVacancyDate: nextStatus !== "available" ? expectedVacancyDate : null,
           daysRemaining: nextStatus !== "available" ? daysRemaining : null,
           occupiedBy: nextStatus !== "available" ? {
-            userId: occUserId || null,
-            reservationId: matchingHold._id || bed.occupiedBy?.reservationId || null,
-            occupiedSince: bed.occupiedBy?.occupiedSince || matchingHold.moveInDate || matchingHold.createdAt || null,
+            userId: resUser?._id ? String(resUser._id) : null,
+            reservationId: matchingHold._id || null,
+            occupiedSince: matchingHold.moveInDate || matchingHold.createdAt || null,
             name: name || null,
-            firstName: userDoc?.firstName || null,
-            lastName: userDoc?.lastName || null,
-            email: userDoc?.email || bed.occupiedBy?.email || null,
-            phone: userDoc?.phone || null,
-            role: userDoc?.role || null,
-            user_id: userDoc?.user_id || null,
+            firstName: resUser?.firstName || null,
+            lastName: resUser?.lastName || null,
+            email: resUser?.email || null,
+            phone: resUser?.phone || null,
+            role: resUser?.role || null,
+            user_id: resUser?.user_id || null,
             status: matchingHold.status || null,
           } : {
-            // Pre-payment stage — clear occupant data so bed appears truly vacant
             userId: null,
             reservationId: null,
             occupiedSince: null,
@@ -207,25 +232,90 @@ const syncRealtimeBedStatuses = async (rooms) => {
         };
       }
 
-      if (name || bed.occupiedBy?.userId || bed.occupiedBy?.reservationId) {
+      if (matchingStay) {
+        matchedStayIds.add(String(matchingStay._id));
+        const stayUser =
+          matchingStay.userId && typeof matchingStay.userId === "object"
+            ? matchingStay.userId
+            : matchingStay.tenantId && typeof matchingStay.tenantId === "object"
+            ? matchingStay.tenantId
+            : userMap.get(String(matchingStay.userId || matchingStay.tenantId)) || null;
+
+        let name = null;
+        if (stayUser) {
+          if (stayUser.name) name = stayUser.name;
+          else if (stayUser.firstName || stayUser.lastName) {
+            name = `${stayUser.firstName || ""} ${stayUser.lastName || ""}`.trim();
+          } else if (stayUser.email) name = stayUser.email;
+        }
+
         return {
           ...bed,
+          status: "occupied",
+          available: false,
+          expectedVacancyDate: null,
+          daysRemaining: null,
           occupiedBy: {
-            userId: occUserId || null,
-            reservationId: bed.occupiedBy?.reservationId || null,
-            occupiedSince: bed.occupiedBy?.occupiedSince || null,
+            userId: stayUser?._id ? String(stayUser._id) : null,
+            reservationId: null,
+            occupiedSince: matchingStay.moveInDate || matchingStay.checkInDate || null,
             name: name || null,
-            firstName: userDoc?.firstName || null,
-            lastName: userDoc?.lastName || null,
-            email: userDoc?.email || bed.occupiedBy?.email || null,
-            phone: userDoc?.phone || null,
-            role: userDoc?.role || null,
-            user_id: userDoc?.user_id || null,
+            firstName: stayUser?.firstName || null,
+            lastName: stayUser?.lastName || null,
+            email: stayUser?.email || null,
+            phone: stayUser?.phone || null,
+            role: stayUser?.role || null,
+            user_id: stayUser?.user_id || null,
+            status: "active",
           },
         };
       }
 
-      return bed;
+      // If bed is explicitly locked for maintenance, preserve maintenance status
+      if (bed.status === "maintenance") {
+        return {
+          ...bed,
+          status: "maintenance",
+          available: false,
+          expectedVacancyDate: null,
+          daysRemaining: null,
+          occupiedBy: {
+            userId: null,
+            reservationId: null,
+            occupiedSince: null,
+            name: null,
+            firstName: null,
+            lastName: null,
+            email: null,
+            phone: null,
+            role: null,
+            user_id: null,
+            status: null,
+          },
+        };
+      }
+
+      // No active reservation and no active stay -> Bed is truly vacant & available
+      return {
+        ...bed,
+        status: "available",
+        available: true,
+        expectedVacancyDate: null,
+        daysRemaining: null,
+        occupiedBy: {
+          userId: null,
+          reservationId: null,
+          occupiedSince: null,
+          name: null,
+          firstName: null,
+          lastName: null,
+          email: null,
+          phone: null,
+          role: null,
+          user_id: null,
+          status: null,
+        },
+      };
     });
 
     // Also assign any unmatched active reservations to available beds
@@ -259,36 +349,49 @@ const syncRealtimeBedStatuses = async (rooms) => {
           const resUser =
             matchingHold?.userId && typeof matchingHold.userId === "object"
               ? matchingHold.userId
+              : matchingHold?.userId
+              ? userMap.get(String(matchingHold.userId))
               : null;
           const occUserId = resUser?._id ? String(resUser._id) : null;
-          const userDoc = resUser || (occUserId ? userMap.get(occUserId) : null);
 
           let name = null;
-          if (userDoc) {
-            if (userDoc.name) name = userDoc.name;
-            else if (userDoc.firstName || userDoc.lastName) {
-              name = `${userDoc.firstName || ""} ${userDoc.lastName || ""}`.trim();
-            } else if (userDoc.email) name = userDoc.email;
+          if (resUser) {
+            if (resUser.name) name = resUser.name;
+            else if (resUser.firstName || resUser.lastName) {
+              name = `${resUser.firstName || ""} ${resUser.lastName || ""}`.trim();
+            } else if (resUser.email) name = resUser.email;
           }
 
           return {
             ...bed,
             status: nextStatus,
-            available: false,
+            available: nextStatus === "available",
             expectedVacancyDate,
             daysRemaining,
-            occupiedBy: {
+            occupiedBy: nextStatus !== "available" ? {
               userId: occUserId || null,
               reservationId: matchingHold._id || null,
               occupiedSince: matchingHold.moveInDate || matchingHold.createdAt || null,
               name: name || null,
-              firstName: userDoc?.firstName || null,
-              lastName: userDoc?.lastName || null,
-              email: userDoc?.email || null,
-              phone: userDoc?.phone || null,
-              role: userDoc?.role || null,
-              user_id: userDoc?.user_id || null,
+              firstName: resUser?.firstName || null,
+              lastName: resUser?.lastName || null,
+              email: resUser?.email || null,
+              phone: resUser?.phone || null,
+              role: resUser?.role || null,
+              user_id: resUser?.user_id || null,
               status: matchingHold.status || null,
+            } : {
+              userId: null,
+              reservationId: null,
+              occupiedSince: null,
+              name: null,
+              firstName: null,
+              lastName: null,
+              email: null,
+              phone: null,
+              role: null,
+              user_id: null,
+              status: null,
             },
           };
         }
@@ -301,32 +404,20 @@ const syncRealtimeBedStatuses = async (rooms) => {
       .filter(Boolean)
       .sort((a, b) => new Date(a) - new Date(b));
 
-    // Ground-truth occupancy: count beds that are occupied, reserved, or have a tenant
-    // assigned after both the matched AND unmatched reservation loops have run.
-    // NOTE: do NOT use roomReservations.length here — that inflates the counter when
-    // reservations exist without a confirmed bed assignment (e.g. early-stage pending
-    // reservations), which causes the card to show "Full" while beds are still free.
-    const occupiedBedsCount = updatedBeds.filter(
+    // Ground-truth occupancy: count beds that are occupied, reserved, or locked
+    const liveOccupancy = updatedBeds.filter(
       (b) =>
         b.status === "occupied" ||
         b.status === "reserved" ||
-        Boolean(b.occupiedBy?.userId),
+        b.status === "locked",
     ).length;
-
-    // Use the higher of the stored counter and the bed-level count, but never
-    // blindly adopt roomReservations.length which over-counts unassigned holds.
-    const liveOccupancy = Math.max(
-      occupiedBedsCount,
-      // Only honour currentOccupancy if it doesn't exceed actual capacity —
-      // this prevents stale drift from perpetuating "Full" when beds are free.
-      Math.min(Number(room.currentOccupancy || 0), room.capacity || occupiedBedsCount),
-    );
 
     if (room.currentOccupancy !== liveOccupancy) {
       Room.updateOne(
         { _id: room._id },
         {
           $set: {
+            beds: updatedBeds,
             currentOccupancy: liveOccupancy,
             available: liveOccupancy < (room.capacity || 1),
           },
