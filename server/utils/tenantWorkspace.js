@@ -901,21 +901,6 @@ export function buildTenantWorkspaceEntry({
       contractPdfUrl: c.contractPdfUrl || null,
       stayProof: c.stayProof || null,
     })),
-    dedicatedContract: contracts.length > 0 ? {
-      _id: String((contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0])._id || (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).id),
-      id: String((contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0])._id || (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).id),
-      contractNumber: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).contractNumber || "",
-      status: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).status,
-      contractPurpose: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).contractPurpose || "initial",
-      isCurrent: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).isCurrent,
-      version: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).version,
-      leaseStartDate: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).leaseStartDate || null,
-      leaseEndDate: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).leaseEndDate || null,
-      approvedMonthlyRate: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).approvedMonthlyRate || null,
-      signedContractUrl: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).signedContractUrl || null,
-      contractPdfUrl: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).contractPdfUrl || null,
-      stayProof: (contracts.find((c) => ["active", "draft", "for_revision", "pending_signature", "approved"].includes(c.status)) || contracts[0]).stayProof || null,
-    } : null,
   };
 }
 

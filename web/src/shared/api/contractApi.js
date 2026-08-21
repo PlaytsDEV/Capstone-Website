@@ -57,6 +57,7 @@ export const contractApi = {
   listContracts: (filters = {}) =>
     authFetch(`/contracts${queryString(filters)}`),
   getContract: (contractId) => authFetch(`/contracts/${contractId}`),
+  getTenantCurrentContract: (tenantId) => authFetch(`/contracts/tenant/${tenantId}/current`),
   createContractDraft: ({ reservationId, stayId }) =>
     authFetch("/contracts", {
       method: "POST",
