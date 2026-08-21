@@ -41,6 +41,7 @@ import {
   utilityEventTypesForQuery,
 } from "../../utils/lifecycleNaming.js";
 import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
+import { archiveContractForCancelledReservation } from "../../services/contractArchiveService.js";
 import {
   sendReservationConfirmedEmail,
   sendVisitApprovedEmail,
@@ -2354,6 +2355,19 @@ export const releaseSlot = async (req, res, next) => {
       logger.warn(
         { err: occupancyErr, requestId: req.id },
         "Occupancy update during slot release failed",
+      );
+    }
+
+    try {
+      const releasingUser = await findDbUser(req.user?.uid);
+      await archiveContractForCancelledReservation({
+        reservationId: reservation._id,
+        actorId: releasingUser?._id || null,
+      });
+    } catch (contractArchiveErr) {
+      logger.warn(
+        { err: contractArchiveErr, requestId: req.id },
+        "Early-stage Contract archive during slot release failed (non-fatal)",
       );
     }
 

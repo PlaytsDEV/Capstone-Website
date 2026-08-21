@@ -827,8 +827,12 @@ export default function TenantDetailModal({
       a.download = `Lilycrest-Lease-Contract-${targetContract?.contractNumber || initialTenant?.reservationCode || "Tenant"}.pdf`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
-      showNotification("Failed to generate Lease Contract PDF", "error");
+    } catch (err) {
+      const code = err?.response?.data?.code;
+      const message = code === "MULTIPLE_CANONICAL_CONTRACTS"
+        ? "Multiple active contract records were found for this tenant. Please resolve the conflicting contract records before downloading the lease contract."
+        : err?.response?.data?.error || "Failed to generate Lease Contract PDF";
+      showNotification(message, "error");
     } finally {
       setDownloadingProof(false);
     }
