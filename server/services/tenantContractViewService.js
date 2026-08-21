@@ -66,53 +66,23 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
 
   const normType = String(contract.roomType || "").toLowerCase();
   const isPrivate = normType.includes("private");
-  const isLongTerm =
-    contract.leaseType === "long_term" ||
-    contract.leaseType === "long" ||
-    Number(contract.leaseDurationMonths || 12) >= 6;
 
-  let approvedMonthlyRate = contract.approvedMonthlyRate ?? null;
-  let regularMonthlyRate = contract.regularMonthlyRate ?? null;
-  let discountPercentage = contract.discountPercentage ?? null;
-  let discountAmount = contract.discountAmount ?? null;
-
-  if (isPrivate) {
-    if (regularMonthlyRate !== null && (regularMonthlyRate < 10000 || (approvedMonthlyRate !== null && regularMonthlyRate < approvedMonthlyRate))) {
-      regularMonthlyRate = isLongTerm ? 15000 : 16000;
-      discountPercentage = isLongTerm ? 10 : 0;
-    }
-    if (approvedMonthlyRate !== null && approvedMonthlyRate < 10000) {
-      approvedMonthlyRate = isLongTerm ? 13500 : 16000;
-    }
-    if (regularMonthlyRate && approvedMonthlyRate) {
-      discountAmount = Math.max(0, regularMonthlyRate - approvedMonthlyRate);
-    }
-  } else if (regularMonthlyRate !== null && approvedMonthlyRate !== null && regularMonthlyRate < approvedMonthlyRate) {
-    if (discountPercentage > 0 && discountPercentage < 100) {
-      regularMonthlyRate = Math.round(approvedMonthlyRate / (1 - discountPercentage / 100));
-    } else {
-      regularMonthlyRate = approvedMonthlyRate;
-    }
-  }
-
-  let advanceRentAmount = contract.advanceRentAmount ?? null;
-  let securityDepositAmount = contract.securityDepositAmount ?? null;
-
-  if (isPrivate) {
-    if (advanceRentAmount !== null && (advanceRentAmount < 10000 || (approvedMonthlyRate !== null && advanceRentAmount < approvedMonthlyRate))) {
-      advanceRentAmount = approvedMonthlyRate || (isLongTerm ? 13500 : 16000);
-    }
-    if (securityDepositAmount !== null && (securityDepositAmount < 10000 || (approvedMonthlyRate !== null && securityDepositAmount < approvedMonthlyRate))) {
-      securityDepositAmount = approvedMonthlyRate || (isLongTerm ? 13500 : 16000);
-    }
-  } else {
-    if (advanceRentAmount !== null && approvedMonthlyRate !== null && advanceRentAmount < approvedMonthlyRate) {
-      advanceRentAmount = approvedMonthlyRate;
-    }
-    if (securityDepositAmount !== null && approvedMonthlyRate !== null && securityDepositAmount < approvedMonthlyRate) {
-      securityDepositAmount = approvedMonthlyRate;
-    }
-  }
+  // The tenant-facing view must render the Contract's own authoritative
+  // pricing snapshot verbatim — see the matching note in
+  // contractGenerationDataService.js. This block previously recomputed
+  // regularMonthlyRate/approvedMonthlyRate/advanceRentAmount/
+  // securityDepositAmount against hardcoded room-type thresholds
+  // (10000/15000/16000/13500) whenever a value "looked off", silently
+  // diverging what the tenant sees here from what's on the actual generated
+  // PDF. There is exactly one canonical pricing-resolution path
+  // (contractPricingResolver.js, snapshotted onto the Contract at
+  // creation/approval time) and this view must not maintain a second one.
+  const approvedMonthlyRate = contract.approvedMonthlyRate ?? null;
+  const regularMonthlyRate = contract.regularMonthlyRate ?? null;
+  const discountPercentage = contract.discountPercentage ?? null;
+  const discountAmount = contract.discountAmount ?? null;
+  const advanceRentAmount = contract.advanceRentAmount ?? null;
+  const securityDepositAmount = contract.securityDepositAmount ?? null;
 
   return {
     id,
