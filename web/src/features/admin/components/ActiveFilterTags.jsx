@@ -20,7 +20,8 @@ const APP_DATE_LABELS = {
 const STATUS_LABELS = {
   all: "All Active",
   new: "New Applications",
-  pending_review: "Pending Review",
+  pending_review: "Under Review",
+  under_review: "Under Review",
   pending_application_review: "Under Review",
   needs_revision: "Needs Revision",
   approved_for_payment: "Approved for Payment",
@@ -29,7 +30,10 @@ const STATUS_LABELS = {
   overdue: "Overdue Move-In",
   cancellation_requested: "Cancellation Requested",
   moveIn: "Move In",
+  move_in: "Move In",
+  moved_in: "Move In",
   cancelled: "Cancelled",
+  rejected: "Rejected",
   archived: "Archived",
 };
 
