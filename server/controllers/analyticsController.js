@@ -1128,8 +1128,7 @@ const buildOverdueRoomRows = (openBills) => {
   });
 
   return [...grouped.values()]
-    .sort((left, right) => right.outstandingBalance - left.outstandingBalance)
-    .slice(0, 15);
+    .sort((left, right) => right.outstandingBalance - left.outstandingBalance);
 };
 
 const buildAuditBranchSummary = (logs, branches) =>
@@ -1362,8 +1361,7 @@ const buildSuspiciousIpRows = (failedLogins) => {
       lastSeenAt: entry.lastAttemptAt,
       targetedEmails: [...entry.emails],
     }))
-    .sort((left, right) => right.attempts - left.attempts)
-    .slice(0, 10);
+    .sort((left, right) => right.attempts - left.attempts);
 };
 
 const buildBranchComparison = async (scope, sinceDate) => {
@@ -1715,9 +1713,8 @@ const buildOperationsReportData = async (scope, rangeKey, tableRequest = parseTa
         resolutionHours,
         slaState: slaState.label,
       };
-    })
-    .slice(0, 15);
-  const reservationRows = reservations.slice(0, 15).map((reservation) => ({
+    });
+  const reservationRows = reservations.map((reservation) => ({
     id: String(reservation._id),
     reservationCode: reservation.reservationCode || reservation.visitCode || "Pending",
     guestName:
@@ -1814,22 +1811,15 @@ const buildAuditSummaryData = async (scope, rangeKey, tableRequest = parseTableR
   ).length;
   const criticalEvents = logs.filter((log) => log.severity === "critical").length;
   const branchSummary = buildAuditBranchSummary(logs, scope.branchesIncluded);
-  const recentSecurityEvents = logs
-    .filter(
-      (log) =>
-        ["warning", "high", "critical"].includes(String(log.severity || "")) ||
-        log.type === "login",
-    )
-    .slice(0, 20)
-    .map((log) => ({
-      id: log.logId,
-      branch: log.branch || "general",
-      type: log.type,
-      action: log.action,
-      severity: log.severity,
-      user: log.user,
-      timestamp: log.timestamp,
-    }));
+  const recentSecurityEvents = logs.map((log) => ({
+    id: log.logId,
+    branch: log.branch || "general",
+    type: log.type,
+    action: log.action,
+    severity: log.severity,
+    user: log.user,
+    timestamp: log.timestamp,
+  }));
 
   return {
     ...buildRangeEnvelope(scope, {
