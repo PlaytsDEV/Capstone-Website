@@ -157,7 +157,9 @@ function ReservationsPage() {
   const [searchTerm, setSearchTerm] = useState(
     () => searchParams.get("search") || "",
   );
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(
+    () => searchParams.get("status") || "all",
+  );
   const requestedBranch = searchParams.get("branch");
   const [branchFilter, setBranchFilter] = useState(() =>
     normalizeBranchFilterValue({
@@ -212,6 +214,13 @@ function ReservationsPage() {
     const urlSearch = searchParams.get("search");
     if (urlSearch !== null && urlSearch !== searchTerm) {
       setSearchTerm(urlSearch);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const urlStatus = searchParams.get("status");
+    if (urlStatus && urlStatus !== statusFilter) {
+      setStatusFilter(urlStatus);
     }
   }, [searchParams]);
 
@@ -285,7 +294,8 @@ function ReservationsPage() {
         reservation.status === "needs_revision",
       ).length,
       approvedForPayment: activeReservations.filter((reservation) =>
-        reservation.status === "approved_for_payment",
+        reservation.status === "approved_for_payment" ||
+        reservation.status === "payment_pending",
       ).length,
       reserved: activeReservations.filter(
         (reservation) => reservation.status === "reserved",
@@ -296,8 +306,11 @@ function ReservationsPage() {
       cancelled: activeReservations.filter(
         (reservation) => reservation.status === "cancelled",
       ).length,
+      rejected: activeReservations.filter(
+        (reservation) => reservation.status === "rejected",
+      ).length,
       movedIn: activeReservations.filter((reservation) =>
-        hasReservationStatus(reservation.status, "moveIn"),
+        hasReservationStatus(reservation.status, "moveIn", "move_in", "moved_in", "occupied"),
       ).length,
       archived: reservations.filter((reservation) => reservation.isArchived)
         .length,
@@ -326,18 +339,32 @@ function ReservationsPage() {
             ? true
           : statusFilter === "new"
             ? reservation.isNew
-          : statusFilter === "pending_review"
+          : statusFilter === "pending_review" || statusFilter === "under_review"
             ? reservation.status === "pending_application_review" ||
               reservation.status === "needs_revision"
+          : statusFilter === "pending_application_review"
+            ? reservation.status === "pending_application_review"
+          : statusFilter === "needs_revision"
+            ? reservation.status === "needs_revision"
+          : statusFilter === "approved_for_payment"
+            ? reservation.status === "approved_for_payment" ||
+              reservation.status === "payment_pending"
+          : statusFilter === "payment_pending"
+            ? reservation.status === "payment_pending"
           : statusFilter === "reserved"
-            ? reservation.status === "reserved" ||
-              reservation.status === "approved_for_payment"
+            ? reservation.status === "reserved"
+          : statusFilter === "moveIn" || statusFilter === "moved_in" || statusFilter === "move_in"
+            ? hasReservationStatus(reservation.status, "moveIn", "move_in", "moved_in", "occupied")
           : statusFilter === "overdue"
             ? checkOverdueReservation(reservation)
           : statusFilter === "in_progress"
             ? IN_PROGRESS_STATUSES.includes(reservation.status)
           : statusFilter === "cancellation_requested"
             ? hasPendingCancellationRequest(reservation)
+          : statusFilter === "cancelled"
+            ? reservation.status === "cancelled"
+          : statusFilter === "rejected"
+            ? reservation.status === "rejected"
             : hasReservationStatus(reservation.status, statusFilter);
       const matchBranch =
         branchFilter === "all" || reservation.branchCode === branchFilter;
@@ -497,10 +524,10 @@ function ReservationsPage() {
       {
         key: "reserved",
         label: "Reserved",
-        value: counts.approvedForPayment + counts.reserved,
+        value: counts.reserved,
         icon: CheckCircle,
         color: "emerald",
-        subtext: "Confirmed / Approved",
+        subtext: "Confirmed paid bookings",
       },
       {
         key: "moveIn",
@@ -539,12 +566,54 @@ function ReservationsPage() {
         iconActiveClass: "text-slate-900 dark:text-slate-950",
       },
       {
+        id: "under_review",
+        label: "Under Review",
+        count: counts.pendingApplicationReview + counts.needsRevision,
+        icon: Clock,
+        iconColor:
+          (counts.pendingApplicationReview + counts.needsRevision) > 0
+            ? "text-amber-600 dark:text-amber-400"
+            : "text-muted-foreground",
+        title: "Applications pending document verification and review",
+        activeClass: "res-view-tab--active res-view-tab--warning",
+        iconActiveClass: "text-slate-900 dark:text-slate-950",
+      },
+      {
+        id: "approved_for_payment",
+        label: "Approved for Payment",
+        count: counts.approvedForPayment,
+        icon: CheckCircle,
+        iconColor:
+          counts.approvedForPayment > 0
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-muted-foreground",
+        title: "Approved applications awaiting reservation payment",
+        activeClass: "res-view-tab--active res-view-tab--primary",
+        iconActiveClass: "text-slate-900 dark:text-slate-950",
+      },
+      {
         id: "reserved",
         label: "Reserved",
-        count: counts.reserved + counts.approvedForPayment,
+        count: counts.reserved,
         icon: CheckCircle,
-        iconColor: "text-muted-foreground",
-        title: "Filter confirmed and reserved reservations",
+        iconColor:
+          counts.reserved > 0
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-muted-foreground",
+        title: "Confirmed and paid reservations",
+        activeClass: "res-view-tab--active res-view-tab--primary",
+        iconActiveClass: "text-slate-900 dark:text-slate-950",
+      },
+      {
+        id: "moveIn",
+        label: "Move In",
+        count: counts.movedIn,
+        icon: User,
+        iconColor:
+          counts.movedIn > 0
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-muted-foreground",
+        title: "Checked-in active tenants",
         activeClass: "res-view-tab--active res-view-tab--primary",
         iconActiveClass: "text-slate-900 dark:text-slate-950",
       },
@@ -587,6 +656,16 @@ function ReservationsPage() {
         icon: Trash2,
         iconColor: "text-muted-foreground",
         title: "View cancelled reservations",
+        activeClass: "res-view-tab--active res-view-tab--danger",
+        iconActiveClass: "text-white",
+      },
+      {
+        id: "rejected",
+        label: "Rejected",
+        count: counts.rejected,
+        icon: X,
+        iconColor: "text-muted-foreground",
+        title: "View rejected applications",
         activeClass: "res-view-tab--active res-view-tab--danger",
         iconActiveClass: "text-white",
       },
@@ -1447,7 +1526,13 @@ function ReservationsPage() {
                 setAdvancedFilters(next);
                 setCurrentPage(1);
               }}
+              statusFilter={statusFilter}
+              onStatusFilterChange={(newStatus) => {
+                setStatusFilter(newStatus);
+                setCurrentPage(1);
+              }}
               onReset={() => {
+                setStatusFilter("all");
                 setAdvancedFilters({
                   moveIn: "any",
                   applicationDate: "any",
@@ -1460,6 +1545,7 @@ function ReservationsPage() {
                 setCurrentPage(1);
               }}
               reservations={reservations}
+              isOwner={isOwner}
             />
 
 
