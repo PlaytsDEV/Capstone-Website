@@ -11,6 +11,7 @@ import {
 } from "./contractTemplateService.js";
 import { buildInitialPaymentSummary } from "./contractPricingService.js";
 import { resolveReservationContractEligibility } from "./reservationContractEligibilityService.js";
+import { joinAddressParts, normalizeAddress, stripRegionSuffix } from "../utils/addressUtils.js";
 
 const numberWords = Object.freeze([
   "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
@@ -53,25 +54,9 @@ export const resolveApplicantIdentity = ({ contract = {}, reservation = {} } = {
     value !== null &&
     (typeof value !== "string" || value.trim() !== "");
 
-  const stripRegionSuffix = (addr) => {
-    if (!addr || typeof addr !== "string") return "";
-    return addr
-      .replace(/,\s*(National Capital Region\s*(\(NCR\))?|NCR|Region\s+[IVXLCDM\d\-A-Za-z]+(\s*\([^\)]+\))?)\s*$/i, "")
-      .trim();
-  };
-
   const joinAddress = (address = {}) => {
-    if (typeof address === "string") return stripRegionSuffix(collapseWhitespace(address));
-    return [
-      address.unitHouseNo,
-      address.street,
-      address.barangay,
-      address.city,
-      address.province,
-    ]
-      .filter(hasValue)
-      .map((value) => collapseWhitespace(value))
-      .join(", ");
+    if (typeof address === "string") return normalizeAddress(stripRegionSuffix(collapseWhitespace(address))).value;
+    return normalizeAddress(stripRegionSuffix(joinAddressParts(address))).value;
   };
 
   const firstName = collapseWhitespace(reservation.firstName) || null;

@@ -8,6 +8,7 @@
  */
 
 import { Reservation, Room, User } from "../../models/index.js";
+import { normalizeAddress } from "../../utils/addressUtils.js";
 import logger from "../../middleware/logger.js";
 import auditLogger from "../../utils/auditLogger.js";
 import {
@@ -62,10 +63,10 @@ const formatAddressFromApplication = (body = {}) => {
     body["address.province"] ?? body.addressProvince ?? addressObj.province,
   ].filter((v) => v !== undefined && v !== null && String(v).trim() !== "");
 
-  if (parts.length > 0) {
-    return parts.map((v) => String(v).trim()).join(", ");
-  }
-  return typeof body.address === "string" ? body.address.trim() : null;
+  const joined = parts.length > 0
+    ? parts.map((v) => String(v).trim()).join(", ")
+    : typeof body.address === "string" ? body.address.trim() : null;
+  return joined ? normalizeAddress(joined).value : joined;
 };
 
 export const buildUserProfileUpdatesFromApplication = (body = {}, existingReservation = {}) => {

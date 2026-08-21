@@ -104,19 +104,6 @@ export const generateContractNumber = async (branch, date = new Date(), session 
   };
 };
 
-const formatReservationAddress = (address) => {
-  if (!address) return "";
-  if (typeof address === "string") {
-    return address
-      .replace(/,\s*(National Capital Region\s*(\(NCR\))?|NCR|Region\s+[IVXLCDM\d\-A-Za-z]+(\s*\([^\)]+\))?)\s*$/i, "")
-      .trim();
-  }
-  return [
-    address.unitHouseNo, address.street, address.barangay,
-    address.city, address.province,
-  ].filter(Boolean).join(", ");
-};
-
 const getBedLabel = (bed = {}) => bed.code || [bed.bunkBlock, bed.position].filter(Boolean).join("-");
 
 export const createDraftContract = async ({
@@ -272,7 +259,7 @@ export const createDraftContract = async ({
       bedId: canonicalRoomType === "private" ? "" : (stay?.bedId || selectedBed.id || ""),
       bedLabel: canonicalRoomType === "private" ? "" : (stay?.bedCode || getBedLabel(selectedBed)),
       tenantLegalName: person.fullName || "",
-      tenantAddress: person.currentAddress || formatReservationAddress(reservation.address) || "",
+      tenantAddress: person.currentAddress || "",
       tenantEmail: person.email || "",
       tenantPhone: person.phone || "",
       tenantNationality: person.nationality || "",
@@ -692,7 +679,7 @@ export const createReplacementContractForTransfer = async ({
         bedId: bedIdentifier,
         bedLabel: bedName,
         tenantLegalName: oldContract.tenantLegalName || person.fullName || "",
-        tenantAddress: oldContract.tenantAddress || person.currentAddress || formatReservationAddress(reservation.address) || "",
+        tenantAddress: oldContract.tenantAddress || person.currentAddress || "",
         tenantEmail: oldContract.tenantEmail || person.email || "",
         tenantPhone: oldContract.tenantPhone || person.phone || "",
         tenantNationality: oldContract.tenantNationality || person.nationality || "",
@@ -918,7 +905,7 @@ export const createSuccessorContractForRenewal = async ({
         bedId: oldContract.bedId,
         bedLabel: oldContract.bedLabel,
         tenantLegalName: oldContract.tenantLegalName || person.fullName || "",
-        tenantAddress: oldContract.tenantAddress || person.currentAddress || formatReservationAddress(reservation.address) || "",
+        tenantAddress: oldContract.tenantAddress || person.currentAddress || "",
         tenantEmail: oldContract.tenantEmail || person.email || "",
         tenantPhone: oldContract.tenantPhone || person.phone || "",
         tenantNationality: oldContract.tenantNationality || person.nationality || "",
