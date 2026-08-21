@@ -88,11 +88,6 @@ test("system topbar copy uses the consolidated labels", () => {
 
 
 
-test("contract list and detail routes share Contract workspace metadata", () => {
-  assert.equal(getPageMeta("/admin/contracts").title, "Contracts");
-  assert.equal(getPageMeta("/admin/contracts/507f1f77bcf86cd799439011").title, "Contracts");
-});
-
 test("base pages stop at page name without extra sub-tab names in breadcrumbs", () => {
   const roomMeta = getPageMeta("/admin/room-availability");
   assert.deepEqual(roomMeta.breadcrumbs, [

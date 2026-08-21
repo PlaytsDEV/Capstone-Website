@@ -95,9 +95,6 @@ export const RoomAvailabilityPage = lazyWithRetry(
 export const TenantsWorkspacePage = lazyWithRetry(
   () => import("../features/admin/pages/TenantsWorkspacePage.jsx"),
 );
-export const AdminContractsPage = lazyWithRetry(
-  () => import("../features/admin/pages/AdminContractsPage.jsx"),
-);
 export const AuditLogsPage = lazyWithRetry(
   () => import("../features/admin/pages/AuditLogsPage.jsx"),
 );

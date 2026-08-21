@@ -3133,22 +3133,6 @@ export default function TenantDetailModal({
             <h3 className="text-sm font-bold text-foreground">Official Digital Lease Contract</h3>
           </div>
           <div className="flex items-center gap-2">
-            {(activeDigitalContract?.id || activeDigitalContract?._id || dedicatedContract?.id || dedicatedContract?._id) && (
-              <button
-                type="button"
-                onClick={() => {
-                  const targetContractId = activeDigitalContract?.id || activeDigitalContract?._id || dedicatedContract?.id || dedicatedContract?._id;
-                  setShowDigitalContractModal(false);
-                  onClose();
-                  navigate(`/admin/contracts/${targetContractId}`);
-                }}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground px-2.5 py-1 rounded-md border border-border hover:bg-muted transition-colors cursor-pointer"
-                title="Open contract details in Contracts management"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Open in Contracts</span>
-              </button>
-            )}
             <button
               type="button"
               onClick={() => setShowDigitalContractModal(false)}
