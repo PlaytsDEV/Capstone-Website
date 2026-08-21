@@ -23,6 +23,7 @@ import {
   ACTIVE_STAY_STATUS_QUERY,
 } from "../../utils/lifecycleNaming.js";
 import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
+import { archiveContractForCancelledReservation } from "../../services/contractArchiveService.js";
 import {
   renewStayWorkflow,
   moveOutStayWorkflow,
@@ -92,6 +93,14 @@ export const archiveReservation = async (req, res, next) => {
         logger.warn(
           { err: e, requestId: req.id },
           "Occupancy update during archive failed",
+        );
+      }
+      try {
+        await archiveContractForCancelledReservation({ reservationId: reservation._id, actorId: dbUser?._id || null });
+      } catch (contractArchiveErr) {
+        logger.warn(
+          { err: contractArchiveErr, requestId: req.id },
+          "Early-stage Contract archive during tenancy archive failed (non-fatal)",
         );
       }
     }

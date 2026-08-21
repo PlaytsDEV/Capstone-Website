@@ -251,4 +251,44 @@ describe("resident canonical Contract selection", () => {
     });
     expect(selected._id).toBe("current");
   });
+
+  // Reproduces the production defect: a tenant cancels a Reservation before
+  // its draft Contract ever leaves early-stage, then reserves again. Without
+  // cascade archival (contractArchiveService.js's
+  // archiveContractForCancelledReservation, called from
+  // cancellationController.js on every cancel path), both drafts are
+  // equally eligible under includeEarlyStages and this throws
+  // MULTIPLE_CANONICAL_CONTRACTS for Admin PDF download, Tenant Web
+  // /api/contracts/my, and Mobile alike (confirmed against the live
+  // "LIL-GP-2026-00021 / LIL-GP-2026-00022" tenant record).
+  test("an orphaned draft from a cancelled Reservation collides with the tenant's real draft until archived", () => {
+    const cancelledReservationOrphan = contract({
+      _id: "orphan-from-cancelled-reservation",
+      reservationId: "reservation-cancelled",
+      status: "draft",
+      publicationStatus: undefined,
+    });
+    const currentDraft = contract({
+      _id: "current-draft",
+      reservationId: "reservation-active",
+      status: "draft",
+      publicationStatus: undefined,
+    });
+
+    expect(() => selectCanonicalTenantContract({
+      contracts: [cancelledReservationOrphan, currentDraft],
+      activeStay: null,
+      includeEarlyStages: true,
+    })).toThrow(expect.objectContaining({ code: "MULTIPLE_CANONICAL_CONTRACTS" }));
+
+    const selected = selectCanonicalTenantContract({
+      contracts: [
+        { ...cancelledReservationOrphan, archivedAt: new Date(), isCurrent: false, isCanonical: false },
+        currentDraft,
+      ],
+      activeStay: null,
+      includeEarlyStages: true,
+    });
+    expect(selected?._id).toBe("current-draft");
+  });
 });

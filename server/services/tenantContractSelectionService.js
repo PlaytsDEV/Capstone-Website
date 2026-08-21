@@ -21,7 +21,11 @@ const PRIMARY_VISIBLE_STATUSES = new Set([
 // Contract as soon as it exists, before the prepared PDF is generated. Opt in
 // per call site with `includeEarlyStages` rather than changing the shared
 // default, so web behavior is unaffected.
-const EARLY_STAGE_STATUSES = new Set([
+// Exported so cascade cleanup (contractArchiveService.js's
+// archiveContractForCancelledReservation) targets exactly the statuses this
+// selector treats as pre-generation drafts — keeping "what counts as an
+// early-stage Contract" defined in one place.
+export const EARLY_STAGE_STATUSES = new Set([
   "draft",
   "incomplete",
   "ready_for_generation",

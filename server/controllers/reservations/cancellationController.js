@@ -19,6 +19,7 @@ import {
 } from "../../utils/lifecycleNaming.js";
 import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
 import { notify } from "../../utils/notificationService.js";
+import { archiveContractForCancelledReservation } from "../../services/contractArchiveService.js";
 import {
   findDbUser,
   notifyAdminsOfCancellationRequest,
@@ -132,6 +133,12 @@ export const cancelReservationByUser = async (req, res, next) => {
       });
     } catch (lifecycleErr) {
       logger.warn({ err: lifecycleErr, reservationId }, "Cancel: lifecycle sync failed (non-fatal)");
+    }
+
+    try {
+      await archiveContractForCancelledReservation({ reservationId: reservation._id, actorId: dbUser._id });
+    } catch (contractArchiveErr) {
+      logger.warn({ err: contractArchiveErr, reservationId }, "Cancel: early-stage Contract archive failed (non-fatal)");
     }
 
     const notifCode = updated.reservationCode || null;
@@ -308,6 +315,9 @@ export const approveCancellationRequest = async (req, res, next) => {
       roomId: reservation.roomId,
       reservationId: reservation._id,
     }).catch((err) => logger.warn({ err }, "[ApproveCancellation] User lifecycle sync failed (non-fatal)"));
+
+    await archiveContractForCancelledReservation({ reservationId: reservation._id, actorId: dbUser._id })
+      .catch((err) => logger.warn({ err }, "[ApproveCancellation] Early-stage Contract archive failed (non-fatal)"));
 
     await auditLogger.logModification(
       req,

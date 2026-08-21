@@ -19,6 +19,7 @@ import {
   syncReservationUserLifecycle,
 } from "../../utils/reservationHelpers.js";
 import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
+import { archiveContractForCancelledReservation } from "../../services/contractArchiveService.js";
 import { emitToAdmins } from "../../utils/socket.js";
 import {
   CURRENT_RESIDENT_STATUS_QUERY,
@@ -631,6 +632,10 @@ export const deleteReservation = async (req, res) => {
         "Occupancy update during delete failed",
       );
     }
+
+    await archiveContractForCancelledReservation({ reservationId: reservation._id, actorId: dbUser._id }).catch(
+      (err) => logger.warn({ err, requestId: req.id }, "Early-stage Contract archive during delete failed (non-fatal)"),
+    );
 
     await reservation.populate(...POPULATE_USER);
     await auditLogger.logModification(
