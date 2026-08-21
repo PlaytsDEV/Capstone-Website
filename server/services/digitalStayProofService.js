@@ -6,6 +6,7 @@ import { resolveContractChromium, browserUnavailableError } from "./contractChro
 import { selectCanonicalTenantContract } from "./tenantContractSelectionService.js";
 import { renderContractHtmlPdf, buildContractHtml } from "./contractHtmlPdfService.js";
 import { resolveRoomDiscountPricing } from "./contractPricingResolver.js";
+import { resolveContractBranch } from "../config/contractConfig.js";
 
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
@@ -237,19 +238,35 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
     [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
     "Valued Tenant";
 
-  const branchName = (room?.branch || contract?.branch || reservation?.branch || "Guadalupe Branch")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  const rawBranch = room?.branch || contract?.branch || reservation?.branch || "";
+  // resolveContractBranch (contractConfig.js) is the same canonical
+  // branch/property source contractGenerationDataService.js uses for the
+  // official prepared Contract PDF — keyed by the stable branch id
+  // ("gil-puyat" | "guadalupe" from ROOM_BRANCHES), not by matching
+  // substrings of a display string. Previously this resolved branchAddress
+  // by string-matching a title-cased display name, which only recognized
+  // "guadalupe" (and a "poblacion" branch that has never existed in
+  // ROOM_BRANCHES) and silently fell every other real branch — including
+  // Gil Puyat — through to a fabricated generic "Lilycrest Dormitory
+  // Residence, Metro Manila" address, in both this admin/tenant preview and
+  // the stay-proof PDF rendered from it.
+  let branchConfig = null;
+  try {
+    branchConfig = resolveContractBranch(rawBranch);
+  } catch {
+    branchConfig = null;
+  }
 
-  const branchAddress = branchName.toLowerCase().includes("guadalupe")
-    ? "9431 Magallanes St., Guadalupe Nuevo, Makati City, Metro Manila"
-    : branchName.toLowerCase().includes("poblacion")
-    ? "1208 General Luna St., Poblacion, Makati City, Metro Manila"
-    : "Lilycrest Dormitory Residence, Metro Manila";
+  const branchName = branchConfig
+    ? branchConfig.propertyName.replace(/^LILYCREST\s+/i, "")
+    : (rawBranch || "Guadalupe Branch")
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
 
-  const branchContact = branchName.toLowerCase().includes("guadalupe")
-    ? "+63 (02) 8890-5459 &bull; info@lilycrest.ph"
-    : "+63 (02) 8890-5459 &bull; info@lilycrest.ph";
+  const propertyName = branchConfig?.propertyName || `LILYCREST ${branchName.toUpperCase()}`;
+  const branchAddress = branchConfig?.propertyAddress || "Address not available";
+
+  const branchContact = "+63 (02) 8890-5459 &bull; info@lilycrest.ph";
 
   const rawRef = contract?.contractNumber || reservation?.reservationCode || `LIL-${(user?._id || "RES").toString().slice(-8).toUpperCase()}`;
   const referenceNumber = rawRef.startsWith("LIL-") ? rawRef : `LIL-${rawRef}`;
@@ -391,7 +408,9 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
     emergencyContact: user?.emergencyContactName || reservation?.emergencyContactName || "—",
     emergencyPhone: user?.emergencyContactPhone || reservation?.emergencyContactPhone || user?.emergencyPhone || "—",
     branchName,
+    propertyName,
     branchAddress,
+    propertyAddress: branchAddress,
     branchContact,
     roomNumber,
     bedLabel: isPrivate ? "Entire Room" : formattedBed,
@@ -1160,10 +1179,16 @@ export function mapStayDataToContractPayload(stayData) {
       securityDepositAmount: (Number(stayData.securityDeposit) || monthlyRent).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     },
     property: {
-      propertyName: stayData.branchName?.toUpperCase()?.includes("LILYCREST")
+      // Prefer the canonical values resolveDigitalStayProofData already
+      // resolved via resolveContractBranch (contractConfig.js). The
+      // reconstruction below only runs for a caller that built its own
+      // stayData-shaped object without going through
+      // resolveDigitalStayProofData (none do today) — it is a defensive
+      // fallback, not a second source of truth.
+      propertyName: stayData.propertyName || (stayData.branchName?.toUpperCase()?.includes("LILYCREST")
         ? stayData.branchName.toUpperCase()
-        : `LILYCREST ${stayData.branchName?.toUpperCase() || "GUADALUPE"}`,
-      propertyAddress: stayData.branchAddress || "9431 Magallanes St., Guadalupe Nuevo, Makati City",
+        : `LILYCREST ${stayData.branchName?.toUpperCase() || "GUADALUPE"}`),
+      propertyAddress: stayData.propertyAddress || stayData.branchAddress || "Address not available",
     },
   };
 }
