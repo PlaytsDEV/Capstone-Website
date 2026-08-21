@@ -41,6 +41,21 @@ describe("tenant Contract safe view", () => {
     expect(JSON.stringify(view)).not.toContain("private/current.pdf");
   });
 
+  test("exposes the Contract's own tenantLegalName/tenantResidentialAddress snapshot, never a placeholder", () => {
+    const view = toTenantContractView({
+      _id: "contract-1",
+      contractNumber: "LC-2026-0001",
+      status: "generated",
+      tenantLegalName: "Ayla Suson",
+      tenantAddress: "2811, Mendoza, Barangay 182, City of Manila, National Capital Region (NCR)",
+    });
+    expect(view.tenantLegalName).toBe("Ayla Suson");
+    expect(view.tenantResidentialAddress).toBe(
+      "2811, Mendoza, Barangay 182, City of Manila, National Capital Region (NCR)",
+    );
+    expect(view.tenantResidentialAddress).not.toContain("SMDC JAZZ RESIDENCES");
+  });
+
   test("does not expose a superseded generated version", () => {
     const view = toTenantContractView({
       _id: "contract-1", status: "generated", generatedVersion: 2,

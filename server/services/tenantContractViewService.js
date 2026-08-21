@@ -88,6 +88,13 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
     id,
     contractId: id,
     contractNumber: contract.contractNumber || "",
+    // Authoritative identity snapshot taken at contract creation — consumed
+    // by DigitalContractPaper.jsx (both Admin's and the tenant's own
+    // "Digital Contract" view) via this exact field name. Without it, that
+    // component silently falls back to a hardcoded sample address for every
+    // tenant, since it never had a matching field to read.
+    tenantLegalName: contract.tenantLegalName || "",
+    tenantResidentialAddress: contract.tenantAddress || "",
     isCanonical: true,
     publicationStatus: contract.publicationStatus ||
       (contract.tenantVisible ? "published" : "ready_for_resident"),
