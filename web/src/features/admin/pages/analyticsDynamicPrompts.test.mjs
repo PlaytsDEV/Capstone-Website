@@ -107,6 +107,8 @@ test("getDynamicOperationsPrompts returns fallback defaults when data is missing
 test("getDynamicDemographicsPrompts returns contextual prompts based on student ratio and room type", () => {
   const data = {
     kpis: {
+      dominantOccupation: "Students",
+      dominantPercentageLabel: "82%",
       studentPercentageLabel: "82%",
       topRoomType: "Double Sharing",
       peakMonth: "August",
@@ -115,7 +117,7 @@ test("getDynamicDemographicsPrompts returns contextual prompts based on student 
 
   const prompts = getDynamicDemographicsPrompts(data);
   assert.equal(prompts.length, 4);
-  assert.ok(prompts[0].includes("82% students vs workers"));
+  assert.ok(prompts[0].includes("82% students vs other occupations"));
   assert.ok(prompts[1].includes("Where do most of our tenants come from?"));
   assert.ok(prompts[2].includes("Double Sharing"));
   assert.ok(prompts[3].includes("peak in August"));
@@ -124,7 +126,7 @@ test("getDynamicDemographicsPrompts returns contextual prompts based on student 
 test("getDynamicDemographicsPrompts returns fallback defaults when data is missing", () => {
   const prompts = getDynamicDemographicsPrompts(null);
   assert.equal(prompts.length, 4);
-  assert.equal(prompts[0], "Who are our primary residents—students or workers?");
+  assert.equal(prompts[0], "Who are our primary tenants—students or working professionals?");
   assert.equal(prompts[1], "Where do most of our tenants come from?");
   assert.equal(prompts[2], "Which room types do new tenants prefer?");
   assert.equal(prompts[3], "How long do tenants usually stay?");
