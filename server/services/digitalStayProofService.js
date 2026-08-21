@@ -7,6 +7,7 @@ import { selectCanonicalTenantContract } from "./tenantContractSelectionService.
 import { renderContractHtmlPdf, buildContractHtml } from "./contractHtmlPdfService.js";
 import { resolveRoomDiscountPricing } from "./contractPricingResolver.js";
 import { resolveContractBranch } from "../config/contractConfig.js";
+import { normalizeAddress, normalizeReservationAddress } from "../utils/addressUtils.js";
 
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
@@ -14,15 +15,6 @@ const escapeHtml = (value) => String(value ?? "")
 
 const formatMoney = (val) => val == null ? "—" : `₱${Number(val).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
 const formatDate = (val) => val ? dayjs(val).format("MMMM D, YYYY") : "—";
-
-const formatReservationAddress = (address) => {
-  if (!address) return "";
-  if (typeof address === "string") return address.trim();
-  return [address.unitHouseNo, address.street, address.barangay, address.city, address.province]
-    .filter((part) => typeof part === "string" && part.trim())
-    .map((part) => part.trim())
-    .join(", ");
-};
 
 /**
  * Generates a clean, crisp, high-density SVG QR code representation for verification links
@@ -390,7 +382,9 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
   // never actually resolve to it.
   const resolvedTenantAddress =
     contract?.tenantAddress ||
-    formatReservationAddress(reservation?.address) ||
+    (typeof reservation?.address === "string"
+      ? normalizeAddress(reservation.address).value
+      : normalizeReservationAddress(reservation?.address)) ||
     (typeof user?.address === "string" ? user.address.trim() : "") ||
     "—";
 

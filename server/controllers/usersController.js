@@ -29,6 +29,7 @@ import {
   reservationStatusesForQuery,
 } from "../utils/lifecycleNaming.js";
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
+import { normalizeAddress } from "../utils/addressUtils.js";
 import { releaseOrphanedBeds } from "../services/occupancy/occupancyManager.js";
 import { invalidateUserSessions } from "../services/sessionInvalidationService.js";
 import { sendPasswordResetLinkEmail } from "../config/email.js";
@@ -850,7 +851,9 @@ export const updateUser = async (req, res, next) => {
     const updateData = {};
     for (const field of ALLOWED_ADMIN_UPDATE_FIELDS) {
       if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
+        updateData[field] = field === "address" && typeof req.body[field] === "string"
+          ? normalizeAddress(req.body[field]).value
+          : req.body[field];
       }
     }
 

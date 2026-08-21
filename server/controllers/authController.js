@@ -22,6 +22,7 @@ import {
   sanitizePhone,
   sanitizeText,
 } from "../middleware/validation.js";
+import { normalizeAddress } from "../utils/addressUtils.js";
 import {
   LoginLog,
   Reservation,
@@ -979,7 +980,9 @@ export const updateProfile = async (req, res, next) => {
     const nationality = source.nationality !== undefined ? (req.sanitizedData?.nationality !== undefined ? req.sanitizedData.nationality : sanitizeText(req.body.nationality)) : undefined;
     const occupation = source.occupation !== undefined ? (req.sanitizedData?.occupation !== undefined ? req.sanitizedData.occupation : sanitizeText(req.body.occupation)) : undefined;
     const educationLevel = source.educationLevel !== undefined ? (req.sanitizedData?.educationLevel !== undefined ? req.sanitizedData.educationLevel : sanitizeText(req.body.educationLevel)) : undefined;
-    const address = source.address !== undefined ? (req.sanitizedData?.address !== undefined ? req.sanitizedData.address : sanitizeText(req.body.address)) : undefined;
+    const sanitizedAddress = source.address !== undefined ? (req.sanitizedData?.address !== undefined ? req.sanitizedData.address : sanitizeText(req.body.address)) : undefined;
+    // Normalize after XSS sanitization (safety first, formatting second).
+    const address = typeof sanitizedAddress === "string" ? normalizeAddress(sanitizedAddress).value : sanitizedAddress;
     const city = source.city !== undefined ? (req.sanitizedData?.city !== undefined ? req.sanitizedData.city : sanitizeText(req.body.city)) : undefined;
     const province = source.province !== undefined ? (req.sanitizedData?.province !== undefined ? req.sanitizedData.province : sanitizeText(req.body.province)) : undefined;
     const zipCode = source.zipCode !== undefined ? (req.sanitizedData?.zipCode !== undefined ? req.sanitizedData.zipCode : sanitizeText(req.body.zipCode)) : undefined;

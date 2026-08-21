@@ -1,5 +1,6 @@
 import { resolveSecurityDeposit } from "../utils/depositUtils.js";
 import { resolveRoomDiscountPricing } from "./contractPricingResolver.js";
+import { normalizeAddress } from "../utils/addressUtils.js";
 
 /**
  * Canonical applicant-to-tenant profile mapping.
@@ -23,16 +24,18 @@ const firstValue = (...values) => values.find(hasValue) ?? null;
 const collapseWhitespace = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
 
 const joinAddress = (address = {}) =>
-  [
-    address.unitHouseNo,
-    address.street,
-    address.barangay,
-    address.city,
-    address.province,
-  ]
-    .filter(hasValue)
-    .map((value) => collapseWhitespace(value))
-    .join(", ");
+  normalizeAddress(
+    [
+      address.unitHouseNo,
+      address.street,
+      address.barangay,
+      address.city,
+      address.province,
+    ]
+      .filter(hasValue)
+      .map((value) => collapseWhitespace(value))
+      .join(", "),
+  ).value;
 
 export function resolveTenantPersonalDetails({ user = {}, reservation = {} } = {}) {
   const reservationAddress = reservation.address || {};
