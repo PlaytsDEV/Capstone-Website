@@ -2,20 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveApplicantPhotoUrl } from "./applicantPhotoResolution.js";
 
-test("prefers the applicant's submitted application selfie photo for admin review", () => {
+test("prefers the applicant's current live profile photo for admin review", () => {
   const reservation = {
     selfiePhotoUrl: "https://storage.example/selfie-at-application.jpg",
     userId: { profileImage: "https://storage.example/current-profile.jpg" },
   };
-  assert.equal(resolveApplicantPhotoUrl(reservation), "https://storage.example/selfie-at-application.jpg");
+  assert.equal(resolveApplicantPhotoUrl(reservation), "https://storage.example/current-profile.jpg");
 });
 
-test("falls back to the live profile photo when no application-time selfie exists", () => {
+test("falls back to the application-time selfie when no live profile photo exists yet", () => {
   const reservation = {
-    selfiePhotoUrl: null,
-    userId: { profileImage: "https://storage.example/current-profile.jpg" },
+    selfiePhotoUrl: "https://storage.example/selfie-at-application.jpg",
+    userId: { profileImage: null },
   };
-  assert.equal(resolveApplicantPhotoUrl(reservation), "https://storage.example/current-profile.jpg");
+  assert.equal(resolveApplicantPhotoUrl(reservation), "https://storage.example/selfie-at-application.jpg");
 });
 
 test("returns null (safe fallback avatar) when no photo exists anywhere", () => {
