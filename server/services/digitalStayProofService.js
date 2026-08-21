@@ -420,6 +420,21 @@ export async function resolveDigitalStayProofData({ tenantId, reservationId, con
     leaseEndDate,
     leaseDurationMonths,
     monthlyRent,
+    // DigitalContractPaper.jsx (both Admin's and the tenant's own "Digital
+    // Contract" preview) reads these canonical Contract-schema field names,
+    // not monthlyRent/securityDeposit/advanceRent — without these aliases,
+    // its `stayData?.approvedMonthlyRate ?? contract?.approvedMonthlyRate`
+    // read always missed stayData (this object never had that key) and
+    // depended entirely on the `contract` prop happening to be populated;
+    // when it wasn't (e.g. a just-created Contract the admin's separate
+    // /contracts list fetch hadn't caught up on yet), the component fell
+    // through to its own hardcoded placeholder (₱13,500 for a private
+    // room) instead of the real approved rate — even though the actual
+    // generated PDF (a different code path, contractGenerationDataService.js)
+    // rendered the correct amount the whole time.
+    approvedMonthlyRate: monthlyRent,
+    advanceRentAmount: advanceRent,
+    securityDepositAmount: securityDeposit,
     regularMonthlyRate: regularMonthlyRate ?? monthlyRent,
     discountPercentage: discountPercentage ?? 0,
     discountAmount: discountAmount ?? 0,
