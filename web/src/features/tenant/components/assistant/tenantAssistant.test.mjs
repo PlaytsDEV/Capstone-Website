@@ -155,3 +155,15 @@ test("TenantBillingBreakdownCard and TenantLeaseTimelineCard enforce strict data
   assert.match(drawerSource, /const billData = widgetData\?\.currentBill/);
 });
 
+test("TenantAssistantDrawer and TenantSupportChatView support Live Support tab and escalation handoff", () => {
+  const supportChatSource = fs.readFileSync(path.join(here, "TenantSupportChatView.jsx"), "utf8");
+  assert.match(drawerSource, /TenantSupportChatView/);
+  assert.match(drawerSource, /Live Support/);
+  assert.match(drawerSource, /activeTab === "support"/);
+  assert.match(supportChatSource, /chatApi\.getMyConversations/);
+  assert.match(supportChatSource, /chatApi\.sendTenantMessage/);
+  assert.match(supportChatSource, /chatApi\.confirmTenantResolution/);
+  assert.match(supportChatSource, /Has your concern been resolved/);
+});
+
+

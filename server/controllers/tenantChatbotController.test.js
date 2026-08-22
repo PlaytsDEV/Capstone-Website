@@ -98,6 +98,20 @@ jest.unstable_mockModule("./chatController.js", () => ({
   autoAssignConversation: jest.fn().mockResolvedValue(true),
 }));
 
+jest.unstable_mockModule("../services/chatTicketIdService.js", () => ({
+  ensureChatTicketId: jest.fn(async (conv) => {
+    conv.ticketId = "INQ-2026-000001";
+    return conv;
+  }),
+  generateChatTicketId: jest.fn(async () => "INQ-2026-000001"),
+}));
+
+jest.unstable_mockModule("../utils/socket.js", () => ({
+  emitToChatAdmins: jest.fn(),
+  emitToUser: jest.fn(),
+  emitToAdmins: jest.fn(),
+}));
+
 const { handleTenantQuery, handleTenantStream, handleTenantEscalation } =
   await import("./tenantChatbotController.js");
 const { resolveTenantAIContext } =

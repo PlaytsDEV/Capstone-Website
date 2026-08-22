@@ -7,3 +7,4 @@ export { default as TenantPaymentGuideCard } from "./cards/TenantPaymentGuideCar
 export { default as TenantHouseRulesCard } from "./cards/TenantHouseRulesCard";
 export { default as TenantAnnouncementCard } from "./cards/TenantAnnouncementCard";
 export { default as TenantHumanEscalateModal } from "./modals/TenantHumanEscalateModal";
+export { default as TenantSupportChatView } from "./TenantSupportChatView";

@@ -10,6 +10,8 @@ import {
 } from "../services/chatbot/tenantDomainGuard.js";
 import ChatConversation from "../models/ChatConversation.js";
 import ChatMessage from "../models/ChatMessage.js";
+import { ensureChatTicketId } from "../services/chatTicketIdService.js";
+import { emitToChatAdmins, emitToUser } from "../utils/socket.js";
 
 const querySchema = z.object({
   message: z.string().min(1).max(1000),
@@ -240,6 +242,8 @@ export const handleTenantEscalation = async (req, res, next) => {
       });
     }
 
+    conversation = await ensureChatTicketId(conversation);
+
     const initialMessageContent = `[AI Escalation Summary]
 Category: ${category}
 Priority: ${priority}
@@ -272,16 +276,31 @@ Support Inquiries: ${contextSnapshot.inquiries?.length || 0}`;
     conversation.unreadAdminCount = Number(conversation.unreadAdminCount || 0) + 1;
     await conversation.save();
 
-    const io = req.app.get("io");
-    if (io) {
-      io.to(`branch_${branch}`).emit("chat:message-new", {
-        conversationId: conversation._id,
-        message: newMsg,
-      });
-    }
+    const serializedMsg = {
+      id: String(newMsg._id),
+      conversationId: String(conversation._id),
+      senderId: String(userId),
+      senderUserId: req.authUser?.user_id || req.authUser?.firebaseUid || "",
+      senderName: contextSnapshot.tenantName,
+      senderRole: "tenant",
+      message: initialMessageContent,
+      attachments: [],
+      createdAt: newMsg.createdAt,
+      updatedAt: newMsg.updatedAt,
+    };
 
-    let assignedAdminName = "Pending Support Team";
-    if (conversation.assigned_admin_id) {
+    // Emit to both branch admin room and tenant's specific room
+    emitToChatAdmins(branch, "chat:message-new", {
+      conversationId: String(conversation._id),
+      message: serializedMsg,
+    });
+    emitToUser(userId, "chat:message-new", {
+      conversationId: String(conversation._id),
+      message: serializedMsg,
+    });
+
+    let assignedAdminName = conversation.assignedAdminName || "Pending Support Team";
+    if (conversation.assigned_admin_id && !conversation.assignedAdminName) {
        assignedAdminName = "Support Agent";
     }
 
@@ -289,7 +308,10 @@ Support Inquiries: ${contextSnapshot.inquiries?.length || 0}`;
       success: true,
       data: {
         conversationId: conversation._id,
+        ticketId: conversation.ticketId || "",
         status: conversation.status,
+        category: conversation.category,
+        priority: conversation.priority,
         assignedAdminName,
       },
       message: "Operation completed successfully."

@@ -150,7 +150,7 @@ export default function TenantHumanEscalateModal({
                 onClick={onClose}
                 className="px-5 py-2 text-sm font-semibold text-white bg-slate-900 dark:bg-slate-100 dark:text-slate-900 rounded-xl hover:bg-slate-800 dark:hover:bg-white transition-colors cursor-pointer"
               >
-                Done
+                View Live Chat
               </button>
             </div>
           </div>

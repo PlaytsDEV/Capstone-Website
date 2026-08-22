@@ -11,7 +11,7 @@ import "../../styles/tenant-assistant.css";
  * Uses hardware-accelerated Framer Motion for buttery-smooth 60fps floating
  * with zero layout repaints and optimal battery/CPU efficiency.
  */
-export default function TenantAssistantLauncher({ onClick, isOpen = false }) {
+export default function TenantAssistantLauncher({ onClick, isOpen = false, unreadCount = 0 }) {
   if (isOpen) return null;
 
   return (
@@ -31,11 +31,17 @@ export default function TenantAssistantLauncher({ onClick, isOpen = false }) {
         scale: 0.96,
       }}
       aria-label="Open Lilycrest AI Assistant"
-      title="Lilycrest Tenant Assistant"
+      title="Lilycrest Tenant Assistant & Support"
     >
       <div className="relative flex items-center justify-center">
         <Bot className="w-5 h-5 tenant-assistant-launcher-bot-icon" aria-hidden="true" />
-        <span className="tenant-assistant-launcher-badge absolute -top-1 -right-1" />
+        {unreadCount > 0 ? (
+          <span className="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-rose-500 text-white rounded-full leading-none shadow-sm animate-pulse">
+            {unreadCount}
+          </span>
+        ) : (
+          <span className="tenant-assistant-launcher-badge absolute -top-1 -right-1" />
+        )}
       </div>
     </motion.button>
   );

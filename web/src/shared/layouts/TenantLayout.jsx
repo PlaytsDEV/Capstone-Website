@@ -21,6 +21,7 @@ const TenantLayout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [unreadSupportCount, setUnreadSupportCount] = useState(0);
   const content = children ?? <Outlet />;
   const contentRef = useRef(null);
 
@@ -65,14 +66,16 @@ const TenantLayout = ({ children }) => {
         </main>
       </div>
 
-      {/* Lilycrest Resident AI Assistant (Phase 2) */}
+      {/* Lilycrest Resident AI Assistant & Live Support */}
       <TenantAssistantLauncher
         onClick={() => setIsAssistantOpen(true)}
         isOpen={isAssistantOpen}
+        unreadCount={unreadSupportCount}
       />
       <TenantAssistantDrawer
         isOpen={isAssistantOpen}
         onClose={() => setIsAssistantOpen(false)}
+        onUnreadCountChange={setUnreadSupportCount}
       />
     </div>
   );

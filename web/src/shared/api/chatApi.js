@@ -73,6 +73,43 @@ export const chatApi = {
       body: JSON.stringify({ note }),
     }),
 
+  // Tenant / Mobile-compatible methods
+  getMyConversations: () =>
+    authFetch("/chat/me"),
+
+  getTenantMessages: (conversationId) =>
+    authFetch(`/chat/${conversationId}/messages`),
+
+  getConversationMessages: (conversationId) =>
+    authFetch(`/chat/${conversationId}/messages`),
+
+  sendTenantMessage: (conversationId, message, attachments = []) =>
+    authFetch(`/chat/${conversationId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message, attachments }),
+    }),
+
+  uploadTenantAttachment: async (conversationId, file) => {
+    const body = new FormData();
+    body.append("file", file);
+    return authFetch(`/chat/${conversationId}/attachments`, {
+      method: "POST",
+      body,
+    });
+  },
+
+  startConversation: (payload) =>
+    authFetch("/chat/start", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  closeTenantConversation: (conversationId, note = "") =>
+    authFetch(`/chat/${conversationId}/close`, {
+      method: "PATCH",
+      body: JSON.stringify({ note }),
+    }),
+
   confirmTenantResolution: (conversationId, resolved, note = "", rating = null, feedback = "") =>
     authFetch(`/chat/${conversationId}/resolution`, {
       method: "PATCH",
