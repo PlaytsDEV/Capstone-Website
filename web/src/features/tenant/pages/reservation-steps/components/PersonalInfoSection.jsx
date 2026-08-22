@@ -316,6 +316,7 @@ const PersonalInfoSection = ({
             <option value="married">Married</option>
             <option value="widowed">Widowed</option>
             <option value="separated">Separated</option>
+            <option value="divorced">Divorced</option>
           </select>
           <FieldError
             error={

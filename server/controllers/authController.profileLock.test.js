@@ -5,17 +5,31 @@ import {
 } from "./authController.js";
 
 describe("tenant application profile updates", () => {
-  test("tenant may update profile details and profile image directly", () => {
+  test("profile details are not locked before application submission", () => {
     const attempted = {
       firstName: "UpdatedName",
       lastName: "UpdatedLast",
       occupation: "Engineer",
       profileImage: "https://example.test/photo.jpg",
     };
-    expect(findLockedTenantProfileFields(attempted, "tenant")).toEqual([]);
+    expect(findLockedTenantProfileFields(attempted, false)).toEqual([]);
   });
 
-  test("admin profile behavior is not restricted", () => {
-    expect(findLockedTenantProfileFields({ firstName: "Admin" }, "admin")).toEqual([]);
+  test("identity fields are detected when locked is true", () => {
+    const attempted = {
+      firstName: "UpdatedName",
+      lastName: "UpdatedLast",
+      occupation: "Engineer",
+      profileImage: "https://example.test/photo.jpg",
+    };
+    const locked = findLockedTenantProfileFields(attempted, true);
+    expect(locked).toContain("firstName");
+    expect(locked).toContain("lastName");
+    expect(locked).toContain("occupation");
+    expect(locked).not.toContain("profileImage");
+  });
+
+  test("profileImage is never in TENANT_APPLICATION_LOCKED_PROFILE_FIELDS", () => {
+    expect(TENANT_APPLICATION_LOCKED_PROFILE_FIELDS).not.toContain("profileImage");
   });
 });

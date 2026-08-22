@@ -913,24 +913,100 @@ export const getProfile = async (req, res, next) => {
 
 
 
-export const TENANT_APPLICATION_LOCKED_PROFILE_FIELDS = Object.freeze([]);
+export const TENANT_APPLICATION_LOCKED_PROFILE_FIELDS = Object.freeze([
+  "firstName",
+  "middleName",
+  "lastName",
+  "dateOfBirth",
+  "gender",
+  "civilStatus",
+  "nationality",
+  "occupation",
+  "educationLevel",
+  "address",
+  "city",
+  "province",
+  "zipCode",
+  "emergencyContact",
+  "emergencyPhone",
+  "emergencyRelationship",
+]);
 
-export const findLockedTenantProfileFields = (body = {}, role = "") => [];
+export const findLockedTenantProfileFields = (body = {}, isLocked = false) => {
+  if (!isLocked) return [];
+  const fields = [];
+  for (const field of TENANT_APPLICATION_LOCKED_PROFILE_FIELDS) {
+    if (body[field] !== undefined) {
+      fields.push(field);
+    }
+  }
+  return fields;
+};
 
 export const updateProfile = async (req, res, next) => {
   try {
     const profileOwner = await User.findOne({ firebaseUid: req.user.uid })
-      .select("_id role").lean();
+      .select(
+        "_id role tenantStatus firstName middleName lastName dateOfBirth gender civilStatus nationality occupation educationLevel address city province zipCode emergencyContact emergencyPhone emergencyRelationship",
+      )
+      .lean();
     if (!profileOwner) {
       return res.status(404).json({ error: "User not found", code: "USER_NOT_FOUND" });
     }
-    const lockedFields = findLockedTenantProfileFields(req.body, profileOwner.role);
-    if (lockedFields.length > 0) {
-      return res.status(403).json({
-        error: "Application-derived profile details cannot be edited by the tenant. Contact an administrator to request a correction.",
-        code: "TENANT_APPLICATION_PROFILE_FIELDS_READ_ONLY",
-        details: { lockedFields },
+
+    // Check if user has an active submitted application or tenant lease
+    let isLocked =
+      profileOwner.role === "tenant" ||
+      ["active", "moved_in", "moved_out", "checked_in"].includes(
+        String(profileOwner.tenantStatus || "").toLowerCase(),
+      );
+
+    if (!isLocked) {
+      const submittedReservation = await Reservation.exists({
+        userId: profileOwner._id,
+        isArchived: { $ne: true },
+        status: { $nin: ["cancelled", "rejected"] },
+        $or: [
+          { applicationSubmittedAt: { $ne: null } },
+          {
+            status: {
+              $in: [
+                "pending_application_review",
+                "approved_for_payment",
+                "payment_pending",
+                "reserved",
+                "moveIn",
+                "moveOut",
+              ],
+            },
+          },
+        ],
       });
+      isLocked = Boolean(submittedReservation);
+    }
+
+    if (isLocked) {
+      const lockedFields = findLockedTenantProfileFields(req.body, true).filter((field) => {
+        const reqVal = req.body[field];
+        const curVal = profileOwner[field];
+        if (reqVal === undefined || reqVal === null) return false;
+        if (curVal instanceof Date && reqVal) {
+          return (
+            new Date(curVal).toISOString().slice(0, 10) !==
+            new Date(reqVal).toISOString().slice(0, 10)
+          );
+        }
+        return String(reqVal).trim() !== String(curVal || "").trim();
+      });
+
+      if (lockedFields.length > 0) {
+        return res.status(403).json({
+          error:
+            "Application-derived profile details cannot be edited while an application or lease is active. Please contact administration to request a correction.",
+          code: "TENANT_APPLICATION_PROFILE_FIELDS_READ_ONLY",
+          details: { lockedFields },
+        });
+      }
     }
     // Sanitize input — core fields
     const source = req.sanitizedData || req.body || {};
