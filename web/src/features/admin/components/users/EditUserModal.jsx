@@ -1,21 +1,17 @@
 import { useState, useRef, useEffect } from "react";
-import { createPortal } from "react-dom";
+import BaseModal from "../../../../shared/components/BaseModal";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
-import useBodyScrollLock from "../../../../shared/hooks/useBodyScrollLock";
-import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 import { sanitizeName, formatProperCase } from "../../../../shared/utils/authValidation";
-import { LoaderCircle } from "lucide-react";
 
 export default function EditUserModal({
   editForm,
   editFormErrors = {},
-  isOwner,
+  isOwner = false,
   onFormChange,
   onSubmit,
   onClose,
   isUpdating = false,
 }) {
-  useBodyScrollLock(true);
   const [touched, setTouched] = useState({});
   const initialFormRef = useRef(JSON.stringify(editForm));
   const firstInputRef = useRef(null);
@@ -32,25 +28,17 @@ export default function EditUserModal({
 
   const handleSafeClose = () => {
     const isDirty = JSON.stringify(editForm) !== initialFormRef.current;
-    if (isDirty) {
+    if (isDirty && !isUpdating) {
       setShowDiscardConfirm(true);
     } else {
       onClose();
     }
   };
 
-  useEscapeClose(true, () => {
-    if (showDiscardConfirm) {
-      setShowDiscardConfirm(false);
-    } else {
-      handleSafeClose();
-    }
-  });
-
-  if (typeof document === "undefined") return null;
-
   const isLifecycleManaged =
     editForm.lifecycleManaged ?? ["applicant", "tenant"].includes(editForm.role);
+  const isStudentRole = ["applicant", "tenant"].includes(editForm.role);
+
   const lifecycleIndicator = editForm.hasActiveStay
     ? "Active stay"
     : editForm.hasLifecycleReservation
@@ -72,37 +60,37 @@ export default function EditUserModal({
     return val.slice(0, 10);
   };
 
+  const sectionHeaderStyle = {
+    fontSize: "12px",
+    fontWeight: 700,
+    color: "var(--muted-foreground)",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    margin: "10px 0 6px",
+    paddingTop: "12px",
+    borderTop: "1px solid var(--border)",
+  };
+
   return (
     <>
-      {createPortal(
-        <div
-          className="modal-overlay"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) handleSafeClose();
-          }}
-        >
-      <div
-        className="modal-content"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Edit user"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: "680px" }}
+      <BaseModal
+        isOpen={true}
+        onClose={handleSafeClose}
+        title="Edit User Account"
+        subtitle="Modify profile credentials, personal details, and role assignments"
+        variant="primary"
+        size="lg"
+        onConfirm={onSubmit}
+        confirmText={isUpdating ? "Saving Changes..." : "Save Changes"}
+        cancelText="Cancel"
+        loading={isUpdating}
       >
-        <div className="modal-header">
-          <div>
-            <h2 className="text-base font-semibold text-foreground">Edit User Account</h2>
-            <p className="text-xs text-muted-foreground">Modify profile credentials and permissions</p>
-          </div>
-          <button onClick={handleSafeClose} className="modal-close" aria-label="Close">
-            ×
-          </button>
-        </div>
         <form
           onSubmit={onSubmit}
           className="modal-form"
-          style={{ maxHeight: "72vh", overflowY: "auto" }}
+          style={{ display: "grid", gap: 12, padding: "4px 0" }}
         >
+          {/* 1. Account Credentials */}
           <div className="form-row">
             <div className={`form-group ${touched.username && editFormErrors.username ? "has-error" : ""}`}>
               <div className="flex items-center justify-between">
@@ -126,6 +114,7 @@ export default function EditUserModal({
                 <span className="field-error">{editFormErrors.username}</span>
               )}
             </div>
+
             <div className={`form-group ${touched.email && editFormErrors.email ? "has-error" : ""}`}>
               <div className="flex items-center justify-between">
                 <label>Email Address *</label>
@@ -149,6 +138,7 @@ export default function EditUserModal({
             </div>
           </div>
 
+          {/* 2. Personal Information */}
           <div className="form-row">
             <div className={`form-group ${touched.firstName && editFormErrors.firstName ? "has-error" : ""}`}>
               <div className="flex items-center justify-between">
@@ -180,6 +170,7 @@ export default function EditUserModal({
                 <span className="field-error">{editFormErrors.firstName}</span>
               )}
             </div>
+
             <div className={`form-group ${touched.lastName && editFormErrors.lastName ? "has-error" : ""}`}>
               <div className="flex items-center justify-between">
                 <label>Last Name *</label>
@@ -228,7 +219,7 @@ export default function EditUserModal({
                 maxLength={editForm.phone?.startsWith("+") ? 13 : editForm.phone?.startsWith("0") ? 11 : 10}
               />
               {!editFormErrors.phone && (
-                <span style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: "2px", display: "block" }}>
+                <span className="text-[11px] text-muted-foreground mt-1 block">
                   11 digits starting with 09 (or 10 digits starting with 9)
                 </span>
               )}
@@ -236,6 +227,7 @@ export default function EditUserModal({
                 <span className="field-error">{editFormErrors.phone}</span>
               )}
             </div>
+
             <div className="form-group">
               <label>Gender</label>
               <select
@@ -253,6 +245,9 @@ export default function EditUserModal({
             </div>
           </div>
 
+          {/* 3. Role & Branch Assignment */}
+          <h3 style={sectionHeaderStyle}>Role & Branch Assignment</h3>
+
           <div className="form-row">
             <div className="form-group">
               <label>Date of Birth</label>
@@ -264,27 +259,45 @@ export default function EditUserModal({
                 }
               />
             </div>
+
             <div className="form-group">
               <label>Role</label>
               {isLifecycleManaged ? (
                 <>
-                  <input type="text" value={editForm.role || "applicant"} readOnly className="opacity-80" />
-                  <p className="modal-help-text">
+                  <input
+                    type="text"
+                    value={editForm.role === "tenant" ? "Tenant" : "Applicant"}
+                    readOnly
+                    className="opacity-80 bg-muted cursor-not-allowed"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
                     Applicant and tenant roles are protected by reservation lifecycle contracts.
                   </p>
                 </>
-              ) : (
+              ) : isOwner ? (
                 <select
                   value={editForm.role}
                   onChange={(e) =>
-                    onFormChange({ ...editForm, role: e.target.value })
+                    onFormChange({ ...editForm, role: e.target.value }, "role", e.target.value)
                   }
                   required
                 >
                   <option value="applicant">Applicant</option>
                   <option value="branch_admin">Branch Admin</option>
-                  {isOwner && <option value="owner">Owner</option>}
+                  <option value="owner">Owner</option>
                 </select>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    value={editForm.role === "branch_admin" ? "Branch Admin" : editForm.role === "owner" ? "Owner" : editForm.role || ""}
+                    readOnly
+                    className="opacity-80 bg-muted cursor-not-allowed"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Only the Dorm Owner can modify administrative roles.
+                  </p>
+                </>
               )}
             </div>
           </div>
@@ -298,17 +311,22 @@ export default function EditUserModal({
                     type="text"
                     value={editForm.tenantStatus || "applicant"}
                     readOnly
-                    className="opacity-80"
+                    className="opacity-80 bg-muted cursor-not-allowed capitalize"
                   />
                 </div>
                 <div className="form-group">
                   <label>Lifecycle State</label>
-                  <input type="text" value={lifecycleIndicator} readOnly className="opacity-80" />
+                  <input
+                    type="text"
+                    value={lifecycleIndicator}
+                    readOnly
+                    className="opacity-80 bg-muted cursor-not-allowed"
+                  />
                 </div>
               </div>
 
-              <div className="modal-help-card">
-                <strong>Lifecycle Managed Account</strong>
+              <div className="p-3 rounded-lg border border-border bg-muted/40 text-xs text-muted-foreground">
+                <strong className="text-foreground block mb-0.5">Lifecycle Protected Record</strong>
                 <p>{lifecycleGuidance}</p>
               </div>
             </>
@@ -317,36 +335,44 @@ export default function EditUserModal({
           <div className="form-row">
             <div className={`form-group ${editFormErrors.branch ? "has-error" : ""}`}>
               <label>Branch Assignment</label>
-              <select
-                value={editForm.branch || ""}
-                onChange={(e) =>
-                  onFormChange({ ...editForm, branch: e.target.value }, "branch", e.target.value)
-                }
-              >
-                <option value="">Unassigned (No Branch)</option>
-                <option value="gil-puyat">Gil Puyat</option>
-                <option value="guadalupe">Guadalupe</option>
-              </select>
+              {isOwner ? (
+                <select
+                  value={editForm.branch || ""}
+                  onChange={(e) =>
+                    onFormChange({ ...editForm, branch: e.target.value }, "branch", e.target.value)
+                  }
+                >
+                  <option value="">Unassigned (No Branch)</option>
+                  <option value="gil-puyat">Gil Puyat</option>
+                  <option value="guadalupe">Guadalupe</option>
+                </select>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    value={
+                      editForm.branch === "gil-puyat"
+                        ? "Gil Puyat"
+                        : editForm.branch === "guadalupe"
+                        ? "Guadalupe"
+                        : "Unassigned"
+                    }
+                    readOnly
+                    className="opacity-80 bg-muted cursor-not-allowed"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Branch assignment is managed by the Dorm Owner.
+                  </p>
+                </>
+              )}
               {editFormErrors.branch && (
                 <span className="field-error">{editFormErrors.branch}</span>
               )}
             </div>
           </div>
 
-          <h3
-            style={{
-              fontSize: "12px",
-              fontWeight: 700,
-              color: "var(--muted-foreground)",
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              margin: "14px 0 8px",
-              paddingTop: "10px",
-              borderTop: "1px solid var(--border)",
-            }}
-          >
-            Extended Profile Details
-          </h3>
+          {/* 4. Extended Profile Details */}
+          <h3 style={sectionHeaderStyle}>Extended Profile Details</h3>
 
           <div className="form-row">
             <div className="form-group">
@@ -416,7 +442,7 @@ export default function EditUserModal({
                 maxLength={editForm.emergencyPhone?.startsWith("+") ? 13 : editForm.emergencyPhone?.startsWith("0") ? 11 : 10}
               />
               {!editFormErrors.emergencyPhone && (
-                <span style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: "2px", display: "block" }}>
+                <span className="text-[11px] text-muted-foreground mt-1 block">
                   11 digits starting with 09 (or 10 digits starting with 9)
                 </span>
               )}
@@ -426,33 +452,85 @@ export default function EditUserModal({
             </div>
           </div>
 
-          <div className="modal-footer">
-            <button type="button" onClick={handleSafeClose} className="btn-cancel" disabled={isUpdating}>
-              Cancel
-            </button>
-            <button type="submit" className="btn-save flex items-center gap-2" disabled={isUpdating}>
-              {isUpdating && <LoaderCircle className="h-4 w-4 animate-spin" />}
-              {isUpdating ? "Saving Changes..." : "Save Changes"}
-            </button>
-          </div>
+          {/* 5. Student & Academic Details (for Tenants and Applicants) */}
+          {isStudentRole && (
+            <>
+              <h3 style={sectionHeaderStyle}>Student & Academic Details</h3>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <div className="flex items-center justify-between">
+                    <label>Student ID</label>
+                    <span className="text-[11px] text-muted-foreground">
+                      {(editForm.studentId || "").length}/50
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={editForm.studentId || ""}
+                    onChange={(e) =>
+                      onFormChange({ ...editForm, studentId: e.target.value })
+                    }
+                    maxLength={50}
+                    placeholder="e.g. 2023-12345"
+                  />
+                </div>
+                <div className="form-group">
+                  <div className="flex items-center justify-between">
+                    <label>School / University</label>
+                    <span className="text-[11px] text-muted-foreground">
+                      {(editForm.school || "").length}/100
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={editForm.school || ""}
+                    onChange={(e) =>
+                      onFormChange({ ...editForm, school: e.target.value })
+                    }
+                    maxLength={100}
+                    placeholder="e.g. De La Salle University"
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <div className="flex items-center justify-between">
+                    <label>Year Level / Course</label>
+                    <span className="text-[11px] text-muted-foreground">
+                      {(editForm.yearLevel || "").length}/50
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={editForm.yearLevel || ""}
+                    onChange={(e) =>
+                      onFormChange({ ...editForm, yearLevel: e.target.value })
+                    }
+                    maxLength={50}
+                    placeholder="e.g. 3rd Year - BS Information Technology"
+                  />
+                </div>
+              </div>
+            </>
+          )}
         </form>
-      </div>
-    </div>,
-    document.body,
-  )}
-  <ConfirmModal
-    isOpen={showDiscardConfirm}
-    onClose={() => setShowDiscardConfirm(false)}
-    onConfirm={() => {
-      setShowDiscardConfirm(false);
-      onClose();
-    }}
-    title="Discard Changes"
-    message="You have unsaved changes. Are you sure you want to discard them and close this form?"
-    confirmText="Discard"
-    cancelText="Keep Editing"
-    variant="warning"
-  />
-  </>
+      </BaseModal>
+
+      <ConfirmModal
+        isOpen={showDiscardConfirm}
+        onClose={() => setShowDiscardConfirm(false)}
+        onConfirm={() => {
+          setShowDiscardConfirm(false);
+          onClose();
+        }}
+        title="Discard Changes"
+        message="You have unsaved changes. Are you sure you want to discard them and close this form?"
+        confirmText="Discard"
+        cancelText="Keep Editing"
+        variant="warning"
+      />
+    </>
   );
 }

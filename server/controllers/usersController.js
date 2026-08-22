@@ -892,14 +892,14 @@ export const updateUser = async (req, res, next) => {
         if (activeStayReservation) {
           return res.status(409).json({
             error:
-              "User has an active stay. Move out or archive the reservation first.",
+              "This tenant currently has an active stay. Please process their move-out before changing their role.",
             code: "ACTIVE_STAY_ROLE_CHANGE_BLOCKED",
           });
         }
 
         return res.status(409).json({
           error:
-            "Applicant and tenant roles are managed by reservation lifecycle actions.",
+            "Tenant and applicant roles are managed automatically through reservation and move-in workflows.",
           code: "ROLE_LIFECYCLE_MANAGED",
         });
       }
@@ -919,6 +919,21 @@ export const updateUser = async (req, res, next) => {
       }
     }
 
+    const currentRole = existingUser.role;
+    const nextRole = updateData.role || currentRole;
+
+    // Tenant status is managed exclusively by reservation lifecycles.
+    // 1. For admin accounts (branch_admin, owner), tenantStatus is not applicable — strip safely.
+    // 2. If tenantStatus was explicitly sent in req.body but is unchanged from the current persisted record, strip it so standard profile updates succeed.
+    if (["branch_admin", "owner"].includes(nextRole)) {
+      delete updateData.tenantStatus;
+    } else if (
+      req.body.tenantStatus !== undefined &&
+      String(req.body.tenantStatus).trim() === String(existingUser.tenantStatus || "").trim()
+    ) {
+      delete updateData.tenantStatus;
+    }
+
     if (updateData.tenantStatus !== undefined) {
       const nextStatus = String(updateData.tenantStatus).trim();
       if (!VALID_TENANT_STATUSES.includes(nextStatus)) {
@@ -928,28 +943,26 @@ export const updateUser = async (req, res, next) => {
         });
       }
 
-      const currentRole = existingUser.role;
-      const nextRole = updateData.role || currentRole;
       if (
         req.body.tenantStatus !== undefined &&
         (isLifecycleManagedRole(currentRole) || isLifecycleManagedRole(nextRole))
       ) {
         return res.status(409).json({
-          error: "Tenant status is managed by reservation lifecycle actions.",
+          error: "Tenant status is managed automatically through reservation and check-in workflows.",
           code: "ROLE_LIFECYCLE_MANAGED",
         });
       }
 
       if (["branch_admin", "owner"].includes(nextRole)) {
         return res.status(400).json({
-          error: "Admin accounts cannot use tenant status transitions",
+          error: "Administrator accounts do not use tenant status states.",
           code: "ROLE_TENANT_STATUS_CONFLICT",
         });
       }
 
       if (!canTransitionTenantStatus(existingUser.tenantStatus, nextStatus)) {
         return res.status(400).json({
-          error: `Invalid tenant status transition: ${existingUser.tenantStatus} -> ${nextStatus}`,
+          error: "This tenant status change is not permitted from the current account state.",
           code: "INVALID_TENANT_STATUS_TRANSITION",
         });
       }

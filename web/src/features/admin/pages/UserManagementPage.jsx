@@ -722,35 +722,88 @@ function UserManagementPage() {
 
     setIsUpdatingUser(true);
     try {
+      // Construct sanitized payload with editable fields only
+      const updatePayload = {
+        username: editForm.username?.trim(),
+        email: editForm.email?.trim(),
+        firstName: editForm.firstName?.trim(),
+        lastName: editForm.lastName?.trim(),
+        phone: editForm.phone || "",
+        gender: editForm.gender || "",
+        dateOfBirth: editForm.dateOfBirth || null,
+        address: editForm.address || "",
+        city: editForm.city || "",
+        emergencyContact: editForm.emergencyContact || "",
+        emergencyPhone: editForm.emergencyPhone || "",
+      };
+
+      // Include student/academic fields for tenants and applicants
+      if (["tenant", "applicant"].includes(editForm.role)) {
+        updatePayload.studentId = editForm.studentId || "";
+        updatePayload.school = editForm.school || "";
+        updatePayload.yearLevel = editForm.yearLevel || "";
+      }
+
+      // Role and branch changes are restricted to Owner
+      if (isOwner) {
+        if (editForm.role) updatePayload.role = editForm.role;
+        if (editForm.branch !== undefined) updatePayload.branch = editForm.branch;
+      }
+
       await authFetch(`/users/${selectedUser._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editForm),
+        body: JSON.stringify(updatePayload),
       });
+
       if (
         selectedUser?._id &&
         String(selectedUser._id) === String(user?.id || user?._id || "")
       ) {
         await refreshUser();
       }
-      showNotification("User updated successfully", "success", 3000);
+      showNotification("User account updated successfully", "success", 3000);
       setIsEditModalOpen(false);
       await refetchAll();
     } catch (error) {
       const msg = error.message || "";
       const code = error.code || "";
-      if (msg.includes("Email already") || code === "EMAIL_TAKEN") {
+      if (code === "ROLE_LIFECYCLE_MANAGED" || msg.includes("lifecycle actions") || msg.includes("workflows")) {
+        showNotification(
+          "Tenant and applicant roles are managed automatically through reservation workflows.",
+          "error",
+          4000
+        );
+      } else if (code === "ACTIVE_STAY_ROLE_CHANGE_BLOCKED" || msg.includes("active stay")) {
+        showNotification(
+          "This tenant currently has an active stay. Please complete their move-out before changing their role.",
+          "error",
+          4000
+        );
+      } else if (code === "ROLE_TENANT_STATUS_CONFLICT" || msg.includes("tenant status")) {
+        showNotification(
+          "Administrator accounts do not use tenant status states.",
+          "error",
+          4000
+        );
+      } else if (code === "INVALID_TENANT_STATUS_TRANSITION") {
+        showNotification(
+          "This tenant status update is not permitted from the current account state.",
+          "error",
+          4000
+        );
+      } else if (msg.includes("Email already") || code === "EMAIL_TAKEN") {
         setEditFormErrors((prev) => ({ ...prev, email: "This email address is already in use" }));
-        showNotification("Email is already in use.", "error", 4000);
+        showNotification("This email address is already registered to another account.", "error", 4000);
       } else if (msg.includes("Username already") || code === "USERNAME_TAKEN") {
         setAddFormErrors((prev) => ({ ...prev, username: "This username is already taken" }));
         setEditFormErrors((prev) => ({ ...prev, username: "This username is already taken" }));
-        showNotification("Username is taken.", "error", 4000);
+        showNotification("This username is already taken. Please choose another username.", "error", 4000);
       } else if (code === "INVALID_BRANCH" || msg.includes("Invalid branch")) {
         setEditFormErrors((prev) => ({ ...prev, branch: "Invalid branch selection" }));
-        showNotification("Invalid branch selected.", "error", 4000);
+        showNotification("Please select a valid branch assignment.", "error", 4000);
       } else {
-        showNotification(msg || "Failed to update user", "error", 4000);
+        showNotification(msg || "Unable to update user account. Please check the details and try again.", "error", 4000);
       }
     } finally {
       setIsUpdatingUser(false);
