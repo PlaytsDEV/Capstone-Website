@@ -57,7 +57,7 @@ const DYNAMIC_PROMPT_CONFIGS = {
   applicant_exploring: {
     label: "Quick Applicant Prompts",
     prompts: [
-      { label: "Accepted KYC IDs", prompt: "What valid IDs are accepted for identity verification?", icon: FileText },
+      { label: "Accepted IDs", prompt: "What valid IDs are accepted for identity verification?", icon: FileText },
       { label: "Viewing schedule", prompt: "How can I schedule an in-person room viewing appointment?", icon: Calendar },
       { label: "Deposit payment steps", prompt: "How do I settle the advance rent and security deposit?", icon: ReceiptText },
       { label: "Room availability", prompt: "What room types and beds are currently available?", icon: ShieldCheck },
@@ -68,7 +68,7 @@ const DYNAMIC_PROMPT_CONFIGS = {
     label: "Reservation Review Prompts",
     prompts: [
       { label: "Review turnaround time", prompt: "How long does application review usually take?", icon: Clock },
-      { label: "KYC verification status", prompt: "What is the status of my uploaded identification documents?", icon: ShieldCheck },
+      { label: "ID verification status", prompt: "What is the status of my uploaded identification documents?", icon: ShieldCheck },
       { label: "Modify reservation", prompt: "How can I change my target branch or move-in date?", icon: Calendar },
       { label: "Branch location", prompt: "Can you tell me the complete address and landmark of the branch?", icon: ShieldCheck },
     ],
@@ -511,7 +511,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
         {
           role: "assistant",
           content: isApplicant
-            ? `Verified live reservation records for **${tenantDisplayName}** at **${branchLabel}**. You can ask about payment milestones or KYC verification status.`
+            ? `Verified live reservation records for **${tenantDisplayName}** at **${branchLabel}**. You can ask about payment milestones or ID verification status.`
             : `Refreshed live room data for **Room ${roomLabel} (${bedLabel})** at **${branchLabel}**. Your billing and lease balance are synchronized.`,
           timestamp: new Date().toISOString(),
         },
@@ -1051,7 +1051,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
                 {isApplicant ? (
                   <>
                     <p>
-                      I am your <strong>Lilycrest Applicant Assistant</strong>. I have real-time access to your reservation status, viewing schedule, KYC document verification progress, and advance deposit guidelines.
+                      I am your <strong>Lilycrest Applicant Assistant</strong>. I have real-time access to your reservation status, viewing schedule, ID document verification progress, and advance deposit guidelines.
                     </p>
                     <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                       Select a suggested prompt below or ask about your application:

@@ -215,7 +215,7 @@ export function determineSuggestedActions(message = "", botReply = "", branchFoc
     actions.push({ label: "Start Application", url: "/applicant/check-availability" });
   }
   if (/\b(id|ids|kyc)\b/i.test(text) || text.includes("requirement") || text.includes("document")) {
-    actions.push({ label: "Accepted KYC IDs", prompt: "What valid IDs are accepted for application?" });
+    actions.push({ label: "Accepted IDs", prompt: "What valid IDs are accepted for application?" });
   }
 
   // 4. Default viewing & escalation fallback action

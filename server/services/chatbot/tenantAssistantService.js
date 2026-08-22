@@ -425,7 +425,7 @@ export function determineTenantSuggestedActions(message = "", botReply = "", con
   if (isApplicant) {
     actions.push({ label: "Application Status", prompt: "What is my current reservation status?" });
     actions.push({ label: "Deposit Payment Steps", prompt: "How do I settle the advance rent and deposit?" });
-    actions.push({ label: "Accepted KYC IDs", prompt: "What valid IDs are accepted for verification?" });
+    actions.push({ label: "Accepted IDs", prompt: "What valid IDs are accepted for verification?" });
     actions.push({ label: "Viewing Schedule", prompt: "How can I schedule an in-person room viewing?" });
     return actions.slice(0, 4);
   }
