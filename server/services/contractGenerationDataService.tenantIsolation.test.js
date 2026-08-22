@@ -77,8 +77,8 @@ const buildTenantFixture = ({ suffix, roomType, address, rate }) => {
     branch: "gil-puyat",
     roomType,
     leaseType: "short_term",
-    leaseStartDate: new Date("2026-01-01T00:00:00.000Z"),
-    leaseEndDate: new Date("2026-02-01T00:00:00.000Z"),
+    leaseStartDate: new Date(suffix === "a" ? "2026-01-01T00:00:00.000Z" : "2026-03-01T00:00:00.000Z"),
+    leaseEndDate: new Date(suffix === "a" ? "2026-02-01T00:00:00.000Z" : "2026-04-01T00:00:00.000Z"),
     leaseDurationMonths: 1,
     executionDate: new Date("2026-01-01T00:00:00.000Z"),
     bedId: "",
@@ -128,6 +128,8 @@ describe("Contract generation-data tenant isolation", () => {
     expect(data.tenant.tenantAddress).toBe(expected.address);
     expect(data.assignment.roomId).toBe(expected.roomId);
     expect(data.assignment.roomType).toBe(expected.roomType);
+    expect(new Date(data.lease.leaseStartDate).toISOString()).toBe(expected.leaseStartDate);
+    expect(new Date(data.lease.leaseEndDate).toISOString()).toBe(expected.leaseEndDate);
     expect(data.pricing.regularMonthlyRate).toBe(expected.regular);
     expect(data.pricing.discountPercentage).toBe(expected.discountPercentage);
     expect(data.pricing.discountAmount).toBe(expected.discountAmount);
@@ -141,6 +143,8 @@ describe("Contract generation-data tenant isolation", () => {
     address: "1, Address A Street, Makati",
     roomId: "room-a",
     roomType: "private",
+    leaseStartDate: "2026-01-01T00:00:00.000Z",
+    leaseEndDate: "2026-02-01T00:00:00.000Z",
     regular: 16000,
     discountPercentage: 10,
     discountAmount: 1600,
@@ -153,6 +157,8 @@ describe("Contract generation-data tenant isolation", () => {
     address: "9, Address B Street, Taguig",
     roomId: "room-b",
     roomType: "double-sharing",
+    leaseStartDate: "2026-03-01T00:00:00.000Z",
+    leaseEndDate: "2026-04-01T00:00:00.000Z",
     regular: 9000,
     discountPercentage: 5,
     discountAmount: 450,
