@@ -1000,7 +1000,12 @@ export const updateProfile = async (req, res, next) => {
     if (middleName !== undefined) updateData.middleName = middleName || "";
     if (lastName) updateData.lastName = lastName;
     if (phone !== undefined && phone !== null) updateData.phone = phone;
-    if (profileImage !== undefined) updateData.profileImage = profileImage;
+    // Mirror the photo into the field the mobile app reads/writes
+    // (`picture`) so a photo set on web shows up on mobile too.
+    if (profileImage !== undefined) {
+      updateData.profileImage = profileImage;
+      updateData.picture = profileImage;
+    }
     // Extended fields
     if (gender !== undefined) updateData.gender = gender;
     if (civilStatus !== undefined) updateData.civilStatus = civilStatus;

@@ -41,15 +41,21 @@ function normalizeUser(doc) {
   if (!u.firstName && applicantFirstName) u.firstName = applicantFirstName;
   if (!u.lastName && applicantLastName) u.lastName = applicantLastName;
 
-  if (!u.name) {
+  // Name: always recompute from the current firstName/lastName (the fields
+  // the web profile editor writes to) so an edit made on the web reflects
+  // here immediately, instead of only filling `name` once and letting it
+  // go stale after later web-side edits.
+  const combinedName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
+  if (combinedName) {
+    u.name = combinedName;
+  } else if (!u.name) {
     const applicantFullName = [applicantFirstName, applicantLastName].filter(Boolean).join(' ').trim();
     if (applicantFullName) {
       u.name = applicantFullName;
+    } else if (u.fullName) {
+      u.name = u.fullName;
     }
   }
-
-  // Name: fullName → name
-  if (!u.name && u.fullName) u.name = u.fullName;
 
   // Email: emailAddress → email
   if (!u.email && u.emailAddress) u.email = u.emailAddress;
@@ -58,6 +64,13 @@ function normalizeUser(doc) {
   if (!u.phone && (u.contactNumber || u.phoneNumber)) {
     u.phone = u.contactNumber || u.phoneNumber;
   }
+
+  // Profile photo: the web profile editor writes to `profileImage`, while
+  // the mobile app reads/writes `picture`. Neither side knows about the
+  // other's field, so a photo change on one platform was invisible on the
+  // other. Fall back to whichever field actually has a value so both
+  // clients converge on the same photo.
+  if (!u.picture && u.profileImage) u.picture = u.profileImage;
 
   // Address from applicant details/home address fields → address
   if (!u.address) {
@@ -91,8 +104,15 @@ function normalizeUser(doc) {
 // credentials if present, etc.) to any authenticated tenant. This allowlist
 // closes that gap; only these fields are ever sent to the mobile client.
 const CLIENT_VISIBLE_USER_FIELDS = [
-  'user_id', 'email', 'name', 'firstName', 'lastName', 'phone', 'address',
+  'user_id', 'email', 'name', 'firstName', 'middleName', 'lastName', 'phone', 'address',
   'username', 'usernameNextAllowedAt', 'serverTime', 'picture', 'role',
+  // Extended profile fields the web profile editor writes to
+  // (authController.js updateProfile). These are read-only on mobile today
+  // — surfacing them here just lets the app display what was set on web,
+  // matching the "managed from the approved application / admin" rule in
+  // updateMe below, which intentionally still does not accept them from
+  // mobile.
+  'gender', 'civilStatus', 'nationality', 'occupation', 'educationLevel', 'dateOfBirth',
 ];
 
 function sanitizeUserForClient(user) {
@@ -282,6 +302,12 @@ async function updateMe(req, res) {
 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ detail: 'No valid fields provided to update.' });
+    }
+
+    // Mirror the photo into the field the web profile editor reads
+    // (`profileImage`) so a photo set on mobile shows up on web too.
+    if (updateData.picture !== undefined) {
+      updateData.profileImage = updateData.picture;
     }
 
     const db = getDb();
