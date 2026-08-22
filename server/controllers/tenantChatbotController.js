@@ -330,3 +330,17 @@ Support Inquiries: ${contextSnapshot.inquiries?.length || 0}`;
   }
 };
 
+export const handleTenantContext = async (req, res, next) => {
+  try {
+    const userId = req.authUser?._id || req.user?.uid;
+    const contextSnapshot = await tenantContext(req, userId);
+    return res.status(200).json({
+      success: true,
+      data: contextSnapshot,
+      message: "Tenant context resolved successfully.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

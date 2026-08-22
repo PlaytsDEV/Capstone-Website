@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Bot,
@@ -8,6 +8,7 @@ import {
   X,
   Sparkles,
   Send,
+  Paperclip,
   LoaderCircle,
   AlertCircle,
   ArrowRight,
@@ -25,9 +26,15 @@ import {
   CreditCard,
   Clock,
   Megaphone,
+  CheckCircle2,
+  Eye,
+  MessageSquare,
 } from "lucide-react";
 import { useAuth } from "../../../../shared/hooks/useAuth";
-import { streamTenantAssistant } from "../../api/tenantAssistantApi";
+import { chatApi } from "../../../../shared/api/chatApi.js";
+import { validateFile } from "../../../../shared/utils/firebaseStorageUpload.js";
+import useChatSocket from "../../../../shared/hooks/useChatSocket.js";
+import { streamTenantAssistant, getTenantContext } from "../../api/tenantAssistantApi";
 import TenantBillingBreakdownCard from "./cards/TenantBillingBreakdownCard";
 import TenantLeaseTimelineCard from "./cards/TenantLeaseTimelineCard";
 import TenantMaintenanceCard from "./cards/TenantMaintenanceCard";
@@ -35,41 +42,90 @@ import TenantPaymentGuideCard from "./cards/TenantPaymentGuideCard";
 import TenantHouseRulesCard from "./cards/TenantHouseRulesCard";
 import TenantAnnouncementCard from "./cards/TenantAnnouncementCard";
 import TenantHumanEscalateModal from "./modals/TenantHumanEscalateModal";
-import TenantSupportChatView from "./TenantSupportChatView";
 import "../../styles/tenant-assistant.css";
 
 const STORAGE_KEY = "lilycrest_tenant_assistant_msgs";
 
-const CATEGORIZED_PROMPTS = {
-  applicant: [
-    { label: "Reservation status", prompt: "What is my current reservation status?", icon: ShieldCheck },
-    { label: "Deposit payment steps", prompt: "How do I settle the advance rent and security deposit?", icon: ReceiptText },
-    { label: "Accepted KYC IDs", prompt: "What valid IDs are accepted for identity verification?", icon: FileText },
-    { label: "Viewing schedule", prompt: "How can I schedule an in-person room viewing appointment?", icon: Calendar },
-  ],
-  billing: [
-    { label: "Electricity math", prompt: "How was my submetered electricity share computed this month?", icon: Zap },
-    { label: "Payment due date", prompt: "When is my current bill due and how do I settle it?", icon: Calendar },
-    { label: "Water consumption", prompt: "Is water really free and included in my monthly rent?", icon: Droplet },
-  ],
-  contracts: [
-    { label: "Lease expiration", prompt: "When does my current lease contract expire and how many days are left?", icon: Calendar },
-    { label: "Renew contract", prompt: "What are the steps to request a lease renewal?", icon: FileText },
-    { label: "Deposit refund", prompt: "How does the security deposit refund and move-out clearance work?", icon: ShieldCheck },
-  ],
-  maintenance: [
-    { label: "Active tickets", prompt: "What is the current status of my room repair requests?", icon: Wrench },
-    { label: "Report issue", prompt: "How do I submit an urgent plumbing or air-conditioning issue?", icon: Wrench },
-    { label: "Technician hours", prompt: "What are the available hours for on-site technician repairs?", icon: UserCheck },
-  ],
-  default: [
-    { label: "Active tickets", prompt: "Do I have any active maintenance tickets scheduled?", icon: Wrench },
-    { label: "Report issue", prompt: "How do I submit an urgent plumbing or air-conditioning issue?", icon: Wrench },
-    { label: "Bill breakdown", prompt: "Can you show my current monthly bill breakdown?", icon: ReceiptText },
-    { label: "Electricity math", prompt: "How was my submetered electricity share computed this month?", icon: Zap },
-    { label: "Lease timeline", prompt: "How many days are left on my lease agreement?", icon: FileText },
-    { label: "Deposit refund", prompt: "How does the security deposit refund and move-out clearance work?", icon: ShieldCheck },
-  ],
+const DYNAMIC_PROMPT_CONFIGS = {
+  // --- Applicant Lifecycle Stages ---
+  applicant_exploring: {
+    label: "Quick Applicant Prompts",
+    prompts: [
+      { label: "Accepted KYC IDs", prompt: "What valid IDs are accepted for identity verification?", icon: FileText },
+      { label: "Viewing schedule", prompt: "How can I schedule an in-person room viewing appointment?", icon: Calendar },
+      { label: "Deposit payment steps", prompt: "How do I settle the advance rent and security deposit?", icon: ReceiptText },
+      { label: "Room availability", prompt: "What room types and beds are currently available?", icon: ShieldCheck },
+      { label: "House rules overview", prompt: "What are the dormitory gate hours and visitor rules?", icon: FileText },
+    ],
+  },
+  applicant_under_review: {
+    label: "Reservation Review Prompts",
+    prompts: [
+      { label: "Review turnaround time", prompt: "How long does application review usually take?", icon: Clock },
+      { label: "KYC verification status", prompt: "What is the status of my uploaded identification documents?", icon: ShieldCheck },
+      { label: "Modify reservation", prompt: "How can I change my target branch or move-in date?", icon: Calendar },
+      { label: "Branch location", prompt: "Can you tell me the complete address and landmark of the branch?", icon: ShieldCheck },
+    ],
+  },
+  applicant_payment_pending: {
+    label: "Payment & Onboarding Prompts",
+    prompts: [
+      { label: "Deposit payment steps", prompt: "How do I settle the advance rent and security deposit?", icon: ReceiptText },
+      { label: "Accepted payment channels", prompt: "What payment channels (GCash, Bank Transfer) can I use?", icon: CreditCard },
+      { label: "Payment deadline", prompt: "When is the deadline to secure my room reservation?", icon: Calendar },
+      { label: "Move-in requirements", prompt: "What documents or clearance do I need before move-in day?", icon: FileText },
+    ],
+  },
+  applicant_move_in_ready: {
+    label: "Move-in Readiness Prompts",
+    prompts: [
+      { label: "Move-in day checklist", prompt: "What is the move-in day procedure and gate access schedule?", icon: Calendar },
+      { label: "What to bring", prompt: "What appliances and personal items are permitted in the room?", icon: ShieldCheck },
+      { label: "Digital lease signing", prompt: "How do I review and sign my digital lease agreement?", icon: FileText },
+      { label: "WiFi & Keycard access", prompt: "How do I get my tenant keycard and WiFi credentials?", icon: Zap },
+    ],
+  },
+
+  // --- Active Tenant Contexts ---
+  tenant_billing: {
+    label: "Quick Billing Prompts",
+    prompts: [
+      { label: "Bill breakdown", prompt: "Can you show my current monthly bill breakdown?", icon: ReceiptText },
+      { label: "Electricity math", prompt: "How was my submetered electricity share computed this month?", icon: Zap },
+      { label: "Payment due date", prompt: "When is my current bill due and how do I settle it?", icon: Calendar },
+      { label: "Water consumption", prompt: "Is water really free and included in my monthly rent?", icon: Droplet },
+      { label: "Accepted payment channels", prompt: "What payment methods (GCash, Bank) can I use?", icon: CreditCard },
+    ],
+  },
+  tenant_maintenance: {
+    label: "Quick Maintenance Prompts",
+    prompts: [
+      { label: "Active tickets", prompt: "What is the current status of my room repair requests?", icon: Wrench },
+      { label: "Report issue", prompt: "How do I submit an urgent plumbing or air-conditioning issue?", icon: Wrench },
+      { label: "Technician hours", prompt: "What are the available hours for on-site technician repairs?", icon: UserCheck },
+      { label: "Emergency maintenance", prompt: "Who do I contact for emergency electrical or water issues?", icon: AlertCircle },
+    ],
+  },
+  tenant_contracts: {
+    label: "Quick Lease Prompts",
+    prompts: [
+      { label: "Lease expiration", prompt: "When does my current lease contract expire and how many days are left?", icon: Calendar },
+      { label: "Renew contract", prompt: "What are the steps to request a lease renewal?", icon: FileText },
+      { label: "Deposit refund", prompt: "How does the security deposit refund and move-out clearance work?", icon: ShieldCheck },
+      { label: "House rules", prompt: "What are the dormitory quiet hours, curfew, and visitor policies?", icon: FileText },
+    ],
+  },
+  tenant_default: {
+    label: "Quick Tenant Prompts",
+    prompts: [
+      { label: "Bill breakdown", prompt: "Can you show my current monthly bill breakdown?", icon: ReceiptText },
+      { label: "Active tickets", prompt: "Do I have any active maintenance tickets scheduled?", icon: Wrench },
+      { label: "Electricity math", prompt: "How was my submetered electricity share computed this month?", icon: Zap },
+      { label: "Lease timeline", prompt: "How many days are left on my lease agreement?", icon: FileText },
+      { label: "Report issue", prompt: "How do I submit an urgent plumbing or air-conditioning issue?", icon: Wrench },
+      { label: "Deposit refund", prompt: "How does the security deposit refund and move-out clearance work?", icon: ShieldCheck },
+    ],
+  },
 };
 
 function formatBranch(raw) {
@@ -85,14 +141,12 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState("assistant"); // "assistant" | "support"
-  const [activeSupportConvId, setActiveSupportConvId] = useState(null);
-  const [unreadSupportCount, setUnreadSupportCount] = useState(0);
-
-  const handleUnreadCountChange = useCallback((count) => {
-    setUnreadSupportCount(count);
-    onUnreadCountChange?.(count);
-  }, [onUnreadCountChange]);
+  const [activeTicket, setActiveTicket] = useState(null);
+  const [adminTyping, setAdminTyping] = useState(false);
+  const [attachments, setAttachments] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isEndingSession, setIsEndingSession] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState(null);
 
   const [messages, setMessages] = useState(() => {
     try {
@@ -116,20 +170,168 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
 
   const bodyRef = useRef(null);
   const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
   const isScrolledUpRef = useRef(false);
 
-  const isApplicant = user?.role === "applicant" || contextSnapshot?.isApplicant;
-
-  // Determine active route prompts
-  const activeRoutePrompts = useMemo(() => {
-    if (isApplicant) return CATEGORIZED_PROMPTS.applicant;
+  // Dynamic user status & role resolution
+  const isApplicant = useMemo(() => {
+    if (contextSnapshot) return Boolean(contextSnapshot.isApplicant);
     const path = location.pathname.toLowerCase();
-    if (path.includes("billing")) return CATEGORIZED_PROMPTS.billing;
-    if (path.includes("contract")) return CATEGORIZED_PROMPTS.contracts;
-    if (path.includes("maintenance")) return CATEGORIZED_PROMPTS.maintenance;
-    return CATEGORIZED_PROMPTS.default;
-  }, [location.pathname, isApplicant]);
+    return (
+      user?.role === "applicant" ||
+      user?.isApplicant ||
+      path.includes("/applicant/viewing") ||
+      path.includes("/applicant/reservation")
+    );
+  }, [contextSnapshot, user, location.pathname]);
+
+  // Load live context snapshot on drawer open
+  useEffect(() => {
+    if (isOpen) {
+      getTenantContext()
+        .then((res) => {
+          if (res?.data) {
+            setContextSnapshot(res.data);
+          }
+        })
+        .catch(() => {
+          // Gracefully fall back to local auth state
+        });
+    }
+  }, [isOpen]);
+
+  // Check active support ticket on load / when opened
+  const checkActiveSupportTicket = useCallback(async () => {
+    try {
+      const res = await chatApi.getMyConversations();
+      const convs = res?.data || [];
+      const ongoing = convs.find(
+        (c) => c.status !== "closed" && c.status !== "resolved"
+      );
+      if (ongoing) {
+        setActiveTicket(ongoing);
+        onUnreadCountChange?.(ongoing.unreadTenantCount || 0);
+      } else {
+        setActiveTicket(null);
+        onUnreadCountChange?.(0);
+      }
+    } catch (err) {
+      console.error("Failed to check active support conversation:", err);
+    }
+  }, [onUnreadCountChange]);
+
+  useEffect(() => {
+    if (isOpen) {
+      checkActiveSupportTicket();
+    }
+  }, [isOpen, checkActiveSupportTicket]);
+
+  // Real-time WebSocket subscriptions
+  const handleNewMessage = useCallback((msg, convId) => {
+    if (activeTicket && (convId === activeTicket._id || msg?.conversationId === activeTicket._id)) {
+      setMessages((prev) => {
+        const exists = prev.some((m) => m._id && m._id === msg._id);
+        if (exists) return prev;
+        return [
+          ...prev,
+          {
+            _id: msg._id,
+            role: msg.senderRole === "tenant" ? "user" : "admin",
+            senderName: msg.senderName || "Branch Admin",
+            message: msg.message,
+            content: msg.message,
+            attachments: msg.attachments || [],
+            timestamp: msg.createdAt || new Date().toISOString(),
+            isStaff: msg.senderRole !== "tenant",
+          },
+        ];
+      });
+      if (!isOpen && msg.senderRole !== "tenant") {
+        onUnreadCountChange?.(1);
+      }
+    }
+  }, [activeTicket, isOpen, onUnreadCountChange]);
+
+  const handleConversationUpdated = useCallback((conv) => {
+    if (activeTicket && conv?._id === activeTicket._id) {
+      setActiveTicket(conv);
+      if (conv.status === "waiting_tenant") {
+        setMessages((prev) => {
+          const hasPrompt = prev.some(
+            (m) => m.role === "resolution_prompt" && m.ticketId === conv.ticketId
+          );
+          if (hasPrompt) return prev;
+          return [
+            ...prev,
+            {
+              role: "resolution_prompt",
+              ticketId: conv.ticketId,
+              timestamp: new Date().toISOString(),
+            },
+          ];
+        });
+      } else if (conv.status === "resolved" || conv.status === "closed") {
+        setActiveTicket(null);
+        onUnreadCountChange?.(0);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "system_ended",
+            ticketId: conv.ticketId,
+            message: `Live support session for #${conv.ticketId || "ticket"} has concluded. Your AI Assistant is active again.`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      }
+    }
+  }, [activeTicket, onUnreadCountChange]);
+
+  const handleTyping = useCallback((data) => {
+    if (activeTicket && data?.conversationId === activeTicket._id && data?.senderRole !== "tenant") {
+      setAdminTyping(true);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => setAdminTyping(false), 3000);
+    }
+  }, [activeTicket]);
+
+  useChatSocket({
+    onMessageNew: handleNewMessage,
+    onConversationUpdated: handleConversationUpdated,
+    onTyping: handleTyping,
+    enabled: Boolean(isOpen && activeTicket),
+  });
+
+  // Dynamic Prompt Set Resolution based on Role, Status, and Active Route
+  const activePromptConfig = useMemo(() => {
+    const reservationStatus = String(
+      contextSnapshot?.reservation?.status || user?.reservationStatus || ""
+    ).toLowerCase();
+    const path = location.pathname.toLowerCase();
+
+    if (isApplicant) {
+      if (["submitted", "under_review", "pending", "review"].includes(reservationStatus)) {
+        return DYNAMIC_PROMPT_CONFIGS.applicant_under_review;
+      }
+      if (["payment_pending", "approved_for_payment", "approved"].includes(reservationStatus)) {
+        return DYNAMIC_PROMPT_CONFIGS.applicant_payment_pending;
+      }
+      if (["confirmed", "reserved", "movein", "move_in", "move_in_ready"].includes(reservationStatus)) {
+        return DYNAMIC_PROMPT_CONFIGS.applicant_move_in_ready;
+      }
+      return DYNAMIC_PROMPT_CONFIGS.applicant_exploring;
+    }
+
+    // Active Tenant
+    if (path.includes("billing")) return DYNAMIC_PROMPT_CONFIGS.tenant_billing;
+    if (path.includes("maintenance")) return DYNAMIC_PROMPT_CONFIGS.tenant_maintenance;
+    if (path.includes("contract")) return DYNAMIC_PROMPT_CONFIGS.tenant_contracts;
+
+    return DYNAMIC_PROMPT_CONFIGS.tenant_default;
+  }, [isApplicant, contextSnapshot, user, location.pathname]);
+
+  const activeRoutePrompts = activePromptConfig.prompts;
 
   // Persist messages to session storage
   useEffect(() => {
@@ -163,7 +365,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
 
   useEffect(() => {
     scrollToBottom("auto");
-  }, [messages, streamingText, activeWidget]);
+  }, [messages, streamingText, activeWidget, adminTyping]);
 
   const handleScroll = () => {
     if (!bodyRef.current) return;
@@ -182,7 +384,6 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
     }
   }, [isOpen]);
 
-  // Welcome message if conversation is empty
   const tenantDisplayName =
     `${user?.firstName || ""}`.trim() ||
     `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
@@ -202,20 +403,54 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
     setStreamingText("");
     setActiveWidget(null);
     setActiveActions([]);
-    sessionStorage.removeItem(STORAGE_KEY);
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
   };
 
   const handleCopyTranscript = async () => {
-    if (!messages || messages.length === 0) return;
+    if (!messages.length) return;
     const transcript = messages
-      .map((m) => `${m.role === "user" ? "Tenant" : "Lilycrest Assistant"}: ${m.content}`)
-      .join("\n\n");
+      .map((m) => {
+        const sender = m.isStaff
+          ? `[Branch Admin - ${m.senderName || "Staff"}]`
+          : m.role === "user"
+          ? "[User]"
+          : `[${isApplicant ? "Applicant Assistant" : "Tenant Assistant"}]`;
+        return `${sender} (${new Date(m.timestamp).toLocaleTimeString()}):\n${m.content || m.message}\n`;
+      })
+      .join("\n---\n\n");
+
     try {
       await navigator.clipboard.writeText(transcript);
       setHasCopied(true);
       setTimeout(() => setHasCopied(false), 2000);
     } catch {
-      // Ignore clipboard errors
+      // Ignore
+    }
+  };
+
+  const handleRefreshStayData = async () => {
+    setIsRefreshing(true);
+    try {
+      const res = await getTenantContext().catch(() => null);
+      if (res?.data) {
+        setContextSnapshot(res.data);
+      }
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: isApplicant
+            ? `Verified live reservation records for **${tenantDisplayName}** at **${branchLabel}**. You can ask about payment milestones or KYC verification status.`
+            : `Refreshed live room data for **Room ${roomLabel} (${bedLabel})** at **${branchLabel}**. Your billing and lease balance are synchronized.`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 400);
     }
   };
 
@@ -223,122 +458,237 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
-      setIsStreaming(false);
-      if (streamingText.trim()) {
+    }
+    setIsStreaming(false);
+    if (streamingText) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: streamingText,
+          widget: activeWidget,
+          actions: activeActions,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      setStreamingText("");
+      setActiveWidget(null);
+      setActiveActions([]);
+    }
+  };
+
+  const handleFileSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    for (const file of files) {
+      try {
+        validateFile(file, { maxSizeMB: 5, allowedTypes: ["image/jpeg", "image/png", "image/webp", "application/pdf"] });
+      } catch (validationErr) {
+        alert(validationErr.message);
+        return;
+      }
+    }
+
+    if (!activeTicket) {
+      alert("Attachments are supported when speaking directly with Branch Admin staff.");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      for (const file of files) {
+        const res = await chatApi.uploadTenantAttachment(activeTicket._id, file);
+        if (res?.data) {
+          setAttachments((prev) => [...prev, res.data]);
+        }
+      }
+    } catch (err) {
+      console.error("Attachment upload error:", err);
+      alert("Failed to upload attachment. Please try again.");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveAttachment = (index) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleConfirmResolution = async (resolved) => {
+    if (!activeTicket) return;
+    try {
+      await chatApi.confirmTenantResolution(activeTicket._id, resolved);
+      if (resolved) {
+        const ticketId = activeTicket.ticketId;
+        setActiveTicket(null);
+        onUnreadCountChange?.(0);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "system_ended",
+            ticketId,
+            message: `Thank you for confirming resolution. Live support for #${ticketId || "ticket"} has concluded. Your AI Assistant is active again.`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } else {
+        const followUpText = "I still need assistance with this concern.";
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "user",
+            content: followUpText,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        await chatApi.sendTenantMessage(activeTicket._id, followUpText);
+      }
+    } catch (err) {
+      console.error("Resolution confirm failed:", err);
+    }
+  };
+
+  const handleEndLiveSession = async () => {
+    if (!activeTicket) return;
+    setIsEndingSession(true);
+    try {
+      await chatApi.closeTenantConversation(activeTicket._id, "Session closed by user.");
+      const ticketId = activeTicket.ticketId;
+      setActiveTicket(null);
+      onUnreadCountChange?.(0);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "system_ended",
+          ticketId,
+          message: `Live support session for #${ticketId || "ticket"} was ended. Your AI Assistant is active again.`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    } catch (err) {
+      console.error("Failed to close live support session:", err);
+    } finally {
+      setIsEndingSession(false);
+    }
+  };
+
+  const handleSendMessage = async (customPrompt = null) => {
+    const rawMessage = customPrompt || inputMessage;
+    if (!rawMessage.trim() && attachments.length === 0) return;
+    if (isStreaming || isUploading) return;
+
+    setInputMessage("");
+
+    // Route 1: Active Live Support Chat with Branch Admin
+    if (activeTicket) {
+      const userMsg = {
+        role: "user",
+        content: rawMessage,
+        attachments: [...attachments],
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      const currentAttachments = [...attachments];
+      setAttachments([]);
+
+      try {
+        await chatApi.sendTenantMessage(activeTicket._id, rawMessage, currentAttachments);
+      } catch (err) {
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: streamingText.trim(),
-            widget: activeWidget,
-            actions: activeActions,
+            content: "Failed to deliver message to Branch Admin. Please check your internet connection.",
+            isError: true,
             timestamp: new Date().toISOString(),
           },
         ]);
-        setStreamingText("");
       }
-    }
-  };
-
-  const handleRefreshStayData = async () => {
-    if (isRefreshing || isStreaming) return;
-    try {
-      setIsRefreshing(true);
-      await streamTenantAssistant(
-        { message: "Refresh stay data" },
-        {
-          onDone: (result) => {
-            if (result?.contextSnapshot) {
-              setContextSnapshot(result.contextSnapshot);
-            }
-          },
-        }
-      );
-    } catch (err) {
-      console.error("Failed to refresh stay data:", err);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  const handleSendMessage = async (textToSend) => {
-    const queryText = (textToSend || inputMessage).trim();
-    if (!queryText || isStreaming) return;
-
-    setInputMessage("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
+      return;
     }
 
-    const userTurn = {
+    // Route 2: Normal AI Assistant Stream
+    const userMsg = {
       role: "user",
-      content: queryText,
+      content: rawMessage,
       timestamp: new Date().toISOString(),
     };
 
-    const newHistory = [...messages, userTurn];
-    setMessages(newHistory);
+    setMessages((prev) => [...prev, userMsg]);
     setIsStreaming(true);
     setStreamingText("");
     setActiveWidget(null);
     setActiveActions([]);
-    isScrolledUpRef.current = false;
 
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
+    const historyPayload = messages
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-6)
+      .map((m) => ({
+        role: m.role,
+        content: m.content || m.message,
+      }));
 
-    let accumulatedText = "";
-    let streamWidget = null;
-    let streamActions = null;
+    abortControllerRef.current = new AbortController();
 
     try {
-      await streamTenantAssistant({
-        message: queryText,
-        conversationHistory: newHistory.map((m) => ({
-          role: m.role === "user" ? "user" : "model",
-          content: m.content,
-        })),
-        signal: abortController.signal,
+      const result = await streamTenantAssistant({
+        message: rawMessage,
+        conversationHistory: historyPayload,
         onToken: (token, accumulated) => {
-          accumulatedText = accumulated;
           setStreamingText(accumulated);
         },
         onWidget: (widget) => {
-          streamWidget = widget;
           setActiveWidget(widget);
         },
         onActions: (actions) => {
-          streamActions = actions;
           setActiveActions(actions);
         },
-        onDone: (result) => {
-          if (result?.contextSnapshot) {
-            setContextSnapshot(result.contextSnapshot);
+        onDone: (meta) => {
+          if (meta?.contextSnapshot) {
+            setContextSnapshot(meta.contextSnapshot);
           }
         },
         onError: (err) => {
-          console.error("Tenant assistant streaming error:", err);
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content:
+                "I encountered a temporary connection issue reaching the AI service. You can retry your question or speak directly with our Branch Admin.",
+              isError: true,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
         },
+        signal: abortControllerRef.current.signal,
       });
 
-      const assistantTurn = {
-        role: "assistant",
-        content: accumulatedText || "I'm here to help with your stay at Lilycrest. Feel free to ask another question!",
-        widget: streamWidget,
-        actions: streamActions,
-        timestamp: new Date().toISOString(),
-      };
-
-      setMessages((prev) => [...prev, assistantTurn]);
-      setStreamingText("");
+      if (result && (result.text || result.widget)) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: result.text || "",
+            widget: result.widget || null,
+            actions: result.actions || [],
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        setStreamingText("");
+        setActiveWidget(null);
+        setActiveActions([]);
+      }
     } catch (err) {
       if (err.name !== "AbortError") {
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
+            content:
+              "Unable to load stay information right now. Please verify your connection or ask our Branch Admin for assistance.",
             isError: true,
-            content: "I encountered a temporary connection issue. Please retry your question or speak directly with the Branch Admin.",
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -346,6 +696,29 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
     } finally {
       setIsStreaming(false);
       abortControllerRef.current = null;
+    }
+  };
+
+  const handleActionClick = (action) => {
+    if (typeof action === "string") {
+      handleSendMessage(action);
+      return;
+    }
+    if (action.type === "prompt" || action.prompt) {
+      handleSendMessage(action.prompt || action.label);
+      return;
+    }
+    if (action.type === "navigate" || action.url || action.path) {
+      onClose();
+      navigate(action.url || action.path);
+      return;
+    }
+    if (action.type === "escalate") {
+      setIsEscalateOpen(true);
+      return;
+    }
+    if (action.label) {
+      handleSendMessage(action.label);
     }
   };
 
@@ -358,134 +731,89 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
 
   const handleTextareaChange = (e) => {
     setInputMessage(e.target.value);
-    e.target.style.height = "auto";
-    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-  };
-
-  const handleActionClick = (act) => {
-    if (typeof act === "string") {
-      if (act.toLowerCase().includes("admin") || act.toLowerCase().includes("escalate")) {
-        setIsEscalateOpen(true);
-      } else {
-        handleSendMessage(act);
-      }
-      return;
-    }
-
-    if (act.url) {
-      onClose?.();
-      navigate(act.url);
-      return;
-    }
-
-    if (act.action === "open_escalate_modal") {
-      setIsEscalateOpen(true);
-    } else if (act.prompt) {
-      handleSendMessage(act.prompt);
+    if (activeTicket && e.target.value.trim().length > 0) {
+      chatApi.broadcastTyping(activeTicket._id, "tenant", tenantDisplayName).catch(() => {});
     }
   };
 
-  // Helper to format assistant text with markdown paragraphs and links
+  const renderWidget = (widget) => {
+    if (!widget) return null;
+    const widgetType = typeof widget === "string" ? widget : widget.type;
+    const widgetData = widget.data || contextSnapshot;
+    const billData = widgetData?.currentBill;
+
+    switch (widgetType) {
+      case "billing_breakdown":
+        return <TenantBillingBreakdownCard data={billData} />;
+      case "lease_timeline":
+        return <TenantLeaseTimelineCard data={widgetData?.contract} />;
+      case "maintenance_status":
+        return <TenantMaintenanceCard data={widgetData?.activeMaintenance} />;
+      case "payment_guide":
+        return <TenantPaymentGuideCard data={billData} />;
+      case "house_rules":
+        return <TenantHouseRulesCard />;
+      case "announcements":
+        return <TenantAnnouncementCard />;
+      default:
+        return null;
+    }
+  };
+
   const renderFormattedText = (text) => {
     if (!text) return null;
-
-    const paragraphs = text.split("\n\n");
+    const paragraphs = text.split(/\n{2,}/);
     return paragraphs.map((para, pIdx) => {
       const lines = para.split("\n");
       return (
-        <p key={pIdx} className="mb-2 last:mb-0">
+        <div key={pIdx} className="mb-2 last:mb-0 leading-relaxed text-[13px] text-slate-800 dark:text-slate-200">
           {lines.map((line, lIdx) => {
-            // Replace bold **text**
-            const boldParts = line.split(/(\*\*.*?\*\*)/g);
+            const isBullet = /^[*-]\s+(.*)/.test(line);
+            const isNumbered = /^\d+\.\s+(.*)/.test(line);
+            const content = line.replace(/^[*-]\s+/, "").replace(/^\d+\.\s+/, "");
+
+            const boldPattern = /\*\*(.*?)\*\*/g;
+            const formatted = content.split(boldPattern).map((segment, sIdx) => {
+              if (sIdx % 2 === 1) {
+                return (
+                  <strong key={sIdx} className="font-semibold text-slate-900 dark:text-slate-100">
+                    {segment}
+                  </strong>
+                );
+              }
+              return segment;
+            });
+
+            if (isBullet) {
+              return (
+                <div key={lIdx} className="flex items-start gap-1.5 ml-2 my-0.5">
+                  <span className="text-slate-400 select-none">•</span>
+                  <span>{formatted}</span>
+                </div>
+              );
+            }
+
+            if (isNumbered) {
+              const numMatch = line.match(/^(\d+)\./);
+              return (
+                <div key={lIdx} className="flex items-start gap-1.5 ml-2 my-0.5">
+                  <span className="font-semibold text-slate-500 select-none">
+                    {numMatch ? `${numMatch[1]}.` : "•"}
+                  </span>
+                  <span>{formatted}</span>
+                </div>
+              );
+            }
+
             return (
-              <React.Fragment key={lIdx}>
-                {boldParts.map((part, bIdx) => {
-                  if (part.startsWith("**") && part.endsWith("**")) {
-                    return (
-                      <strong key={bIdx} className="font-semibold">
-                        {part.slice(2, -2)}
-                      </strong>
-                    );
-                  }
-                  return part;
-                })}
-                {lIdx < lines.length - 1 && <br />}
-              </React.Fragment>
+              <p key={lIdx} className={lIdx > 0 ? "mt-1" : ""}>
+                {formatted}
+              </p>
             );
           })}
-        </p>
+        </div>
       );
     });
-  };
-
-  const renderWidget = (widgetPayload) => {
-    if (!widgetPayload) return null;
-
-    const type = typeof widgetPayload === "string" ? widgetPayload : widgetPayload.type;
-    const widgetData = typeof widgetPayload === "object" ? widgetPayload.data || widgetPayload : contextSnapshot;
-
-    if (type === "payment_guide" || type === "payment_options" || type === "payment_methods") {
-      return (
-        <TenantPaymentGuideCard
-          data={widgetData}
-          onCloseDrawer={onClose}
-        />
-      );
-    }
-
-    if (type === "house_rules" || type === "building_rules" || type === "curfew_policy") {
-      return (
-        <TenantHouseRulesCard
-          data={widgetData}
-          onCloseDrawer={onClose}
-        />
-      );
-    }
-
-    if (type === "recent_announcements" || type === "announcement_card" || type === "branch_advisory") {
-      return (
-        <TenantAnnouncementCard
-          data={widgetData?.recentAnnouncements || widgetData}
-          onCloseDrawer={onClose}
-        />
-      );
-    }
-
-    if (type === "billing_breakdown") {
-      const billData = widgetData?.currentBill || (widgetData?.billId || widgetData?.billing_id ? widgetData : null);
-      if (!billData) return null;
-      return (
-        <TenantBillingBreakdownCard
-          data={billData}
-          onCloseDrawer={onClose}
-        />
-      );
-    }
-
-    if (type === "lease_timeline") {
-      const contractData = widgetData?.contract || (widgetData?.contractId ? widgetData : null);
-      if (!contractData) return null;
-      return (
-        <TenantLeaseTimelineCard
-          data={contractData}
-          onCloseDrawer={onClose}
-        />
-      );
-    }
-
-    if (type === "maintenance_status" || type === "maintenance_tracker" || type === "maintenance_card") {
-      if (isApplicant) return null;
-      const ticket = widgetData?.activeMaintenance?.[0] || (widgetData?.ticketCode || widgetData?.ticketNumber ? widgetData : null);
-      if (!ticket) return null;
-      return (
-        <TenantMaintenanceCard
-          data={ticket}
-          onCloseDrawer={onClose}
-        />
-      );
-    }
-
-    return null;
   };
 
   return (
@@ -502,7 +830,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
         className={`tenant-assistant-drawer ${isOpen ? "open" : ""}`}
         role="dialog"
         aria-modal="true"
-        aria-label="Lilycrest Tenant Assistant"
+        aria-label="Lilycrest Assistant"
       >
         {/* Header */}
         <div className="tenant-assistant-header">
@@ -511,19 +839,27 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
               <div className="tenant-assistant-avatar-badge" aria-hidden="true">
                 <Bot className="w-4 h-4" />
               </div>
-              <span className="tenant-assistant-title">{isApplicant ? "Applicant Assistant" : "Tenant Assistant"}</span>
+              <span className="tenant-assistant-title">
+                {activeTicket
+                  ? "Live Support Chat"
+                  : isApplicant
+                  ? "Applicant Assistant"
+                  : "Tenant Assistant"}
+              </span>
             </div>
 
             <div className="tenant-assistant-header-actions">
-              <button
-                type="button"
-                onClick={() => setIsEscalateOpen(true)}
-                className="tenant-assistant-escalate-btn"
-                title="Speak directly with Branch Admin"
-              >
-                <Headphones className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
-                <span>Admin Help</span>
-              </button>
+              {!activeTicket && (
+                <button
+                  type="button"
+                  onClick={() => setIsEscalateOpen(true)}
+                  className="tenant-assistant-escalate-btn"
+                  title="Speak directly with Branch Admin staff"
+                >
+                  <Headphones className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
+                  <span>Admin Help</span>
+                </button>
+              )}
 
               {messages.length > 0 && (
                 <button
@@ -565,262 +901,484 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
             </div>
           </div>
 
-          <div className="tenant-assistant-banner">
-            <div className="tenant-assistant-banner-left">
-              <span className="tenant-assistant-banner-branch">{branchLabel}</span>
-              <span>•</span>
-              {isApplicant ? (
-                <span>{contextSnapshot?.reservation?.status ? `Reservation: ${contextSnapshot.reservation.status.toUpperCase()}` : "Application in Progress"}</span>
-              ) : (
-                <span>Room {roomLabel} ({bedLabel})</span>
-              )}
-            </div>
-            <div className="tenant-assistant-banner-right">
-              <button
-                type="button"
-                onClick={handleRefreshStayData}
-                disabled={isRefreshing || isStreaming}
-                className="tenant-assistant-refresh-btn"
-                title="Click to refresh live stay data"
-                aria-label="Refresh live stay data"
-              >
-                <RotateCw className={`w-3 h-3 ${isRefreshing ? "animate-spin text-amber-500" : "text-slate-400"}`} aria-hidden="true" />
-                <span>{isRefreshing ? "Refreshing..." : (isApplicant ? "Grounded on Reservation" : "Grounded on Stay Data")}</span>
-              </button>
-            </div>
-          </div>
-          <div className="tenant-assistant-tab-switcher px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => setActiveTab("assistant")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
-                activeTab === "assistant"
-                  ? "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-sm"
-                  : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:text-slate-900 dark:hover:text-slate-100"
-              }`}
-            >
-              <Bot className="w-3.5 h-3.5" />
-              <span>AI Assistant</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("support")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-xl border transition-all cursor-pointer relative ${
-                activeTab === "support"
-                  ? "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-sm"
-                  : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:text-slate-900 dark:hover:text-slate-100"
-              }`}
-            >
-              <Headphones className="w-3.5 h-3.5" />
-              <span>Live Support</span>
-              {unreadSupportCount > 0 && (
-                <span className="ml-1 px-1.5 py-0.2 text-[10px] font-bold bg-rose-500 text-white rounded-full leading-none">
-                  {unreadSupportCount}
+          {/* Dynamic Context Banner */}
+          {activeTicket ? (
+            <div className="tenant-assistant-banner support-active">
+              <div className="tenant-assistant-banner-left">
+                <span className="tenant-support-live-dot" />
+                <span className="font-semibold text-slate-900 dark:text-slate-100">Live Support Active</span>
+                <span>•</span>
+                <span className="font-mono text-slate-700 dark:text-slate-300">
+                  #{activeTicket.ticketId || "Ticket"}
                 </span>
-              )}
-            </button>
-          </div>
+                <span>•</span>
+                <span className="text-slate-600 dark:text-slate-400 capitalize">
+                  {activeTicket.category?.replace(/_/g, " ") || "Inquiry"}
+                </span>
+              </div>
+              <div className="tenant-assistant-banner-right">
+                <button
+                  type="button"
+                  onClick={handleEndLiveSession}
+                  disabled={isEndingSession}
+                  className="tenant-assistant-end-support-btn"
+                  title="End live support and return to AI bot"
+                >
+                  <span>{isEndingSession ? "Ending..." : "End Session"}</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="tenant-assistant-banner">
+              <div className="tenant-assistant-banner-left">
+                <span className="tenant-assistant-banner-branch">{branchLabel}</span>
+                <span>•</span>
+                {isApplicant ? (
+                  <span>
+                    {contextSnapshot?.reservation?.status
+                      ? `Reservation: ${contextSnapshot.reservation.status.toUpperCase()}`
+                      : "Application in Progress"}
+                  </span>
+                ) : (
+                  <span>Room {roomLabel} ({bedLabel})</span>
+                )}
+              </div>
+              <div className="tenant-assistant-banner-right">
+                <button
+                  type="button"
+                  onClick={handleRefreshStayData}
+                  disabled={isRefreshing || isStreaming}
+                  className="tenant-assistant-refresh-btn"
+                  title="Click to refresh live stay data"
+                  aria-label="Refresh live stay data"
+                >
+                  <RotateCw
+                    className={`w-3 h-3 ${isRefreshing ? "animate-spin text-amber-500" : "text-slate-400"}`}
+                    aria-hidden="true"
+                  />
+                  <span>
+                    {isRefreshing
+                      ? "Refreshing..."
+                      : isApplicant
+                      ? "Grounded on Reservation"
+                      : "Grounded on Stay Data"}
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {activeTab === "support" ? (
-          <TenantSupportChatView
-            initialConversationId={activeSupportConvId}
-            onOpenEscalateModal={() => setIsEscalateOpen(true)}
-            onSwitchToAssistant={() => setActiveTab("assistant")}
-            onUnreadCountChange={handleUnreadCountChange}
-          />
-        ) : (
-          <>
-            {/* Message Area */}
-            <div ref={bodyRef} onScroll={handleScroll} className="tenant-assistant-body">
-              {/* Default Welcome Message if empty */}
-              {messages.length === 0 && (
-                <div className="tenant-msg-row assistant">
-                  <div className="tenant-msg-meta">
-                    <span>{isApplicant ? "Applicant Assistant" : "Tenant Assistant"}</span>
-                  </div>
-                  <div className="tenant-msg-bubble">
-                    <p className="font-semibold text-slate-900 dark:text-slate-100 mb-1">
-                      Hello, {tenantDisplayName}!
+        {/* Message Area */}
+        <div ref={bodyRef} onScroll={handleScroll} className="tenant-assistant-body">
+          {/* Default Welcome Message if empty */}
+          {messages.length === 0 && (
+            <div className="tenant-msg-row assistant">
+              <div className="tenant-msg-meta">
+                <span>{isApplicant ? "Applicant Assistant" : "Tenant Assistant"}</span>
+              </div>
+              <div className="tenant-msg-bubble">
+                <p className="font-semibold text-slate-900 dark:text-slate-100 mb-1">
+                  Hello, {tenantDisplayName}!
+                </p>
+                {isApplicant ? (
+                  <>
+                    <p>
+                      I am your <strong>Lilycrest Applicant Assistant</strong>. I have real-time access to your reservation status, viewing schedule, KYC document verification progress, and advance deposit guidelines.
                     </p>
-                    {isApplicant ? (
-                      <>
-                        <p>
-                          I am your <strong>Lilycrest Applicant Assistant</strong>. I have real-time access to your reservation status, viewing schedule, KYC document verification progress, and advance deposit guidelines.
-                        </p>
-                        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                          Select a suggested prompt below or type your question:
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p>
-                          I am your <strong>Lilycrest Tenant Assistant</strong>. I am grounded in your live room stay data at <strong>{branchLabel}</strong>, including current billing, electricity meter usage, lease agreement, and active repair tickets.
-                        </p>
-                        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                          Select a suggested prompt below or ask about your stay:
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
+                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      Select a suggested prompt below or ask about your application:
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      I am your <strong>Lilycrest Tenant Assistant</strong>. I am grounded in your live room stay data at <strong>{branchLabel}</strong>, including current billing, electricity meter usage, lease agreement, and active repair tickets.
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      Select a suggested prompt below or ask about your stay:
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
-              {/* Message Feed */}
-              {messages.map((msg, index) => (
-                <div key={index} className={`tenant-msg-row ${msg.role}`}>
-                  <div className="tenant-msg-meta">
-                    <span>
-                      {msg.role === "user"
-                        ? "You"
-                        : isApplicant
-                        ? "Applicant Assistant"
-                        : "Tenant Assistant"}
-                    </span>
+          {/* Unified Conversation Feed */}
+          {messages.map((msg, index) => {
+            // 1. Escalation system notice
+            if (msg.role === "system_escalation") {
+              return (
+                <div key={index} className="tenant-support-escalation-card">
+                  <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
+                    <Headphones className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>Inquiry Escalated to Branch Admin</span>
                   </div>
-                  <div className={`tenant-msg-bubble ${msg.isError ? "error" : ""}`}>
-                    {renderFormattedText(msg.content)}
-                  </div>
-
-                  {/* Render Widget if attached */}
-                  {msg.widget && renderWidget(msg.widget)}
-
-                  {/* Render Quick Actions if attached */}
-                  {msg.actions && msg.actions.length > 0 && (
-                    <div className="tenant-assistant-actions">
-                      {msg.actions.map((act, aIdx) => (
-                        <button
-                          key={aIdx}
-                          type="button"
-                          onClick={() => handleActionClick(act)}
-                          className="tenant-assistant-action-chip"
-                        >
-                          <span>{typeof act === "string" ? act : act.label}</span>
-                          <ArrowRight className="w-3 h-3 ml-1" />
-                        </button>
-                      ))}
-                    </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                    Ticket <strong>#{msg.ticketId || "Pending"}</strong> • Category: {msg.category} • Priority: {msg.priority}
+                  </p>
+                  {msg.summary && (
+                    <p className="text-xs italic text-slate-500 dark:text-slate-400">
+                      &quot;{msg.summary}&quot;
+                    </p>
                   )}
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    A staff member has been notified. You can message them directly here in real time.
+                  </p>
                 </div>
-              ))}
+              );
+            }
 
-              {/* Live streaming bubble */}
-              {isStreaming && (
-                <div className="tenant-msg-row assistant">
+            // 2. Resolution confirmation card
+            if (msg.role === "resolution_prompt") {
+              return (
+                <div key={index} className="tenant-support-resolution-card">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-slate-900 dark:text-slate-100">Has your concern been resolved?</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                        Our Branch Admin marked this ticket as resolved. Please confirm if your inquiry is completed.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="tenant-support-resolution-actions">
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmResolution(true)}
+                      className="tenant-support-btn-primary"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Yes, Resolved</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmResolution(false)}
+                      className="tenant-support-btn-secondary"
+                    >
+                      <span>Still Need Help</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            // 3. System ended divider
+            if (msg.role === "system_ended") {
+              return (
+                <div key={index} className="tenant-support-ended-divider">
+                  <span>{msg.message}</span>
+                </div>
+              );
+            }
+
+            // 4. Admin / Staff turn
+            if (msg.isStaff || msg.role === "admin") {
+              return (
+                <div key={index} className="tenant-msg-row admin">
                   <div className="tenant-msg-meta">
-                    <span>{isApplicant ? "Applicant Assistant" : "Tenant Assistant"}</span>
+                    <span className="tenant-staff-tag">Staff</span>
+                    <span>{msg.senderName || "Branch Admin"}</span>
                   </div>
                   <div className="tenant-msg-bubble">
-                    {streamingText ? (
-                      renderFormattedText(streamingText)
-                    ) : (
-                      <div className="tenant-assistant-typing">
-                        <span />
-                        <span />
-                        <span />
+                    {renderFormattedText(msg.content || msg.message)}
+
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        {msg.attachments.map((att, attIdx) => (
+                          <div key={attIdx}>
+                            {att.contentType?.startsWith("image/") ? (
+                              <img
+                                src={att.url || att.fileUrl}
+                                alt={att.fileName || "attachment"}
+                                className="tenant-chat-img-thumb"
+                                onClick={() => setPreviewAttachment(att)}
+                              />
+                            ) : (
+                              <a
+                                href={att.url || att.fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="tenant-chat-pdf-chip"
+                              >
+                                <FileText className="w-3.5 h-3.5 text-rose-500" />
+                                <span className="truncate max-w-[140px]">{att.fileName || "Document"}</span>
+                              </a>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
+                </div>
+              );
+            }
 
-                  {activeWidget && renderWidget(activeWidget)}
+            // 5. User / Tenant turn
+            if (msg.role === "user") {
+              return (
+                <div key={index} className="tenant-msg-row user">
+                  <div className="tenant-msg-meta">
+                    <span>You</span>
+                  </div>
+                  <div className="tenant-msg-bubble">
+                    {renderFormattedText(msg.content)}
 
-                  {activeActions && activeActions.length > 0 && (
-                    <div className="tenant-assistant-actions">
-                      {activeActions.map((act, aIdx) => (
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-slate-700">
+                        {msg.attachments.map((att, attIdx) => (
+                          <div key={attIdx}>
+                            {att.contentType?.startsWith("image/") ? (
+                              <img
+                                src={att.url || att.fileUrl}
+                                alt={att.fileName || "attachment"}
+                                className="tenant-chat-img-thumb"
+                                onClick={() => setPreviewAttachment(att)}
+                              />
+                            ) : (
+                              <a
+                                href={att.url || att.fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="tenant-chat-pdf-chip"
+                              >
+                                <FileText className="w-3.5 h-3.5 text-rose-500" />
+                                <span className="truncate max-w-[140px]">{att.fileName || "Document"}</span>
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            // 6. Normal Assistant AI Bot turn
+            return (
+              <div key={index} className="tenant-msg-row assistant">
+                <div className="tenant-msg-meta">
+                  <span>{isApplicant ? "Applicant Assistant" : "Tenant Assistant"}</span>
+                </div>
+                <div className={`tenant-msg-bubble ${msg.isError ? "error" : ""}`}>
+                  {renderFormattedText(msg.content)}
+                </div>
+
+                {msg.widget && renderWidget(msg.widget)}
+
+                {msg.actions && msg.actions.length > 0 && (
+                  <div className="tenant-assistant-actions">
+                    {msg.actions.map((act, aIdx) => {
+                      const label = typeof act === "string" ? act : act.label || act.prompt || "Action";
+                      return (
                         <button
                           key={aIdx}
                           type="button"
                           onClick={() => handleActionClick(act)}
                           className="tenant-assistant-action-chip"
+                          title={label}
                         >
-                          <span>{typeof act === "string" ? act : act.label}</span>
-                          <ArrowRight className="w-3 h-3 ml-1" />
+                          <span>{label}</span>
+                          <ArrowRight className="w-3 h-3 ml-1 flex-shrink-0 text-slate-400 dark:text-slate-500" />
                         </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Route Prompts Bar */}
-            <div className="tenant-assistant-prompts-bar">
-              <div className="tenant-assistant-prompts-label">
-                <Sparkles className="w-3 h-3 text-amber-500" />
-                <span>Quick {isApplicant ? "Applicant" : "Tenant"} Prompts</span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              <div className="tenant-assistant-prompts-scroll">
-                {activeRoutePrompts.map((p, idx) => {
-                  const Icon = p.icon;
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleSendMessage(p.prompt)}
-                      disabled={isStreaming}
-                      className="tenant-assistant-prompt-chip"
-                      title={p.prompt}
-                    >
-                      {Icon && <Icon className="w-3 h-3 mr-1 opacity-70" />}
-                      <span>{p.label}</span>
-                    </button>
-                  );
-                })}
+            );
+          })}
+
+          {/* Admin Typing Signal */}
+          {adminTyping && (
+            <div className="tenant-msg-row admin">
+              <div className="tenant-msg-meta">
+                <span className="tenant-staff-tag">Staff</span>
+                <span>Branch Admin is typing...</span>
+              </div>
+              <div className="tenant-assistant-typing">
+                <span />
+                <span />
+                <span />
               </div>
             </div>
+          )}
 
-            {/* Input Composer */}
-            <div className="tenant-assistant-footer">
-              <div className="tenant-assistant-input-card">
-                <textarea
-                  ref={textareaRef}
-                  rows={1}
-                  value={inputMessage}
-                  maxLength={1000}
-                  onChange={handleTextareaChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder={
-                    isApplicant
-                      ? "Ask about reservation, ID verification, viewing, or deposits..."
-                      : "Ask about bills, electricity, lease, or repairs..."
-                  }
-                  disabled={isStreaming}
-                  className="tenant-assistant-textarea"
-                />
-
-                {isStreaming ? (
-                  <button
-                    type="button"
-                    onClick={handleStopGeneration}
-                    className="tenant-assistant-stop-btn"
-                    aria-label="Stop generating response"
-                    title="Stop generating"
-                  >
-                    <Square className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
-                    <span>Stop</span>
-                  </button>
+          {/* Live AI Streaming Bubble */}
+          {isStreaming && (
+            <div className="tenant-msg-row assistant">
+              <div className="tenant-msg-meta">
+                <span>{isApplicant ? "Applicant Assistant" : "Tenant Assistant"}</span>
+              </div>
+              <div className="tenant-msg-bubble">
+                {streamingText ? (
+                  renderFormattedText(streamingText)
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleSendMessage()}
-                    disabled={!inputMessage.trim()}
-                    className="tenant-assistant-send-btn"
-                    aria-label="Send message"
-                    title="Send (Enter)"
-                  >
-                    <Send className="w-4 h-4" aria-hidden="true" />
-                  </button>
+                  <div className="tenant-assistant-typing">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
                 )}
               </div>
 
-              <div className="tenant-assistant-footer-meta">
-                <span>Enter to send • Shift+Enter for newline</span>
-                <span>{inputMessage.length}/1000</span>
-              </div>
+              {activeWidget && renderWidget(activeWidget)}
+
+              {activeActions && activeActions.length > 0 && (
+                <div className="tenant-assistant-actions">
+                  {activeActions.map((act, aIdx) => {
+                    const label = typeof act === "string" ? act : act.label || act.prompt || "Action";
+                    return (
+                      <button
+                        key={aIdx}
+                        type="button"
+                        onClick={() => handleActionClick(act)}
+                        className="tenant-assistant-action-chip"
+                        title={label}
+                      >
+                        <span>{label}</span>
+                        <ArrowRight className="w-3 h-3 ml-1 flex-shrink-0 text-slate-400 dark:text-slate-500" />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </>
+          )}
+        </div>
+
+        {/* Dynamic Route & Lifecycle Prompts Bar (visible only in AI Bot mode) */}
+        {!activeTicket && (
+          <div className="tenant-quick-prompts-container">
+            <div className="tenant-quick-prompts-label">
+              <Sparkles className="w-3 h-3 text-amber-500" />
+              <span>{activePromptConfig.label}</span>
+            </div>
+            <div className="tenant-quick-prompts-scroll">
+              {activePromptConfig.prompts.map((item, idx) => {
+                const IconComp = item.icon || Sparkles;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSendMessage(item.prompt)}
+                    disabled={isStreaming}
+                    className="tenant-quick-prompt-pill"
+                    title={item.prompt}
+                  >
+                    <IconComp className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
+
+        {/* Input Composer */}
+        <div className="tenant-assistant-footer">
+          {/* Staged Attachments Preview */}
+          {attachments.length > 0 && (
+            <div className="tenant-attachment-preview-list">
+              {attachments.map((att, idx) => (
+                <div key={idx} className="tenant-attachment-preview-chip">
+                  <FileText className="w-3 h-3 text-slate-500" />
+                  <span className="truncate max-w-[120px]">{att.fileName}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAttachment(idx)}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="tenant-assistant-input-wrapper">
+            {/* Attachment Button (Live Support Mode) */}
+            {activeTicket && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="tenant-assistant-attach-btn"
+                  title="Attach file (image or PDF up to 5MB)"
+                >
+                  {isUploading ? (
+                    <LoaderCircle className="w-4 h-4 animate-spin text-amber-500" />
+                  ) : (
+                    <Paperclip className="w-4 h-4" />
+                  )}
+                </button>
+              </>
+            )}
+
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={inputMessage}
+              maxLength={1000}
+              onChange={handleTextareaChange}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                activeTicket
+                  ? "Type a message to Branch Admin staff..."
+                  : isApplicant
+                  ? "Ask about reservation, ID verification, viewing, or deposits..."
+                  : "Ask about bills, electricity, lease, or repairs..."
+              }
+              disabled={isStreaming}
+              className="tenant-assistant-textarea"
+              aria-label={
+                activeTicket
+                  ? "Message Branch Admin"
+                  : isApplicant
+                  ? "Ask Lilycrest Applicant Assistant"
+                  : "Ask Lilycrest Tenant Assistant"
+              }
+            />
+
+            {isStreaming ? (
+              <button
+                type="button"
+                onClick={handleStopGeneration}
+                className="tenant-assistant-stop-btn"
+                aria-label="Stop generating response"
+                title="Stop generating"
+              >
+                <Square className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
+                <span>Stop</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleSendMessage()}
+                disabled={!inputMessage.trim() && attachments.length === 0}
+                className="tenant-assistant-send-btn"
+                aria-label="Send message"
+                title="Send (Enter)"
+              >
+                <Send className="w-4 h-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+
+          <div className="tenant-assistant-footer-meta">
+            <span>Enter to send • Shift+Enter for newline</span>
+            <span>{inputMessage.length}/1000</span>
+          </div>
+        </div>
       </div>
 
       {/* Human Admin Escalation Modal */}
@@ -833,21 +1391,53 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
             : ""
         }
         onEscalationSuccess={(res) => {
-          setActiveTab("support");
-          const newConvId = res?.data?.conversationId || res?.conversationId;
-          if (newConvId) {
-            setActiveSupportConvId(newConvId);
+          const newConv = res?.data;
+          if (newConv) {
+            setActiveTicket({
+              _id: newConv.conversationId,
+              ticketId: newConv.ticketId,
+              status: newConv.status || "open",
+              category: newConv.category,
+              priority: newConv.priority,
+              assignedAdminName: newConv.assignedAdminName,
+            });
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "system_escalation",
+                ticketId: newConv.ticketId,
+                category: newConv.category,
+                priority: newConv.priority,
+                summary: newConv.summary || "Inquiry escalated to Branch Admin.",
+                timestamp: new Date().toISOString(),
+              },
+            ]);
           }
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: "assistant",
-              content: "Your inquiry has been escalated directly to our Branch Admin team. You can view real-time replies and continue the conversation in the Live Support tab.",
-              timestamp: new Date().toISOString(),
-            },
-          ]);
         }}
       />
+
+      {/* Attachment Image Enlargement Lightbox */}
+      {previewAttachment && (
+        <div
+          className="fixed inset-0 z-[80] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setPreviewAttachment(null)}
+        >
+          <div className="relative max-w-2xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={previewAttachment.url || previewAttachment.fileUrl}
+              alt={previewAttachment.fileName || "attachment"}
+              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+            />
+            <button
+              type="button"
+              onClick={() => setPreviewAttachment(null)}
+              className="absolute top-2 right-2 p-1.5 bg-black/60 text-white rounded-full hover:bg-black/80 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
-};
+}

@@ -17,6 +17,7 @@ import {
   handleTenantQuery,
   handleTenantStream,
   handleTenantEscalation,
+  handleTenantContext,
 } from "../controllers/tenantChatbotController.js";
 import { verifyAdmin, verifyOwner } from "../middleware/auth.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
@@ -76,6 +77,7 @@ router.post("/public/stream", chatbotQueryLimiter, handlePublicStream);
 router.post("/public/parse-lead", chatbotQueryLimiter, handleParseLead);
 router.post("/public/lead-escalation", chatbotEscalationLimiter, handleLeadEscalation);
 
+router.get("/tenant/context", verifyToken, handleTenantContext);
 router.post("/tenant/query", verifyToken, tenantChatbotQueryLimiter, handleTenantQuery);
 router.post("/tenant/stream", verifyToken, tenantChatbotQueryLimiter, handleTenantStream);
 router.post("/tenant/escalate", verifyToken, tenantEscalationLimiter, handleTenantEscalation);

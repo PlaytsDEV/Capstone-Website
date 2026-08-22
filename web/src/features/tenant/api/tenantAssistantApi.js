@@ -56,16 +56,21 @@ export const queryTenantAssistant = async (message, conversationHistory = []) =>
  * @param {AbortSignal} [options.signal]
  * @returns {Promise<{text: string, widget: Object|string|null, actions: Array<string|Object>|null, contextSnapshot: Object|null}>}
  */
-export const streamTenantAssistant = async ({
-  message,
-  conversationHistory = [],
-  onToken,
-  onWidget,
-  onActions,
-  onDone,
-  onError,
-  signal,
-}) => {
+export const streamTenantAssistant = async (optionsOrPayload, optionalCallbacks = {}) => {
+  const options =
+    typeof optionsOrPayload === "object" && optionsOrPayload !== null
+      ? { ...optionsOrPayload, ...optionalCallbacks }
+      : {};
+
+  const message = options.message || options.query || "";
+  const conversationHistory = options.conversationHistory || options.history || [];
+  const onToken = options.onToken || options.onChunk;
+  const onWidget = options.onWidget;
+  const onActions = options.onActions;
+  const onDone = options.onDone;
+  const onError = options.onError;
+  const signal = options.signal;
+
   let accumulatedText = "";
   let emittedWidget = null;
   let emittedActions = null;
@@ -75,7 +80,7 @@ export const streamTenantAssistant = async ({
     const formattedHistory = Array.isArray(conversationHistory)
       ? conversationHistory.map((msg) => ({
           role: msg.role === "user" ? "user" : "model",
-          content: msg.content || msg.text || "",
+          content: msg.content || msg.text || msg.message || "",
         }))
       : [];
 
@@ -261,10 +266,15 @@ export const escalateTenantAssistant = async ({
   });
 };
 
+export const getTenantContext = async () => {
+  return authFetch("/chatbot/tenant/context");
+};
+
 export const tenantAssistantApi = {
   queryTenantAssistant,
   streamTenantAssistant,
   escalateTenantAssistant,
+  getTenantContext,
 };
 
 export default tenantAssistantApi;

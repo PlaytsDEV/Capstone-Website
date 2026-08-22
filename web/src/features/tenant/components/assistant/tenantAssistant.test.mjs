@@ -141,7 +141,7 @@ test("TenantAssistantDrawer includes action chip routing, stop button, copy tran
   assert.match(drawerSource, /handleCopyTranscript/);
   assert.match(drawerSource, /handleRefreshStayData/);
   assert.match(drawerSource, /tenant-assistant-refresh-btn/);
-  assert.match(drawerSource, /act\.url/);
+  assert.match(drawerSource, /action\.url|act\.url/);
   assert.match(drawerSource, /TenantPaymentGuideCard/);
   assert.match(drawerSource, /TenantHouseRulesCard/);
   assert.match(drawerSource, /TenantAnnouncementCard/);
@@ -155,15 +155,24 @@ test("TenantBillingBreakdownCard and TenantLeaseTimelineCard enforce strict data
   assert.match(drawerSource, /const billData = widgetData\?\.currentBill/);
 });
 
-test("TenantAssistantDrawer and TenantSupportChatView support Live Support tab and escalation handoff", () => {
-  const supportChatSource = fs.readFileSync(path.join(here, "TenantSupportChatView.jsx"), "utf8");
-  assert.match(drawerSource, /TenantSupportChatView/);
-  assert.match(drawerSource, /Live Support/);
-  assert.match(drawerSource, /activeTab === "support"/);
-  assert.match(supportChatSource, /chatApi\.getMyConversations/);
-  assert.match(supportChatSource, /chatApi\.sendTenantMessage/);
-  assert.match(supportChatSource, /chatApi\.confirmTenantResolution/);
-  assert.match(supportChatSource, /Has your concern been resolved/);
+test("TenantAssistantDrawer supports unified single-stream live support, escalation handoff, and resolution confirm", () => {
+  assert.match(drawerSource, /activeTicket/);
+  assert.match(drawerSource, /chatApi\.getMyConversations/);
+  assert.match(drawerSource, /chatApi\.sendTenantMessage/);
+  assert.match(drawerSource, /chatApi\.confirmTenantResolution/);
+  assert.match(drawerSource, /system_escalation/);
+  assert.match(drawerSource, /resolution_prompt/);
+  assert.match(drawerSource, /system_ended/);
+  assert.match(drawerSource, /Has your concern been resolved/);
 });
+
+test("TenantAssistantDrawer explicitly imports all React hooks it utilizes", () => {
+  assert.match(drawerSource, /import React,\s*\{[^}]*useState[^}]*\}\s*from\s*"react"/);
+  assert.match(drawerSource, /import React,\s*\{[^}]*useEffect[^}]*\}\s*from\s*"react"/);
+  assert.match(drawerSource, /import React,\s*\{[^}]*useRef[^}]*\}\s*from\s*"react"/);
+  assert.match(drawerSource, /import React,\s*\{[^}]*useMemo[^}]*\}\s*from\s*"react"/);
+  assert.match(drawerSource, /import React,\s*\{[^}]*useCallback[^}]*\}\s*from\s*"react"/);
+});
+
 
 
