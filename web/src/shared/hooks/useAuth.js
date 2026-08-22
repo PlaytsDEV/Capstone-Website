@@ -466,6 +466,19 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem("authToken");
       localStorage.removeItem("user");
 
+      // Purge cached assistant conversations from sessionStorage
+      try {
+        sessionStorage.removeItem("lilycrest_tenant_assistant_msgs");
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const key = sessionStorage.key(i);
+          if (key && key.startsWith("lilycrest_tenant_assistant_msgs")) {
+            sessionStorage.removeItem(key);
+          }
+        }
+      } catch {
+        // Ignore storage cleanup failures
+      }
+
       // Return branch for caller to handle navigation
       // NOTE: Don't turn off globalLoading here - the route transition clears it.
       // This keeps the loading overlay visible during navigation for smooth UX.

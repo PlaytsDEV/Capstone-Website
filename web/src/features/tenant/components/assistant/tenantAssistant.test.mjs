@@ -174,5 +174,12 @@ test("TenantAssistantDrawer explicitly imports all React hooks it utilizes", () 
   assert.match(drawerSource, /import React,\s*\{[^}]*useCallback[^}]*\}\s*from\s*"react"/);
 });
 
-
-
+test("TenantAssistantDrawer enforces user-scoped storage keys and resets state on account switch", () => {
+  assert.match(drawerSource, /getTenantAssistantStorageKey/);
+  assert.match(drawerSource, /BASE_STORAGE_KEY/);
+  assert.match(drawerSource, /userStorageKey/);
+  assert.match(drawerSource, /sessionStorage\.getItem\(userStorageKey\)/);
+  assert.match(drawerSource, /sessionStorage\.setItem\(userStorageKey/);
+  assert.match(drawerSource, /sessionStorage\.removeItem\(userStorageKey\)/);
+  assert.match(drawerSource, /setMessages\(saved \? JSON\.parse\(saved\) : \[\]\)/);
+});

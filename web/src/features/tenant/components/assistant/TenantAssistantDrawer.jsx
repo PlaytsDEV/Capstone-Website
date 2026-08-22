@@ -44,7 +44,13 @@ import TenantAnnouncementCard from "./cards/TenantAnnouncementCard";
 import TenantHumanEscalateModal from "./modals/TenantHumanEscalateModal";
 import "../../styles/tenant-assistant.css";
 
-const STORAGE_KEY = "lilycrest_tenant_assistant_msgs";
+const BASE_STORAGE_KEY = "lilycrest_tenant_assistant_msgs";
+
+export const getTenantAssistantStorageKey = (currentUser) => {
+  const identifier =
+    currentUser?._id || currentUser?.id || currentUser?.firebaseUid || currentUser?.email;
+  return identifier ? `${BASE_STORAGE_KEY}_${identifier}` : BASE_STORAGE_KEY;
+};
 
 const DYNAMIC_PROMPT_CONFIGS = {
   // --- Applicant Lifecycle Stages ---
@@ -141,6 +147,11 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
   const location = useLocation();
   const navigate = useNavigate();
 
+  const userStorageKey = useMemo(
+    () => getTenantAssistantStorageKey(user),
+    [user?._id, user?.id, user?.firebaseUid, user?.email]
+  );
+
   const [activeTicket, setActiveTicket] = useState(null);
   const [adminTyping, setAdminTyping] = useState(false);
   const [attachments, setAttachments] = useState([]);
@@ -150,7 +161,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
 
   const [messages, setMessages] = useState(() => {
     try {
-      const saved = sessionStorage.getItem(STORAGE_KEY);
+      const saved = sessionStorage.getItem(userStorageKey);
       if (saved) return JSON.parse(saved);
     } catch {
       // Ignore
@@ -213,6 +224,25 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
       if (ongoing) {
         setActiveTicket(ongoing);
         onUnreadCountChange?.(ongoing.unreadTenantCount || 0);
+        try {
+          const msgRes = await chatApi.getTenantMessages(ongoing._id);
+          if (msgRes?.data && Array.isArray(msgRes.data)) {
+            setMessages(
+              msgRes.data.map((msg) => ({
+                _id: msg._id,
+                role: msg.senderRole === "tenant" ? "user" : "admin",
+                senderName: msg.senderName || "Branch Admin",
+                message: msg.message,
+                content: msg.message,
+                attachments: msg.attachments || [],
+                timestamp: msg.createdAt || new Date().toISOString(),
+                isStaff: msg.senderRole !== "tenant",
+              }))
+            );
+          }
+        } catch (msgErr) {
+          console.error("Failed to load active ticket messages:", msgErr);
+        }
       } else {
         setActiveTicket(null);
         onUnreadCountChange?.(0);
@@ -333,14 +363,51 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
 
   const activeRoutePrompts = activePromptConfig.prompts;
 
-  // Persist messages to session storage
+  // Synchronize and isolate messages when authenticated user identity changes
   useEffect(() => {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+      const saved = sessionStorage.getItem(userStorageKey);
+      setMessages(saved ? JSON.parse(saved) : []);
+    } catch {
+      setMessages([]);
+    }
+    setStreamingText("");
+    setActiveWidget(null);
+    setActiveActions([]);
+    setAttachments([]);
+    setContextSnapshot(null);
+  }, [userStorageKey]);
+
+  // Auto-reset conversation to a fresh state when drawer is closed (Zero-clutter clean on reopen)
+  useEffect(() => {
+    if (!isOpen) {
+      if (isStreaming) {
+        abortControllerRef.current?.abort();
+        setIsStreaming(false);
+      }
+      setMessages([]);
+      setStreamingText("");
+      setActiveWidget(null);
+      setActiveActions([]);
+      setAttachments([]);
+      setInputMessage("");
+      try {
+        sessionStorage.removeItem(userStorageKey);
+      } catch {
+        // Ignore
+      }
+    }
+  }, [isOpen, userStorageKey, isStreaming]);
+
+  // Persist messages to user-scoped session storage
+  useEffect(() => {
+    if (!isOpen || messages.length === 0) return;
+    try {
+      sessionStorage.setItem(userStorageKey, JSON.stringify(messages));
     } catch {
       // Ignore storage errors
     }
-  }, [messages]);
+  }, [messages, userStorageKey, isOpen]);
 
   // ESC key handler to close drawer
   useEffect(() => {
@@ -404,7 +471,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
     setActiveWidget(null);
     setActiveActions([]);
     try {
-      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(userStorageKey);
     } catch {
       // Ignore
     }
