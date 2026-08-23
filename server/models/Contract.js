@@ -95,6 +95,10 @@ const signedDocumentSchema = new mongoose.Schema(
 // field and already reject unauthorized replacement attempts.
 const finalDocumentSchema = new mongoose.Schema(
   {
+    // Increments only via the formal replacement process
+    // (contractFinalDocumentReplacementService.replaceFinalContractDocument);
+    // absent/1 on every finalDocument set by the original finalize paths.
+    version: { type: Number, default: 1, min: 1 },
     storageKey: { type: String, required: true },
     fileName: { type: String, required: true },
     fileHash: { type: String, required: true },
@@ -114,6 +118,25 @@ const finalDocumentSchema = new mongoose.Schema(
     publishedAt: { type: Date, required: true },
     publishedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     tenantVisible: { type: Boolean, default: true, required: true },
+    // Only set on a finalDocument that itself replaced a prior one — absent
+    // on the original finalize (no formal-replacement history yet).
+    replacementReason: { type: String, default: "", trim: true },
+  },
+  { _id: false },
+);
+
+// A snapshot of a superseded finalDocument, written only by
+// contractFinalDocumentReplacementService.replaceFinalContractDocument
+// right before it overwrites contract.finalDocument with the replacement.
+// Same shape as finalDocumentSchema plus the supersession bookkeeping —
+// this is the audit trail the task's "never destructively overwrite
+// contract history" requirement needs: the prior ACTIVE final document
+// becomes a SUPERSEDED entry here rather than being discarded.
+const finalDocumentHistoryEntrySchema = new mongoose.Schema(
+  {
+    ...finalDocumentSchema.obj,
+    supersededAt: { type: Date, required: true },
+    supersededBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   },
   { _id: false },
 );
@@ -270,6 +293,10 @@ const contractSchema = new mongoose.Schema(
     notarizedStorageKey: { type: String, default: null },
     finalStorageKey: { type: String, default: null },
     finalDocument: { type: finalDocumentSchema, default: null },
+    // Superseded finalDocument snapshots, oldest first, written only by the
+    // formal replacement process (never by the original finalize paths).
+    // Empty on every contract whose final document has never been replaced.
+    finalDocumentHistory: { type: [finalDocumentHistoryEntrySchema], default: [] },
     readyForPublicationAt: { type: Date, default: null },
     readyForPublicationBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     publishedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },

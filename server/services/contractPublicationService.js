@@ -188,10 +188,26 @@ const resolveVerifiedAdminScanDocument = async (contract) => {
       "CURRENT_SIGNED_DOCUMENT_UNAVAILABLE", 409);
   }
   let inspected;
+  let storageMissing = false;
   try {
     inspected = await inspectSignedContractDocument(current);
-  } catch {
+  } catch (inspectError) {
     inspected = null;
+    // Distinguish "the physical file is gone from storage" (410, actionable —
+    // admin should replace the final document) from any other inspection
+    // failure. Previously both were collapsed into the same generic 409
+    // below, which lost the signal a frontend needs to show "the saved
+    // contract file is unavailable, please replace it" instead of a vague
+    // error — confirmed against a real production record whose Firebase
+    // Storage object was gone while its DB metadata (and therefore the
+    // tenant-facing resolver's `available: true`) remained intact.
+    storageMissing = inspectError?.code === "CONTRACT_ARTIFACT_STORAGE_MISSING";
+  }
+  if (storageMissing) {
+    throw publicationError(
+      "The saved contract file is unavailable. Please replace the signed copy.",
+      "FINAL_DOCUMENT_STORAGE_MISSING", 410,
+    );
   }
   if (!inspected || Number(inspected.size) !== Number(current.fileSize)) {
     throw publicationError("The archived signed Contract scan file is unavailable.",
