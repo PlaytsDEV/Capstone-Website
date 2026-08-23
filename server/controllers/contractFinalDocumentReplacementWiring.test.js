@@ -40,6 +40,8 @@ describe("final document replacement wiring", () => {
     const body = controller.slice(start, end);
     expect(body).toContain(".contractDocumentReady(");
     expect(body).toContain('"final"');
+    expect(body).toContain("result.finalDocument?.sourceVersion");
+    expect(body).not.toContain("result.finalDocument?.version)");
     expect(body).toMatch(/\.catch\(/);
   });
 

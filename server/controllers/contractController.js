@@ -692,7 +692,7 @@ export const replaceFinalDocument = async (req, res) => {
       `Final Contract document replaced (v${result.previousVersion} -> v${result.nextVersion}): ${req.body?.replacementReason || ""}`,
     );
     notify
-      .contractDocumentReady(contract.tenantId, "final", contract._id, result.finalDocument?.version)
+      .contractDocumentReady(contract.tenantId, "final", contract._id, result.finalDocument?.sourceVersion)
       .catch((e) => logger.warn({ err: e }, "Contract-replaced tenant notification failed (non-fatal)"));
     res.status(200).json({
       success: true,

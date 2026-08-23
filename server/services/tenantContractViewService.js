@@ -141,12 +141,16 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
       viewUrl: resolvedTenantDoc.available
         ? (resolvedTenantDoc.type === "final_notarized"
             ? `${documentBasePath}/${id}/documents/final`
-            : `${documentBasePath}/${id}/documents/prepared`)
+            : resolvedTenantDoc.type === "final_signed"
+              ? `${documentBasePath}/${id}/documents/signed/${resolvedTenantDoc.version}`
+              : `${documentBasePath}/${id}/documents/prepared`)
         : null,
       downloadUrl: resolvedTenantDoc.available
         ? (resolvedTenantDoc.type === "final_notarized"
             ? `${documentBasePath}/${id}/documents/final?download=1`
-            : `${documentBasePath}/${id}/documents/prepared?download=1`)
+            : resolvedTenantDoc.type === "final_signed"
+              ? `${documentBasePath}/${id}/documents/signed/${resolvedTenantDoc.version}?download=1`
+              : `${documentBasePath}/${id}/documents/prepared?download=1`)
         : null,
     },
     finalDocument: {

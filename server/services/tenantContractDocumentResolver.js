@@ -21,20 +21,26 @@ import { selectCurrentPreparedDocument } from "./preparedContractDocumentService
  *           distinct only for admin-facing labeling/audit history.
  *    - Automatically replaces any generated draft.
  *
- * 2. Generated Draft (`preparedDocuments[]`)
+ * 2. Legacy Current Signed Upload (`signedDocuments[]`)
+ *    - Compatibility tier for an authorized wet-signed upload created before
+ *      the live upload path began promoting that same artifact into
+ *      `finalDocument` atomically.
+ *    - Only the newest non-superseded, non-rejected signed version qualifies.
+ *    - New uploads do not normally remain in this tier; they populate
+ *      `finalDocument` during the same write.
+ *
+ * 3. Generated Draft (`preparedDocuments[]`)
  *    - Second priority.
  *    - Visible to the tenant immediately after PDF generation (including
  *      auto-generation upon Move-In).
  *    - Labeled "Generated Draft — For Signing".
  *
- * 3. Unavailable / Preparing
+ * 4. Unavailable / Preparing
  *    - When no valid PDF exists yet.
  *    - Labeled "Contract is being prepared."
  *
- * `signedDocuments[]` (wet-signed scan upload/version history) is
- * intentionally NOT a resolver tier: it's audit/version history, not a
- * tenant-visibility source, once its current entry has been promoted into
- * `finalDocument`.
+ * Superseded and rejected `signedDocuments[]` entries remain audit/version
+ * history and are never tenant-visible through this resolver.
  *
  * Both Web (/api/contracts/my/*) and Mobile (/api/m/contracts/*) consume this
  * single source of truth for document selection.
@@ -47,7 +53,7 @@ import { selectCurrentPreparedDocument } from "./preparedContractDocumentService
  * @param {Object} contract - The Contract mongoose document or plain object
  * @returns {{
  *   available: boolean,
- *   type: 'final_notarized' | 'generated_draft' | null,
+ *   type: 'final_notarized' | 'final_signed' | 'generated_draft' | null,
  *   label: string,
  *   isFinal: boolean,
  *   document: Object | null,
@@ -99,7 +105,39 @@ export function resolveTenantContractDocument(contract) {
     };
   }
 
-  // 2. Latest valid prepared draft (generated for signing)
+  // 2. Compatibility for a valid, current wet-signed upload whose historical
+  // write predates atomic finalDocument promotion. This is intentionally
+  // strict: rejected/superseded versions never qualify, and deterministic
+  // version/upload ordering ensures a replacement wins over its predecessor.
+  const signed = [...(contract.signedDocuments || [])]
+    .filter((document) => (
+      document &&
+      document.superseded !== true &&
+      !document.rejectedAt &&
+      Boolean(document.storageKey) &&
+      Boolean(document.fileName)
+    ))
+    .sort((left, right) => (
+      (Number(right.version) || 0) - (Number(left.version) || 0) ||
+      new Date(right.uploadedAt || 0).getTime() - new Date(left.uploadedAt || 0).getTime()
+    ))[0] || null;
+  if (signed) {
+    return {
+      available: true,
+      type: "final_signed",
+      label: "Final Contract",
+      isFinal: true,
+      document: signed,
+      version: Number(signed.version) || Number(contract.signedDocumentVersion) || 1,
+      fileName: signed.fileName,
+      fileSize: signed.fileSize ?? null,
+      pageCount: null,
+      generatedAt: signed.uploadedAt || null,
+      publishedAt: signed.uploadedAt || null,
+    };
+  }
+
+  // 3. Latest valid prepared draft (generated for signing)
   const prepared = selectCurrentPreparedDocument(contract);
   if (prepared) {
     return {
@@ -117,7 +155,7 @@ export function resolveTenantContractDocument(contract) {
     };
   }
 
-  // 3. Fallback: document is being prepared
+  // 4. Fallback: document is being prepared
   return {
     available: false,
     type: null,
