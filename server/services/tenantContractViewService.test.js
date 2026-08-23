@@ -232,4 +232,31 @@ describe("tenant Contract safe view", () => {
       downloadUrl: "/api/contracts/my/contract-final/documents/final?download=1",
     });
   });
+
+  test("maps a legacy current wet-signed upload to its authenticated signed-document route", () => {
+    const view = toTenantContractView({
+      _id: "contract-legacy-signed",
+      status: "partially_signed",
+      signedDocuments: [{
+        version: 4,
+        storageKey: "signed/v4.pdf",
+        fileName: "signed-v4.pdf",
+        fileSize: 456,
+        mimeType: "application/pdf",
+        uploadedAt: new Date("2026-08-20T08:00:00Z"),
+        superseded: false,
+      }],
+      preparedDocuments: [],
+      finalDocument: null,
+    }, new Date(), { documentBasePath: "/api/m/contracts" });
+
+    expect(view.tenantDocument).toMatchObject({
+      available: true,
+      type: "final_signed",
+      isFinal: true,
+      version: 4,
+      viewUrl: "/api/m/contracts/contract-legacy-signed/documents/signed/4",
+      downloadUrl: "/api/m/contracts/contract-legacy-signed/documents/signed/4?download=1",
+    });
+  });
 });

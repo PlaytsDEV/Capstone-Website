@@ -72,15 +72,20 @@ export async function reconcileFinalContractUploads(options = {}) {
 
       report.eligible++;
 
-      let pageCount = 1;
-      try {
-        const inspected = await inspectSignedContractDocument(latestSignedDoc);
-        if (inspected) {
-          pageCount = await pageCountForInspected(inspected, latestSignedDoc.mimeType || "application/pdf");
-        }
-      } catch {
-        pageCount = 1;
+      // Never manufacture publication metadata for a missing/corrupt legacy
+      // artifact. A successful storage inspection is the proof that the
+      // exact bytes referenced by signedDocuments[] still exist and are safe
+      // to promote into finalDocument.
+      const inspected = await inspectSignedContractDocument(latestSignedDoc);
+      if (!inspected || Number(inspected.size) !== Number(latestSignedDoc.fileSize)) {
+        throw Object.assign(new Error("Legacy signed Contract artifact is unavailable or has a size mismatch."), {
+          code: "LEGACY_SIGNED_ARTIFACT_UNAVAILABLE",
+        });
       }
+      const pageCount = await pageCountForInspected(
+        inspected,
+        latestSignedDoc.mimeType || "application/pdf",
+      );
 
       const publisherId = latestSignedDoc.uploadedBy || contract.updatedBy || contract.createdBy;
       const now = new Date();

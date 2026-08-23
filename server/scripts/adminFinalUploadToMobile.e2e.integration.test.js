@@ -89,12 +89,20 @@ describe("Admin Web final upload -> canonical publication -> Mobile retrieval (D
     });
     await contract.save();
 
-    // Before reconciliation: mobile would still show "being prepared".
+    // Before reconciliation the strict compatibility tier already exposes
+    // the newest valid signed upload, rather than mislabeling it as
+    // "processing". Reconciliation still upgrades the durable database
+    // lifecycle into a published finalDocument.
     const beforeView = toTenantContractView(
       await resolveTenantCanonicalContract(tenantId, { includeEarlyStages: true }),
       new Date(), { documentBasePath: "/api/m/contracts" },
     );
-    expect(beforeView.tenantDocument.available).toBe(false);
+    expect(beforeView.tenantDocument).toMatchObject({
+      available: true,
+      type: "final_signed",
+      version: 1,
+      viewUrl: `/api/m/contracts/${contract._id}/documents/signed/1`,
+    });
 
     const report = await reconcileFinalContractUploads({ write: true, contractNumber: "E2E-LEGACY-0001" });
     expect(report.promoted).toBe(1);
@@ -118,5 +126,33 @@ describe("Admin Web final upload -> canonical publication -> Mobile retrieval (D
         .on("error", reject);
     });
     expect(streamedBytes.equals(PDF_MIN)).toBe(true);
+  });
+
+  test("never publishes finalDocument metadata when the referenced legacy artifact is missing", async () => {
+    const { contract } = await seedContract({
+      contractNumber: "E2E-LEGACY-MISSING-0002",
+      status: "signed",
+    });
+    contract.signedDocuments.push({
+      version: 1,
+      storageKey: "gil-puyat/2026/E2E-LEGACY-MISSING-0002/missing.pdf",
+      fileName: "missing.pdf",
+      fileHash: "missinghash",
+      fileSize: PDF_MIN.length,
+      mimeType: "application/pdf",
+      uploadedAt: new Date("2026-07-01"),
+      uploadedBy: contract.createdBy,
+      preparedDocumentVersion: 1,
+      superseded: false,
+    });
+    await contract.save();
+
+    const report = await reconcileFinalContractUploads({
+      write: true,
+      contractNumber: "E2E-LEGACY-MISSING-0002",
+    });
+    expect(report.promoted).toBe(0);
+    expect(report.errors).toHaveLength(1);
+    expect((await Contract.findById(contract._id)).finalDocument).toBeNull();
   });
 });

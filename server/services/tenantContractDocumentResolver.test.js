@@ -91,6 +91,55 @@ describe("tenantContractDocumentResolver", () => {
     expect(result.fileName).toBe("LC-2026-001_prepared_v2.pdf");
   });
 
+  it("returns the newest valid legacy wet-signed upload ahead of a generated draft", () => {
+    const contract = {
+      status: "partially_signed",
+      preparedDocuments: [{
+        version: 1,
+        storageKey: "contracts/prepared-v1.pdf",
+        fileName: "prepared-v1.pdf",
+        superseded: false,
+      }],
+      signedDocuments: [
+        {
+          version: 1,
+          storageKey: "contracts/signed-v1.pdf",
+          fileName: "signed-v1.pdf",
+          mimeType: "application/pdf",
+          uploadedAt: new Date("2026-08-17T08:00:00Z"),
+          superseded: true,
+        },
+        {
+          version: 2,
+          storageKey: "contracts/signed-v2.pdf",
+          fileName: "signed-v2.pdf",
+          mimeType: "application/pdf",
+          uploadedAt: new Date("2026-08-18T08:00:00Z"),
+          superseded: false,
+        },
+        {
+          version: 3,
+          storageKey: "contracts/rejected-v3.pdf",
+          fileName: "rejected-v3.pdf",
+          mimeType: "application/pdf",
+          uploadedAt: new Date("2026-08-19T08:00:00Z"),
+          superseded: false,
+          rejectedAt: new Date("2026-08-19T09:00:00Z"),
+        },
+      ],
+      finalDocument: null,
+    };
+
+    expect(resolveTenantContractDocument(contract)).toMatchObject({
+      available: true,
+      type: "final_signed",
+      label: "Final Contract",
+      isFinal: true,
+      version: 2,
+      fileName: "signed-v2.pdf",
+    });
+  });
+
   it("prioritizes finalDocument over preparedDocuments when final notarized document exists", () => {
     const contract = {
       status: "active",

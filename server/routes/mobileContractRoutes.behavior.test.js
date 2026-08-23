@@ -46,6 +46,20 @@ const adminScanFinalContract = {
   notarizationVerifiedAt: null,
 };
 const finalScanBytes = Buffer.from("%PDF-final-scan\n");
+const signedScanBytes = Buffer.from("%PDF-legacy-signed-scan\n");
+const legacySignedContract = {
+  ...contract,
+  status: "partially_signed",
+  signedDocuments: [{
+    version: 2,
+    storageKey: "contracts/current/signed-v2.pdf",
+    fileName: "wet-signed-v2.pdf",
+    fileSize: signedScanBytes.length,
+    mimeType: "application/pdf",
+    uploadedAt: new Date("2026-08-18T00:00:00.000Z"),
+    superseded: false,
+  }],
+};
 const resolvedFinalDocument = {
   finalDocument: {
     fileName: "wet-signed-final.pdf",
@@ -60,6 +74,10 @@ const resolvedFinalDocument = {
 const resolveTenantCanonicalContract = jest.fn(async () => contract);
 const resolvePublishedFinalDocument = jest.fn(async () => resolvedFinalDocument);
 const resolveTenantUpcomingContract = jest.fn(async () => null);
+const inspectSignedContractDocument = jest.fn(async () => ({
+  size: signedScanBytes.length,
+  createReadStream: () => Readable.from(signedScanBytes),
+}));
 const selectCurrentPreparedDocument = jest.fn((source) => [...(source?.preparedDocuments || [])]
   .filter((entry) => entry.superseded !== true)
   .sort((left, right) => Number(right.version) - Number(left.version))[0] || null);
@@ -83,6 +101,9 @@ await jest.unstable_mockModule("../services/preparedContractDocumentService.js",
 await jest.unstable_mockModule("../services/contractPublicationService.js", () => ({
   resolvePublishedFinalDocument,
   resolveContractDisplayLifecycle: (source) => ({ key: source?.status || "unavailable", label: null }),
+}));
+await jest.unstable_mockModule("../services/contractDocumentStorageService.js", () => ({
+  inspectSignedContractDocument,
 }));
 await jest.unstable_mockModule("../middleware/mobileTenantAuth.js", () => ({
   mobileTenantAuth: (req, _res, next) => {
@@ -119,6 +140,8 @@ describe("mobile Contract canonical document behavior", () => {
   test("current contract exposes the newest canonical tenantDocument without any notification dependency", async () => {
     const response = await fetch(`${baseUrl}/api/m/contracts/current`);
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
     const body = await response.json();
 
     expect(resolveTenantCanonicalContract).toHaveBeenCalledWith(
@@ -159,6 +182,53 @@ describe("mobile Contract canonical document behavior", () => {
     expect(response.headers.get("content-type")).toBe("application/pdf");
     expect(Buffer.from(await response.arrayBuffer()).toString()).toBe("%PDF-final-scan\n");
     expect(resolvePublishedFinalDocument).toHaveBeenCalledWith(adminScanFinalContract);
+  });
+
+  test("legacy current wet-signed upload is normalized and streamed through the tenant-owned route", async () => {
+    resolveTenantCanonicalContract.mockResolvedValueOnce(legacySignedContract);
+    const currentResponse = await fetch(`${baseUrl}/api/m/contracts/current`);
+    expect(currentResponse.status).toBe(200);
+    expect((await currentResponse.json()).contract.tenantDocument).toMatchObject({
+      available: true,
+      type: "final_signed",
+      version: 2,
+      viewUrl: `/api/m/contracts/${CONTRACT_ID}/documents/signed/2`,
+    });
+
+    resolveTenantCanonicalContract.mockResolvedValueOnce(legacySignedContract);
+    const streamResponse = await fetch(
+      `${baseUrl}/api/m/contracts/${CONTRACT_ID}/documents/final`,
+    );
+    expect(streamResponse.status).toBe(200);
+    expect(streamResponse.headers.get("cache-control")).toBe("private, no-store");
+    expect(Buffer.from(await streamResponse.arrayBuffer()).toString())
+      .toBe("%PDF-legacy-signed-scan\n");
+    expect(inspectSignedContractDocument).toHaveBeenCalledWith(
+      legacySignedContract.signedDocuments[0],
+    );
+  });
+
+  test("legacy signed storage failure remains a structured 410 instead of falling back to the stale draft", async () => {
+    resolveTenantCanonicalContract.mockResolvedValueOnce(legacySignedContract);
+    inspectSignedContractDocument.mockRejectedValueOnce(Object.assign(
+      new Error("Signed storage missing"),
+      { code: "CONTRACT_ARTIFACT_STORAGE_MISSING", statusCode: 410 },
+    ));
+    const response = await fetch(
+      `${baseUrl}/api/m/contracts/${CONTRACT_ID}/documents/final`,
+    );
+    expect(response.status).toBe(410);
+    expect(await response.json()).toMatchObject({
+      code: "CONTRACT_ARTIFACT_STORAGE_MISSING",
+    });
+  });
+
+  test("signed document route does not expose a non-current signed version", async () => {
+    resolveTenantCanonicalContract.mockResolvedValueOnce(legacySignedContract);
+    const response = await fetch(
+      `${baseUrl}/api/m/contracts/${CONTRACT_ID}/documents/signed/1`,
+    );
+    expect(response.status).toBe(404);
   });
 
   test("current contract logs warning and reports issue code when prepared document resolution fails", async () => {
