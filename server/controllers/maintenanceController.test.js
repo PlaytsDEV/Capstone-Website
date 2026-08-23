@@ -3316,6 +3316,9 @@ describe("maintenanceController", () => {
       status: "scheduled",
       scheduledDate: new Date("2026-08-20T10:00:00.000Z"),
     });
+    const proposedDate = new Date();
+    proposedDate.setDate(proposedDate.getDate() + 7);
+    proposedDate.setHours(14, 0, 0, 0);
     maintenanceFindOne.mockResolvedValue(requestDoc);
     userFindOne.mockReturnValue(
       buildLeanQuery({
@@ -3334,7 +3337,7 @@ describe("maintenanceController", () => {
       user: { uid: "firebase_uid_1" },
       params: { requestId: requestDoc.request_id },
       body: {
-        proposedDate: "2026-08-22T14:00:00.000Z",
+        proposedDate: proposedDate.toISOString(),
         reason: "I will be in class during the original schedule.",
       },
     };
@@ -3345,6 +3348,7 @@ describe("maintenanceController", () => {
 
     expect(requestDoc.rescheduleRequest).toEqual(
       expect.objectContaining({
+        proposedDate,
         status: "pending",
         reason: "I will be in class during the original schedule.",
       }),
