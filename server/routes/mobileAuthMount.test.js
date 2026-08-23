@@ -50,6 +50,7 @@ jest.unstable_mockModule("../config/paymongo.js", () => ({ createCheckoutSession
 jest.unstable_mockModule("../utils/billingPolicy.js", () => ({
   getVisibleBillSnapshot: jest.fn((bill) => bill),
   getVisibleBillCharges: jest.fn((bill) => bill?.charges || {}),
+  getBillRemainingAmount: jest.fn((bill) => Number(bill?.remainingAmount || 0)),
 }));
 jest.unstable_mockModule("../utils/billSettlement.js", () => ({ settlePaymongoBill: jest.fn() }));
 jest.unstable_mockModule("../utils/paymongoPaymentMethod.js", () => ({

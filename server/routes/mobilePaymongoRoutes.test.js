@@ -30,9 +30,20 @@ describe("mobile PayMongo route safety", () => {
     expect(routes).toMatch(/Bill\.findOne\(\{\s*_id:\s*billingId,\s*userId:\s*req\.mobileTenant\._id/);
   });
 
+  test("batch checkout uses canonical multi_bill metadata, tenant-scoped Bill reads, and a server-computed total", () => {
+    const batchHandler = routes.split('router.post("/paymongo/checkout-batch"')[1]?.split('router.post("/paymongo/webhook"')[0] || "";
+    expect(batchHandler).toContain('type: "multi_bill"');
+    expect(batchHandler).toContain('userId: req.mobileTenant._id');
+    expect(batchHandler).toContain("getVisibleBillSnapshot");
+    expect(batchHandler).not.toMatch(/totalDue:\s*req\.body|amount:\s*req\.body/);
+    expect(batchHandler).toContain("OUTSTANDING_BALANCE_CHANGED");
+  });
+
   test("status polling re-verifies bill ownership from the resolved session, not from the PayMongo session alone", () => {
     const statusHandler = routes.split('router.get("/paymongo/checkout/:checkoutId/status"')[1] || "";
     expect(statusHandler).toMatch(/Bill\.findOne\(\{\s*_id:\s*metadata\.billId,\s*userId:\s*req\.mobileTenant\._id/);
+    expect(statusHandler).toMatch(/Bill\.find\(\{[\s\S]*userId:\s*req\.mobileTenant\._id/);
+    expect(statusHandler).toContain('sessionType: isSingleBill ? "bill" : "multi_bill"');
   });
 
   test("intercepts /paymongo/webhook as a safe no-op — neutralizes the vendored router's independent settlement path, never re-implements signature verification or settlement here", () => {

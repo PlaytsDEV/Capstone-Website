@@ -21,7 +21,7 @@ import express from "express";
  */
 
 jest.unstable_mockModule("../models/index.js", () => ({
-  Bill: { find: jest.fn(), findOne: jest.fn(), findById: jest.fn() },
+  Bill: { find: jest.fn(), findOne: jest.fn(), findById: jest.fn(), updateMany: jest.fn() },
   Reservation: { findById: jest.fn() },
 }));
 jest.unstable_mockModule("../middleware/mobileTenantAuth.js", () => ({
@@ -43,6 +43,7 @@ jest.unstable_mockModule("../config/paymongo.js", () => ({
 jest.unstable_mockModule("../utils/billingPolicy.js", () => ({
   getVisibleBillSnapshot: jest.fn((bill) => bill),
   getVisibleBillCharges: jest.fn((bill) => bill?.charges || {}),
+  getBillRemainingAmount: jest.fn((bill) => Number(bill?.remainingAmount || 0)),
 }));
 jest.unstable_mockModule("../utils/billSettlement.js", () => ({
   settlePaymongoBill: jest.fn(),
@@ -129,6 +130,15 @@ describe("mobile billing/paymongo router mounting does not swallow unrelated /ap
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ billingId: "507f1f77bcf86cd799439011" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test("an unauthenticated POST /api/m/paymongo/checkout-batch is rejected by the paymongo bridge itself", async () => {
+    const res = await fetch(`${baseUrl}/api/m/paymongo/checkout-batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ billIds: ["507f1f77bcf86cd799439011"] }),
     });
     expect(res.status).toBe(401);
   });
