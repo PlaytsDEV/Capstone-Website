@@ -32,17 +32,39 @@
 import express from "express";
 import { createCheckoutSession, getCheckoutSession } from "../config/paymongo.js";
 import { Bill } from "../models/index.js";
-import { getVisibleBillSnapshot } from "../utils/billingPolicy.js";
+import { getBillRemainingAmount, getVisibleBillSnapshot } from "../utils/billingPolicy.js";
 import { settlePaymongoBill } from "../utils/billSettlement.js";
 import { readPaidPayments, readPaymentMethod, normalizeCheckoutStatusForClient } from "../utils/paymongoPaymentMethod.js";
 import { getPublicUrlConfig } from "../config/publicUrls.js";
 import { mobileTenantAuth } from "../middleware/mobileTenantAuth.js";
 import { toMobileBill } from "../services/mobileBillingBridge.js";
+import { NON_DRAFT_BILL_FILTER } from "../services/billing/currentBillResolver.js";
 import auditLogger from "../utils/auditLogger.js";
 
 const router = express.Router();
 const asyncRoute = (handler) => (req, res, next) =>
   Promise.resolve(handler(req, res, next)).catch(next);
+
+const MAX_BATCH_BILLS = 100;
+
+function normalizeBillIds(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_BATCH_BILLS) return null;
+  const normalized = value.map((id) => String(id || "").trim());
+  if (normalized.some((id) => !/^[0-9a-fA-F]{24}$/.test(id))) return null;
+  if (new Set(normalized).size !== normalized.length) return null;
+  return normalized;
+}
+
+function readBatchBillIds(metadata = {}) {
+  try {
+    const raw = Array.isArray(metadata.billIds)
+      ? metadata.billIds
+      : JSON.parse(metadata.billIds || "[]");
+    return normalizeBillIds(raw);
+  } catch {
+    return null;
+  }
+}
 
 // IMPORTANT: mobileTenantAuth is attached per-route below, NEVER via
 // router.use() at the router level — see the identical note in
@@ -114,6 +136,96 @@ router.post("/paymongo/checkout", mobileTenantAuth, asyncRoute(async (req, res) 
   });
 }));
 
+// The web tenant app already uses the canonical multi_bill PayMongo workflow.
+// Mobile exposes that same metadata + webhook settlement contract so an
+// Outstanding Balance card can pay the complete selected obligation instead
+// of silently collapsing to the first unpaid bill. Bill IDs only identify the
+// selection; ownership, payable status, and amount are re-resolved here from
+// canonical Bill records at checkout time.
+router.post("/paymongo/checkout-batch", mobileTenantAuth, asyncRoute(async (req, res) => {
+  const billIds = normalizeBillIds(req.body?.billIds);
+  if (!billIds) {
+    return res.status(400).json({
+      code: "INVALID_BILL_IDS",
+      detail: `billIds must contain 1-${MAX_BATCH_BILLS} unique bill IDs.`,
+    });
+  }
+
+  const bills = await Bill.find({
+    _id: { $in: billIds },
+    userId: req.mobileTenant._id,
+    ...NON_DRAFT_BILL_FILTER,
+  });
+  if (bills.length !== billIds.length) {
+    return res.status(404).json({ detail: "One or more selected bills were not found" });
+  }
+
+  const payableBills = bills.filter((bill) => {
+    const visible = getVisibleBillSnapshot(bill);
+    return visible.status !== "paid" && visible.remainingAmount > 0;
+  });
+  if (payableBills.length !== bills.length) {
+    return res.status(409).json({
+      code: "OUTSTANDING_BALANCE_CHANGED",
+      detail: "Your outstanding balance changed. Refresh Billing before continuing.",
+    });
+  }
+
+  const totalDue = Math.round(payableBills.reduce(
+    (sum, bill) => sum + getVisibleBillSnapshot(bill).remainingAmount,
+    0,
+  ) * 100) / 100;
+  if (totalDue <= 0) {
+    return res.status(400).json({ detail: "No visible balance is currently due" });
+  }
+
+  const payableBillIds = payableBills.map((bill) => String(bill._id));
+  const checkoutIdempotencyKey = `multi_bill:${[...payableBillIds].sort().join("_")}:balance:${Math.round(totalDue * 100)}`;
+  const { publicApiUrl } = getPublicUrlConfig();
+  const { checkoutUrl, sessionId } = await createCheckoutSession({
+    amount: totalDue,
+    description: `Lilycrest Dormitory - Outstanding Balance (${payableBills.length} Bill${payableBills.length === 1 ? "" : "s"})`,
+    metadata: {
+      type: "multi_bill",
+      billIds: JSON.stringify(payableBillIds),
+      userId: String(req.mobileTenant._id),
+      amountDue: String(totalDue),
+    },
+    successUrl: `${publicApiUrl}/api/m/paymongo/redirect/success?billing_id=outstanding`,
+    cancelUrl: `${publicApiUrl}/api/m/paymongo/redirect/cancel?billing_id=outstanding`,
+    idempotencyKey: checkoutIdempotencyKey,
+  });
+
+  await Bill.updateMany(
+    { _id: { $in: payableBillIds }, userId: req.mobileTenant._id },
+    {
+      $set: {
+        paymongoSessionId: sessionId,
+        paymongoCheckoutIdempotencyKey: checkoutIdempotencyKey,
+      },
+    },
+  );
+
+  await auditLogger.log({
+    req,
+    type: "data_modification",
+    action: "payment.mobile_paymongo_multi_bill_checkout_created",
+    severity: "info",
+    entityType: "bill",
+    entityId: payableBills[0]._id,
+    details: `Created a mobile PayMongo checkout for ${payableBills.length} outstanding bills.`,
+    metadata: { billIds: payableBillIds, amount: totalDue, currency: "PHP" },
+  });
+
+  res.json({
+    checkout_url: checkoutUrl,
+    checkout_id: sessionId,
+    reference: sessionId,
+    total_amount: totalDue,
+    bill_count: payableBills.length,
+  });
+}));
+
 // The vendored mobile backend (mobile/routes/paymongo.routes.js, loaded via
 // mobile/mobileRoutes.mjs and mounted AFTER this router) defines its own
 // POST /paymongo/webhook with INDEPENDENT settlement logic — it writes
@@ -152,12 +264,20 @@ router.get("/paymongo/checkout/:checkoutId/status", mobileTenantAuth, asyncRoute
   }
 
   const metadata = session.attributes?.metadata || {};
-  if (metadata.type !== "bill" || !metadata.billId) {
+  const isSingleBill = metadata.type === "bill" && metadata.billId;
+  const batchBillIds = metadata.type === "multi_bill" ? readBatchBillIds(metadata) : null;
+  if (!isSingleBill && !batchBillIds) {
     return res.status(404).json({ detail: "Checkout session not found for this bill" });
   }
 
-  const bill = await Bill.findOne({ _id: metadata.billId, userId: req.mobileTenant._id, isArchived: false });
-  if (!bill) {
+  const bills = isSingleBill
+    ? [await Bill.findOne({ _id: metadata.billId, userId: req.mobileTenant._id, isArchived: false })].filter(Boolean)
+    : await Bill.find({
+        _id: { $in: batchBillIds },
+        userId: req.mobileTenant._id,
+        isArchived: false,
+      });
+  if (bills.length !== (isSingleBill ? 1 : batchBillIds.length)) {
     // Ownership check: the session's metadata.billId does not belong to the
     // caller — never confirm or deny the existence of another tenant's bill.
     return res.status(404).json({ detail: "Checkout session not found for this bill" });
@@ -174,24 +294,35 @@ router.get("/paymongo/checkout/:checkoutId/status", mobileTenantAuth, asyncRoute
       : sessionPaidAmount > 0 ? sessionPaidAmount / 100 : null;
     const { rawPaymentType } = readPaymentMethod(session, paidPayments);
 
-    await settlePaymongoBill({
-      bill,
-      paymentReference,
-      settledAmount,
-      paymentMethod: rawPaymentType,
-      source: "paymongo-polling",
-      metadata: { sessionId: checkoutId, sessionType: "bill", currency: "PHP" },
-    });
+    for (const bill of bills) {
+      const amountForBill = isSingleBill ? settledAmount : getBillRemainingAmount(bill);
+      if (amountForBill <= 0) continue;
+      await settlePaymongoBill({
+        bill,
+        paymentReference,
+        settledAmount: amountForBill,
+        paymentMethod: rawPaymentType,
+        source: "paymongo-polling",
+        metadata: {
+          sessionId: checkoutId,
+          sessionType: isSingleBill ? "bill" : "multi_bill",
+          currency: "PHP",
+        },
+      });
+    }
   }
 
-  const refreshedBill = isPaid ? await Bill.findById(bill._id) : bill;
+  const refreshedBills = isPaid
+    ? await Bill.find({ _id: { $in: bills.map((bill) => bill._id) }, userId: req.mobileTenant._id })
+    : bills;
 
   res.json({
     status: normalizeCheckoutStatusForClient(session, paidPayments),
     paid: isPaid,
     payments_count: paidPayments.length,
     checkout_url: session?.attributes?.checkout_url,
-    bill: toMobileBill(refreshedBill),
+    bill: isSingleBill ? toMobileBill(refreshedBills[0]) : null,
+    bills: isSingleBill ? undefined : refreshedBills.map((bill) => toMobileBill(bill)),
   });
 }));
 
