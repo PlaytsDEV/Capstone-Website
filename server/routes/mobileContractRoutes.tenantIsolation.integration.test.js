@@ -1,7 +1,7 @@
 /**
- * Real integration coverage proving mobile prepared-document tenant
- * isolation: tenant B cannot pull tenant A's generated draft PDF by
- * guessing/reusing tenant A's Contract id.
+ * Real integration coverage proving mobile prepared and final-document
+ * tenant isolation: tenant B cannot pull tenant A's Contract PDF by
+ * guessing/reusing tenant A's Contract id at either lifecycle tier.
  *
  * Real (non-replset) MongoMemoryServer database, real `generatePreparedContractPdf`
  * generation/storage pipeline, real `mobileContractRoutes.js` router mounted
@@ -16,36 +16,21 @@
  * `generatePreparedContractPdf` nor `createDraftContract` opens a Mongoose
  * session/transaction.
  *
- * =============================================================================
- * The "final document" half of this test (tenant B requesting tenant A's
- * *finalized/notarized* document) is NOT included here for the same reason
- * documented at length in
- * services/tenantContractDocumentResolver.e2e.integration.test.js: both
- * production code paths capable of setting `contract.finalDocument`
- * (`uploadAndFinalizeNotarizedContract` in contractNotarizationService.js,
- * and the multi-step `publishFinalContract` in contractPublicationService.js)
- * are currently non-functional for any real, already-persisted Contract —
- * the former due to an unreachable status transition
- * (INVALID_CONTRACT_STATUS_TRANSITION: "generated" -> "active" is not a
- * legal CONTRACT_TRANSITIONS edge), the latter due to Mongoose silently
- * dropping every field of `contract.finalDocument` on assignment because
- * `finalDocumentSchema`'s fields are all `immutable: true` and the Contract
- * is never `isNew` by finalization time. With no real way to produce a
- * finalized Contract for tenant A to test isolation against, and this
- * task's constraints forbidding both production-source changes and
- * faked/weakened tests, that half of Test 2 is intentionally omitted here
- * rather than asserted against data no real admin action could produce.
- * This file only covers prepared-document ("generated draft") isolation,
- * which is fully real and unaffected by either bug.
+ * The final-document test uses the same production one-step wet-signed
+ * upload/finalization service as the admin flow. Both tenants receive real,
+ * distinct final PDFs so the negative assertions cannot pass because final
+ * delivery is globally unavailable.
  */
 import mongoose from "mongoose";
 import express from "express";
+import { PDFDocument } from "pdf-lib";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, test } from "@jest/globals";
 import { MongoMemoryServer } from "mongodb-memory-server";
 
 import { Contract, BusinessSettings, Reservation, Room, User } from "../models/index.js";
 import { createDraftContract, transitionContract } from "../services/contractService.js";
 import { generatePreparedContractPdf } from "../services/contractPdfService.js";
+import { uploadAndFinalizeNotarizedContract } from "../services/contractNotarizationService.js";
 
 await jest.unstable_mockModule("../middleware/mobileTenantAuth.js", () => ({
   mobileTenantAuth: (req, _res, next) => {
@@ -174,6 +159,32 @@ async function seedGenerationReadyContract(label) {
   return { tenant, admin, room, reservation, contract: draft };
 }
 
+async function generateAndFinalizeContract(data, label) {
+  const { contract: generatedContract } = await generatePreparedContractPdf({
+    contractId: data.contract._id,
+    actorId: data.admin._id,
+  });
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(`Final Contract ${label}`);
+  pdf.addPage([612, 936]);
+  const buffer = Buffer.from(await pdf.save());
+  const file = {
+    buffer,
+    originalname: `final-${label}.pdf`,
+    mimetype: "application/pdf",
+    size: buffer.length,
+  };
+  const { contract } = await uploadAndFinalizeNotarizedContract({
+    contract: generatedContract,
+    file,
+    actorId: data.admin._id,
+    preparedDocumentVersion: generatedContract.generatedVersion,
+    notarialDetails: { notaryName: `Atty. Isolation ${label}` },
+    notes: `Two-tenant isolation verification ${label}`,
+  });
+  return { contract, buffer };
+}
+
 describe("mobile contract routes — tenant isolation", () => {
   test("tenant B cannot fetch tenant A's generated draft PDF by requesting tenant A's Contract id", async () => {
     const tenantAData = await seedGenerationReadyContract("A");
@@ -231,6 +242,82 @@ describe("mobile contract routes — tenant isolation", () => {
       { headers: { "x-test-tenant-id": String(tenantBData.tenant._id) } },
     );
     expect(tenantBOwnResponse.status).toBe(200);
+  });
+
+  test("final wet-signed documents remain symmetrically isolated between two tenants", async () => {
+    const tenantAData = await seedGenerationReadyContract("A");
+    const tenantBData = await seedGenerationReadyContract("B");
+    const tenantAFinal = await generateAndFinalizeContract(tenantAData, "A");
+    const tenantBFinal = await generateAndFinalizeContract(tenantBData, "B");
+
+    expect(tenantAFinal.buffer.equals(tenantBFinal.buffer)).toBe(false);
+    expect(tenantAFinal.contract.status).toBe("active");
+    expect(tenantBFinal.contract.status).toBe("active");
+
+    const tenantAOwnResponse = await fetch(
+      `${baseUrl}/api/m/contracts/${tenantAData.contract._id}/documents/final`,
+      { headers: { "x-test-tenant-id": String(tenantAData.tenant._id) } },
+    );
+    expect(tenantAOwnResponse.status).toBe(200);
+    expect(tenantAOwnResponse.headers.get("content-type")).toBe("application/pdf");
+    expect(Buffer.from(await tenantAOwnResponse.arrayBuffer()).equals(tenantAFinal.buffer)).toBe(true);
+
+    const tenantBCrossResponse = await fetch(
+      `${baseUrl}/api/m/contracts/${tenantAData.contract._id}/documents/final`,
+      { headers: { "x-test-tenant-id": String(tenantBData.tenant._id) } },
+    );
+    expect(tenantBCrossResponse.status).toBe(404);
+    expect(tenantBCrossResponse.headers.get("content-type")).not.toBe("application/pdf");
+    expect(await tenantBCrossResponse.json()).toEqual({ detail: "Final Contract is not available" });
+
+    const tenantACrossResponse = await fetch(
+      `${baseUrl}/api/m/contracts/${tenantBData.contract._id}/documents/final`,
+      { headers: { "x-test-tenant-id": String(tenantAData.tenant._id) } },
+    );
+    expect(tenantACrossResponse.status).toBe(404);
+    expect(tenantACrossResponse.headers.get("content-type")).not.toBe("application/pdf");
+    expect(await tenantACrossResponse.json()).toEqual({ detail: "Final Contract is not available" });
+
+    const tenantBOwnResponse = await fetch(
+      `${baseUrl}/api/m/contracts/${tenantBData.contract._id}/documents/final`,
+      { headers: { "x-test-tenant-id": String(tenantBData.tenant._id) } },
+    );
+    expect(tenantBOwnResponse.status).toBe(200);
+    expect(Buffer.from(await tenantBOwnResponse.arrayBuffer()).equals(tenantBFinal.buffer)).toBe(true);
+
+    // No mobile-side record mutation or manual refresh endpoint is required:
+    // the canonical current-contract read immediately resolves each newly
+    // finalized document, and it keeps identity/room/pricing/term snapshots
+    // scoped to the authenticated tenant.
+    const tenantACurrent = await fetch(`${baseUrl}/api/m/contracts/current`, {
+      headers: { "x-test-tenant-id": String(tenantAData.tenant._id) },
+    });
+    const tenantBCurrent = await fetch(`${baseUrl}/api/m/contracts/current`, {
+      headers: { "x-test-tenant-id": String(tenantBData.tenant._id) },
+    });
+    expect(tenantACurrent.status).toBe(200);
+    expect(tenantBCurrent.status).toBe(200);
+    const tenantABody = await tenantACurrent.json();
+    const tenantBBody = await tenantBCurrent.json();
+
+    expect(tenantABody.contract).toMatchObject({
+      id: String(tenantAData.contract._id),
+      tenantLegalName: "Test TenantA",
+      roomNumber: "301",
+      approvedMonthlyRate: 5400,
+      tenantDocument: { available: true, type: "final_notarized", isFinal: true },
+    });
+    expect(tenantBBody.contract).toMatchObject({
+      id: String(tenantBData.contract._id),
+      tenantLegalName: "Test TenantB",
+      roomNumber: "302",
+      approvedMonthlyRate: 5400,
+      tenantDocument: { available: true, type: "final_notarized", isFinal: true },
+    });
+    expect(tenantABody.contract.tenantDocument.viewUrl).toContain(String(tenantAData.contract._id));
+    expect(tenantABody.contract.tenantDocument.viewUrl).not.toContain(String(tenantBData.contract._id));
+    expect(tenantBBody.contract.tenantDocument.viewUrl).toContain(String(tenantBData.contract._id));
+    expect(tenantBBody.contract.tenantDocument.viewUrl).not.toContain(String(tenantAData.contract._id));
   });
 
   test("the current-contract summary route also stays scoped per tenant", async () => {
