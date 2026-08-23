@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "fix_cleaning_in_progress_beds.mjs" });
+
  * fix_cleaning_in_progress_beds.mjs
  * One-time script: resets all beds stuck in "cleaning_in_progress" → "available".
  * Run once after deploying the new move-out logic that removes this intermediate state.

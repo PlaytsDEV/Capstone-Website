@@ -1,4 +1,7 @@
 import dotenv from "dotenv";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "backfill_chat_profile_images.mjs" });
+
 dotenv.config({ path: "./.env" });
 import mongoose from "mongoose";
 import connectDB from "../config/database.js";

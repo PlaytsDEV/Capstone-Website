@@ -44,6 +44,18 @@ html:has(.admin-layout) body {
   margin-left: 72px;
 }
 
+.admin-staging-banner {
+  background: #b91c1c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 28px;
+  text-align: center;
+  text-transform: uppercase;
+  z-index: 31;
+}
+
 /* ── Top bar ──────────────────────────────────────────────────────────────── */
 .admin-topbar {
   background: rgba(255, 255, 255, 0.88);

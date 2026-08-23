@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "seedRoomPhotos.js" });
+
  * =============================================================================
  * ROOM PHOTO SEEDER
  * =============================================================================

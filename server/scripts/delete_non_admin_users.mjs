@@ -1,4 +1,7 @@
 import dotenv from "dotenv";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "delete_non_admin_users.mjs" });
+
 import mongoose from "mongoose";
 
 dotenv.config();

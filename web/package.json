@@ -46,7 +46,11 @@
     "dev": "vite",
     "dev:admin": "vite --config vite.admin.config.js",
     "build": "vite build",
+    "build:staging": "node scripts/verify-web-environment.mjs staging && vite build --mode staging",
+    "build:production": "node scripts/verify-web-environment.mjs production && vite build --mode production",
     "build:admin": "vite build --config vite.admin.config.js",
+    "build:admin:staging": "node scripts/verify-web-environment.mjs staging && vite build --mode staging --config vite.admin.config.js",
+    "build:admin:production": "node scripts/verify-web-environment.mjs production && vite build --mode production --config vite.admin.config.js",
     "preview": "vite preview",
     "serve": "node scripts/serve-build.mjs",
     "test": "node scripts/run-tests.mjs"

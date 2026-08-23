@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "rename-owner-display.mjs" });
+
  * One-time script: update the display name of the owner account.
  *
  * The owner account was originally created with firstName="Super", lastName="Admin".

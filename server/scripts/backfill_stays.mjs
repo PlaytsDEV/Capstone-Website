@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "backfill_stays.mjs" });
+
 import "../config/database.js";
 import { Reservation, Stay, BedHistory } from "../models/index.js";
 import { computeLeaseEndDate } from "../utils/tenantWorkspace.js";

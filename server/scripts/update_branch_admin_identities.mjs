@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "update_branch_admin_identities.mjs" });
+
  * Script to update and standardize Branch Admin usernames, first/last names,
  * and Firebase display names for Gil Puyat and Guadalupe branches.
  */

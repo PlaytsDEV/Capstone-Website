@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "archive_orphan_reservations_deleted_users.mjs" });
+
  * archive_orphan_reservations_deleted_users.mjs
  * ─────────────────────────────────────────────────────────────────────────────
  * One-time migration: archives all non-archived reservations (any status) whose

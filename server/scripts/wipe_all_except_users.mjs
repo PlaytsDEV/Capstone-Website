@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "wipe_all_except_users.mjs" });
+
  * WIPE all collections EXCEPT `users`.
  * Usage: node scripts/wipe_all_except_users.mjs
  */

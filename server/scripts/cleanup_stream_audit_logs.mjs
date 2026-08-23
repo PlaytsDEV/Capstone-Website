@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "cleanup_stream_audit_logs.mjs" });
+
  * ============================================================================
  * CLEANUP STREAM AUDIT LOGS SCRIPT
  * ============================================================================

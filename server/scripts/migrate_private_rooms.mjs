@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "migrate_private_rooms.mjs" });
+
  * Migration: Enforce private rooms = capacity 1, max 1 bed
  *
  * Safe rules:

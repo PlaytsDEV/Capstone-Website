@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "seed_backup_data.mjs" });
+
  * Seed realistic backup mock data into the database.
  *
  * Usage:

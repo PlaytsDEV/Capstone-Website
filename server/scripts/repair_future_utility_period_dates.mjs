@@ -1,4 +1,7 @@
 import dotenv from "dotenv";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "repair_future_utility_period_dates.mjs" });
+
 import mongoose from "mongoose";
 import { AuditLog, Bill, UtilityPeriod, UtilityReading } from "../models/index.js";
 import { getManilaDayjs } from "../utils/dateUtils.js";

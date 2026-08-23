@@ -1,4 +1,7 @@
 import dotenv from "dotenv";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "fix_gp_room_201_reading_sequence.mjs" });
+
 import mongoose from "mongoose";
 
 import { Room, UtilityReading, User } from "../models/index.js";

@@ -9,7 +9,11 @@
     "dev:web": "npm --prefix web run dev",
     "kill:server-port": "npm --prefix server run kill-port",
     "kill:web-port": "npm --prefix server run kill-port -- 3000",
-    "seed:analytics-demo": "npm --prefix server run seed:analytics-demo"
+    "seed:analytics-demo": "npm --prefix server run seed:analytics-demo",
+    "qa:fixtures:seed": "npm --prefix server run qa:fixtures:seed",
+    "qa:fixtures:list": "npm --prefix server run qa:fixtures:list",
+    "qa:fixtures:cleanup": "npm --prefix server run qa:fixtures:cleanup",
+    "qa:fixtures:cleanup:confirm": "npm --prefix server run qa:fixtures:cleanup:confirm"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

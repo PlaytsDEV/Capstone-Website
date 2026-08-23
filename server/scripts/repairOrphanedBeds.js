@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "repairOrphanedBeds.js" });
+
  * =============================================================================
  * REPAIR SCRIPT: Orphaned Bed States
  * =============================================================================

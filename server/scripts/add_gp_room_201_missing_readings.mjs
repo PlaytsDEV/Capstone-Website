@@ -1,4 +1,7 @@
 import dotenv from "dotenv";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "add_gp_room_201_missing_readings.mjs" });
+
 import mongoose from "mongoose";
 
 import { Reservation, Room, UtilityReading, User } from "../models/index.js";

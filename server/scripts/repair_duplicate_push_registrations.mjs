@@ -1,4 +1,7 @@
 import crypto from "crypto";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "repair_duplicate_push_registrations.mjs" });
+
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 

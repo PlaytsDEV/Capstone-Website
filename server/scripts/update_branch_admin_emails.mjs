@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "update_branch_admin_emails.mjs" });
+
  * Migration script to update Branch Admin email addresses in MongoDB and Firebase Auth.
  */
 

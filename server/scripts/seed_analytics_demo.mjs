@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "seed_analytics_demo.mjs" });
+
  * Seed analytics-friendly demo data for trends and AI insights.
  *
  * What it does:

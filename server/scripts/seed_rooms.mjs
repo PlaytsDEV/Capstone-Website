@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "seed_rooms.mjs" });
+
 import dotenv from "dotenv";
 import { Room } from "../models/index.js";
 

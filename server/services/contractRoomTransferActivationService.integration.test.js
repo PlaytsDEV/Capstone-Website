@@ -23,6 +23,7 @@ describe("contractRoomTransferActivationService.activateRoomTransferSuccessor", 
   beforeAll(async () => {
     mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     await mongoose.connect(mongo.getUri(), { dbName: "room_transfer_activation" });
+    await Contract.syncIndexes();
   }, 120_000);
 
   afterAll(async () => {

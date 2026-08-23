@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "override_movein_dates.mjs" });
+
 import dotenv from "dotenv";
 
 import { Reservation, User, UtilityReading } from "../models/index.js";

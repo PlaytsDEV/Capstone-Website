@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "delete_regular_billing_readings.mjs" });
+
 import dotenv from "dotenv";
 
 import { UtilityReading } from "../models/index.js";

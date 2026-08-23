@@ -1,4 +1,7 @@
 import dotenv from "dotenv";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "repair_utility_sync.mjs" });
+
 import mongoose from "mongoose";
 import {
   MeterReading,

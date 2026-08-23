@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "heal_bed_identifiers.mjs" });
+
 import dotenv from "dotenv";
 import { Room } from "../models/index.js";
 

@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "create-superadmin.js" });
+
  * One-time script to recreate the superadmin account.
  * Run with: node --env-file=.env scripts/create-superadmin.js
  */

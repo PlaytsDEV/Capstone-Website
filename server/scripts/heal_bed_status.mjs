@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "heal_bed_status.mjs" });
+
  * heal_bed_status.mjs
  * One-time script: fixes beds that are stuck as "available" even though
  * the room has a "reserved" or "moveIn" reservation.

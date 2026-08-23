@@ -1,4 +1,7 @@
 const mongoose = require("mongoose");
+const { assertStagingWriteTarget } = require('./stagingWriteGuard.cjs');
+assertStagingWriteTarget(process.env, { toolName: "clear-reservation.cjs" });
+
 require("dotenv").config({
   path:
     __dirname +

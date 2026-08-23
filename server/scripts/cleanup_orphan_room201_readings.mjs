@@ -1,4 +1,7 @@
 import dotenv from "dotenv";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "cleanup_orphan_room201_readings.mjs" });
+
 import mongoose from "mongoose";
 
 import { UtilityReading, Reservation, Room } from "../models/index.js";

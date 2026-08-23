@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "force_delete_tenant.mjs" });
+
  * force_delete_tenant.mjs
  * ============================================================================
  * Hard-purge a specific tenant and EVERY record tied to them across all

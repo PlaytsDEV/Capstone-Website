@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "backfill_gpq001_reading.mjs" });
+
  * One-off backfill: create a BillingPeriod + move-in MeterReading
  * for the moved-in tenant in room GP-Q-001.
  *

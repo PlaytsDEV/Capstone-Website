@@ -30,6 +30,7 @@ import { fileURLToPath } from "url";
 import connectDB from "./config/database.js";
 import { createCorsOriginPolicy } from "./config/corsPolicy.js";
 import validateStartupConfig from "./config/startupValidation.js";
+import { deploymentEnvironment } from "./config/environmentSafety.js";
 import { logDocumentPrecheckStartupStatus } from "./services/reservationDocumentPrecheckService.js";
 import { logContractPdfRendererStartupStatus } from "./services/contractChromiumService.js";
 import requestId from "./middleware/requestId.js";
@@ -72,6 +73,7 @@ import mobileAuthRoutes from "./routes/mobileAuthRoutes.js";
 import mobileNotificationRoutes from "./routes/mobileNotificationRoutes.js";
 import mobileUploadRoutes from "./routes/mobileUploadRoutes.js";
 import mobileChatRoutes from "./routes/mobileChatRoutes.js";
+import stagingQaRoutes from "./routes/stagingQaRoutes.js";
 import chatbotRoutes from "./routes/chatbotRoutes.js";
 import searchRoutes from "./routes/adminSearchRoutes.js";
 import { initSocket } from "./utils/socket.js";
@@ -362,6 +364,9 @@ app.use("/api/m", mobileUploadRoutes);
 // become a second lifecycle/authorization/notification authority.
 app.use("/api/m", mobileChatRoutes);
 app.use("/api/m", mobileRoutes);
+if (deploymentEnvironment(process.env) === "staging") {
+  app.use("/api/qa", stagingQaRoutes);
+}
 app.use("/api/m/maintenance", maintenanceRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
 app.use("/api/service-providers", serviceProviderRoutes);

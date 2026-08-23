@@ -1,4 +1,7 @@
 import dotenv from "dotenv";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "delete_lifecycle_error_events.mjs" });
+
 import mongoose from "mongoose";
 
 import { Reservation, Room, User, UtilityReading } from "../models/index.js";

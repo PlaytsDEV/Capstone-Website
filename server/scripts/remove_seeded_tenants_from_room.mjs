@@ -1,4 +1,7 @@
 /**
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "remove_seeded_tenants_from_room.mjs" });
+
  * Remove known seed.quad.* tenants from a specific room.
  *
  * What it does:

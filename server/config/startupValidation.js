@@ -7,6 +7,7 @@ import {
   getSessionTtlSeconds,
 } from "../services/emailVerificationService.js";
 import { describeEmailRouting } from "../services/email/emailRegistry.js";
+import { assertServiceIsolation } from "./environmentSafety.js";
 
 const ENV_GROUPS = Object.freeze({
   mongodb: ["MONGODB_URI"],
@@ -28,6 +29,8 @@ export function validateStartupConfig() {
   if (process.env.NODE_ENV === "test") {
     return;
   }
+
+  assertServiceIsolation(process.env);
 
   const isProduction = process.env.NODE_ENV === "production";
   const missingByGroup = Object.fromEntries(

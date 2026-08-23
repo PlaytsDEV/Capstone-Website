@@ -1,4 +1,7 @@
 import dotenv from "dotenv";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+assertStagingWriteTarget(process.env, { toolName: "detach_gp_room_201_tenant_readings.mjs" });
+
 import mongoose from "mongoose";
 
 import { Room, User, UtilityReading } from "../models/index.js";

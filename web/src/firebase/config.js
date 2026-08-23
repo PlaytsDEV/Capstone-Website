@@ -23,6 +23,8 @@
 
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
+import { WEB_DEPLOYMENT_ENVIRONMENT } from "../shared/api/baseUrl.js";
+import { validateWebFirebaseEnvironment } from "../shared/config/environment.js";
 
 /**
  * Firebase Configuration
@@ -43,6 +45,13 @@ const firebaseConfig = {
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
+
+validateWebFirebaseEnvironment({
+  environment: WEB_DEPLOYMENT_ENVIRONMENT,
+  projectId: firebaseConfig.projectId,
+  storageBucket: firebaseConfig.storageBucket,
+  appId: firebaseConfig.appId,
+});
 
 const isFirebaseConfigured = Boolean(
   firebaseConfig.apiKey &&

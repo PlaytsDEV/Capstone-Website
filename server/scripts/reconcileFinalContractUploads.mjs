@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import { assertStagingWriteTarget } from "./stagingWriteGuard.js";
+
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -129,6 +131,7 @@ export async function reconcileFinalContractUploads(options = {}) {
 // CLI entry point
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   dotenv.config({ path: path.resolve(__dirname, "../.env") });
+  assertStagingWriteTarget(process.env, { toolName: "reconcileFinalContractUploads.mjs" });
   const shouldWrite = process.argv.includes("--write");
   const contractArg = process.argv.find((arg) => arg.startsWith("--contract="));
   const contractNumber = contractArg ? contractArg.split("=")[1] : null;
