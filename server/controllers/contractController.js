@@ -38,6 +38,7 @@ import {
   uploadAndFinalizeNotarizedContract,
   verifyNotarizedContract,
 } from "../services/contractNotarizationService.js";
+import { replaceFinalContractDocument } from "../services/contractFinalDocumentReplacementService.js";
 import {
   cleanUpSupersededTestVersions,
   resetPreparedTestDocuments,
@@ -663,6 +664,77 @@ export const uploadFinalNotarizedContract = async (req, res) => {
   } catch (error) {
     fail(res, error);
   }
+};
+
+// The formal replacement process the FINAL_DOCUMENT_REPLACEMENT_REQUIRES_FORMAL_PROCESS
+// guard (contractSigningService.uploadSignedContract, contractNotarizationService
+// .assertDirectUploadAllowed) refers to but otherwise blocks entirely — an admin who
+// finalized the wrong scan had no way to correct it before this endpoint existed.
+export const replaceFinalDocument = async (req, res) => {
+  try {
+    if (req.body?.confirmed !== true && req.body?.confirmed !== "true") {
+      return res.status(400).json({
+        error: "Replacement confirmation is required.",
+        code: "FINAL_DOCUMENT_REPLACEMENT_CONFIRMATION_REQUIRED",
+      });
+    }
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    const before = contract.toObject();
+    const result = await replaceFinalContractDocument({
+      contract,
+      file: req.file,
+      actorId: admin._id,
+      replacementReason: req.body?.replacementReason,
+    });
+    await auditSigningChange(
+      req, before, contract,
+      `Final Contract document replaced (v${result.previousVersion} -> v${result.nextVersion}): ${req.body?.replacementReason || ""}`,
+    );
+    notify
+      .contractDocumentReady(contract.tenantId, "final", contract._id, result.finalDocument?.version)
+      .catch((e) => logger.warn({ err: e }, "Contract-replaced tenant notification failed (non-fatal)"));
+    res.status(200).json({
+      success: true,
+      status: contract.status,
+      finalDocument: result.finalDocument,
+      previousVersion: result.previousVersion,
+      nextVersion: result.nextVersion,
+    });
+  } catch (error) { fail(res, error); }
+};
+
+export const getFinalDocumentHistory = async (req, res) => {
+  try {
+    const contract = await loadSigningContract(req);
+    const history = [...(contract.finalDocumentHistory || [])]
+      .sort((a, b) => Number(b.version) - Number(a.version))
+      .map((entry) => ({
+        version: entry.version,
+        fileName: entry.fileName,
+        fileSize: entry.fileSize,
+        mimeType: entry.mimeType,
+        sourceType: entry.sourceType,
+        publishedAt: entry.publishedAt,
+        publishedBy: entry.publishedBy,
+        replacementReason: entry.replacementReason,
+        supersededAt: entry.supersededAt,
+        supersededBy: entry.supersededBy,
+        status: "SUPERSEDED",
+      }));
+    const current = contract.finalDocument ? {
+      version: contract.finalDocument.version,
+      fileName: contract.finalDocument.fileName,
+      fileSize: contract.finalDocument.fileSize,
+      mimeType: contract.finalDocument.mimeType,
+      sourceType: contract.finalDocument.sourceType,
+      publishedAt: contract.finalDocument.publishedAt,
+      publishedBy: contract.finalDocument.publishedBy,
+      replacementReason: contract.finalDocument.replacementReason,
+      status: "ACTIVE",
+    } : null;
+    res.json({ success: true, current, history });
+  } catch (error) { fail(res, error); }
 };
 
 export const streamNotarizedDocument = async (req, res) => {

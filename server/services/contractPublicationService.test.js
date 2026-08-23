@@ -146,4 +146,50 @@ describe("final Contract publication", () => {
     expect(resolveContractDisplayLifecycle(item, new Date("2027-02-01")).key).toBe("expired");
     expect(item.status).toBe("published");
   });
+
+  // Regression for a real production record (finalDocument metadata intact,
+  // sourceType "admin_scan", but the backing signedDocuments[] file was
+  // gone from storage): resolvePublishedFinalDocument previously collapsed
+  // this into a generic 409 CURRENT_SIGNED_DOCUMENT_UNAVAILABLE, the same
+  // code used for superseded/rejected/hash-mismatch cases. That made it
+  // impossible for a client to distinguish "this record is broken, contact
+  // support" from "the file is specifically missing, replace it" — the
+  // distinction items 34/35 of the contract-lifecycle audit require.
+  test("an admin_scan final document backed by a missing storage file surfaces a distinct 410, not the generic 409", async () => {
+    const item = contract("published", {
+      finalStorageKey: "signed-missing/does-not-exist.pdf",
+      finalDocument: {
+        storageKey: "signed-missing/does-not-exist.pdf",
+        fileName: "does-not-exist.pdf",
+        fileHash: "hash-missing",
+        fileSize: 1,
+        mimeType: "application/pdf",
+        pageCount: 1,
+        sourceType: "admin_scan",
+        sourceVersion: 1,
+        sourceUploadedAt: new Date("2026-08-01"),
+        publishedAt: new Date("2026-08-01"),
+        publishedBy: actorId,
+        tenantVisible: true,
+      },
+      signedDocuments: [{
+        version: 1,
+        storageProvider: "local",
+        storageKey: "signed-missing/does-not-exist.pdf",
+        fileName: "does-not-exist.pdf",
+        fileHash: "hash-missing",
+        fileSize: 1,
+        mimeType: "application/pdf",
+        uploadedAt: new Date("2026-08-01"),
+        uploadedBy: actorId,
+        preparedDocumentVersion: 1,
+        superseded: false,
+      }],
+      tenantVisible: true,
+    });
+    await expect(resolvePublishedFinalDocument(item)).rejects.toMatchObject({
+      code: "FINAL_DOCUMENT_STORAGE_MISSING",
+      statusCode: 410,
+    });
+  });
 });

@@ -56,8 +56,19 @@ export default function DigitalContractPaper({
   isDownloading,
   onViewSigned,
   onDownloadSigned,
+  // Optional: (contract) => Promise<Blob> — resolves the actual canonical
+  // backend PDF (prepared draft or final, whichever this contract's own
+  // documents indicate) for the caller's context (tenant vs admin route).
+  // When supplied and a real document exists, Print/Download use this exact
+  // file instead of reconstructing one from this component's DOM — per the
+  // "print the actual PDF, don't rebuild from HTML" requirement. Falls back
+  // to the existing DOM print/export below when absent (e.g. an early-stage
+  // preview before any PDF has been generated yet).
+  fetchDocumentPdf,
 }) {
   const pdfLegalPageRef = useRef(null);
+  const [realPdfBusy, setRealPdfBusy] = useState(false);
+  const [documentError, setDocumentError] = useState(null);
 
   const rawRoom = String(stayData?.roomType || contract?.roomType || "").toLowerCase();
   const roomNumberStr = String(stayData?.roomNumber || contract?.roomNumber || "").toLowerCase();
@@ -384,7 +395,123 @@ export default function DigitalContractPaper({
     }
   };
 
-  const isDownloadingAny = isDownloading || isGeneratingPdf;
+  // A real canonical PDF exists once the backend has either generated a
+  // prepared draft or published a final document. The tenant-facing fetch
+  // (toTenantContractView) always includes `tenantDocument.available` — the
+  // resolver's own pre-computed answer, per contractPresentation's "never
+  // re-derive this from other fields" rule — so prefer that when present.
+  // The admin route (getTenantCurrentContract) returns the raw Contract
+  // document instead (no tenantDocument field), where `finalDocument` is
+  // either null or a real populated sub-document, so its own truthiness is
+  // already the correct signal there.
+  const hasCanonicalPdf = Boolean(fetchDocumentPdf) && (
+    contract?.tenantDocument
+      ? Boolean(contract.tenantDocument.available)
+      : Boolean(contract?.finalDocument || contract?.generatedStorageKey)
+  );
+
+  const printBlobViaIframe = (blob) => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "none";
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+      setTimeout(() => iframe.remove(), 1000);
+    };
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        setTimeout(cleanup, 2000);
+      }
+    };
+    iframe.onerror = () => {
+      cleanup();
+      reject(new Error("Failed to load the contract PDF for printing."));
+    };
+    iframe.src = url;
+    document.body.appendChild(iframe);
+  });
+
+  // A FINAL/wet-signed document has no faithful DOM equivalent — the DOM
+  // "Digital Contract" is a live re-render of the original lease TERMS, not
+  // the actual signed artifact, so falling back to it on fetch failure would
+  // silently show what looks like a valid final contract when the real
+  // signed file is actually missing/unreachable. Falling back is only safe
+  // for the pre-signature draft stage, where the DOM view is a genuine
+  // preview of the same document that would be generated.
+  const isFinalDocument = Boolean(
+    contract?.tenantDocument ? contract.tenantDocument.isFinal : contract?.finalDocument,
+  );
+
+  const friendlyDocumentError = (err) => {
+    const code = err?.response?.data?.code;
+    if (err?.response?.status === 410 || code === "FINAL_DOCUMENT_STORAGE_MISSING" || code === "CONTRACT_ARTIFACT_STORAGE_MISSING") {
+      return "The saved contract file is unavailable. Please contact the branch admin to replace the signed copy.";
+    }
+    return "Unable to load the contract file right now. Please try again in a moment.";
+  };
+
+  const handlePrintClick = async () => {
+    if (!hasCanonicalPdf) {
+      window.print();
+      return;
+    }
+    setRealPdfBusy(true);
+    setDocumentError(null);
+    try {
+      const blob = await fetchDocumentPdf(contract);
+      await printBlobViaIframe(blob);
+    } catch (err) {
+      console.error("Failed to print the canonical contract PDF.", err);
+      if (isFinalDocument) {
+        setDocumentError(friendlyDocumentError(err));
+      } else {
+        window.print();
+      }
+    } finally {
+      setRealPdfBusy(false);
+    }
+  };
+
+  const handleDownloadClick = async () => {
+    if (!hasCanonicalPdf) {
+      await handleInternalDownloadPdf();
+      return;
+    }
+    setRealPdfBusy(true);
+    setDocumentError(null);
+    try {
+      const blob = await fetchDocumentPdf(contract);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const refCode = contract?.contractNumber || stayData?.referenceNumber || "Official";
+      a.download = `Contract-of-Lease-${refCode}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.error("Failed to download the canonical contract PDF.", err);
+      if (isFinalDocument) {
+        setDocumentError(friendlyDocumentError(err));
+      } else {
+        await handleInternalDownloadPdf();
+      }
+    } finally {
+      setRealPdfBusy(false);
+    }
+  };
+
+  const isDownloadingAny = isDownloading || isGeneratingPdf || realPdfBusy;
 
   return (
     <div className="w-full space-y-3">
@@ -433,6 +560,19 @@ export default function DigitalContractPaper({
           }
         }
       `}</style>
+
+      {documentError && (
+        <div className="flex items-start gap-2 p-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 text-xs">
+          <span className="flex-1">{documentError}</span>
+          <button
+            type="button"
+            onClick={() => setDocumentError(null)}
+            className="text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200 font-bold cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Top Toolbar & Layout Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -555,11 +695,14 @@ export default function DigitalContractPaper({
                 {/* Print Button */}
                 <button
                   type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors shadow-xs cursor-pointer"
-                  title="Print Digital Agreement (A4, 0.5 in margins)"
+                  disabled={isDownloadingAny}
+                  onClick={handlePrintClick}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                  title={hasCanonicalPdf
+                    ? "Print the official Contract PDF (Legal 8.5in × 13in)"
+                    : "Print Digital Agreement Preview (Legal 8.5in × 13in)"}
                 >
-                  <Printer className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                  {realPdfBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500 dark:text-slate-400" /> : <Printer className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />}
                   <span className="hidden sm:inline">Print</span>
                 </button>
 
@@ -567,9 +710,11 @@ export default function DigitalContractPaper({
                 <button
                   type="button"
                   disabled={isDownloadingAny}
-                  onClick={handleInternalDownloadPdf}
+                  onClick={handleDownloadClick}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
-                  title="Download Lease Contract PDF (A4, 0.5 in margins)"
+                  title={hasCanonicalPdf
+                    ? "Download the official Contract PDF (Legal 8.5in × 13in)"
+                    : "Download Lease Contract PDF Preview (Legal 8.5in × 13in)"}
                 >
                   {isDownloadingAny ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                   <span>Download</span>

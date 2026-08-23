@@ -17,6 +17,7 @@ import {
   approveGenerationPricing,
   uploadNotarizedDocument, uploadFinalNotarizedContract, streamNotarizedDocument, verifyNotarizedDocument,
   rejectNotarizedDocument,
+  replaceFinalDocument, getFinalDocumentHistory,
   readyContractForPublication, publishContract, streamFinalContract,
   streamMyFinalContract, streamMySignedContract,
   confirmLegacyReservationApproval,
@@ -81,6 +82,8 @@ router.post("/:id/documents/notarized/reject", rejectNotarizedDocument);
 router.post("/:id/ready-for-publication", readyContractForPublication);
 router.post("/:id/publish", publishContract);
 router.get("/:id/documents/final", streamFinalContract);
+router.get("/:id/documents/final/history", getFinalDocumentHistory);
+router.post("/:id/documents/final/replace", verifyOwner, signedUpload.single("file"), replaceFinalDocument);
 router.get("/:id/documents/prepared/:version?", streamPreparedContract);
 router.get("/:id", getContract);
 router.post("/:id/validate", validateContract);

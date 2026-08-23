@@ -3216,6 +3216,9 @@ export default function TenantDetailModal({
             contract={activeDigitalContract || dedicatedContract}
             onDownloadPdf={() => handleDownloadStayProof(activeDigitalContract || dedicatedContract)}
             isDownloading={downloadingProof}
+            fetchDocumentPdf={(c) => (c?.finalDocument
+              ? contractApi.getFinalContractFile(c._id || c.id, false)
+              : contractApi.getPreparedContractFile(c._id || c.id))}
           />
         )}
       </div>

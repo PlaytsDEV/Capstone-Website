@@ -331,6 +331,16 @@ export default function ContractsPage() {
     };
   }, [loadContracts]);
 
+  // Tenant-facing wording never mentions storage internals or asks the
+  // tenant to "replace" anything (that's an admin action) — per the file's
+  // 410 CONTRACT_ARTIFACT_STORAGE_MISSING case, where DB metadata exists
+  // but the physical file does not.
+  const friendlyTenantDocumentError = (err, fallback) => (
+    err?.response?.status === 410
+      ? "This document is temporarily unavailable. Please contact the branch office if this continues."
+      : (err?.message || fallback)
+  );
+
   const handleViewSignedCopy = async (version) => {
     if (!contract?.id) return;
     try {
@@ -339,7 +349,7 @@ export default function ContractsPage() {
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
-      setError(err?.message || "Failed to preview signed contract copy.");
+      setError(friendlyTenantDocumentError(err, "Failed to preview signed contract copy."));
     }
   };
 
@@ -354,7 +364,7 @@ export default function ContractsPage() {
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
-      setError(err?.message || "Failed to download signed contract copy.");
+      setError(friendlyTenantDocumentError(err, "Failed to download signed contract copy."));
     }
   };
 
@@ -488,6 +498,9 @@ export default function ContractsPage() {
             contract={contract}
             onViewSigned={handleViewSignedCopy}
             onDownloadSigned={handleDownloadSignedCopy}
+            fetchDocumentPdf={(c) => (c?.tenantDocument?.isFinal
+              ? tenantContractApi.getMyFinalContractFile(c.id || c._id, false)
+              : tenantContractApi.getMyPreparedContractFile(c.id || c._id, false))}
           />
         </>
       )}
