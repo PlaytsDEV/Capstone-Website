@@ -168,6 +168,15 @@ export const contractApi = {
     }),
   getFinalContractFile: (contractId, download = false) =>
     fetchPrivateContractBlob(`/contracts/${contractId}/documents/final${download ? "?download=1" : ""}`),
+  replaceFinalContract: (contractId, file, replacementReason) => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("confirmed", "true");
+    body.append("replacementReason", replacementReason);
+    return authFetch(`/contracts/${contractId}/documents/final/replace`, { method: "POST", body });
+  },
+  getFinalDocumentHistory: (contractId) =>
+    authFetch(`/contracts/${contractId}/documents/final/history`, { cache: "no-store" }),
   getPreparedDocumentVersions: async (contractId) => {
     const payload = await authFetch(`/contracts/${contractId}`);
     return payload.contract?.preparedDocuments || [];

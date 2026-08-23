@@ -112,6 +112,9 @@ export default function ContractTab() {
         isDownloading={fileBusy}
         onViewSigned={handleViewSigned}
         onDownloadSigned={handleDownloadSigned}
+        fetchDocumentPdf={(c) => (c?.tenantDocument?.isFinal
+          ? tenantContractApi.getMyFinalContractFile(c.id || c._id, false)
+          : tenantContractApi.getMyPreparedContractFile(c.id || c._id, false))}
       />
     </div>
   );

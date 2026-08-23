@@ -19,6 +19,9 @@ import {
   RotateCw,
   ExternalLink,
   Loader2,
+  History,
+  ShieldCheck,
+  Repeat,
 } from "lucide-react";
 import { contractApi } from "../../../shared/api/contractApi";
 import { showNotification } from "../../../shared/utils/notification";
@@ -29,6 +32,14 @@ const formatFileSize = (bytes) => {
   if (num < 1024) return `${num} B`;
   if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} KB`;
   return `${(num / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const friendlyDocumentFetchError = (err, fallback) => {
+  const code = err?.response?.data?.code;
+  if (err?.response?.status === 410 || code === "FINAL_DOCUMENT_STORAGE_MISSING" || code === "CONTRACT_ARTIFACT_STORAGE_MISSING") {
+    return "The saved contract file is unavailable in storage. Replace the signed copy to restore it.";
+  }
+  return fallback;
 };
 
 const formatDate = (val) => {
@@ -63,6 +74,21 @@ export default function SignedContractUploadSection({
   const [imageRotation, setImageRotation] = useState(0);
   const fileInputRef = useRef(null);
 
+  // Formal final-document replacement (once contract.finalDocument exists,
+  // the normal /documents/signed upload is blocked server-side with
+  // FINAL_DOCUMENT_REPLACEMENT_REQUIRES_FORMAL_PROCESS — this is that
+  // process: a distinct flow requiring a mandatory reason and confirmation).
+  const [showReplaceForm, setShowReplaceForm] = useState(false);
+  const [replaceFile, setReplaceFile] = useState(null);
+  const [replacePreviewUrl, setReplacePreviewUrl] = useState(null);
+  const [replaceReason, setReplaceReason] = useState("");
+  const [replaceConfirming, setReplaceConfirming] = useState(false);
+  const [replacing, setReplacing] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [documentHistory, setDocumentHistory] = useState(null);
+  const replaceFileInputRef = useRef(null);
+
   useEffect(() => {
     setContractDetails(dedicatedContract);
     if (dedicatedContract?._id) {
@@ -94,6 +120,17 @@ export default function SignedContractUploadSection({
       setSelectedPreviewUrl(null);
     }
   }, [selectedFile]);
+
+  // Preview URL for the file selected in the Replace Final Contract modal
+  useEffect(() => {
+    if (!replaceFile) {
+      setReplacePreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(replaceFile);
+    setReplacePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [replaceFile]);
 
   // Clean up viewing document blob URL on modal close
   const closeDocViewer = () => {
@@ -223,8 +260,8 @@ export default function SignedContractUploadSection({
       a.download = fileName || `Signed-Contract-v${version}.pdf`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
-      showNotification("Failed to download signed contract scan.", "error");
+    } catch (err) {
+      showNotification(friendlyDocumentFetchError(err, "Failed to download signed contract scan."), "error");
     } finally {
       setDownloadingVersion(null);
     }
@@ -254,8 +291,8 @@ export default function SignedContractUploadSection({
       });
       setImageZoom(1);
       setImageRotation(0);
-    } catch {
-      showNotification("Failed to preview signed contract scan.", "error");
+    } catch (err) {
+      showNotification(friendlyDocumentFetchError(err, "Failed to preview signed contract scan."), "error");
     } finally {
       setViewingLoading(false);
     }
@@ -286,9 +323,68 @@ export default function SignedContractUploadSection({
     }
   };
 
+  const closeReplaceForm = () => {
+    setShowReplaceForm(false);
+    setReplaceFile(null);
+    setReplaceReason("");
+    setReplaceConfirming(false);
+  };
+
+  const handleReplaceFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showNotification("Signed contract file must be 10MB or smaller.", "warning");
+      return;
+    }
+    setReplaceFile(file);
+    if (e.target) e.target.value = "";
+  };
+
+  const handleConfirmReplace = async () => {
+    const contractId = contractDetails?._id || dedicatedContract?._id;
+    if (!contractId || !replaceFile || !replaceReason.trim()) return;
+    setReplacing(true);
+    try {
+      await contractApi.replaceFinalContract(contractId, replaceFile, replaceReason.trim());
+      const updated = await contractApi.getContract(contractId);
+      if (updated?.contract) {
+        setContractDetails(updated.contract);
+        if (onContractUpdated) onContractUpdated(updated.contract);
+      }
+      showNotification("Final contract replaced. The tenant will see the new document.", "success");
+      closeReplaceForm();
+      setDocumentHistory(null);
+    } catch (err) {
+      showNotification(err?.message || "Failed to replace the final contract.", "error");
+    } finally {
+      setReplacing(false);
+    }
+  };
+
+  const handleToggleHistory = async () => {
+    const contractId = contractDetails?._id || dedicatedContract?._id;
+    if (!contractId) return;
+    const next = !showHistory;
+    setShowHistory(next);
+    if (next && !documentHistory) {
+      setHistoryLoading(true);
+      try {
+        const res = await contractApi.getFinalDocumentHistory(contractId);
+        setDocumentHistory({ current: res?.current || null, history: res?.history || [] });
+      } catch {
+        showNotification("Failed to load document version history.", "error");
+      } finally {
+        setHistoryLoading(false);
+      }
+    }
+  };
+
   const signedDocs = (contractDetails?.signedDocuments || [])
     .filter((doc) => !doc.superseded)
     .sort((a, b) => (b.version || 0) - (a.version || 0));
+
+  const hasFinalDocument = Boolean(contractDetails?.finalDocument);
 
   return (
     <div
@@ -302,8 +398,13 @@ export default function SignedContractUploadSection({
           <FileCheck className="w-3.5 h-3.5 text-primary" />
           <span>Wet-Signed Contract Scans &amp; Amendments</span>
         </h4>
-        <div className="flex items-center gap-2">
-          {signedDocs.length > 0 ? (
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {hasFinalDocument ? (
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 inline-flex items-center gap-1">
+              <ShieldCheck className="w-3 h-3" />
+              Final Contract Published
+            </span>
+          ) : signedDocs.length > 0 ? (
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
               {signedDocs.length} Scan{signedDocs.length > 1 ? "s" : ""} Attached
             </span>
@@ -313,25 +414,245 @@ export default function SignedContractUploadSection({
             </span>
           )}
 
-          {!showUploadForm && (
+          {hasFinalDocument && (
             <button
               type="button"
-              onClick={() => setShowUploadForm(true)}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm cursor-pointer"
+              onClick={handleToggleHistory}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-border bg-background hover:bg-muted text-xs font-semibold text-foreground transition-colors cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Upload Scan</span>
+              <History className="w-3.5 h-3.5 text-muted-foreground" />
+              <span>{showHistory ? "Hide History" : "Version History"}</span>
             </button>
+          )}
+
+          {hasFinalDocument ? (
+            !showReplaceForm && (
+              <button
+                type="button"
+                onClick={() => setShowReplaceForm(true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors shadow-sm cursor-pointer"
+                title="Replace the tenant-visible final contract (e.g. wrong scan was uploaded)"
+              >
+                <Repeat className="w-3.5 h-3.5" />
+                <span>Replace Final Contract</span>
+              </button>
+            )
+          ) : (
+            !showUploadForm && (
+              <button
+                type="button"
+                onClick={() => setShowUploadForm(true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Upload Scan</span>
+              </button>
+            )
           )}
         </div>
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Upload scanned PDF copies or photo attachments of the physical contract containing wet signatures, hand notations, or special contract amendments.
+        {hasFinalDocument
+          ? "This contract already has a published final document, visible to the tenant on Web and Mobile. To correct a wrong upload, use Replace Final Contract below — the previous version is preserved in Version History, never discarded."
+          : "Upload scanned PDF copies or photo attachments of the physical contract containing wet signatures, hand notations, or special contract amendments."}
       </p>
 
+      {/* Version History */}
+      {showHistory && (
+        <div className="bg-card border border-border rounded-xl p-3.5 space-y-2">
+          {historyLoading ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Loading version history…
+            </div>
+          ) : (
+            <>
+              {documentHistory?.current && (
+                <div className="flex items-start gap-3 p-2.5 rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-800">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-foreground">v{documentHistory.current.version || 1}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-600 text-white">Active</span>
+                      <span className="text-xs text-foreground truncate">{documentHistory.current.fileName}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Published {formatDate(documentHistory.current.publishedAt)}
+                      {documentHistory.current.replacementReason && ` — "${documentHistory.current.replacementReason}"`}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {(documentHistory?.history || []).map((entry) => (
+                <div key={entry.version} className="flex items-start gap-3 p-2.5 rounded-lg border border-border bg-muted/20">
+                  <History className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-foreground">v{entry.version}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-muted text-muted-foreground">Superseded</span>
+                      <span className="text-xs text-muted-foreground truncate">{entry.fileName}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Replaced {formatDate(entry.supersededAt)}
+                      {entry.replacementReason && ` — Reason: "${entry.replacementReason}"`}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {!documentHistory?.current && !(documentHistory?.history || []).length && (
+                <p className="text-xs text-muted-foreground py-1">No document history yet.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Replace Final Contract Form */}
+      {showReplaceForm && (
+        <div className="bg-card border border-amber-300 dark:border-amber-800 rounded-xl p-4 space-y-3.5 shadow-sm">
+          <div className="flex items-center justify-between border-b border-border/60 pb-2">
+            <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <Repeat className="w-4 h-4 text-amber-600" />
+              Replace Final Contract
+            </span>
+            <button
+              type="button"
+              onClick={closeReplaceForm}
+              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+              The current final contract will be replaced as the tenant-visible document on Web and Mobile.
+              The previous version is kept in Version History, never deleted.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+              Select Replacement File (PDF, JPG, or PNG)
+            </label>
+            <input
+              type="file"
+              ref={replaceFileInputRef}
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={handleReplaceFileChange}
+              className="hidden"
+            />
+            {replaceFile ? (
+              <div className="border border-border rounded-xl p-3 bg-muted/20 space-y-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {replacePreviewUrl && replaceFile.type.startsWith("image/") ? (
+                      <img src={replacePreviewUrl} alt="Replacement preview" className="w-12 h-12 object-cover rounded-lg border border-border flex-shrink-0 bg-background" />
+                    ) : (
+                      <FileText className="w-8 h-8 text-primary flex-shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-foreground truncate max-w-xs sm:max-w-md">{replaceFile.name}</p>
+                      <span className="text-[11px] text-muted-foreground font-mono">{formatFileSize(replaceFile.size)}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplaceFile(null)}
+                    className="p-1.5 rounded-lg border border-border bg-background hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors cursor-pointer flex-shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {replacePreviewUrl && replaceFile.type === "application/pdf" && (
+                  <iframe src={replacePreviewUrl} className="w-full h-64 rounded-lg border border-border bg-white" title="Replacement PDF preview" />
+                )}
+              </div>
+            ) : (
+              <div
+                onClick={() => replaceFileInputRef.current?.click()}
+                className="border border-dashed rounded-xl p-5 text-center cursor-pointer transition-all border-border hover:border-amber-500/60 bg-muted/20 hover:bg-muted/40"
+              >
+                <Upload className="w-5 h-5 mx-auto text-muted-foreground mb-1.5" />
+                <p className="text-xs font-medium text-foreground">Click to select the corrected contract file</p>
+                <p className="text-[11px] text-muted-foreground">Up to 10MB</p>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+              Replacement Reason (Required)
+            </label>
+            <textarea
+              rows={2}
+              value={replaceReason}
+              onChange={(e) => setReplaceReason(e.target.value)}
+              placeholder="e.g. Wrong tenant's scan was uploaded by mistake; replacing with the correct signed copy."
+              className="w-full text-xs p-2.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-amber-500"
+            />
+          </div>
+
+          {!replaceConfirming ? (
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={closeReplaceForm}
+                className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!replaceFile || !replaceReason.trim()}
+                onClick={() => setReplaceConfirming(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <span>Continue</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30">
+              <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0 space-y-2">
+                <p className="text-xs text-rose-800 dark:text-rose-300 font-medium">
+                  Confirm: this replaces the tenant-visible final contract immediately. Continue?
+                </p>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={replacing}
+                    onClick={() => setReplaceConfirming(false)}
+                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={replacing}
+                    onClick={handleConfirmReplace}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+                  >
+                    {replacing ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Replacing…</span>
+                      </>
+                    ) : (
+                      <span>Confirm Replacement</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Upload Form Modal / Drawer */}
-      {showUploadForm && (
+      {!hasFinalDocument && showUploadForm && (
         <form
           onSubmit={handleUpload}
           onDragOver={(e) => e.preventDefault()}
