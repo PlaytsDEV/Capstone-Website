@@ -16,6 +16,7 @@ import {
   ensureChatTicketIds,
   generateChatTicketId,
 } from "../services/chatTicketIdService.js";
+import { MAX_SUPPORT_ATTACHMENTS } from "../config/supportAttachments.js";
 
 const MAX_MESSAGE_CHARS = 1000;
 const ADMIN_ROLES = new Set(ADMIN_ROLE_VALUES);
@@ -101,8 +102,12 @@ function normalizeMessage(rawMessage, hasAttachments = false) {
 
 async function normalizeAttachments(rawAttachments, conversationId) {
   if (!Array.isArray(rawAttachments) || rawAttachments.length === 0) return [];
-  if (rawAttachments.length > 5) {
-    throw createHttpError("A message can contain at most 5 attachments.", 400, "TOO_MANY_ATTACHMENTS");
+  if (rawAttachments.length > MAX_SUPPORT_ATTACHMENTS) {
+    throw createHttpError(
+      `A message can contain at most ${MAX_SUPPORT_ATTACHMENTS} attachments.`,
+      400,
+      "TOO_MANY_ATTACHMENTS",
+    );
   }
 
   const ids = rawAttachments.map((att) => att?.attachmentId || att?.id).filter(Boolean);

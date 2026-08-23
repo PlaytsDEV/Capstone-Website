@@ -18,6 +18,31 @@ test("chat attachment reads use protectedFetch rather than public storage URLs",
   assert.doesNotMatch(page, /href=\{doc\.url \|\| doc\.fileUrl\}/);
 });
 
+// A protected read that fails must settle on a definite, readable state. The
+// original implementation only ever set the object URL, so a failed read left
+// the skeleton pulsing forever — indistinguishable from a slow network and
+// impossible for an admin to act on.
+test("a failed protected attachment read settles on a controlled error state", () => {
+  assert.match(page, /data-attachment-state="error"/);
+  assert.match(page, /data-attachment-state="loading"/);
+  assert.match(page, /data-attachment-state="ready"/);
+  assert.match(page, /Attachment unavailable/);
+  // The error branch must render before the loading branch, otherwise a
+  // failure would still fall through to the pulsing skeleton.
+  assert.ok(
+    page.indexOf('data-attachment-state="error"')
+      < page.indexOf('data-attachment-state="loading"'),
+    "the error state must take precedence over the loading skeleton",
+  );
+  // The failure path must be reachable: the catch has to record it.
+  assert.match(page, /\.catch\(\(\) => \{[\s\S]*setStatus\("error"\)/);
+});
+
+test("the failed attachment state offers a retry rather than a dead tile", () => {
+  assert.match(page, /setAttempt\(\(value\) => value \+ 1\)/);
+  assert.match(page, /\[attachment, attempt\]/);
+});
+
 test("administrative close remains distinct from tenant-confirmed resolution", () => {
   assert.match(page, />Close Conversation</);
   assert.match(page, /This is separate from tenant-confirmed resolution/);
