@@ -16,6 +16,7 @@ import {
   FileText,
   Filter,
   Image as ImageIcon,
+  ImageOff,
   Inbox,
   LoaderCircle,
   Lock,
@@ -109,6 +110,11 @@ const QUICK_REPLIES = [
   "Please confirm whether this resolved your concern.",
 ];
 
+// Mirrors MAX_SUPPORT_ATTACHMENTS in server/config/supportAttachments.js and
+// the mobile client's own copy of the same number. The server enforces it
+// independently — this only stops the admin staging a set it would refuse.
+const MAX_SUPPORT_ATTACHMENTS = 5;
+
 const PRIORITY_RANK = { urgent: 0, high: 1, normal: 2 };
 
 const fmtDateTime = (value) => {
@@ -125,23 +131,66 @@ const fmtDateTime = (value) => {
 
 function ProtectedChatImage({ attachment, className, onOpen, onLoad }) {
   const [source, setSource] = useState("");
+  // "loading" | "ready" | "error". A failed protected read must settle on a
+  // definite, readable state — an unresolved read used to leave the skeleton
+  // pulsing forever, which is indistinguishable from a slow network.
+  const [status, setStatus] = useState("loading");
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
     let active = true;
     let objectUrl = "";
+    setStatus("loading");
+    setSource("");
     chatApi.getAttachmentBlob(attachment)
       .then((blob) => {
         objectUrl = URL.createObjectURL(blob);
-        if (active) setSource(objectUrl);
+        if (!active) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        setSource(objectUrl);
+        setStatus("ready");
       })
-      .catch(() => setSource(""));
+      .catch(() => {
+        if (active) setStatus("error");
+      });
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [attachment]);
+  }, [attachment, attempt]);
 
-  if (!source) {
-    return <div className={`${className} bg-muted animate-pulse`} aria-label="Loading protected attachment" />;
+  if (status === "error") {
+    return (
+      <div
+        className={`${className} bg-muted border border-border/60 rounded-lg flex flex-col items-center justify-center gap-1 text-center p-2`}
+        role="alert"
+        data-attachment-state="error"
+      >
+        <ImageOff size={18} className="text-muted-foreground" aria-hidden="true" />
+        <span className="text-[11px] leading-tight text-muted-foreground">
+          Attachment unavailable
+        </span>
+        <button
+          type="button"
+          onClick={() => setAttempt((value) => value + 1)}
+          className="text-[11px] underline text-muted-foreground hover:text-foreground"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (status === "loading" || !source) {
+    return (
+      <div
+        className={`${className} bg-muted animate-pulse`}
+        aria-label="Loading protected attachment"
+        data-attachment-state="loading"
+      />
+    );
   }
   return (
     <button
@@ -149,6 +198,7 @@ function ProtectedChatImage({ attachment, className, onOpen, onLoad }) {
       onClick={() => onOpen?.({ ...attachment, objectUrl: source })}
       className="relative group rounded-lg overflow-hidden border border-border/40 focus:outline-none cursor-pointer block"
       title="Click to enlarge"
+      data-attachment-state="ready"
     >
       <img
         src={source}
@@ -671,7 +721,7 @@ export default function AdminChatPage() {
     }
 
     if (newAttachments.length > 0) {
-      setStagedAttachments((prev) => [...prev, ...newAttachments].slice(0, 5));
+      setStagedAttachments((prev) => [...prev, ...newAttachments].slice(0, MAX_SUPPORT_ATTACHMENTS));
     }
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -738,7 +788,7 @@ export default function AdminChatPage() {
     }
 
     if (pastedImages.length > 0) {
-      setStagedAttachments((prev) => [...prev, ...pastedImages].slice(0, 5));
+      setStagedAttachments((prev) => [...prev, ...pastedImages].slice(0, MAX_SUPPORT_ATTACHMENTS));
       const hasText = e.clipboardData.getData("text/plain");
       if (!hasText) {
         e.preventDefault();
