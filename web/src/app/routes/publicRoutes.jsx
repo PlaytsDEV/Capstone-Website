@@ -115,11 +115,9 @@ export function PublicRoutes() {
         <Route
           path="/reset-password"
           element={
-            <RequireNonAdmin>
-              <RouteShell name="ResetPassword" fallback={<GlobalLoading />}>
-                <ResetPassword />
-              </RouteShell>
-            </RequireNonAdmin>
+            <RouteShell name="ResetPassword" fallback={<GlobalLoading />}>
+              <ResetPassword />
+            </RouteShell>
           }
         />
         <Route
