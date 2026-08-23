@@ -125,21 +125,25 @@ async function runRoomTransferActivation({ successorContractId, actorId, session
     );
   }
 
-  successor.isCurrent = true;
-  await transitionContract(
-    successor,
-    "active",
-    actorId,
-    "Room transfer executed; successor Contract activated",
-    session,
-  );
-
+  // Clear the predecessor from the partial unique stayId/isCurrent index
+  // before making the successor current. Both writes use the same transaction,
+  // so external readers still observe one atomic cutover while MongoDB never
+  // has to accept two current Contracts for the stay inside the transaction.
   predecessor.supersededByContractId = successor._id;
   await transitionContract(
     predecessor,
     "replaced",
     actorId,
     `Superseded by room transfer successor Contract ${successor.contractNumber}`,
+    session,
+  );
+
+  successor.isCurrent = true;
+  await transitionContract(
+    successor,
+    "active",
+    actorId,
+    "Room transfer executed; successor Contract activated",
     session,
   );
 
