@@ -994,6 +994,8 @@ async function reconcileMissingContractGeneration() {
             reservationId: contract.reservationId,
             approvalState: eligibility.approvalState,
             blocker: eligibility.blockers[0]?.code,
+            blockerCategory: eligibility.blockers[0]?.category,
+            humanActionRequired: eligibility.blockers[0]?.humanActionRequired,
           },
           "reconcileMissingContractGeneration: not yet generatable — skipping (reservation approval incomplete)",
         );

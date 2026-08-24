@@ -21,6 +21,8 @@ export const resolveReservationContractEligibility = (reservation = {}, context 
   const rawStatus = normalized(reservation.status);
   const rejected = REJECTED_STATUSES.has(rawStatus) || Boolean(reservation.rejectedAt);
   const cancelled = CANCELLED_STATUSES.has(rawStatus) || Boolean(reservation.cancelledAt);
+  const cancellationPending = Boolean(reservation.cancellationRequested) &&
+    normalized(reservation.cancellationStatus) === "pending";
   const sourceEvidence = {
     status: reservation.status || null,
     applicationReviewedAt: reservation.applicationReviewedAt || null,
@@ -33,6 +35,7 @@ export const resolveReservationContractEligibility = (reservation = {}, context 
     paymentStatus: reservation.paymentStatus || null,
     rejected,
     cancelled,
+    cancellationPending,
     legacyConfirmedAt: reservation.legacyContractApprovalConfirmedAt || null,
     legacyConfirmedBy: reservation.legacyContractApprovalConfirmedBy || null,
   };
@@ -56,6 +59,27 @@ export const resolveReservationContractEligibility = (reservation = {}, context 
       message: rejected
         ? "The Reservation was rejected."
         : "The Reservation was cancelled.",
+      category: "BUSINESS_CONFLICT",
+      retryable: false,
+      humanActionRequired: true,
+    }],
+    sourceEvidence,
+    legacyCompatibilityApplied: false,
+  };
+  // A pending cancellation request means the tenant's continued occupancy is
+  // unresolved — generating a new legal contract while that is open would
+  // hand the tenant a document the business may be about to void. This is
+  // checked ahead of approval/legacy evidence so an otherwise-eligible
+  // reservation is still held for Admin review while the request is open.
+  if (cancellationPending) return {
+    eligible: false,
+    approvalState: "cancellation_pending",
+    blockers: [{
+      code: "RESERVATION_CANCELLATION_PENDING",
+      message: "The Reservation has an open cancellation request awaiting Admin review.",
+      category: "PENDING_CANCELLATION",
+      retryable: false,
+      humanActionRequired: true,
     }],
     sourceEvidence,
     legacyCompatibilityApplied: false,
@@ -77,6 +101,9 @@ export const resolveReservationContractEligibility = (reservation = {}, context 
       details: {
         description: "This tenant is already marked as moved in, but the Reservation is missing approval metadata required for Contract generation.",
       },
+      category: "HISTORICAL_METADATA",
+      retryable: false,
+      humanActionRequired: true,
     }],
     sourceEvidence,
     legacyCompatibilityApplied: false,
@@ -87,6 +114,9 @@ export const resolveReservationContractEligibility = (reservation = {}, context 
     blockers: [{
       code: "CONTRACT_SOURCE_APPROVAL_REQUIRED",
       message: "The reservation and application must be approved before Contract generation.",
+      category: "PENDING_ADMIN_ACTION",
+      retryable: false,
+      humanActionRequired: true,
     }],
     sourceEvidence,
     legacyCompatibilityApplied: false,
