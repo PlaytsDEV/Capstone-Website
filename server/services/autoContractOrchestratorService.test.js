@@ -7,6 +7,7 @@ describe("autoContractOrchestratorService", () => {
   let autoGenerateTransferContract;
   let mockContractFindOne;
   let mockContractUpdateOne;
+  let mockContractCollectionUpdateOne;
   let mockContractFindById;
   let mockReservationFindById;
   let mockUserFindById;
@@ -24,6 +25,7 @@ describe("autoContractOrchestratorService", () => {
 
     mockContractFindOne = jest.fn();
     mockContractUpdateOne = jest.fn().mockResolvedValue({});
+    mockContractCollectionUpdateOne = jest.fn().mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
     mockContractFindById = jest.fn();
     mockReservationFindById = jest.fn();
     mockUserFindById = jest.fn();
@@ -47,6 +49,7 @@ describe("autoContractOrchestratorService", () => {
         findOne: mockContractFindOne,
         updateOne: mockContractUpdateOne,
         findById: mockContractFindById,
+        collection: { updateOne: mockContractCollectionUpdateOne },
       },
       Reservation: {
         findById: mockReservationFindById,
@@ -213,7 +216,12 @@ describe("autoContractOrchestratorService", () => {
       mockContractFindOne.mockResolvedValueOnce(generatedContract);
       // Reflects the DB state the code re-reads after its own updateOne
       // demotes status to re-enter the generation gate.
-      mockContractFindById.mockResolvedValueOnce({ ...generatedContract, status: "ready_for_generation" });
+      mockContractFindById.mockResolvedValueOnce({
+        ...generatedContract,
+        status: "ready_for_generation",
+        leaseStartDate: new Date("2026-02-01"),
+        leaseEndDate: new Date("2026-08-01"),
+      });
       mockGeneratePreparedContractPdf.mockResolvedValue({
         contract: { ...generatedContract, status: "generated" },
         document: { version: 2 },
@@ -231,8 +239,14 @@ describe("autoContractOrchestratorService", () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockContractUpdateOne).toHaveBeenCalledWith(
-        { _id: contractId },
+      expect(mockContractCollectionUpdateOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          _id: contractId,
+          isCurrent: true,
+          status: "generated",
+          archivedAt: null,
+          finalDocument: null,
+        }),
         { $set: expect.objectContaining({ status: "ready_for_generation" }) },
       );
       expect(mockGeneratePreparedContractPdf).toHaveBeenCalledWith(
@@ -262,7 +276,12 @@ describe("autoContractOrchestratorService", () => {
         save: jest.fn().mockResolvedValue(true),
       };
       mockContractFindOne.mockResolvedValueOnce(generatedContract);
-      mockContractFindById.mockResolvedValueOnce({ ...generatedContract, status: "ready_for_generation" });
+      mockContractFindById.mockResolvedValueOnce({
+        ...generatedContract,
+        status: "ready_for_generation",
+        leaseStartDate: new Date("2026-02-01"),
+        leaseEndDate: new Date("2026-08-01"),
+      });
       mockGeneratePreparedContractPdf.mockRejectedValueOnce(
         Object.assign(new Error("RESERVATION_FEE_PAYMENT_NOT_VERIFIED"), { code: "CONTRACT_GENERATION_VALIDATION_FAILED" }),
       );
@@ -277,9 +296,15 @@ describe("autoContractOrchestratorService", () => {
       // The revert is a distinct, guarded call: only flips status back to
       // "generated", and only if it's still "ready_for_generation" (no
       // concurrent change since this invocation's own demotion).
-      expect(mockContractUpdateOne).toHaveBeenCalledWith(
+      expect(mockContractCollectionUpdateOne).toHaveBeenLastCalledWith(
         { _id: contractId, status: "ready_for_generation" },
-        { $set: { status: "generated" } },
+        {
+          $set: expect.objectContaining({
+            status: "generated",
+            leaseStartDate: generatedContract.leaseStartDate,
+            leaseEndDate: generatedContract.leaseEndDate,
+          }),
+        },
       );
     });
 
