@@ -38,9 +38,25 @@ test("applicant notifications are limited to reservation, visit, and application
   );
 });
 
-test("tenant notifications remain tenant-specific", () => {
+test("tenant notifications include billing, maintenance, contracts, chat, violations, and personal history", () => {
   assert.equal(
     isNotificationVisibleForUser({ type: "maintenance_update" }, tenant),
+    true,
+  );
+  assert.equal(
+    isNotificationVisibleForUser({ type: "contract_document_ready" }, tenant),
+    true,
+  );
+  assert.equal(
+    isNotificationVisibleForUser({ type: "chat_reply" }, tenant),
+    true,
+  );
+  assert.equal(
+    isNotificationVisibleForUser({ type: "renewal_effective" }, tenant),
+    true,
+  );
+  assert.equal(
+    isNotificationVisibleForUser({ type: "tenant_violation" }, tenant),
     true,
   );
   assert.equal(
@@ -52,8 +68,20 @@ test("tenant notifications remain tenant-specific", () => {
     true,
   );
   assert.equal(
+    isNotificationVisibleForUser({
+      type: "general",
+      title: "Lease Renewal Offer",
+      entityType: "reservation",
+    }, tenant),
+    true,
+  );
+  assert.equal(
     isNotificationVisibleForUser({ type: "visit_approved" }, tenant),
-    false,
+    true,
+  );
+  assert.equal(
+    isNotificationVisibleForUser({ type: "reservation_confirmed" }, tenant),
+    true,
   );
   assert.equal(
     isNotificationVisibleForUser({

@@ -50,9 +50,9 @@ import "../../../admin/styles/design-tokens.css";
 // ── Filter tabs per role ──
 const ALL_FILTER_TABS = [
 	{ key: "all", label: "All", roles: ["applicant", "tenant"] },
-	{ key: "reservation", label: "Reservations", roles: ["applicant"] },
+	{ key: "reservation", label: "Reservations", roles: ["applicant", "tenant"] },
 	{ key: "application", label: "Applications", roles: ["applicant"] },
-	{ key: "visit", label: "Visits", roles: ["applicant"] },
+	{ key: "visit", label: "Visits", roles: ["applicant", "tenant"] },
 	{ key: "payment", label: "Payments", roles: ["applicant", "tenant"] },
 	{ key: "billing", label: "Billing", roles: ["tenant"] },
 	{ key: "maintenance", label: "Maintenance", roles: ["tenant"] },
@@ -63,7 +63,9 @@ const ALL_FILTER_TABS = [
 function matchesFilter(notification, filter) {
 	if (filter === "all") return true;
 	if (filter === "reservation") {
-		return notification.type.startsWith("reservation_");
+		return notification.type.startsWith("reservation_") ||
+			notification.title?.toLowerCase().includes("reservation") ||
+			notification.title?.toLowerCase().includes("renewal");
 	}
 	if (filter === "application") {
 		return notification.type === "general" && notification.title?.toLowerCase().includes("application");
@@ -78,13 +80,13 @@ function matchesFilter(notification, filter) {
 	}
 	if (filter === "billing") {
 		return ["bill_generated", "bill_due_reminder", "penalty_applied",
-			"contract_expiring", "grace_period_warning"].includes(notification.type);
+			"contract_expiring", "grace_period_warning", "contract_document_ready", "renewal_effective"].includes(notification.type);
 	}
 	if (filter === "maintenance") {
 		return notification.type === "maintenance_update";
 	}
 	if (filter === "announcement") {
-		return notification.type === "announcement";
+		return notification.type === "announcement" || notification.type === "chat_reply";
 	}
 	return notification.type === filter;
 }
@@ -132,11 +134,14 @@ const TYPE_CONFIG = {
 	penalty_applied: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Penalty Applied" },
 	contract_expiring: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.warning, label: "Expiring Soon" },
 	contract_document_ready: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Ready for Signing" },
+	renewal_effective: { icon: Calendar, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Renewal Active" },
 	move_in_reminder: { icon: Home, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Move-In Notice" },
 	account_suspended: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Suspended" },
 	account_reactivated: { icon: Check, colors: NOTIFICATION_COLOR_SCHEMES.success, label: "Reactivated" },
 	maintenance_update: { icon: Wrench, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Update" },
 	announcement: { icon: Megaphone, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Announcement" },
+	chat_reply: { icon: Megaphone, colors: NOTIFICATION_COLOR_SCHEMES.info, label: "Admin Reply" },
+	tenant_violation: { icon: AlertCircle, colors: NOTIFICATION_COLOR_SCHEMES.danger, label: "Violation" },
 	general: { icon: Bell, colors: NOTIFICATION_COLOR_SCHEMES.neutral, label: "Notice" },
 };
 

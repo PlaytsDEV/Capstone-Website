@@ -55,8 +55,10 @@ export default function useChatSocket({
   useEffect(() => { onTypingRef.current = onTyping; }, [onTyping]);
   useEffect(() => { onMessagesReadRef.current = onMessagesRead; }, [onMessagesRead]);
 
+  const userId = user?._id || user?.id || user?.userId || user?.uid;
+
   useEffect(() => {
-    if (!enabled || !user?.id || !user?.role) return;
+    if (!enabled || !userId || !user?.role) return;
 
     let cancelled = false;
 
@@ -133,7 +135,7 @@ export default function useChatSocket({
       socketRef.current = null;
       setIsConnected(false);
     };
-  }, [enabled, user?.id, user?.role]);
+  }, [enabled, userId, user?.role]);
 
   return { isConnected, socket: socketRef };
 }

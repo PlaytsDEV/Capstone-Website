@@ -38,6 +38,16 @@ export const TENANT_NOTIFICATION_TYPES = new Set([
   "account_suspended",
   "account_reactivated",
   "announcement",
+  "renewal_effective",
+  "tenant_violation",
+  "reservation_confirmed",
+  "reservation_cancelled",
+  "reservation_cancellation_requested",
+  "reservation_cancellation_rejected",
+  "reservation_expired",
+  "reservation_noshow",
+  "visit_approved",
+  "visit_rejected",
 ]);
 
 export const ADMIN_NOTIFICATION_TYPES = new Set([
@@ -53,6 +63,9 @@ export const ADMIN_NOTIFICATION_TYPES = new Set([
   "payment_proof_submitted",
   "application_submitted",
   "contract_signed",
+  "contract_prepared",
+  "contract_incomplete",
+  "contract_error",
   "visit_requested",
 ]);
 
@@ -64,6 +77,10 @@ const APPLICANT_GENERAL_TITLES = new Set([
   "Physical Visit Preference Saved",
   "2D Remote Viewing Request Submitted",
   "Urgent Move-in Review Requested",
+  "Move-In Readiness Incomplete",
+  "Remaining Initial Balance Available",
+  "Initial Payment Confirmed and Complete",
+  "Reservation Hold Expired",
 ]);
 
 const TENANT_GENERAL_TITLES = new Set([
@@ -71,6 +88,14 @@ const TENANT_GENERAL_TITLES = new Set([
   "Contract Renewed",
   "Move-Out Complete",
   "Room Transfer",
+  "Lease Renewal Offer",
+  "Renewal Declined",
+  "Lease Renewed!",
+  "Move-In Readiness Incomplete",
+  "Move-In Complete",
+  "Remaining Initial Balance Available",
+  "Initial Payment Confirmed and Complete",
+  "Reservation Hold Expired",
 ]);
 
 const ADMIN_ROLES = new Set(ADMIN_ROLE_VALUES);
@@ -88,14 +113,16 @@ const isApplicantReservationActionUrl = (notification = {}) => {
 
 const isApplicantGeneralNotification = (notification = {}) =>
   notification.type === "general" &&
+  !isAdminActionUrl(notification) &&
   (APPLICANT_GENERAL_TITLES.has(notification.title) ||
-    isApplicantReservationActionUrl(notification));
+    isApplicantReservationActionUrl(notification) ||
+    ["reservation", "bill", "user"].includes(notification.entityType));
 
 const isTenantGeneralNotification = (notification = {}) =>
   notification.type === "general" &&
   !isAdminActionUrl(notification) &&
   (TENANT_GENERAL_TITLES.has(notification.title) ||
-    ["bill", "maintenance", "stay", "user"].includes(notification.entityType));
+    ["bill", "maintenance", "stay", "user", "reservation", "contract", "announcement"].includes(notification.entityType));
 
 export const isNotificationVisibleForRole = (notification = {}, role) => {
   const normalizedRole = normalizeRole(role);
@@ -124,9 +151,22 @@ export const isNotificationVisibleForRole = (notification = {}, role) => {
 
 const applicantGeneralMongoFilter = {
   type: "general",
-  $or: [
-    { title: { $in: [...APPLICANT_GENERAL_TITLES] } },
-    { actionUrl: { $regex: "^/applicant/reservation(\\?|$)" } },
+  $and: [
+    {
+      $or: [
+        { actionUrl: { $exists: false } },
+        { actionUrl: null },
+        { actionUrl: "" },
+        { actionUrl: { $not: /^\/admin/ } },
+      ],
+    },
+    {
+      $or: [
+        { title: { $in: [...APPLICANT_GENERAL_TITLES] } },
+        { actionUrl: { $regex: "^/applicant/reservation(\\?|$)" } },
+        { entityType: { $in: ["reservation", "bill", "user"] } },
+      ],
+    },
   ],
 };
 
@@ -144,7 +184,7 @@ const tenantGeneralMongoFilter = {
     {
       $or: [
         { title: { $in: [...TENANT_GENERAL_TITLES] } },
-        { entityType: { $in: ["bill", "maintenance", "stay", "user"] } },
+        { entityType: { $in: ["bill", "maintenance", "stay", "user", "reservation", "contract", "announcement"] } },
       ],
     },
   ],
@@ -180,3 +220,4 @@ export const getNotificationVisibilityFilterForRole = (role) => {
 
 export const getNotificationVisibilityFilterForUser = (user) =>
   getNotificationVisibilityFilterForRole(user?.role);
+

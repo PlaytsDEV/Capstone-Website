@@ -34,9 +34,9 @@ import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
 
 const ALL_FILTER_TABS = [
   { key: "all", label: "All", roles: ["applicant", "tenant"] },
-  { key: "reservation", label: "Reservations", roles: ["applicant"] },
+  { key: "reservation", label: "Reservations", roles: ["applicant", "tenant"] },
   { key: "application", label: "Applications", roles: ["applicant"] },
-  { key: "visit", label: "Visits", roles: ["applicant"] },
+  { key: "visit", label: "Visits", roles: ["applicant", "tenant"] },
   { key: "payment", label: "Payments", roles: ["applicant", "tenant"] },
   { key: "billing", label: "Billing", roles: ["tenant"] },
   { key: "maintenance", label: "Maintenance", roles: ["tenant"] },
@@ -50,12 +50,14 @@ function NotificationIcon({ type }) {
     case "visit_approved":
     case "payment_approved":
     case "account_reactivated":
+    case "renewal_effective":
       return <CheckCircle2 {...iconProps} style={{ color: "#059669" }} />;
     case "reservation_cancelled":
     case "reservation_noshow":
     case "reservation_cancellation_rejected":
     case "visit_rejected":
     case "payment_rejected":
+    case "tenant_violation":
       return <XCircle {...iconProps} style={{ color: "#DC2626" }} />;
     case "account_suspended":
       return <Lock {...iconProps} style={{ color: "#DC2626" }} />;
@@ -75,6 +77,7 @@ function NotificationIcon({ type }) {
     case "maintenance_update":
       return <Wrench {...iconProps} style={{ color: "#2563EB" }} />;
     case "announcement":
+    case "chat_reply":
       return <Megaphone {...iconProps} style={{ color: "#2563EB" }} />;
     default:
       return <Info {...iconProps} style={{ color: "#64748B" }} />;
@@ -85,7 +88,9 @@ function NotificationIcon({ type }) {
 function matchesFilter(notification, filter) {
   if (filter === "all") return true;
   if (filter === "reservation") {
-    return notification.type.startsWith("reservation_");
+    return notification.type.startsWith("reservation_") ||
+      notification.title?.toLowerCase().includes("reservation") ||
+      notification.title?.toLowerCase().includes("renewal");
   }
   if (filter === "application") {
     return notification.type === "general" && notification.title?.toLowerCase().includes("application");
@@ -100,10 +105,13 @@ function matchesFilter(notification, filter) {
   }
   if (filter === "billing") {
     return ["bill_generated", "bill_due_reminder", "penalty_applied",
-            "contract_expiring", "grace_period_warning"].includes(notification.type);
+            "contract_expiring", "grace_period_warning", "contract_document_ready", "renewal_effective"].includes(notification.type);
   }
   if (filter === "maintenance") {
     return notification.type === "maintenance_update";
+  }
+  if (filter === "announcement") {
+    return notification.type === "announcement" || notification.type === "chat_reply";
   }
   return notification.type === filter;
 }
