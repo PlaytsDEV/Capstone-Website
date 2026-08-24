@@ -6,6 +6,8 @@ describe("autoContractOrchestratorService", () => {
   let autoGenerateMoveInContract;
   let autoGenerateTransferContract;
   let mockContractFindOne;
+  let mockContractUpdateOne;
+  let mockContractFindById;
   let mockReservationFindById;
   let mockUserFindById;
   let autoGenerateRenewalContract;
@@ -21,6 +23,8 @@ describe("autoContractOrchestratorService", () => {
     jest.resetModules();
 
     mockContractFindOne = jest.fn();
+    mockContractUpdateOne = jest.fn().mockResolvedValue({});
+    mockContractFindById = jest.fn();
     mockReservationFindById = jest.fn();
     mockUserFindById = jest.fn();
     mockCreateDraftContract = jest.fn();
@@ -41,6 +45,8 @@ describe("autoContractOrchestratorService", () => {
     jest.unstable_mockModule("../models/index.js", () => ({
       Contract: {
         findOne: mockContractFindOne,
+        updateOne: mockContractUpdateOne,
+        findById: mockContractFindById,
       },
       Reservation: {
         findById: mockReservationFindById,
@@ -167,6 +173,109 @@ describe("autoContractOrchestratorService", () => {
       expect(mockCreateDraftContract).not.toHaveBeenCalled();
       expect(mockGeneratePreparedContractPdf).toHaveBeenCalledWith(
         expect.objectContaining({ contractId }),
+      );
+    });
+
+    // Regression: contractPdfService.js's allowedStatuses accepts "generated"
+    // directly for regeneration, but the outer gate in this function only
+    // re-enters the generate path for draft/incomplete/ready_for_generation
+    // — so a "generated" Contract still has to be demoted to
+    // "ready_for_generation" to be regenerated at all. What changed: if
+    // regeneration then fails for any reason, the Contract must be reverted
+    // back to "generated" (not left stuck at "ready_for_generation", which
+    // hides its still-untouched, still-valid prior Draft from
+    // tenantDocument resolution) instead of silently losing tenant access.
+    test("a successful realignment + regeneration on a 'generated' contract completes without error", async () => {
+      const resId = new mongoose.Types.ObjectId();
+      const contractId = new mongoose.Types.ObjectId();
+      const actorId = new mongoose.Types.ObjectId();
+
+      mockReservationFindById.mockReturnValue({
+        lean: jest.fn().mockResolvedValue({ _id: resId }),
+      });
+      const generatedContract = {
+        _id: contractId,
+        contractNumber: "LIL-MNL-2026-00007",
+        status: "generated",
+        branch: "manila",
+        roomNumber: "107",
+        tenantId: "tenant123",
+        leaseDurationMonths: 6,
+        leaseStartDate: new Date("2026-01-01"),
+        leaseEndDate: new Date("2026-07-01"),
+        finalDocument: null,
+        save: jest.fn().mockResolvedValue(true),
+      };
+      mockContractFindOne.mockResolvedValueOnce(generatedContract);
+      // Reflects the DB state the code re-reads after its own updateOne
+      // demotes status to re-enter the generation gate.
+      mockContractFindById.mockResolvedValueOnce({ ...generatedContract, status: "ready_for_generation" });
+      mockGeneratePreparedContractPdf.mockResolvedValue({
+        contract: { ...generatedContract, status: "generated" },
+        document: { version: 2 },
+      });
+      mockUserFindById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({ firstName: "Maria", lastName: "Santos" }),
+        }),
+      });
+
+      const result = await autoGenerateMoveInContract({
+        reservationId: resId,
+        actorId,
+        actualMoveInDate: new Date("2026-02-01"),
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockContractUpdateOne).toHaveBeenCalledWith(
+        { _id: contractId },
+        { $set: expect.objectContaining({ status: "ready_for_generation" }) },
+      );
+      expect(mockGeneratePreparedContractPdf).toHaveBeenCalledWith(
+        expect.objectContaining({ contractId, regenerationReason: expect.any(String) }),
+      );
+    });
+
+    test("a failed regeneration on a 'generated' contract reverts status instead of leaving the prior Draft hidden", async () => {
+      const resId = new mongoose.Types.ObjectId();
+      const contractId = new mongoose.Types.ObjectId();
+      const actorId = new mongoose.Types.ObjectId();
+
+      mockReservationFindById.mockReturnValue({
+        lean: jest.fn().mockResolvedValue({ _id: resId }),
+      });
+      const generatedContract = {
+        _id: contractId,
+        contractNumber: "LIL-MNL-2026-00008",
+        status: "generated",
+        branch: "manila",
+        roomNumber: "108",
+        tenantId: "tenant123",
+        leaseDurationMonths: 6,
+        leaseStartDate: new Date("2026-01-01"),
+        leaseEndDate: new Date("2026-07-01"),
+        finalDocument: null,
+        save: jest.fn().mockResolvedValue(true),
+      };
+      mockContractFindOne.mockResolvedValueOnce(generatedContract);
+      mockContractFindById.mockResolvedValueOnce({ ...generatedContract, status: "ready_for_generation" });
+      mockGeneratePreparedContractPdf.mockRejectedValueOnce(
+        Object.assign(new Error("RESERVATION_FEE_PAYMENT_NOT_VERIFIED"), { code: "CONTRACT_GENERATION_VALIDATION_FAILED" }),
+      );
+
+      const result = await autoGenerateMoveInContract({
+        reservationId: resId,
+        actorId,
+        actualMoveInDate: new Date("2026-02-01"),
+      });
+
+      expect(result.success).toBe(false);
+      // The revert is a distinct, guarded call: only flips status back to
+      // "generated", and only if it's still "ready_for_generation" (no
+      // concurrent change since this invocation's own demotion).
+      expect(mockContractUpdateOne).toHaveBeenCalledWith(
+        { _id: contractId, status: "ready_for_generation" },
+        { $set: { status: "generated" } },
       );
     });
 
