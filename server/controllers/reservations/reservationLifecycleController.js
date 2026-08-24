@@ -150,7 +150,7 @@ export const updateReservation = async (req, res, next) => {
 
     const existingReservation = await Reservation.findById(
       reservationId,
-    ).populate("roomId", "branch name type price monthlyPrice");
+    ).populate("roomId", "branch name type price monthlyPrice regularLongRate regularShortRate isDiscountEnabled longTermLeaseMinMonths capacity");
     if (!existingReservation)
       return res.status(404).json({
         error: "Reservation not found",
@@ -312,8 +312,15 @@ export const updateReservation = async (req, res, next) => {
         let pricingSnapshot;
         try {
           const businessSettings = await getBusinessSettings();
+          const effectiveLeaseDuration =
+            req.body.leaseDuration ?? existingReservation.leaseDuration;
           pricingSnapshot = buildStructuredPricingSnapshot({
-            reservation: existingReservation,
+            reservation: {
+              ...(typeof existingReservation.toObject === "function"
+                ? existingReservation.toObject()
+                : existingReservation),
+              leaseDuration: effectiveLeaseDuration,
+            },
             room: existingReservation.roomId,
             approvedBy: req.adminId || null,
             approvedAt,

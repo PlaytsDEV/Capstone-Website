@@ -188,7 +188,12 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
 
   // Dynamic user status & role resolution
   const isApplicant = useMemo(() => {
-    if (contextSnapshot) return Boolean(contextSnapshot.isApplicant);
+    if (contextSnapshot?.isApplicant !== undefined) {
+      return Boolean(contextSnapshot.isApplicant);
+    }
+    if (user?.role === "tenant" || user?.tenantStatus === "active") {
+      return false;
+    }
     const path = location.pathname.toLowerCase();
     return (
       user?.role === "applicant" ||
@@ -458,8 +463,8 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
     "Tenant";
 
   const branchLabel = formatBranch(user?.branch || contextSnapshot?.branch);
-  const roomLabel = user?.roomNumber || contextSnapshot?.roomNumber || "304";
-  const bedLabel = user?.roomBed || contextSnapshot?.bedPosition || "Bed 1";
+  const roomLabel = user?.roomNumber || contextSnapshot?.roomNumber || "Unassigned";
+  const bedLabel = user?.roomBed || user?.bedPosition || contextSnapshot?.bedPosition || "Assigned Bed";
 
   const handleClearHistory = () => {
     if (isStreaming) {

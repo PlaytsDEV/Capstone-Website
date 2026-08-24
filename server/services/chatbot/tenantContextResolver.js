@@ -219,11 +219,11 @@ export async function resolveTenantAIContext(
 
   const dbUser = identityClauses.length
     ? await User.findOne({ $or: identityClauses })
-      .select("firstName lastName name fullName email user_id firebaseUid")
+      .select("firstName lastName name fullName email user_id firebaseUid role tenantStatus branch phone")
       .lean()
       .catch(() => null)
     : null;
-  const user = dbUser || fallbackAuthUser;
+  const user = dbUser ? { ...fallbackAuthUser, ...dbUser } : fallbackAuthUser;
   const tenantIdValue = dbUser?._id || validObjectId || fallbackAuthUser?._id;
   if (!user || !mongoose.Types.ObjectId.isValid(tenantIdValue)) {
     return buildNeutralContext(user);
@@ -306,9 +306,25 @@ export async function resolveTenantAIContext(
       : Promise.resolve([]),
   ]);
 
+  const hasMovedInReservation = currentReservation?.status === "moveIn";
+  const hasActiveContract = Boolean(
+    canonicalContract && ["active", "signed"].includes(canonicalContract.status)
+  );
+  const isExplicitTenant = user?.role === "tenant" || user?.tenantStatus === "active";
+  const currentResident = Boolean(
+    activeStay ||
+    hasMovedInReservation ||
+    hasActiveContract ||
+    isExplicitTenant
+  );
+
   const room = resolveRoom(activeStay, currentReservation);
-  const branchRaw = audienceContext.branch || null;
-  const currentResident = Boolean(activeStay);
+  const branchRaw = audienceContext.branch
+    || activeStay?.branch
+    || currentReservation?.branch
+    || currentReservation?.roomId?.branch
+    || user?.branch
+    || null;
   const scheduledMoveInDate = currentResident
     ? null
     : (
@@ -327,7 +343,10 @@ export async function resolveTenantAIContext(
     ? await loadVisibleAnnouncements(db, audienceContext, now).catch(() => [])
     : [];
 
-  const isApplicant = !currentResident && Boolean(currentReservation || user?.role === "applicant");
+  const isApplicant = !currentResident && (
+    user?.role === "applicant" ||
+    (Boolean(currentReservation) && currentReservation?.status !== "moveIn")
+  );
 
   const reservationContext = currentReservation ? {
     reservationId: String(currentReservation._id),
@@ -351,7 +370,7 @@ export async function resolveTenantAIContext(
     branch: formatBranchName(branchRaw),
     branchRaw,
     branchSource: audienceContext.branchSource || "unresolved",
-    roomNumber: room?.roomNumber || room?.name || contract?.roomNumber || null,
+    roomNumber: room?.roomNumber || room?.name || currentReservation?.roomNumber || contract?.roomNumber || null,
     bedPosition: activeStay?.bedCode || activeStay?.bedId
       || selectedBedLabel(currentReservation)
       || contract?.bedPosition
@@ -359,7 +378,10 @@ export async function resolveTenantAIContext(
     tenancy: {
       status: tenancyStatus,
       isCurrentResident: currentResident,
-      occupancyStartedAt: activeStay?.leaseStartDate || null,
+      occupancyStartedAt: activeStay?.leaseStartDate
+        || (hasMovedInReservation ? (currentReservation?.confirmedMoveInDate || currentReservation?.moveInDate || null) : null)
+        || contract?.startDate
+        || null,
       scheduledMoveInDate,
     },
     reservation: reservationContext,

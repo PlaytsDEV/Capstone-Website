@@ -112,18 +112,22 @@ describe("tenant chatbot widget intent detection and gating", () => {
     expect(detectTenantWidgetIntent("What is my unpaid bill balance?", tenantContext)).toBe("billing_breakdown");
   });
 
-  test("determineTenantSuggestedActions returns applicant actions for applicant context", () => {
-    const applicantContext = {
-      isApplicant: true,
-      tenantName: "Jane Applicant",
+  test("determineTenantSuggestedActions returns tenant actions for active tenant even if reservation exists", () => {
+    const tenantContext = {
+      isApplicant: false,
+      userRole: "tenant",
+      tenantName: "Maria Santos",
+      reservation: { status: "moveIn" },
+      contract: null,
+      tenancy: { isCurrentResident: true, status: "active" },
     };
 
-    const actions = determineTenantSuggestedActions("Tell me about my stay", "", applicantContext);
+    const actions = determineTenantSuggestedActions("Help me with dorm info", "", tenantContext);
     expect(actions).toEqual([
-      { label: "Reservation Status", prompt: "What is my current reservation status?" },
-      { label: "Deposit Payment Steps", prompt: "How do I settle the advance rent and security deposit?" },
-      { label: "Browse Rooms", url: "/applicant/check-availability" },
-      { label: "Chat with Admin", action: "open_escalate_modal" },
+      { label: "My Bills", url: "/applicant/billing" },
+      { label: "My Contract", url: "/applicant/contracts" },
+      { label: "Maintenance Portal", url: "/applicant/maintenance" },
+      { label: "House Rules", prompt: "What are the building curfew hours and visitor policies?" },
     ]);
   });
 });

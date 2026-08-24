@@ -626,7 +626,7 @@ function CheckAvailabilityPage() {
           ? { id: selectedBed.id, position: selectedBed.position }
           : null,
         selectedAppliances: buildSelectedAppliancesPayload(),
-        leaseDuration: selectedLeaseDuration || "6",
+        leaseDuration: selectedLeaseDuration ? String(selectedLeaseDuration) : null,
         intendedMoveInDate: selectedIntendedMoveInDate,
         targetMoveInDate: selectedIntendedMoveInDate,
         moveInDate: selectedIntendedMoveInDate,

@@ -615,6 +615,21 @@ export const submitApplication = async (req, res, next) => {
       updates.validIDType = submittedIdType;
     }
 
+    // Re-synchronize authoritative monthlyRent and totalPrice based on the chosen leaseDuration
+    try {
+      const syncPricing = await buildReservationPricing({
+        room,
+        leaseDuration: updates.leaseDuration ?? reservation.leaseDuration,
+        selectedAppliances: updates.selectedAppliances ?? reservation.selectedAppliances,
+      });
+      if (syncPricing?.monthlyRent) {
+        updates.monthlyRent = syncPricing.monthlyRent;
+        updates.totalPrice = syncPricing.monthlyRent;
+      }
+    } catch (pricingErr) {
+      logger.warn({ err: pricingErr, reservationId }, "Failed to recalculate pricing on application submission");
+    }
+
     updates.status = "pending_application_review";
     updates.applicationSubmittedAt = new Date();
     if (previouslySubmittedApplication) {

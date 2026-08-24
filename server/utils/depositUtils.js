@@ -56,13 +56,20 @@ export function resolveReservationFinancials(reservation = {}) {
   const isPrivate = rawRoomType.includes("private") || room.capacity === 1;
   const isDouble = rawRoomType.includes("double") || room.capacity === 2;
 
+  const duration = Number(
+    reservation.leaseDuration ||
+      reservation.pricingSnapshot?.leaseDurationMonths ||
+      0,
+  );
+  const isShortTerm = Number.isFinite(duration) && duration > 0 && duration < 6;
+
   // 1. Determine authoritative monthly rent based on chosen room & snapshots
   let monthlyRent = 0;
   const candidates = [
     reservation.pricingSnapshot?.finalMonthlyRate,
     reservation.contract?.approvedMonthlyRate,
     reservation.pricingDisplay?.finalMonthlyRate,
-    room.monthlyPrice,
+    isShortTerm ? (room.shortTermRate || room.price) : (room.monthlyPrice || room.price),
     room.price,
     room.rent,
     reservation.monthlyRent,
@@ -80,18 +87,18 @@ export function resolveReservationFinancials(reservation = {}) {
   // Self-heal room-type rate anomalies (e.g. private room having stale 5400/quadruple default):
   if (isPrivate) {
     if (monthlyRent <= 0 || monthlyRent < 10000) {
-      monthlyRent = Number(room.monthlyPrice || room.price || 13500);
-      if (monthlyRent < 10000) monthlyRent = 13500;
+      monthlyRent = Number(isShortTerm ? (room.shortTermRate || 14000) : (room.monthlyPrice || room.price || 13500));
+      if (monthlyRent < 10000) monthlyRent = isShortTerm ? 14400 : 13500;
     }
   } else if (isDouble) {
     if (monthlyRent <= 0 || monthlyRent < 7000) {
-      monthlyRent = Number(room.monthlyPrice || room.price || 8000);
-      if (monthlyRent < 7000) monthlyRent = 8000;
+      monthlyRent = Number(isShortTerm ? (room.shortTermRate || 8000) : (room.monthlyPrice || room.price || 7200));
+      if (monthlyRent < 7000) monthlyRent = isShortTerm ? 8000 : 7200;
     }
   } else {
     // Quadruple or general sharing
     if (monthlyRent <= 0) {
-      monthlyRent = Number(room.monthlyPrice || room.price || 5400);
+      monthlyRent = Number(isShortTerm ? (room.shortTermRate || 6300) : (room.monthlyPrice || room.price || 5400));
     }
   }
 
@@ -101,19 +108,31 @@ export function resolveReservationFinancials(reservation = {}) {
       DEFAULT_RESERVATION_FEE,
   );
 
-  // Advance Rent is 1 month rent
-  let advanceRent = monthlyRent;
+  // Advance Rent is 1 month rent (prefer authoritative pricingSnapshot when present)
+  let advanceRent =
+    Number(reservation.pricingSnapshot?.advanceRentAmount) || monthlyRent;
   const rawAdvance = Number(reservation.moveInCashOut?.monthlyAdvance);
-  if (Number.isFinite(rawAdvance) && rawAdvance > 0 && Math.abs(rawAdvance - monthlyRent) < 1) {
+  if (
+    !reservation.pricingSnapshot?.advanceRentAmount &&
+    Number.isFinite(rawAdvance) &&
+    rawAdvance > 0 &&
+    Math.abs(rawAdvance - monthlyRent) < 1
+  ) {
     advanceRent = rawAdvance;
   }
 
-  // Security Deposit is 1 month rent
-  let securityDeposit = monthlyRent;
+  // Security Deposit is 1 month rent (prefer authoritative pricingSnapshot when present)
+  let securityDeposit =
+    Number(reservation.pricingSnapshot?.securityDepositAmount) || monthlyRent;
   const rawDeposit = Number(
     reservation.moveInCashOut?.securityDeposit ?? reservation.securityDeposit,
   );
-  if (Number.isFinite(rawDeposit) && rawDeposit > 0 && Math.abs(rawDeposit - monthlyRent) < 1) {
+  if (
+    !reservation.pricingSnapshot?.securityDepositAmount &&
+    Number.isFinite(rawDeposit) &&
+    rawDeposit > 0 &&
+    Math.abs(rawDeposit - monthlyRent) < 1
+  ) {
     securityDeposit = rawDeposit;
   }
 
