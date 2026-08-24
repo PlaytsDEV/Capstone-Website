@@ -416,6 +416,7 @@ app.get("/api/health", async (req, res) => {
       status: healthy ? "healthy" : "degraded",
       checks,
       environment: process.env.NODE_ENV || "development",
+      commit: process.env.RENDER_GIT_COMMIT || null,
     },
     meta: {
       requestId: req.id,
