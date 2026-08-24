@@ -470,6 +470,34 @@ const ProfilePage = () => {
  return () => window.removeEventListener("popstate", handlePopState);
  }, [isReservationConfirmed]);
 
+  const isProfileLocked = useMemo(() => {
+    if (profileData.role === "tenant") return true;
+    const normalizedTenantStatus = String(profileData.tenantStatus || "").toLowerCase();
+    if (["active", "moved_in", "moved_out", "checked_in"].includes(normalizedTenantStatus)) {
+      return true;
+    }
+    // Check if user has an active non-cancelled, non-rejected reservation with a submitted application or confirmed status
+    const submittedReservation = (Array.isArray(reservationsData) ? reservationsData : []).find(
+      (reservation) => {
+        const status = reservation.reservationStatus || reservation.status;
+        if (hasReservationStatus(status, "cancelled", "rejected")) return false;
+        return (
+          Boolean(reservation.applicationSubmittedAt) ||
+          hasReservationStatus(
+            status,
+            "pending_application_review",
+            "approved_for_payment",
+            "payment_pending",
+            "reserved",
+            "moveIn",
+            "moveOut",
+          )
+        );
+      },
+    );
+    return Boolean(submittedReservation);
+  }, [profileData.role, profileData.tenantStatus, reservationsData]);
+
   const fullName = formatDisplayName(
     [profileData.firstName, profileData.middleName, profileData.lastName]
       .filter(Boolean)
@@ -503,6 +531,7 @@ const ProfilePage = () => {
           fullName={fullName}
           isEditingProfile={isEditingProfile}
           setIsEditingProfile={setIsEditingProfile}
+          isProfileLocked={isProfileLocked}
           saving={saving}
           onSave={handleSaveProfile}
           onCancel={handleCancelEdit}

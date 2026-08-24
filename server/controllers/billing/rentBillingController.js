@@ -543,10 +543,7 @@ export const generateBulkBills = async (req, res, next) => {
             0,
           );
           const grossAmount = roundMoney(tenant.rent + utilityShare + customChargesTotal);
-          const reservationCreditApplied = Math.min(
-            grossAmount,
-            billingContext?.creditAvailable || 0,
-          );
+          const reservationCreditApplied = 0;
           const cycleDueDate = dueDate
             ? dayjs(dueDate).toDate()
             : billingContext?.cycle?.dueDate || monthDate.add(1, "month").date(15).toDate();

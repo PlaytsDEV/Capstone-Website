@@ -1,7 +1,7 @@
 import express from "express";
 import { verifyAdmin, verifyOwner, verifyToken } from "../middleware/auth.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
-import { requirePermission } from "../middleware/permissions.js";
+import { requireAnyPermission, requirePermission } from "../middleware/permissions.js";
 import {
   getAuditSummary,
   getAnalyticsInsights,
@@ -23,12 +23,21 @@ const router = express.Router();
 // Operational dashboard summary used by /admin/dashboard (branch-scoped)
 router.get("/dashboard", verifyToken, verifyAdmin, filterByBranch, getDashboardAnalytics);
 
+// Room Bed History endpoint — accessible by Branch Admin (manageRooms or viewReports) and Owner
+router.get(
+  "/rooms/:roomId/bed-history",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageRooms", "viewReports"]),
+  getRoomBedHistory,
+);
+
 // Deep analytics, reports, forecasts, and AI insights are strictly Owner-only
 router.use(verifyToken, verifyAdmin, verifyOwner);
 
 router.get("/reports/occupancy", filterByBranch, getOccupancyReport);
 router.get("/reports/occupancy-history", filterByBranch, getOccupancyRateHistory);
-router.get("/rooms/:roomId/bed-history", filterByBranch, getRoomBedHistory);
 router.get("/reports/billing", filterByBranch, getBillingReport);
 router.get("/reports/operations", filterByBranch, getOperationsReport);
 router.get("/reports/support-chat", filterByBranch, getSupportChatReport);

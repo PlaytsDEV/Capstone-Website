@@ -733,7 +733,7 @@ export default function RentBillingTab({
             Automated Rent Lifecycle
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Monitor auto-generated rent bills. Bills generate automatically 7 days before their due date.
+            Monitor auto-generated rent bills. Bills generate automatically 14 days before their due date.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
@@ -847,7 +847,7 @@ export default function RentBillingTab({
                 <span>Active</span>
               </span>
             </div>
-            <p className="mt-1.5 text-[11px] text-muted-foreground">Generates bills 7 days before due date automatically.</p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">Generates bills 14 days before due date automatically.</p>
             <div className="mt-2 flex items-center justify-between text-[11px]">
               <div className="flex items-center gap-1.5 font-bold text-emerald-700 dark:text-emerald-400">
                 <span className="relative flex h-2 w-2">

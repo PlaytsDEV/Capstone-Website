@@ -5,34 +5,49 @@
  *
  * Unified penalty calculation service for overdue bills.
  *
- * Plan 4 decisions applied:
+ * Plan 4 & Grace Period decisions:
  *   D2 — Penalty cap uses contractRentAtMoveIn (contract rate locked at move-in),
  *         not the current room charge (which may have changed).
- *   D4 — No grace period. Penalties start accumulating immediately on Day 1 past due.
+ *   Grace Period — Configurable grace period (default 1 day). Penalties begin
+ *         accruing after the grace period has elapsed.
  */
 
 import dayjs from "dayjs";
 import { diffManilaDays } from "../../utils/dateUtils.js";
 import {
   getPenaltyRatePerDay,
+  getLatePaymentGraceDays,
   getMaxPenaltyCapPercent,
   resolvePenaltyRatePerDay,
+  resolveLatePaymentGraceDays,
 } from "../../utils/businessSettings.js";
 
 /**
  * Compute the penalty amount for a single overdue bill.
  */
 export async function computePenalty(bill, settings = null, now = dayjs()) {
-  const [configuredRate, maxCapPercent] = settings
-    ? [settings.penaltyRatePerDay, settings.maxCapPercent]
-    : await Promise.all([getPenaltyRatePerDay(), getMaxPenaltyCapPercent()]);
+  const [configuredRate, configuredGraceDays, maxCapPercent] = settings
+    ? [settings.penaltyRatePerDay, settings.latePaymentGraceDays, settings.maxCapPercent]
+    : await Promise.all([
+        getPenaltyRatePerDay(),
+        getLatePaymentGraceDays(),
+        getMaxPenaltyCapPercent(),
+      ]);
 
   // Compare calendar dates only (Asia/Manila billing day boundaries) —
   // using diffManilaDays ensures accurate day-difference calculation regardless of server timezone.
   const daysLate = diffManilaDays(now, bill.dueDate);
 
   if (!Number.isFinite(daysLate) || daysLate <= 0) {
-    return { penalty: 0, daysLate: 0, ratePerDay: configuredRate, capped: false };
+    return {
+      penalty: 0,
+      daysLate: 0,
+      billableDays: 0,
+      graceDays: configuredGraceDays ?? 1,
+      isWithinGracePeriod: false,
+      ratePerDay: configuredRate,
+      capped: false,
+    };
   }
 
   const ratePerDay = resolvePenaltyRatePerDay(
@@ -40,9 +55,17 @@ export async function computePenalty(bill, settings = null, now = dayjs()) {
     configuredRate,
   );
 
-  // Plan 4 (D4): No grace period — penalties start on Day 1 past due.
-  // Every calendar day past the dueDate is a billable day.
-  const billableDays = daysLate;
+  const graceDays = resolveLatePaymentGraceDays(
+    bill.penaltyDetails?.graceDays,
+    configuredGraceDays,
+  );
+
+  // Penalties accrue only after the grace period:
+  // e.g. Due 10th with 1-day grace:
+  // - 11th: daysLate = 1 <= 1 grace day => billableDays = 0, penalty = ₱0
+  // - 12th: daysLate = 2 > 1 grace day => billableDays = 1, penalty = ₱50
+  // - 13th: daysLate = 3 > 1 grace day => billableDays = 2, penalty = ₱100
+  const billableDays = Math.max(0, daysLate - graceDays);
   const rawPenalty = billableDays * ratePerDay;
 
   // Plan 4 (D2): Use contractRentAtMoveIn (the rent rate locked at the tenant's
@@ -59,6 +82,9 @@ export async function computePenalty(bill, settings = null, now = dayjs()) {
   return {
     penalty,
     daysLate,
+    billableDays,
+    graceDays,
+    isWithinGracePeriod: daysLate > 0 && daysLate <= graceDays,
     ratePerDay,
     capped: penalty < rawPenalty,
   };
@@ -69,9 +95,10 @@ export async function computePenalty(bill, settings = null, now = dayjs()) {
  * computePenalty calls.
  */
 export async function fetchPenaltySettings() {
-  const [penaltyRatePerDay, maxCapPercent] = await Promise.all([
+  const [penaltyRatePerDay, latePaymentGraceDays, maxCapPercent] = await Promise.all([
     getPenaltyRatePerDay(),
+    getLatePaymentGraceDays(),
     getMaxPenaltyCapPercent(),
   ]);
-  return { penaltyRatePerDay, maxCapPercent };
+  return { penaltyRatePerDay, latePaymentGraceDays, maxCapPercent };
 }

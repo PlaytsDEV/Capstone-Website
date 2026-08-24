@@ -19,6 +19,7 @@ import {
   Layers,
   Shield,
   Loader2,
+  Lock,
 } from "lucide-react";
 import { fmtDate, formatBranch } from "../../../../shared/utils/formatDate";
 import { showNotification } from "../../../../shared/utils/notification";
@@ -222,8 +223,37 @@ const s = {
 
   actionWrap: {
     display: "flex",
+    alignItems: "center",
     gap: 8,
+    flexWrap: "wrap",
     flexShrink: 0,
+  },
+  lockedBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 12px",
+    borderRadius: "var(--radius-full, 999px)",
+    background: "transparent",
+    border: "1px solid var(--border)",
+    fontSize: "var(--font-size-xs, 12px)",
+    fontWeight: "var(--font-weight-medium, 500)",
+    color: "var(--muted-foreground)",
+  },
+  changePhotoBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "9px 16px",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-md, 8px)",
+    background: "var(--card)",
+    fontSize: "var(--font-size-sm, 13px)",
+    fontWeight: "var(--font-weight-semibold, 600)",
+    color: "var(--foreground)",
+    cursor: "pointer",
+    transition: "all var(--duration-fast, 150ms)",
+    whiteSpace: "nowrap",
   },
   editBtn: {
     display: "inline-flex",
@@ -537,16 +567,17 @@ const Field = ({
 
 const BirthdayField = ({
   icon: Icon,
-  label = "Date of Birth",
-  value,
-  field = "dateOfBirth",
+  label,
+  field,
   colSpan,
   editing,
   editData,
   setEditData,
+  value,
   errors,
   onBlur,
   onAdd,
+  locked,
 }) => {
   const [focusedPart, setFocusedPart] = useState(null);
   const hasError = errors?.[field];
@@ -587,140 +618,149 @@ const BirthdayField = ({
         <span style={s.fieldLabel}>{label}</span>
       </div>
       {editing ? (
-        <div style={{ marginTop: 2 }}>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            {/* Month Select */}
-            <div style={{ position: "relative", flex: 1.4 }}>
-              <select
-                value={parts.month}
-                onChange={(e) => handlePartChange("month", e.target.value)}
-                onFocus={() => setFocusedPart("month")}
-                onBlur={() => {
-                  setFocusedPart(null);
-                  onBlur?.(field);
-                }}
-                aria-label="Birth month"
-                style={{
-                  ...s.input,
-                  appearance: "none",
-                  paddingRight: 24,
-                  cursor: "pointer",
-                  marginTop: 0,
-                  fontSize: "12px",
-                  padding: "7px 8px",
-                  ...(focusedPart === "month" && !hasError ? s.inputFocus : {}),
-                  ...(hasError ? s.inputError : {}),
-                }}
-              >
-                <option value="">Month</option>
-                {MONTH_OPTIONS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={12}
-                color="var(--muted-foreground)"
-                style={{
-                  position: "absolute",
-                  right: 6,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  pointerEvents: "none",
-                }}
-              />
-            </div>
+        locked ? (
+          <input
+            type="text"
+            value={value && value !== "Not provided" ? fmtDate(value) : "Not provided"}
+            readOnly
+            style={{ ...s.input, ...s.inputLocked }}
+          />
+        ) : (
+          <div style={{ marginTop: 2 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              {/* Month Select */}
+              <div style={{ position: "relative", flex: 1.4 }}>
+                <select
+                  value={parts.month}
+                  onChange={(e) => handlePartChange("month", e.target.value)}
+                  onFocus={() => setFocusedPart("month")}
+                  onBlur={() => {
+                    setFocusedPart(null);
+                    onBlur?.(field);
+                  }}
+                  aria-label="Birth month"
+                  style={{
+                    ...s.input,
+                    appearance: "none",
+                    paddingRight: 24,
+                    cursor: "pointer",
+                    marginTop: 0,
+                    fontSize: "12px",
+                    padding: "7px 8px",
+                    ...(focusedPart === "month" && !hasError ? s.inputFocus : {}),
+                    ...(hasError ? s.inputError : {}),
+                  }}
+                >
+                  <option value="">Month</option>
+                  {MONTH_OPTIONS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  size={12}
+                  color="var(--muted-foreground)"
+                  style={{
+                    position: "absolute",
+                    right: 6,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    pointerEvents: "none",
+                  }}
+                />
+              </div>
 
-            {/* Day Select */}
-            <div style={{ position: "relative", flex: 0.9 }}>
-              <select
-                value={parts.day}
-                onChange={(e) => handlePartChange("day", e.target.value)}
-                onFocus={() => setFocusedPart("day")}
-                onBlur={() => {
-                  setFocusedPart(null);
-                  onBlur?.(field);
-                }}
-                aria-label="Birth day"
-                style={{
-                  ...s.input,
-                  appearance: "none",
-                  paddingRight: 20,
-                  cursor: "pointer",
-                  marginTop: 0,
-                  fontSize: "12px",
-                  padding: "7px 8px",
-                  ...(focusedPart === "day" && !hasError ? s.inputFocus : {}),
-                  ...(hasError ? s.inputError : {}),
-                }}
-              >
-                <option value="">Day</option>
-                {dayOptions.map((d) => (
-                  <option key={d} value={d}>
-                    {Number(d)}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={12}
-                color="var(--muted-foreground)"
-                style={{
-                  position: "absolute",
-                  right: 6,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  pointerEvents: "none",
-                }}
-              />
-            </div>
+              {/* Day Select */}
+              <div style={{ position: "relative", flex: 0.9 }}>
+                <select
+                  value={parts.day}
+                  onChange={(e) => handlePartChange("day", e.target.value)}
+                  onFocus={() => setFocusedPart("day")}
+                  onBlur={() => {
+                    setFocusedPart(null);
+                    onBlur?.(field);
+                  }}
+                  aria-label="Birth day"
+                  style={{
+                    ...s.input,
+                    appearance: "none",
+                    paddingRight: 20,
+                    cursor: "pointer",
+                    marginTop: 0,
+                    fontSize: "12px",
+                    padding: "7px 8px",
+                    ...(focusedPart === "day" && !hasError ? s.inputFocus : {}),
+                    ...(hasError ? s.inputError : {}),
+                  }}
+                >
+                  <option value="">Day</option>
+                  {dayOptions.map((d) => (
+                    <option key={d} value={d}>
+                      {Number(d)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  size={12}
+                  color="var(--muted-foreground)"
+                  style={{
+                    position: "absolute",
+                    right: 6,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    pointerEvents: "none",
+                  }}
+                />
+              </div>
 
-            {/* Year Select */}
-            <div style={{ position: "relative", flex: 1.1 }}>
-              <select
-                value={parts.year}
-                onChange={(e) => handlePartChange("year", e.target.value)}
-                onFocus={() => setFocusedPart("year")}
-                onBlur={() => {
-                  setFocusedPart(null);
-                  onBlur?.(field);
-                }}
-                aria-label="Birth year"
-                style={{
-                  ...s.input,
-                  appearance: "none",
-                  paddingRight: 22,
-                  cursor: "pointer",
-                  marginTop: 0,
-                  fontSize: "12px",
-                  padding: "7px 8px",
-                  ...(focusedPart === "year" && !hasError ? s.inputFocus : {}),
-                  ...(hasError ? s.inputError : {}),
-                }}
-              >
-                <option value="">Year</option>
-                {yearOptions.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={12}
-                color="var(--muted-foreground)"
-                style={{
-                  position: "absolute",
-                  right: 6,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  pointerEvents: "none",
-                }}
-              />
+              {/* Year Select */}
+              <div style={{ position: "relative", flex: 1.1 }}>
+                <select
+                  value={parts.year}
+                  onChange={(e) => handlePartChange("year", e.target.value)}
+                  onFocus={() => setFocusedPart("year")}
+                  onBlur={() => {
+                    setFocusedPart(null);
+                    onBlur?.(field);
+                  }}
+                  aria-label="Birth year"
+                  style={{
+                    ...s.input,
+                    appearance: "none",
+                    paddingRight: 22,
+                    cursor: "pointer",
+                    marginTop: 0,
+                    fontSize: "12px",
+                    padding: "7px 8px",
+                    ...(focusedPart === "year" && !hasError ? s.inputFocus : {}),
+                    ...(hasError ? s.inputError : {}),
+                  }}
+                >
+                  <option value="">Year</option>
+                  {yearOptions.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  size={12}
+                  color="var(--muted-foreground)"
+                  style={{
+                    position: "absolute",
+                    right: 6,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    pointerEvents: "none",
+                  }}
+                />
+              </div>
             </div>
+            <div style={s.helperText}>Must be at least 18 years old</div>
+            {hasError && <div style={s.errorText}>{hasError}</div>}
           </div>
-          <div style={s.helperText}>Must be at least 18 years old</div>
-          {hasError && <div style={s.errorText}>{hasError}</div>}
-        </div>
+        )
       ) : value && value !== "Not provided" ? (
         <p style={s.fieldValue}>{fmtDate(value)}</p>
       ) : (
@@ -750,6 +790,7 @@ const SelectField = ({
   errors,
   onBlur,
   onAdd,
+  locked,
 }) => {
   const [focused, setFocused] = useState(false);
   const hasError = errors?.[field];
@@ -764,48 +805,57 @@ const SelectField = ({
         <span style={s.fieldLabel}>{label}</span>
       </div>
       {editing ? (
-        <div style={{ position: "relative" }}>
-          <select
-            value={currentValue}
-            onChange={(e) => {
-              const nextVal = e.target.value;
-              setEditData({ ...editData, [field]: nextVal });
-              onBlur?.(field, nextVal);
-            }}
-            onFocus={() => setFocused(true)}
-            onBlur={() => {
-              setFocused(false);
-              onBlur?.(field);
-            }}
-            style={{
-              ...s.input,
-              appearance: "none",
-              paddingRight: 30,
-              cursor: "pointer",
-              ...(focused && !hasError ? s.inputFocus : {}),
-              ...(hasError ? s.inputError : {}),
-            }}
-          >
-            <option value="">— Select —</option>
-            {options.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown
-            size={14}
-            color="var(--muted-foreground)"
-            style={{
-              position: "absolute",
-              right: 10,
-              top: "50%",
-              transform: "translateY(-50%)",
-              pointerEvents: "none",
-            }}
+        locked ? (
+          <input
+            type="text"
+            value={readLabel || toTitleCase(displayValue) || "Not provided"}
+            readOnly
+            style={{ ...s.input, ...s.inputLocked }}
           />
-          {hasError && <div style={s.errorText}>{hasError}</div>}
-        </div>
+        ) : (
+          <div style={{ position: "relative" }}>
+            <select
+              value={currentValue}
+              onChange={(e) => {
+                const nextVal = e.target.value;
+                setEditData({ ...editData, [field]: nextVal });
+                onBlur?.(field, nextVal);
+              }}
+              onFocus={() => setFocused(true)}
+              onBlur={() => {
+                setFocused(false);
+                onBlur?.(field);
+              }}
+              style={{
+                ...s.input,
+                appearance: "none",
+                paddingRight: 30,
+                cursor: "pointer",
+                ...(focused && !hasError ? s.inputFocus : {}),
+                ...(hasError ? s.inputError : {}),
+              }}
+            >
+              <option value="">— Select —</option>
+              {options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={14}
+              color="var(--muted-foreground)"
+              style={{
+                position: "absolute",
+                right: 10,
+                top: "50%",
+                transform: "translateY(-50%)",
+                pointerEvents: "none",
+              }}
+            />
+            {hasError && <div style={s.errorText}>{hasError}</div>}
+          </div>
+        )
       ) : displayValue ? (
         <p style={s.fieldValue}>{readLabel || toTitleCase(displayValue)}</p>
       ) : (
@@ -854,6 +904,7 @@ const PersonalDetailsTab = ({
   fullName,
   isEditingProfile,
   setIsEditingProfile,
+  isProfileLocked = false,
   saving,
   onSave,
   onCancel,
@@ -900,14 +951,16 @@ const PersonalDetailsTab = ({
     profileData.profileImage,
   ]);
 
-  const handleStartEditing = () => setIsEditingProfile(true);
+  const handleStartEditing = () => {
+    setIsEditingProfile(true);
+  };
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
 
-    // In edit profile mode, stage preview for batch save
+    // Stage preview for batch save
     if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
     const blobUrl = URL.createObjectURL(file);
     setPendingFile(file);
@@ -946,28 +999,36 @@ const PersonalDetailsTab = ({
   };
 
   const handleSaveWithValidation = async () => {
-    const newErrors = {};
-    const fieldsToValidate = ["firstName", "middleName", "lastName", "dateOfBirth", "gender", "civilStatus", "nationality", "occupation"];
-    for (const f of fieldsToValidate) {
-      const val = editData[f];
-      const e = validateField(f, val);
-      if (e) newErrors[f] = e;
+    if (!isProfileLocked) {
+      const newErrors = {};
+      const fieldsToValidate = ["firstName", "middleName", "lastName", "dateOfBirth", "gender", "civilStatus", "nationality", "occupation"];
+      for (const f of fieldsToValidate) {
+        const val = editData[f];
+        const e = validateField(f, val);
+        if (e) newErrors[f] = e;
+      }
+
+      setErrors(newErrors);
+      if (Object.keys(newErrors).length > 0) {
+        showNotification("Please correct the errors in the form before saving.", "warning", 3500);
+        return;
+      }
     }
 
-    setErrors(newErrors);
-    if (Object.keys(newErrors).length > 0) {
-      showNotification("Please correct the errors in the form before saving.", "warning", 3500);
-      return;
+    let payload;
+    if (isProfileLocked) {
+      // When locked, only allow profileImage update
+      payload = {};
+    } else {
+      payload = {
+        ...editData,
+        firstName: (editData.firstName || "").trim(),
+        middleName: (editData.middleName || "").trim(),
+        lastName: (editData.lastName || "").trim(),
+        nationality: (editData.nationality || "").trim(),
+        occupation: (editData.occupation || "").trim(),
+      };
     }
-
-    let payload = {
-      ...editData,
-      firstName: (editData.firstName || "").trim(),
-      middleName: (editData.middleName || "").trim(),
-      lastName: (editData.lastName || "").trim(),
-      nationality: (editData.nationality || "").trim(),
-      occupation: (editData.occupation || "").trim(),
-    };
 
     if (pendingFile) {
       setUploading(true);
@@ -1004,7 +1065,8 @@ const PersonalDetailsTab = ({
   };
 
   const hasValidationErrors = Object.keys(errors).length > 0;
-  const fp = { editing: isEditingProfile, editData, setEditData, errors, onBlur: handleBlur };
+  const fp = { editing: isEditingProfile, editData, setEditData, errors, onBlur: handleBlur, locked: isProfileLocked };
+  const canTriggerPhotoUpload = isEditingProfile && !uploading && !saving;
 
   return (
     <div style={s.container}>
@@ -1016,16 +1078,16 @@ const PersonalDetailsTab = ({
 
       {/* ── Profile Summary Header Card ── */}
       <div style={s.headerCard}>
-        {/* Avatar (Photo editing enabled when editing profile) */}
+        {/* Avatar (Click to change photo in edit mode) */}
         <div
           style={{
             ...s.avatarWrap,
-            cursor: isEditingProfile ? "pointer" : "default",
+            cursor: canTriggerPhotoUpload ? "pointer" : "default",
           }}
-          title={isEditingProfile ? "Click to change profile photo" : undefined}
-          onClick={isEditingProfile && !uploading ? () => fileInputRef.current?.click() : undefined}
-          onMouseEnter={isEditingProfile ? () => setHoveringAvatar(true) : undefined}
-          onMouseLeave={isEditingProfile ? () => setHoveringAvatar(false) : undefined}
+          title={canTriggerPhotoUpload ? "Click to select a new profile photo" : undefined}
+          onClick={canTriggerPhotoUpload ? () => fileInputRef.current?.click() : undefined}
+          onMouseEnter={() => isEditingProfile && setHoveringAvatar(true)}
+          onMouseLeave={() => setHoveringAvatar(false)}
         >
           {(() => {
             const img =
@@ -1045,47 +1107,43 @@ const PersonalDetailsTab = ({
             );
           })()}
 
-          {/* Hover / Uploading Overlay - only in edit mode */}
-          {isEditingProfile && (
-            <div
-              style={{
-                ...s.avatarOverlay,
-                opacity: uploading || hoveringAvatar ? 1 : 0,
-                pointerEvents: "none",
-              }}
-            >
-              {uploading ? (
-                <>
-                  <Loader2 size={20} color="#fff" style={{ animation: "spin 1s linear infinite" }} />
-                  <span style={{ color: "#fff", fontSize: 9, fontWeight: 700, marginTop: 2 }}>
-                    Uploading…
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Camera size={16} color="#fff" />
-                  <span style={{ color: "#fff", fontSize: 10, fontWeight: 700 }}>Change</span>
-                </>
-              )}
-            </div>
-          )}
+          {/* Hover / Uploading Overlay (only active in edit profile mode) */}
+          <div
+            style={{
+              ...s.avatarOverlay,
+              opacity: isEditingProfile && (uploading || hoveringAvatar) ? 1 : 0,
+              pointerEvents: "none",
+            }}
+          >
+            {uploading ? (
+              <>
+                <Loader2 size={20} color="#fff" style={{ animation: "spin 1s linear infinite" }} />
+                <span style={{ color: "#fff", fontSize: 9, fontWeight: 700, marginTop: 2 }}>
+                  Uploading…
+                </span>
+              </>
+            ) : (
+              <>
+                <Camera size={16} color="#fff" />
+                <span style={{ color: "#fff", fontSize: 10, fontWeight: 700 }}>Change</span>
+              </>
+            )}
+          </div>
 
-          {/* Camera Badge indicator - only in edit mode */}
+          {/* Camera Badge indicator (only visible in edit profile mode) */}
           {isEditingProfile && !uploading && (
-            <div style={s.avatarBadge} title="Change photo">
+            <div style={s.avatarBadge} title="Select new photo">
               <Camera size={12} color="var(--primary-foreground)" />
             </div>
           )}
 
-          {isEditingProfile && (
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              style={{ display: "none" }}
-              onChange={handleFileSelect}
-            />
-          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleFileSelect}
+          />
         </div>
 
         {/* Name + Meta Chips */}
@@ -1141,15 +1199,15 @@ const PersonalDetailsTab = ({
               </button>
               <button
                 onClick={handleSaveWithValidation}
-                disabled={saving || uploading || !hasChanges || hasValidationErrors}
+                disabled={saving || uploading || !hasChanges || (!isProfileLocked && hasValidationErrors)}
                 type="button"
                 style={{
                   ...s.saveBtn,
-                  opacity: saving || uploading || !hasChanges || hasValidationErrors ? 0.55 : 1,
-                  cursor: saving || uploading || !hasChanges || hasValidationErrors ? "not-allowed" : "pointer",
+                  opacity: saving || uploading || !hasChanges || (!isProfileLocked && hasValidationErrors) ? 0.55 : 1,
+                  cursor: saving || uploading || !hasChanges || (!isProfileLocked && hasValidationErrors) ? "not-allowed" : "pointer",
                 }}
                 title={
-                  hasValidationErrors
+                  !isProfileLocked && hasValidationErrors
                     ? "Please fix validation errors before saving"
                     : !hasChanges
                     ? "No changes to save"
@@ -1161,9 +1219,17 @@ const PersonalDetailsTab = ({
               </button>
             </>
           ) : (
-            <button onClick={handleStartEditing} style={s.editBtn} type="button">
-              <Edit2 size={14} /> Edit Profile
-            </button>
+            <>
+              {isProfileLocked && (
+                <span style={s.lockedBadge} title="Personal identity details are locked following application submission">
+                  <Lock size={12} color="var(--muted-foreground)" />
+                  Profile Locked
+                </span>
+              )}
+              <button onClick={handleStartEditing} style={s.editBtn} type="button">
+                <Edit2 size={14} /> Edit Profile
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1182,7 +1248,7 @@ const PersonalDetailsTab = ({
               required
               maxLength={50}
               autoCapitalizeWords
-              onAdd={handleStartEditing}
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
               {...fp}
             />
             <Field
@@ -1192,7 +1258,7 @@ const PersonalDetailsTab = ({
               value={isEditingProfile ? editData?.middleName || "" : profileData.middleName}
               maxLength={50}
               autoCapitalizeWords
-              onAdd={handleStartEditing}
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
               {...fp}
             />
             <Field
@@ -1203,7 +1269,7 @@ const PersonalDetailsTab = ({
               required
               maxLength={50}
               autoCapitalizeWords
-              onAdd={handleStartEditing}
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
               {...fp}
             />
             <BirthdayField
@@ -1211,7 +1277,7 @@ const PersonalDetailsTab = ({
               label="Date of Birth"
               field="dateOfBirth"
               value={isEditingProfile ? editData?.dateOfBirth || "" : profileData.dateOfBirth}
-              onAdd={handleStartEditing}
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
               {...fp}
             />
 
@@ -1226,13 +1292,9 @@ const PersonalDetailsTab = ({
                 { value: "other", label: "Other" },
                 { value: "prefer-not-to-say", label: "Prefer not to say" },
               ]}
-              editing={isEditingProfile}
-              editData={editData}
-              setEditData={setEditData}
-              value={profileData.gender}
-              errors={errors}
-              onBlur={handleBlur}
-              onAdd={handleStartEditing}
+              value={isEditingProfile ? editData?.gender || "" : profileData.gender}
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
+              {...fp}
             />
             <SelectField
               icon={Heart}
@@ -1245,13 +1307,9 @@ const PersonalDetailsTab = ({
                 { value: "separated", label: "Separated" },
                 { value: "divorced", label: "Divorced" },
               ]}
-              editing={isEditingProfile}
-              editData={editData}
-              setEditData={setEditData}
-              value={profileData.civilStatus}
-              errors={errors}
-              onBlur={handleBlur}
-              onAdd={handleStartEditing}
+              value={isEditingProfile ? editData?.civilStatus || "" : profileData.civilStatus}
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
+              {...fp}
             />
             <Field
               icon={Globe}
@@ -1260,7 +1318,7 @@ const PersonalDetailsTab = ({
               value={isEditingProfile ? editData?.nationality || "" : profileData.nationality}
               maxLength={50}
               autoCapitalizeWords
-              onAdd={handleStartEditing}
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
               {...fp}
             />
 
@@ -1272,13 +1330,15 @@ const PersonalDetailsTab = ({
               value={isEditingProfile ? editData?.occupation || "" : profileData.occupation}
               maxLength={60}
               autoCapitalizeWords
-              onAdd={handleStartEditing}
+              onAdd={isProfileLocked ? undefined : handleStartEditing}
               {...fp}
             />
           </div>
 
           <p style={s.noteText}>
-            * You can update your personal details and profile photo anytime. Changes will be saved and reflected immediately.
+            {isProfileLocked
+              ? "* Your personal identity details are locked following application submission. Profile photo updates remain available. For legal information changes, please contact the dormitory administration."
+              : "* Your profile details are editable. Any information you complete here will automatically help pre-fill your dormitory application form."}
           </p>
         </div>
       </div>

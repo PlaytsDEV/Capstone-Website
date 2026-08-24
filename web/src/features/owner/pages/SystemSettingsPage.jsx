@@ -60,6 +60,7 @@ const DEFAULT_FORM = {
   // Financial & Billing Rules
   reservationFeeAmount: 2000,
   penaltyRatePerDay: 50,
+  latePaymentGraceDays: 1,
   maxPenaltyCapPercent: 100,
   defaultElectricityRatePerKwh: 16,
   defaultWaterRatePerUnit: 0,
@@ -94,6 +95,7 @@ const DEFAULT_FORM = {
 };
 
 const WHOLE_NUMBER_KEYS = new Set([
+  "latePaymentGraceDays",
   "noShowGraceDays",
   "stalePaymentPendingHours",
   "checkoutLockDurationMinutes",
@@ -118,6 +120,7 @@ const PERCENTAGE_KEYS = new Set([
 const FIELD_LIMITS = Object.freeze({
   reservationFeeAmount: { min: 0, max: 50000, maxDigits: 6, unit: "PHP", label: "Reservation Deposit" },
   penaltyRatePerDay: { min: 0, max: 5000, maxDigits: 5, unit: "PHP/day", label: "Daily Late Penalty" },
+  latePaymentGraceDays: { min: 0, max: 30, maxDigits: 2, unit: "days", label: "Late Payment Grace Period" },
   maxPenaltyCapPercent: { min: 0, max: 100, maxDigits: 3, unit: "%", label: "Max Penalty Cap" },
   defaultElectricityRatePerKwh: { min: 0, max: 500, maxDigits: 6, unit: "PHP/kWh", label: "Default Electricity Rate" },
   defaultWaterRatePerUnit: { min: 0, max: 500, maxDigits: 6, unit: "PHP/unit", label: "Default Water Rate" },
@@ -240,6 +243,19 @@ const BILLING_SUBGROUPS = [
         max: 5000,
         boundsHint: "Range: ₱0 – ₱5,000 / day",
         formatValue: (v) => `PHP ${Number(v || 0).toLocaleString("en-PH")} / day`,
+      },
+      {
+        key: "latePaymentGraceDays",
+        label: "Late Payment Grace Period",
+        description: "Buffer days after the due date before daily late penalties begin to accrue.",
+        icon: Clock,
+        iconColor: "text-amber-600 dark:text-amber-400",
+        suffix: "Days",
+        step: "1",
+        min: 0,
+        max: 30,
+        boundsHint: "Range: 0 – 30 days (Default: 1 day)",
+        formatValue: (v) => `${Number(v || 0)} grace day${Number(v || 0) === 1 ? "" : "s"}`,
       },
       {
         key: "maxPenaltyCapPercent",

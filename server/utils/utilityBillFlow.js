@@ -290,12 +290,9 @@ export async function sendDraftUtilityBills({ bills, period, result }) {
           utilityCycle.utilityCycleEnd || issuedAt,
         )
       : null;
-    const reservationCreditApplied = Math.min(
-      bill.grossAmount || bill.totalAmount || 0,
-      billingContext?.creditAvailable || 0,
-    );
+    const reservationCreditApplied = 0;
 
-    bill.reservationCreditApplied = reservationCreditApplied;
+    bill.reservationCreditApplied = 0;
     bill.billingMonth =
       billingContext?.cycle?.billingMonth ||
       bill.billingMonth ||

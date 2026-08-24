@@ -48,21 +48,21 @@ describe("buildBillingCycle", () => {
 });
 
 describe("buildRentBillingCycle", () => {
-  test("sets the rent due date to 1 week before the cycle start", () => {
+  test("sets the rent due date to the 1st day of the cycle start", () => {
     const cycle = buildRentBillingCycle(new Date("2026-05-05T00:00:00.000Z"));
 
     expect(localYmd(cycle.billingCycleStart)).toBe("2026-5-5");
     expect(localYmd(cycle.billingCycleEnd)).toBe("2026-6-5");
-    expect(localYmd(cycle.dueDate)).toBe("2026-4-28");
+    expect(localYmd(cycle.dueDate)).toBe("2026-5-5");
     expect(localYmd(cycle.generationDate)).toBe("2026-4-21");
   });
 
-  test("keeps the 1-week-before due date regardless of weekday", () => {
+  test("keeps the cycle start due date regardless of weekday", () => {
     const cycle = buildRentBillingCycle(new Date("2026-01-23T00:00:00.000Z"));
 
     expect(localYmd(cycle.billingCycleStart)).toBe("2026-1-23");
     expect(localYmd(cycle.billingCycleEnd)).toBe("2026-2-23");
-    expect(localYmd(cycle.dueDate)).toBe("2026-1-16");
+    expect(localYmd(cycle.dueDate)).toBe("2026-1-23");
     expect(localYmd(cycle.generationDate)).toBe("2026-1-9");
   });
 });
@@ -112,7 +112,7 @@ describe("resolveCurrentRentBillingCycle", () => {
 
     expect(localYmd(cycle.billingCycleStart)).toBe("2026-3-5");
     expect(localYmd(cycle.billingCycleEnd)).toBe("2026-4-5");
-    expect(localYmd(cycle.dueDate)).toBe("2026-2-26");
+    expect(localYmd(cycle.dueDate)).toBe("2026-3-5");
     expect(localYmd(cycle.generationDate)).toBe("2026-2-19");
     expect(cycle.cycleIndex).toBe(2);
   });
@@ -682,7 +682,7 @@ describe("syncBillAmounts — releasedAt (authoritative release lifecycle)", () 
 });
 
 describe("getReservationCreditAvailable", () => {
-  test("returns the configured reservation fee only while the first-bill credit is unused", () => {
+  test("always returns 0 because reservation credit applies exclusively to initial move-in payment", () => {
     expect(
       getReservationCreditAvailable({
         paymentStatus: "paid",
@@ -690,24 +690,13 @@ describe("getReservationCreditAvailable", () => {
         reservationCreditConsumedAt: null,
         reservationCreditAppliedBillId: null,
       }),
-    ).toBe(2500);
-  });
+    ).toBe(0);
 
-  test("returns zero once the credit has been consumed or the reservation is unpaid", () => {
     expect(
       getReservationCreditAvailable({
         paymentStatus: "pending",
         reservationFeeAmount: 2000,
         reservationCreditConsumedAt: null,
-        reservationCreditAppliedBillId: null,
-      }),
-    ).toBe(0);
-
-    expect(
-      getReservationCreditAvailable({
-        paymentStatus: "paid",
-        reservationFeeAmount: 2000,
-        reservationCreditConsumedAt: new Date("2026-06-05T00:00:00.000Z"),
         reservationCreditAppliedBillId: null,
       }),
     ).toBe(0);

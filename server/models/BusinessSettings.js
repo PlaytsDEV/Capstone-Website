@@ -62,6 +62,12 @@ const businessSettingsSchema = new mongoose.Schema(
       default: BUSINESS.PENALTY_RATE_PER_DAY,
       min: 0,
     },
+    latePaymentGraceDays: {
+      type: Number,
+      default: BUSINESS.DEFAULT_LATE_PAYMENT_GRACE_DAYS || 1,
+      min: 0,
+      max: 30,
+    },
     maxPenaltyCapPercent: {
       type: Number,
       default: BUSINESS.MAX_PENALTY_CAP_PERCENT,

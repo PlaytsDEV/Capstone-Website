@@ -105,7 +105,7 @@ async function main() {
   }
 
   await mongoose.connect(process.env.MONGODB_URI, {
-    dbName: process.env.DB_NAME || "lilycrest",
+    ...(process.env.DB_NAME ? { dbName: process.env.DB_NAME } : {}),
   });
 
   console.log(`Connected to MongoDB database "${mongoose.connection.name}"`);
@@ -250,6 +250,10 @@ async function main() {
     let rentCycleIndex = 0;
 
     for (const bill of sortedBills) {
+      if (bill.billType === "initial_payment") {
+        continue;
+      }
+
       const hasRentCharge = roundMoney(bill.charges?.rent || 0) > 0;
       const original = {
         grossAmount: bill.grossAmount,
@@ -268,10 +272,7 @@ async function main() {
 
       const originalPaymentDate = bill.paymentDate;
       const expectedGrossAmount = sumBillCharges(bill.charges);
-      const expectedCredit =
-        hasRentCharge && rentCycleIndex === 0
-          ? Math.min(baseReservationCredit, expectedGrossAmount)
-          : 0;
+      const expectedCredit = 0;
 
       if (hasRentCharge && moveInDate) {
         const cycle = buildRentBillingCycle(moveInDate, rentCycleIndex);
@@ -289,7 +290,12 @@ async function main() {
 
       syncBillAmounts(bill);
 
-      if (!originalPaymentDate && original.status === "paid" && bill.status === "paid") {
+      if (original.status === "paid" && original.remainingAmount <= 0) {
+        bill.paidAmount = bill.totalAmount;
+        bill.remainingAmount = 0;
+        bill.status = "paid";
+        bill.paymentDate = originalPaymentDate || bill.paymentDate || new Date();
+      } else if (!originalPaymentDate && original.status === "paid" && bill.status === "paid") {
         bill.paymentDate = null;
       }
 

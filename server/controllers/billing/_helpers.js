@@ -329,16 +329,12 @@ export async function getReservationBillingContext(
     : structured
       ? null
       : resolveCurrentRentBillingCycle(moveInDate, referenceDate);
-  const creditAvailable = structured
-    ? 0
-    : getReservationCreditAvailable(reservation);
-
   return {
     reservation,
     existingCount,
     cycle,
     isFirstCycleBill: existingCount === 0,
-    creditAvailable,
+    creditAvailable: 0,
   };
 }
 
@@ -796,7 +792,7 @@ export function resolveRentCycleForBillingMonth(reservation, billingMonth) {
       billingMonth: period.coverageStart,
       billingCycleStart: period.coverageStart,
       billingCycleEnd: period.coverageEndExclusive,
-      dueDate: period.dueDate || dayjs(period.coverageStart).subtract(7, "day").toDate(),
+      dueDate: period.dueDate || dayjs(period.coverageStart).toDate(),
       generationDate: period.generationDate || dayjs(period.coverageStart).subtract(14, "day").toDate(),
       cycleIndex,
       structured: true,
@@ -824,10 +820,10 @@ export function resolveRentCycleForBillingMonth(reservation, billingMonth) {
 
 export function resolveRentDueDate(cycle, dueDate) {
   if (cycle.structured) {
-    const requiredDueDate = dayjs(cycle.dueDate || dayjs(cycle.billingCycleStart).subtract(7, "day")).startOf("day");
+    const requiredDueDate = dayjs(cycle.dueDate || dayjs(cycle.billingCycleStart)).startOf("day");
     if (dueDate && !parseRequiredDate(dueDate, "Due date").isSame(requiredDueDate, "day")) {
       throw createBillingError(
-        "Structured rent is due 1 week before its rolling rental period begins.",
+        "Structured rent is due on the 1st day of its rolling rental period.",
         400,
         "INVALID_STRUCTURED_DUE_DATE",
       );
@@ -836,7 +832,7 @@ export function resolveRentDueDate(cycle, dueDate) {
   }
   const resolved = dueDate
     ? parseRequiredDate(dueDate, "Due date")
-    : dayjs(cycle.dueDate || dayjs(cycle.billingCycleStart).subtract(7, "day")).startOf("day");
+    : dayjs(cycle.dueDate || dayjs(cycle.billingCycleStart)).startOf("day");
 
   return resolved.toDate();
 }
@@ -1006,11 +1002,8 @@ export async function buildRentBillDraft({
     ...(duplicate ? { _id: { $ne: duplicate._id } } : {}),
   }).select("_id");
   const isFirstCycleBill = !priorRentBill;
-  const creditAvailable = getReservationCreditAvailable(reservation);
   const structured = usesStructuredInitialPayment(reservation);
-  const reservationCreditApplied = !structured && isFirstCycleBill
-    ? Math.min(grossAmount, creditAvailable)
-    : 0;
+  const reservationCreditApplied = 0;
 
   const bill = new Bill({
     reservationId: reservation._id,

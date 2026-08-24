@@ -355,8 +355,8 @@ export function buildBillingCycle(checkInDate, cycleIndex = 0) {
 export function buildRentBillingCycle(moveInDate, cycleIndex = 0) {
   const start = toManilaStartOfDay(moveInDate).add(cycleIndex, "month");
   const end = start.add(1, "month");
-  // Recurring due date is 1 week (7 calendar days) before the billing cycle starts.
-  const dueDate = start.subtract(7, "day").toDate();
+  // Recurring due date is on the 1st day of the rental period (move-in anniversary date).
+  const dueDate = start.toDate();
   const generationDate = start
     .subtract(RENT_GENERATION_LEAD_DAYS, "day")
     .toDate();
@@ -579,12 +579,8 @@ export function getUtilityDueDate(issueDate) {
 }
 
 export function getReservationCreditAvailable(reservation) {
-  if (!reservation) return 0;
-  if (
-    reservation.financialWorkflowVersion ===
-    "structured-initial-payment-v1"
-  ) return 0;
-  if (reservation.paymentStatus !== "paid") return 0;
-  if (reservation.reservationCreditConsumedAt || reservation.reservationCreditAppliedBillId) return 0;
-  return roundMoney(reservation.reservationFeeAmount || 0);
+  // Reservation fee credit belongs exclusively to the initial move-in payment
+  // (advance rent + security deposit) via structuredInitialPaymentService.
+  // Regular monthly rent and utility bills must never absorb or deduct reservation credit.
+  return 0;
 }

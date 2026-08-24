@@ -3319,6 +3319,7 @@ describe("maintenanceController", () => {
     const proposedDate = new Date();
     proposedDate.setDate(proposedDate.getDate() + 7);
     proposedDate.setHours(14, 0, 0, 0);
+    if (proposedDate.getDay() === 0) proposedDate.setDate(proposedDate.getDate() + 1);
     maintenanceFindOne.mockResolvedValue(requestDoc);
     userFindOne.mockReturnValue(
       buildLeanQuery({

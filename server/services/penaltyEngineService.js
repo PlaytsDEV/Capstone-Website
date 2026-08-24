@@ -18,30 +18,34 @@ import { computePenalty, fetchPenaltySettings } from "./billing/penaltyCalculato
 import { syncBillAmounts, resolveBillStatus } from "./billing/billingPolicy.js";
 
 /**
- * Evaluates whether a bill is past due.
- * Plan 4 (D4): No grace period — a bill is past due from Day 1 after dueDate.
+ * Evaluates whether a bill is past due or within its grace period.
  *
  * @param {Object|Date|string} dueDateInput - Bill due date
  * @param {Date} [evaluationDate] - Reference date (defaults to now)
- * @returns {{ isPastDue: boolean, isWithinGracePeriod: boolean, daysOverdue: number }}
+ * @param {number} [graceDays] - Grace period in days (defaults to 1)
+ * @returns {{ isPastDue: boolean, isWithinGracePeriod: boolean, daysOverdue: number, graceDays: number, billableDays: number }}
  */
-export function evaluateGracePeriod(dueDateInput, evaluationDate = new Date()) {
-  if (!dueDateInput) return { isPastDue: false, isWithinGracePeriod: false, daysOverdue: 0 };
+export function evaluateGracePeriod(dueDateInput, evaluationDate = new Date(), graceDays = 1) {
+  if (!dueDateInput) return { isPastDue: false, isWithinGracePeriod: false, daysOverdue: 0, graceDays: 0, billableDays: 0 };
 
   const dueDate = dayjs(dueDateInput).endOf("day");
   const now = dayjs(evaluationDate);
 
   if (now.isBefore(dueDate) || now.isSame(dueDate, "day")) {
-    return { isPastDue: false, isWithinGracePeriod: false, daysOverdue: 0 };
+    return { isPastDue: false, isWithinGracePeriod: false, daysOverdue: 0, graceDays, billableDays: 0 };
   }
 
   const daysOverdue = now.startOf("day").diff(dayjs(dueDateInput).startOf("day"), "day");
+  const effectiveGrace = typeof graceDays === "number" && graceDays >= 0 ? graceDays : 1;
+  const isWithinGracePeriod = daysOverdue > 0 && daysOverdue <= effectiveGrace;
+  const billableDays = Math.max(0, daysOverdue - effectiveGrace);
 
-  // D4: No grace period. Any day past due = isPastDue: true, isWithinGracePeriod: false.
   return {
     isPastDue: daysOverdue > 0,
-    isWithinGracePeriod: false, // grace period removed per D4
+    isWithinGracePeriod,
     daysOverdue,
+    graceDays: effectiveGrace,
+    billableDays,
   };
 }
 

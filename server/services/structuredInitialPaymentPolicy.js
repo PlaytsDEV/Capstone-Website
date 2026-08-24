@@ -114,7 +114,7 @@ export function buildRollingRentalPeriod(actualMoveInDate, cycleIndex = 0) {
     coverageStart: start.toDate(),
     coverageEndExclusive: endExclusive.toDate(),
     displayEnd: endExclusive.subtract(1, "day").toDate(),
-    dueDate: start.subtract(7, "day").toDate(),
+    dueDate: start.toDate(),
     cycleIndex,
   };
 }

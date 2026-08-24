@@ -798,6 +798,12 @@ export function buildTenantWorkspaceEntry({
       ? new Date(reservation.lastAdminViewedAt).toISOString()
       : null,
     isViewedByAdmin: Boolean(reservation.isViewedByAdmin),
+    createdAt: reservation.createdAt
+      ? new Date(reservation.createdAt).toISOString()
+      : null,
+    updatedAt: reservation.updatedAt
+      ? new Date(reservation.updatedAt).toISOString()
+      : null,
     attentionUpdatedAt: (() => {
       const timestamps = [];
       if (billingSummary.hasOverdue || billingSummary.hasPendingVerification) {

@@ -471,16 +471,38 @@ export default function useReservationFlow() {
   const profileNameInitializedRef = useRef(false);
   useEffect(() => {
     if (profileNameInitializedRef.current) return;
-    if (!profileName.firstName && !profileName.lastName) return;
+    if (!profileName.firstName && !profileName.lastName && !user) return;
     if (!firstName && profileName.firstName) setFirstName(profileName.firstName);
     if (!lastName && profileName.lastName) setLastName(profileName.lastName);
+    if (!middleName && user?.middleName) setMiddleName(user.middleName);
+    if (!mobileNumber && (user?.phone || user?.mobileNumber)) setMobileNumber(user.phone || user.mobileNumber);
+    if (!birthday && user?.dateOfBirth) {
+      const d =
+        typeof user.dateOfBirth === "string"
+          ? user.dateOfBirth.slice(0, 10)
+          : new Date(user.dateOfBirth).toISOString().slice(0, 10);
+      setBirthday(d);
+    }
+    if (!gender && user?.gender) setGender(user.gender);
+    if (!maritalStatus && (user?.civilStatus || user?.maritalStatus)) setMaritalStatus(user.civilStatus || user.maritalStatus);
+    if (!nationality && user?.nationality) setNationality(user.nationality);
+    if (!occupation && user?.occupation) setOccupation(user.occupation);
+    if (!selfiePhoto && user?.profileImage) setSelfiePhoto(user.profileImage);
     profileNameInitializedRef.current = true;
   }, [
-    user?.firstName,
-    user?.lastName,
-    user?.displayName,
+    user,
     profileName.firstName,
     profileName.lastName,
+    firstName,
+    lastName,
+    middleName,
+    mobileNumber,
+    birthday,
+    gender,
+    maritalStatus,
+    nationality,
+    occupation,
+    selfiePhoto,
   ]);
 
   const visitGateReservation = useMemo(() => {
