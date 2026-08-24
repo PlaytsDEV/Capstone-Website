@@ -54,4 +54,32 @@ describe("Reservation Contract eligibility", () => {
       blockers: [{ code: "RESERVATION_LEGACY_VERIFICATION_REQUIRED" }],
     });
   });
+
+  test("an otherwise-approved Reservation with an open cancellation request is not eligible", () => {
+    const result = resolveReservationContractEligibility(modern({
+      cancellationRequested: true, cancellationStatus: "pending",
+    }));
+    expect(result).toMatchObject({
+      eligible: false,
+      approvalState: "cancellation_pending",
+      blockers: [{
+        code: "RESERVATION_CANCELLATION_PENDING",
+        category: "PENDING_CANCELLATION",
+        retryable: false,
+        humanActionRequired: true,
+      }],
+    });
+  });
+
+  test("a resolved (approved/rejected) cancellation request no longer blocks eligibility", () => {
+    const approved = resolveReservationContractEligibility(modern({
+      cancellationRequested: true, cancellationStatus: "approved",
+    }));
+    expect(approved.eligible).toBe(true);
+
+    const rejected = resolveReservationContractEligibility(modern({
+      cancellationRequested: true, cancellationStatus: "rejected",
+    }));
+    expect(rejected.eligible).toBe(true);
+  });
 });
