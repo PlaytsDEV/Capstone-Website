@@ -28,6 +28,9 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   Contract: { exists: jest.fn(async () => false) },
   ContractCounter: { findOneAndUpdate: jest.fn() },
 }));
+await jest.unstable_mockModule("../utils/businessSettings.js", () => ({
+  getBusinessSettings: jest.fn(async () => ({ longTermLeaseMinMonths: 6 })),
+}));
 
 const { validateContractForGeneration } = await import("./contractService.js");
 

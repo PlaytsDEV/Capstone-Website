@@ -23,6 +23,9 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   Room: { findById: jest.fn((id) => byId(roomsById)(id)) },
   Stay: { findById: jest.fn((id) => byId(staysById)(id)) },
 }));
+await jest.unstable_mockModule("../utils/businessSettings.js", () => ({
+  getBusinessSettings: jest.fn(async () => ({ longTermLeaseMinMonths: 6 })),
+}));
 
 const { buildContractGenerationData } = await import("./contractGenerationDataService.js");
 

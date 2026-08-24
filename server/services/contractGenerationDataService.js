@@ -12,6 +12,7 @@ import {
 import { buildInitialPaymentSummary } from "./contractPricingService.js";
 import { resolveReservationContractEligibility } from "./reservationContractEligibilityService.js";
 import { joinAddressParts, normalizeAddress, stripRegionSuffix } from "../utils/addressUtils.js";
+import { getBusinessSettings } from "../utils/businessSettings.js";
 
 const numberWords = Object.freeze([
   "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
@@ -178,6 +179,7 @@ export const buildContractGenerationData = async (
     throw error;
   }
 
+  const businessSettings = await getBusinessSettings();
   const template = resolveContractTemplate({
     branch: room.branch,
     roomType: room.type,
@@ -186,6 +188,7 @@ export const buildContractGenerationData = async (
     leaseEndDate: contract.leaseEndDate,
     leaseDurationMonths: contract.leaseDurationMonths,
     requestedTemplateId,
+    longTermLeaseMinMonths: businessSettings.longTermLeaseMinMonths,
   });
   const integrity = verifyTemplate ? await assertOfficialTemplateAvailable(template) : null;
   const person = resolveApplicantIdentity({ contract, reservation });

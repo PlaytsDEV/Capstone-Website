@@ -228,6 +228,7 @@ export const createDraftContract = async ({
       leaseStartDate,
       leaseEndDate,
       leaseDurationMonths,
+      longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
     });
   } catch {
     // A draft may preserve incomplete lease data. Full validation reports the
@@ -650,6 +651,7 @@ export const createReplacementContractForTransfer = async ({
       leaseStartDate,
       leaseEndDate,
       leaseDurationMonths,
+      longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
     });
   } catch {
     // Template resolved on validation
@@ -874,6 +876,7 @@ export const createSuccessorContractForRenewal = async ({
       leaseStartDate,
       leaseEndDate,
       leaseDurationMonths,
+      longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
     });
   } catch {
     // Template resolved on validation
