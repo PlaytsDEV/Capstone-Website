@@ -22,6 +22,11 @@ import {
 } from "./contractPricingResolver.js";
 import { getBusinessSettings } from "../utils/businessSettings.js";
 import { resolveSecurityDeposit } from "../utils/depositUtils.js";
+import { readMoveInDate } from "../utils/lifecycleNaming.js";
+import {
+  deriveAdvanceCoverageDates,
+  deriveContractLeaseDates,
+} from "./contractLeaseDateService.js";
 
 export const CONTRACT_TRANSITIONS = Object.freeze({
   draft: ["incomplete", "ready_for_generation", "awaiting_signatures", "partially_signed", "signed", "cancelled"],
@@ -184,13 +189,15 @@ export const createDraftContract = async ({
     $or: duplicateConditions,
   }).sort({ version: -1, createdAt: -1 }).select("_id version").lean();
 
-  const leaseStartDate = stay?.leaseStartDate || reservation.confirmedMoveInDate ||
-    reservation.moveInDate || reservation.intendedMoveInDate || null;
+  const leaseStartDate = stay?.leaseStartDate || readMoveInDate(reservation) || null;
   const leaseDurationMonths = Number(reservation.leaseDuration) || null;
-  const leaseEndDate = stay?.leaseEndDate ||
-    (leaseStartDate && leaseDurationMonths
-      ? new Date(new Date(leaseStartDate).setMonth(new Date(leaseStartDate).getMonth() + leaseDurationMonths))
-      : null);
+  const derivedLeaseDates = leaseStartDate && leaseDurationMonths
+    ? deriveContractLeaseDates({ leaseStartDate, leaseDurationMonths })
+    : null;
+  const leaseEndDate = stay?.leaseEndDate || derivedLeaseDates?.leaseEndDate || null;
+  const derivedAdvanceCoverage = leaseStartDate
+    ? deriveAdvanceCoverageDates(leaseStartDate)
+    : null;
   const structuredSnapshot =
     reservation.financialWorkflowVersion === "structured-initial-payment-v1"
       ? reservation.pricingSnapshot
@@ -291,12 +298,10 @@ export const createDraftContract = async ({
       pricingApprovedAt:
         structuredSnapshot?.approvedAt || reservation.approvedForPaymentAt || reservation.approvedDate || null,
       advanceCoverageStart:
-        reservation.advanceCoverageStart || leaseStartDate,
+        reservation.advanceCoverageStart || derivedAdvanceCoverage?.advanceCoverageStart || null,
       advanceCoverageEnd:
         reservation.advanceCoverageEnd ||
-        (leaseStartDate
-          ? dayjs(leaseStartDate).add(1, "month").subtract(1, "day").toDate()
-          : null),
+        derivedAdvanceCoverage?.advanceCoverageEnd || null,
       status: "draft",
       statusHistory: [{ status: "draft", changedBy: actorId, reason: "Contract draft created" }],
       createdBy: actorId,

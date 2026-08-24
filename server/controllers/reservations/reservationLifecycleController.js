@@ -882,11 +882,13 @@ export const updateReservation = async (req, res, next) => {
           reservationId: updatedReservation._id,
           actualMoveInDate:
             req.body.actualMoveInDate ||
-            req.body.confirmedMoveInDate ||
-            req.body.moveInDate ||
-            updatedReservation.confirmedMoveInDate ||
-            updatedReservation.moveInDate ||
-            new Date(),
+            readMoveInDate({
+              confirmedMoveInDate:
+                req.body.confirmedMoveInDate ?? updatedReservation.confirmedMoveInDate,
+              moveInDate: req.body.moveInDate ?? updatedReservation.moveInDate,
+              intendedMoveInDate: updatedReservation.intendedMoveInDate,
+              targetMoveInDate: updatedReservation.targetMoveInDate,
+            }),
           actorId:
             actorId ||
             updatedReservation.userId?._id ||
