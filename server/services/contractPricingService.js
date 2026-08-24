@@ -14,7 +14,13 @@ const isReservationFeePaymentVerified = ({
 }) =>
   financialWorkflowVersion === "structured-initial-payment-v1"
     ? reservationFeePaymentStatus === "verified"
-    : ["partial", "paid"].includes(reservationPaymentStatus);
+    // Reservation.paymentStatus enum has "paid" and "paid_in_full" as
+    // distinct values (models/Reservation.js) — "paid_in_full" is the
+    // terminal fully-settled state a legacy reservation reaches, strictly
+    // more complete than "partial" (already accepted below), so omitting
+    // it here caused every fully-paid legacy reservation to be treated as
+    // unverified for reservation-fee-credit purposes.
+    : ["partial", "paid", "paid_in_full"].includes(reservationPaymentStatus);
 
 export const buildInitialPaymentSummary = ({
   advanceRentAmount,

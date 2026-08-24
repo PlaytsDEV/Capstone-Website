@@ -45,6 +45,22 @@ describe("Contract initial payment summary", () => {
     expect(valid({ reservationPaymentStatus: "paid" }).valid).toBe(true);
   });
 
+  // Regression: Reservation.paymentStatus's enum has "paid" and
+  // "paid_in_full" as distinct values (models/Reservation.js) — the
+  // terminal, fully-settled state a legacy (non-structured) reservation
+  // reaches is "paid_in_full", not "paid". Omitting it here caused every
+  // fully-paid legacy reservation's Contract to be falsely rejected as
+  // RESERVATION_FEE_PAYMENT_NOT_VERIFIED / RESERVATION_FEE_CREDIT_EXCEEDS_PAYMENT
+  // during generation, most visibly on move-in date recalculation
+  // (autoGenerateMoveInContract's regeneration path).
+  test("legacy paid_in_full status is recognized as verified", () => {
+    const result = valid({ reservationPaymentStatus: "paid_in_full" });
+    expect(result.valid).toBe(true);
+    expect(result.errors).not.toContainEqual({ code: "RESERVATION_FEE_PAYMENT_NOT_VERIFIED" });
+    expect(result.errors).not.toContainEqual({ code: "RESERVATION_FEE_CREDIT_EXCEEDS_PAYMENT" });
+    expect(result.verifiedReservationFeePaid).toBe(2000);
+  });
+
   test("legacy pending status remains invalid when a credit requires verification", () => {
     expect(valid({ reservationPaymentStatus: "pending" }).valid).toBe(false);
   });
