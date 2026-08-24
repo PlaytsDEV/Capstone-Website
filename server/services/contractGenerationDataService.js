@@ -150,6 +150,7 @@ export const buildContractGenerationData = async (
     tenantExists: Boolean(user),
     roomExists: Boolean(room),
     bedExists: Boolean(stay?.bedId || stay?.bedCode || contract.bedId || contract.bedLabel),
+    roomType: room.type,
   });
   if (!reservationEligibility.eligible) {
     const blocker = reservationEligibility.blockers[0];

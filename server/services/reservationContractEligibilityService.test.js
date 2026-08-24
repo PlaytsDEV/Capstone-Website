@@ -82,4 +82,45 @@ describe("Reservation Contract eligibility", () => {
     }));
     expect(rejected.eligible).toBe(true);
   });
+
+  test("approved Private reservation qualifies with no bed assignment", () => {
+    const result = resolveReservationContractEligibility(
+      modern({ selectedBed: {} }),
+      { roomType: "private", bedExists: false },
+    );
+    expect(result).toMatchObject({ eligible: true, approvalState: "approved" });
+  });
+
+  test("approved Double-sharing reservation qualifies with no bed assignment", () => {
+    const result = resolveReservationContractEligibility(
+      modern({ selectedBed: {} }),
+      { roomType: "double-sharing", bedExists: false },
+    );
+    expect(result).toMatchObject({ eligible: true, approvalState: "approved" });
+  });
+
+  test("approved Quadruple-sharing reservation qualifies once a bed is assigned", () => {
+    const result = resolveReservationContractEligibility(
+      modern(),
+      { roomType: "quadruple-sharing", bedExists: true },
+    );
+    expect(result).toMatchObject({ eligible: true, approvalState: "approved" });
+  });
+
+  test("approved Quadruple-sharing reservation with no bed assignment is blocked with a clear, retryable blocker (no bed fabricated)", () => {
+    const result = resolveReservationContractEligibility(
+      modern({ selectedBed: {} }),
+      { roomType: "quadruple-sharing", bedExists: false },
+    );
+    expect(result).toMatchObject({
+      eligible: false,
+      approvalState: "bed_assignment_required",
+      blockers: [{
+        code: "RESERVATION_BED_ASSIGNMENT_REQUIRED",
+        retryable: true,
+        humanActionRequired: true,
+      }],
+    });
+    expect(result.sourceEvidence.bedRequired).toBe(true);
+  });
 });
