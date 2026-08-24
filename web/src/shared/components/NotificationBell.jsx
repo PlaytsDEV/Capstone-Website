@@ -47,12 +47,14 @@ function NotificationBellIcon({ type }) {
     case "payment_approved":
     case "visit_approved":
     case "account_reactivated":
+    case "renewal_effective":
       return <CheckCircle2 {...iconProps} style={{ color: "#059669" }} />;
     case "reservation_rejected":
     case "reservation_cancelled":
     case "reservation_cancellation_rejected":
     case "payment_rejected":
     case "visit_rejected":
+    case "tenant_violation":
       return <XCircle {...iconProps} style={{ color: "#DC2626" }} />;
     case "reservation_expired":
     case "reservation_cancellation_requested":
@@ -70,6 +72,7 @@ function NotificationBellIcon({ type }) {
     case "account_banned":
       return <Lock {...iconProps} style={{ color: "#DC2626" }} />;
     case "announcement":
+    case "chat_reply":
       return <Megaphone {...iconProps} style={{ color: "#2563EB" }} />;
     default:
       return <Info {...iconProps} style={{ color: "#64748B" }} />;

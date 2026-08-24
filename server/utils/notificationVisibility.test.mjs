@@ -24,8 +24,12 @@ test("server applicant visibility allows only applicant reservation/application 
   ).toBe(false);
 });
 
-test("server tenant visibility allows tenant workstream updates only", () => {
+test("server tenant visibility allows tenant workstream updates and personal history", () => {
   expect(isNotificationVisibleForRole({ type: "bill_due_reminder" }, "tenant")).toBe(true);
+  expect(isNotificationVisibleForRole({ type: "contract_document_ready" }, "tenant")).toBe(true);
+  expect(isNotificationVisibleForRole({ type: "chat_reply" }, "tenant")).toBe(true);
+  expect(isNotificationVisibleForRole({ type: "renewal_effective" }, "tenant")).toBe(true);
+  expect(isNotificationVisibleForRole({ type: "tenant_violation" }, "tenant")).toBe(true);
   expect(
     isNotificationVisibleForRole({
       type: "general",
@@ -33,7 +37,15 @@ test("server tenant visibility allows tenant workstream updates only", () => {
       entityType: "stay",
     }, "tenant")
   ).toBe(true);
-  expect(isNotificationVisibleForRole({ type: "visit_approved" }, "tenant")).toBe(false);
+  expect(
+    isNotificationVisibleForRole({
+      type: "general",
+      title: "Lease Renewal Offer",
+      entityType: "reservation",
+    }, "tenant")
+  ).toBe(true);
+  expect(isNotificationVisibleForRole({ type: "visit_approved" }, "tenant")).toBe(true);
+  expect(isNotificationVisibleForRole({ type: "reservation_confirmed" }, "tenant")).toBe(true);
 });
 
 test("server admin visibility keeps operational alerts separate", () => {

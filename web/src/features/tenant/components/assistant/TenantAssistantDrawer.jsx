@@ -281,16 +281,32 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
     }
   }, [isOpen, checkActiveSupportTicket]);
 
+  // Periodic fallback polling while in live support session to guarantee zero missed replies
+  useEffect(() => {
+    if (!isOpen || !activeTicket) return;
+    const interval = setInterval(() => {
+      checkActiveSupportTicket();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isOpen, activeTicket, checkActiveSupportTicket]);
+
   // Real-time WebSocket subscriptions
   const handleNewMessage = useCallback((msg, convId) => {
-    if (activeTicket && (convId === activeTicket._id || msg?.conversationId === activeTicket._id)) {
+    const activeId = String(activeTicket?._id || activeTicket?.id || "");
+    const incomingConvId = String(convId || msg?.conversationId || "");
+    if (activeId && incomingConvId && incomingConvId === activeId) {
+      const msgId = msg?._id || msg?.id;
       setMessages((prev) => {
-        const exists = prev.some((m) => m._id && m._id === msg._id);
+        const exists = prev.some((m) => {
+          const mId = m._id || m.id;
+          return mId && msgId && String(mId) === String(msgId);
+        });
         if (exists) return prev;
         return [
           ...prev,
           {
-            _id: msg._id,
+            _id: msgId,
+            id: msgId,
             role: msg.senderRole === "tenant" ? "user" : "admin",
             senderName: msg.senderName || "Branch Admin",
             message: msg.message,
@@ -308,8 +324,15 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
   }, [activeTicket, isOpen, onUnreadCountChange]);
 
   const handleConversationUpdated = useCallback((conv) => {
-    if (activeTicket && conv?._id === activeTicket._id) {
-      setActiveTicket(conv);
+    const activeId = String(activeTicket?._id || activeTicket?.id || "");
+    const updatedId = String(conv?._id || conv?.id || "");
+    if (activeId && updatedId && updatedId === activeId) {
+      setActiveTicket((prev) => ({
+        ...prev,
+        ...conv,
+        _id: updatedId,
+        id: updatedId,
+      }));
       if (conv.status === "waiting_tenant") {
         setMessages((prev) => {
           const hasPrompt = prev.some(
@@ -342,7 +365,9 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
   }, [activeTicket, onUnreadCountChange]);
 
   const handleTyping = useCallback((data) => {
-    if (activeTicket && data?.conversationId === activeTicket._id && data?.senderRole !== "tenant") {
+    const activeId = String(activeTicket?._id || activeTicket?.id || "");
+    const typingConvId = String(data?.conversationId || "");
+    if (activeId && typingConvId && typingConvId === activeId && data?.senderRole !== "tenant") {
       setAdminTyping(true);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => setAdminTyping(false), 3000);
@@ -353,7 +378,7 @@ export default function TenantAssistantDrawer({ isOpen, onClose, onUnreadCountCh
     onMessageNew: handleNewMessage,
     onConversationUpdated: handleConversationUpdated,
     onTyping: handleTyping,
-    enabled: Boolean(isOpen && activeTicket),
+    enabled: Boolean(isOpen && (activeTicket?._id || activeTicket?.id)),
   });
 
   // Dynamic Prompt Set Resolution based on Role, Status, and Active Route
