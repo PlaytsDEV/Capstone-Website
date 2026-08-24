@@ -14,6 +14,7 @@ import {
   resolveApplicantIdentity,
 } from "./contractGenerationDataService.js";
 import { resolveContractTemplate } from "./contractTemplateService.js";
+import { roomRequiresIndividualBed } from "./reservationContractEligibilityService.js";
 import { resolveTenantCanonicalContract } from "./tenantContractSelectionService.js";
 import {
   resolveContractLeasePricing,
@@ -334,17 +335,6 @@ export const createDraftContract = async ({
   }
 };
 
-// Bed/slot assignment only carries legal meaning for room types with more
-// than one sleeping position to assign (quadruple sharing). Private and
-// double-sharing Contracts deliberately leave bedId/bedLabel blank at
-// creation (contractService.js createDraftContract) and at PDF field-build
-// time (contractGenerationDataService.js bedOrSlotNumber) — this validator
-// must agree, or every private/double Contract is falsely flagged incomplete.
-const roomTypeRequiresBedAssignment = (roomType) => {
-  const normalized = String(roomType || "").toLowerCase();
-  return !normalized.includes("private") && !normalized.includes("double");
-};
-
 export const getContractValidation = (contract) => {
   const required = [
     ["tenantLegalName", "Tenant legal name"],
@@ -368,7 +358,7 @@ export const getContractValidation = (contract) => {
     ["pricingApprovalId", "Pricing approval record"],
     ["pricingApprovedAt", "Pricing approval date"],
   ];
-  if (roomTypeRequiresBedAssignment(contract.roomType)) {
+  if (roomRequiresIndividualBed(contract.roomType)) {
     required.push(["bedId", "Bed or slot"]);
   }
   const missingFields = required

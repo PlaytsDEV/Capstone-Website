@@ -13,12 +13,14 @@
  *   createDraftContract path -> Contract-level field validation
  *   (getContractValidation) is checked.
  *
- * Room-type coverage (Phase 9 of the lifecycle fix):
+ * Room-type coverage:
  *   - Private:    no bed required, blank bed fields are valid
- *   - Double:     no bed required, blank bed fields are valid
+ *   - Double:     a real bed assignment is required and must propagate
+ *     (confirmed against real production occupancy data: a double-sharing
+ *     room's two beds are independently occupied by two different tenants)
  *   - Quadruple:  a real bed assignment is required and must propagate
- *   - Quadruple, no bed assigned: eligibility is blocked with a clear,
- *     retryable blocker and no bed is fabricated
+ *   - Double/Quadruple, no bed assigned: eligibility is blocked with a
+ *     clear, retryable blocker and no bed is fabricated
  */
 import mongoose from "mongoose";
 import { afterAll, beforeAll, beforeEach, describe, expect, jest, test } from "@jest/globals";
@@ -200,20 +202,50 @@ describe("Future-tenant acceptance: approval -> eligibility -> Contract creation
     expect(validation.missingFields.map((f) => f.field)).not.toContain("bedId");
   });
 
-  test("Double: approval succeeds, no bed required, eligibility and Contract creation succeed with blank bed fields", async () => {
-    const { room, reservation } = await seedTenantAndReservation({ roomType: "double-sharing", capacity: 2 });
+  test("Double with a real bed assignment: eligibility succeeds and the authoritative bed propagates onto the Contract", async () => {
+    const selectedBed = { id: "bed-201-B", position: "lower", bunkBlock: "A", code: "201-A-L" };
+    const { room, reservation } = await seedTenantAndReservation({
+      roomType: "double-sharing", capacity: 2, selectedBed,
+    });
     const res = await approve(reservation);
     expect(res.statusCode).toBe(200);
 
     const approved = await Reservation.findById(reservation._id).lean();
     const eligibility = resolveReservationContractEligibility(approved, {
-      tenantExists: true, roomExists: true, roomType: room.type, bedExists: false,
+      tenantExists: true, roomExists: true, roomType: room.type, bedExists: true,
     });
     expect(eligibility).toMatchObject({ eligible: true, approvalState: "approved" });
 
     const contract = await createDraftContract({ reservationId: approved._id, actorId: admin._id });
+    expect(contract.bedId).toBe(selectedBed.id);
+    expect(contract.bedLabel).toBe(selectedBed.code);
     const validation = getContractValidation(contract);
     expect(validation.missingFields.map((f) => f.field)).not.toContain("bedId");
+  });
+
+  test("Double with no bed assignment: eligibility is blocked with a clear, retryable blocker — no bed is fabricated", async () => {
+    const { room, reservation } = await seedTenantAndReservation({
+      roomType: "double-sharing", capacity: 2,
+    });
+    const res = await approve(reservation);
+    expect(res.statusCode).toBe(200);
+
+    const approved = await Reservation.findById(reservation._id).lean();
+    expect(approved.applicationReviewedBy).toBeTruthy();
+
+    const eligibility = resolveReservationContractEligibility(approved, {
+      tenantExists: true, roomExists: true, roomType: room.type, bedExists: false,
+    });
+    expect(eligibility).toMatchObject({
+      eligible: false,
+      approvalState: "bed_assignment_required",
+      blockers: [{ code: "RESERVATION_BED_ASSIGNMENT_REQUIRED", retryable: true }],
+    });
+
+    const contract = await createDraftContract({ reservationId: approved._id, actorId: admin._id });
+    expect(contract.bedId).toBe("");
+    const validation = getContractValidation(contract);
+    expect(validation.missingFields.map((f) => f.field)).toContain("bedId");
   });
 
   test("Quadruple with a real bed assignment: eligibility succeeds and the authoritative bed propagates onto the Contract", async () => {

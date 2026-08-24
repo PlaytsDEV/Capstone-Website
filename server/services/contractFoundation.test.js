@@ -224,30 +224,32 @@ describe("Contract Management foundation", () => {
     );
   });
 
-  test("private and double-sharing Contracts do not require bedId/bedLabel", () => {
-    for (const roomType of ["private", "double-sharing"]) {
+  test("private Contracts do not require bedId/bedLabel", () => {
+    const contract = new Contract({
+      ...validContractData(), roomType: "private", bedId: "", bedLabel: "",
+    });
+    const result = getContractValidation(contract);
+    expect(result.missingFields.map(({ field }) => field)).not.toContain("bedId");
+  });
+
+  test("double-sharing and quadruple-sharing Contracts require a bed assignment", () => {
+    for (const roomType of ["double-sharing", "quadruple-sharing"]) {
       const contract = new Contract({
         ...validContractData(), roomType, bedId: "", bedLabel: "",
       });
       const result = getContractValidation(contract);
-      expect(result.missingFields.map(({ field }) => field)).not.toContain("bedId");
+      expect(result.missingFields.map(({ field }) => field)).toContain("bedId");
     }
   });
 
-  test("quadruple-sharing Contracts still require a bed assignment", () => {
-    const contract = new Contract({
-      ...validContractData(), roomType: "quadruple-sharing", bedId: "", bedLabel: "",
-    });
-    const result = getContractValidation(contract);
-    expect(result.missingFields.map(({ field }) => field)).toContain("bedId");
-  });
-
-  test("a valid quadruple-sharing bed assignment passes validation", () => {
-    const contract = new Contract({
-      ...validContractData(), roomType: "quadruple-sharing", bedId: "GP-6010-A-L", bedLabel: "GP-6010-A-L",
-    });
-    const result = getContractValidation(contract);
-    expect(result.missingFields.map(({ field }) => field)).not.toContain("bedId");
+  test("a valid double-sharing or quadruple-sharing bed assignment passes validation", () => {
+    for (const roomType of ["double-sharing", "quadruple-sharing"]) {
+      const contract = new Contract({
+        ...validContractData(), roomType, bedId: "GP-6010-A-L", bedLabel: "GP-6010-A-L",
+      });
+      const result = getContractValidation(contract);
+      expect(result.missingFields.map(({ field }) => field)).not.toContain("bedId");
+    }
   });
 
   test("a null pricingApprovedBy no longer blocks generation readiness", () => {
