@@ -275,10 +275,32 @@ export const assertContractFieldsAvoidLegalText = (coordinates) => {
   return true;
 };
 
-export const normalizeContractBedDisplay = (value) =>
-  String(value || "")
-    .replace(/^upper$/i, "Upper")
-    .replace(/^lower$/i, "Lower");
+// bedOrSlotNumber's official template field is sized for a plain position
+// word ("Upper"/"Lower") — but the value it actually receives is whichever
+// of stay.bedCode/contract.bedLabel/contract.bedId is populated
+// (contractGenerationDataService.js), and for every shared-room reservation
+// today that is the bed's globally-unique compact identifier assigned in
+// controllers/reservations/_helpers.js: `${roomNumber}-${bunkBlock}-${U|L|S}`
+// (e.g. "GD-106-A-L") — needed elsewhere to disambiguate beds across the
+// whole property, but far too long to fit the narrow field this function
+// feeds. That identifier must never be altered (bed matching/locking depends
+// on it staying exactly as assigned), so this only changes what gets
+// printed: it recovers the trailing position letter that code format always
+// ends with and renders the same short word the field was designed for.
+// Anything that doesn't match either shape is passed through unchanged, so
+// an unrecognized format still fails loud via the width/overflow guard in
+// contractPdfTextService.js rather than being silently mis-parsed.
+const BED_CODE_POSITION_SUFFIX = /-(U|L|S)$/i;
+const BED_CODE_POSITION_LABELS = Object.freeze({ U: "Upper", L: "Lower", S: "" });
+
+export const normalizeContractBedDisplay = (value) => {
+  const text = String(value || "").trim();
+  if (/^upper$/i.test(text)) return "Upper";
+  if (/^lower$/i.test(text)) return "Lower";
+  const suffixMatch = text.match(BED_CODE_POSITION_SUFFIX);
+  if (suffixMatch) return BED_CODE_POSITION_LABELS[suffixMatch[1].toUpperCase()];
+  return text;
+};
 
 export const inspectMasterPdf = async (template, coordinates) => {
   let bytes;
