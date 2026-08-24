@@ -37,6 +37,21 @@ const formatMoney = (val) => Number(val || 0).toLocaleString("en-PH", {
   maximumFractionDigits: 2,
 });
 
+// Mirrors normalizeContractBedDisplay in server/services/contractPdfService.js
+// so the live web view shows the same "Upper"/"Lower" wording as the
+// generated PDF instead of the raw compact code (e.g. "GD-106-A-L").
+const BED_CODE_POSITION_SUFFIX = /-(U|L|S)$/i;
+const BED_CODE_POSITION_LABELS = Object.freeze({ U: "Upper", L: "Lower", S: "" });
+const normalizeBedDisplay = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return text;
+  if (/^upper$/i.test(text)) return "Upper";
+  if (/^lower$/i.test(text)) return "Lower";
+  const suffixMatch = text.match(BED_CODE_POSITION_SUFFIX);
+  if (suffixMatch) return BED_CODE_POSITION_LABELS[suffixMatch[1].toUpperCase()];
+  return text;
+};
+
 // Professional 1:1 Legal Contract Typography matching official master template
 const POPULATED_COLOR = "#000000";
 
@@ -138,7 +153,7 @@ export default function DigitalContractPaper({
   const tenantAddress = stayData?.tenantResidentialAddress || contract?.tenantResidentialAddress
     || contract?.tenantAddress || "—";
   const roomNumber = stayData?.roomNumber || contract?.roomNumber || (isPrivate ? "GP-803" : "GP-305");
-  const bedSlot = isPrivate ? "Entire Room" : (stayData?.bedLabel || contract?.bedLabel || "upper");
+  const bedSlot = isPrivate ? "Entire Room" : normalizeBedDisplay(stayData?.bedLabel || contract?.bedLabel || "upper");
 
   const branchName = String(stayData?.branch || contract?.branch || "").toLowerCase().includes("guadalupe")
     ? "LILYCREST GUADALUPE"
