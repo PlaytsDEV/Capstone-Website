@@ -16,15 +16,24 @@ const hasAssignment = (reservation, context) => Boolean(
   )),
 );
 
-// Bed/slot assignment only carries legal meaning for room types with more
-// than one sleeping position to assign (quadruple sharing) — must agree
-// with contractService.js's roomTypeRequiresBedAssignment(), which governs
-// the same rule at Contract field-validation time. Private and
-// double-sharing legitimately have no individual bed assignment.
-const roomTypeRequiresBedAssignment = (roomType) => {
-  const value = String(roomType || "").toLowerCase();
-  return !value.includes("private") && !value.includes("double");
+// Canonical bed-requirement rule, shared with contractService.js's
+// roomTypeRequiresBedAssignment() (same predicate, kept in sync there):
+// a Room's own beds[] always carries distinct upper/lower slots regardless
+// of room type, but only rooms with more than one occupant (double-sharing,
+// quadruple-sharing) make that distinction load-bearing — two different
+// tenants can occupy the same room concurrently, each in their own bed
+// (confirmed against real occupancy data: a double-sharing room's two beds
+// are independently occupied by two different tenants/reservations). A
+// private room's second bed slot is never assigned to anyone else, so which
+// physical bed the sole occupant is in has no legal/occupancy meaning.
+// Private is the only exemption — every other/unknown room type is treated
+// as requiring a bed (fail safe, not fail open).
+export const roomRequiresIndividualBed = (roomType) => {
+  const value = String(roomType || "").trim().toLowerCase();
+  return value !== "private";
 };
+
+const roomTypeRequiresBedAssignment = roomRequiresIndividualBed;
 
 const resolveRoomType = (reservation, context) =>
   context.roomType || reservation.roomId?.type || reservation.preferredRoomType || "";
@@ -107,17 +116,18 @@ export const resolveReservationContractEligibility = (reservation = {}, context 
     eligible: true, approvalState: "approved", blockers: [], sourceEvidence,
     legacyCompatibilityApplied: false,
   };
-  // The reservation is approved, but this is a quadruple-sharing room and no
-  // individual bed/slot has been assigned yet — do not fabricate one. This
-  // is a distinct, retryable state from "not yet approved" so Job 19 and
-  // the real generator report the actual blocker instead of a misleading
-  // "needs approval" message for an already-approved reservation.
+  // The reservation is approved, but this is a shared room (double- or
+  // quadruple-sharing) and no individual bed/slot has been assigned yet —
+  // do not fabricate one. This is a distinct, retryable state from "not yet
+  // approved" so Job 19 and the real generator report the actual blocker
+  // instead of a misleading "needs approval" message for an
+  // already-approved reservation.
   if (approvedButMissingBed) return {
     eligible: false,
     approvalState: "bed_assignment_required",
     blockers: [{
       code: "RESERVATION_BED_ASSIGNMENT_REQUIRED",
-      message: "This quadruple-sharing Reservation is approved, but has no individual bed assignment yet.",
+      message: "This Reservation is approved, but has no individual bed assignment yet.",
       category: "PENDING_ADMIN_ACTION",
       retryable: true,
       humanActionRequired: true,
