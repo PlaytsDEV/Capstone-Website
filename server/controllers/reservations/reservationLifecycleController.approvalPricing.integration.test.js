@@ -93,7 +93,7 @@ describe("reservation approval — structured pricing snapshot idempotency", () 
   afterAll(async () => {
     await mongoose.disconnect();
     await mongo.stop();
-  });
+  }, 30_000);
 
   beforeEach(async () => {
     await Reservation.deleteMany({});
@@ -105,7 +105,7 @@ describe("reservation approval — structured pricing snapshot idempotency", () 
       isDiscountEnabled: true,
       longTermLeaseMinMonths: 6,
     });
-  });
+  }, 30_000);
 
   async function createRoomAndReservation({ leaseDuration = 12 } = {}) {
     const room = await Room.create({

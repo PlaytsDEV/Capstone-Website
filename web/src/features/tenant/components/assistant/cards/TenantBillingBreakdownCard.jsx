@@ -66,7 +66,7 @@ export default function TenantBillingBreakdownCard({ data, onCloseDrawer }) {
         <div className="tenant-snapshot-cell">
           <span className="tenant-snapshot-cell-label flex items-center gap-1">
             <Zap className="w-3 h-3 text-amber-500" aria-hidden="true" />
-            <span>Electricity Charge</span>
+            <span>Electricity Share</span>
           </span>
           <span className="tenant-snapshot-cell-val">{formatCurrency(electricity)}</span>
         </div>
