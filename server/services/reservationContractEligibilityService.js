@@ -16,6 +16,19 @@ const hasAssignment = (reservation, context) => Boolean(
   )),
 );
 
+// Bed/slot assignment only carries legal meaning for room types with more
+// than one sleeping position to assign (quadruple sharing) — must agree
+// with contractService.js's roomTypeRequiresBedAssignment(), which governs
+// the same rule at Contract field-validation time. Private and
+// double-sharing legitimately have no individual bed assignment.
+const roomTypeRequiresBedAssignment = (roomType) => {
+  const value = String(roomType || "").toLowerCase();
+  return !value.includes("private") && !value.includes("double");
+};
+
+const resolveRoomType = (reservation, context) =>
+  context.roomType || reservation.roomId?.type || reservation.preferredRoomType || "";
+
 export const resolveReservationContractEligibility = (reservation = {}, context = {}) => {
   const status = normalized(reservation.status).replaceAll("_", "");
   const rawStatus = normalized(reservation.status);
@@ -39,9 +52,15 @@ export const resolveReservationContractEligibility = (reservation = {}, context 
     legacyConfirmedAt: reservation.legacyContractApprovalConfirmedAt || null,
     legacyConfirmedBy: reservation.legacyContractApprovalConfirmedBy || null,
   };
-  const explicitApproval = APPROVED_STATUSES.has(rawStatus) &&
+  const roomType = resolveRoomType(reservation, context);
+  const bedRequired = roomTypeRequiresBedAssignment(roomType);
+  sourceEvidence.roomType = roomType || null;
+  sourceEvidence.bedRequired = bedRequired;
+  const reviewed = APPROVED_STATUSES.has(rawStatus) &&
     Boolean(reservation.applicationReviewedAt) &&
     Boolean(reservation.applicationReviewedBy);
+  const explicitApproval = reviewed && (!bedRequired || sourceEvidence.bedAssigned);
+  const approvedButMissingBed = reviewed && bedRequired && !sourceEvidence.bedAssigned;
   const completed = COMPLETED_STATUSES.has(status);
   const legacyEvidenceComplete = completed &&
     sourceEvidence.tenantExists &&
@@ -86,6 +105,24 @@ export const resolveReservationContractEligibility = (reservation = {}, context 
   };
   if (explicitApproval) return {
     eligible: true, approvalState: "approved", blockers: [], sourceEvidence,
+    legacyCompatibilityApplied: false,
+  };
+  // The reservation is approved, but this is a quadruple-sharing room and no
+  // individual bed/slot has been assigned yet — do not fabricate one. This
+  // is a distinct, retryable state from "not yet approved" so Job 19 and
+  // the real generator report the actual blocker instead of a misleading
+  // "needs approval" message for an already-approved reservation.
+  if (approvedButMissingBed) return {
+    eligible: false,
+    approvalState: "bed_assignment_required",
+    blockers: [{
+      code: "RESERVATION_BED_ASSIGNMENT_REQUIRED",
+      message: "This quadruple-sharing Reservation is approved, but has no individual bed assignment yet.",
+      category: "PENDING_ADMIN_ACTION",
+      retryable: true,
+      humanActionRequired: true,
+    }],
+    sourceEvidence,
     legacyCompatibilityApplied: false,
   };
   if (legacyEvidenceComplete) return {

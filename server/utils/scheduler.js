@@ -967,7 +967,7 @@ async function reconcileMissingContractGeneration() {
     const stuckContracts = await Contract.find({
       isCurrent: true,
       status: { $in: ["draft", "incomplete", "ready_for_generation"] },
-    }).select("_id reservationId status createdBy updatedBy bedId bedLabel").lean();
+    }).select("_id reservationId status createdBy updatedBy bedId bedLabel roomType").lean();
 
     let scanned = stuckContracts.length;
     let attempted = 0;
@@ -985,6 +985,7 @@ async function reconcileMissingContractGeneration() {
       // copied onto the Contract at draft-creation time.
       const eligibility = resolveReservationContractEligibility(reservation, {
         bedExists: Boolean(contract.bedId || contract.bedLabel),
+        roomType: contract.roomType,
       });
       if (!eligibility.eligible) {
         notYetGeneratable++;

@@ -1038,6 +1038,7 @@ export const confirmLegacyReservationApproval = async (req, res) => {
       tenantExists: Boolean(contract.tenantId),
       roomExists: Boolean(contract.roomId),
       bedExists: Boolean(contract.bedId || contract.bedLabel),
+      roomType: contract.roomType,
     });
     if (eligibility.approvalState !== "legacy_completed") {
       return res.status(422).json({
