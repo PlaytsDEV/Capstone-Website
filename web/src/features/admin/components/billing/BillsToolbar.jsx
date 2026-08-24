@@ -36,9 +36,14 @@ export default function BillsToolbar({
  type="month"
  min="2020-01"
  max="2099-12"
- className="month-filter"
+ className="month-filter cursor-pointer"
  value={monthFilter}
  onChange={(e) => onMonthChange(e.target.value)}
+ onClick={(e) => {
+   try {
+     e.currentTarget.showPicker?.();
+   } catch {}
+ }}
  />
  </div>
  </div>

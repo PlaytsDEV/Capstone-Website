@@ -62,15 +62,19 @@ export const billingApi = {
    * Get all bills for a branch (admin only)
    */
   getBillsByBranch: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
-    return authFetch(`/billing/branch?${query}`);
+    const query = new URLSearchParams(
+      Object.entries(params).filter(
+        ([, value]) => value != null && value !== "" && value !== "undefined" && value !== "null",
+      ),
+    ).toString();
+    return authFetch(`/billing/branch${query ? `?${query}` : ""}`);
   },
 
   /**
    * Get rooms with occupants for bill generation (admin only)
    */
   getRoomsWithTenants: (branch) =>
-    authFetch(`/billing/rooms${branch ? `?branch=${branch}` : ""}`),
+    authFetch(`/billing/rooms${branch && branch !== "all" && branch !== "undefined" ? `?branch=${branch}` : ""}`),
 
   /**
    * Apply penalties to overdue bills (admin only)
@@ -84,22 +88,32 @@ export const billingApi = {
   getBillingReport: () => authFetch("/billing/report"),
 
   getPendingVerifications: (branch = null) =>
-    authFetch(`/billing/pending-verifications${branch ? `?branch=${branch}` : ""}`),
+    authFetch(`/billing/pending-verifications${branch && branch !== "all" && branch !== "undefined" ? `?branch=${branch}` : ""}`),
 
   getAdminPayments: (params = {}) => {
     const query = new URLSearchParams(
-      Object.entries(params).filter(([, value]) => value != null && value !== ""),
+      Object.entries(params).filter(
+        ([, value]) => value != null && value !== "" && value !== "undefined" && value !== "null",
+      ),
     ).toString();
     return authFetch(`/payments/admin/ledger${query ? `?${query}` : ""}`);
   },
 
   getRentBills: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
+    const query = new URLSearchParams(
+      Object.entries(params).filter(
+        ([, value]) => value != null && value !== "" && value !== "undefined" && value !== "null",
+      ),
+    ).toString();
     return authFetch(`/billing/rent${query ? `?${query}` : ""}`);
   },
 
   getRentBillableTenants: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
+    const query = new URLSearchParams(
+      Object.entries(params).filter(
+        ([, value]) => value != null && value !== "" && value !== "undefined" && value !== "null",
+      ),
+    ).toString();
     return authFetch(`/billing/rent/tenants${query ? `?${query}` : ""}`);
   },
 

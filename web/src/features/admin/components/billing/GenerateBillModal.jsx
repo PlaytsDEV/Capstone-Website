@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -150,6 +150,12 @@ export default function GenerateBillModal({
                 max="2099-12"
                 value={genMonth}
                 onChange={(e) => onMonthChange(e.target.value)}
+                onClick={(e) => {
+                  try {
+                    e.currentTarget.showPicker?.();
+                  } catch {}
+                }}
+                className="cursor-pointer"
               />
             </div>
             <div className="form-group">
@@ -160,6 +166,12 @@ export default function GenerateBillModal({
                 max="2099-12-31"
                 value={genDueDate}
                 onChange={(e) => onDueDateChange(e.target.value)}
+                onClick={(e) => {
+                  try {
+                    e.currentTarget.showPicker?.();
+                  } catch {}
+                }}
+                className="cursor-pointer"
               />
               <span className="form-hint">
                 Defaults to 30 days from billing month
