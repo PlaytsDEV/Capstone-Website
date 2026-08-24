@@ -646,14 +646,7 @@
   border-radius: 16px;
   padding: 24px;
   margin-bottom: 24px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03);
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease, border-color 0.2s ease;
-}
-
-.statement-ledger-hero:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
-  border-color: var(--border-hover, #cbd5e1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .statement-ledger-hero__top {
@@ -912,84 +905,6 @@
 .statement-card__body {
   padding: 0 20px 20px;
   border-top: 1px solid var(--surface-muted);
-}
-
-/* Floating Bottom Dock */
-.floating-checkout-dock {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 999;
-  background: var(--color-primary);
-  color: #ffffff;
-  border: 1px solid #1e293b;
-  border-radius: 9999px;
-  padding: 10px 20px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25);
-  animation: slideUpFade 0.2s ease-out;
-}
-
-@keyframes slideUpFade {
-  from {
-    transform: translate(-50%, 20px);
-    opacity: 0;
-  }
-  to {
-    transform: translate(-50%, 0);
-    opacity: 1;
-  }
-}
-
-.floating-checkout-dock__info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-}
-
-.floating-checkout-dock__badge {
-  background: var(--color-accent);
-  color: var(--color-primary);
-  font-weight: 800;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-}
-
-.floating-checkout-dock__amount {
-  font-size: 15px;
-  font-weight: 800;
-  color: #ffffff;
-  font-variant-numeric: tabular-nums;
-}
-
-.floating-checkout-dock__btn {
-  background: #059669;
-  color: #ffffff;
-  border: none;
-  border-radius: 999px;
-  padding: 8px 18px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
-}
-
-.floating-checkout-dock__btn:hover {
-  background: #047857;
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
-  transform: translateY(-1px);
-}
-
-.floating-checkout-dock__btn:active {
-  transform: scale(0.98);
 }
 
 /* Pre-Checkout Review Modal */

@@ -552,8 +552,6 @@ const StatementLedgerHero = ({
   hasWaterBilling,
   onPayAll,
   unpaidCount = 0,
-  categoryFilter = "all",
-  onSelectCategoryFilter,
 }) => {
   const isAllCaughtUp = totalBalance <= 0;
 
@@ -595,45 +593,35 @@ const StatementLedgerHero = ({
       </div>
 
       <div className="statement-ledger-hero__chips" style={dash.chipsContainer}>
-        <button
-          type="button"
-          onClick={() => onSelectCategoryFilter(categoryFilter === "rent" ? "all" : "rent")}
-          className={`statement-ledger-hero__chip-btn ${categoryFilter === "rent" ? "is-active" : ""}`}
-          title="Filter by Rent Statements"
-        >
-          <Home size={15} color={categoryFilter === "rent" ? "#ffffff" : "#0A1628"} />
+        <div style={dash.chipItem}>
+          <Home size={15} color="#0A1628" />
           <span>Rent:</span>
-          <strong style={{ color: categoryFilter === "rent" ? "#ffffff" : "#0A1628", fontWeight: 700 }}>
+          <strong style={{ color: "#0A1628", fontWeight: 700 }}>
             {fmt(unpaidRent)}
           </strong>
-        </button>
+        </div>
 
-        <button
-          type="button"
-          onClick={() => onSelectCategoryFilter(categoryFilter === "electricity" ? "all" : "electricity")}
-          className={`statement-ledger-hero__chip-btn ${categoryFilter === "electricity" ? "is-active" : ""}`}
-          title="Filter by Electricity Statements"
-        >
-          <Zap size={15} color={categoryFilter === "electricity" ? "#ffffff" : "#d97706"} />
+        <div style={dash.chipDivider} />
+
+        <div style={dash.chipItem}>
+          <Zap size={15} color="#d97706" />
           <span>Electricity:</span>
-          <strong style={{ color: categoryFilter === "electricity" ? "#ffffff" : "#0A1628", fontWeight: 700 }}>
+          <strong style={{ color: "#0A1628", fontWeight: 700 }}>
             {fmt(unpaidElec)}
           </strong>
-        </button>
+        </div>
 
         {hasWaterBilling && (
-          <button
-            type="button"
-            onClick={() => onSelectCategoryFilter(categoryFilter === "water" ? "all" : "water")}
-            className={`statement-ledger-hero__chip-btn ${categoryFilter === "water" ? "is-active" : ""}`}
-            title="Filter by Water Statements"
-          >
-            <Droplets size={15} color={categoryFilter === "water" ? "#ffffff" : "#2563eb"} />
-            <span>Water:</span>
-            <strong style={{ color: categoryFilter === "water" ? "#ffffff" : "#0A1628", fontWeight: 700 }}>
-              {fmt(unpaidWater)}
-            </strong>
-          </button>
+          <>
+            <div style={dash.chipDivider} />
+            <div style={dash.chipItem}>
+              <Droplets size={15} color="#2563eb" />
+              <span>Water:</span>
+              <strong style={{ color: "#0A1628", fontWeight: 700 }}>
+                {fmt(unpaidWater)}
+              </strong>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -1664,8 +1652,6 @@ export default function BillingTab() {
         hasWaterBilling={hasWaterBilling}
         unpaidCount={unpaidBills.length}
         onPayAll={handleOpenReviewForAll}
-        categoryFilter={categoryFilter}
-        onSelectCategoryFilter={setCategoryFilter}
       />
 
       {/* 2. Dual Filter Toolbar (Status & Clickable Category Dropdown) */}
@@ -1820,26 +1806,7 @@ export default function BillingTab() {
         </div>
       )}
 
-      {/* 5. Floating Checkout Dock (visible on mobile / scroll when items selected) */}
-      {selectedBillIds.length > 0 && !isReviewModalOpen && (
-        <div className="floating-checkout-dock">
-          <div className="floating-checkout-dock__info">
-            <span className="floating-checkout-dock__badge">{selectedBillIds.length} Selected</span>
-            <span className="floating-checkout-dock__amount">{fmt(selectedTotal)}</span>
-          </div>
-          <button
-            type="button"
-            className="floating-checkout-dock__btn"
-            onClick={handleOpenReviewForSelected}
-            disabled={payingOnline}
-          >
-            <CreditCard size={14} />
-            Review & Pay
-          </button>
-        </div>
-      )}
-
-      {/* 6. Pre-Checkout Review Modal (Choice 2: B) */}
+      {/* 5. Pre-Checkout Review Modal (Choice 2: B) */}
       <PreCheckoutModal
         isOpen={isReviewModalOpen}
         onClose={() => setIsReviewModalOpen(false)}
