@@ -110,8 +110,10 @@ await jest.unstable_mockModule("./billingPolicy.js", () => ({
 await jest.unstable_mockModule("./businessSettings.js", () => ({
   getLifecyclePolicySettings,
   getPenaltyRatePerDay,
+  getLatePaymentGraceDays: jest.fn(async () => 1),
   getMaxPenaltyCapPercent,
   resolvePenaltyRatePerDay,
+  resolveLatePaymentGraceDays: (s, c) => (s !== undefined && s !== null ? Number(s) : (c !== undefined && c !== null ? Number(c) : 1)),
 }));
 
 await jest.unstable_mockModule("./rentGenerator.js", () => ({

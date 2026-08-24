@@ -22,6 +22,9 @@ export const BUSINESS = {
   /** Late payment penalty per day in PHP (₱). Override via PENALTY_RATE env var. */
   PENALTY_RATE_PER_DAY: Number(process.env.PENALTY_RATE) || 50,
 
+  /** Grace period in days for late payment before daily penalty accrues. Override via LATE_PAYMENT_GRACE_DAYS env var. */
+  DEFAULT_LATE_PAYMENT_GRACE_DAYS: Number(process.env.LATE_PAYMENT_GRACE_DAYS) || 1,
+
   /** Default electricity rate (₱/kWh) used when auto-opening a billing period at
    *  move-in and no prior period exists for the room. Admin can update via the
    *  Electricity Billing UI. Override via DEFAULT_ELECTRICITY_RATE env var. */

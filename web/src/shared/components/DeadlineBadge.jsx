@@ -56,7 +56,7 @@ export default function DeadlineBadge({
   // Badge Text & Styles
   let labelText = "";
   let badgeStyle = {
-    bg: "var(--surface-subtle, #f8fafc)",
+    bg: "transparent",
     color: "var(--text-secondary, #475569)",
     border: "var(--border-card, #e2e8f0)",
   };
@@ -64,38 +64,38 @@ export default function DeadlineBadge({
   if (isPaid) {
     labelText = `Paid (Due was ${formattedDate})`;
     badgeStyle = {
-      bg: "#f0fdf4",
-      color: "#166534",
-      border: "#bbf7d0",
+      bg: "transparent",
+      color: "#059669",
+      border: "var(--border-card, #e2e8f0)",
     };
   } else if (isOverdue) {
     const daysLate = Math.abs(daysDiff);
     labelText = `Was Due: ${formattedDate} (${daysLate} day${daysLate === 1 ? "" : "s"} overdue)`;
     badgeStyle = {
-      bg: "#fef2f2",
-      color: "#991b1b",
-      border: "#fecaca",
+      bg: "transparent",
+      color: "#dc2626",
+      border: "var(--border-card, #e2e8f0)",
     };
   } else if (daysDiff === 0) {
     labelText = `Due Today! (${formattedDate})`;
     badgeStyle = {
-      bg: "#fffbeba0",
-      color: "#92400e",
-      border: "#fde68a",
+      bg: "transparent",
+      color: "#d97706",
+      border: "var(--border-card, #e2e8f0)",
     };
   } else if (daysDiff === 1) {
     labelText = `Due Tomorrow (${formattedDate})`;
     badgeStyle = {
-      bg: "#fffbeba0",
-      color: "#92400e",
-      border: "#fde68a",
+      bg: "transparent",
+      color: "#d97706",
+      border: "var(--border-card, #e2e8f0)",
     };
   } else {
     labelText = `Due: ${formattedDate} (in ${daysDiff} days)`;
     badgeStyle = {
-      bg: "#eff6ff",
-      color: "#1e40af",
-      border: "#bfdbfe",
+      bg: "transparent",
+      color: "#0284c7",
+      border: "var(--border-card, #e2e8f0)",
     };
   }
 
@@ -106,7 +106,7 @@ export default function DeadlineBadge({
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
-          padding: "4px 10px",
+          padding: "3px 9px",
           borderRadius: 6,
           fontSize: 12,
           fontWeight: 600,
@@ -117,11 +117,11 @@ export default function DeadlineBadge({
         }}
       >
         {isOverdue ? (
-          <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+          <AlertTriangle size={14} color="#dc2626" style={{ flexShrink: 0 }} />
         ) : daysDiff <= 1 && !isPaid ? (
-          <Clock size={14} style={{ flexShrink: 0 }} />
+          <Clock size={14} color="#d97706" style={{ flexShrink: 0 }} />
         ) : (
-          <Calendar size={14} style={{ flexShrink: 0 }} />
+          <Calendar size={14} color={isPaid ? "#059669" : "#0284c7"} style={{ flexShrink: 0 }} />
         )}
         <span>{labelText}</span>
       </div>
@@ -133,8 +133,8 @@ export default function DeadlineBadge({
             borderRadius: 8,
             fontSize: 12,
             lineHeight: "1.5",
-            backgroundColor: isOverdue ? "#fef2f2" : "#f8fafc",
-            border: `1px solid ${isOverdue ? "#fecaca" : "#e2e8f0"}`,
+            backgroundColor: "#ffffff",
+            border: "1px solid var(--border-card, #e2e8f0)",
             color: isOverdue ? "#991b1b" : "#334155",
             marginTop: 4,
           }}
@@ -155,7 +155,7 @@ export default function DeadlineBadge({
           {isOverdue ? (
             type === "bill" ? (
               <span>
-                This statement is past due. A daily late payment penalty rate of <strong>₱{penaltyRate}/day</strong> is automatically accrued on overdue balances until paid in full. Continued non-payment will result in automated payment reminders, potential utility service restrictions, and dormitory administrative review.
+                This statement is past due. A daily late payment penalty rate of <strong>₱{penaltyRate}/day</strong> applies to overdue balances after a 1-day grace period until paid in full. Continued non-payment will result in automated payment reminders, potential utility service restrictions, and dormitory administrative review.
               </span>
             ) : (
               <span>
@@ -165,7 +165,7 @@ export default function DeadlineBadge({
           ) : (
             type === "bill" ? (
               <span>
-                Please ensure full payment is settled on or before <strong>{formattedDate}</strong> to maintain your active account status and avoid daily late penalties (₱{penaltyRate}/day).
+                Please ensure full payment is settled on or before <strong>{formattedDate}</strong> to maintain your active account status and avoid daily late penalties (₱{penaltyRate}/day after 1-day grace).
               </span>
             ) : (
               <span>

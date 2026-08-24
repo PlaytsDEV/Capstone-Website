@@ -242,6 +242,26 @@ describe("tenantWorkspace utilities", () => {
     expect(activeViolations[0].penaltyAmount).toBe(1000);
     expect(activeViolations[0].location).toBe("2nd Floor Hallway");
   });
+
+  test("includes createdAt and updatedAt timestamps for sorting in tenant workspace entry", () => {
+    const entry = buildTenantWorkspaceEntry({
+      reservation: {
+        _id: "res-timestamp-1",
+        status: "moveIn",
+        moveInDate: new Date("2026-02-01T00:00:00.000Z"),
+        createdAt: new Date("2026-01-20T08:00:00.000Z"),
+        updatedAt: new Date("2026-02-01T10:00:00.000Z"),
+        selectedBed: { id: "bed-1", position: "lower" },
+        roomId: { _id: "room-1", name: "Room 101", branch: "gil-puyat" },
+      },
+      bedHistoryRecords: [],
+      now: new Date("2026-04-15T00:00:00.000Z"),
+    });
+
+    expect(entry.createdAt).toBe("2026-01-20T08:00:00.000Z");
+    expect(entry.updatedAt).toBe("2026-02-01T10:00:00.000Z");
+    expect(entry.moveInDate).toEqual(new Date("2026-02-01T00:00:00.000Z"));
+  });
 });
 
 

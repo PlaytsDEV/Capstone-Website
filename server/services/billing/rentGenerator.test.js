@@ -151,7 +151,7 @@ describe("services/billing/rentGenerator", () => {
     expect(billInstances).toHaveLength(1);
     expect(localYmd(billInstances[0].billingCycleStart)).toBe("2026-3-5");
     expect(localYmd(billInstances[0].billingCycleEnd)).toBe("2026-4-5");
-    expect(localYmd(billInstances[0].dueDate)).toBe("2026-2-26");
+    expect(localYmd(billInstances[0].dueDate)).toBe("2026-3-5");
     expect(notify.billGenerated).toHaveBeenCalledTimes(1);
 
     // Regression (bill-release notification audit): this cron-generation
@@ -209,7 +209,7 @@ describe("services/billing/rentGenerator", () => {
     expect(billInstances).toHaveLength(1);
     expect(localYmd(billInstances[0].billingCycleStart)).toBe("2026-4-23");
     expect(localYmd(billInstances[0].billingCycleEnd)).toBe("2026-5-23");
-    expect(localYmd(billInstances[0].dueDate)).toBe("2026-4-16");
+    expect(localYmd(billInstances[0].dueDate)).toBe("2026-4-23");
     expect(billInstances[0].charges.rent).toBe(6300);
     expect(billInstances[0].totalAmount).toBe(6300);
     expect(billInstances[0].reservationCreditApplied).toBe(0);

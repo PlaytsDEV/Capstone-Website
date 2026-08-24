@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Search, Filter, X, RotateCcw, Calendar } from "lucide-react";
+import { Search, Filter, X, RotateCcw, Calendar, ArrowUpDown } from "lucide-react";
 import { ExportButtons } from "../pages/analyticsTabShared.js";
 import "./TenantFilterBar.css";
 
@@ -23,6 +23,8 @@ export default function TenantFilterBar({
   setDateFrom,
   dateTo,
   setDateTo,
+  sortBy = "newest",
+  setSortBy,
   quickFilters,
   toggleQuickFilter,
   clearQuickFilters,
@@ -62,6 +64,7 @@ export default function TenantFilterBar({
   const hasActiveFilters =
     filterCount > 0 ||
     Boolean(searchTerm?.trim()) ||
+    (sortBy && sortBy !== "newest") ||
     (Array.isArray(quickFilters) && quickFilters.length > 0);
 
   return (
@@ -81,6 +84,24 @@ export default function TenantFilterBar({
         </div>
 
         <div className="tenant-filter-bar__actions" ref={filterRef}>
+          <div className="tenant-filter-bar__sort-wrap">
+            <ArrowUpDown size={13} className="tenant-filter-bar__sort-icon" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy?.(e.target.value)}
+              className="tenant-filter-bar__select"
+              aria-label="Sort tenants"
+              title="Sort tenant directory"
+            >
+              <option value="newest">Newest to Oldest</option>
+              <option value="oldest">Oldest to Newest</option>
+              <option value="urgency">Action Needed</option>
+              <option value="lease_asc">Lease Ending Soonest</option>
+              <option value="name_asc">Name (A–Z)</option>
+              <option value="name_desc">Name (Z–A)</option>
+            </select>
+          </div>
+
           <button
             type="button"
             className={`tenant-filter-bar__btn ${isFiltersOpen ? "active" : ""} ${filterCount > 0 ? "has-filters" : ""}`}
@@ -102,7 +123,7 @@ export default function TenantFilterBar({
             disabled={!hasActiveFilters}
             title={
               hasActiveFilters
-                ? "Reset all search queries and active filter criteria"
+                ? "Reset all search queries, active filter criteria, and sort order"
                 : "No active filters or search terms to reset"
             }
           >
@@ -138,6 +159,21 @@ export default function TenantFilterBar({
               </div>
 
               <div className="tenant-filter-dropdown__content">
+                <div className="tenant-filter-group">
+                  <label>Sort Order</label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy?.(e.target.value)}
+                  >
+                    <option value="newest">Newest to Oldest</option>
+                    <option value="oldest">Oldest to Newest</option>
+                    <option value="urgency">Action Needed</option>
+                    <option value="lease_asc">Lease Ending Soonest</option>
+                    <option value="name_asc">Name (A–Z)</option>
+                    <option value="name_desc">Name (Z–A)</option>
+                  </select>
+                </div>
+
                 {isOwner && (
                   <div className="tenant-filter-group">
                     <label>Branch</label>

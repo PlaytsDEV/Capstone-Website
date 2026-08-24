@@ -1,7 +1,7 @@
 import { describe, expect, test } from "@jest/globals";
 import { computePenalty } from "./penaltyCalculator.js";
 
-const settings = { penaltyRatePerDay: 50, maxCapPercent: 100 };
+const settings = { penaltyRatePerDay: 50, latePaymentGraceDays: 1, maxCapPercent: 100 };
 
 // Local wall-clock dates (not UTC ISO strings) so the "same calendar day"
 // assertions below are meaningful regardless of the machine's timezone.
@@ -17,21 +17,37 @@ const bill = (overrides = {}) => ({
 describe("computePenalty", () => {
   test("applies no penalty on the due date itself", async () => {
     const result = await computePenalty(bill(), settings, localDate(2026, 6, 10, 23));
-    expect(result).toMatchObject({ penalty: 0, daysLate: 0 });
+    expect(result).toMatchObject({ penalty: 0, daysLate: 0, isWithinGracePeriod: false });
   });
 
-  // Plan 4 (D4): Grace period removed — penalty starts on Day 1 past due.
-  // The old "applies no penalty during the one-day grace period" test is now
-  // updated to assert that ₱50 IS charged on Day 1 past due.
-  test("charges ₱50 immediately on Day 1 past due (no grace period — D4)", async () => {
+  test("applies ₱0 penalty during the 1-day grace period on Day 1 past due (e.g. Jun 11 for Jun 10 due date)", async () => {
     const result = await computePenalty(bill(), settings, localDate(2026, 6, 11, 8));
-    expect(result.penalty).toBe(50); // Day 1 past due = 1 billable day × ₱50
+    expect(result.penalty).toBe(0); // Day 1 past due = within 1-day grace => ₱0
     expect(result.daysLate).toBe(1);
+    expect(result.billableDays).toBe(0);
+    expect(result.isWithinGracePeriod).toBe(true);
   });
 
-  test("charges PHP 50/day starting Day 1 (no longer Day 2 after grace)", async () => {
+  test("charges ₱50 on Day 2 past due (1st billable day after 1-day grace period, e.g. Jun 12)", async () => {
     const result = await computePenalty(bill(), settings, localDate(2026, 6, 12));
-    expect(result.penalty).toBe(100); // Day 2 past due = 2 billable days × ₱50
+    expect(result.penalty).toBe(50); // Day 2 past due = (2 - 1) = 1 billable day × ₱50
+    expect(result.daysLate).toBe(2);
+    expect(result.billableDays).toBe(1);
+    expect(result.isWithinGracePeriod).toBe(false);
+  });
+
+  test("charges ₱100 on Day 3 past due (2nd billable day after 1-day grace period, e.g. Jun 13)", async () => {
+    const result = await computePenalty(bill(), settings, localDate(2026, 6, 13));
+    expect(result.penalty).toBe(100); // Day 3 past due = (3 - 1) = 2 billable days × ₱50
+    expect(result.daysLate).toBe(3);
+    expect(result.billableDays).toBe(2);
+  });
+
+  test("supports custom grace days setting (e.g. 0 grace days charges ₱50 on Day 1)", async () => {
+    const zeroGraceSettings = { penaltyRatePerDay: 50, latePaymentGraceDays: 0, maxCapPercent: 100 };
+    const day1Result = await computePenalty(bill(), zeroGraceSettings, localDate(2026, 6, 11));
+    expect(day1Result.penalty).toBe(50);
+    expect(day1Result.billableDays).toBe(1);
   });
 
   test("accrues per calendar day regardless of time-of-day (day-boundary normalization)", async () => {
@@ -51,8 +67,8 @@ describe("computePenalty", () => {
       localDate(2026, 6, 13, 0, 5),
     );
     expect(threeDaysLate.daysLate).toBe(3);
-    // D4: no grace → 3 billable days × ₱50 = ₱150
-    expect(threeDaysLate.penalty).toBe(150);
+    // 1-day grace -> 2 billable days × ₱50 = ₱100
+    expect(threeDaysLate.penalty).toBe(100);
   });
 
   test("caps the penalty at maxCapPercent of the rent charge", async () => {

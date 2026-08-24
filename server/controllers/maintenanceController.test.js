@@ -3330,11 +3330,15 @@ describe("maintenanceController", () => {
       }),
     );
 
+    const futureSlot = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    futureSlot.setUTCHours(10, 0, 0, 0);
+    if (futureSlot.getUTCDay() === 0) futureSlot.setUTCDate(futureSlot.getUTCDate() + 1);
+
     const req = {
       user: { uid: "firebase_uid_1" },
       params: { requestId: requestDoc.request_id },
       body: {
-        proposedDate: "2026-08-22T14:00:00.000Z",
+        proposedDate: futureSlot.toISOString(),
         reason: "I will be in class during the original schedule.",
       },
     };

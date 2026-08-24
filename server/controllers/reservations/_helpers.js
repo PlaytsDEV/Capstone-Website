@@ -258,6 +258,8 @@ export const TENANT_WORKSPACE_FIELDS = [
   "roomId",
   "isViewedByAdmin",
   "lastAdminViewedAt",
+  "createdAt",
+  "updatedAt",
 ].join(" ");
 export const TENANT_WORKSPACE_USER = [
   "userId",

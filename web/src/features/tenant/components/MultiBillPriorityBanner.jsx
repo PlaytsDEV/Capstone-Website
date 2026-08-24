@@ -27,7 +27,7 @@ export default function MultiBillPriorityBanner({ bills = [] }) {
           <li>Current month rent invoices</li>
         </ol>
         <div style={{ fontSize: "0.8125rem", color: "#b45309", borderTop: "1px dashed #fde68a", paddingTop: "0.5rem", marginTop: "0.5rem" }}>
-          <strong>Policy Note:</strong> Overdue items are past their original due dates and accrue daily late penalty fees (₱50/day). Always check statement deadlines to settle past-due items promptly.
+          <strong>Policy Note:</strong> Overdue items are past their original due dates and accrue daily late penalty fees (₱50/day after a 1-day grace period). Always check statement deadlines to settle past-due items promptly.
         </div>
       </div>
     </div>

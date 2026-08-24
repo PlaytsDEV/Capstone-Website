@@ -3540,7 +3540,7 @@ export const getRoomBedHistory = async (req, res, next) => {
                 ? "Student"
                 : rec.tenantId.occupation
                 ? "Working Professional"
-                : "Resident",
+                : "Tenant",
             }
           : null,
         moveInDate: moveIn,

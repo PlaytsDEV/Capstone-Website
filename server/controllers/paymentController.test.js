@@ -70,8 +70,10 @@ await jest.unstable_mockModule("../config/constants.js", () => ({
 await jest.unstable_mockModule("../utils/businessSettings.js", () => ({
   getReservationFeeAmount: jest.fn(async () => 2000),
   getPenaltyRatePerDay: jest.fn(async () => 50),
+  getLatePaymentGraceDays: jest.fn(async () => 1),
   getMaxPenaltyCapPercent: jest.fn(async () => 100),
   resolvePenaltyRatePerDay: (stored, configured) => stored || configured || 50,
+  resolveLatePaymentGraceDays: (stored, configured) => (stored !== undefined && stored !== null ? Number(stored) : (configured !== undefined && configured !== null ? Number(configured) : 1)),
 }));
 
 await jest.unstable_mockModule("../utils/billSettlement.js", () => ({

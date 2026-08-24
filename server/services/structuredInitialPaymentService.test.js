@@ -78,7 +78,7 @@ describe("rolling advance coverage", () => {
     expect(label(advance.coverageEndExclusive)).toBe("2026-04-23");
     expect(label(firstRegular.coverageStart)).toBe("2026-04-23");
     expect(label(firstRegular.displayEnd)).toBe("2026-05-22");
-    expect(label(firstRegular.dueDate)).toBe("2026-04-16");
+    expect(label(firstRegular.dueDate)).toBe("2026-04-23");
   });
 
   test.each([

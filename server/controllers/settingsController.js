@@ -9,6 +9,7 @@ import { sendSuccess } from "../middleware/errorHandler.js";
 import auditLogger from "../utils/auditLogger.js";
 
 const WHOLE_NUMBER_FIELDS = new Set([
+  "latePaymentGraceDays",
   "noShowGraceDays",
   "stalePendingHours",
   "staleVisitPendingHours",
@@ -33,6 +34,7 @@ const PERCENTAGE_FIELDS = new Set([
 const FIELD_ERROR_LABELS = Object.freeze({
   reservationFeeAmount: "Reservation fee amount",
   penaltyRatePerDay: "Penalty rate per day",
+  latePaymentGraceDays: "Late payment grace days",
   maxPenaltyCapPercent: "Maximum late penalty cap percentage",
   defaultElectricityRatePerKwh: "Default electricity rate",
   defaultWaterRatePerUnit: "Default water rate",
@@ -62,6 +64,7 @@ const buildSettingsPayload = (settings) => serializeBusinessSettings(settings);
 const buildComparablePayload = (payload) => ({
   reservationFeeAmount: payload.reservationFeeAmount,
   penaltyRatePerDay: payload.penaltyRatePerDay,
+  latePaymentGraceDays: payload.latePaymentGraceDays,
   maxPenaltyCapPercent: payload.maxPenaltyCapPercent,
   defaultElectricityRatePerKwh: payload.defaultElectricityRatePerKwh,
   defaultWaterRatePerUnit: payload.defaultWaterRatePerUnit,

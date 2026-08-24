@@ -13,6 +13,7 @@ import {
   Filter,
   Clock3,
   Eye,
+  ArrowUpDown,
 } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import {
@@ -161,6 +162,9 @@ export default function TenantsWorkspacePage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [quickFilters, setQuickFilters] = useState([]);
+  const [sortBy, setSortBy] = useState(
+    () => searchParams.get("sortBy") || "newest",
+  );
   const [isFilterBarOpen, setIsFilterBarOpen] = useState(false);
   const [selectedReservationId, setSelectedReservationId] = useState(
     () => searchParams.get("reservationId") || null,
@@ -198,7 +202,8 @@ export default function TenantsWorkspacePage() {
     paymentStatusFilter !== "all" ||
     stayStatusFilter !== "all" ||
     Boolean(dateFrom || dateTo) ||
-    quickFilters.length > 0;
+    quickFilters.length > 0 ||
+    sortBy !== "newest";
 
     const previousHasActiveFilters = useRef(hasActiveFilters);
 
@@ -341,6 +346,61 @@ export default function TenantsWorkspacePage() {
         };
 
         return [...filteredTenants].sort((left, right) => {
+        if (sortBy === "newest") {
+            const dateLeft = left.moveInDate
+            ? new Date(left.moveInDate).getTime()
+            : left.createdAt
+            ? new Date(left.createdAt).getTime()
+            : 0;
+            const dateRight = right.moveInDate
+            ? new Date(right.moveInDate).getTime()
+            : right.createdAt
+            ? new Date(right.createdAt).getTime()
+            : 0;
+            const dateDelta = dateRight - dateLeft;
+            if (dateDelta !== 0) return dateDelta;
+            return (left.tenantName || "").localeCompare(right.tenantName || "");
+        }
+
+        if (sortBy === "oldest") {
+            const dateLeft = left.moveInDate
+            ? new Date(left.moveInDate).getTime()
+            : left.createdAt
+            ? new Date(left.createdAt).getTime()
+            : 0;
+            const dateRight = right.moveInDate
+            ? new Date(right.moveInDate).getTime()
+            : right.createdAt
+            ? new Date(right.createdAt).getTime()
+            : 0;
+            const dateDelta = dateLeft - dateRight;
+            if (dateDelta !== 0) return dateDelta;
+            return (left.tenantName || "").localeCompare(right.tenantName || "");
+        }
+
+        if (sortBy === "lease_asc") {
+            const leftLease = left.daysUntilLeaseEnd ?? Number.MAX_SAFE_INTEGER;
+            const rightLease = right.daysUntilLeaseEnd ?? Number.MAX_SAFE_INTEGER;
+            if (leftLease !== rightLease) return leftLease - rightLease;
+            return (left.tenantName || "").localeCompare(right.tenantName || "");
+        }
+
+        if (sortBy === "lease_desc") {
+            const leftLease = left.daysUntilLeaseEnd ?? -Number.MAX_SAFE_INTEGER;
+            const rightLease = right.daysUntilLeaseEnd ?? -Number.MAX_SAFE_INTEGER;
+            if (leftLease !== rightLease) return rightLease - leftLease;
+            return (left.tenantName || "").localeCompare(right.tenantName || "");
+        }
+
+        if (sortBy === "name_asc") {
+            return (left.tenantName || "").localeCompare(right.tenantName || "");
+        }
+
+        if (sortBy === "name_desc") {
+            return (right.tenantName || "").localeCompare(left.tenantName || "");
+        }
+
+        // Default: urgency (Action Needed triage)
         const urgencyDelta = urgencyScore(left) - urgencyScore(right);
         if (urgencyDelta !== 0) return urgencyDelta;
 
@@ -348,9 +408,9 @@ export default function TenantsWorkspacePage() {
         const rightLease = right.daysUntilLeaseEnd ?? Number.MAX_SAFE_INTEGER;
         if (leftLease !== rightLease) return leftLease - rightLease;
 
-        return left.tenantName.localeCompare(right.tenantName);
+        return (left.tenantName || "").localeCompare(right.tenantName || "");
         });
-    }, [filteredTenants]);
+    }, [filteredTenants, sortBy]);
 
     const paginatedTenants = useMemo(() => {
         const start = (currentPage - 1) * itemsPerPage;
@@ -397,6 +457,7 @@ export default function TenantsWorkspacePage() {
         dateFrom,
         dateTo,
         quickFilters,
+        sortBy,
     ]);
 
       useEffect(() => {
@@ -435,6 +496,7 @@ export default function TenantsWorkspacePage() {
         setDateFrom("");
         setDateTo("");
         setQuickFilters([]);
+        setSortBy("newest");
         setBranchFilter(isOwner ? "all" : user?.branch || "all");
       setIsFilterBarOpen(false);
     };
@@ -837,6 +899,8 @@ export default function TenantsWorkspacePage() {
           setDateFrom={setDateFrom}
           dateTo={dateTo}
           setDateTo={setDateTo}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
           quickFilters={quickFilters}
           toggleQuickFilter={toggleQuickFilter}
           clearQuickFilters={clearQuickFilters}
@@ -854,8 +918,22 @@ export default function TenantsWorkspacePage() {
             <table className="w-full min-w-[1000px]">
               <thead>
                 <tr className="border-b border-[var(--border-light)]">
-                  <th className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                    Tenant
+                  <th
+                    className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => setSortBy((prev) => (prev === "name_asc" ? "name_desc" : "name_asc"))}
+                    title="Click to sort alphabetically by tenant name"
+                  >
+                    <div className="inline-flex items-center gap-1.5">
+                      <span>Tenant</span>
+                      <ArrowUpDown
+                        size={12}
+                        className={
+                          sortBy === "name_asc" || sortBy === "name_desc"
+                            ? "text-sky-600 dark:text-sky-400"
+                            : "text-muted-foreground opacity-50"
+                        }
+                      />
+                    </div>
                   </th>
                   {isOwner ? (
                     <th className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -865,14 +943,42 @@ export default function TenantsWorkspacePage() {
                   <th className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                     Room & Bed
                   </th>
-                  <th className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                    Lease & Stay
+                  <th
+                    className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => setSortBy((prev) => (prev === "newest" ? "oldest" : "newest"))}
+                    title="Click to toggle sorting by move-in / registration date (Newest / Oldest)"
+                  >
+                    <div className="inline-flex items-center gap-1.5">
+                      <span>Lease & Stay</span>
+                      <ArrowUpDown
+                        size={12}
+                        className={
+                          sortBy === "newest" || sortBy === "oldest"
+                            ? "text-sky-600 dark:text-sky-400"
+                            : "text-muted-foreground opacity-50"
+                        }
+                      />
+                    </div>
                   </th>
                   <th className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                     Billing & Balance
                   </th>
-                  <th className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                    Action Needed
+                  <th
+                    className="text-left py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => setSortBy("urgency")}
+                    title="Click to sort by priority and action needed"
+                  >
+                    <div className="inline-flex items-center gap-1.5">
+                      <span>Action Needed</span>
+                      <ArrowUpDown
+                        size={12}
+                        className={
+                          sortBy === "urgency"
+                            ? "text-sky-600 dark:text-sky-400"
+                            : "text-muted-foreground opacity-50"
+                        }
+                      />
+                    </div>
                   </th>
                   <th className="text-center py-3 px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                     Actions
